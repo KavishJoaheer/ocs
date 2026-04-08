@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 const {
@@ -7,7 +8,16 @@ const {
   offsetLocalDate,
 } = require("./lib/utils");
 
-const dbPath = path.join(__dirname, "..", "data", "clinic.db");
+const explicitDbPath = process.env.DB_PATH;
+const volumeMountPath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const defaultDbPath = path.join(
+  volumeMountPath || path.join(__dirname, "..", "data"),
+  "clinic.db",
+);
+const dbPath = explicitDbPath || defaultDbPath;
+
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
 const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");

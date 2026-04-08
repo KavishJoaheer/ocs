@@ -11,11 +11,22 @@ const billingRouter = require("./routes/billing");
 initializeDatabase();
 
 const app = express();
-const PORT = 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const configuredOrigins = (process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin || configuredOrigins.length === 0 || configuredOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
   }),
 );
 app.use(express.json({ limit: "2mb" }));

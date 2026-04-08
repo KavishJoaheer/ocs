@@ -69,6 +69,26 @@ From the repo root:
 - The database is created automatically when the backend starts for the first time
 - Schema creation and seed logic live in [server/src/db.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/db.js)
 
+## Deployment Notes
+
+### Frontend
+
+- Production frontend is deployed on Vercel
+- Vercel config lives in [vercel.json](/C:/Users/kavis/OneDrive/Desktop/varun/vercel.json)
+
+### Backend
+
+- The backend is prepared for Docker-based hosting with SQLite persistence via [Dockerfile](/C:/Users/kavis/OneDrive/Desktop/varun/Dockerfile)
+- For a host like Railway, mount a persistent volume to `/data`
+- The server will automatically use:
+  - `DB_PATH` if provided
+  - otherwise `RAILWAY_VOLUME_MOUNT_PATH/clinic.db` when available
+  - otherwise the local fallback `server/data/clinic.db`
+- The backend respects `PORT`
+- Optional CORS control:
+  - `CLIENT_ORIGIN=https://your-frontend-domain`
+  - or `CLIENT_ORIGINS=https://site-one.com,https://site-two.com`
+
 ## API Notes
 
 The backend exposes a JSON REST API under `/api`, including:
