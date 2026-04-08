@@ -79,7 +79,8 @@ From the repo root:
 ### Backend
 
 - Local backend development still uses SQLite through [server/src/app.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/app.js)
-- Vercel-hosted backend entrypoints live in [api/index.js](/C:/Users/kavis/OneDrive/Desktop/varun/api/index.js) and [api/[...route].js](/C:/Users/kavis/OneDrive/Desktop/varun/api/[...route].js)
+- Vercel-hosted backend entrypoint lives in [api/index.js](/C:/Users/kavis/OneDrive/Desktop/varun/api/index.js)
+- [vercel.json](/C:/Users/kavis/OneDrive/Desktop/varun/vercel.json) rewrites `/api/*` requests into that single Vercel Function to stay within the Hobby plan limits
 - Vercel backend behavior:
   - If `DATABASE_URL`, `POSTGRES_URL`, or `POSTGRES_PRISMA_URL` is set, the API uses PostgreSQL through [server/src/pg.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/pg.js)
   - Otherwise it falls back to a temporary SQLite file on Vercel for demo use only
