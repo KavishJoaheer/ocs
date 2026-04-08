@@ -78,13 +78,13 @@ From the repo root:
 
 ### Backend
 
-- The backend is prepared for Docker-based hosting with SQLite persistence via [Dockerfile](/C:/Users/kavis/OneDrive/Desktop/varun/Dockerfile)
-- For a host like Railway, mount a persistent volume to `/data`
-- The server will automatically use:
-  - `DB_PATH` if provided
-  - otherwise `RAILWAY_VOLUME_MOUNT_PATH/clinic.db` when available
-  - otherwise the local fallback `server/data/clinic.db`
-- The backend respects `PORT`
+- Local backend development still uses SQLite through [server/src/app.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/app.js)
+- Vercel-hosted backend entrypoints live in [api/index.js](/C:/Users/kavis/OneDrive/Desktop/varun/api/index.js) and [api/[...route].js](/C:/Users/kavis/OneDrive/Desktop/varun/api/[...route].js)
+- Vercel backend behavior:
+  - If `DATABASE_URL`, `POSTGRES_URL`, or `POSTGRES_PRISMA_URL` is set, the API uses PostgreSQL through [server/src/pg.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/pg.js)
+  - Otherwise it falls back to a temporary SQLite file on Vercel for demo use only
+- Docker deployment is still available through [Dockerfile](/C:/Users/kavis/OneDrive/Desktop/varun/Dockerfile)
+- The server respects `PORT`
 - Optional CORS control:
   - `CLIENT_ORIGIN=https://your-frontend-domain`
   - or `CLIENT_ORIGINS=https://site-one.com,https://site-two.com`

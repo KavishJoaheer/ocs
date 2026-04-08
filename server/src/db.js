@@ -10,8 +10,9 @@ const {
 
 const explicitDbPath = process.env.DB_PATH;
 const volumeMountPath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const isVercelRuntime = Boolean(process.env.VERCEL);
 const defaultDbPath = path.join(
-  volumeMountPath || path.join(__dirname, "..", "data"),
+  volumeMountPath || (isVercelRuntime ? path.join("/tmp") : path.join(__dirname, "..", "data")),
   "clinic.db",
 );
 const dbPath = explicitDbPath || defaultDbPath;
