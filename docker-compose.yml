@@ -1,0 +1,49 @@
+services:
+  app:
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:latest
+    container_name: clinicflow-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DB_PATH: /data/clinic.db
+      TZ: ${TZ:-Indian/Mauritius}
+    ports:
+      - "${APP_PORT:-8080}:3001"
+    volumes:
+      - clinicflow-data:/data
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - clinicflow-public
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: clinicflow-watchtower
+    restart: unless-stopped
+    command:
+      - --interval
+      - ${WATCHTOWER_POLL_INTERVAL:-300}
+      - --cleanup
+      - --label-enable
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: ${TZ:-Indian/Mauritius}
+    networks:
+      - clinicflow-public
+
+volumes:
+  clinicflow-data:
+    name: clinicflow-data
+
+networks:
+  clinicflow-public:
+    name: clinicflow-public

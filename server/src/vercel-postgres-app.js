@@ -187,7 +187,7 @@ function createPostgresApp() {
             NULL AS doctor_name,
             COALESCE(b.payment_date::text, b.created_at::text) AS reference_date,
             NULL AS reference_time,
-            'Amount: $' || TO_CHAR(COALESCE(b.total_amount, 0)::numeric, 'FM999999990.00') AS detail
+            'Amount: Rs ' || TO_CHAR(COALESCE(b.total_amount, 0)::numeric, 'FM999999990.00') AS detail
           FROM billing b
           JOIN patients p ON p.id = b.patient_id
         ) activities

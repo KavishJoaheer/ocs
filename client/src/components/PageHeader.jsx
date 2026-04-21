@@ -11,7 +11,7 @@ function PageHeader({ eyebrow, title, description, actions }) {
           {title}
         </h2>
         {description ? (
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-[#567a86]">{description}</p>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-[#3f6270]">{description}</p>
         ) : null}
       </div>
 

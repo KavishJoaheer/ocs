@@ -19,6 +19,7 @@ import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
 import { formatDateTime } from "../lib/format.js";
@@ -196,6 +197,9 @@ function AppointmentFormModal({
 }
 
 function AppointmentsPage() {
+  const { user } = useAuth();
+  const canManageAppointments = user.role === "admin";
+  const canUpdateStatus = user.role === "admin" || user.role === "doctor";
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -312,14 +316,16 @@ function AppointmentsPage() {
         title="Appointments"
         description="Switch between a month calendar and a detailed list, then update doctor assignments or patient status in a few clicks."
         actions={
-          <button
-            type="button"
-            onClick={() => setEditor({ appointment: null })}
-            className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
-          >
-            <Plus className="size-4" />
-            Add appointment
-          </button>
+          canManageAppointments ? (
+            <button
+              type="button"
+              onClick={() => setEditor({ appointment: null })}
+              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+            >
+              <Plus className="size-4" />
+              Add appointment
+            </button>
+          ) : null
         }
       />
 
@@ -446,8 +452,13 @@ function AppointmentsPage() {
                           <button
                             key={appointment.id}
                             type="button"
-                            onClick={() => setEditor({ appointment })}
-                            className="w-full rounded-2xl border border-sky-100 bg-sky-50/70 p-3 text-left transition hover:border-sky-200 hover:bg-sky-50"
+                            onClick={canManageAppointments ? () => setEditor({ appointment }) : undefined}
+                            className={cx(
+                              "w-full rounded-2xl border border-sky-100 bg-sky-50/70 p-3 text-left transition",
+                              canManageAppointments
+                                ? "hover:border-sky-200 hover:bg-sky-50"
+                                : "cursor-default",
+                            )}
                           >
                             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
                               {appointment.appointment_time}
@@ -508,15 +519,17 @@ function AppointmentsPage() {
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditor({ appointment })}
-                              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                            >
-                              <SquarePen className="size-4" />
-                              Edit
-                            </button>
-                            {appointment.status === "scheduled" ? (
+                            {canManageAppointments ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditor({ appointment })}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                              >
+                                <SquarePen className="size-4" />
+                                Edit
+                              </button>
+                            ) : null}
+                            {canUpdateStatus && appointment.status === "scheduled" ? (
                               <>
                                 <button
                                   type="button"
@@ -540,14 +553,16 @@ function AppointmentsPage() {
                                 </button>
                               </>
                             ) : null}
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(appointment)}
-                              className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                            >
-                              <Trash2 className="size-4" />
-                              Delete
-                            </button>
+                            {canManageAppointments ? (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(appointment)}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                              >
+                                <Trash2 className="size-4" />
+                                Delete
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>

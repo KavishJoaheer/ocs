@@ -1,22 +1,77 @@
 import {
+  BellRing,
   CalendarDays,
-  ClipboardPenLine,
   CreditCard,
   LayoutDashboard,
-  Stethoscope,
+  LogOut,
+  Package,
+  PieChart,
+  ShieldCheck,
   UsersRound,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { useMemo } from "react";
 import BrandMark from "./BrandMark.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
+import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/patients", label: "Patients", icon: UsersRound },
-  { to: "/appointments", label: "Appointments", icon: CalendarDays },
-  { to: "/consultations", label: "Consultations", icon: ClipboardPenLine },
-  { to: "/billing", label: "Billing", icon: CreditCard },
-  { to: "/doctors", label: "Doctors", icon: Stethoscope },
+  {
+    to: "/",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    end: true,
+    roles: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+  },
+  {
+    to: "/patients",
+    label: "Patient",
+    icon: UsersRound,
+    roles: ["admin", "doctor", "operator", "lab_tech"],
+  },
+  {
+    to: "/hcm-news",
+    label: "HCM news",
+    icon: BellRing,
+    roles: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+  },
+  {
+    to: "/operator/billing-status",
+    label: "Billing status",
+    icon: CreditCard,
+    roles: ["operator"],
+  },
+  {
+    to: "/appointments",
+    label: "Appointments",
+    icon: CalendarDays,
+    roles: ["admin", "doctor"],
+  },
+  {
+    to: "/billing",
+    label: "Billing",
+    icon: CreditCard,
+    roles: ["admin", "doctor", "accountant"],
+  },
+  {
+    to: "/live-report",
+    label: "Live report",
+    icon: PieChart,
+    roles: ["admin"],
+  },
+  {
+    to: "/inventory",
+    label: "Inventory",
+    icon: Package,
+    roles: ["admin", "doctor", "lab_tech"],
+  },
+  {
+    to: "/team-operations",
+    label: "Team operations",
+    icon: UsersRound,
+    roles: ["admin"],
+  },
 ];
 
 function SidebarLink({ item, mobile = false }) {
@@ -46,21 +101,46 @@ function SidebarLink({ item, mobile = false }) {
 }
 
 function Sidebar() {
+  const { logout, user } = useAuth();
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => item.roles.includes(user.role)),
+    [user.role],
+  );
+
   return (
     <>
       <div className="border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-4 backdrop-blur lg:hidden">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <BrandMark size={46} />
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-right">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Operations
-            </p>
-            <p className="text-sm font-semibold text-slate-900">Mauritius dispatch</p>
+        <div className="mb-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <BrandMark maxWidth={180} size={42} />
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 px-3 py-2 text-sm font-semibold text-[#2d8f98] transition hover:bg-white"
+            >
+              <LogOut className="size-4" />
+              Sign out
+            </button>
+          </div>
+
+          <div className="rounded-[26px] border border-sky-200 bg-sky-50 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-white/85 p-2 text-[#2d8f98]">
+                <ShieldCheck className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  {getRoleLabel(user.role)}
+                </p>
+                <p className="text-sm font-semibold text-slate-900">{user.full_name}</p>
+                <p className="text-xs text-[#5b7f8a]">@{user.username}</p>
+              </div>
+            </div>
           </div>
         </div>
 
         <nav className="flex gap-3 overflow-x-auto pb-1">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <SidebarLink key={item.to} item={item} mobile />
           ))}
         </nav>
@@ -68,20 +148,51 @@ function Sidebar() {
 
       <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] text-white lg:flex lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-8">
-          <div className="ocs-pattern overflow-hidden rounded-[34px] border border-[rgba(255,255,255,0.24)] bg-[linear-gradient(135deg,#2d8f98_0%,#41c8c6_62%,#6edfd3_100%)] p-6 shadow-[0_32px_80px_rgba(34,72,91,0.18)]">
-            <div className="inline-flex rounded-[24px] bg-white/94 px-4 py-3 shadow-[0_16px_40px_rgba(34,72,91,0.14)]">
-              <BrandMark
-                logoClassName="drop-shadow-[0_8px_24px_rgba(34,72,91,0.06)]"
-                size={48}
-              />
+          <div className="relative overflow-hidden rounded-[38px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,#a9b8bf_0%,#9aaab2_100%)] p-5 shadow-[0_32px_80px_rgba(34,72,91,0.16)]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.38),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(26,56,68,0.08))]" />
+            <div className="relative z-10 flex min-h-[370px] flex-col">
+              <div className="inline-flex self-center rounded-[20px] bg-white px-4 py-3 shadow-[0_16px_40px_rgba(34,72,91,0.14)]">
+                <BrandMark
+                  maxWidth={190}
+                  logoClassName="drop-shadow-[0_8px_24px_rgba(34,72,91,0.06)]"
+                  size={42}
+                />
+              </div>
+
+              <div className="mt-12 max-w-[15rem] space-y-5">
+                <h1 className="font-display text-[2.05rem] leading-[1.02] tracking-tight text-[#f3c438]">
+                  Every visit is a team effort.
+                </h1>
+                <p className="text-[1.05rem] font-semibold leading-8 text-white">
+                  Our coordination is the key to our success and quality care.
+                </p>
+                <p className="text-[1.02rem] font-semibold leading-8 text-[#224f5a]">
+                  Let&apos;s make every SOS Alert count today.
+                </p>
+              </div>
             </div>
-            <h1 className="mt-5 font-display text-[2.2rem] leading-[1.05] text-white">
-              Home visit care,
-              <span className="mt-2 block text-[#ffe189]">beautifully coordinated.</span>
-            </h1>
-            <p className="mt-4 max-w-xs text-sm leading-6 text-white/86">
-              The OCS Médecins operations desk for patients, visits, doctor notes, and billing.
-            </p>
+          </div>
+
+          <div className="mt-6 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
+                  Signed in
+                </p>
+                <p className="mt-2 text-lg font-semibold text-[#22485b]">{user.full_name}</p>
+                <p className="mt-1 text-sm text-[#5b7f8a]">
+                  {getRoleLabel(user.role)} - @{user.username}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] px-3 py-2 text-sm font-semibold text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.14)]"
+              >
+                <LogOut className="size-4" />
+                Sign out
+              </button>
+            </div>
           </div>
 
           <div className="mt-8">
@@ -89,7 +200,7 @@ function Sidebar() {
               Navigation
             </p>
             <nav className="mt-4 space-y-2">
-              {navItems.map((item) => (
+              {visibleNavItems.map((item) => (
                 <SidebarLink key={item.to} item={item} />
               ))}
             </nav>

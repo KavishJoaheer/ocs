@@ -1,14 +1,35 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, CalendarClock, CreditCard, FileText } from "lucide-react";
+import dayjs from "dayjs";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CreditCard,
+  FileText,
+  FlaskConical,
+  HeartPulse,
+  Plus,
+  ShieldAlert,
+  SquarePen,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
-import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
+import {
+  formatAgeFromDateOfBirth,
+  formatCurrency,
+  formatDate,
+  formatPaymentMethod,
+} from "../lib/format.js";
 
 function HighlightStat({ icon: Icon, label, value }) {
   return (
@@ -28,22 +49,394 @@ function HighlightStat({ icon: Icon, label, value }) {
   );
 }
 
+function ProfileField({ label, value, emphasize = false }) {
+  return (
+    <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+        {label}
+      </p>
+      <p
+        className={`mt-2 text-sm leading-6 ${
+          emphasize ? "font-semibold text-slate-900" : "text-slate-600"
+        }`}
+      >
+        {value || "Not recorded"}
+      </p>
+    </div>
+  );
+}
+
+const CONSULTATION_ROWS_LIMIT = 5;
+const CONSULTATION_PREVIEW_LIMIT = 220;
+
+function getConsultationPreview(note, limit = CONSULTATION_PREVIEW_LIMIT) {
+  const normalized = String(note || "").trim();
+
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+}
+
+function getEmptyLabReport() {
+  return {
+    consultation_id: "",
+    report_title: "",
+    report_date: dayjs().format("YYYY-MM-DD"),
+    report_details: "",
+  };
+}
+
+function getEmptyConsultationEntry(user) {
+  return {
+    doctor_id: user?.role === "doctor" && user?.doctor_id ? String(user.doctor_id) : "",
+    consultation_date: dayjs().format("YYYY-MM-DD"),
+    appointment_time: dayjs().format("HH:mm"),
+    doctor_notes: "",
+  };
+}
+
+function roleLabel(role) {
+  if (role === "admin") return "Admin";
+  if (role === "lab_tech") return "Lab tech";
+  if (role === "doctor") return "Doctor";
+  if (role === "operator") return "Operator";
+  return "Team";
+}
+
+function getConsultationDraft(consultation) {
+  return {
+    doctor_id: consultation?.doctor_id ? String(consultation.doctor_id) : "",
+    consultation_date: consultation?.consultation_date ?? dayjs().format("YYYY-MM-DD"),
+    doctor_notes: consultation?.doctor_notes ?? "",
+  };
+}
+
+function LabReportModal({
+  open,
+  report,
+  consultations,
+  onClose,
+  onSubmit,
+  isSaving,
+}) {
+  const [form, setForm] = useState(getEmptyLabReport());
+  const isEditing = Boolean(report?.id);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setForm(
+      isEditing
+        ? {
+            consultation_id: report.consultation_id ? String(report.consultation_id) : "",
+            report_title: report.report_title ?? "",
+            report_date: report.report_date ?? dayjs().format("YYYY-MM-DD"),
+            report_details: report.report_details ?? "",
+          }
+        : getEmptyLabReport(),
+    );
+  }, [isEditing, open, report]);
+
+  const selectedConsultation = form.consultation_id
+    ? consultations.find((consultation) => consultation.id === Number(form.consultation_id)) || null
+    : null;
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    onSubmit({
+      consultation_id: form.consultation_id ? Number(form.consultation_id) : null,
+      report_title: form.report_title,
+      report_date: form.report_date,
+      report_details: form.report_details,
+    });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEditing ? "Edit lab report" : "Add lab report"}
+      description="Attach investigation findings directly to this patient so the clinical profile carries both consultation notes and lab follow-up."
+      size="xl"
+    >
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        <div className="grid gap-4 md:grid-cols-[1fr_0.45fr]">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Report title</span>
+            <input
+              required
+              value={form.report_title}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, report_title: event.target.value }))
+              }
+              placeholder="CBC panel, urine analysis, liver function test..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Report date</span>
+            <input
+              required
+              type="date"
+              value={form.report_date}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, report_date: event.target.value }))
+              }
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">
+            Linked consultation
+            <span className="ml-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+              Optional
+            </span>
+          </span>
+          <select
+            value={form.consultation_id}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, consultation_id: event.target.value }))
+            }
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+          >
+            <option value="">No linked consultation</option>
+            {consultations.map((consultation) => (
+              <option key={consultation.id} value={consultation.id}>
+                {consultation.doctor_name} - {formatDate(consultation.consultation_date)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedConsultation ? (
+          <div className="rounded-[24px] border border-sky-100 bg-sky-50/75 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+              Linked consultation
+            </p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">
+              {selectedConsultation.doctor_name}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              {selectedConsultation.specialization} -{" "}
+              {formatDate(selectedConsultation.consultation_date)}
+            </p>
+          </div>
+        ) : null}
+
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Lab report details</span>
+          <textarea
+            required
+            rows="12"
+            value={form.report_details}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, report_details: event.target.value }))
+            }
+            placeholder="Record the requested test, findings, reference notes, abnormalities, and any follow-up recommendation."
+            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
+          />
+        </label>
+
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : isEditing ? "Update report" : "Save report"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ConsultationCreateModal({
+  open,
+  user,
+  doctors,
+  onClose,
+  onSubmit,
+  isSaving,
+}) {
+  const [form, setForm] = useState(getEmptyConsultationEntry(user));
+  const isAdmin = user.role === "admin";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setForm(getEmptyConsultationEntry(user));
+  }, [open, user]);
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    onSubmit({
+      doctor_id: isAdmin ? Number(form.doctor_id) : Number(user.doctor_id),
+      consultation_date: form.consultation_date,
+      appointment_time: form.appointment_time,
+      doctor_notes: form.doctor_notes,
+    });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add consultation note"
+      description="Create a new patient consultation directly from the profile. This also creates a completed visit and linked billing record."
+      size="xl"
+    >
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        <div className="grid gap-4 md:grid-cols-[1fr_0.45fr_0.4fr]">
+          {isAdmin ? (
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Doctor</span>
+              <select
+                required
+                value={form.doctor_id}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, doctor_id: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              >
+                <option value="">Select doctor</option>
+                {doctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.full_name} - {doctor.specialization}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="rounded-[24px] border border-sky-100 bg-sky-50/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+                Doctor
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-950">
+                {user.full_name}
+              </p>
+            </div>
+          )}
+
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Consultation date</span>
+            <input
+              required
+              type="date"
+              value={form.consultation_date}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, consultation_date: event.target.value }))
+              }
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Time</span>
+            <input
+              required
+              type="time"
+              value={form.appointment_time}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, appointment_time: event.target.value }))
+              }
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Consultation note</span>
+          <textarea
+            required
+            rows="12"
+            value={form.doctor_notes}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, doctor_notes: event.target.value }))
+            }
+            placeholder="Record assessment, plan, medication advice, and follow-up instructions."
+            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
+          />
+        </label>
+
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : "Add consultation note"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function PatientProfilePage() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [data, setData] = useState(null);
+  const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reportEditor, setReportEditor] = useState(null);
+  const [isSavingReport, setIsSavingReport] = useState(false);
+  const [consultationEditorId, setConsultationEditorId] = useState(null);
+  const [consultationDraft, setConsultationDraft] = useState(() => getConsultationDraft());
+  const [isSavingConsultation, setIsSavingConsultation] = useState(false);
+  const [expandedConsultations, setExpandedConsultations] = useState({});
+  const [showAllConsultations, setShowAllConsultations] = useState(false);
+  const [consultationComposerOpen, setConsultationComposerOpen] = useState(false);
+  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+  const [consultationToDelete, setConsultationToDelete] = useState(null);
+  const canManageLabReports =
+    user.role === "admin" || user.role === "doctor" || user.role === "lab_tech";
+  const canManageConsultations = user.role === "admin" || user.role === "doctor";
 
   useEffect(() => {
     let ignore = false;
 
     async function loadPatient() {
       try {
-        const response = await api.get(`/patients/${id}`);
+        const [response, doctorOptions] = await Promise.all([
+          api.get(`/patients/${id}`),
+          user.role === "admin" ? api.get("/doctors") : Promise.resolve([]),
+        ]);
+
         if (!ignore) {
           setData(response);
+          setDoctors(doctorOptions);
         }
       } catch (error) {
-        toast.error(error.message);
+        if (!ignore) {
+          toast.error(error.message);
+          setData(null);
+        }
       } finally {
         if (!ignore) {
           setLoading(false);
@@ -57,6 +450,144 @@ function PatientProfilePage() {
       ignore = true;
     };
   }, [id]);
+
+  async function handleSaveLabReport(payload) {
+    if (!data?.patient?.id) {
+      return;
+    }
+
+    setIsSavingReport(true);
+
+    try {
+      if (reportEditor?.id) {
+        await api.put(`/lab-reports/${reportEditor.id}`, {
+          patient_id: data.patient.id,
+          ...payload,
+        });
+        toast.success("Lab report updated.");
+      } else {
+        await api.post("/lab-reports", {
+          patient_id: data.patient.id,
+          ...payload,
+        });
+        toast.success("Lab report added.");
+      }
+
+      await reloadPatientProfile();
+      setReportEditor(null);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSavingReport(false);
+    }
+  }
+
+  async function reloadPatientProfile() {
+    const [response, doctorOptions] = await Promise.all([
+      api.get(`/patients/${id}`),
+      user.role === "admin" ? api.get("/doctors") : Promise.resolve(doctors),
+    ]);
+
+    setData(response);
+    setDoctors(doctorOptions);
+  }
+
+  function canEditConsultation(consultation) {
+    if (!canManageConsultations) {
+      return false;
+    }
+
+    if (user.role === "admin") {
+      return true;
+    }
+
+    return Number(consultation.doctor_id) === Number(user.doctor_id);
+  }
+
+  function handleConsultationEditStart(consultation) {
+    setConsultationEditorId(consultation.id);
+    setConsultationDraft(getConsultationDraft(consultation));
+    setExpandedConsultations((current) => ({ ...current, [consultation.id]: true }));
+  }
+
+  function handleConsultationEditCancel() {
+    setConsultationEditorId(null);
+    setConsultationDraft(getConsultationDraft());
+  }
+
+  async function handleConsultationSave(consultation) {
+    const doctorNotes = consultationDraft.doctor_notes.trim();
+    const consultationDate = String(consultationDraft.consultation_date || "").trim();
+    const doctorId = Number(consultationDraft.doctor_id);
+
+    if (!doctorNotes) {
+      toast.error("Consultation note cannot be empty.");
+      return;
+    }
+
+    if (!consultationDate) {
+      toast.error("Consultation date is required.");
+      return;
+    }
+
+    if (user.role === "admin" && (!Number.isInteger(doctorId) || doctorId <= 0)) {
+      toast.error("Select a doctor for this consultation.");
+      return;
+    }
+
+    setIsSavingConsultation(true);
+
+    try {
+      await api.put(`/consultations/${consultation.id}`, {
+        ...(user.role === "admin" ? { doctor_id: doctorId } : {}),
+        consultation_date: consultationDate,
+        doctor_notes: doctorNotes,
+      });
+
+      await reloadPatientProfile();
+      setConsultationEditorId(null);
+      setConsultationDraft(getConsultationDraft());
+      toast.success("Consultation updated.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSavingConsultation(false);
+    }
+  }
+
+  async function handleCreateConsultation(payload) {
+    setIsCreatingConsultation(true);
+
+    try {
+      await api.post(`/patients/${id}/consultations`, payload);
+      await reloadPatientProfile();
+      setConsultationComposerOpen(false);
+      toast.success("Consultation note added.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsCreatingConsultation(false);
+    }
+  }
+
+  async function handleDeleteConsultation() {
+    if (!consultationToDelete) {
+      return;
+    }
+
+    try {
+      await api.delete(`/consultations/${consultationToDelete.id}`);
+      if (consultationEditorId === consultationToDelete.id) {
+        setConsultationEditorId(null);
+        setConsultationDraft(getConsultationDraft());
+      }
+      setConsultationToDelete(null);
+      await reloadPatientProfile();
+      toast.success("Consultation note deleted.");
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
 
   if (loading) {
     return <LoadingState label="Loading patient profile" />;
@@ -80,25 +611,58 @@ function PatientProfilePage() {
   }
 
   const totalBilled = data.bills.reduce((sum, bill) => sum + Number(bill.total_amount || 0), 0);
+  const statusDetail =
+    data.patient.status === "active"
+      ? data.patient.ongoing_treatment || "Ongoing treatment not recorded"
+      : "Patient has been discharged from active treatment.";
+  const canOpenBilling = user.role === "admin" || user.role === "doctor";
+  const assignedDoctor = data.patient.assigned_doctor_name
+    ? `${data.patient.assigned_doctor_name}${
+        data.patient.assigned_doctor_specialization
+          ? ` - ${data.patient.assigned_doctor_specialization}`
+          : ""
+      }`
+    : "Unassigned";
+  const patientContactNumber =
+    data.patient.patient_contact_number || data.patient.contact_number || "Not recorded";
+  const visibleConsultations = showAllConsultations
+    ? data.consultations
+    : data.consultations.slice(0, CONSULTATION_ROWS_LIMIT);
+  const hiddenConsultationCount = Math.max(
+    data.consultations.length - visibleConsultations.length,
+    0,
+  );
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Patient profile"
         title={data.patient.full_name}
-        description={`${data.patient.age} years old - ${data.patient.contact_number} - ${data.patient.address}`}
+        description={`${data.patient.patient_identifier || "No OCS care number yet"} - ${data.patient.gender} - ${formatAgeFromDateOfBirth(data.patient.date_of_birth)}`}
         actions={
-          <Link
-            to="/patients"
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
-          >
-            <ArrowLeft className="size-4" />
-            Back to patients
-          </Link>
+          <div className="flex flex-wrap justify-end gap-3">
+            {canOpenBilling ? (
+              <Link
+                to={`/billing?patientId=${id}`}
+                className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+              >
+                <CreditCard className="size-4" />
+                Open billing
+              </Link>
+            ) : null}
+
+            <Link
+              to="/patients"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+            >
+              <ArrowLeft className="size-4" />
+              Back to patients
+            </Link>
+          </div>
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <HighlightStat
           icon={CalendarClock}
           label="Appointments"
@@ -110,6 +674,11 @@ function PatientProfilePage() {
           value={data.consultations.length}
         />
         <HighlightStat
+          icon={FlaskConical}
+          label="Lab reports"
+          value={data.labReports.length}
+        />
+        <HighlightStat
           icon={CreditCard}
           label="Total billed"
           value={formatCurrency(totalBilled)}
@@ -118,43 +687,137 @@ function PatientProfilePage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard
-          title="Appointment history"
-          subtitle="Timeline of scheduled visits and status changes."
+          title="Patient details"
+          subtitle="Core demographics, assigned doctor, and current care status."
         >
-          {data.appointments.length ? (
-            <div className="space-y-3">
-              {data.appointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-semibold text-slate-950">{appointment.doctor_name}</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {appointment.specialization}
-                      </p>
-                    </div>
-                    <StatusBadge value={appointment.status} />
-                  </div>
-                  <p className="mt-3 text-sm text-slate-600">
-                    {formatDateTime(
-                      appointment.appointment_date,
-                      appointment.appointment_time,
-                    )}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="No appointments yet"
-              description="Appointments linked to this patient will appear here once they are scheduled."
+          <div className="grid gap-4 md:grid-cols-2">
+            <ProfileField
+              label="OCS care number"
+              value={data.patient.patient_identifier}
+              emphasize
             />
-          )}
+            <ProfileField label="Patient ID" value={data.patient.patient_id_number} emphasize />
+            <ProfileField label="First name" value={data.patient.first_name} emphasize />
+            <ProfileField label="Last name" value={data.patient.last_name} emphasize />
+            <ProfileField
+              label="Age"
+              value={formatAgeFromDateOfBirth(data.patient.date_of_birth)}
+              emphasize
+            />
+            <ProfileField label="Gender" value={data.patient.gender} emphasize />
+            <ProfileField label="Assigned doctor" value={assignedDoctor} emphasize />
+            <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                Status
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <StatusBadge value={data.patient.status} />
+                <span className="text-sm text-slate-600">{statusDetail}</span>
+              </div>
+            </div>
+            <ProfileField label="Patient contact number" value={patientContactNumber} />
+            <ProfileField label="Address" value={data.patient.address} />
+            <ProfileField label="Location" value={data.patient.location} />
+          </div>
         </SectionCard>
 
-        <SectionCard title="Billing history" subtitle="Every bill attached to this patient's consultations.">
+        <SectionCard
+          title="Next of kin"
+          subtitle="Family or support contact details kept alongside the patient record."
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            <ProfileField label="Name" value={data.patient.next_of_kin_name} emphasize />
+            <ProfileField
+              label="Relationship with patient"
+              value={data.patient.next_of_kin_relationship}
+            />
+            <ProfileField
+              label="Contact number"
+              value={data.patient.next_of_kin_contact_number}
+            />
+            <ProfileField label="Email address" value={data.patient.next_of_kin_email} />
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Clinical history"
+          subtitle="Historical information captured at registration."
+        >
+          <div className="space-y-4">
+            <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                  <UserRound className="size-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Past medical history</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {data.patient.past_medical_history || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                  <HeartPulse className="size-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {data.patient.past_surgical_history || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-amber-50 p-3 text-amber-700">
+                  <ShieldAlert className="size-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Drug allergy history</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {data.patient.drug_allergy_history || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Particularity"
+          subtitle="Additional patient-specific notes captured at registration."
+        >
+          <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Particularity
+            </p>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+              {data.patient.particularity || "No particularity recorded during intake."}
+            </p>
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard
+        title="Billing history"
+        subtitle="Every bill attached to this patient's consultations."
+        actions={
+          canOpenBilling ? (
+            <Link
+              to={`/billing?patientId=${id}`}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+            >
+              <CreditCard className="size-4" />
+              Open billing workspace
+            </Link>
+          ) : null
+        }
+      >
           {data.bills.length ? (
             <div className="space-y-3">
               {data.bills.map((bill) => (
@@ -168,10 +831,36 @@ function PatientProfilePage() {
                         {formatCurrency(bill.total_amount)}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
-                        {bill.doctor_name} - {formatDate(bill.consultation_date)}
+                        Bill #{bill.id} - {bill.doctor_name} - {formatDate(bill.consultation_date)}
                       </p>
                     </div>
                     <StatusBadge value={bill.status} />
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Pay by
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {formatPaymentMethod(bill.payment_method)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Payment date
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {bill.payment_date ? formatDate(bill.payment_date) : "Not recorded"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Consultation
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-slate-900">
+                        {formatDate(bill.consultation_date)}
+                      </p>
+                    </div>
                   </div>
                   <ul className="mt-3 space-y-1 text-sm text-slate-600">
                     {bill.items.map((item, index) => (
@@ -189,41 +878,381 @@ function PatientProfilePage() {
               description="Bills are created automatically when a consultation is saved."
             />
           )}
-        </SectionCard>
-      </div>
+      </SectionCard>
 
       <SectionCard
         title="Consultation notes"
-        subtitle="Clinical notes, assessments, and follow-up instructions."
+        subtitle="A patient-level consultation notes table with expandable rows and dedicated consultation pages."
+        actions={
+          canManageConsultations ? (
+            <button
+              type="button"
+              onClick={() => setConsultationComposerOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+            >
+              <Plus className="size-4" />
+              Add consultation note
+            </button>
+          ) : null
+        }
       >
         {data.consultations.length ? (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {data.consultations.map((consultation) => (
-              <article
-                key={consultation.id}
-                className="rounded-[26px] border border-slate-200/80 bg-white p-5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-950">{consultation.doctor_name}</p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {consultation.specialization} - {formatDate(consultation.consultation_date)}
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                  {consultation.doctor_notes}
-                </p>
-              </article>
-            ))}
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_22px_50px_-38px_rgba(15,23,42,0.35)]">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-left">
+                  <thead className="bg-slate-50/90">
+                    <tr>
+                      <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Date
+                      </th>
+                      <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Doctor
+                      </th>
+                      <th className="min-w-[22rem] px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Consultation note
+                      </th>
+                      <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Created
+                      </th>
+                      <th className="px-5 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleConsultations.map((consultation) => {
+                      const isEditing = consultationEditorId === consultation.id;
+                      const canEditRow = canEditConsultation(consultation);
+                      const note = consultation.doctor_notes || "";
+                      const isExpanded = expandedConsultations[consultation.id] || isEditing;
+                      const shouldTruncate = note.length > CONSULTATION_PREVIEW_LIMIT;
+                      const noteToDisplay = isExpanded
+                        ? note
+                        : getConsultationPreview(note, CONSULTATION_PREVIEW_LIMIT);
+
+                      return (
+                        <tr key={consultation.id} className="align-top">
+                          <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                            {formatDate(consultation.consultation_date)}
+                          </td>
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            <p className="font-semibold text-slate-900">
+                              {consultation.doctor_name}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                              {consultation.specialization || "General practice"}
+                            </p>
+                          </td>
+                          <td className="px-5 py-4">
+                            {isEditing ? (
+                              <div className="space-y-3">
+                                {user.role === "admin" ? (
+                                  <div className="grid gap-3 md:grid-cols-[1fr_0.5fr]">
+                                    <label className="space-y-2">
+                                      <span className="text-sm font-semibold text-slate-700">
+                                        Doctor
+                                      </span>
+                                      <select
+                                        value={consultationDraft.doctor_id}
+                                        onChange={(event) =>
+                                          setConsultationDraft((current) => ({
+                                            ...current,
+                                            doctor_id: event.target.value,
+                                          }))
+                                        }
+                                        className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+                                      >
+                                        <option value="">Select doctor</option>
+                                        {doctors.map((doctor) => (
+                                          <option key={doctor.id} value={doctor.id}>
+                                            {doctor.full_name} - {doctor.specialization}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+
+                                    <label className="space-y-2">
+                                      <span className="text-sm font-semibold text-slate-700">
+                                        Consultation date
+                                      </span>
+                                      <input
+                                        type="date"
+                                        value={consultationDraft.consultation_date}
+                                        onChange={(event) =>
+                                          setConsultationDraft((current) => ({
+                                            ...current,
+                                            consultation_date: event.target.value,
+                                          }))
+                                        }
+                                        className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+                                      />
+                                    </label>
+                                  </div>
+                                ) : null}
+
+                                <textarea
+                                  rows="7"
+                                  value={consultationDraft.doctor_notes}
+                                  onChange={(event) =>
+                                    setConsultationDraft((current) => ({
+                                      ...current,
+                                      doctor_notes: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+                                  placeholder="Update the clinical note for this consultation."
+                                />
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={handleConsultationEditCancel}
+                                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSavingConsultation}
+                                    onClick={() => handleConsultationSave(consultation)}
+                                    className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isSavingConsultation ? "Saving..." : "Save changes"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                                  {noteToDisplay || "No note recorded."}
+                                </p>
+                                {shouldTruncate ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedConsultations((current) => ({
+                                        ...current,
+                                        [consultation.id]: !current[consultation.id],
+                                      }))
+                                    }
+                                    className="text-sm font-semibold text-sky-700 transition hover:text-sky-800"
+                                  >
+                                    {isExpanded ? "View less" : "View more"}
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            {formatDate(consultation.created_at)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-2">
+                              <Link
+                                to={`/consultations/${consultation.id}`}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                              >
+                                Open
+                              </Link>
+                              {canEditRow ? (
+                                !isEditing ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleConsultationEditStart(consultation)}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                  >
+                                    <SquarePen className="size-4" />
+                                    {user.role === "admin" ? "Edit consultation" : "Edit note"}
+                                  </button>
+                                ) : null
+                              ) : (
+                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                  View only
+                                </span>
+                              )}
+                              {user.role === "admin" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setConsultationToDelete(consultation)}
+                                  className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                                >
+                                  <Trash2 className="size-4" />
+                                  Delete note
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {data.consultations.length > CONSULTATION_ROWS_LIMIT ? (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setShowAllConsultations((current) => !current)}
+                  className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
+                >
+                  {showAllConsultations
+                    ? "Show fewer consultation notes"
+                    : `View more consultation notes (${hiddenConsultationCount} more)`}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState
             title="No consultations recorded"
             description="Consultation notes will appear here as soon as a doctor completes a visit and saves the note."
+            action={
+              canManageConsultations ? (
+                <button
+                  type="button"
+                  onClick={() => setConsultationComposerOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                >
+                  <Plus className="size-4" />
+                  Add consultation note
+                </button>
+              ) : null
+            }
           />
         )}
       </SectionCard>
+
+      <SectionCard
+        title="Lab reports"
+        subtitle="Investigation results and specimen follow-up kept directly on the patient record."
+        actions={
+          canManageLabReports ? (
+              <button
+                type="button"
+                onClick={() => setReportEditor({ id: null })}
+                className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+              >
+              <Plus className="size-4" />
+              Add lab report
+            </button>
+          ) : null
+        }
+      >
+        {data.labReports.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {data.labReports.map((report) => (
+              <article
+                key={report.id}
+                className="rounded-[26px] border border-slate-200/80 bg-white p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-950">{report.report_title}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {formatDate(report.report_date)}
+                    </p>
+                  </div>
+
+                  {canManageLabReports ? (
+                    <button
+                      type="button"
+                      onClick={() => setReportEditor(report)}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                    >
+                      <SquarePen className="size-4" />
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
+
+                {report.consultation_id ? (
+                  <div className="mt-4 rounded-[22px] border border-sky-100 bg-sky-50/75 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+                      Linked consultation
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-slate-900">
+                      {report.consultation_doctor_name || "Consultation linked"}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {report.consultation_doctor_specialization
+                        ? `${report.consultation_doctor_specialization} - `
+                        : ""}
+                      {report.consultation_date
+                        ? formatDate(report.consultation_date)
+                        : "Consultation date unavailable"}
+                    </p>
+                  </div>
+                ) : null}
+
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                  {report.report_details}
+                </p>
+
+                <div className="mt-5 flex flex-wrap gap-3 text-sm text-slate-500">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
+                    Reported by {report.created_by_name || "OCS team"}
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
+                    {roleLabel(report.created_by_role)}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No lab reports yet"
+            description="Add a lab report here to keep investigations and consultation notes together on the same patient profile."
+            action={
+              canManageLabReports ? (
+                <button
+                  type="button"
+                  onClick={() => setReportEditor({ id: null })}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                >
+                  <Plus className="size-4" />
+                  Add lab report
+                </button>
+              ) : null
+            }
+          />
+        )}
+      </SectionCard>
+
+      <LabReportModal
+        open={Boolean(reportEditor)}
+        report={reportEditor}
+        consultations={data.consultations}
+        onClose={() => setReportEditor(null)}
+        onSubmit={handleSaveLabReport}
+        isSaving={isSavingReport}
+      />
+
+      <ConsultationCreateModal
+        open={consultationComposerOpen}
+        user={user}
+        doctors={doctors}
+        onClose={() => setConsultationComposerOpen(false)}
+        onSubmit={handleCreateConsultation}
+        isSaving={isCreatingConsultation}
+      />
+
+      <ConfirmDialog
+        open={Boolean(consultationToDelete)}
+        onClose={() => setConsultationToDelete(null)}
+        onConfirm={handleDeleteConsultation}
+        title="Delete consultation note?"
+        description={
+          consultationToDelete
+            ? `This will remove the consultation note dated ${formatDate(
+                consultationToDelete.consultation_date,
+              )}. Linked billing entries will be removed and linked lab reports will stay but become unlinked.`
+            : ""
+        }
+        confirmLabel="Delete note"
+      />
     </div>
   );
 }

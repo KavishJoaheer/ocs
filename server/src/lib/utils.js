@@ -58,6 +58,7 @@ function parseBillingRow(row) {
     ...row,
     items: normalizeBillingItems(row.items),
     total_amount: toNumber(row.total_amount, 0),
+    payment_method: row.payment_method ? String(row.payment_method).trim().toLowerCase() : null,
   };
 }
 

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { FilePenLine, Plus, ReceiptText, SquarePen } from "lucide-react";
 import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { formatDate, formatDateTime, truncate } from "../lib/format.js";
 
@@ -215,6 +217,8 @@ function ConsultationModal({
 }
 
 function ConsultationsPage() {
+  const { user } = useAuth();
+  const canManageConsultations = user.role === "admin" || user.role === "doctor";
   const [consultations, setConsultations] = useState([]);
   const [availableAppointments, setAvailableAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -273,19 +277,21 @@ function ConsultationsPage() {
         title="Consultations"
         description="Write structured doctor notes tied to appointments, then let the system generate billing automatically behind the scenes."
         actions={
-          <button
-            type="button"
-            onClick={() => setEditor({ consultation: null })}
-            disabled={!availableAppointments.length}
-            className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Plus className="size-4" />
-            Add consultation
-          </button>
+          canManageConsultations ? (
+            <button
+              type="button"
+              onClick={() => setEditor({ consultation: null })}
+              disabled={!availableAppointments.length}
+              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus className="size-4" />
+              Add consultation
+            </button>
+          ) : null
         }
       />
 
-      {!availableAppointments.length ? (
+      {canManageConsultations && !availableAppointments.length ? (
         <SectionCard>
           <EmptyState
             title="No available appointments for new consultations"
@@ -322,14 +328,22 @@ function ConsultationsPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <StatusBadge value={consultation.bill_status || "unpaid"} />
-                    <button
-                      type="button"
-                      onClick={() => setEditor({ consultation })}
+                    <Link
+                      to={`/consultations/${consultation.id}`}
                       className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                     >
-                      <SquarePen className="size-4" />
-                      Edit
-                    </button>
+                      Open
+                    </Link>
+                    {canManageConsultations ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditor({ consultation })}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                      >
+                        <SquarePen className="size-4" />
+                        Edit
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -344,7 +358,8 @@ function ConsultationsPage() {
                   </span>
                   <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
                     <ReceiptText className="size-4" />
-                    Bill #{consultation.bill_id}
+                    {consultation.bill_count || 0} bill
+                    {Number(consultation.bill_count || 0) === 1 ? "" : "s"}
                   </span>
                 </div>
               </article>

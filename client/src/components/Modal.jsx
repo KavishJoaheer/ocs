@@ -54,7 +54,7 @@ function Modal({ open, onClose, title, description, children, size = "lg" }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border border-[rgba(65,200,198,0.18)] p-2 text-[#678891] transition hover:border-[rgba(65,200,198,0.32)] hover:text-slate-900"
+            className="rounded-2xl border border-[rgba(65,200,198,0.18)] p-2 text-[#496874] transition hover:border-[rgba(65,200,198,0.32)] hover:text-slate-900"
           >
             <X className="size-5" />
           </button>
