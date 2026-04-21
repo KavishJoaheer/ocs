@@ -10,10 +10,12 @@ ClinicFlow is a full-stack clinic management application built with React, Vite,
 - Consultation notes linked to appointments with automatic bill creation
 - Billing management with editable line items, payment tracking, and per-patient summaries
 - Doctor management with add, edit, and delete protection for linked records
+- Role-based login with seeded accounts for doctors, operators, lab staff, and accounting
 - SQLite database auto-created on first server start
 - Seed data on first run:
-  - 3 doctors
+  - 10 doctors
   - 2 patients
+  - 15 user accounts
   - a few sample appointments, consultations, and bills for easier testing
 
 ## Tech Stack
@@ -53,6 +55,28 @@ Start both apps together from the repository root:
 npm run dev
 ```
 
+## Seeded Login Accounts
+
+All seeded users share the same starter password:
+
+```text
+Welcome@123
+```
+
+Available accounts:
+
+- Doctors: `doctor01` through `doctor10`
+- Operators: `operator01`, `operator02`, `operator03`
+- Lab tech: `labtech01`
+- Accountant: `accountant01`
+
+## Role Access
+
+- `doctor`: dashboard, patients, appointments, consultations
+- `operator`: dashboard, patients, appointments, doctors
+- `lab_tech`: dashboard, patients, consultations, lab workspace
+- `accountant`: dashboard, billing
+
 ## Individual Scripts
 
 From the repo root:
@@ -70,6 +94,8 @@ From the repo root:
 - Schema creation and seed logic live in [server/src/db.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/db.js)
 
 ## Deployment Notes
+
+- UGREEN NAS / Docker Compose deployment guide: [NAS_DEPLOYMENT.md](/C:/Users/kavis/OneDrive/Desktop/varun/NAS_DEPLOYMENT.md)
 
 ### Frontend
 
@@ -94,6 +120,9 @@ From the repo root:
 
 The backend exposes a JSON REST API under `/api`, including:
 
+- `/api/auth/login`
+- `/api/auth/me`
+- `/api/auth/logout`
 - `/api/dashboard`
 - `/api/patients`
 - `/api/doctors`
