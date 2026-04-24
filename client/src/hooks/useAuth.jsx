@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
 
 const AuthContext = createContext(null);
@@ -7,6 +8,7 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => getStoredAuthToken());
   const [user, setUser] = useState(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [hcmUnreadCount, setHcmUnreadCount] = useState(0);
 
   const logout = useCallback(async ({ remote = true } = {}) => {
     const activeToken = getStoredAuthToken();
@@ -26,6 +28,7 @@ export function AuthProvider({ children }) {
     setStoredAuthToken(null);
     setToken(null);
     setUser(null);
+    setHcmUnreadCount(0);
   }, []);
 
   const login = useCallback(async ({ username, password }) => {
@@ -51,6 +54,32 @@ export function AuthProvider({ children }) {
       return typeof updater === "function" ? updater(current) : updater;
     });
   }, []);
+
+  const refreshHcmUnreadCount = useCallback(async ({ silent = false } = {}) => {
+    const activeToken = getStoredAuthToken();
+
+    if (!activeToken || !user || user.role === "admin") {
+      setHcmUnreadCount(0);
+      return 0;
+    }
+
+    try {
+      const payload = await api.get("/hcm-news/unread-status");
+      const nextCount = Number(payload?.unread_count || 0);
+
+      setHcmUnreadCount((current) => {
+        if (!silent && nextCount > current) {
+          toast("New HCM update available.");
+        }
+
+        return nextCount;
+      });
+
+      return nextCount;
+    } catch {
+      return 0;
+    }
+  }, [user]);
 
   useEffect(() => {
     const handleUnauthorized = (event) => {
@@ -106,17 +135,53 @@ export function AuthProvider({ children }) {
     };
   }, [token]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function bootstrapUnread() {
+      if (!token || !user || user.role === "admin") {
+        if (!ignore) {
+          setHcmUnreadCount(0);
+        }
+        return;
+      }
+
+      await refreshHcmUnreadCount({ silent: true });
+    }
+
+    bootstrapUnread();
+
+    if (!token || !user || user.role === "admin") {
+      return () => {
+        ignore = true;
+      };
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (!ignore) {
+        refreshHcmUnreadCount();
+      }
+    }, 30000);
+
+    return () => {
+      ignore = true;
+      window.clearInterval(intervalId);
+    };
+  }, [refreshHcmUnreadCount, token, user]);
+
   const value = useMemo(
     () => ({
       user,
       token,
       isAuthenticated: Boolean(user && token),
       isBootstrapping,
+      hcmUnreadCount,
       login,
       logout,
+      refreshHcmUnreadCount,
       updateUser,
     }),
-    [isBootstrapping, login, logout, token, updateUser, user],
+    [hcmUnreadCount, isBootstrapping, login, logout, refreshHcmUnreadCount, token, updateUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -74,7 +74,7 @@ const navItems = [
   },
 ];
 
-function SidebarLink({ item, mobile = false }) {
+function SidebarLink({ item, mobile = false, badgeCount = 0 }) {
   const Icon = item.icon;
 
   return (
@@ -96,12 +96,24 @@ function SidebarLink({ item, mobile = false }) {
     >
       <Icon className={cx("size-4", mobile ? "text-current" : "text-[#66d7d0]")} />
       <span>{item.label}</span>
+      {badgeCount > 0 ? (
+        <span
+          className={cx(
+            "ml-auto inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold",
+            mobile
+              ? "bg-white/90 text-[#2d8f98]"
+              : "bg-rose-500 text-white",
+          )}
+        >
+          {badgeCount > 9 ? "9+" : badgeCount}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
 
 function Sidebar() {
-  const { logout, user } = useAuth();
+  const { logout, user, hcmUnreadCount } = useAuth();
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => item.roles.includes(user.role)),
     [user.role],
@@ -141,7 +153,12 @@ function Sidebar() {
 
         <nav className="flex gap-3 overflow-x-auto pb-1">
           {visibleNavItems.map((item) => (
-            <SidebarLink key={item.to} item={item} mobile />
+            <SidebarLink
+              key={item.to}
+              item={item}
+              mobile
+              badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
+            />
           ))}
         </nav>
       </div>
@@ -201,7 +218,11 @@ function Sidebar() {
             </p>
             <nav className="mt-4 space-y-2">
               {visibleNavItems.map((item) => (
-                <SidebarLink key={item.to} item={item} />
+                <SidebarLink
+                  key={item.to}
+                  item={item}
+                  badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
+                />
               ))}
             </nav>
           </div>

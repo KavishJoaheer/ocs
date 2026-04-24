@@ -285,3 +285,7 @@ t=2026-04-24T09:31:09+0400 lvl=eror msg="failed to reconnect session" obj=tunnel
 t=2026-04-24T09:31:09+0400 lvl=warn msg="failed to check for update" obj=updater err="Post \"https://update.ngrok-agent.com/check\": dial tcp: lookup update.ngrok-agent.com: no such host"
 t=2026-04-24T09:31:40+0400 lvl=info msg="client session established" obj=tunnels.session
 t=2026-04-24T09:31:40+0400 lvl=info msg="tunnel session started" obj=tunnels.session
+t=2026-04-24T12:31:48+0400 lvl=eror msg="session closed, starting reconnect loop" obj=tunnels.session obj=csess id=aa0c99ac2cca err="read tcp 192.168.100.19:50245->54.255.3.198:443: wsarecv: An existing connection was forcibly closed by the remote host."
+t=2026-04-24T12:31:49+0400 lvl=info msg="client session established" obj=tunnels.session
+t=2026-04-24T12:31:49+0400 lvl=info msg="tunnel session started" obj=tunnels.session
+t=2026-04-24T12:32:01+0400 lvl=eror msg="heartbeat timeout, terminating session" obj=tunnels.session obj=csess id=a9fce0825e43 clientid=de984afd13996041490e43a7b15bf69f

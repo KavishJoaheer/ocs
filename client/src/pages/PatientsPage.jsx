@@ -42,6 +42,7 @@ const emptyPatient = {
   location: "",
   past_medical_history: "",
   past_surgical_history: "",
+  drug_history: "",
   drug_allergy_history: "",
   particularity: "",
   next_of_kin_name: "",
@@ -71,6 +72,7 @@ function toPatientFormState(patient) {
     location: patient.location ?? "",
     past_medical_history: patient.past_medical_history ?? "",
     past_surgical_history: patient.past_surgical_history ?? "",
+    drug_history: patient.drug_history ?? "",
     drug_allergy_history: patient.drug_allergy_history ?? "",
     particularity: patient.particularity ?? "",
     next_of_kin_name: patient.next_of_kin_name ?? "",
@@ -337,6 +339,17 @@ function PatientFormModal({
               rows="3"
               name="past_surgical_history"
               value={form.past_surgical_history}
+              onChange={handleChange}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">Drug history</span>
+            <textarea
+              rows="3"
+              name="drug_history"
+              value={form.drug_history}
               onChange={handleChange}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
             />

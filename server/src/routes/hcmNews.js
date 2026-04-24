@@ -46,10 +46,110 @@ function getNewsPosts() {
     .all();
 }
 
-function buildPayload() {
+function getLatestPostMarker() {
+  return (
+    db
+      .prepare(`
+        SELECT id, updated_at
+        FROM hcm_news_posts
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+      `)
+      .get() || null
+  );
+}
+
+function getUserReadMarker(userId) {
+  return (
+    db
+      .prepare(`
+        SELECT user_id, last_seen_post_id, last_seen_post_updated_at, updated_at
+        FROM user_hcm_news_reads
+        WHERE user_id = ?
+      `)
+      .get(userId) || null
+  );
+}
+
+function getUnreadStatus(auth) {
+  if (!auth?.id || auth.role === "admin") {
+    return {
+      unread_count: 0,
+      has_unread: false,
+      latest_post_id: null,
+      latest_post_updated_at: null,
+      last_seen_post_id: null,
+      last_seen_post_updated_at: null,
+    };
+  }
+
+  const latestPost = getLatestPostMarker();
+  const readMarker = getUserReadMarker(auth.id);
+
+  if (!latestPost) {
+    return {
+      unread_count: 0,
+      has_unread: false,
+      latest_post_id: null,
+      latest_post_updated_at: null,
+      last_seen_post_id: readMarker?.last_seen_post_id ?? null,
+      last_seen_post_updated_at: readMarker?.last_seen_post_updated_at ?? null,
+    };
+  }
+
+  const unreadCount = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM hcm_news_posts
+      WHERE
+        ? IS NULL
+        OR updated_at > ?
+        OR (updated_at = ? AND id > COALESCE(?, 0))
+    `)
+    .get(
+      readMarker?.last_seen_post_updated_at ?? null,
+      readMarker?.last_seen_post_updated_at ?? null,
+      readMarker?.last_seen_post_updated_at ?? null,
+      readMarker?.last_seen_post_id ?? null,
+    ).count;
+
+  return {
+    unread_count: Number(unreadCount || 0),
+    has_unread: Number(unreadCount || 0) > 0,
+    latest_post_id: latestPost.id,
+    latest_post_updated_at: latestPost.updated_at,
+    last_seen_post_id: readMarker?.last_seen_post_id ?? null,
+    last_seen_post_updated_at: readMarker?.last_seen_post_updated_at ?? null,
+  };
+}
+
+function markNewsRead(userId) {
+  const latestPost = getLatestPostMarker();
+
+  db.prepare(`
+    INSERT INTO user_hcm_news_reads (
+      user_id,
+      last_seen_post_id,
+      last_seen_post_updated_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id) DO UPDATE SET
+      last_seen_post_id = excluded.last_seen_post_id,
+      last_seen_post_updated_at = excluded.last_seen_post_updated_at,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    userId,
+    latestPost?.id ?? null,
+    latestPost?.updated_at ?? null,
+  );
+}
+
+function buildPayload(auth) {
   return {
     posts: getNewsPosts(),
     team_statuses: getTeamStatuses(),
+    unread: getUnreadStatus(auth),
   };
 }
 
@@ -72,8 +172,20 @@ function validatePayload(payload) {
   return null;
 }
 
-router.get("/", (_req, res) => {
-  res.json(buildPayload());
+router.get("/", (req, res) => {
+  res.json(buildPayload(req.auth));
+});
+
+router.get("/unread-status", (req, res) => {
+  res.json(getUnreadStatus(req.auth));
+});
+
+router.post("/mark-read", (req, res) => {
+  if (req.auth.role !== "admin") {
+    markNewsRead(req.auth.id);
+  }
+
+  res.json(getUnreadStatus(req.auth));
 });
 
 router.post("/", (req, res) => {
@@ -98,7 +210,7 @@ router.post("/", (req, res) => {
     VALUES (?, ?, ?, ?)
   `).run(payload.title, payload.body, req.auth.id, req.auth.id);
 
-  res.status(201).json(buildPayload());
+  res.status(201).json(buildPayload(req.auth));
 });
 
 router.put("/:id", (req, res) => {
@@ -130,7 +242,7 @@ router.put("/:id", (req, res) => {
     WHERE id = ?
   `).run(payload.title, payload.body, req.auth.id, postId);
 
-  res.json(buildPayload());
+  res.json(buildPayload(req.auth));
 });
 
 router.delete("/:id", (req, res) => {

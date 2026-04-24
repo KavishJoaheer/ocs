@@ -45,6 +45,7 @@ const seededPatients = [
     location: "Anahita Residence",
     past_medical_history: "Type 2 diabetes managed with oral medication.",
     past_surgical_history: "Appendectomy in 2017.",
+    drug_history: "Metformin 500 mg twice daily with home glucose monitoring.",
     drug_allergy_history: "Penicillin",
     particularity: "Requires late afternoon appointments whenever possible.",
     consultation_notes:
@@ -69,6 +70,7 @@ const seededPatients = [
     location: "Azuri Residence",
     past_medical_history: "Migraine history with intermittent seasonal allergies.",
     past_surgical_history: "No prior surgeries.",
+    drug_history: "Uses ibuprofen intermittently during migraine flares.",
     drug_allergy_history: "No known drug allergies.",
     particularity: "Prefers communication through family support when symptomatic.",
     consultation_notes:
@@ -220,6 +222,18 @@ function createHcmNewsPostsTable() {
   `);
 }
 
+function createHcmNewsReadsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_hcm_news_reads (
+      user_id INTEGER PRIMARY KEY,
+      last_seen_post_id INTEGER,
+      last_seen_post_updated_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+}
+
 function createInventoryFoldersTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_folders (
@@ -361,6 +375,7 @@ function initializeDatabase() {
       location TEXT NOT NULL DEFAULT '',
       past_medical_history TEXT NOT NULL DEFAULT '',
       past_surgical_history TEXT NOT NULL DEFAULT '',
+      drug_history TEXT NOT NULL DEFAULT '',
       drug_allergy_history TEXT NOT NULL DEFAULT '',
       particularity TEXT NOT NULL DEFAULT '',
       consultation_notes TEXT NOT NULL DEFAULT '',
@@ -478,6 +493,7 @@ function initializeDatabase() {
   createPatientRevisionsTable();
   createPatientOperatorAccessTable();
   createHcmNewsPostsTable();
+  createHcmNewsReadsTable();
   createInventoryFoldersTable();
   createInventoryMovementsTable();
 
@@ -526,6 +542,7 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_users_operation_status ON users(operation_status);
     CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_created_at ON hcm_news_posts(created_at);
+    CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_updated_at ON hcm_news_posts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_inventory_folder ON inventory(folder_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_item_name ON inventory(item_name);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(item_id);
@@ -595,6 +612,10 @@ function ensurePatientColumns() {
     {
       name: "drug_allergy_history",
       sql: "ALTER TABLE patients ADD COLUMN drug_allergy_history TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "drug_history",
+      sql: "ALTER TABLE patients ADD COLUMN drug_history TEXT NOT NULL DEFAULT ''",
     },
     {
       name: "status",
@@ -1243,6 +1264,7 @@ function seedDatabase() {
       location,
       past_medical_history,
       past_surgical_history,
+      drug_history,
       drug_allergy_history,
       particularity,
       consultation_notes,
@@ -1254,7 +1276,7 @@ function seedDatabase() {
       status,
       ongoing_treatment
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertAppointment = db.prepare(`
@@ -1322,6 +1344,7 @@ function seedDatabase() {
           patient.location ?? "",
           patient.past_medical_history,
           patient.past_surgical_history,
+          patient.drug_history ?? "",
           patient.drug_allergy_history,
           patient.particularity ?? "",
           patient.consultation_notes ?? "",

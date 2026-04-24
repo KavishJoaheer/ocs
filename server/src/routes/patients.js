@@ -129,6 +129,7 @@ function normalizePatientPayload(body) {
     location: String(body.location ?? "").trim(),
     past_medical_history: String(body.past_medical_history ?? "").trim(),
     past_surgical_history: String(body.past_surgical_history ?? "").trim(),
+    drug_history: String(body.drug_history ?? "").trim(),
     drug_allergy_history: String(body.drug_allergy_history ?? "").trim(),
     particularity: String(body.particularity ?? "").trim(),
     consultation_notes:
@@ -260,6 +261,7 @@ function getPatientSnapshot(patient) {
     location: patient.location || "",
     past_medical_history: patient.past_medical_history || "",
     past_surgical_history: patient.past_surgical_history || "",
+    drug_history: patient.drug_history || "",
     drug_allergy_history: patient.drug_allergy_history || "",
     particularity: patient.particularity || "",
     consultation_notes: patient.consultation_notes || "",
@@ -840,6 +842,7 @@ router.post("/", (req, res) => {
         location,
         past_medical_history,
         past_surgical_history,
+        drug_history,
         drug_allergy_history,
         particularity,
         consultation_notes,
@@ -851,7 +854,7 @@ router.post("/", (req, res) => {
         status,
         ongoing_treatment
       )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
     .run(
       fullName,
@@ -870,6 +873,7 @@ router.post("/", (req, res) => {
       payload.location,
       payload.past_medical_history,
       payload.past_surgical_history,
+      payload.drug_history,
       payload.drug_allergy_history,
       payload.particularity,
       payload.consultation_notes || "",
@@ -969,6 +973,7 @@ router.put("/:id", (req, res) => {
     location: payload.location,
     past_medical_history: payload.past_medical_history,
     past_surgical_history: payload.past_surgical_history,
+    drug_history: payload.drug_history,
     drug_allergy_history: payload.drug_allergy_history,
     particularity: payload.particularity,
     consultation_notes: preservedConsultationNotes,
@@ -1002,6 +1007,7 @@ router.put("/:id", (req, res) => {
         location = ?,
         past_medical_history = ?,
         past_surgical_history = ?,
+        drug_history = ?,
         drug_allergy_history = ?,
         particularity = ?,
         consultation_notes = ?,
@@ -1030,6 +1036,7 @@ router.put("/:id", (req, res) => {
       payload.location,
       payload.past_medical_history,
       payload.past_surgical_history,
+      payload.drug_history,
       payload.drug_allergy_history,
       payload.particularity,
       preservedConsultationNotes,

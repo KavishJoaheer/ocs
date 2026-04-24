@@ -9,6 +9,7 @@ import {
   FlaskConical,
   HeartPulse,
   Paperclip,
+  Pill,
   Plus,
   ShieldAlert,
   SquarePen,
@@ -945,6 +946,20 @@ function PatientProfilePage() {
                   <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
                   <p className="mt-1 text-sm leading-6 text-slate-600">
                     {data.patient.past_surgical_history || "Not recorded"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700">
+                  <Pill className="size-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Drug history</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {data.patient.drug_history || "Not recorded"}
                   </p>
                 </div>
               </div>

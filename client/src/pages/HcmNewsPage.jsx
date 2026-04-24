@@ -31,7 +31,7 @@ function formatTimestamp(value) {
 }
 
 function HcmNewsPage() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, hcmUnreadCount, refreshHcmUnreadCount } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(EMPTY_EDITOR);
@@ -60,6 +60,33 @@ function HcmNewsPage() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function markBoardRead() {
+      if (user.role === "admin") {
+        return;
+      }
+
+      try {
+        await api.post("/hcm-news/mark-read");
+        if (!ignore) {
+          await refreshHcmUnreadCount({ silent: true });
+        }
+      } catch {
+        // Keep the page usable even if the read marker update fails.
+      }
+    }
+
+    if (data) {
+      markBoardRead();
+    }
+
+    return () => {
+      ignore = true;
+    };
+  }, [data, refreshHcmUnreadCount, user.role]);
 
   useEffect(() => {
     let ignore = false;
@@ -312,6 +339,19 @@ function HcmNewsPage() {
               </div>
             </div>
           </div>
+
+          {user.role !== "admin" && hcmUnreadCount > 0 ? (
+            <div className="mt-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800">
+                {hcmUnreadCount === 1
+                  ? "There is 1 new HCM update for you."
+                  : `There are ${hcmUnreadCount} new HCM updates for you.`}
+              </p>
+              <p className="mt-1 text-sm text-amber-700">
+                Opening this page marks the latest HCM notices as seen.
+              </p>
+            </div>
+          ) : null}
         </SectionCard>
       </div>
 
