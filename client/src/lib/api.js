@@ -16,8 +16,9 @@ export function setStoredAuthToken(token) {
 
 async function apiRequest(path, options = {}) {
   const authToken = getStoredAuthToken();
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
 
@@ -28,11 +29,50 @@ async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: options.body
+      ? isFormData
+        ? options.body
+        : JSON.stringify(options.body)
+      : undefined,
   });
 
   if (response.status === 204) {
     return null;
+  }
+
+  if (options.responseType === "blob") {
+    if (!response.ok) {
+      const text = await response.text();
+      let data = null;
+
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+
+      if (response.status === 401 && authToken) {
+        if (getStoredAuthToken() === authToken) {
+          setStoredAuthToken(null);
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("auth:unauthorized", {
+            detail: {
+              token: authToken,
+            },
+          }),
+        );
+      }
+
+      throw new Error(data?.error || "Something went wrong.");
+    }
+
+    return {
+      blob: await response.blob(),
+      contentType: response.headers.get("content-type") || "",
+      filename: response.headers.get("x-file-name") || "",
+    };
   }
 
   const text = await response.text();
@@ -61,6 +101,7 @@ async function apiRequest(path, options = {}) {
 
 export const api = {
   get: (path) => apiRequest(path),
+  getBlob: (path, options = {}) => apiRequest(path, { ...options, responseType: "blob" }),
   post: (path, body, options = {}) => apiRequest(path, { ...options, method: "POST", body }),
   put: (path, body, options = {}) => apiRequest(path, { ...options, method: "PUT", body }),
   patch: (path, body, options = {}) => apiRequest(path, { ...options, method: "PATCH", body }),

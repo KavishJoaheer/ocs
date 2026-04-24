@@ -23,8 +23,10 @@ const defaultDbPath = path.join(
   "clinic.db",
 );
 const dbPath = explicitDbPath || defaultDbPath;
+const labReportAttachmentsDir = path.join(path.dirname(dbPath), "lab-report-attachments");
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+fs.mkdirSync(labReportAttachmentsDir, { recursive: true });
 
 const db = new Database(dbPath);
 
@@ -144,6 +146,28 @@ function createLabReportsTable() {
       FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE RESTRICT,
       FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE SET NULL,
       FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+}
+
+function createLabReportAttachmentsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lab_report_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL,
+      patient_id INTEGER NOT NULL,
+      consultation_id INTEGER,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      relative_path TEXT NOT NULL,
+      uploaded_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (report_id) REFERENCES lab_reports(id) ON DELETE CASCADE,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE RESTRICT,
+      FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE SET NULL,
+      FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
 }
@@ -450,6 +474,7 @@ function initializeDatabase() {
   createUsersTable();
   createAuthSessionsTable();
   createLabReportsTable();
+  createLabReportAttachmentsTable();
   createPatientRevisionsTable();
   createPatientOperatorAccessTable();
   createHcmNewsPostsTable();
@@ -472,6 +497,12 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_billing_consultation ON billing(consultation_id);
     CREATE INDEX IF NOT EXISTS idx_lab_reports_patient ON lab_reports(patient_id);
     CREATE INDEX IF NOT EXISTS idx_lab_reports_date ON lab_reports(report_date);
+    CREATE INDEX IF NOT EXISTS idx_lab_report_attachments_report
+      ON lab_report_attachments(report_id);
+    CREATE INDEX IF NOT EXISTS idx_lab_report_attachments_patient
+      ON lab_report_attachments(patient_id);
+    CREATE INDEX IF NOT EXISTS idx_lab_report_attachments_consultation
+      ON lab_report_attachments(consultation_id);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON auth_sessions(expires_at);
@@ -1446,5 +1477,6 @@ function ensureBillingForConsultation(consultationId, patientId) {
 module.exports = {
   db,
   ensureBillingForConsultation,
+  labReportAttachmentsDir,
   initializeDatabase,
 };

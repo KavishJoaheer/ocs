@@ -4,14 +4,17 @@ import {
   ArrowLeft,
   CalendarClock,
   CreditCard,
+  Download,
   FileText,
   FlaskConical,
   HeartPulse,
+  Paperclip,
   Plus,
   ShieldAlert,
   SquarePen,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -88,6 +91,20 @@ function getEmptyLabReport() {
   };
 }
 
+function formatAttachmentSize(bytes) {
+  const value = Number(bytes || 0);
+
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (value >= 1024) {
+    return `${Math.round(value / 1024)} KB`;
+  }
+
+  return `${value} B`;
+}
+
 function getEmptyConsultationEntry(user) {
   return {
     doctor_id: user?.role === "doctor" && user?.doctor_id ? String(user.doctor_id) : "",
@@ -117,12 +134,17 @@ function LabReportModal({
   open,
   report,
   consultations,
+  user,
+  onDeleteAttachment,
+  onDownloadAttachment,
   onClose,
   onSubmit,
   isSaving,
 }) {
   const [form, setForm] = useState(getEmptyLabReport());
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const isEditing = Boolean(report?.id);
+  const canDeleteSavedAttachments = user?.role === "admin";
 
   useEffect(() => {
     if (!open) {
@@ -139,6 +161,7 @@ function LabReportModal({
           }
         : getEmptyLabReport(),
     );
+    setSelectedFiles([]);
   }, [isEditing, open, report]);
 
   const selectedConsultation = form.consultation_id
@@ -153,6 +176,7 @@ function LabReportModal({
       report_title: form.report_title,
       report_date: form.report_date,
       report_details: form.report_details,
+      attachments: selectedFiles,
     });
   }
 
@@ -160,8 +184,8 @@ function LabReportModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={isEditing ? "Edit lab report" : "Add lab report"}
-      description="Attach investigation findings directly to this patient so the clinical profile carries both consultation notes and lab follow-up."
+      title={isEditing ? "Edit Medical & Lab Report" : "Add Medical & Lab Report"}
+      description="Attach investigation findings and supporting files directly to this patient so the clinical profile carries both consultation notes and medical follow-up."
       size="xl"
     >
       <form className="space-y-5" onSubmit={handleSubmit}>
@@ -232,7 +256,7 @@ function LabReportModal({
         ) : null}
 
         <label className="block space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Lab report details</span>
+          <span className="text-sm font-semibold text-slate-700">Medical & Lab Report details</span>
           <textarea
             required
             rows="12"
@@ -240,10 +264,110 @@ function LabReportModal({
             onChange={(event) =>
               setForm((current) => ({ ...current, report_details: event.target.value }))
             }
-            placeholder="Record the requested test, findings, reference notes, abnormalities, and any follow-up recommendation."
+            placeholder="Record the requested test, clinical findings, reference notes, abnormalities, and any follow-up recommendation."
             className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
           />
         </label>
+
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Upload files</span>
+          <input
+            type="file"
+            multiple
+            accept=".pdf,image/*"
+            onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
+            className="w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 outline-none transition file:mr-4 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:border-sky-300 focus:border-sky-400 focus:bg-white"
+          />
+          <p className="text-xs leading-5 text-slate-500">
+            Upload PDF or image files. These files will be linked to this Medical & Lab Report and
+            to the selected consultation when one is chosen.
+          </p>
+        </label>
+
+        {selectedFiles.length ? (
+          <div className="space-y-2 rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Files ready to upload
+            </p>
+            <div className="space-y-2">
+              {selectedFiles.map((file, index) => (
+                <div
+                  key={`${file.name}-${index}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{file.name}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                      {formatAttachmentSize(file.size)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))
+                    }
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                  >
+                    <X className="size-4" />
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {isEditing && report?.attachments?.length ? (
+          <div className="space-y-2 rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Saved files
+            </p>
+            <div className="space-y-2">
+              {report.attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {attachment.original_name}
+                    </p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                      {formatAttachmentSize(attachment.file_size)} •{" "}
+                      {roleLabel(attachment.uploaded_by_role)} upload
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onDownloadAttachment(attachment)}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                    >
+                      <Download className="size-4" />
+                      Open file
+                    </button>
+                    {canDeleteSavedAttachments ? (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAttachment(attachment)}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                      >
+                        <Trash2 className="size-4" />
+                        Delete file
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {!canDeleteSavedAttachments ? (
+              <p className="text-xs leading-5 text-slate-500">
+                Uploaded files are visible to Doctor, Admin, and Lab Tech. Only Admin can delete a
+                saved file.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex justify-end gap-3">
           <button
@@ -258,7 +382,11 @@ function LabReportModal({
             disabled={isSaving}
             className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSaving ? "Saving..." : isEditing ? "Update report" : "Save report"}
+            {isSaving
+              ? "Saving..."
+              : isEditing
+                ? "Update Medical & Lab Report"
+                : "Save Medical & Lab Report"}
           </button>
         </div>
       </form>
@@ -416,6 +544,7 @@ function PatientProfilePage() {
   const [consultationToDelete, setConsultationToDelete] = useState(null);
   const canManageLabReports =
     user.role === "admin" || user.role === "doctor" || user.role === "lab_tech";
+  const canDeleteReportFiles = user.role === "admin";
   const canManageConsultations = user.role === "admin" || user.role === "doctor";
 
   useEffect(() => {
@@ -459,18 +588,26 @@ function PatientProfilePage() {
     setIsSavingReport(true);
 
     try {
+      const formData = new FormData();
+      formData.append("patient_id", String(data.patient.id));
+      formData.append("report_title", payload.report_title);
+      formData.append("report_date", payload.report_date);
+      formData.append("report_details", payload.report_details);
+      formData.append(
+        "consultation_id",
+        payload.consultation_id ? String(payload.consultation_id) : "",
+      );
+
+      (payload.attachments || []).forEach((file) => {
+        formData.append("attachments", file);
+      });
+
       if (reportEditor?.id) {
-        await api.put(`/lab-reports/${reportEditor.id}`, {
-          patient_id: data.patient.id,
-          ...payload,
-        });
-        toast.success("Lab report updated.");
+        await api.put(`/lab-reports/${reportEditor.id}`, formData);
+        toast.success("Medical & Lab Report updated.");
       } else {
-        await api.post("/lab-reports", {
-          patient_id: data.patient.id,
-          ...payload,
-        });
-        toast.success("Lab report added.");
+        await api.post("/lab-reports", formData);
+        toast.success("Medical & Lab Report added.");
       }
 
       await reloadPatientProfile();
@@ -479,6 +616,47 @@ function PatientProfilePage() {
       toast.error(error.message);
     } finally {
       setIsSavingReport(false);
+    }
+  }
+
+  async function handleDownloadLabReportAttachment(attachment) {
+    try {
+      const response = await api.getBlob(attachment.download_url);
+      const objectUrl = window.URL.createObjectURL(response.blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = decodeURIComponent(response.filename || attachment.original_name || "report-file");
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  async function handleDeleteLabReportAttachment(attachment) {
+    if (!canDeleteReportFiles) {
+      return;
+    }
+
+    try {
+      await api.delete(`/lab-reports/attachments/${attachment.id}`);
+      await reloadPatientProfile();
+      if (reportEditor?.id === attachment.report_id) {
+        setReportEditor((current) =>
+          current
+            ? {
+                ...current,
+                attachments: (current.attachments || []).filter((item) => item.id !== attachment.id),
+              }
+            : current,
+        );
+      }
+      toast.success("Uploaded file deleted.");
+    } catch (error) {
+      toast.error(error.message);
     }
   }
 
@@ -675,7 +853,7 @@ function PatientProfilePage() {
         />
         <HighlightStat
           icon={FlaskConical}
-          label="Lab reports"
+          label="Medical & Lab Reports"
           value={data.labReports.length}
         />
         <HighlightStat
@@ -1125,8 +1303,8 @@ function PatientProfilePage() {
       </SectionCard>
 
       <SectionCard
-        title="Lab reports"
-        subtitle="Investigation results and specimen follow-up kept directly on the patient record."
+        title="Medical & Lab Reports"
+        subtitle="Investigation results, clinical documents, and specimen follow-up kept directly on the patient record."
         actions={
           canManageLabReports ? (
               <button
@@ -1135,7 +1313,7 @@ function PatientProfilePage() {
                 className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
               >
               <Plus className="size-4" />
-              Add lab report
+              Add Medical & Lab Report
             </button>
           ) : null
         }
@@ -1159,11 +1337,11 @@ function PatientProfilePage() {
                     <button
                       type="button"
                       onClick={() => setReportEditor(report)}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                    >
-                      <SquarePen className="size-4" />
-                      Edit
-                    </button>
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                  >
+                    <SquarePen className="size-4" />
+                    Edit
+                  </button>
                   ) : null}
                 </div>
 
@@ -1190,6 +1368,51 @@ function PatientProfilePage() {
                   {report.report_details}
                 </p>
 
+                {report.attachments?.length ? (
+                  <div className="mt-4 space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      Attached files
+                    </p>
+                    <div className="space-y-2">
+                      {report.attachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-slate-200/80 bg-slate-50/80 px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {attachment.original_name}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                              {formatAttachmentSize(attachment.file_size)}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadLabReportAttachment(attachment)}
+                              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              <Paperclip className="size-4" />
+                              Open file
+                            </button>
+                            {canDeleteReportFiles ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLabReportAttachment(attachment)}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                              >
+                                <Trash2 className="size-4" />
+                                Delete file
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="mt-5 flex flex-wrap gap-3 text-sm text-slate-500">
                   <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
                     Reported by {report.created_by_name || "OCS team"}
@@ -1203,8 +1426,8 @@ function PatientProfilePage() {
           </div>
         ) : (
           <EmptyState
-            title="No lab reports yet"
-            description="Add a lab report here to keep investigations and consultation notes together on the same patient profile."
+            title="No Medical & Lab Reports yet"
+            description="Add a Medical & Lab Report here to keep investigations, consultation notes, and uploaded files together on the same patient profile."
             action={
               canManageLabReports ? (
                 <button
@@ -1213,7 +1436,7 @@ function PatientProfilePage() {
                   className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
                 >
                   <Plus className="size-4" />
-                  Add lab report
+                  Add Medical & Lab Report
                 </button>
               ) : null
             }
@@ -1225,6 +1448,9 @@ function PatientProfilePage() {
         open={Boolean(reportEditor)}
         report={reportEditor}
         consultations={data.consultations}
+        user={user}
+        onDeleteAttachment={handleDeleteLabReportAttachment}
+        onDownloadAttachment={handleDownloadLabReportAttachment}
         onClose={() => setReportEditor(null)}
         onSubmit={handleSaveLabReport}
         isSaving={isSavingReport}
@@ -1248,7 +1474,7 @@ function PatientProfilePage() {
           consultationToDelete
             ? `This will remove the consultation note dated ${formatDate(
                 consultationToDelete.consultation_date,
-              )}. Linked billing entries will be removed and linked lab reports will stay but become unlinked.`
+              )}. Linked billing entries will be removed and linked Medical & Lab Reports will stay but become unlinked.`
             : ""
         }
         confirmLabel="Delete note"

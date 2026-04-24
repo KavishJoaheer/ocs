@@ -140,6 +140,7 @@ function createApp() {
       GET: ["admin", "doctor", "operator", "lab_tech"],
       POST: ["admin", "doctor", "lab_tech"],
       PUT: ["admin", "doctor", "lab_tech"],
+      DELETE: ["admin"],
     }),
     labReportsRouter,
   );
@@ -167,6 +168,21 @@ function createApp() {
 
   app.use((error, _req, res, _next) => {
     console.error(error);
+
+    if (error?.name === "MulterError") {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ error: "Each uploaded file must be 10 MB or smaller." });
+      }
+
+      if (error.code === "LIMIT_FILE_COUNT") {
+        return res.status(400).json({ error: "You can upload up to 5 files per report." });
+      }
+    }
+
+    if (error?.message === "Only PDF and image files are allowed.") {
+      return res.status(400).json({ error: error.message });
+    }
+
     res.status(500).json({ error: "Unexpected server error." });
   });
 

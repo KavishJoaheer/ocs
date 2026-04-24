@@ -497,7 +497,7 @@ function validatePatientIdNumberAvailability(patientIdNumber, patientId = null) 
 }
 
 function getLabReportsByPatientId(patientId) {
-  return db
+  const reports = db
     .prepare(`
       SELECT
         lr.*,
@@ -514,6 +514,40 @@ function getLabReportsByPatientId(patientId) {
       ORDER BY lr.report_date DESC, lr.created_at DESC
     `)
     .all(patientId);
+
+  if (!reports.length) {
+    return reports;
+  }
+
+  const placeholders = reports.map(() => "?").join(", ");
+  const attachments = db
+    .prepare(`
+      SELECT
+        attachment.*,
+        uploader.full_name AS uploaded_by_name,
+        uploader.role AS uploaded_by_role
+      FROM lab_report_attachments attachment
+      LEFT JOIN users uploader ON uploader.id = attachment.uploaded_by_user_id
+      WHERE attachment.report_id IN (${placeholders})
+      ORDER BY attachment.created_at ASC, attachment.id ASC
+    `)
+    .all(...reports.map((report) => report.id));
+
+  const attachmentsByReportId = new Map();
+
+  attachments.forEach((attachment) => {
+    const current = attachmentsByReportId.get(attachment.report_id) || [];
+    current.push({
+      ...attachment,
+      download_url: `/api/lab-reports/attachments/${attachment.id}/download`,
+    });
+    attachmentsByReportId.set(attachment.report_id, current);
+  });
+
+  return reports.map((report) => ({
+    ...report,
+    attachments: attachmentsByReportId.get(report.id) || [],
+  }));
 }
 
 router.get("/options", (_req, res) => {
