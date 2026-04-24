@@ -971,7 +971,7 @@ function PatientProfilePage() {
                   <ShieldAlert className="size-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-950">Drug allergy history</p>
+                  <p className="text-sm font-semibold text-slate-950">Allergy History</p>
                   <p className="mt-1 text-sm leading-6 text-slate-600">
                     {data.patient.drug_allergy_history || "Not recorded"}
                   </p>

@@ -356,12 +356,13 @@ function PatientFormModal({
           </label>
 
           <label className="space-y-2 md:col-span-2">
-            <span className="text-sm font-semibold text-slate-700">Drug allergy history</span>
+            <span className="text-sm font-semibold text-slate-700">Allergy History</span>
             <textarea
               rows="2"
               name="drug_allergy_history"
               value={form.drug_allergy_history}
               onChange={handleChange}
+              placeholder="Record medication, food, environmental, or other allergy details."
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
             />
           </label>
@@ -825,7 +826,7 @@ function PatientsPage() {
                                     : truncate(
                                         displayText(
                                           patient.drug_allergy_history,
-                                          "Drug allergy history not recorded",
+                                          "Allergy history not recorded",
                                         ),
                                         90,
                                       )}
