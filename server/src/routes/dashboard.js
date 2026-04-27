@@ -162,6 +162,114 @@ function getReportRange(period, anchorDateValue) {
   };
 }
 
+function createDateRangeSlots(startDate, endDate) {
+  const slots = [];
+  const cursor = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  while (cursor <= end) {
+    slots.push(formatLocalSqlDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return slots;
+}
+
+function getVolumeRows(period, range, doctorId = null) {
+  if (period === "daily") {
+    const grouped = db
+      .prepare(`
+        SELECT
+          CAST(strftime('%H', c.created_at) AS INTEGER) AS slot_hour,
+          COUNT(*) AS patient_count
+        FROM consultations c
+        JOIN patients p ON p.id = c.patient_id
+        WHERE p.deleted_at IS NULL
+          AND c.consultation_date = @targetDate
+          AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+        GROUP BY slot_hour
+        ORDER BY slot_hour ASC
+      `)
+      .all({
+        targetDate: range.start,
+        doctorId,
+      });
+
+    const byHour = new Map(grouped.map((row) => [Number(row.slot_hour), Number(row.patient_count || 0)]));
+    return Array.from({ length: 24 }).map((_, hour) => ({
+      slot: String(hour).padStart(2, "0"),
+      label: `${String(hour).padStart(2, "0")}:00`,
+      patient_count: byHour.get(hour) || 0,
+    }));
+  }
+
+  if (period === "annual") {
+    const grouped = db
+      .prepare(`
+        SELECT
+          CAST(strftime('%m', c.consultation_date) AS INTEGER) AS slot_month,
+          COUNT(*) AS patient_count
+        FROM consultations c
+        JOIN patients p ON p.id = c.patient_id
+        WHERE p.deleted_at IS NULL
+          AND c.consultation_date BETWEEN @startDate AND @endDate
+          AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+        GROUP BY slot_month
+        ORDER BY slot_month ASC
+      `)
+      .all({
+        startDate: range.start,
+        endDate: range.end,
+        doctorId,
+      });
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const byMonth = new Map(grouped.map((row) => [Number(row.slot_month), Number(row.patient_count || 0)]));
+    return monthNames.map((name, index) => ({
+      slot: String(index + 1).padStart(2, "0"),
+      label: name,
+      patient_count: byMonth.get(index + 1) || 0,
+    }));
+  }
+
+  const groupedByDate = db
+    .prepare(`
+      SELECT
+        c.consultation_date AS slot_date,
+        COUNT(*) AS patient_count
+      FROM consultations c
+      JOIN patients p ON p.id = c.patient_id
+      WHERE p.deleted_at IS NULL
+        AND c.consultation_date BETWEEN @startDate AND @endDate
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      GROUP BY c.consultation_date
+      ORDER BY c.consultation_date ASC
+    `)
+    .all({
+      startDate: range.start,
+      endDate: range.end,
+      doctorId,
+    });
+
+  const byDate = new Map(groupedByDate.map((row) => [String(row.slot_date), Number(row.patient_count || 0)]));
+  const dateSlots = createDateRangeSlots(range.start, range.end);
+
+  return dateSlots.map((slotDate) => {
+    const date = new Date(`${slotDate}T12:00:00`);
+    let label = slotDate;
+
+    if (period === "weekly") {
+      label = date.toLocaleDateString("en-US", { weekday: "short" });
+    } else if (period === "monthly") {
+      label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+
+    return {
+      slot: slotDate,
+      label,
+      patient_count: byDate.get(slotDate) || 0,
+    };
+  });
+}
+
 function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
   return db
     .prepare(`
@@ -832,8 +940,8 @@ router.get("/operator-workspace", (req, res) => {
 });
 
 router.get("/live-report", (req, res) => {
-  if (!["admin", "doctor"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin and doctor can open live reports." });
+  if (!["admin", "doctor", "operator", "lab_tech"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only authorized staff can open live reports." });
   }
 
   const doctors = db
@@ -898,25 +1006,10 @@ router.get("/live-report", (req, res) => {
 
   const doctorRows = getDoctorPatientCounts(doctorRange.start, doctorRange.end, selectedDoctorId);
 
-  const volumeRows = db
-    .prepare(`
-      SELECT
-        c.consultation_date AS date,
-        COUNT(*) AS patient_count
-      FROM consultations c
-      JOIN patients p ON p.id = c.patient_id
-      WHERE p.deleted_at IS NULL
-        AND c.consultation_date BETWEEN @startDate AND @endDate
-        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
-      GROUP BY c.consultation_date
-      ORDER BY c.consultation_date ASC
-    `)
-    .all({
-      startDate: doctorRange.start,
-      endDate: doctorRange.end,
-      doctorId: selectedDoctorId,
-    })
-    .map((row) => ({ ...row, patient_count: Number(row.patient_count || 0) }));
+  const volumeRows = getVolumeRows(doctorRange.period, doctorRange, selectedDoctorId);
+  const activeEntityLabel = selectedDoctorId
+    ? doctors.find((doctor) => Number(doctor.id) === Number(selectedDoctorId))?.full_name || "Selected doctor"
+    : "All doctors";
 
   const revenueRanges = {
     daily: getReportRange("daily", revenueAnchorDate),
@@ -1000,7 +1093,8 @@ router.get("/live-report", (req, res) => {
       anchorDate: doctorRange.anchorDate,
       rangeStart: doctorRange.start,
       rangeEnd: doctorRange.end,
-      rangeLabel: doctorRange.label,
+      rangeLabel: `${doctorRange.label} - ${activeEntityLabel}`,
+      entityLabel: activeEntityLabel,
       rows: volumeRows,
     },
     billingRevenueReport: {

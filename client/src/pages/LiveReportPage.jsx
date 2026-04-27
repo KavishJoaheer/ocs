@@ -8,6 +8,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -112,6 +113,7 @@ export default function LiveReportPage() {
   const [anchorDate, setAnchorDate] = useState(today);
   const [doctorScope, setDoctorScope] = useState("general");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [isRevenueExpanded, setIsRevenueExpanded] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -143,12 +145,17 @@ export default function LiveReportPage() {
     return () => { ignore = true; };
   }, [anchorDate, doctorScope, period, selectedDoctorId]);
 
+  useEffect(() => {
+    setIsRevenueExpanded(false);
+  }, [report?.billingRevenueReport?.rows?.length, anchorDate, period, doctorScope, selectedDoctorId]);
+
   if (loading) return <LoadingState label="Loading live report" />;
   if (!report) return <EmptyState title="Live report unavailable" description="Unable to load report data." />;
 
   const locationRows = report.locationReport?.rows || [];
   const volumeRows = report.volumeReport?.rows || [];
   const revenueRows = report.billingRevenueReport?.rows || [];
+  const visibleRevenueRows = isRevenueExpanded ? revenueRows : revenueRows.slice(0, 3);
   const statement = report.revenueStatement || {};
 
   return (
@@ -237,16 +244,18 @@ export default function LiveReportPage() {
       <SectionCard
         title="Patients Volume"
         subtitle={report.volumeReport?.rangeLabel}
-        actions={<div className="flex gap-2"><button onClick={() => downloadPdf("patients_volume", volumeRows.map((r) => `${r.date}: ${r.patient_count}`))} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => exportCsv("patients_volume", volumeRows)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to CSV</button></div>}
+        actions={<div className="flex gap-2"><button onClick={() => downloadPdf("patients_volume", volumeRows.map((r) => `${r.label}: ${r.patient_count}`))} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => exportCsv("patients_volume", volumeRows)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to CSV</button></div>}
       >
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={volumeRows}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
+              <XAxis dataKey="label" />
+              <YAxis allowDecimals={false} />
               <Tooltip />
-              <Bar dataKey="patient_count" fill="#2d8f98" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="patient_count" fill="#2d8f98" radius={[8, 8, 0, 0]}>
+                <LabelList dataKey="patient_count" position="top" />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -257,12 +266,26 @@ export default function LiveReportPage() {
         subtitle={report.billingRevenueReport?.rangeLabel}
         actions={<div className="flex gap-2"><button onClick={() => downloadPdf("revenue_reports", revenueRows.map((r) => `${r.patient_name} - ${r.total_amount} (${r.status})`))} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => exportCsv("revenue_reports", revenueRows)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to CSV</button></div>}
       >
-        <div className="overflow-x-auto rounded-[20px] border border-slate-200">
+        <div
+          className="overflow-x-auto rounded-[20px] border border-slate-200 transition-all duration-300 ease-in-out"
+          style={{ maxHeight: isRevenueExpanded ? "999px" : "280px" }}
+        >
           <table className="min-w-full bg-white text-sm">
             <thead className="bg-slate-50"><tr><th className="px-4 py-3 text-left">Patient</th><th className="px-4 py-3 text-left">Consultation</th><th className="px-4 py-3 text-left">Amount</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Method</th></tr></thead>
-            <tbody>{revenueRows.map((row) => <tr key={row.bill_id} className="border-t"><td className="px-4 py-3">{row.patient_name}</td><td className="px-4 py-3">{row.consultation_date}</td><td className="px-4 py-3">{formatCurrency(row.total_amount)}</td><td className="px-4 py-3">{row.status}</td><td className="px-4 py-3">{row.payment_method}</td></tr>)}</tbody>
+            <tbody>{visibleRevenueRows.map((row) => <tr key={row.bill_id} className="border-t"><td className="px-4 py-3">{row.patient_name}</td><td className="px-4 py-3">{row.consultation_date}</td><td className="px-4 py-3">{formatCurrency(row.total_amount)}</td><td className="px-4 py-3">{row.status}</td><td className="px-4 py-3">{row.payment_method}</td></tr>)}</tbody>
           </table>
         </div>
+        {revenueRows.length > 3 ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setIsRevenueExpanded((current) => !current)}
+              className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#26717c]"
+            >
+              {isRevenueExpanded ? "View Less" : "View More"}
+            </button>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
