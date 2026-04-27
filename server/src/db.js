@@ -261,9 +261,11 @@ function createInventoryFoldersTable() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       parent_id INTEGER,
+      owner_doctor_id INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (parent_id) REFERENCES inventory_folders(id) ON DELETE CASCADE
+      FOREIGN KEY (parent_id) REFERENCES inventory_folders(id) ON DELETE CASCADE,
+      FOREIGN KEY (owner_doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
     );
   `);
 }
@@ -472,15 +474,20 @@ function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       item_name TEXT NOT NULL,
       folder_id INTEGER,
+      owner_doctor_id INTEGER,
       quantity INTEGER NOT NULL DEFAULT 0,
       minimum_quantity INTEGER NOT NULL DEFAULT 0,
       unit TEXT NOT NULL,
       cost_price REAL NOT NULL DEFAULT 0,
       selling_price REAL NOT NULL DEFAULT 0,
       notes TEXT NOT NULL DEFAULT '',
+      attributes TEXT NOT NULL DEFAULT '',
+      moa_notes TEXT NOT NULL DEFAULT '',
+      expiry_date TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL
+      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL,
+      FOREIGN KEY (owner_doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS inventory_movements (
@@ -572,6 +579,8 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_patient_locations_patient ON patient_locations(patient_id);
     CREATE INDEX IF NOT EXISTS idx_patient_locations_location ON patient_locations(location_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_folder ON inventory(folder_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_owner_doctor ON inventory(owner_doctor_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_folders_owner_doctor ON inventory_folders(owner_doctor_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_item_name ON inventory(item_name);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(item_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_doctor ON inventory_movements(doctor_id);
@@ -826,6 +835,15 @@ function ensureBillingColumns() {
 }
 
 function ensureInventoryColumns() {
+  const folderColumns = db
+    .prepare("PRAGMA table_info(inventory_folders)")
+    .all()
+    .map((column) => column.name);
+
+  if (!folderColumns.includes("owner_doctor_id")) {
+    db.exec("ALTER TABLE inventory_folders ADD COLUMN owner_doctor_id INTEGER");
+  }
+
   const columns = db
     .prepare("PRAGMA table_info(inventory)")
     .all()
@@ -835,6 +853,10 @@ function ensureInventoryColumns() {
     {
       name: "folder_id",
       sql: "ALTER TABLE inventory ADD COLUMN folder_id INTEGER",
+    },
+    {
+      name: "owner_doctor_id",
+      sql: "ALTER TABLE inventory ADD COLUMN owner_doctor_id INTEGER",
     },
     {
       name: "minimum_quantity",
@@ -851,6 +873,18 @@ function ensureInventoryColumns() {
     {
       name: "notes",
       sql: "ALTER TABLE inventory ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "attributes",
+      sql: "ALTER TABLE inventory ADD COLUMN attributes TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "moa_notes",
+      sql: "ALTER TABLE inventory ADD COLUMN moa_notes TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "expiry_date",
+      sql: "ALTER TABLE inventory ADD COLUMN expiry_date TEXT",
     },
     {
       name: "created_at",

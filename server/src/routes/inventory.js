@@ -4,47 +4,60 @@ const { toNumber } = require("../lib/utils");
 
 const router = express.Router();
 const MOVEMENT_TYPES = new Set(["in", "out", "adjustment"]);
+const REQUIRED_FOLDERS = [
+  "Consumable",
+  "IM Drugs",
+  "IV Drugs",
+  "Wound Dressing",
+  "Pediatric Drugs",
+];
 
-function getFolders() {
+function requireDoctorAccess(req, res) {
+  if (req.auth.role !== "doctor" || !req.auth.doctor_id) {
+    res.status(403).json({ error: "My Stock is only available to doctor accounts." });
+    return null;
+  }
+  return Number(req.auth.doctor_id);
+}
+
+function ensureDoctorFolders(doctorId) {
+  const insertFolder = db.prepare(`
+    INSERT INTO inventory_folders (name, owner_doctor_id, created_at, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `);
+  REQUIRED_FOLDERS.forEach((folderName) => {
+    const exists = db
+      .prepare("SELECT id FROM inventory_folders WHERE owner_doctor_id = ? AND name = ?")
+      .get(doctorId, folderName);
+    if (!exists) {
+      insertFolder.run(folderName, doctorId);
+    }
+  });
+}
+
+function getDoctorFolders(doctorId) {
   return db
     .prepare(`
-      SELECT *
+      SELECT id, name, owner_doctor_id, created_at, updated_at
       FROM inventory_folders
-      ORDER BY
-        CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,
-        COALESCE(parent_id, id),
-        name ASC
+      WHERE owner_doctor_id = ?
+      ORDER BY name ASC
     `)
-    .all();
+    .all(doctorId);
 }
 
-function getDoctors() {
-  return db
-    .prepare(`
-      SELECT id, full_name, specialization
-      FROM doctors
-      WHERE deleted_at IS NULL
-      ORDER BY full_name ASC
-    `)
-    .all();
-}
-
-function getItems() {
+function getDoctorItems(doctorId) {
   return db
     .prepare(`
       SELECT
         i.*,
-        f.name AS folder_name,
-        parent.name AS parent_folder_name
+        f.name AS folder_name
       FROM inventory i
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
-      LEFT JOIN inventory_folders parent ON parent.id = f.parent_id
-      ORDER BY
-        COALESCE(parent.name, f.name, 'Unassigned') ASC,
-        COALESCE(f.name, 'Unassigned') ASC,
-        i.item_name ASC
+      WHERE i.owner_doctor_id = ?
+      ORDER BY f.name ASC, i.item_name ASC
     `)
-    .all()
+    .all(doctorId)
     .map((item) => ({
       ...item,
       quantity: Number(item.quantity || 0),
@@ -56,7 +69,7 @@ function getItems() {
     }));
 }
 
-function getMovements(limit = 120) {
+function getDoctorMovements(doctorId, limit = 120) {
   return db
     .prepare(`
       SELECT
@@ -64,17 +77,16 @@ function getMovements(limit = 120) {
         i.item_name,
         i.unit,
         f.name AS folder_name,
-        d.full_name AS doctor_name,
         u.full_name AS recorded_by_name
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
-      LEFT JOIN doctors d ON d.id = m.doctor_id
       LEFT JOIN users u ON u.id = m.recorded_by_user_id
+      WHERE i.owner_doctor_id = ?
       ORDER BY m.created_at DESC, m.id DESC
       LIMIT ?
     `)
-    .all(limit)
+    .all(doctorId, limit)
     .map((movement) => ({
       ...movement,
       quantity: Number(movement.quantity || 0),
@@ -83,124 +95,52 @@ function getMovements(limit = 120) {
     }));
 }
 
-function getReports(items) {
-  const byDoctor = db
-    .prepare(`
-      SELECT
-        d.id AS doctor_id,
-        d.full_name AS doctor_name,
-        COALESCE(SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END), 0) AS total_out_quantity,
-        COUNT(DISTINCT CASE WHEN m.movement_type = 'out' THEN m.item_id END) AS item_count
-      FROM doctors d
-      LEFT JOIN inventory_movements m ON m.doctor_id = d.id
-      WHERE d.deleted_at IS NULL
-      GROUP BY d.id, d.full_name
-      HAVING total_out_quantity > 0
-      ORDER BY total_out_quantity DESC, doctor_name ASC
-    `)
-    .all()
-    .map((row) => ({
-      ...row,
-      total_out_quantity: Number(row.total_out_quantity || 0),
-      item_count: Number(row.item_count || 0),
-    }));
-
-  const byMonth = db
-    .prepare(`
-      SELECT
-        strftime('%Y-%m', m.created_at) AS month_label,
-        COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0) AS in_quantity,
-        COALESCE(SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END), 0) AS out_quantity,
-        COUNT(*) AS movement_count
-      FROM inventory_movements m
-      GROUP BY strftime('%Y-%m', m.created_at)
-      ORDER BY month_label DESC
-      LIMIT 12
-    `)
-    .all()
-    .map((row) => ({
-      ...row,
-      in_quantity: Number(row.in_quantity || 0),
-      out_quantity: Number(row.out_quantity || 0),
-      movement_count: Number(row.movement_count || 0),
-    }));
-
-  const byItems = items
-    .map((item) => {
-      const totals = db
-        .prepare(`
-          SELECT
-            COALESCE(SUM(CASE WHEN movement_type = 'in' THEN quantity ELSE 0 END), 0) AS total_in,
-            COALESCE(SUM(CASE WHEN movement_type = 'out' THEN quantity ELSE 0 END), 0) AS total_out,
-            COUNT(*) AS movement_count
-          FROM inventory_movements
-          WHERE item_id = ?
-        `)
-        .get(item.id);
-
-      return {
-        item_id: item.id,
-        item_name: item.item_name,
-        folder_name: item.folder_name || "Unassigned",
-        unit: item.unit,
-        quantity: item.quantity,
-        minimum_quantity: item.minimum_quantity,
-        total_in: Number(totals.total_in || 0),
-        total_out: Number(totals.total_out || 0),
-        movement_count: Number(totals.movement_count || 0),
-        current_cost_value: item.current_cost_value,
-      };
-    })
-    .sort((left, right) => right.total_out - left.total_out || left.item_name.localeCompare(right.item_name));
-
-  return { byDoctor, byMonth, byItems };
-}
-
-function getSummary(items, movements) {
+function getDoctorSummary(doctorId, items) {
   const totalAmountRs = items.reduce((sum, item) => sum + item.current_cost_value, 0);
-  const totalRetailValue = items.reduce((sum, item) => sum + item.current_sell_value, 0);
-  const lowStockCount = items.filter((item) => item.quantity <= item.minimum_quantity).length;
+  const lowStockItems = items.filter((item) => item.quantity <= item.minimum_quantity);
+  const monthConsumed = db
+    .prepare(`
+      SELECT COALESCE(SUM(m.quantity * i.cost_price), 0) AS amount
+      FROM inventory_movements m
+      JOIN inventory i ON i.id = m.item_id
+      WHERE i.owner_doctor_id = ?
+        AND m.movement_type = 'out'
+        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+    `)
+    .get(doctorId);
 
   return {
-    total_items: items.length,
-    low_stock_count: lowStockCount,
     total_amount_rs: Number(totalAmountRs.toFixed(2)),
-    total_retail_value: Number(totalRetailValue.toFixed(2)),
-    recent_movements: movements.length,
+    total_amount_consumed_rs: Number(toNumber(monthConsumed?.amount, 0).toFixed(2)),
+    low_stock_count: lowStockItems.length,
   };
 }
 
-function getInventoryPayload() {
-  const folders = getFolders();
-  const items = getItems();
-  const movements = getMovements();
+function getInventoryPayload(doctorId) {
+  ensureDoctorFolders(doctorId);
+  const folders = getDoctorFolders(doctorId);
+  const items = getDoctorItems(doctorId);
+  const movements = getDoctorMovements(doctorId);
+  const lowStockItems = items.filter((item) => item.quantity <= item.minimum_quantity);
 
   return {
     folders,
     items,
     movements,
-    doctors: getDoctors(),
-    summary: getSummary(items, movements),
-    reports: getReports(items),
+    low_stock_items: lowStockItems,
+    summary: getDoctorSummary(doctorId, items),
   };
 }
 
-function validateFolder(parentId) {
-  if (!parentId) {
+function validateFolder(doctorId, folderId) {
+  if (!folderId) {
     return null;
   }
-
-  return db.prepare("SELECT id FROM inventory_folders WHERE id = ?").get(parentId) || null;
-}
-
-function validateDoctor(doctorId) {
-  if (!doctorId) {
-    return null;
-  }
-
-  return db
-    .prepare("SELECT id FROM doctors WHERE id = ? AND deleted_at IS NULL")
-    .get(doctorId) || null;
+  return (
+    db
+      .prepare("SELECT id, name FROM inventory_folders WHERE id = ? AND owner_doctor_id = ?")
+      .get(folderId, doctorId) || null
+  );
 }
 
 function createMovement({
@@ -209,7 +149,6 @@ function createMovement({
   quantity,
   previousQuantity,
   nextQuantity,
-  doctorId = null,
   recordedByUserId = null,
   note = "",
 }) {
@@ -224,259 +163,254 @@ function createMovement({
       recorded_by_user_id,
       note
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
   `).run(
     itemId,
     movementType,
     quantity,
     previousQuantity,
     nextQuantity,
-    doctorId,
     recordedByUserId,
     String(note || "").trim(),
   );
 }
 
-router.get("/", (_req, res) => {
-  res.json(getInventoryPayload());
-});
-
-router.post("/folders", (req, res) => {
-  const name = String(req.body.name ?? "").trim();
-  const parentId = req.body.parent_id ? Number(req.body.parent_id) : null;
-
-  if (!name) {
-    return res.status(400).json({ error: "Folder name is required." });
+router.get("/", (req, res) => {
+  const doctorId = requireDoctorAccess(req, res);
+  if (!doctorId) {
+    return;
   }
-
-  if (parentId && !validateFolder(parentId)) {
-    return res.status(400).json({ error: "Selected parent folder was not found." });
-  }
-
-  db.prepare(`
-    INSERT INTO inventory_folders (name, parent_id, updated_at)
-    VALUES (?, ?, CURRENT_TIMESTAMP)
-  `).run(name, parentId);
-
-  res.status(201).json(getInventoryPayload());
+  res.json(getInventoryPayload(doctorId));
 });
 
 router.post("/", (req, res) => {
+  const doctorId = requireDoctorAccess(req, res);
+  if (!doctorId) {
+    return;
+  }
+
   const itemName = String(req.body.item_name ?? "").trim();
-  const unit = String(req.body.unit ?? "").trim();
+  const attributes = String(req.body.attributes ?? "").trim();
+  const moaNotes = String(req.body.moa_notes ?? "").trim();
+  const unit = String(req.body.unit ?? "").trim() || "unit";
   const quantity = Number(req.body.quantity ?? 0);
   const minimumQuantity = Number(req.body.minimum_quantity ?? 0);
   const costPrice = toNumber(req.body.cost_price, 0);
   const sellingPrice = toNumber(req.body.selling_price, 0);
-  const notes = String(req.body.notes ?? "").trim();
+  const expiryDate = String(req.body.expiry_date ?? "").trim();
   const folderId = req.body.folder_id ? Number(req.body.folder_id) : null;
 
   if (!itemName) {
     return res.status(400).json({ error: "Item name is required." });
   }
-
-  if (!unit) {
-    return res.status(400).json({ error: "Unit is required." });
-  }
-
   if (!Number.isInteger(quantity) || quantity < 0) {
-    return res.status(400).json({ error: "Quantity must be a whole number of zero or more." });
+    return res.status(400).json({ error: "Current quantity must be a whole number of zero or more." });
   }
-
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) {
     return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   }
-
-  if (folderId && !validateFolder(folderId)) {
-    return res.status(400).json({ error: "Selected folder was not found." });
+  if (!folderId || !validateFolder(doctorId, folderId)) {
+    return res.status(400).json({ error: "Please select one of the My Stock folders." });
   }
 
-  const createItem = db.transaction(() => {
-    const result = db
-      .prepare(`
-        INSERT INTO inventory (
-          item_name,
-          folder_id,
-          quantity,
-          minimum_quantity,
-          unit,
-          cost_price,
-          selling_price,
-          notes
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, notes);
-
-    if (quantity > 0) {
-      createMovement({
-        itemId: Number(result.lastInsertRowid),
-        movementType: "in",
+  const result = db
+    .prepare(`
+      INSERT INTO inventory (
+        item_name,
+        folder_id,
+        owner_doctor_id,
         quantity,
-        previousQuantity: 0,
-        nextQuantity: quantity,
-        recordedByUserId: req.auth?.id ? Number(req.auth.id) : null,
-        note: "Initial stock entry",
-      });
-    }
-  });
+        minimum_quantity,
+        unit,
+        cost_price,
+        selling_price,
+        notes,
+        attributes,
+        moa_notes,
+        expiry_date,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+    `)
+    .run(itemName, folderId, doctorId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate || null);
 
-  createItem();
+  if (quantity > 0) {
+    createMovement({
+      itemId: Number(result.lastInsertRowid),
+      movementType: "in",
+      quantity,
+      previousQuantity: 0,
+      nextQuantity: quantity,
+      recordedByUserId: req.auth?.id ? Number(req.auth.id) : null,
+      note: "Initial stock entry",
+    });
+  }
 
-  res.status(201).json(getInventoryPayload());
+  res.status(201).json(getInventoryPayload(doctorId));
 });
 
 router.put("/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM inventory WHERE id = ?").get(id);
+  const doctorId = requireDoctorAccess(req, res);
+  if (!doctorId) {
+    return;
+  }
 
+  const id = Number(req.params.id);
+  const existing = db
+    .prepare("SELECT * FROM inventory WHERE id = ? AND owner_doctor_id = ?")
+    .get(id, doctorId);
   if (!existing) {
-    return res.status(404).json({ error: "Inventory item not found." });
+    return res.status(404).json({ error: "Stock item not found." });
   }
 
   const itemName = String(req.body.item_name ?? existing.item_name).trim();
-  const unit = String(req.body.unit ?? existing.unit).trim();
+  const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
+  const moaNotes = String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
+  const unit = String(req.body.unit ?? existing.unit ?? "").trim() || "unit";
   const quantity = Number(req.body.quantity ?? existing.quantity);
-  const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity ?? 0);
+  const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity);
   const costPrice = toNumber(req.body.cost_price ?? existing.cost_price, 0);
   const sellingPrice = toNumber(req.body.selling_price ?? existing.selling_price, 0);
-  const notes = String(req.body.notes ?? existing.notes ?? "").trim();
-  const folderId = req.body.folder_id ? Number(req.body.folder_id) : null;
+  const expiryDate = String(req.body.expiry_date ?? existing.expiry_date ?? "").trim();
+  const folderId = req.body.folder_id ? Number(req.body.folder_id) : existing.folder_id;
 
   if (!itemName) {
     return res.status(400).json({ error: "Item name is required." });
   }
-
-  if (!unit) {
-    return res.status(400).json({ error: "Unit is required." });
-  }
-
   if (!Number.isInteger(quantity) || quantity < 0) {
-    return res.status(400).json({ error: "Quantity must be a whole number of zero or more." });
+    return res.status(400).json({ error: "Current quantity must be zero or more." });
   }
-
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) {
     return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   }
-
-  if (folderId && !validateFolder(folderId)) {
-    return res.status(400).json({ error: "Selected folder was not found." });
+  if (!folderId || !validateFolder(doctorId, folderId)) {
+    return res.status(400).json({ error: "Please select one of the My Stock folders." });
   }
 
   const previousQuantity = Number(existing.quantity || 0);
-  const nextQuantity = quantity;
-  const quantityDelta = nextQuantity - previousQuantity;
+  const quantityDelta = quantity - previousQuantity;
 
-  db.transaction(() => {
-    db.prepare(`
-      UPDATE inventory
-      SET
-        item_name = ?,
-        folder_id = ?,
-        quantity = ?,
-        minimum_quantity = ?,
-        unit = ?,
-        cost_price = ?,
-        selling_price = ?,
-        notes = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
-      itemName,
-      folderId,
-      quantity,
-      minimumQuantity,
-      unit,
-      costPrice,
-      sellingPrice,
-      notes,
-      id,
-    );
+  db.prepare(`
+    UPDATE inventory
+    SET
+      item_name = ?,
+      folder_id = ?,
+      quantity = ?,
+      minimum_quantity = ?,
+      unit = ?,
+      cost_price = ?,
+      selling_price = ?,
+      attributes = ?,
+      moa_notes = ?,
+      expiry_date = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND owner_doctor_id = ?
+  `).run(
+    itemName,
+    folderId,
+    quantity,
+    minimumQuantity,
+    unit,
+    costPrice,
+    sellingPrice,
+    attributes,
+    moaNotes,
+    expiryDate || null,
+    id,
+    doctorId,
+  );
 
-    if (quantityDelta !== 0) {
-      createMovement({
-        itemId: id,
-        movementType: "adjustment",
-        quantity: Math.abs(quantityDelta),
-        previousQuantity,
-        nextQuantity,
-        recordedByUserId: req.auth?.id ? Number(req.auth.id) : null,
-        note:
-          String(req.body.adjustment_note ?? "").trim() ||
-          `Quantity adjusted from ${previousQuantity} to ${nextQuantity}`,
-      });
-    }
-  })();
+  if (quantityDelta !== 0) {
+    createMovement({
+      itemId: id,
+      movementType: "adjustment",
+      quantity: Math.abs(quantityDelta),
+      previousQuantity,
+      nextQuantity: quantity,
+      recordedByUserId: req.auth?.id ? Number(req.auth.id) : null,
+      note:
+        String(req.body.adjustment_note ?? "").trim() ||
+        `Quantity adjusted from ${previousQuantity} to ${quantity}`,
+    });
+  }
 
-  res.json(getInventoryPayload());
+  res.json(getInventoryPayload(doctorId));
 });
 
 router.post("/:id/movements", (req, res) => {
-  const id = Number(req.params.id);
-  const existing = db.prepare("SELECT * FROM inventory WHERE id = ?").get(id);
+  const doctorId = requireDoctorAccess(req, res);
+  if (!doctorId) {
+    return;
+  }
 
+  const id = Number(req.params.id);
+  const existing = db
+    .prepare("SELECT * FROM inventory WHERE id = ? AND owner_doctor_id = ?")
+    .get(id, doctorId);
   if (!existing) {
-    return res.status(404).json({ error: "Inventory item not found." });
+    return res.status(404).json({ error: "Stock item not found." });
   }
 
   const movementType = String(req.body.movement_type ?? "").trim().toLowerCase();
   const quantity = Number(req.body.quantity ?? 0);
-  const doctorId = req.body.doctor_id ? Number(req.body.doctor_id) : null;
   const note = String(req.body.note ?? "").trim();
+  const actionType = String(req.body.action_type ?? "").trim().toLowerCase();
 
   if (!MOVEMENT_TYPES.has(movementType) || movementType === "adjustment") {
     return res.status(400).json({ error: "Movement type must be either in or out." });
   }
-
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    return res.status(400).json({ error: "Movement quantity must be greater than zero." });
-  }
-
-  if (doctorId && !validateDoctor(doctorId)) {
-    return res.status(400).json({ error: "Selected doctor was not found." });
+    return res.status(400).json({ error: "Quantity must be greater than zero." });
   }
 
   const previousQuantity = Number(existing.quantity || 0);
-  const nextQuantity =
-    movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
-
+  const nextQuantity = movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
   if (nextQuantity < 0) {
     return res.status(400).json({ error: "Cannot remove more stock than is currently available." });
   }
 
-  db.transaction(() => {
-    db.prepare(`
-      UPDATE inventory
-      SET quantity = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(nextQuantity, id);
+  db.prepare(`
+    UPDATE inventory
+    SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND owner_doctor_id = ?
+  `).run(nextQuantity, id, doctorId);
 
-    createMovement({
-      itemId: id,
-      movementType,
-      quantity,
-      previousQuantity,
-      nextQuantity,
-      doctorId,
-      recordedByUserId: req.auth?.id ? Number(req.auth.id) : null,
-      note,
-    });
-  })();
+  createMovement({
+    itemId: id,
+    movementType,
+    quantity,
+    previousQuantity,
+    nextQuantity,
+    recordedByUserId: req.auth?.id ? Number(req.auth.id) : null,
+    note:
+      note ||
+      (actionType === "sell"
+        ? "Sold via billing flow"
+        : actionType === "remove"
+          ? "Removed / waste adjustment"
+          : "Stock action recorded"),
+  });
 
-  res.status(201).json(getInventoryPayload());
+  res.status(201).json(getInventoryPayload(doctorId));
 });
 
 router.delete("/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const existing = db.prepare("SELECT id FROM inventory WHERE id = ?").get(id);
+  const doctorId = requireDoctorAccess(req, res);
+  if (!doctorId) {
+    return;
+  }
 
+  const id = Number(req.params.id);
+  const existing = db
+    .prepare("SELECT id FROM inventory WHERE id = ? AND owner_doctor_id = ?")
+    .get(id, doctorId);
   if (!existing) {
-    return res.status(404).json({ error: "Inventory item not found." });
+    return res.status(404).json({ error: "Stock item not found." });
   }
 
   db.transaction(() => {
     db.prepare("DELETE FROM inventory_movements WHERE item_id = ?").run(id);
-    db.prepare("DELETE FROM inventory WHERE id = ?").run(id);
+    db.prepare("DELETE FROM inventory WHERE id = ? AND owner_doctor_id = ?").run(id, doctorId);
   })();
 
   res.status(204).send();
