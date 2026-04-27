@@ -2,6 +2,7 @@ const express = require("express");
 const { db } = require("../db");
 
 const router = express.Router();
+const HCM_ARCHIVE_AFTER_DAYS = 7;
 
 function getTeamStatuses() {
   return db
@@ -31,7 +32,16 @@ function getTeamStatuses() {
     .all();
 }
 
-function getNewsPosts() {
+function archiveExpiredNews() {
+  db.prepare(`
+    UPDATE hcm_news_posts
+    SET status = 'archived'
+    WHERE status = 'active'
+      AND datetime(created_at) <= datetime('now', ?)
+  `).run(`-${HCM_ARCHIVE_AFTER_DAYS} days`);
+}
+
+function getNewsPosts(status = "active") {
   return db
     .prepare(`
       SELECT
@@ -41,9 +51,10 @@ function getNewsPosts() {
       FROM hcm_news_posts post
       LEFT JOIN users created_by ON created_by.id = post.created_by_user_id
       LEFT JOIN users updated_by ON updated_by.id = post.updated_by_user_id
+      WHERE post.status = ?
       ORDER BY post.updated_at DESC, post.created_at DESC
     `)
-    .all();
+    .all(status);
 }
 
 function getLatestPostMarker() {
@@ -146,8 +157,10 @@ function markNewsRead(userId) {
 }
 
 function buildPayload(auth) {
+  archiveExpiredNews();
   return {
-    posts: getNewsPosts(),
+    posts: getNewsPosts("active"),
+    history: getNewsPosts("archived"),
     team_statuses: getTeamStatuses(),
     unread: getUnreadStatus(auth),
   };
@@ -174,6 +187,11 @@ function validatePayload(payload) {
 
 router.get("/", (req, res) => {
   res.json(buildPayload(req.auth));
+});
+
+router.get("/history", (req, res) => {
+  archiveExpiredNews();
+  res.json(getNewsPosts("archived"));
 });
 
 router.get("/unread-status", (req, res) => {
@@ -259,6 +277,21 @@ router.delete("/:id", (req, res) => {
 
   db.prepare("DELETE FROM hcm_news_posts WHERE id = ?").run(postId);
   res.status(204).send();
+});
+
+router.post("/:id/archive", (req, res) => {
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({ error: "Only admin can archive HCM updates." });
+  }
+
+  const postId = Number(req.params.id);
+  const existing = db.prepare("SELECT id FROM hcm_news_posts WHERE id = ?").get(postId);
+  if (!existing) {
+    return res.status(404).json({ error: "HCM update not found." });
+  }
+
+  db.prepare("UPDATE hcm_news_posts SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(postId);
+  res.json(buildPayload(req.auth));
 });
 
 module.exports = router;

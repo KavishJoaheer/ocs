@@ -105,7 +105,7 @@ function App() {
             />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "doctor"]} />}>
             <Route path="/team-operations" element={<DoctorsPage />} />
             <Route path="/doctors" element={<Navigate to="/team-operations" replace />} />
             <Route path="/live-report" element={<LiveReportPage />} />

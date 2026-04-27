@@ -1,26 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dayjs from "dayjs";
-import { BellRing, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { History, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import Modal from "../components/Modal.jsx";
-import OperationStatusSelector from "../components/OperationStatusSelector.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
-import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
-import { getRoleLabel } from "../lib/access.js";
 
 const EMPTY_EDITOR = {
   id: null,
   title: "",
   body: "",
 };
-
-const ROLE_ORDER = ["admin", "doctor", "operator", "lab_tech", "accountant"];
 
 function formatTimestamp(value) {
   if (!value) {
@@ -31,15 +25,13 @@ function formatTimestamp(value) {
 }
 
 function HcmNewsPage() {
-  const { user, updateUser, hcmUnreadCount, refreshHcmUnreadCount } = useAuth();
+  const { user, hcmUnreadCount, refreshHcmUnreadCount } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(EMPTY_EDITOR);
-  const [editorOpen, setEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isSavingPost, setIsSavingPost] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
-  const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadPage = useCallback(async ({ silent = false } = {}) => {
@@ -122,47 +114,8 @@ function HcmNewsPage() {
     };
   }, [loadPage]);
 
-  const groupedStatuses = useMemo(() => {
-    const grouped = new Map();
-
-    ROLE_ORDER.forEach((role) => {
-      grouped.set(role, []);
-    });
-
-    for (const member of data?.team_statuses || []) {
-      if (!grouped.has(member.role)) {
-        grouped.set(member.role, []);
-      }
-      grouped.get(member.role).push(member);
-    }
-
-    return grouped;
-  }, [data?.team_statuses]);
-
-  const statusOptions = user.role === "doctor" ? ["available", "active", "offline"] : ["active", "offline"];
-
-  function openCreateModal() {
-    setEditor(EMPTY_EDITOR);
-    setEditorOpen(true);
-  }
-
-  function openEditModal(post) {
-    setEditor({
-      id: post.id,
-      title: post.title,
-      body: post.body,
-    });
-    setEditorOpen(true);
-  }
-
-  function closeEditorModal() {
-    if (isSavingPost) {
-      return;
-    }
-
-    setEditorOpen(false);
-    setEditor(EMPTY_EDITOR);
-  }
+  function openCreateModal() { setEditor(EMPTY_EDITOR); }
+  function openEditModal(post) { setEditor({ id: post.id, title: post.title, body: post.body }); }
 
   async function handleSavePost(event) {
     event.preventDefault();
@@ -180,7 +133,6 @@ function HcmNewsPage() {
           });
 
       setData(payload);
-      setEditorOpen(false);
       setEditor(EMPTY_EDITOR);
       toast.success(editor.id ? "HCM update saved." : "HCM update published.");
     } catch (error) {
@@ -206,41 +158,6 @@ function HcmNewsPage() {
       toast.error(error.message);
     } finally {
       setIsDeletingPost(false);
-    }
-  }
-
-  async function handleStatusChange(nextStatus) {
-    if (isSavingStatus || user.operation_status === nextStatus) {
-      return;
-    }
-
-    setIsSavingStatus(true);
-
-    try {
-      const payload = await api.put("/dashboard/my-status", { status: nextStatus });
-      updateUser(payload.user);
-      setData((current) => {
-        if (!current) {
-          return current;
-        }
-
-        return {
-          ...current,
-          team_statuses: current.team_statuses.map((member) =>
-            member.id === payload.user.id
-              ? {
-                  ...member,
-                  ...payload.user,
-                }
-              : member,
-          ),
-        };
-      });
-      toast.success(`Status updated to ${payload.user.operation_status}.`);
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSavingStatus(false);
     }
   }
 
@@ -282,80 +199,25 @@ function HcmNewsPage() {
                 className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#26717c]"
               >
                 <Plus className="size-4" />
-                Publish update
+                Publish a News
               </button>
             ) : null}
           </>
         }
       />
-
-      <div className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
-        <SectionCard
-          title="Your live status"
-          subtitle="Choose the status you want the rest of the team to see right now."
-        >
-          <div className="rounded-[26px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,251,250,0.92))] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
-              Signed in
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-slate-950">{user.full_name}</p>
-            <p className="mt-1 text-sm text-[#4f6f7a]">
-              {getRoleLabel(user.role)} - @{user.username}
-            </p>
-
-            <OperationStatusSelector
-              align="left"
-              className="mt-5"
-              disabled={isSavingStatus}
-              onChange={handleStatusChange}
-              options={statusOptions}
-              value={user.operation_status}
-            />
-
-            <p className="mt-4 text-sm text-[#4f6f7a]">
-              Last changed {formatTimestamp(user.operation_status_updated_at)}.
-            </p>
-          </div>
+      {user.role !== "admin" ? (
+        <SectionCard title="Published News" subtitle="Latest HCM posts for all care coordination staff.">
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            <History className="size-4" />
+            Read Published News
+          </button>
         </SectionCard>
+      ) : null}
 
-        <SectionCard
-          title="HCM broadcast"
-          subtitle="Every update posted by admin appears here for doctors, operators, lab, and finance."
-        >
-          <div className="rounded-[26px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(145deg,#184f57_0%,#256f78_46%,#359ea7_100%)] px-5 py-5 text-white shadow-[0_24px_70px_rgba(34,72,91,0.18)]">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-white/14 p-3 text-[#ffe189]">
-                <BellRing className="size-5" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-white/88">
-                  HCM bulletin
-                </p>
-                <p className="mt-2 text-lg leading-7 text-white/96">
-                  This page is the shared operations newsroom for OCS Medecins. Admin can publish
-                  care desk updates here, and every team member can see who is available, active,
-                  or offline.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {user.role !== "admin" && hcmUnreadCount > 0 ? (
-            <div className="mt-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-sm font-semibold text-amber-800">
-                {hcmUnreadCount === 1
-                  ? "There is 1 new HCM update for you."
-                  : `There are ${hcmUnreadCount} new HCM updates for you.`}
-              </p>
-              <p className="mt-1 text-sm text-amber-700">
-                Opening this page marks the latest HCM notices as seen.
-              </p>
-            </div>
-          ) : null}
-        </SectionCard>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard
           title="Published updates"
           subtitle="Latest HCM posts for the whole operations team."
@@ -414,113 +276,61 @@ function HcmNewsPage() {
         </SectionCard>
 
         <SectionCard
-          title="Team status board"
-          subtitle="Live operation status across the active OCS Medecins team."
+          title={user.role === "admin" ? "Publish workspace" : "Published History"}
+          subtitle={
+            user.role === "admin"
+              ? "Draft and edit current HCM update before publishing."
+              : "Archived HCM posts older than 7 days."
+          }
         >
-          <div className="space-y-5">
-            {ROLE_ORDER.map((role) => {
-              const members = groupedStatuses.get(role) || [];
+          {user.role === "admin" ? (
+            <form className="space-y-3" onSubmit={handleSavePost}>
+              <input
+                required
+                placeholder="News title"
+                value={editor.title}
+                onChange={(event) => setEditor((current) => ({ ...current, title: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+              />
+              <textarea
+                required
+                rows={10}
+                placeholder="Write and edit current published news..."
+                value={editor.body}
+                onChange={(event) => setEditor((current) => ({ ...current, body: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSavingPost}
+                  className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  {isSavingPost ? "Saving..." : "Publish a News"}
+                </button>
+              </div>
+            </form>
+          ) : null}
 
-              if (!members.length) {
-                return null;
-              }
-
-              return (
-                <div key={role}>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
-                    {getRoleLabel(role)}
-                    {members.length > 1 ? "s" : ""}
-                  </p>
-
-                  <div className="mt-3 space-y-3">
-                    {members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="rounded-[24px] border border-[rgba(65,200,198,0.14)] bg-slate-50/80 px-4 py-4"
-                      >
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
-                            <p className="font-semibold text-slate-950">{member.full_name}</p>
-                            <p className="mt-1 text-sm text-[#4f6f7a]">
-                              @{member.username}
-                              {member.role === "doctor" && member.doctor_name
-                                ? ` - ${member.doctor_name}`
-                                : ""}
-                            </p>
-                            <p className="mt-2 text-sm text-slate-500">
-                              Updated {formatTimestamp(member.operation_status_updated_at)}
-                            </p>
-                          </div>
-
-                          <StatusBadge value={member.operation_status} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {(data.history || []).length ? (
+            <div className="space-y-3">
+              {(data.history || []).map((post) => (
+                <article key={`history-${post.id}`} className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                  <p className="font-semibold text-slate-900">{post.title}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{post.body}</p>
+                  <p className="mt-2 text-xs text-slate-500">Archived {formatTimestamp(post.updated_at)}</p>
+                  {user.role === "admin" ? (
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" onClick={() => openEditModal(post)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
+                      <button type="button" onClick={() => setDeleteTarget(post)} className="rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600">Delete</button>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : null}
         </SectionCard>
       </div>
-
-      <Modal
-        open={editorOpen}
-        onClose={closeEditorModal}
-        title={editor.id ? "Edit HCM update" : "Publish HCM update"}
-        description="Write the news bulletin that the whole OCS Medecins team should see."
-      >
-        <form className="space-y-4" onSubmit={handleSavePost}>
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Title</span>
-            <input
-              required
-              type="text"
-              value={editor.title}
-              onChange={(event) =>
-                setEditor((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-            />
-          </label>
-
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Message</span>
-            <textarea
-              required
-              rows={8}
-              value={editor.body}
-              onChange={(event) =>
-                setEditor((current) => ({
-                  ...current,
-                  body: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-            />
-          </label>
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={closeEditorModal}
-              className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSavingPost}
-              className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#26717c] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingPost ? "Saving..." : editor.id ? "Save update" : "Publish update"}
-            </button>
-          </div>
-        </form>
-      </Modal>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

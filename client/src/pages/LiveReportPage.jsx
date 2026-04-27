@@ -1,25 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
+import { Download, FileSpreadsheet } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
 import {
-  Activity,
-  ChartNoAxesColumn,
-  DollarSign,
-  MapPinned,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
   PieChart,
-  UsersRound,
-} from "lucide-react";
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { formatCurrency } from "../lib/format.js";
 
 const PERIOD_OPTIONS = [
-  { id: "daily", label: "Daily" },
-  { id: "weekly", label: "Weekly" },
+  { id: "annual", label: "Yearly" },
   { id: "monthly", label: "Monthly" },
-  { id: "annual", label: "Annual" },
+  { id: "weekly", label: "Weekly" },
+  { id: "daily", label: "Specific date" },
 ];
 
 const CHART_COLORS = ["#2d8f98", "#41c8c6", "#f1bc35", "#5a7c89", "#9ad0d2", "#d7eef0"];
@@ -35,26 +45,6 @@ function formatInteger(value) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
-}
-
-function ReportMetricCard({ icon: Icon, label, value, tone }) {
-  return (
-    <div className="relative rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-white/88 p-5 pr-24 shadow-[0_22px_54px_rgba(34,72,91,0.08)]">
-      <div className="min-w-0">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-          {label}
-        </p>
-        <p className="mt-3 max-w-full text-[clamp(1.85rem,2vw,2.25rem)] font-bold tracking-tight text-slate-950 [overflow-wrap:anywhere]">
-          {value}
-        </p>
-      </div>
-      <div className="absolute right-5 top-5">
-        <div className={`shrink-0 rounded-3xl p-4 ${tone}`}>
-          <Icon className="size-6 text-white" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function FilterButtonGroup({ value, onChange }) {
@@ -78,7 +68,7 @@ function FilterButtonGroup({ value, onChange }) {
   );
 }
 
-function DateField({ value, onChange, label = "Reference date" }) {
+function DateField({ value, onChange, label = "Date" }) {
   return (
     <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5">
       <span className="text-sm font-semibold text-slate-600">{label}</span>
@@ -92,438 +82,175 @@ function DateField({ value, onChange, label = "Reference date" }) {
   );
 }
 
-function DonutLegendRow({ color, label, count, percentage }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <p className="truncate text-sm font-semibold text-slate-900">{label}</p>
-      </div>
-      <div className="text-right">
-        <p className="text-sm font-semibold text-slate-900">{percentage}%</p>
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{count} patients</p>
-      </div>
-    </div>
-  );
+function exportCsv(fileName, rows) {
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Report");
+  XLSX.writeFile(workbook, `${fileName}.csv`);
 }
 
-function LocationDistributionCard({
-  report,
-  period,
-  setPeriod,
-  anchorDate,
-  setAnchorDate,
-}) {
-  const segments = report?.rows || [];
-  const total = Number(report?.totalPatientsSeen || 0);
-
-  if (!segments.length || total <= 0) {
-    return (
-      <SectionCard
-        title="Patients Seen Per Location"
-        subtitle={`Pie view for ${report?.rangeLabel || "the selected period"}.`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <FilterButtonGroup value={period} onChange={setPeriod} />
-            <DateField value={anchorDate} onChange={setAnchorDate} />
-          </div>
-        }
-      >
-        <EmptyState
-          title="No location data yet"
-          description="Location reporting will appear here once consultations are saved in the selected window."
-        />
-      </SectionCard>
-    );
-  }
-
-  let cursor = 0;
-  const gradientParts = segments.map((segment, index) => {
-    const percentage = (Number(segment.patient_count || 0) / total) * 100;
-    const start = cursor;
-    cursor += percentage;
-    return `${CHART_COLORS[index % CHART_COLORS.length]} ${start}% ${cursor}%`;
+function downloadPdf(title, lines) {
+  const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text(title, 14, 20);
+  doc.setFontSize(11);
+  let y = 32;
+  lines.forEach((line) => {
+    doc.text(String(line), 14, y);
+    y += 7;
   });
-
-  return (
-    <SectionCard
-      title="Patients Seen Per Location"
-      subtitle={`Pie view for ${report.rangeLabel}.`}
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <FilterButtonGroup value={period} onChange={setPeriod} />
-          <DateField value={anchorDate} onChange={setAnchorDate} />
-        </div>
-      }
-    >
-      <div className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
-        <div className="flex justify-center">
-          <div
-            className="relative size-52 rounded-full"
-            style={{ background: `conic-gradient(${gradientParts.join(", ")})` }}
-          >
-            <div className="absolute inset-[18%] flex items-center justify-center rounded-full bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]">
-              <div className="text-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Patients seen
-                </p>
-                <p className="mt-2 text-3xl font-bold text-slate-950">
-                  {formatInteger(total)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {segments.map((segment, index) => {
-            const count = Number(segment.patient_count || 0);
-            const percentage = total ? Math.round((count / total) * 100) : 0;
-
-            return (
-              <DonutLegendRow
-                key={`${segment.location}-${index}`}
-                color={CHART_COLORS[index % CHART_COLORS.length]}
-                label={segment.location}
-                count={formatInteger(count)}
-                percentage={percentage}
-              />
-            );
-          })}
-        </div>
-      </div>
-    </SectionCard>
-  );
-}
-
-function DoctorActivityCard({
-  report,
-  doctors,
-  period,
-  setPeriod,
-  anchorDate,
-  setAnchorDate,
-  selectedDoctorId,
-  setSelectedDoctorId,
-}) {
-  const rows = report?.rows || [];
-  const maxCount = Math.max(...rows.map((row) => Number(row.patient_count || 0)), 1);
-
-  return (
-    <SectionCard
-      title="Patients Seen By Doctors"
-      subtitle={`Doctor-specific view for ${report?.rangeLabel || "the selected period"}.`}
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <select
-            value={selectedDoctorId || String(report?.selectedDoctorId || "")}
-            onChange={(event) => setSelectedDoctorId(event.target.value)}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
-          >
-            {doctors.map((doctor) => (
-              <option key={doctor.id} value={doctor.id}>
-                {doctor.full_name}
-              </option>
-            ))}
-          </select>
-          <FilterButtonGroup value={period} onChange={setPeriod} />
-          <DateField value={anchorDate} onChange={setAnchorDate} />
-        </div>
-      }
-    >
-      {!doctors.length ? (
-        <EmptyState
-          title="No doctors available"
-          description="Add an active doctor account to start filtering this report."
-        />
-      ) : rows.length ? (
-        <div className="space-y-4">
-          <div className="flex min-h-[18rem] items-end gap-4 overflow-x-auto rounded-[26px] border border-slate-200/80 bg-slate-50/70 p-5">
-            {rows.map((row) => {
-              const count = Number(row.patient_count || 0);
-              const height = Math.max((count / maxCount) * 220, 18);
-
-              return (
-                <div key={row.doctor_id} className="flex min-w-[140px] flex-1 flex-col items-center gap-3">
-                  <div className="text-sm font-semibold text-slate-900">{formatInteger(count)}</div>
-                  <div
-                    className="w-full rounded-t-[22px] bg-gradient-to-t from-[#2d8f98] to-[#71d8d5] shadow-[0_18px_32px_rgba(45,143,152,0.18)]"
-                    style={{ height }}
-                  />
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-slate-900">{row.doctor_name}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
-                      {formatInteger(row.patient_count)} patients seen
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            {rows.map((row) => (
-              <div
-                key={`${report.period}-${row.doctor_id}`}
-                className="rounded-[22px] border border-slate-200/80 bg-white px-4 py-3"
-              >
-                <p className="text-sm font-semibold text-slate-900">{row.doctor_name}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
-                  {formatInteger(row.patient_count)} patients seen
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <EmptyState
-          title="No doctor activity in this period"
-          description="Once the selected doctor has consultations in this window, their patient count will appear here."
-        />
-      )}
-    </SectionCard>
-  );
-}
-
-function ReportingWindowsCard({ report, revenueDate, setRevenueDate }) {
-  const revenueSummary = report?.summary || {};
-  const revenueRanges = report?.ranges || {};
-
-  return (
-    <SectionCard
-      title="Revenue By Reporting Window"
-      subtitle={`Paid revenue anchored to ${report?.anchorDate || revenueDate}.`}
-      actions={<DateField value={revenueDate} onChange={setRevenueDate} />}
-    >
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {PERIOD_OPTIONS.map((option) => (
-          <div
-            key={option.id}
-            className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-              {option.label}
-            </p>
-            <p className="mt-2 text-2xl font-bold tracking-tight text-slate-950">
-              {formatCurrency(revenueSummary[option.id] || 0)}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {revenueRanges[option.id]?.label || "No range selected"}
-            </p>
-          </div>
-        ))}
-      </div>
-    </SectionCard>
-  );
-}
-
-function ReportingScopeCard({ locationReport, doctorReport, revenueReport }) {
-  const scopeRows = [
-    {
-      label: "Location scope",
-      value: locationReport?.rangeLabel,
-      icon: MapPinned,
-    },
-    {
-      label: "Doctor scope",
-      value: doctorReport?.rangeLabel,
-      icon: UsersRound,
-    },
-    {
-      label: "Revenue anchor",
-      value: revenueReport?.anchorDate,
-      icon: DollarSign,
-    },
-  ];
-
-  return (
-    <SectionCard
-      title="Reporting Scope"
-      subtitle="The active filters currently applied to each section."
-    >
-      <div className="grid gap-4 md:grid-cols-3">
-        {scopeRows.map((row) => {
-          const Icon = row.icon;
-
-          return (
-            <div
-              key={row.label}
-              className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
-                  <Icon className="size-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    {row.label}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{row.value}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </SectionCard>
-  );
+  doc.save(`${title.replace(/\s+/g, "_").toLowerCase()}.pdf`);
 }
 
 export default function LiveReportPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const today = useMemo(() => getTodayInputValue(), []);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [locationPeriod, setLocationPeriod] = useState("monthly");
-  const [locationDate, setLocationDate] = useState(today);
-  const [doctorPeriod, setDoctorPeriod] = useState("monthly");
-  const [doctorDate, setDoctorDate] = useState(today);
+  const [period, setPeriod] = useState("monthly");
+  const [anchorDate, setAnchorDate] = useState(today);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
-  const [revenueDate, setRevenueDate] = useState(today);
 
   useEffect(() => {
     let ignore = false;
-
     async function loadReport() {
       setLoading(true);
-
       try {
         const params = new URLSearchParams({
-          locationPeriod,
-          locationDate,
-          doctorPeriod,
-          doctorDate,
-          revenueDate,
+          locationPeriod: period,
+          locationDate: anchorDate,
+          doctorPeriod: period,
+          doctorDate: anchorDate,
+          revenueDate: anchorDate,
         });
-
-        if (selectedDoctorId) {
-          params.set("doctorId", selectedDoctorId);
-        }
-
+        if (selectedDoctorId) params.set("doctorId", selectedDoctorId);
         const response = await api.get(`/dashboard/live-report?${params.toString()}`);
-
-        if (!ignore) {
-          setReport(response);
-
-          if (!selectedDoctorId && response.doctorReport?.selectedDoctorId) {
-            setSelectedDoctorId(String(response.doctorReport.selectedDoctorId));
-          }
-        }
+        if (!ignore) setReport(response);
       } catch (error) {
         if (!ignore) {
           toast.error(error.message);
           setReport(null);
         }
       } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+        if (!ignore) setLoading(false);
       }
     }
-
     loadReport();
+    return () => { ignore = true; };
+  }, [anchorDate, period, selectedDoctorId]);
 
-    return () => {
-      ignore = true;
-    };
-  }, [doctorDate, doctorPeriod, locationDate, locationPeriod, revenueDate, selectedDoctorId]);
+  if (loading) return <LoadingState label="Loading live report" />;
+  if (!report) return <EmptyState title="Live report unavailable" description="Unable to load report data." />;
 
-  const metricCards = useMemo(() => {
-    if (!report) {
-      return [];
-    }
-
-    return [
-      {
-        icon: UsersRound,
-        label: "Patients seen",
-        value: formatInteger(report.locationReport?.totalPatientsSeen || 0),
-        tone: "bg-gradient-to-br from-sky-500 to-blue-600",
-      },
-      {
-        icon: DollarSign,
-        label: "Daily revenue",
-        value: formatCurrency(report.revenueReport?.summary?.daily || 0),
-        tone: "bg-gradient-to-br from-cyan-500 to-sky-600",
-      },
-      {
-        icon: Activity,
-        label: "Weekly revenue",
-        value: formatCurrency(report.revenueReport?.summary?.weekly || 0),
-        tone: "bg-gradient-to-br from-emerald-500 to-teal-600",
-      },
-      {
-        icon: ChartNoAxesColumn,
-        label: "Monthly revenue",
-        value: formatCurrency(report.revenueReport?.summary?.monthly || 0),
-        tone: "bg-gradient-to-br from-amber-400 to-orange-500",
-      },
-      {
-        icon: PieChart,
-        label: "Annual revenue",
-        value: formatCurrency(report.revenueReport?.summary?.annual || 0),
-        tone: "bg-gradient-to-br from-slate-500 to-slate-700",
-      },
-    ];
-  }, [report]);
-
-  if (loading) {
-    return <LoadingState label="Loading live report" />;
-  }
-
-  if (!report) {
-    return (
-      <EmptyState
-        title="Live report unavailable"
-        description="The live report could not be loaded right now. Refresh and try again."
-      />
-    );
-  }
+  const locationRows = report.locationReport?.rows || [];
+  const volumeRows = report.volumeReport?.rows || [];
+  const revenueRows = report.billingRevenueReport?.rows || [];
+  const statement = report.revenueStatement || {};
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Admin analytics"
+        eyebrow="Analytics"
         title="Live Report"
-        description="Track patient coverage, doctor-specific activity, and paid revenue performance with period filters and date-based views."
+        description="Patients seen per location, patient volume, revenue reports, and doctor revenue statement."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-        {metricCards.map((card) => (
-          <ReportMetricCard key={card.label} {...card} />
-        ))}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <LocationDistributionCard
-          report={report.locationReport}
-          period={locationPeriod}
-          setPeriod={setLocationPeriod}
-          anchorDate={locationDate}
-          setAnchorDate={setLocationDate}
-        />
-        <DoctorActivityCard
-          report={report.doctorReport}
-          doctors={report.doctors || []}
-          period={doctorPeriod}
-          setPeriod={setDoctorPeriod}
-          anchorDate={doctorDate}
-          setAnchorDate={setDoctorDate}
-          selectedDoctorId={selectedDoctorId}
-          setSelectedDoctorId={setSelectedDoctorId}
-        />
-      </div>
-
-      <ReportingWindowsCard
-        report={report.revenueReport}
-        revenueDate={revenueDate}
-        setRevenueDate={setRevenueDate}
+      <SectionCard
+        title="Filters"
+        subtitle="Apply period and date filters to all reports."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {(user.role === "admin" && (report.doctors || []).length) ? (
+              <select
+                value={selectedDoctorId || String(report.doctorReport?.selectedDoctorId || "")}
+                onChange={(event) => setSelectedDoctorId(event.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600"
+              >
+                {(report.doctors || []).map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}
+              </select>
+            ) : null}
+            <FilterButtonGroup value={period} onChange={setPeriod} />
+            <DateField value={anchorDate} onChange={setAnchorDate} />
+          </div>
+        }
       />
 
-      <ReportingScopeCard
-        locationReport={report.locationReport}
-        doctorReport={report.doctorReport}
-        revenueReport={report.revenueReport}
-      />
+      <SectionCard
+        title="Patients Seen Per Location"
+        subtitle={report.locationReport?.rangeLabel}
+        actions={<div className="flex gap-2"><button onClick={() => downloadPdf("patients_seen_per_location", locationRows.map((r) => `${r.location}: ${r.patient_count}`))} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => exportCsv("patients_seen_per_location", locationRows)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to CSV</button></div>}
+      >
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={locationRows} dataKey="patient_count" nameKey="location" outerRadius={110} label>
+                {locationRows.map((_, index) => <Cell key={`loc-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Patients Volume"
+        subtitle={report.volumeReport?.rangeLabel}
+        actions={<div className="flex gap-2"><button onClick={() => downloadPdf("patients_volume", volumeRows.map((r) => `${r.date}: ${r.patient_count}`))} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => exportCsv("patients_volume", volumeRows)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to CSV</button></div>}
+      >
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={volumeRows}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="patient_count" fill="#2d8f98" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Revenue Reports"
+        subtitle={report.billingRevenueReport?.rangeLabel}
+        actions={<div className="flex gap-2"><button onClick={() => downloadPdf("revenue_reports", revenueRows.map((r) => `${r.patient_name} - ${r.total_amount} (${r.status})`))} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => exportCsv("revenue_reports", revenueRows)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to CSV</button></div>}
+      >
+        <div className="overflow-x-auto rounded-[20px] border border-slate-200">
+          <table className="min-w-full bg-white text-sm">
+            <thead className="bg-slate-50"><tr><th className="px-4 py-3 text-left">Patient</th><th className="px-4 py-3 text-left">Consultation</th><th className="px-4 py-3 text-left">Amount</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Method</th></tr></thead>
+            <tbody>{revenueRows.map((row) => <tr key={row.bill_id} className="border-t"><td className="px-4 py-3">{row.patient_name}</td><td className="px-4 py-3">{row.consultation_date}</td><td className="px-4 py-3">{formatCurrency(row.total_amount)}</td><td className="px-4 py-3">{row.status}</td><td className="px-4 py-3">{row.payment_method}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Revenue Statement"
+        subtitle="Doctor earnings, commissions, and payment status."
+        actions={<div className="flex gap-2"><button onClick={() => downloadPdf("revenue_statement", [`Total Revenue: ${formatCurrency(statement.totalRevenue)}`, `OCS Commission (60%): ${formatCurrency(statement.ocsCommission)}`, `Doctor Commission (40%): ${formatCurrency(statement.doctorCommission)}`, `Transport Benefits (Rs 300 per patient): ${formatCurrency(statement.transportBenefits)}`, `Doctor Net Revenue: ${formatCurrency(statement.doctorNetRevenue)}`])} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><Download className="mr-1 inline size-3" />Download PDF</button><button onClick={() => { const ws = XLSX.utils.json_to_sheet([{ totalRevenue: statement.totalRevenue, ocsCommission: statement.ocsCommission, doctorCommission: statement.doctorCommission, transportBenefits: statement.transportBenefits, doctorNetRevenue: statement.doctorNetRevenue, paidRevenue: statement.paidRevenue, unpaidRevenue: statement.unpaidRevenue }]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Revenue Statement"); XLSX.writeFile(wb, "revenue_statement.xlsx"); }} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"><FileSpreadsheet className="mr-1 inline size-3" />Export to Excel</button></div>}
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs uppercase text-slate-500">Total Revenue</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.totalRevenue || 0)}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs uppercase text-slate-500">OCS Commission (60%)</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.ocsCommission || 0)}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs uppercase text-slate-500">Doctor Commission (40%)</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.doctorCommission || 0)}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs uppercase text-slate-500">Transport Benefits</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.transportBenefits || 0)}</p><p className="text-xs text-slate-500">Rs 300 per unique patient</p></div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs uppercase text-slate-500">Doctor Net Revenue</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.doctorNetRevenue || 0)}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs uppercase text-slate-500">Paid Revenue</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.paidRevenue || 0)}</p></div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4"><p className="text-xs uppercase text-slate-500">Unpaid Revenue</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.unpaidRevenue || 0)}</p><button type="button" onClick={() => navigate("/billing?status=unpaid")} className="mt-2 text-xs font-semibold text-rose-700 underline">View Details</button></div>
+        </div>
+        <div className="mt-5 h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={statement.paymentMethodBreakdown || []}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="method" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="amount" fill="#41c8c6" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </SectionCard>
     </div>
   );
 }

@@ -19,6 +19,7 @@ import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import PatientLocationTags from "../components/PatientLocationTags.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import {
@@ -26,7 +27,6 @@ import {
   formatDate,
   truncate,
 } from "../lib/format.js";
-import { MAURITIUS_LOCATION_OPTIONS } from "../lib/mauritiusLocations.js";
 import { cx } from "../lib/utils.js";
 
 const emptyPatient = {
@@ -40,6 +40,7 @@ const emptyPatient = {
   patient_contact_number: "",
   address: "",
   location: "",
+  location_tags: [],
   past_medical_history: "",
   past_surgical_history: "",
   drug_history: "",
@@ -70,6 +71,7 @@ function toPatientFormState(patient) {
       patient.patient_contact_number ?? patient.contact_number ?? "",
     address: patient.address ?? "",
     location: patient.location ?? "",
+    location_tags: patient.location_tags ?? [],
     past_medical_history: patient.past_medical_history ?? "",
     past_surgical_history: patient.past_surgical_history ?? "",
     drug_history: patient.drug_history ?? "",
@@ -122,9 +124,13 @@ function PatientFormModal({
 
   function handleSubmit(event) {
     event.preventDefault();
+    const locationTags = Array.isArray(form.location_tags) ? form.location_tags : [];
+    const legacyLocation = locationTags.map((tag) => tag.name).join(", ");
 
     onSubmit({
       ...form,
+      location_tags: locationTags,
+      location: legacyLocation,
       assigned_doctor_id: form.assigned_doctor_id ? Number(form.assigned_doctor_id) : null,
       ongoing_treatment: form.status === "active" ? form.ongoing_treatment : "",
     });
@@ -291,22 +297,15 @@ function PatientFormModal({
               />
             </label>
 
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Location</span>
-              <select
-                name="location"
-                value={form.location}
-                onChange={handleChange}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-              >
-                <option value="">Select location</option>
-                {MAURITIUS_LOCATION_OPTIONS.map((location) => (
-                  <option key={location} value={location}>
-                    {location}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Locations and affiliations</span>
+              <PatientLocationTags
+                tags={form.location_tags}
+                onChange={(nextTags) =>
+                  setForm((current) => ({ ...current, location_tags: nextTags }))
+                }
+              />
+            </div>
           </div>
 
           {form.status === "active" ? (

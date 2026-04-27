@@ -34,6 +34,7 @@ import {
   formatDate,
   formatPaymentMethod,
 } from "../lib/format.js";
+import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
 function HighlightStat({ icon: Icon, label, value }) {
   return (
@@ -896,7 +897,18 @@ function PatientProfilePage() {
             </div>
             <ProfileField label="Patient contact number" value={patientContactNumber} />
             <ProfileField label="Address" value={data.patient.address} />
-            <ProfileField label="Location" value={data.patient.location} />
+            <div className="md:col-span-2 rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                Locations and affiliations
+              </p>
+              <div className="mt-3">
+                <PatientLocationTags
+                  tags={data.patient.location_tags || []}
+                  onChange={() => {}}
+                  readOnly
+                />
+              </div>
+            </div>
           </div>
         </SectionCard>
 

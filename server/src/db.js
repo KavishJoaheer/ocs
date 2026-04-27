@@ -212,6 +212,7 @@ function createHcmNewsPostsTable() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
       created_by_user_id INTEGER,
       updated_by_user_id INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -230,6 +231,26 @@ function createHcmNewsReadsTable() {
       last_seen_post_updated_at TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+}
+
+function createPatientLocationsTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      name TEXT NOT NULL,
+      UNIQUE (category, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS patient_locations (
+      patient_id INTEGER NOT NULL,
+      location_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (patient_id, location_id),
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+      FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
     );
   `);
 }
@@ -494,15 +515,18 @@ function initializeDatabase() {
   createPatientOperatorAccessTable();
   createHcmNewsPostsTable();
   createHcmNewsReadsTable();
+  createPatientLocationsTables();
   createInventoryFoldersTable();
   createInventoryMovementsTable();
 
   ensurePatientColumns();
   ensureDoctorColumns();
   ensureUserColumns();
+  ensureHcmNewsColumns();
   ensureBillingColumns();
   ensureInventoryColumns();
   backfillPatientRecords();
+  backfillPatientLocations();
   ensureInventorySeedData();
 
   db.exec(`
@@ -543,6 +567,10 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_created_at ON hcm_news_posts(created_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_updated_at ON hcm_news_posts(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_status ON hcm_news_posts(status);
+    CREATE INDEX IF NOT EXISTS idx_locations_category ON locations(category);
+    CREATE INDEX IF NOT EXISTS idx_patient_locations_patient ON patient_locations(patient_id);
+    CREATE INDEX IF NOT EXISTS idx_patient_locations_location ON patient_locations(location_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_folder ON inventory(folder_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_item_name ON inventory(item_name);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(item_id);
@@ -552,6 +580,19 @@ function initializeDatabase() {
 
   migrateLegacySeedDataIfNeeded();
   seedDatabase();
+}
+
+function ensureHcmNewsColumns() {
+  const columns = db
+    .prepare("PRAGMA table_info(hcm_news_posts)")
+    .all()
+    .map((column) => column.name);
+
+  if (!columns.includes("status")) {
+    db.exec(
+      "ALTER TABLE hcm_news_posts ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived'))",
+    );
+  }
 }
 
 function ensurePatientColumns() {
@@ -1056,6 +1097,52 @@ function backfillPatientRecords() {
   });
 
   backfill();
+}
+
+function backfillPatientLocations() {
+  const rows = db
+    .prepare(`
+      SELECT id, location
+      FROM patients
+      WHERE location IS NOT NULL
+        AND trim(location) != ''
+    `)
+    .all();
+
+  if (!rows.length) {
+    return;
+  }
+
+  const upsertLocation = db.prepare(`
+    INSERT INTO locations (category, name)
+    VALUES (?, ?)
+    ON CONFLICT(category, name) DO NOTHING
+  `);
+  const getLocation = db.prepare(
+    "SELECT id FROM locations WHERE category = ? AND name = ? LIMIT 1",
+  );
+  const upsertPatientLocation = db.prepare(`
+    INSERT INTO patient_locations (patient_id, location_id)
+    VALUES (?, ?)
+    ON CONFLICT(patient_id, location_id) DO NOTHING
+  `);
+
+  const sync = db.transaction(() => {
+    rows.forEach((row) => {
+      const legacyLocation = String(row.location || "").trim();
+      if (!legacyLocation) {
+        return;
+      }
+
+      upsertLocation.run("Legacy Location", legacyLocation);
+      const locationRecord = getLocation.get("Legacy Location", legacyLocation);
+      if (locationRecord?.id) {
+        upsertPatientLocation.run(row.id, locationRecord.id);
+      }
+    });
+  });
+
+  sync();
 }
 
 function getOrCreateDoctorRecord(account) {

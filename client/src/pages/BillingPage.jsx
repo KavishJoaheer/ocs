@@ -471,6 +471,7 @@ function BillingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const patientIdFilter = searchParams.get("patientId") || "";
   const [statusFilter, setStatusFilter] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [bills, setBills] = useState([]);
   const [patientSummary, setPatientSummary] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -527,6 +528,13 @@ function BillingPage() {
   }
 
   useEffect(() => {
+    const initialStatus = searchParams.get("status") || "";
+    if (initialStatus && initialStatus !== statusFilter) {
+      setStatusFilter(initialStatus);
+    }
+  }, [searchParams, statusFilter]);
+
+  useEffect(() => {
     loadData();
   }, [statusFilter, patientIdFilter]);
 
@@ -546,6 +554,15 @@ function BillingPage() {
     (sum, patient) => sum + Number(patient.total_billed || 0),
     0,
   );
+  const filteredBills = bills.filter((bill) => {
+    if (!searchText.trim()) return true;
+    const query = searchText.trim().toLowerCase();
+    return (
+      bill.patient_name?.toLowerCase().includes(query) ||
+      bill.consultation_date?.toLowerCase().includes(query)
+    );
+  });
+  const pendingPayments = patientSummary.filter((patient) => Number(patient.unpaid_amount || 0) > 0);
 
   async function handleSave(payload) {
     if (!editor?.bill) {
@@ -603,15 +620,13 @@ function BillingPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <BillingStat icon={DollarSign} label="Total billed" value={formatCurrency(overallBilled)} />
-        <BillingStat icon={CreditCard} label="Collected" value={formatCurrency(overallPaid)} />
-        <BillingStat
-          icon={ReceiptText}
-          label="Outstanding"
-          value={formatCurrency(overallUnpaid)}
-        />
-      </div>
+      {user.role !== "doctor" ? (
+        <div className="grid gap-4 md:grid-cols-3">
+          <BillingStat icon={DollarSign} label="Total billed" value={formatCurrency(overallBilled)} />
+          <BillingStat icon={CreditCard} label="Collected" value={formatCurrency(overallPaid)} />
+          <BillingStat icon={ReceiptText} label="Outstanding" value={formatCurrency(overallUnpaid)} />
+        </div>
+      ) : null}
 
       {patientIdFilter ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-sky-100 bg-sky-50/80 px-5 py-4">
@@ -646,6 +661,12 @@ function BillingPage() {
                 <option value="unpaid">Unpaid only</option>
                 <option value="paid">Paid only</option>
               </select>
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Filter by patient or consultation date..."
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
+              />
 
               {canCreateBills ? (
                 <button
@@ -660,7 +681,7 @@ function BillingPage() {
             </div>
           }
         >
-          {bills.length ? (
+          {filteredBills.length ? (
             <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
               <div className="overflow-x-auto">
                 <table className="min-w-full bg-white text-left">
@@ -676,7 +697,7 @@ function BillingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bills.map((bill) => (
+                    {filteredBills.map((bill) => (
                       <tr key={bill.id} className="border-t border-slate-200/70">
                         <td className="px-5 py-4">
                           <p className="font-semibold text-slate-950">{bill.patient_name}</p>
@@ -728,15 +749,15 @@ function BillingPage() {
         </SectionCard>
 
         <SectionCard
-          title="Per-patient summary"
-          subtitle="Balances and collections grouped by patient across all billing entries."
+          title="Pending payments from unpaid patients"
+          subtitle="Patients with due balances only, updated automatically after bill edits."
         >
-          {patientSummary.length ? (
+          {pendingPayments.length ? (
             <div className="space-y-3">
-              {patientSummary.map((patient) => (
+              {pendingPayments.map((patient) => (
                 <div
                   key={patient.patient_id}
-                  className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
+                  className="rounded-[24px] border border-rose-200/80 bg-rose-50/70 p-4"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -747,11 +768,10 @@ function BillingPage() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-slate-950">
-                        {formatCurrency(patient.total_billed)}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Paid {formatCurrency(patient.paid_amount)} - Due{" "}
                         {formatCurrency(patient.unpaid_amount)}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-rose-700">
+                        Pending / Unpaid
                       </p>
                     </div>
                   </div>
@@ -760,8 +780,8 @@ function BillingPage() {
             </div>
           ) : (
             <EmptyState
-              title="No billing summary available"
-              description="Patient billing totals will appear here once consultations generate bills."
+              title="No pending payments"
+              description="All tracked bills are currently paid for the selected filters."
             />
           )}
         </SectionCard>

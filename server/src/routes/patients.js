@@ -6,6 +6,7 @@ const router = express.Router();
 
 const DEFAULT_OPERATOR_ACCESS_HOURS = 24;
 const RECENTLY_DELETED_WINDOW_SQL = "-30 days";
+const PATIENT_TAG_ROLES = new Set(["admin", "doctor", "operator"]);
 
 function buildPatientFullName(firstName, lastName) {
   return [String(firstName || "").trim(), String(lastName || "").trim()]
@@ -127,6 +128,11 @@ function normalizePatientPayload(body) {
     ).trim(),
     address: String(body.address ?? "").trim(),
     location: String(body.location ?? "").trim(),
+    location_tags: Array.isArray(body.location_tags)
+      ? body.location_tags
+      : Array.isArray(body.locationTags)
+        ? body.locationTags
+        : [],
     past_medical_history: String(body.past_medical_history ?? "").trim(),
     past_surgical_history: String(body.past_surgical_history ?? "").trim(),
     drug_history: String(body.drug_history ?? "").trim(),
@@ -148,6 +154,73 @@ function normalizePatientPayload(body) {
     ongoing_treatment:
       status === "active" ? String(body.ongoing_treatment ?? "").trim() : "",
   };
+}
+
+function normalizeLocationTag(tag) {
+  const category = String(tag?.category ?? "").trim();
+  const name = String(tag?.name ?? "").trim();
+  return category && name ? { category, name } : null;
+}
+
+function normalizeLocationTags(tags) {
+  const deduped = new Map();
+
+  for (const tag of tags || []) {
+    const normalized = normalizeLocationTag(tag);
+    if (!normalized) {
+      continue;
+    }
+    const key = `${normalized.category.toLowerCase()}::${normalized.name.toLowerCase()}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, normalized);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+function getPatientLocationTags(patientId) {
+  return db
+    .prepare(`
+      SELECT l.category, l.name
+      FROM patient_locations pl
+      JOIN locations l ON l.id = pl.location_id
+      WHERE pl.patient_id = ?
+      ORDER BY l.category ASC, l.name ASC
+    `)
+    .all(patientId);
+}
+
+function updatePatientLocationTags(patientId, rawTags) {
+  const tags = normalizeLocationTags(rawTags);
+  const deleteLinks = db.prepare("DELETE FROM patient_locations WHERE patient_id = ?");
+  const upsertLocation = db.prepare(`
+    INSERT INTO locations (category, name)
+    VALUES (?, ?)
+    ON CONFLICT(category, name) DO NOTHING
+  `);
+  const getLocation = db.prepare(
+    "SELECT id FROM locations WHERE category = ? AND name = ? LIMIT 1",
+  );
+  const upsertLink = db.prepare(`
+    INSERT INTO patient_locations (patient_id, location_id)
+    VALUES (?, ?)
+    ON CONFLICT(patient_id, location_id) DO NOTHING
+  `);
+
+  const sync = db.transaction(() => {
+    deleteLinks.run(patientId);
+    tags.forEach((tag) => {
+      upsertLocation.run(tag.category, tag.name);
+      const location = getLocation.get(tag.category, tag.name);
+      if (location?.id) {
+        upsertLink.run(patientId, location.id);
+      }
+    });
+  });
+
+  sync();
+  return tags;
 }
 
 function validatePatientPayload(
@@ -259,6 +332,7 @@ function getPatientSnapshot(patient) {
     patient_contact_number: patient.patient_contact_number || patient.contact_number || "",
     address: patient.address || "",
     location: patient.location || "",
+    location_tags: patient.location_tags || [],
     past_medical_history: patient.past_medical_history || "",
     past_surgical_history: patient.past_surgical_history || "",
     drug_history: patient.drug_history || "",
@@ -658,6 +732,7 @@ router.get("/", (req, res) => {
     items: patients.map((patient) => ({
       ...patient,
       operator_edit_allowed: Boolean(patient.operator_edit_allowed),
+      location_tags: getPatientLocationTags(patient.id),
     })),
     pagination: {
       page,
@@ -773,7 +848,10 @@ router.get("/:id", (req, res) => {
   const operatorOptions = req.auth.role === "admin" ? getOperatorOptions() : [];
 
   res.json({
-    patient,
+    patient: {
+      ...patient,
+      location_tags: getPatientLocationTags(patientId),
+    },
     appointments,
     consultations,
     bills,
@@ -886,7 +964,14 @@ router.post("/", (req, res) => {
       payload.ongoing_treatment,
     );
 
-  const patient = getPatientById(result.lastInsertRowid);
+  if (PATIENT_TAG_ROLES.has(req.auth.role)) {
+    updatePatientLocationTags(result.lastInsertRowid, payload.location_tags);
+  }
+
+  const patient = {
+    ...getPatientById(result.lastInsertRowid),
+    location_tags: getPatientLocationTags(result.lastInsertRowid),
+  };
   res.status(201).json(patient);
 });
 
@@ -971,6 +1056,7 @@ router.put("/:id", (req, res) => {
     patient_contact_number: payload.patient_contact_number,
     address: payload.address,
     location: payload.location,
+    location_tags: normalizeLocationTags(payload.location_tags),
     past_medical_history: payload.past_medical_history,
     past_surgical_history: payload.past_surgical_history,
     drug_history: payload.drug_history,
@@ -1055,7 +1141,18 @@ router.put("/:id", (req, res) => {
 
   updatePatient();
 
-  const updated = getPatientById(patientId);
+  if (PATIENT_TAG_ROLES.has(req.auth.role)) {
+    const savedTags = updatePatientLocationTags(patientId, payload.location_tags);
+    const fallbackLegacyLocation = savedTags.length ? savedTags.map((tag) => tag.name).join(", ") : "";
+    if (fallbackLegacyLocation !== payload.location) {
+      db.prepare("UPDATE patients SET location = ? WHERE id = ?").run(fallbackLegacyLocation, patientId);
+    }
+  }
+
+  const updated = {
+    ...getPatientById(patientId),
+    location_tags: getPatientLocationTags(patientId),
+  };
   res.json(updated);
 });
 

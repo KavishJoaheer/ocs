@@ -58,7 +58,7 @@ const navItems = [
     to: "/live-report",
     label: "Live report",
     icon: PieChart,
-    roles: ["admin"],
+    roles: ["admin", "doctor"],
   },
   {
     to: "/inventory",
