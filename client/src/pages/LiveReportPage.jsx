@@ -279,17 +279,6 @@ export default function LiveReportPage() {
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs uppercase text-slate-500">Paid Revenue</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.paidRevenue || 0)}</p></div>
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4"><p className="text-xs uppercase text-slate-500">Unpaid Revenue</p><p className="mt-2 text-xl font-bold">{formatCurrency(statement.unpaidRevenue || 0)}</p><button type="button" onClick={() => navigate("/billing?status=unpaid")} className="mt-2 text-xs font-semibold text-rose-700 underline">View Details</button></div>
         </div>
-        <div className="mt-5 h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={statement.paymentMethodBreakdown || []}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="method" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="amount" fill="#41c8c6" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
       </SectionCard>
     </div>
   );

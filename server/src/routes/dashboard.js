@@ -856,7 +856,7 @@ router.get("/live-report", (req, res) => {
         requestedDoctorId > 0 &&
         doctors.some((doctor) => Number(doctor.id) === requestedDoctorId)
       ? requestedDoctorId
-      : doctors[0]?.id ?? null;
+      : null;
 
   const locationRange = getReportRange(
     normalizeReportPeriod(req.query.locationPeriod, "monthly"),
@@ -896,9 +896,7 @@ router.get("/live-report", (req, res) => {
     0,
   );
 
-  const doctorRows = selectedDoctorId
-    ? getDoctorPatientCounts(doctorRange.start, doctorRange.end, selectedDoctorId)
-    : [];
+  const doctorRows = getDoctorPatientCounts(doctorRange.start, doctorRange.end, selectedDoctorId);
 
   const volumeRows = db
     .prepare(`

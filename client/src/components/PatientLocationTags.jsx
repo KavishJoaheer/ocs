@@ -3,19 +3,33 @@ import { MAURITIUS_LOCATION_OPTIONS } from "../lib/mauritiusLocations.js";
 
 const CLINICS = ["Anahita Residence", "Anahita Hotel", "Four Seasons", "Radisson Blu Poste Lafayette", "Radisson Blu Azuri", "Azuri Residence", "Crystal Beach", "Medic World", "OCS Santé Flacq", "OCS Médecin PL"];
 const INSURANCE = ["Linkham", "NIC", "Swan", "MUA", "Eagle", "Jubilee", "Alliance Sanlam"];
+const TOWNS = {
+  "Port Louis": ["Cassis", "Bain des Dames", "Roche Bois", "Sainte-Croix", "Vallee des Pretres", "Plaine Verte", "Ward IV", "Tranquebar", "Champ de Mars", "Bell Village", "Pailles"],
+  "Beau Bassin - Rose Hill": ["Balfour", "Barkly", "Mont Roches", "Chebel", "Coromandel", "Stanley", "Trefles", "Camp Levieux", "Roches Brunes", "Beau Sejour", "Vandermeersch"],
+  "Quatre Bornes": ["Sodnac", "Vieux Quatre Bornes", "Belle Rose", "Pellegrin", "Palma", "Bassin", "La Source", "Bagatelle", "Trianon"],
+  "Vacoas - Phoenix": ["Sadally", "Glen Park", "Henrietta", "Reunion", "Camp Mapou", "Floreal (Border)", "Solferino", "Camp Sauvage", "Petit Camp", "Valentia", "Highlands", "Mesnil", "Castel", "Pont Fer"],
+  "Curepipe": ["Floreal", "Forest Side", "Eau Coulee", "Les Casernes", "Camp Caval", "Malherbes", "Wooton", "La Brasserie"],
+};
 const VILLAGES = [...MAURITIUS_LOCATION_OPTIONS].sort((first, second) => first.localeCompare(second));
 
 export default function PatientLocationTags({ tags = [], onChange, readOnly = false }) {
-  const [villageSearch, setVillageSearch] = useState("");
+  const [locationType, setLocationType] = useState("village");
+  const [selectedTown, setSelectedTown] = useState("");
 
-  const filteredVillages = useMemo(() => {
-    if (!villageSearch) return [];
-    return VILLAGES.filter(v => v.toLowerCase().includes(villageSearch.toLowerCase()));
-  }, [villageSearch]);
+  const selectedTownSuburbs = useMemo(() => TOWNS[selectedTown] || [], [selectedTown]);
 
-  const addTag = (category, name) => {
-    if (!tags.some(t => t.category === category && t.name === name)) {
-      onChange([...tags, { category, name }]);
+  const addTag = (category, name, { replaceCategory = false } = {}) => {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) {
+      return;
+    }
+
+    const next = replaceCategory
+      ? tags.filter((tag) => tag.category !== category)
+      : tags;
+
+    if (!next.some(t => t.category === category && t.name === normalizedName)) {
+      onChange([...next, { category, name: normalizedName }]);
     }
   };
 
@@ -55,26 +69,98 @@ export default function PatientLocationTags({ tags = [], onChange, readOnly = fa
           </div>
 
           <div className="md:col-span-2 relative">
-            <label className="block text-sm font-semibold text-slate-700">Village Search</label>
-            <input 
-              type="text" 
-              className="mt-2 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400" 
-              placeholder="Type to search villages..."
-              value={villageSearch}
-              onChange={(e) => setVillageSearch(e.target.value)}
-            />
-            {filteredVillages.length > 0 && (
-              <ul className="absolute z-10 mt-2 max-h-56 w-full overflow-auto rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
-                {filteredVillages.map(v => (
-                  <li key={v} 
-                    className="cursor-pointer select-none px-3 py-2 text-slate-700 transition hover:bg-sky-50 hover:text-sky-700"
-                    onClick={() => { addTag('Village', v); setVillageSearch(""); }}>
-                    {v}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <label className="block text-sm font-semibold text-slate-700">Location Type</label>
+            <div className="mt-2 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setLocationType("town")}
+                className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                  locationType === "town"
+                    ? "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Town
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocationType("village")}
+                className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                  locationType === "village"
+                    ? "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Village
+              </button>
+            </div>
           </div>
+
+          {locationType === "town" ? (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">Town</label>
+                <select
+                  className="mt-2 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400"
+                  value={selectedTown}
+                  onChange={(event) => {
+                    const nextTown = event.target.value;
+                    setSelectedTown(nextTown);
+                    if (nextTown) {
+                      addTag("Town", nextTown, { replaceCategory: true });
+                    }
+                  }}
+                >
+                  <option value="">Select town...</option>
+                  {Object.keys(TOWNS).map((town) => (
+                    <option key={town} value={town}>
+                      {town}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">Suburb</label>
+                <select
+                  className="mt-2 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  disabled={!selectedTown}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      addTag("Neighborhood", event.target.value, { replaceCategory: true });
+                      event.target.value = "";
+                    }
+                  }}
+                >
+                  <option value="">{selectedTown ? "Select suburb..." : "Choose town first"}</option>
+                  {selectedTownSuburbs.map((suburb) => (
+                    <option key={suburb} value={suburb}>
+                      {suburb}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-slate-700">Village</label>
+              <select
+                className="mt-2 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400"
+                onChange={(event) => {
+                  if (event.target.value) {
+                    addTag("Village", event.target.value, { replaceCategory: true });
+                    event.target.value = "";
+                  }
+                }}
+              >
+                <option value="">Select village...</option>
+                {VILLAGES.map((village) => (
+                  <option key={village} value={village}>
+                    {village}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import dayjs from "dayjs";
-import { History, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Eye, History, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -24,6 +25,17 @@ function formatTimestamp(value) {
   return dayjs(value).format("MMM D, YYYY [at] h:mm A");
 }
 
+function toExcerpt(text, maxLength = 140) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trim()}...`;
+}
+
 function HcmNewsPage() {
   const { user, hcmUnreadCount, refreshHcmUnreadCount } = useAuth();
   const [data, setData] = useState(null);
@@ -33,6 +45,7 @@ function HcmNewsPage() {
   const [isSavingPost, setIsSavingPost] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [viewPost, setViewPost] = useState(null);
 
   const loadPage = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -183,6 +196,8 @@ function HcmNewsPage() {
       return accumulator;
     }, [])
     .sort((first, second) => new Date(second.updated_at || 0) - new Date(first.updated_at || 0));
+  const latestPublishedPost = (data.posts || [])[0] || null;
+  const doctorHistoryPosts = archivePosts.filter((post) => String(post.id) !== String(latestPublishedPost?.id || ""));
 
   return (
     <div className="space-y-6">
@@ -229,7 +244,7 @@ function HcmNewsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard
-          title={user.role === "admin" ? "Publish workspace" : "Published updates"}
+          title={user.role === "admin" ? "Publish workspace" : "Published update"}
           subtitle={
             user.role === "admin"
               ? "Draft and publish a new HCM update for the whole operations team."
@@ -263,24 +278,29 @@ function HcmNewsPage() {
                 </button>
               </div>
             </form>
-          ) : data.posts.length ? (
-            <div className="space-y-4">
-              {data.posts.map((post) => (
-                <article
-                  key={post.id}
-                  className="rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-slate-50/80 p-5 shadow-[0_12px_30px_rgba(34,72,91,0.05)]"
+          ) : latestPublishedPost ? (
+            <article className="rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-slate-50/80 p-5 shadow-[0_12px_30px_rgba(34,72,91,0.05)]">
+              <p className="text-xl font-semibold text-slate-950">{latestPublishedPost.title}</p>
+              <p className="mt-2 text-sm leading-7 text-[#3f6270]">
+                {toExcerpt(latestPublishedPost.body, 220)}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6e949b]">
+                    Published by {latestPublishedPost.updated_by_name || latestPublishedPost.created_by_name || "Admin"}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">Updated {formatTimestamp(latestPublishedPost.updated_at)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewPost(latestPublishedPost)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
                 >
-                  <p className="text-xl font-semibold text-slate-950">{post.title}</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[#3f6270]">
-                    {post.body}
-                  </p>
-                  <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-[#6e949b]">
-                    Published by {post.updated_by_name || post.created_by_name || "Admin"}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-500">Updated {formatTimestamp(post.updated_at)}</p>
-                </article>
-              ))}
-            </div>
+                  <Eye className="size-4" />
+                  View
+                </button>
+              </div>
+            </article>
           ) : (
             <EmptyState
               title="No HCM updates yet"
@@ -297,19 +317,25 @@ function HcmNewsPage() {
               : "Archived HCM posts older than 7 days."
           }
         >
-          {archivePosts.length ? (
+          {(user.role === "admin" ? archivePosts : doctorHistoryPosts).length ? (
             <div className="space-y-3">
-              {archivePosts.map((post) => (
+              {(user.role === "admin" ? archivePosts : doctorHistoryPosts).map((post) => (
                 <article key={`history-${post.id}`} className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
                   <p className="font-semibold text-slate-900">{post.title}</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{post.body}</p>
+                  <p className="mt-2 text-sm text-slate-600">{toExcerpt(post.body, 140)}</p>
                   <p className="mt-2 text-xs text-slate-500">Archived {formatTimestamp(post.updated_at)}</p>
-                  {user.role === "admin" ? (
-                    <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" onClick={() => setViewPost(post)} className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                      <Eye className="size-3.5" />
+                      View
+                    </button>
+                    {user.role === "admin" ? (
+                      <>
                       <button type="button" onClick={() => openEditModal(post)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
                       <button type="button" onClick={() => setDeleteTarget(post)} className="rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600">Delete</button>
-                    </div>
-                  ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 </article>
               ))}
             </div>
@@ -334,6 +360,27 @@ function HcmNewsPage() {
         description="This will remove the news post from the shared HCM board for every user."
         confirmLabel={isDeletingPost ? "Deleting..." : "Delete update"}
       />
+
+      <Modal
+        open={Boolean(viewPost)}
+        onClose={() => setViewPost(null)}
+        title={viewPost?.title || "HCM Update"}
+        description={viewPost ? `Published ${formatTimestamp(viewPost.updated_at)}` : ""}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{viewPost?.body}</p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setViewPost(null)}
+              className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
