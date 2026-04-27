@@ -174,6 +174,16 @@ function HcmNewsPage() {
     );
   }
 
+  const archivePosts = [...(data.posts || []), ...(data.history || [])]
+    .reduce((accumulator, post) => {
+      const key = String(post.id);
+      if (!accumulator.some((item) => String(item.id) === key)) {
+        accumulator.push(post);
+      }
+      return accumulator;
+    }, [])
+    .sort((first, second) => new Date(second.updated_at || 0) - new Date(first.updated_at || 0));
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -217,70 +227,13 @@ function HcmNewsPage() {
         </SectionCard>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard
-          title="Published updates"
-          subtitle="Latest HCM posts for the whole operations team."
-        >
-          {data.posts.length ? (
-            <div className="space-y-4">
-              {data.posts.map((post) => (
-                <article
-                  key={post.id}
-                  className="rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-slate-50/80 p-5 shadow-[0_12px_30px_rgba(34,72,91,0.05)]"
-                >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="text-xl font-semibold text-slate-950">{post.title}</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[#3f6270]">
-                        {post.body}
-                      </p>
-                      <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-[#6e949b]">
-                        Published by {post.updated_by_name || post.created_by_name || "Admin"}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Updated {formatTimestamp(post.updated_at)}
-                      </p>
-                    </div>
-
-                    {user.role === "admin" ? (
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(post)}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                        >
-                          <Pencil className="size-4" />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(post)}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                        >
-                          <Trash2 className="size-4" />
-                          Delete
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="No HCM updates yet"
-              description="Once admin publishes the first newsroom update, it will appear here for the whole team."
-            />
-          )}
-        </SectionCard>
-
-        <SectionCard
-          title={user.role === "admin" ? "Publish workspace" : "Published History"}
+          title={user.role === "admin" ? "Publish workspace" : "Published updates"}
           subtitle={
             user.role === "admin"
-              ? "Draft and edit current HCM update before publishing."
-              : "Archived HCM posts older than 7 days."
+              ? "Draft and publish a new HCM update for the whole operations team."
+              : "Latest HCM posts for all care coordination staff."
           }
         >
           {user.role === "admin" ? (
@@ -310,11 +263,43 @@ function HcmNewsPage() {
                 </button>
               </div>
             </form>
-          ) : null}
+          ) : data.posts.length ? (
+            <div className="space-y-4">
+              {data.posts.map((post) => (
+                <article
+                  key={post.id}
+                  className="rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-slate-50/80 p-5 shadow-[0_12px_30px_rgba(34,72,91,0.05)]"
+                >
+                  <p className="text-xl font-semibold text-slate-950">{post.title}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[#3f6270]">
+                    {post.body}
+                  </p>
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-[#6e949b]">
+                    Published by {post.updated_by_name || post.created_by_name || "Admin"}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">Updated {formatTimestamp(post.updated_at)}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No HCM updates yet"
+              description="Once admin publishes the first newsroom update, it will appear here for the whole team."
+            />
+          )}
+        </SectionCard>
 
-          {(data.history || []).length ? (
+        <SectionCard
+          title={user.role === "admin" ? "Published archive" : "Published history"}
+          subtitle={
+            user.role === "admin"
+              ? "Archive of every update published by admin."
+              : "Archived HCM posts older than 7 days."
+          }
+        >
+          {archivePosts.length ? (
             <div className="space-y-3">
-              {(data.history || []).map((post) => (
+              {archivePosts.map((post) => (
                 <article key={`history-${post.id}`} className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
                   <p className="font-semibold text-slate-900">{post.title}</p>
                   <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{post.body}</p>
@@ -328,7 +313,12 @@ function HcmNewsPage() {
                 </article>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <EmptyState
+              title="No archived updates yet"
+              description="Published updates will appear in this archive automatically."
+            />
+          )}
         </SectionCard>
       </div>
 
