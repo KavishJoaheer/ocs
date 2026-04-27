@@ -110,6 +110,7 @@ export default function LiveReportPage() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("monthly");
   const [anchorDate, setAnchorDate] = useState(today);
+  const [doctorScope, setDoctorScope] = useState("general");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
 
   useEffect(() => {
@@ -124,7 +125,9 @@ export default function LiveReportPage() {
           doctorDate: anchorDate,
           revenueDate: anchorDate,
         });
-        if (selectedDoctorId) params.set("doctorId", selectedDoctorId);
+        if (doctorScope === "doctor" && selectedDoctorId) {
+          params.set("doctorId", selectedDoctorId);
+        }
         const response = await api.get(`/dashboard/live-report?${params.toString()}`);
         if (!ignore) setReport(response);
       } catch (error) {
@@ -138,7 +141,7 @@ export default function LiveReportPage() {
     }
     loadReport();
     return () => { ignore = true; };
-  }, [anchorDate, period, selectedDoctorId]);
+  }, [anchorDate, doctorScope, period, selectedDoctorId]);
 
   if (loading) return <LoadingState label="Loading live report" />;
   if (!report) return <EmptyState title="Live report unavailable" description="Unable to load report data." />;
@@ -162,13 +165,50 @@ export default function LiveReportPage() {
         actions={
           <div className="flex flex-wrap gap-2">
             {(user.role === "admin" && (report.doctors || []).length) ? (
-              <select
-                value={selectedDoctorId || String(report.doctorReport?.selectedDoctorId || "")}
-                onChange={(event) => setSelectedDoctorId(event.target.value)}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600"
-              >
-                {(report.doctors || []).map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}
-              </select>
+              <>
+                <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setDoctorScope("general")}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      doctorScope === "general"
+                        ? "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-sky-700"
+                    }`}
+                  >
+                    General
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDoctorScope("doctor");
+                      if (!selectedDoctorId && (report.doctors || []).length) {
+                        setSelectedDoctorId(String(report.doctors[0].id));
+                      }
+                    }}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      doctorScope === "doctor"
+                        ? "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-sky-700"
+                    }`}
+                  >
+                    Doctor
+                  </button>
+                </div>
+                {doctorScope === "doctor" ? (
+                  <select
+                    value={selectedDoctorId || String(report.doctorReport?.selectedDoctorId || "")}
+                    onChange={(event) => setSelectedDoctorId(event.target.value)}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600"
+                  >
+                    {(report.doctors || []).map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.full_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </>
             ) : null}
             <FilterButtonGroup value={period} onChange={setPeriod} />
             <DateField value={anchorDate} onChange={setAnchorDate} />
