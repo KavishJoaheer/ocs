@@ -148,7 +148,7 @@ function createApp() {
   app.use(
     "/api/inventory",
     requireAuth,
-    authorizeRoles("admin", "doctor", "lab_tech"),
+    authorizeRoles("admin", "doctor", "operator"),
     inventoryRouter,
   );
 
@@ -180,6 +180,10 @@ function createApp() {
     }
 
     if (error?.message === "Only PDF and image files are allowed.") {
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (error?.message === "Only PDF roster uploads are allowed.") {
       return res.status(400).json({ error: error.message });
     }
 

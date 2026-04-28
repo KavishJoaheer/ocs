@@ -24,9 +24,11 @@ const defaultDbPath = path.join(
 );
 const dbPath = explicitDbPath || defaultDbPath;
 const labReportAttachmentsDir = path.join(path.dirname(dbPath), "lab-report-attachments");
+const rosterDir = path.join(path.dirname(dbPath), "roster");
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 fs.mkdirSync(labReportAttachmentsDir, { recursive: true });
+fs.mkdirSync(rosterDir, { recursive: true });
 
 const db = new Database(dbPath);
 
@@ -1622,5 +1624,6 @@ module.exports = {
   db,
   ensureBillingForConsultation,
   labReportAttachmentsDir,
+  rosterDir,
   initializeDatabase,
 };

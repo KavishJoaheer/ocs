@@ -1,5 +1,8 @@
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
-const { db } = require("../db");
+const multer = require("multer");
+const { db, rosterDir } = require("../db");
 const { serializeUser } = require("../lib/auth");
 const {
   getTodayLocal,
@@ -12,6 +15,23 @@ const router = express.Router();
 const DEFAULT_OPERATOR_ACCESS_HOURS = 24;
 const OPERATION_STATUSES = new Set(["available", "active", "offline"]);
 const REPORT_PERIODS = new Set(["daily", "weekly", "monthly", "annual"]);
+const CURRENT_ROSTER_FILE_NAME = "current_roster.pdf";
+const CURRENT_ROSTER_PATH = path.join(rosterDir, CURRENT_ROSTER_FILE_NAME);
+
+const rosterUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter(_req, file, callback) {
+    if (String(file.mimetype || "").toLowerCase() !== "application/pdf") {
+      callback(new Error("Only PDF roster uploads are allowed."));
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 function normalizeSqlDateTime(value) {
   const parsed = new Date(value);
@@ -370,6 +390,23 @@ function getCurrentUserRow(userId) {
       WHERE u.id = ?
     `)
     .get(userId);
+}
+
+function getRosterMeta() {
+  if (!fs.existsSync(CURRENT_ROSTER_PATH)) {
+    return {
+      has_roster: false,
+      file_name: CURRENT_ROSTER_FILE_NAME,
+      updated_at: null,
+    };
+  }
+
+  const stats = fs.statSync(CURRENT_ROSTER_PATH);
+  return {
+    has_roster: true,
+    file_name: CURRENT_ROSTER_FILE_NAME,
+    updated_at: stats.mtime.toISOString(),
+  };
 }
 
 function getDoctorStatuses() {
@@ -915,6 +952,42 @@ router.get("/", (_req, res) => {
     recentActivity,
     doctorStatuses,
   });
+});
+
+router.get("/roster", (req, res) => {
+  if (!["admin", "doctor", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "You do not have permission to access the roster." });
+  }
+  res.json(getRosterMeta());
+});
+
+router.post("/roster", rosterUpload.single("roster"), (req, res) => {
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({ error: "Only admin can upload the roster PDF." });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: "Roster PDF file is required." });
+  }
+
+  fs.mkdirSync(rosterDir, { recursive: true });
+  fs.writeFileSync(CURRENT_ROSTER_PATH, req.file.buffer);
+  res.status(201).json(getRosterMeta());
+});
+
+router.get("/roster/file", (req, res) => {
+  if (!["doctor", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Roster PDF is available to doctors and operators only." });
+  }
+
+  if (!fs.existsSync(CURRENT_ROSTER_PATH)) {
+    return res.status(404).json({ error: "Current roster PDF has not been uploaded yet." });
+  }
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("X-File-Name", encodeURIComponent(CURRENT_ROSTER_FILE_NAME));
+  res.setHeader("Content-Disposition", `inline; filename="${CURRENT_ROSTER_FILE_NAME}"`);
+  res.sendFile(CURRENT_ROSTER_PATH);
 });
 
 router.get("/doctor-workspace", (req, res) => {

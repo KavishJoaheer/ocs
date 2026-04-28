@@ -12,6 +12,7 @@ import {
   PhoneCall,
   ShieldCheck,
   Stethoscope,
+  Upload,
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -784,7 +785,7 @@ function OperatorPersonalOperationUpdates({ monthLabel }) {
   );
 }
 
-function DoctorDashboardView({ user, onStatusChange, isSavingStatus }) {
+function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -858,7 +859,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus }) {
                     size="hero"
                     subtitle="Open your current week home visit roster."
                     title="Current week roster"
-                    to="/doctor/current-week-roster"
+                    onClick={onOpenRosterPdf}
                   />
                   <DoctorDashboardTile
                     eyebrow="Monthly view"
@@ -866,7 +867,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus }) {
                     size="compact"
                     subtitle={`See the full ${monthLabel} planning board.`}
                     title={`${monthLabel} roster`}
-                    to="/doctor/april-roster"
+                    onClick={onOpenRosterPdf}
                   />
                 </div>
               </div>
@@ -890,7 +891,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus }) {
   );
 }
 
-function OperatorDashboardView({ user, onStatusChange, isSavingStatus }) {
+function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -965,7 +966,7 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus }) {
                     size="hero"
                     subtitle="Open the current shared weekly doctor roster."
                     title="Current week roster"
-                    to="/operator/current-week-roster"
+                    onClick={onOpenRosterPdf}
                   />
                   <DoctorDashboardTile
                     eyebrow="Monthly view"
@@ -973,7 +974,7 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus }) {
                     size="compact"
                     subtitle={`See the full ${monthLabel} roster across the team.`}
                     title={`${monthLabel} roster`}
-                    to="/operator/april-roster"
+                    onClick={onOpenRosterPdf}
                   />
                 </div>
               </div>
@@ -1171,6 +1172,11 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
 
 function AdminDashboardView({
   dashboard,
+  rosterMeta,
+  rosterUploadFile,
+  setRosterUploadFile,
+  isUploadingRoster,
+  handleUploadRoster,
   operatorAccessData,
   operatorGrant,
   setOperatorGrant,
@@ -1260,6 +1266,43 @@ function AdminDashboardView({
                 />
               </div>
             </div>
+          </div>
+
+          <div className="mt-6 rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+              Roster management
+            </p>
+            <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+              Current roster PDF
+            </p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#51717b]">
+              Upload a PDF roster to publish `current_roster.pdf` for doctors and operators.
+            </p>
+
+            <form className="mt-5 flex flex-col gap-3 md:flex-row md:items-center" onSubmit={handleUploadRoster}>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-white">
+                <Upload className="size-4" />
+                Select PDF
+                <input
+                  accept="application/pdf"
+                  type="file"
+                  className="hidden"
+                  onChange={(event) => setRosterUploadFile(event.target.files?.[0] || null)}
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={!rosterUploadFile || isUploadingRoster}
+                className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isUploadingRoster ? "Uploading..." : "Upload current_roster.pdf"}
+              </button>
+              <p className="text-sm text-slate-500">
+                {rosterMeta?.has_roster
+                  ? `Last updated ${dayjs(rosterMeta.updated_at).format("MMM D, YYYY [at] h:mm A")}`
+                  : "No roster PDF uploaded yet"}
+              </p>
+            </form>
           </div>
         </div>
       </section>
@@ -1410,9 +1453,12 @@ function DashboardPage() {
   const { user, updateUser } = useAuth();
   const [dashboard, setDashboard] = useState(null);
   const [operatorAccessData, setOperatorAccessData] = useState(null);
+  const [rosterMeta, setRosterMeta] = useState(null);
+  const [rosterUploadFile, setRosterUploadFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSavingOperatorAccess, setIsSavingOperatorAccess] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [isUploadingRoster, setIsUploadingRoster] = useState(false);
   const [operatorGrant, setOperatorGrant] = useState({
     patient_id: "",
     operator_user_id: "",
@@ -1424,14 +1470,18 @@ function DashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [data, accessData] = await Promise.all([
+        const [data, accessData, rosterData] = await Promise.all([
           api.get("/dashboard"),
           user.role === "admin" ? api.get("/dashboard/operator-access") : Promise.resolve(null),
+          ["admin", "doctor", "operator"].includes(user.role)
+            ? api.get("/dashboard/roster")
+            : Promise.resolve(null),
         ]);
 
         if (!ignore) {
           setDashboard(data);
           setOperatorAccessData(accessData);
+          setRosterMeta(rosterData);
         }
       } catch (error) {
         if (!ignore) {
@@ -1450,6 +1500,44 @@ function DashboardPage() {
       ignore = true;
     };
   }, [user.role]);
+
+  async function handleUploadRoster(event) {
+    event.preventDefault();
+    if (!rosterUploadFile) {
+      toast.error("Please choose a PDF roster file first.");
+      return;
+    }
+
+    setIsUploadingRoster(true);
+    try {
+      const formData = new FormData();
+      formData.append("roster", rosterUploadFile);
+      const payload = await api.post("/dashboard/roster", formData);
+      setRosterMeta(payload);
+      setRosterUploadFile(null);
+      toast.success("Roster PDF uploaded.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsUploadingRoster(false);
+    }
+  }
+
+  async function handleOpenRosterPdf() {
+    if (!rosterMeta?.has_roster) {
+      toast.error("Roster PDF is not uploaded yet.");
+      return;
+    }
+
+    try {
+      const file = await api.getBlob("/dashboard/roster/file");
+      const blobUrl = window.URL.createObjectURL(file.blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60 * 1000);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
 
   async function refreshOperatorAccess() {
     if (user.role !== "admin") {
@@ -1530,6 +1618,7 @@ function DashboardPage() {
     return (
       <DoctorDashboardView
         isSavingStatus={isSavingStatus}
+        onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
         user={user}
       />
@@ -1540,6 +1629,7 @@ function DashboardPage() {
     return (
       <OperatorDashboardView
         isSavingStatus={isSavingStatus}
+        onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
         user={user}
       />
@@ -1571,6 +1661,11 @@ function DashboardPage() {
   return (
     <AdminDashboardView
       dashboard={dashboard}
+      rosterMeta={rosterMeta}
+      rosterUploadFile={rosterUploadFile}
+      setRosterUploadFile={setRosterUploadFile}
+      isUploadingRoster={isUploadingRoster}
+      handleUploadRoster={handleUploadRoster}
       isSavingStatus={isSavingStatus}
       onStatusChange={handleStatusChange}
       operatorAccessData={operatorAccessData}
