@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
@@ -1244,6 +1244,14 @@ export default function InventoryPage() {
           <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white">
             <div className="max-h-[560px] overflow-auto overflow-x-auto">
               <table className="min-w-full table-fixed text-left text-sm">
+                <colgroup>
+                  <col style={{ width: "50px" }} />
+                  <col style={{ width: "30%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "25%" }} />
+                </colgroup>
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <tr>
                     <th className="w-[50px] px-4 py-2.5 align-middle">
@@ -1273,108 +1281,102 @@ export default function InventoryPage() {
                     const ratio = parLevel > 0 ? quantity / parLevel : 1;
                     const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
                     return (
-                      <tr key={item.id}>
-                        <td colSpan={6} className="p-0">
-                          <table className="w-full">
-                            <tbody>
-                              <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
-                                <td className="px-4 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
-                                  {canManageOcs ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedItems.includes(Number(item.id))}
-                                      onChange={() => toggleSelected(item.id)}
-                                      className="size-4 accent-[#4FB8B3]"
-                                    />
-                                  ) : null}
-                                </td>
-                                <td className="px-4 py-2 align-middle text-left">
-                                  <div className="flex items-center gap-2">
-                                    <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
-                                      {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                                    </button>
-                                    <span className="font-semibold text-slate-900">{item.item_name}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 align-middle text-center">
-                                  <div className="inline-flex items-center justify-center gap-2">
-                                    <span>{item.quantity}</span>
-                                    {isDoctor && doctorViewIsMy ? (
-                                      <span
-                                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
-                                          trafficTone === "critical"
-                                            ? "bg-rose-100 text-rose-700"
-                                            : trafficTone === "warning"
-                                              ? "bg-amber-100 text-amber-700"
-                                              : "bg-teal-100 text-teal-700"
-                                        }`}
-                                      >
-                                        {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 align-middle text-center">{item.minimum_quantity}</td>
-                                <td className="px-4 py-2 align-middle text-center">{item.expiry_date || "Not set"}</td>
-                                <td className="px-4 py-2 align-middle text-left" onClick={(event) => event.stopPropagation()}>
-                                  <InventoryActionButtons
-                                    item={item}
-                                    canManageOcs={canManageOcs}
-                                    contextIsOcs={contextIsOcs}
-                                    isDoctor={isDoctor}
-                                    doctorViewIsMy={doctorViewIsMy}
-                                    doctorViewIsOcs={doctorViewIsOcs}
-                                    onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                                    onEdit={(nextItem) => setEditor({ item: nextItem })}
-                                    onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
-                                    onRestockMyInventory={(nextItem) => {
-                                      const source = ocsByFolderAndName.get(
-                                        `${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`,
-                                      );
-                                      if (!source?.id) {
-                                        toast.error("Item not available in OCS Master Stock.");
-                                        return;
-                                      }
-                                      setDoctorRestockItem({
-                                        ocs_item_id: Number(source.id),
-                                        item_name: nextItem.item_name,
-                                        ocs_available: Number(source.quantity || 0),
-                                      });
-                                      setDoctorRestockOpen(true);
-                                    }}
-                                    onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                                    onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                                  />
-                                </td>
-                              </tr>
-                              {expanded ? (
-                                <tr className="border-t border-slate-100 bg-slate-50/60">
-                                  <td colSpan={6} className="px-4 py-3">
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                      <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
-                                        <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
-                                        <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
-                                        <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
-                                      </div>
-                                      <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
-                                        <div className="mt-2 space-y-1">
-                                          {batches.length ? batches.map((batch) => (
-                                            <p key={batch.id} className="text-sm text-slate-700">
-                                              Batch #{batch.id} - Qty {batch.quantity_remaining} - Exp {batch.expiry_date || "N/A"} - Cost {formatRupees(batch.unit_cost)}
-                                            </p>
-                                          )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
+                      <Fragment key={item.id}>
+                        <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
+                          <td className="px-4 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
+                            {canManageOcs ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.includes(Number(item.id))}
+                                onChange={() => toggleSelected(item.id)}
+                                className="size-4 accent-[#4FB8B3]"
+                              />
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2 align-middle text-left">
+                            <div className="flex items-center gap-2">
+                              <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
+                                {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                              </button>
+                              <span className="font-semibold text-slate-900">{item.item_name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 align-middle text-center">
+                            <div className="inline-flex items-center justify-center gap-2">
+                              <span>{item.quantity}</span>
+                              {isDoctor && doctorViewIsMy ? (
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                                    trafficTone === "critical"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : trafficTone === "warning"
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-teal-100 text-teal-700"
+                                  }`}
+                                >
+                                  {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
+                                </span>
                               ) : null}
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 align-middle text-center">{item.minimum_quantity}</td>
+                          <td className="px-4 py-2 align-middle text-center">{item.expiry_date || "Not set"}</td>
+                          <td className="px-4 py-2 align-middle text-left" onClick={(event) => event.stopPropagation()}>
+                            <InventoryActionButtons
+                              item={item}
+                              canManageOcs={canManageOcs}
+                              contextIsOcs={contextIsOcs}
+                              isDoctor={isDoctor}
+                              doctorViewIsMy={doctorViewIsMy}
+                              doctorViewIsOcs={doctorViewIsOcs}
+                              onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                              onEdit={(nextItem) => setEditor({ item: nextItem })}
+                              onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                              onRestockMyInventory={(nextItem) => {
+                                const source = ocsByFolderAndName.get(
+                                  `${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`,
+                                );
+                                if (!source?.id) {
+                                  toast.error("Item not available in OCS Master Stock.");
+                                  return;
+                                }
+                                setDoctorRestockItem({
+                                  ocs_item_id: Number(source.id),
+                                  item_name: nextItem.item_name,
+                                  ocs_available: Number(source.quantity || 0),
+                                });
+                                setDoctorRestockOpen(true);
+                              }}
+                              onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                              onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                            />
+                          </td>
+                        </tr>
+                        {expanded ? (
+                          <tr className="border-t border-slate-100 bg-slate-50/60">
+                            <td colSpan={6} className="px-4 py-3">
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
+                                  <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
+                                  <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
+                                  <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
+                                  <div className="mt-2 space-y-1">
+                                    {batches.length ? batches.map((batch) => (
+                                      <p key={batch.id} className="text-sm text-slate-700">
+                                        Batch #{batch.id} - Qty {batch.quantity_remaining} - Exp {batch.expiry_date || "N/A"} - Cost {formatRupees(batch.unit_cost)}
+                                      </p>
+                                    )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>
