@@ -14,7 +14,7 @@ import { formatRupees } from "../lib/format.js";
 function SummaryCard({ title, value, tone = "teal", description }) {
   const toneClass = tone === "amber" ? "text-amber-700" : "text-[#4FB8B3]";
   return (
-    <div className="rounded-[26px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_36px_rgba(34,72,91,0.06)]">
+    <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_16px_36px_rgba(34,72,91,0.06)]">
       <p className={`text-xs font-semibold uppercase tracking-[0.22em] ${toneClass}`}>{title}</p>
       <p className="mt-3 text-3xl font-bold text-slate-950">{value}</p>
       <p className="mt-2 text-sm text-slate-600">{description}</p>
@@ -512,7 +512,7 @@ export default function InventoryPage() {
         <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" description="Traffic-light alert counters." />
       </div>
 
-      <SectionCard title="View By" subtitle="Filter OCS Stock by folder.">
+      <SectionCard title="View OCS Stock by" subtitle="Filter OCS Stock by folder.">
         <div className="space-y-4">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
