@@ -1101,7 +1101,7 @@ export default function InventoryPage() {
         </div>
       </SectionCard>
 
-      {isAdmin ? (
+      {canManageOcs ? (
         <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">

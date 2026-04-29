@@ -81,12 +81,64 @@ function ensureInfrastructure() {
       FOREIGN KEY (item_id) REFERENCES inventory(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS inventory_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action_type TEXT NOT NULL,
+      item_id INTEGER,
+      item_name TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL DEFAULT 0,
+      reason TEXT NOT NULL DEFAULT '',
+      target_doctor_id INTEGER,
+      target_doctor_name TEXT NOT NULL DEFAULT '',
+      performed_by_user_id INTEGER,
+      performed_by_role TEXT NOT NULL DEFAULT '',
+      performed_by_name TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_inventory_scope_owner ON inventory(stock_scope, owner_doctor_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_batches_item ON inventory_batches(item_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_staging_status ON inventory_staging(status);
+    CREATE INDEX IF NOT EXISTS idx_inventory_audit_created_at ON inventory_audit_logs(created_at);
   `);
 
   infrastructureReady = true;
+}
+
+function recordAudit({
+  actionType,
+  itemId = null,
+  itemName = "",
+  quantity = 0,
+  reason = "",
+  targetDoctorId = null,
+  targetDoctorName = "",
+  performedByUserId = null,
+  performedByRole = "",
+  performedByName = "",
+  metaJson = "{}",
+}) {
+  db.prepare(`
+    INSERT INTO inventory_audit_logs (
+      action_type, item_id, item_name, quantity, reason,
+      target_doctor_id, target_doctor_name,
+      performed_by_user_id, performed_by_role, performed_by_name, meta_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    actionType,
+    itemId,
+    String(itemName || ""),
+    Number(quantity || 0),
+    String(reason || ""),
+    targetDoctorId,
+    String(targetDoctorName || ""),
+    performedByUserId,
+    String(performedByRole || ""),
+    String(performedByName || ""),
+    metaJson,
+  );
 }
 
 function ensureFolders() {
@@ -415,7 +467,7 @@ function getPayload(req, selectedDoctorId = null) {
     near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
     movements: getMovements(role, doctorId),
     staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
-    compare_rows: role === "admin" ? getCompareRows() : [],
+    compare_rows: role === "admin" || role === "operator" ? getCompareRows() : [],
   };
 }
 
@@ -590,6 +642,20 @@ router.post("/items/:id/ocs-actions", (req, res) => {
         actionType: "stock_in",
         note: "Stock In batch added",
         userId: req.auth.id,
+        metaJson: JSON.stringify({
+          performed_by_user_id: req.auth.id,
+          performed_by_role: req.auth.role,
+          performed_by_name: req.auth.full_name || req.auth.username || "",
+        }),
+      });
+      recordAudit({
+        actionType: "stock_in",
+        itemId,
+        itemName: item.item_name,
+        quantity,
+        performedByUserId: req.auth.id,
+        performedByRole: req.auth.role,
+        performedByName: req.auth.full_name || req.auth.username || "",
       });
     })();
 
@@ -621,6 +687,22 @@ router.post("/items/:id/ocs-actions", (req, res) => {
         actionType: "remove",
         note: `Write-off (${reason})`,
         userId: req.auth.id,
+        metaJson: JSON.stringify({
+          reason,
+          performed_by_user_id: req.auth.id,
+          performed_by_role: req.auth.role,
+          performed_by_name: req.auth.full_name || req.auth.username || "",
+        }),
+      });
+      recordAudit({
+        actionType: "remove",
+        itemId,
+        itemName: item.item_name,
+        quantity,
+        reason,
+        performedByUserId: req.auth.id,
+        performedByRole: req.auth.role,
+        performedByName: req.auth.full_name || req.auth.username || "",
       });
     })();
   } catch (error) {
@@ -680,6 +762,24 @@ router.post("/bulk/remove", (req, res) => {
           actionType: "remove",
           note: `Bulk write-off (${reason})`,
           userId: req.auth.id,
+          metaJson: JSON.stringify({
+            reason,
+            bulk: true,
+            performed_by_user_id: req.auth.id,
+            performed_by_role: req.auth.role,
+            performed_by_name: req.auth.full_name || req.auth.username || "",
+          }),
+        });
+        recordAudit({
+          actionType: "bulk_remove",
+          itemId,
+          itemName: item.item_name,
+          quantity: previousQuantity,
+          reason,
+          performedByUserId: req.auth.id,
+          performedByRole: req.auth.role,
+          performedByName: req.auth.full_name || req.auth.username || "",
+          metaJson: JSON.stringify({ bulk: true }),
         });
       });
     })();
@@ -875,7 +975,12 @@ router.post("/restock", (req, res) => {
         userId: req.auth.id,
         referenceType: "doctor",
         referenceId: doctorId,
-        metaJson: JSON.stringify({ doctor_name: doctor.full_name }),
+      metaJson: JSON.stringify({
+        doctor_name: doctor.full_name,
+        performed_by_user_id: req.auth.id,
+        performed_by_role: req.auth.role,
+        performed_by_name: req.auth.full_name || req.auth.username || "",
+      }),
       });
 
       let targetItemId;
@@ -925,7 +1030,24 @@ router.post("/restock", (req, res) => {
         userId: req.auth.id,
         referenceType: "doctor",
         referenceId: doctorId,
+      metaJson: JSON.stringify({
+        performed_by_user_id: req.auth.id,
+        performed_by_role: req.auth.role,
+        performed_by_name: req.auth.full_name || req.auth.username || "",
+      }),
       });
+    recordAudit({
+      actionType: "restock_doctor",
+      itemId: source.id,
+      itemName: source.item_name,
+      quantity,
+      targetDoctorId: doctorId,
+      targetDoctorName: doctor.full_name,
+      performedByUserId: req.auth.id,
+      performedByRole: req.auth.role,
+      performedByName: req.auth.full_name || req.auth.username || "",
+      metaJson: JSON.stringify({ source_item_id: source.id, target_item_id: targetItemId }),
+    });
     })();
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Restock failed." });
