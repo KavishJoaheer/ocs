@@ -166,8 +166,8 @@ function createApp() {
     res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
   });
 
-  app.use((error, _req, res, _next) => {
-    console.error(error);
+  app.use((error, req, res, _next) => {
+    console.error(`[error] ${req?.method || "?"} ${req?.originalUrl || "?"}:`, error);
 
     if (error?.name === "MulterError") {
       if (error.code === "LIMIT_FILE_SIZE") {
@@ -187,7 +187,10 @@ function createApp() {
       return res.status(400).json({ error: error.message });
     }
 
-    res.status(500).json({ error: "Unexpected server error." });
+    const detail = error?.message ? String(error.message).slice(0, 500) : "";
+    res.status(500).json({
+      error: detail ? `Server error: ${detail}` : "Unexpected server error.",
+    });
   });
 
   return app;
