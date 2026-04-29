@@ -154,6 +154,22 @@ function getItems({ stockScope, doctorId = null }) {
     }));
 }
 
+function getBatchesForItem(itemId) {
+  return db
+    .prepare(`
+      SELECT id, quantity_remaining, expiry_date, unit_cost, created_at
+      FROM inventory_batches
+      WHERE item_id = ?
+      ORDER BY CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date ASC, id ASC
+    `)
+    .all(itemId)
+    .map((row) => ({
+      ...row,
+      quantity_remaining: Number(row.quantity_remaining || 0),
+      unit_cost: roundCurrency(row.unit_cost),
+    }));
+}
+
 function getDoctors() {
   return db
     .prepare(`
@@ -603,6 +619,125 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     })();
   } catch (error) {
     return res.status(400).json({ error: error?.message || "Unable to remove stock." });
+  }
+
+  return res.status(201).json(getPayload(req));
+});
+
+router.get("/items/:id/batches", (req, res) => {
+  ensureInfrastructure();
+  const role = req.auth.role;
+  const isDoctor = role === "doctor";
+  const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
+  const stockScope = isDoctor ? "doctor" : "ocs";
+  const itemId = Number(req.params.id);
+  const item = findItem(itemId, stockScope, doctorId);
+  if (!item) return res.status(404).json({ error: "Stock item not found." });
+
+  res.json({
+    item_id: itemId,
+    batches: getBatchesForItem(itemId),
+  });
+});
+
+router.post("/bulk/remove", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin/operator can run bulk remove." });
+  }
+
+  const itemIds = Array.isArray(req.body.item_ids) ? req.body.item_ids.map((id) => Number(id)).filter(Boolean) : [];
+  const reason = String(req.body.reason || "").trim();
+  if (!itemIds.length) return res.status(400).json({ error: "item_ids are required." });
+  if (!["Expired", "Discontinued", "Damaged"].includes(reason)) {
+    return res.status(400).json({ error: "Reason must be Expired, Discontinued, or Damaged." });
+  }
+
+  try {
+    db.transaction(() => {
+      itemIds.forEach((itemId) => {
+        const item = findItem(itemId, "ocs", null);
+        if (!item) throw new Error(`OCS stock item not found: ${itemId}`);
+        const previousQuantity = Number(item.quantity || 0);
+        if (previousQuantity <= 0) return;
+
+        const consumed = consumeBatches(itemId, previousQuantity);
+        if (!consumed.ok) throw new Error(`Insufficient batch stock for item ${itemId}`);
+
+        db.prepare("UPDATE inventory SET quantity = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(itemId);
+        recordMovement({
+          itemId,
+          movementType: "out",
+          quantity: previousQuantity,
+          previousQuantity,
+          nextQuantity: 0,
+          actionType: "remove",
+          note: `Bulk write-off (${reason})`,
+          userId: req.auth.id,
+        });
+      });
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Bulk remove failed." });
+  }
+
+  return res.status(201).json(getPayload(req));
+});
+
+router.post("/bulk/edit", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin/operator can run bulk edit." });
+  }
+
+  const itemIds = Array.isArray(req.body.item_ids) ? req.body.item_ids.map((id) => Number(id)).filter(Boolean) : [];
+  const nextMinQty = req.body.minimum_quantity;
+  const nextFolderId = req.body.folder_id;
+  if (!itemIds.length) return res.status(400).json({ error: "item_ids are required." });
+
+  const hasMinQty = nextMinQty !== undefined && nextMinQty !== null && String(nextMinQty) !== "";
+  const hasFolderId = nextFolderId !== undefined && nextFolderId !== null && String(nextFolderId) !== "";
+  if (!hasMinQty && !hasFolderId) {
+    return res.status(400).json({ error: "Provide minimum_quantity and/or folder_id." });
+  }
+
+  if (hasMinQty) {
+    const qty = Number(nextMinQty);
+    if (!Number.isInteger(qty) || qty < 0) {
+      return res.status(400).json({ error: "minimum_quantity must be zero or more." });
+    }
+  }
+
+  if (hasFolderId) {
+    const folderId = Number(nextFolderId);
+    const folder = db
+      .prepare("SELECT id FROM inventory_folders WHERE id = ? AND owner_doctor_id IS NULL")
+      .get(folderId);
+    if (!folder) return res.status(404).json({ error: "Folder not found." });
+  }
+
+  try {
+    db.transaction(() => {
+      itemIds.forEach((itemId) => {
+        const item = findItem(itemId, "ocs", null);
+        if (!item) throw new Error(`OCS stock item not found: ${itemId}`);
+
+        db.prepare(`
+          UPDATE inventory
+          SET
+            minimum_quantity = COALESCE(?, minimum_quantity),
+            folder_id = COALESCE(?, folder_id),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(
+          hasMinQty ? Number(nextMinQty) : null,
+          hasFolderId ? Number(nextFolderId) : null,
+          itemId,
+        );
+      });
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Bulk edit failed." });
   }
 
   return res.status(201).json(getPayload(req));

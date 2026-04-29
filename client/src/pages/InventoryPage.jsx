@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -318,6 +318,106 @@ function RemoveStockModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
+function BulkRemoveModal({ open, count, isSaving, onClose, onSubmit }) {
+  const [reason, setReason] = useState("Discontinued");
+
+  useEffect(() => {
+    if (!open) return;
+    setReason("Discontinued");
+  }, [open]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Bulk Remove" description={`Apply write-off to ${count} selected item(s).`}>
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({ reason });
+        }}
+      >
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Reason</span>
+          <select value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <option value="Expired">Expired</option>
+            <option value="Discontinued">Discontinued</option>
+            <option value="Damaged">Damaged</option>
+          </select>
+        </label>
+
+        <p className="text-xs text-rose-700">
+          This action removes all currently available quantity for selected items using FEFO batch deduction.
+        </p>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+            Cancel
+          </button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Removing..." : "Confirm Bulk Remove"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function BulkEditModal({ open, folders, isSaving, onClose, onSubmit }) {
+  const [minimumQty, setMinimumQty] = useState("");
+  const [folderId, setFolderId] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setMinimumQty("");
+    setFolderId("");
+  }, [open]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Bulk Edit" description="Update minimum qty and/or folder for selected items.">
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({
+            minimum_quantity: minimumQty,
+            folder_id: folderId,
+          });
+        }}
+      >
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Minimum Qty (optional)</span>
+          <input
+            min={0}
+            step={1}
+            type="number"
+            value={minimumQty}
+            onChange={(event) => setMinimumQty(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Category / Folder (optional)</span>
+          <select value={folderId} onChange={(event) => setFolderId(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <option value="">Keep existing folder</option>
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>{folder.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+            Cancel
+          </button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Saving..." : "Apply Bulk Edit"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
   const [doctorId, setDoctorId] = useState("");
   const [doctorQuery, setDoctorQuery] = useState("");
@@ -411,7 +511,16 @@ export default function InventoryPage() {
   const [restock, setRestock] = useState(null);
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
+  const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+  const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
+  const [sortMode, setSortMode] = useState("expiry_asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [batchMap, setBatchMap] = useState({});
 
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
@@ -419,8 +528,8 @@ export default function InventoryPage() {
   const folders = data?.folders || [];
   const doctors = data?.doctors || [];
   const items = isDoctor ? data?.my_stock || [] : data?.ocs_stock || [];
-  const lowStockItems = data?.low_stock_items || [];
   const summary = data?.summary || {};
+  const pageSize = 50;
 
   async function load() {
     setLoading(true);
@@ -448,12 +557,49 @@ export default function InventoryPage() {
     }
   }, [data, selectedView]);
 
-  const visibleItems = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const source = selectedView ? items.filter((item) => String(item.folder_id) === String(selectedView)) : items;
-    return source.filter((item) => !needle || item.item_name.toLowerCase().includes(needle));
-  }, [items, search, selectedView]);
-  // "Stock Viewer" (doctor selector) removed per Phase 1 updates.
+    return source
+      .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
+      .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
+      .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry));
+  }, [items, search, selectedView, showLowStockOnly, showNearExpiryOnly]);
+
+  const sortedItems = useMemo(() => {
+    const rows = [...filteredItems];
+    if (sortMode === "qty_asc") {
+      rows.sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
+      return rows;
+    }
+    if (sortMode === "qty_desc") {
+      rows.sort((a, b) => Number(b.quantity || 0) - Number(a.quantity || 0));
+      return rows;
+    }
+    const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
+    rows.sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
+    return rows;
+  }, [filteredItems, sortMode]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / pageSize));
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedItems.slice(start, start + pageSize);
+  }, [sortedItems, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    // Keep only still-visible selections when filtering changes.
+    const allowed = new Set(sortedItems.map((item) => Number(item.id)));
+    setSelectedItems((prev) => prev.filter((id) => allowed.has(Number(id))));
+  }, [sortedItems]);
 
   if (loading) return <LoadingState label="Loading inventory workspace" />;
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
@@ -559,6 +705,112 @@ export default function InventoryPage() {
     }
   }
 
+  async function loadBatches(itemId) {
+    const key = Number(itemId);
+    if (!key || batchMap[key]) return;
+    try {
+      const response = await api.get(`/inventory/items/${key}/batches`);
+      setBatchMap((prev) => ({ ...prev, [key]: response.batches || [] }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  function toggleExpanded(itemId) {
+    const key = Number(itemId);
+    const willExpand = !expandedRows[key];
+    setExpandedRows((prev) => ({ ...prev, [key]: !prev[key] }));
+    if (willExpand) {
+      loadBatches(key);
+    }
+  }
+
+  function toggleSelected(itemId) {
+    const key = Number(itemId);
+    setSelectedItems((prev) => (prev.includes(key) ? prev.filter((id) => id !== key) : [...prev, key]));
+  }
+
+  function toggleSelectAllFiltered() {
+    const filteredIds = sortedItems.map((item) => Number(item.id));
+    const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedItems.includes(id));
+    if (allSelected) {
+      setSelectedItems((prev) => prev.filter((id) => !filteredIds.includes(id)));
+    } else {
+      setSelectedItems((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  }
+
+  async function runBulkRemove({ reason }) {
+    if (!selectedItems.length) return;
+    setIsSaving(true);
+    try {
+      const next = await api.post("/inventory/bulk/remove", {
+        item_ids: selectedItems,
+        reason,
+      });
+      setData(next);
+      setSelectedItems([]);
+      setBulkRemoveOpen(false);
+      toast.success("Bulk remove completed.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function runBulkEdit({ minimum_quantity, folder_id }) {
+    if (!selectedItems.length) return;
+    const hasMin = minimum_quantity !== undefined && minimum_quantity !== null && String(minimum_quantity) !== "";
+    const hasFolder = folder_id !== undefined && folder_id !== null && String(folder_id) !== "";
+    if (!hasMin && !hasFolder) {
+      toast.error("Set at least one value for bulk edit.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const next = await api.post("/inventory/bulk/edit", {
+        item_ids: selectedItems,
+        minimum_quantity,
+        folder_id,
+      });
+      setData(next);
+      setSelectedItems([]);
+      setBulkEditOpen(false);
+      toast.success("Bulk edit applied.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function exportSelectedCsv() {
+    if (!selectedItems.length) return;
+    const selectedSet = new Set(selectedItems.map((id) => Number(id)));
+    const rows = sortedItems.filter((item) => selectedSet.has(Number(item.id)));
+    const header = ["Item Name", "Qty", "Min Qty", "Nearest Expiry", "Cost (Rs)", "Sell (Rs)", "Folder"];
+    const lines = rows.map((item) => [
+      item.item_name,
+      item.quantity,
+      item.minimum_quantity,
+      item.expiry_date || "",
+      Number(item.cost_price || 0).toFixed(2),
+      Number(item.selling_price || 0).toFixed(2),
+      item.folder_name || "",
+    ]);
+    const csv = [header, ...lines]
+      .map((line) => line.map((value) => `"${String(value).replace(/"/g, "\"\"")}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `ocs-stock-selection-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function removeItem() {
     if (!itemToDelete) return;
     try {
@@ -608,66 +860,135 @@ export default function InventoryPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={isDoctor ? "My Stock Items" : "OCS Stock Items"} subtitle={`${visibleItems.length} item(s) found`}>
-        {visibleItems.length ? (
+      <SectionCard title={isDoctor ? "My Stock Items" : "OCS Stock Items"} subtitle={`${sortedItems.length} filtered item(s)`}>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowLowStockOnly((prev) => !prev)}
+            className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+          >
+            Show Low Stock
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowNearExpiryOnly((prev) => !prev)}
+            className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+          >
+            Show Near Expiry
+          </button>
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+            <option value="expiry_asc">Sort: Expiry (Soonest)</option>
+            <option value="qty_asc">Sort: Qty (Lowest)</option>
+            <option value="qty_desc">Sort: Qty (Highest)</option>
+          </select>
+        </div>
+
+        {selectedItems.length > 0 ? (
+          <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#4FB8B3] px-3 py-2 text-white shadow">
+            <span className="text-sm font-semibold">{selectedItems.length} selected</span>
+            <button type="button" onClick={() => setBulkRemoveOpen(true)} className="rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">Bulk Remove</button>
+            <button type="button" onClick={() => setBulkEditOpen(true)} className="rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">Bulk Edit</button>
+            <button type="button" onClick={exportSelectedCsv} className="inline-flex items-center gap-1 rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">
+              <Download className="size-3.5" />
+              Bulk Export CSV
+            </button>
+          </div>
+        ) : null}
+
+        {pagedItems.length ? (
           <div className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white">
-            <div className="overflow-x-auto">
+            <div className="max-h-[560px] overflow-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <tr>
+                    <th className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={sortedItems.length > 0 && sortedItems.every((item) => selectedItems.includes(Number(item.id)))}
+                        onChange={toggleSelectAllFiltered}
+                        className="size-4 accent-[#4FB8B3]"
+                      />
+                    </th>
                     <th className="px-4 py-3">Item Name</th>
                     <th className="px-4 py-3">Qty</th>
                     <th className="px-4 py-3">Min Qty</th>
-                    <th className="px-4 py-3">Cost / Sell</th>
-                    <th className="px-4 py-3">Expiry</th>
+                    <th className="px-4 py-3">Nearest Expiry</th>
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleItems.map((item) => {
+                  {pagedItems.map((item) => {
                     const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
+                    const expanded = Boolean(expandedRows[item.id]);
+                    const batches = batchMap[item.id] || [];
                     return (
-                      <tr key={item.id} className={`border-t border-slate-200/70 ${isLow ? "bg-red-50" : ""}`}>
-                        <td className="px-4 py-3 align-top">
-                          <p className="font-semibold text-slate-900">{item.item_name}</p>
-                          <p className="mt-1 text-xs text-slate-500">Attributes: {item.attributes || "N/A"}</p>
-                          <p className="mt-1 text-xs text-slate-500">MOA: {item.moa_notes || "N/A"}</p>
-                        </td>
-                        <td className="px-4 py-3">{item.quantity}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isLow ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700"}`}>
-                            {item.minimum_quantity}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">{formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</td>
-                        <td className="px-4 py-3">{item.expiry_date || "Not set"}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            {canManageOcs ? (
-                              <button
-                                type="button"
-                                onClick={() => setAddStock({ item })}
-                                className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]"
-                              >
-                                Stock In
-                              </button>
-                            ) : null}
-                            <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
-                            {isDoctor ? (
-                              <>
-                                <button type="button" onClick={() => setMovement({ item, type: "add" })} className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 px-2.5 py-1.5 text-xs font-semibold text-emerald-700"><Plus className="size-3.5" />Add</button>
-                                <button type="button" onClick={() => setMovement({ item, type: "remove" })} className="inline-flex items-center gap-1 rounded-xl border border-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-700"><MinusCircle className="size-3.5" />Remove</button>
-                                <button type="button" onClick={() => setMovement({ item, type: "sell" })} className="inline-flex items-center gap-1 rounded-xl border border-sky-200 px-2.5 py-1.5 text-xs font-semibold text-sky-700"><ShoppingCart className="size-3.5" />Sell</button>
-                              </>
-                            ) : canManageOcs ? (
-                              <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
-                            ) : null}
-                            {canManageOcs ? (
-                              <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Remove</button>
-                            ) : (
-                              <button type="button" onClick={() => setItemToDelete(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Delete</button>
-                            )}
-                          </div>
+                      <tr key={item.id}>
+                        <td colSpan={6} className="p-0">
+                          <table className="w-full">
+                            <tbody>
+                              <tr className={`border-t border-slate-200/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
+                                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedItems.includes(Number(item.id))}
+                                    onChange={() => toggleSelected(item.id)}
+                                    className="size-4 accent-[#4FB8B3]"
+                                  />
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
+                                      {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                                    </button>
+                                    <span className="font-semibold text-slate-900">{item.item_name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">{item.quantity}</td>
+                                <td className="px-4 py-3">{item.minimum_quantity}</td>
+                                <td className="px-4 py-3">{item.expiry_date || "Not set"}</td>
+                                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                                  <div className="flex flex-wrap gap-2">
+                                    {canManageOcs ? (
+                                      <button type="button" onClick={() => setAddStock({ item })} className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]">
+                                        Stock In
+                                      </button>
+                                    ) : null}
+                                    <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
+                                    {canManageOcs ? (
+                                      <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
+                                    ) : null}
+                                    {canManageOcs ? (
+                                      <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Remove</button>
+                                    ) : null}
+                                  </div>
+                                </td>
+                              </tr>
+                              {expanded ? (
+                                <tr className="border-t border-slate-100 bg-slate-50/60">
+                                  <td colSpan={6} className="px-4 py-3">
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
+                                        <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
+                                        <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
+                                        <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
+                                      </div>
+                                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
+                                        <div className="mt-2 space-y-1">
+                                          {batches.length ? batches.map((batch) => (
+                                            <p key={batch.id} className="text-sm text-slate-700">
+                                              Batch #{batch.id} - Qty {batch.quantity_remaining} - Exp {batch.expiry_date || "N/A"} - Cost {formatRupees(batch.unit_cost)}
+                                            </p>
+                                          )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </tbody>
+                          </table>
                         </td>
                       </tr>
                     );
@@ -679,6 +1000,20 @@ export default function InventoryPage() {
         ) : (
           <EmptyState title="No stock items found" description="Add stock to one of the required folders to begin tracking." />
         )}
+
+        <div className="mt-3 flex items-center justify-between">
+          <p className="text-xs text-slate-500">
+            Page {currentPage} of {totalPages} - {sortedItems.length} filtered item(s)
+          </p>
+          <div className="flex gap-2">
+            <button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+              Previous
+            </button>
+            <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+              Next
+            </button>
+          </div>
+        </div>
       </SectionCard>
 
       {isAdmin ? (
@@ -711,6 +1046,8 @@ export default function InventoryPage() {
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
+      <BulkRemoveModal open={bulkRemoveOpen} count={selectedItems.length} isSaving={isSaving} onClose={() => setBulkRemoveOpen(false)} onSubmit={runBulkRemove} />
+      <BulkEditModal open={bulkEditOpen} folders={folders} isSaving={isSaving} onClose={() => setBulkEditOpen(false)} onSubmit={runBulkEdit} />
       <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
     </div>
   );
