@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, FileUp, MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
+import { FileUp, MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -12,7 +12,7 @@ import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 
 function SummaryCard({ title, value, tone = "teal", description }) {
-  const toneClass = tone === "amber" ? "text-amber-700" : "text-[#2d8f98]";
+  const toneClass = tone === "amber" ? "text-amber-700" : "text-[#4FB8B3]";
   return (
     <div className="rounded-[26px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_36px_rgba(34,72,91,0.06)]">
       <p className={`text-xs font-semibold uppercase tracking-[0.22em] ${toneClass}`}>{title}</p>
@@ -120,7 +120,7 @@ function ItemModal({ open, item, folders, isSaving, onClose, onSubmit }) {
         </label>
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : item ? "Update Item" : "Add Item"}</button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : item ? "Update Item" : "Add Item"}</button>
         </div>
       </form>
     </Modal>
@@ -181,7 +181,52 @@ function ActionModal({ open, item, type, isSaving, onClose, onSubmit }) {
         </label>
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : title}</button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : title}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
+  const [quantityDelta, setQuantityDelta] = useState("1");
+
+  useEffect(() => {
+    if (!open) return;
+    setQuantityDelta("1");
+  }, [open]);
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Add stock${item ? ` - ${item.item_name}` : ""}`} description="Increase item quantity in OCS Stock.">
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const delta = Number(quantityDelta || 0);
+          if (!Number.isInteger(delta) || delta <= 0) return toast.error("Quantity must be a whole number greater than 0.");
+          onSubmit({ quantity_delta: delta });
+        }}
+      >
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Quantity to add</span>
+          <input
+            required
+            min={1}
+            step={1}
+            type="number"
+            value={quantityDelta}
+            onChange={(event) => setQuantityDelta(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+            Cancel
+          </button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Adding..." : "Add"}
+          </button>
         </div>
       </form>
     </Modal>
@@ -190,16 +235,25 @@ function ActionModal({ open, item, type, isSaving, onClose, onSubmit }) {
 
 function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
   const [doctorId, setDoctorId] = useState("");
+  const [doctorQuery, setDoctorQuery] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [note, setNote] = useState("");
 
   useEffect(() => {
     if (open) {
       setDoctorId("");
+      setDoctorQuery("");
       setQuantity("1");
-      setNote("");
     }
   }, [open]);
+
+  const doctorOptions = useMemo(() => {
+    const q = doctorQuery.trim().toLowerCase();
+    const sorted = doctors
+      .slice()
+      .sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || "")));
+    if (!q) return sorted;
+    return sorted.filter((d) => String(d.full_name || "").toLowerCase().includes(q));
+  }, [doctors, doctorQuery]);
 
   return (
     <Modal open={open} onClose={onClose} title={`Restock doctor${item ? ` - ${item.item_name}` : ""}`} description="Transfer stock atomically from OCS Stock to selected doctor.">
@@ -207,34 +261,53 @@ function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
+          if (!doctorId) return toast.error("Select a doctor.");
           onSubmit({
             ocs_item_id: item?.id,
             doctor_id: Number(doctorId || 0),
             quantity: Number(quantity || 0),
-            note,
           });
         }}
       >
         <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Doctor</span>
-          <select required value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <option value="">Select doctor</option>
-            {doctors.map((doctor) => (
-              <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
-            ))}
-          </select>
+          <span className="text-sm font-semibold text-slate-700">Doctor (search)</span>
+          <input
+            required
+            value={doctorQuery}
+            onChange={(event) => setDoctorQuery(event.target.value)}
+            placeholder="Search doctor by name..."
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+
+          <div className="max-h-44 overflow-auto rounded-2xl border border-slate-200 bg-white">
+            {doctorOptions.length ? (
+              doctorOptions.map((doctor) => (
+                <button
+                  key={doctor.id}
+                  type="button"
+                  onClick={() => setDoctorId(String(doctor.id))}
+                  className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
+                    String(doctor.id) === String(doctorId) ? "bg-[rgba(79,184,179,0.12)]" : ""
+                  }`}
+                >
+                  {doctor.full_name}
+                </button>
+              ))
+            ) : (
+              <div className="px-4 py-3 text-sm text-slate-500">No matches</div>
+            )}
+          </div>
         </label>
+
         <label className="space-y-2">
           <span className="text-sm font-semibold text-slate-700">Quantity</span>
           <input required min="1" type="number" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
         </label>
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Note</span>
-          <textarea rows="3" value={note} onChange={(event) => setNote(event.target.value)} className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3" />
-        </label>
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Restocking..." : "Restock"}</button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Restocking..." : "Restock Doctor"}
+          </button>
         </div>
       </form>
     </Modal>
@@ -247,11 +320,12 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedView, setSelectedView] = useState("all");
+  const [selectedView, setSelectedView] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
+  const [addStock, setAddStock] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [csvText, setCsvText] = useState("");
 
@@ -283,16 +357,20 @@ export default function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctorId]);
 
+  // Default "View By" folder after inventory payload loads.
+  useEffect(() => {
+    if (!data?.folders?.length) return;
+    const valid = data.folders.some((f) => String(f.id) === String(selectedView));
+    if (!selectedView || !valid) {
+      setSelectedView(String(data.folders[0].id));
+    }
+  }, [data, selectedView]);
+
   const visibleItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    const source =
-      selectedView === "low-stock"
-        ? lowStockItems
-        : selectedView === "all"
-          ? items
-          : items.filter((item) => String(item.folder_id) === String(selectedView));
+    const source = selectedView ? items.filter((item) => String(item.folder_id) === String(selectedView)) : items;
     return source.filter((item) => !needle || item.item_name.toLowerCase().includes(needle));
-  }, [items, lowStockItems, search, selectedView]);
+  }, [items, search, selectedView]);
   const doctorOptions = useMemo(
     () => [...doctors].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
     [doctors],
@@ -338,6 +416,38 @@ export default function InventoryPage() {
       setData(next);
       setRestock(null);
       toast.success("Doctor restock completed.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveAddStock(payload) {
+    if (!addStock?.item) return;
+    const delta = Number(payload?.quantity_delta || 0);
+    if (!Number.isInteger(delta) || delta <= 0) return;
+
+    setIsSaving(true);
+    try {
+      const item = addStock.item;
+      const nextQuantity = Number(item.quantity || 0) + delta;
+      const next = await api.put(`/inventory/items/${item.id}`, {
+        item_name: item.item_name,
+        folder_id: item.folder_id,
+        quantity: nextQuantity,
+        minimum_quantity: item.minimum_quantity,
+        unit: item.unit,
+        cost_price: item.cost_price,
+        selling_price: item.selling_price,
+        attributes: item.attributes || "",
+        moa_notes: item.moa_notes || "",
+        expiry_date: item.expiry_date || "",
+        adjustment_note: `Added ${delta} units`,
+      });
+      setData(next);
+      setAddStock(null);
+      toast.success("Stock added.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -395,7 +505,7 @@ export default function InventoryPage() {
         title={isDoctor ? "My Stock" : "OCS Stock"}
         description={isDoctor ? "Editable personal inventory with billing-linked sell flow and expiry safety checks." : "Central master stock with replenishment controls, staging imports, and stocktake tools."}
         actions={
-          <button type="button" onClick={() => setEditor({ item: null })} className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#26717c]">
+          <button type="button" onClick={() => setEditor({ item: null })} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]">
             <Plus className="size-4" />
             Add Item
           </button>
@@ -423,20 +533,15 @@ export default function InventoryPage() {
         <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" description="Traffic-light alert counters." />
       </div>
 
-      <SectionCard title="Folders and Search" subtitle="Browse mandatory folders and low-stock dashboard.">
+      <SectionCard title="View By" subtitle="Filter OCS Stock by folder.">
         <div className="space-y-4">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by item name" className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4" />
           </label>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setSelectedView("all")} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === "all" ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>All</button>
-            <button type="button" onClick={() => setSelectedView("low-stock")} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === "low-stock" ? "bg-amber-500 text-white" : "border border-amber-200 bg-amber-50 text-amber-800"}`}>
-              <AlertTriangle className="size-4" />
-              Low Stock Dashboard
-            </button>
             {folders.map((folder) => (
-              <button key={folder.id} type="button" onClick={() => setSelectedView(String(folder.id))} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === String(folder.id) ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>
+              <button key={folder.id} type="button" onClick={() => setSelectedView(String(folder.id))} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>
                 {folder.name}
               </button>
             ))}
@@ -451,8 +556,7 @@ export default function InventoryPage() {
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">Item</th>
-                    <th className="px-4 py-3">Folder</th>
+                    <th className="px-4 py-3">Item Name</th>
                     <th className="px-4 py-3">Qty</th>
                     <th className="px-4 py-3">Min Qty</th>
                     <th className="px-4 py-3">Cost / Sell</th>
@@ -464,14 +568,13 @@ export default function InventoryPage() {
                   {visibleItems.map((item) => {
                     const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
                     return (
-                      <tr key={item.id} className="border-t border-slate-200/70">
+                      <tr key={item.id} className={`border-t border-slate-200/70 ${isLow ? "bg-red-50" : ""}`}>
                         <td className="px-4 py-3 align-top">
                           <p className="font-semibold text-slate-900">{item.item_name}</p>
                           <p className="mt-1 text-xs text-slate-500">Attributes: {item.attributes || "N/A"}</p>
                           <p className="mt-1 text-xs text-slate-500">MOA: {item.moa_notes || "N/A"}</p>
                         </td>
-                        <td className="px-4 py-3">{item.folder_name}</td>
-                        <td className="px-4 py-3">{item.quantity} {item.unit}</td>
+                        <td className="px-4 py-3">{item.quantity}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isLow ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700"}`}>
                             {item.minimum_quantity}
@@ -481,6 +584,15 @@ export default function InventoryPage() {
                         <td className="px-4 py-3">{item.expiry_date || "Not set"}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
+                            {canManageOcs ? (
+                              <button
+                                type="button"
+                                onClick={() => setAddStock({ item })}
+                                className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]"
+                              >
+                                Add
+                              </button>
+                            ) : null}
                             <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
                             {isDoctor ? (
                               <>
@@ -489,7 +601,7 @@ export default function InventoryPage() {
                                 <button type="button" onClick={() => setMovement({ item, type: "sell" })} className="inline-flex items-center gap-1 rounded-xl border border-sky-200 px-2.5 py-1.5 text-xs font-semibold text-sky-700"><ShoppingCart className="size-3.5" />Sell</button>
                               </>
                             ) : canManageOcs ? (
-                              <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-cyan-200 px-2.5 py-1.5 text-xs font-semibold text-cyan-700"><Truck className="size-3.5" />Restock Doctor</button>
+                              <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
                             ) : null}
                             <button type="button" onClick={() => setItemToDelete(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Delete</button>
                           </div>
@@ -510,7 +622,7 @@ export default function InventoryPage() {
         <SectionCard title="Staging Area (CSV Intake)" subtitle="Paste shipment CSV, verify in staging, then release to OCS stock.">
           <div className="space-y-4">
             <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={6} placeholder="folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm" />
-            <button type="button" onClick={importCsv} disabled={isSaving} className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="button" onClick={importCsv} disabled={isSaving} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
               <FileUp className="size-4" />
               {isSaving ? "Importing..." : "Import to staging"}
             </button>
@@ -560,6 +672,7 @@ export default function InventoryPage() {
       <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
+      <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
     </div>
   );

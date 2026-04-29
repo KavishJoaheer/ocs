@@ -619,76 +619,83 @@ router.post("/restock", (req, res) => {
     `)
     .get(doctorId, source.folder_id, source.item_name);
 
-  const consumed = consumeBatches(source.id, quantity);
-  if (!consumed.ok) return res.status(400).json({ error: "Insufficient batch stock in OCS inventory." });
+  try {
+    db.transaction(() => {
+      // IMPORTANT: batch consumption must happen inside the transaction
+      const consumed = consumeBatches(source.id, quantity);
+      if (!consumed.ok) {
+        throw new Error("Insufficient batch stock in OCS inventory.");
+      }
 
-  db.transaction(() => {
-    const sourcePrev = Number(source.quantity || 0);
-    const sourceNext = sourcePrev - quantity;
-    db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sourceNext, source.id);
-    recordMovement({
-      itemId: source.id,
-      movementType: "out",
-      quantity,
-      previousQuantity: sourcePrev,
-      nextQuantity: sourceNext,
-      actionType: "restock_out",
-      note: note || "Restocked to doctor stock",
-      userId: req.auth.id,
-      referenceType: "doctor",
-      referenceId: doctorId,
-      metaJson: JSON.stringify({ doctor_name: doctor.full_name }),
-    });
+      const sourcePrev = Number(source.quantity || 0);
+      const sourceNext = sourcePrev - quantity;
+      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sourceNext, source.id);
+      recordMovement({
+        itemId: source.id,
+        movementType: "out",
+        quantity,
+        previousQuantity: sourcePrev,
+        nextQuantity: sourceNext,
+        actionType: "restock_out",
+        note: note || "Restocked to doctor stock",
+        userId: req.auth.id,
+        referenceType: "doctor",
+        referenceId: doctorId,
+        metaJson: JSON.stringify({ doctor_name: doctor.full_name }),
+      });
 
-    let targetItemId;
-    let targetPrev = 0;
-    let targetNext = quantity;
-    if (targetExisting) {
-      targetItemId = targetExisting.id;
-      targetPrev = Number(targetExisting.quantity || 0);
-      targetNext = targetPrev + quantity;
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(targetNext, targetItemId);
-    } else {
-      const created = db
-        .prepare(`
-          INSERT INTO inventory (
-            item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-            cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-          )
-          VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
-        `)
-        .run(
-          source.item_name,
-          source.folder_id,
-          doctorId,
-          quantity,
-          source.minimum_quantity,
-          source.unit,
-          source.cost_price,
-          source.selling_price,
-          source.attributes || "",
-          source.moa_notes || "",
-          source.expiry_date || null,
-        );
-      targetItemId = Number(created.lastInsertRowid);
-    }
+      let targetItemId;
+      let targetPrev = 0;
+      let targetNext = quantity;
+      if (targetExisting) {
+        targetItemId = targetExisting.id;
+        targetPrev = Number(targetExisting.quantity || 0);
+        targetNext = targetPrev + quantity;
+        db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(targetNext, targetItemId);
+      } else {
+        const created = db
+          .prepare(`
+            INSERT INTO inventory (
+              item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
+              cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+            )
+            VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+          `)
+          .run(
+            source.item_name,
+            source.folder_id,
+            doctorId,
+            quantity,
+            source.minimum_quantity,
+            source.unit,
+            source.cost_price,
+            source.selling_price,
+            source.attributes || "",
+            source.moa_notes || "",
+            source.expiry_date || null,
+          );
+        targetItemId = Number(created.lastInsertRowid);
+      }
 
-    consumed.allocations.forEach((allocation) => {
-      createBatch(targetItemId, allocation.quantity, allocation.expiry_date, allocation.unit_cost);
-    });
-    recordMovement({
-      itemId: targetItemId,
-      movementType: "in",
-      quantity,
-      previousQuantity: targetPrev,
-      nextQuantity: targetNext,
-      actionType: "restock_in",
-      note: note || "Received from OCS stock",
-      userId: req.auth.id,
-      referenceType: "doctor",
-      referenceId: doctorId,
-    });
-  })();
+      consumed.allocations.forEach((allocation) => {
+        createBatch(targetItemId, allocation.quantity, allocation.expiry_date, allocation.unit_cost);
+      });
+      recordMovement({
+        itemId: targetItemId,
+        movementType: "in",
+        quantity,
+        previousQuantity: targetPrev,
+        nextQuantity: targetNext,
+        actionType: "restock_in",
+        note: note || "Received from OCS stock",
+        userId: req.auth.id,
+        referenceType: "doctor",
+        referenceId: doctorId,
+      });
+    })();
+  } catch (err) {
+    return res.status(400).json({ error: err?.message || "Restock failed." });
+  }
 
   res.status(201).json(getPayload(req));
 });
