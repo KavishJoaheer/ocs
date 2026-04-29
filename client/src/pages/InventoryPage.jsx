@@ -373,6 +373,19 @@ export default function InventoryPage() {
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
 
   async function saveItem(payload) {
+    if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
+      toast.error("Quantity must be zero or more.");
+      return;
+    }
+    if (!Number.isInteger(payload.minimum_quantity) || payload.minimum_quantity < 0) {
+      toast.error("Minimum quantity must be zero or more.");
+      return;
+    }
+    if (Number(payload.selling_price || 0) < Number(payload.cost_price || 0)) {
+      toast.error("Selling price cannot be lower than cost price.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const next = editor?.item ? await api.put(`/inventory/items/${editor.item.id}`, payload) : await api.post("/inventory/items", payload);

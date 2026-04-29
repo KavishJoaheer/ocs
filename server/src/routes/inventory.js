@@ -4,11 +4,18 @@ const { calculateBillingTotal, getTodayLocal, normalizeBillingItems, toNumber } 
 
 const router = express.Router();
 const REQUIRED_FOLDERS = ["Consumable", "IM Drugs", "IV Drugs", "Wound Dressing", "Pediatric Drugs"];
+const NEAR_EXPIRY_DAYS = 90;
 
 let infrastructureReady = false;
 
 function roundCurrency(value) {
   return Number(toNumber(value, 0).toFixed(2));
+}
+
+function isNearExpiry(expiryDate) {
+  if (!expiryDate) return false;
+  const diff = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  return diff >= 0 && diff <= NEAR_EXPIRY_DAYS;
 }
 
 function ensureColumn(table, column, sql) {
@@ -134,6 +141,7 @@ function getItems({ stockScope, doctorId = null }) {
       cost_price: toNumber(row.cost_price, 0),
       selling_price: toNumber(row.selling_price, 0),
       current_cost_value: roundCurrency(Number(row.quantity || 0) * toNumber(row.cost_price, 0)),
+      is_near_expiry: isNearExpiry(row.expiry_date),
     }));
 }
 
@@ -238,11 +246,7 @@ function recordMovement({
 function summarize(items, doctorId = null) {
   const totalAmount = items.reduce((sum, item) => sum + item.current_cost_value, 0);
   const lowStock = items.filter((item) => item.quantity <= item.minimum_quantity);
-  const nearExpiry = items.filter((item) => {
-    if (!item.expiry_date) return false;
-    const diff = Math.ceil((new Date(item.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    return diff >= 0 && diff <= 30;
-  });
+  const nearExpiry = items.filter((item) => isNearExpiry(item.expiry_date));
 
   const monthlyConsumed = doctorId
     ? db
@@ -377,11 +381,7 @@ function getPayload(req, selectedDoctorId = null) {
     doctors: role === "admin" || role === "operator" ? getDoctors() : [],
     summary: summarize(activeItems, doctorId),
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
-    near_expiry_items: activeItems.filter((item) => {
-      if (!item.expiry_date) return false;
-      const diff = Math.ceil((new Date(item.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      return diff >= 0 && diff <= 30;
-    }),
+    near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
     movements: getMovements(role, doctorId),
     staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
     compare_rows: role === "admin" ? getCompareRows() : [],
@@ -421,6 +421,7 @@ router.post("/items", (req, res) => {
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
   if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ error: "Quantity must be zero or more." });
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
+  if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });
 
   const folder = db.prepare("SELECT id FROM inventory_folders WHERE id = ?").get(folderId);
   if (!folder) return res.status(404).json({ error: "Folder not found." });
@@ -481,6 +482,8 @@ router.put("/items/:id", (req, res) => {
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
   if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ error: "Quantity must be zero or more." });
+  if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
+  if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });
 
   const previousQuantity = Number(existing.quantity || 0);
   const delta = quantity - previousQuantity;
