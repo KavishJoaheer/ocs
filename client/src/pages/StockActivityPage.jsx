@@ -1,0 +1,347 @@
+import { Download, Printer, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import EmptyState from "../components/EmptyState.jsx";
+import LoadingState from "../components/LoadingState.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import SectionCard from "../components/SectionCard.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
+import { api } from "../lib/api.js";
+
+const BADGE_STYLES = {
+  restock_in: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
+  restock_out: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
+  stock_in: "bg-sky-100 text-sky-700",
+  sell: "bg-emerald-100 text-emerald-700",
+  wastage: "bg-amber-100 text-amber-700",
+  override: "bg-rose-100 text-rose-700",
+  adjustment: "bg-slate-200 text-slate-700",
+};
+
+const ACTION_LABELS = {
+  restock_in: "Restock",
+  restock_out: "Restock",
+  stock_in: "Intake",
+  sell: "Sale",
+  wastage: "Wastage",
+  override: "Override",
+  adjustment: "Adjustment",
+  add: "Add",
+  edit: "Edit",
+  remove: "Remove",
+};
+
+function formatTimestamp(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function actionLabel(actionType, metaJson) {
+  let meta = {};
+  try {
+    meta = metaJson ? JSON.parse(metaJson) : {};
+  } catch {
+    meta = {};
+  }
+  if (meta.emergency_override) return "override";
+  return String(actionType || "").toLowerCase();
+}
+
+function actionDisplayLabel(actionKey) {
+  return ACTION_LABELS[actionKey] || String(actionKey || "Unknown");
+}
+
+function buildReceiptPrintHtml(receipt) {
+  const rows = (receipt.items || [])
+    .map(
+      (item) => `
+      <tr>
+        <td>${item.item_name || ""}</td>
+        <td>${item.expiry_date || "-"}</td>
+        <td>${item.quantity || 0}</td>
+        <td>${item.unit || "unit"}</td>
+      </tr>`,
+    )
+    .join("");
+
+  return `<!doctype html><html><head><title>Stock Transfer Note</title>
+  <style>
+  body { font-family: Arial, sans-serif; color:#111; padding: 20px; }
+  h1 { margin:0 0 8px; font-size: 20px; }
+  table { width:100%; border-collapse:collapse; margin-top:16px; }
+  th,td { border:1px solid #333; padding:6px 8px; font-size:12px; text-align:left; }
+  </style></head><body>
+  <h1>Stock Transfer Note</h1>
+  <p><strong>Transaction ID:</strong> ${receipt.transaction_id || "-"}</p>
+  <p><strong>Issued By:</strong> ${receipt.issued_by_name || "-"}</p>
+  <p><strong>Received By:</strong> ${receipt.received_by_name || "-"}</p>
+  <p><strong>Date & Time:</strong> ${formatTimestamp(receipt.created_at)}</p>
+  <table><thead><tr><th>Item Name</th><th>Expiry</th><th>Qty</th><th>Unit</th></tr></thead><tbody>${rows}</tbody></table>
+  </body></html>`;
+}
+
+function StockActivityPage() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [actors, setActors] = useState([]);
+  const [actions, setActions] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [searchDraft, setSearchDraft] = useState("");
+  const [userId, setUserId] = useState("");
+  const [selectedActions, setSelectedActions] = useState([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", "50");
+    if (search) params.set("search", search);
+    if (userId) params.set("userId", userId);
+    if (selectedActions.length) params.set("actions", selectedActions.join(","));
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    return params.toString();
+  }, [page, search, userId, selectedActions, dateFrom, dateTo]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function load() {
+      try {
+        setLoading(true);
+        const payload = await api.get(`/inventory/activity-history?${query}`);
+        if (ignore) return;
+        setRows(payload?.rows || []);
+        setActors(payload?.actors || []);
+        setActions(payload?.actions || []);
+        setTotalPages(Number(payload?.totalPages || 1));
+        setTotal(Number(payload?.total || 0));
+      } catch (error) {
+        if (!ignore) toast.error(error.message || "Failed to load stock activity.");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, [query]);
+
+  async function reprintReceipt(transactionId) {
+    if (!transactionId) return;
+    try {
+      const receipt = await api.get(`/inventory/receipts/${encodeURIComponent(transactionId)}`);
+      const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+      if (!printWindow) {
+        toast.error("Unable to open print preview window.");
+        return;
+      }
+      printWindow.document.write(buildReceiptPrintHtml(receipt));
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      toast.error(error.message || "Failed to load receipt.");
+    }
+  }
+
+  async function handleExportCsv() {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (userId) params.set("userId", userId);
+      if (selectedActions.length) params.set("actions", selectedActions.join(","));
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      const { blob, filename } = await api.getBlob(`/inventory/activity-history/export.csv?${params.toString()}`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename || "stock-activity-log.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error.message || "CSV export failed.");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Inventory"
+        title="Stock Activity Log"
+        description="Real-time audit of all stock intake, transfers, and consumption."
+        actions={
+          user?.role === "admin" ? (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95"
+            >
+              <Download className="size-4" />
+              Download CSV
+            </button>
+          ) : null
+        }
+      />
+
+      <SectionCard className="rounded-3xl" title="Filters" subtitle="Drill down by actor, action, date, and item name.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
+            <select className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm" value={userId} onChange={(event) => { setUserId(event.target.value); setPage(1); }}>
+              <option value="">All users</option>
+              {actors.map((actor) => (
+                <option key={actor.actor_user_id} value={actor.actor_user_id}>{actor.actor_name} ({actor.actor_role})</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Action Types</span>
+            <select
+              multiple
+              className="h-[42px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={selectedActions}
+              onChange={(event) => {
+                const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                setSelectedActions(values);
+                setPage(1);
+              }}
+            >
+              {actions.map((action) => (
+                <option key={action} value={action}>{actionDisplayLabel(action)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">From</span>
+            <input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">To</span>
+            <input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Search item</span>
+            <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-3">
+              <Search className="size-4 text-slate-400" />
+              <input
+                className="w-full bg-transparent px-2 py-2.5 text-sm outline-none"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    setSearch(searchDraft.trim());
+                    setPage(1);
+                  }
+                }}
+                placeholder="Cannula G20"
+              />
+              <button type="button" className="text-xs font-semibold text-[#4FB8B3]" onClick={() => { setSearch(searchDraft.trim()); setPage(1); }}>Apply</button>
+            </div>
+          </label>
+        </div>
+      </SectionCard>
+
+      <SectionCard className="rounded-3xl" title={`Activity (${total})`} subtitle="Server-side paginated at 50 rows per page.">
+        {loading ? (
+          <LoadingState message="Loading stock activity..." />
+        ) : rows.length === 0 ? (
+          <EmptyState title="No activity recorded" description="Try changing the filters or date range to find stock events." />
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-600">
+                <tr>
+                  <th className="px-3 py-3 text-left">Timestamp</th>
+                  <th className="px-3 py-3 text-left">Actor</th>
+                  <th className="px-3 py-3 text-left">Action Type</th>
+                  <th className="px-3 py-3 text-left">Item & Qty</th>
+                  <th className="px-3 py-3 text-left">Source / Destination</th>
+                  <th className="px-3 py-3 text-left">Batch ID</th>
+                  <th className="px-3 py-3 text-right">Tools</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const label = actionLabel(row.action_type, row.meta_json);
+                  const badgeClass = BADGE_STYLES[label] || "bg-slate-100 text-slate-700";
+                  const signedQty = row.direction === "out" ? `-${Math.abs(Number(row.quantity || 0))}` : `+${Math.abs(Number(row.quantity || 0))}`;
+                  let meta = {};
+                  try {
+                    meta = row.meta_json ? JSON.parse(row.meta_json) : {};
+                  } catch {
+                    meta = {};
+                  }
+                  const transactionId = meta.transaction_id || "";
+                  return (
+                    <tr key={row.id} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-3 text-slate-700">{formatTimestamp(row.timestamp)}</td>
+                      <td className="px-3 py-3 text-slate-700">{row.actor_name || "System"} <span className="text-slate-400">({row.actor_role || "N/A"})</span></td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`}>{actionDisplayLabel(label)}</span>
+                      </td>
+                      <td className="px-3 py-3 text-slate-700">{signedQty} {row.item_name || "-"}</td>
+                      <td className="px-3 py-3 text-slate-700">{row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}</td>
+                      <td className="px-3 py-3 text-xs text-slate-400">{row.batch_id || "-"}</td>
+                      <td className="px-3 py-3 text-right">
+                        {transactionId ? (
+                          <button
+                            type="button"
+                            onClick={() => reprintReceipt(transactionId)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2 py-1 text-xs font-semibold text-[#4FB8B3] hover:bg-slate-50"
+                          >
+                            <Printer className="size-3.5" />
+                            Print
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-xs text-slate-500">Page {page} of {totalPages}</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+export default StockActivityPage;

@@ -109,10 +109,29 @@ function ensureInfrastructure() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS inventory_activity_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      movement_id INTEGER,
+      timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      actor_user_id INTEGER,
+      actor_name TEXT NOT NULL DEFAULT '',
+      actor_role TEXT NOT NULL DEFAULT '',
+      action_type TEXT NOT NULL DEFAULT '',
+      item_name TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL DEFAULT 0,
+      direction TEXT NOT NULL DEFAULT '',
+      source_text TEXT NOT NULL DEFAULT '',
+      destination_text TEXT NOT NULL DEFAULT '',
+      batch_id TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}'
+    );
+
     CREATE INDEX IF NOT EXISTS idx_inventory_scope_owner ON inventory(stock_scope, owner_doctor_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_batches_item ON inventory_batches(item_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_staging_status ON inventory_staging(status);
     CREATE INDEX IF NOT EXISTS idx_inventory_audit_created_at ON inventory_audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
   `);
 
   infrastructureReady = true;
@@ -403,6 +422,55 @@ function recordMovement({
     referenceId,
     metaJson,
   );
+
+  const inserted = db.prepare("SELECT last_insert_rowid() AS id").get();
+  const movementId = Number(inserted?.id || 0);
+  const meta = safeParseJson(metaJson, {});
+  const movementItem = db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(itemId);
+  const actorName = String(meta.performed_by_name || "");
+  const actorRole = String(meta.performed_by_role || "");
+  const sourceText =
+    actionType === "restock_out"
+      ? "OCS Master"
+      : actionType === "restock_in"
+        ? String(meta.issued_by_name || "OCS Master")
+        : actionType === "sell"
+          ? String(meta.doctor_name || "Doctor")
+          : "";
+  const destinationText =
+    actionType === "restock_out"
+      ? String(meta.received_by_name || "")
+      : actionType === "restock_in"
+        ? String(meta.received_by_name || "")
+        : actionType === "sell"
+          ? "Patient Bill"
+          : "";
+  const transferAllocations = Array.isArray(meta.transfer_allocations) ? meta.transfer_allocations : [];
+  const batchId =
+    transferAllocations.length > 0
+      ? transferAllocations.map((allocation, index) => `B${movementId}-${index + 1}`).join(", ")
+      : "";
+
+  db.prepare(`
+    INSERT INTO inventory_activity_history (
+      movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
+      quantity, direction, source_text, destination_text, batch_id, meta_json
+    )
+    VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    movementId || null,
+    userId || null,
+    actorName,
+    actorRole,
+    String(actionType || ""),
+    String(movementItem?.item_name || ""),
+    Number(quantity || 0),
+    String(movementType || ""),
+    sourceText,
+    destinationText,
+    batchId,
+    metaJson,
+  );
 }
 
 function summarize(items, doctorId = null) {
@@ -606,6 +674,54 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   };
 }
 
+function buildActivityHistoryFilter(query = {}) {
+  const userId = Number(query.userId || 0);
+  const actionValues = String(query.actions || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const search = String(query.search || "").trim();
+  const dateFrom = String(query.dateFrom || "").trim();
+  const dateTo = String(query.dateTo || "").trim();
+
+  const where = ["1 = 1"];
+  const params = {
+    userId,
+    search: `%${search}%`,
+    dateFrom: dateFrom || null,
+    dateTo: dateTo || null,
+  };
+
+  if (userId) {
+    where.push("actor_user_id = @userId");
+  }
+  if (search) {
+    where.push("(item_name LIKE @search OR actor_name LIKE @search OR source_text LIKE @search OR destination_text LIKE @search)");
+  }
+  if (dateFrom) {
+    where.push("date(timestamp) >= date(@dateFrom)");
+  }
+  if (dateTo) {
+    where.push("date(timestamp) <= date(@dateTo)");
+  }
+  if (actionValues.length) {
+    where.push(`action_type IN (${actionValues.map((_, index) => `@action${index}`).join(", ")})`);
+    actionValues.forEach((action, index) => {
+      params[`action${index}`] = action;
+    });
+  }
+
+  return {
+    whereSql: where.join(" AND "),
+    params,
+  };
+}
+
+function escapeCsvValue(value) {
+  const normalized = String(value ?? "");
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
 router.get("/", (req, res) => {
   const selectedDoctorId = Number(req.query.doctorId || 0) || null;
   const doctorContext = String(req.query.context || "my").trim().toLowerCase() === "ocs" ? "ocs" : "my";
@@ -622,6 +738,95 @@ router.get("/receipts/:transactionId", (req, res) => {
     return res.status(404).json({ error: "Receipt not found for this transaction." });
   }
   res.json(receipt);
+});
+
+router.get("/activity-history", (req, res) => {
+  ensureInfrastructure();
+  const page = Math.max(1, Number(req.query.page || 1));
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+  const offset = (page - 1) * limit;
+  const { whereSql, params } = buildActivityHistoryFilter(req.query);
+  const totalRow = db
+    .prepare(`SELECT COUNT(*) AS total FROM inventory_activity_history WHERE ${whereSql}`)
+    .get(params);
+  const rows = db
+    .prepare(`
+      SELECT *
+      FROM inventory_activity_history
+      WHERE ${whereSql}
+      ORDER BY timestamp DESC, id DESC
+      LIMIT @limit OFFSET @offset
+    `)
+    .all({ ...params, limit, offset });
+
+  const actors = db
+    .prepare(`
+      SELECT DISTINCT actor_user_id, actor_name, actor_role
+      FROM inventory_activity_history
+      WHERE actor_user_id IS NOT NULL
+      ORDER BY actor_name ASC
+    `)
+    .all();
+  const actions = db
+    .prepare(`
+      SELECT DISTINCT action_type
+      FROM inventory_activity_history
+      WHERE action_type != ''
+      ORDER BY action_type ASC
+    `)
+    .all()
+    .map((row) => row.action_type);
+
+  res.json({
+    page,
+    limit,
+    total: Number(totalRow?.total || 0),
+    totalPages: Math.max(1, Math.ceil(Number(totalRow?.total || 0) / limit)),
+    rows,
+    actors,
+    actions,
+  });
+});
+
+router.get("/activity-history/export.csv", (req, res) => {
+  ensureInfrastructure();
+  if (String(req.auth?.role || "").toLowerCase() !== "admin") {
+    return res.status(403).json({ error: "Only admin can export stock activity." });
+  }
+
+  const { whereSql, params } = buildActivityHistoryFilter(req.query);
+  const rows = db
+    .prepare(`
+      SELECT *
+      FROM inventory_activity_history
+      WHERE ${whereSql}
+      ORDER BY timestamp DESC, id DESC
+    `)
+    .all(params);
+
+  const csvLines = [
+    ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Direction", "Source", "Destination", "Batch ID"].join(","),
+    ...rows.map((row) =>
+      [
+        escapeCsvValue(row.timestamp),
+        escapeCsvValue(row.actor_name),
+        escapeCsvValue(row.actor_role),
+        escapeCsvValue(row.action_type),
+        escapeCsvValue(row.item_name),
+        Number(row.quantity || 0),
+        escapeCsvValue(row.direction),
+        escapeCsvValue(row.source_text),
+        escapeCsvValue(row.destination_text),
+        escapeCsvValue(row.batch_id),
+      ].join(","),
+    ),
+  ];
+
+  const fileName = `stock-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.setHeader("x-file-name", fileName);
+  return res.status(200).send(csvLines.join("\n"));
 });
 
 router.post("/items", (req, res) => {

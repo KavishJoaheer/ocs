@@ -18,6 +18,29 @@ router.use((req, res, next) => {
   return next();
 });
 
+function ensureActivityHistoryTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inventory_activity_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      movement_id INTEGER,
+      timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      actor_user_id INTEGER,
+      actor_name TEXT NOT NULL DEFAULT '',
+      actor_role TEXT NOT NULL DEFAULT '',
+      action_type TEXT NOT NULL DEFAULT '',
+      item_name TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL DEFAULT 0,
+      direction TEXT NOT NULL DEFAULT '',
+      source_text TEXT NOT NULL DEFAULT '',
+      destination_text TEXT NOT NULL DEFAULT '',
+      batch_id TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
+  `);
+}
+
 function normalizePaymentMethod(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
   return normalized || null;
@@ -122,6 +145,20 @@ function insertInventoryMovement({
   consultationId,
   meta = {},
 }) {
+  ensureActivityHistoryTable();
+  const fullMeta = {
+    consultation_id: consultationId,
+    appointment_id: appointmentId,
+    transaction_type:
+      actionType === "wastage"
+        ? "Wastage"
+        : actionType === "adjustment"
+          ? "Adjustment"
+          : "Sale",
+    ...meta,
+  };
+  const activityActionType = fullMeta.emergency_override ? "override" : actionType;
+
   db.prepare(`
     INSERT INTO inventory_movements (
       item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
@@ -137,12 +174,30 @@ function insertInventoryMovement({
     note,
     actionType,
     appointmentId || null,
-    JSON.stringify({
-      consultation_id: consultationId,
-      appointment_id: appointmentId,
-      transaction_type: actionType === "wastage" ? "Wastage" : "Sale",
-      ...meta,
-    }),
+    JSON.stringify(fullMeta),
+  );
+
+  const inserted = db.prepare("SELECT last_insert_rowid() AS id").get();
+  const movementId = Number(inserted?.id || 0);
+  db.prepare(`
+    INSERT INTO inventory_activity_history (
+      movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
+      quantity, direction, source_text, destination_text, batch_id, meta_json
+    )
+    VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    movementId || null,
+    userId || null,
+    String(fullMeta.performed_by_name || ""),
+    String(fullMeta.performed_by_role || ""),
+    String(activityActionType || ""),
+    String(fullMeta.item_name || ""),
+    Number(quantity || 0),
+    "out",
+    String(fullMeta.source_text || "Doctor Stock"),
+    String(fullMeta.destination_text || "Patient Bill"),
+    String(fullMeta.batch_id || ""),
+    JSON.stringify(fullMeta),
   );
 }
 
@@ -150,6 +205,7 @@ function applyInventoryTransactions({
   consultation,
   items,
   userId,
+  actor,
 }) {
   const normalized = normalizeBillingItems(items);
   const inventoryLines = normalized.filter((item) => item.inventory_item_id && Number(item.quantity) > 0);
@@ -214,7 +270,13 @@ function applyInventoryTransactions({
       appointmentId: consultation.appointment_id,
       consultationId: consultation.id,
       meta: {
+        item_name: stockItem.item_name,
         emergency_override: Boolean(line.emergency_override),
+        performed_by_user_id: actor?.id || userId || null,
+        performed_by_role: actor?.role || "",
+        performed_by_name: actor?.full_name || actor?.username || "",
+        source_text: actor?.full_name ? `${actor.full_name} (${actor.role || ""})` : "Doctor Stock",
+        destination_text: "Patient Bill",
       },
     });
 
@@ -453,6 +515,7 @@ router.post("/", (req, res) => {
         consultation,
         items,
         userId: req.auth?.id || null,
+        actor: req.auth || {},
       });
 
       const result = db.prepare(`

@@ -17,6 +17,7 @@ import OperatorBillingStatusPage from "./pages/OperatorBillingStatusPage.jsx";
 import OperatorWorkspacePage from "./pages/OperatorWorkspacePage.jsx";
 import PatientProfilePage from "./pages/PatientProfilePage.jsx";
 import PatientsPage from "./pages/PatientsPage.jsx";
+import StockActivityPage from "./pages/StockActivityPage.jsx";
 
 function App() {
   return (
@@ -37,6 +38,9 @@ function App() {
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>
             <Route path="/inventory" element={<InventoryPage />} />
+          </Route>
+          <Route element={<ProtectedRoute roles={["admin", "operator"]} />}>
+            <Route path="/stock-history" element={<StockActivityPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin", "doctor"]} />}>

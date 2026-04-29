@@ -6,6 +6,7 @@ import {
   LogOut,
   Package,
   PieChart,
+  RotateCw,
   ShieldCheck,
   UsersRound,
 } from "lucide-react";
@@ -65,6 +66,12 @@ const navItems = [
     label: "Inventory",
     icon: Package,
     roles: ["admin", "doctor", "operator"],
+  },
+  {
+    to: "/stock-history",
+    label: "Live Activity",
+    icon: RotateCw,
+    roles: ["admin", "operator"],
   },
   {
     to: "/team-operations",
