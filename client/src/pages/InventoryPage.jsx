@@ -1048,40 +1048,25 @@ export default function InventoryPage() {
               </button>
             </div>
           ) : (
-            <div className="relative">
+            <div>
               <label className="mb-2 block text-sm font-semibold text-slate-700">Stock Context</label>
-              <input
-                value={contextSearch}
+              <select
+                value={selectedContextDoctorId}
                 onChange={(event) => {
-                  setContextSearch(event.target.value);
-                  setContextOpen(true);
+                  const value = event.target.value;
+                  setSelectedContextDoctorId(value);
+                  const option = filteredContextOptions.find((row) => String(row.id) === String(value));
+                  setContextSearch(option?.label || "OCS Stock");
                 }}
-                onFocus={() => setContextOpen(true)}
-                onBlur={() => setTimeout(() => setContextOpen(false), 120)}
-                placeholder="Search OCS/doctor..."
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-              />
-              {contextOpen ? (
-                <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-2xl border border-slate-200 bg-white shadow">
-                  {filteredContextOptions.map((option) => (
-                    <button
-                      key={`ctx-${option.id || "ocs"}`}
-                      type="button"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        setSelectedContextDoctorId(option.id);
-                        setContextSearch(option.label);
-                        setContextOpen(false);
-                      }}
-                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
-                        String(option.id) === String(selectedContextDoctorId) ? "bg-[rgba(79,184,179,0.12)] text-[#4FB8B3] font-semibold" : "text-slate-700"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              >
+                <option value="">OCS Stock</option>
+                {doctorOptions.map((doctor) => (
+                  <option key={`ctx-doctor-${doctor.id}`} value={String(doctor.id)}>
+                    {doctor.full_name}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
