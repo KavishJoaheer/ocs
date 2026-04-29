@@ -329,7 +329,7 @@ router.get("/:id", (req, res) => {
   res.json(bill);
 });
 
-router.get("/inventory-options/:consultationId", (req, res) => {
+router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
   const consultationId = Number(req.params.consultationId || 0);
   const consultation = getConsultationContext(consultationId);
   if (!consultation) {

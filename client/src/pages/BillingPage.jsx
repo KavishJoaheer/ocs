@@ -375,7 +375,7 @@ function CreateBillingModal({
     async function loadInventory() {
       setInventoryLoading(true);
       try {
-        const rows = await api.get(`/billing/inventory-options/${consultationId}`);
+        const rows = await api.get(`/billing/inventory-options/by-consultation/${consultationId}`);
         if (!ignore) {
           setInventoryOptions(rows);
         }
