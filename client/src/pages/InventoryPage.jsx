@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -562,6 +562,89 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+function InventoryActionButtons({
+  item,
+  canManageOcs,
+  contextIsOcs,
+  isDoctor,
+  doctorViewIsMy,
+  doctorViewIsOcs,
+  onStockIn,
+  onEdit,
+  onRestockDoctor,
+  onRestockMyInventory,
+  onAdjustReclaim,
+  onRemove,
+}) {
+  return (
+    <div className="flex flex-nowrap items-center gap-2">
+      {canManageOcs && contextIsOcs ? (
+        <button
+          type="button"
+          onClick={() => onStockIn(item)}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1 text-xs font-semibold text-[#4FB8B3]"
+        >
+          <Plus className="size-3" />
+          In
+        </button>
+      ) : null}
+
+      {!(isDoctor && doctorViewIsOcs) ? (
+        <button
+          type="button"
+          onClick={() => onEdit(item)}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700"
+        >
+          <Pencil className="size-3" />
+        </button>
+      ) : null}
+
+      {canManageOcs && contextIsOcs ? (
+        <button
+          type="button"
+          onClick={() => onRestockDoctor(item)}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-2.5 py-1 text-xs font-semibold text-white"
+        >
+          <Truck className="size-3" />
+          Restock
+        </button>
+      ) : null}
+
+      {isDoctor && doctorViewIsMy ? (
+        <button
+          type="button"
+          onClick={() => onRestockMyInventory(item)}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1 text-xs font-semibold text-white"
+        >
+          <Truck className="size-3" />
+          Restock
+        </button>
+      ) : null}
+
+      {canManageOcs && !contextIsOcs ? (
+        <button
+          type="button"
+          onClick={() => onAdjustReclaim(item)}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-700"
+        >
+          <MinusCircle className="size-3" />
+          Adjust
+        </button>
+      ) : null}
+
+      {canManageOcs && contextIsOcs ? (
+        <button
+          type="button"
+          onClick={() => onRemove(item)}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700"
+        >
+          <Trash2 className="size-3" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -1158,12 +1241,12 @@ export default function InventoryPage() {
         ) : null}
 
         {pagedItems.length ? (
-          <div className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white">
-            <div className="max-h-[560px] overflow-auto">
+          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white">
+            <div className="max-h-[560px] overflow-auto overflow-x-auto">
               <table className="min-w-full table-fixed text-left text-sm">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">
+                    <th className="w-[50px] px-4 py-2.5 align-middle">
                       {canManageOcs ? (
                         <input
                           type="checkbox"
@@ -1173,11 +1256,11 @@ export default function InventoryPage() {
                         />
                       ) : null}
                     </th>
-                    <th className="w-[34%] px-4 py-2.5">Item Name</th>
-                    <th className="w-[16%] px-4 py-2.5">Qty</th>
-                    <th className="w-[12%] px-4 py-2.5 text-left">Min Qty</th>
-                    <th className="w-[16%] px-4 py-2.5 text-left">Nearest Expiry</th>
-                    <th className="w-[22%] px-4 py-2.5 text-left">Actions</th>
+                    <th className="w-[30%] px-4 py-2.5 text-left align-middle">Item Name</th>
+                    <th className="w-[10%] px-4 py-2.5 text-center align-middle">Qty</th>
+                    <th className="w-[10%] px-4 py-2.5 text-center align-middle">Min Qty</th>
+                    <th className="w-[20%] px-4 py-2.5 text-center align-middle">Nearest Expiry</th>
+                    <th className="w-[25%] px-4 py-2.5 text-left align-middle">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1194,8 +1277,8 @@ export default function InventoryPage() {
                         <td colSpan={6} className="p-0">
                           <table className="w-full">
                             <tbody>
-                              <tr className={`border-t border-slate-200/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
-                                <td className="px-4 py-2" onClick={(event) => event.stopPropagation()}>
+                              <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
+                                <td className="px-4 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
                                   {canManageOcs ? (
                                     <input
                                       type="checkbox"
@@ -1205,7 +1288,7 @@ export default function InventoryPage() {
                                     />
                                   ) : null}
                                 </td>
-                                <td className="px-4 py-2">
+                                <td className="px-4 py-2 align-middle text-left">
                                   <div className="flex items-center gap-2">
                                     <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
                                       {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -1213,8 +1296,8 @@ export default function InventoryPage() {
                                     <span className="font-semibold text-slate-900">{item.item_name}</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-2">
-                                  <div className="inline-flex items-center gap-2">
+                                <td className="px-4 py-2 align-middle text-center">
+                                  <div className="inline-flex items-center justify-center gap-2">
                                     <span>{item.quantity}</span>
                                     {isDoctor && doctorViewIsMy ? (
                                       <span
@@ -1231,55 +1314,37 @@ export default function InventoryPage() {
                                     ) : null}
                                   </div>
                                 </td>
-                                <td className="px-4 py-2 text-left">{item.minimum_quantity}</td>
-                                <td className="px-4 py-2 text-left">{item.expiry_date || "Not set"}</td>
-                                <td className="px-4 py-2 text-left" onClick={(event) => event.stopPropagation()}>
-                                  <div className="flex flex-nowrap items-center gap-1.5">
-                                    {canManageOcs && contextIsOcs ? (
-                                      <button type="button" onClick={() => setAddStock({ item })} className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]">
-                                        Stock In
-                                      </button>
-                                    ) : null}
-                                    {!(isDoctor && doctorViewIsOcs) ? (
-                                      <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
-                                    ) : null}
-                                    {canManageOcs && contextIsOcs ? (
-                                      <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
-                                    ) : null}
-                                    {isDoctor && doctorViewIsMy ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const source = ocsByFolderAndName.get(
-                                            `${item.folder_id}::${String(item.item_name || "").toLowerCase()}`,
-                                          );
-                                          if (!source?.id) {
-                                            toast.error("Item not available in OCS Master Stock.");
-                                            return;
-                                          }
-                                          setDoctorRestockItem({
-                                            ocs_item_id: Number(source.id),
-                                            item_name: item.item_name,
-                                            ocs_available: Number(source.quantity || 0),
-                                          });
-                                          setDoctorRestockOpen(true);
-                                        }}
-                                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1.5 text-xs font-semibold text-white"
-                                      >
-                                        <Truck className="size-3" />
-                                        Restock My Inventory
-                                      </button>
-                                    ) : null}
-                                    {canManageOcs && !contextIsOcs ? (
-                                      <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-700">
-                                        <MinusCircle className="size-3.5" />
-                                        Adjust/Reclaim
-                                      </button>
-                                    ) : null}
-                                    {canManageOcs && contextIsOcs ? (
-                                      <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Remove</button>
-                                    ) : null}
-                                  </div>
+                                <td className="px-4 py-2 align-middle text-center">{item.minimum_quantity}</td>
+                                <td className="px-4 py-2 align-middle text-center">{item.expiry_date || "Not set"}</td>
+                                <td className="px-4 py-2 align-middle text-left" onClick={(event) => event.stopPropagation()}>
+                                  <InventoryActionButtons
+                                    item={item}
+                                    canManageOcs={canManageOcs}
+                                    contextIsOcs={contextIsOcs}
+                                    isDoctor={isDoctor}
+                                    doctorViewIsMy={doctorViewIsMy}
+                                    doctorViewIsOcs={doctorViewIsOcs}
+                                    onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                                    onEdit={(nextItem) => setEditor({ item: nextItem })}
+                                    onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                                    onRestockMyInventory={(nextItem) => {
+                                      const source = ocsByFolderAndName.get(
+                                        `${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`,
+                                      );
+                                      if (!source?.id) {
+                                        toast.error("Item not available in OCS Master Stock.");
+                                        return;
+                                      }
+                                      setDoctorRestockItem({
+                                        ocs_item_id: Number(source.id),
+                                        item_name: nextItem.item_name,
+                                        ocs_available: Number(source.quantity || 0),
+                                      });
+                                      setDoctorRestockOpen(true);
+                                    }}
+                                    onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                                    onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                                  />
                                 </td>
                               </tr>
                               {expanded ? (
