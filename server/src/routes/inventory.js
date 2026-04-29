@@ -736,7 +736,7 @@ function calculateEventValue(row) {
   return roundCurrency(quantity * cost);
 }
 
-function consolidateActivityRows(rows, { page = 1, limit = 50 } = {}) {
+function buildConsolidatedActivity(rows) {
   const grouped = new Map();
   const passthrough = [];
 
@@ -813,20 +813,85 @@ function consolidateActivityRows(rows, { page = 1, limit = 50 } = {}) {
       return String(b.id).localeCompare(String(a.id));
     });
 
+  return consolidated;
+}
+
+function paginateConsolidated(consolidated, { page = 1, limit = 50 } = {}) {
   const total = consolidated.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const offset = (safePage - 1) * limit;
-  const pageRows = consolidated.slice(offset, offset + limit);
-  const netValueRs = roundCurrency(consolidated.reduce((sum, row) => sum + Number(row.value_rs || 0), 0));
-
   return {
     page: safePage,
     limit,
     total,
     totalPages,
-    rows: pageRows,
-    net_value_rs: netValueRs,
+    rows: consolidated.slice(offset, offset + limit),
+  };
+}
+
+function computeActivityAnalytics(consolidated, rawRows) {
+  const totalTransactions = consolidated.length;
+  let totalUnitsMoved = 0;
+  let totalCostValue = 0;
+  let wastageUnits = 0;
+  let wastageValue = 0;
+  const actorCounts = new Map();
+
+  consolidated.forEach((row) => {
+    const action = String(row.action_type || "").toLowerCase();
+    const units = Math.abs(Number(row.quantity || 0));
+    totalUnitsMoved += units;
+    if (action === "wastage") {
+      wastageUnits += units;
+      wastageValue += Number(row.value_rs || 0);
+    } else if (action === "sell") {
+      // Sell value is selling price; cost contribution computed below
+    }
+
+    const actorKey = `${row.actor_user_id || "0"}|${row.actor_name || "System"}|${row.actor_role || "N/A"}`;
+    const previous = actorCounts.get(actorKey) || {
+      actor_user_id: row.actor_user_id || null,
+      name: row.actor_name || "System",
+      role: row.actor_role || "N/A",
+      count: 0,
+    };
+    previous.count += 1;
+    actorCounts.set(actorKey, previous);
+  });
+
+  // Cost value uses raw movement rows (richer than consolidated for cost details)
+  let sellRevenue = 0;
+  let sellCost = 0;
+  rawRows.forEach((row) => {
+    const action = String(row.action_type || "").toLowerCase();
+    const qty = Math.abs(Number(row.quantity || 0));
+    const cost = Number(row.cost_price || 0);
+    const sell = Number(row.selling_price || 0);
+    if (action === "restock_in" || action === "restock_out") {
+      // Restock cost counted once via restock_out only to avoid double-counting
+      if (action === "restock_out") totalCostValue += qty * cost;
+    } else if (action === "sell") {
+      totalCostValue += qty * cost;
+      sellRevenue += qty * sell;
+      sellCost += qty * cost;
+    } else {
+      totalCostValue += qty * cost;
+    }
+  });
+
+  const grossMarginPct = sellRevenue > 0 ? ((sellRevenue - sellCost) / sellRevenue) * 100 : null;
+  const wastagePct = totalUnitsMoved > 0 ? (wastageUnits / totalUnitsMoved) * 100 : 0;
+  const topPerformer = Array.from(actorCounts.values()).sort((a, b) => b.count - a.count)[0] || null;
+
+  return {
+    total_transactions: totalTransactions,
+    total_units_moved: totalUnitsMoved,
+    total_value_cost_rs: roundCurrency(totalCostValue),
+    gross_margin_pct: grossMarginPct === null ? null : Number(grossMarginPct.toFixed(2)),
+    wastage_value_rs: roundCurrency(wastageValue),
+    wastage_pct: Number(wastagePct.toFixed(2)),
+    top_performer: topPerformer,
   };
 }
 
@@ -853,7 +918,7 @@ router.get("/activity-history", (req, res) => {
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
   const { whereSql, params } = buildActivityHistoryFilter(req.query);
-  const rows = db
+  const rawRows = db
     .prepare(`
       SELECT h.*, m.item_id AS movement_item_id, i.cost_price, i.selling_price
       FROM inventory_activity_history h
@@ -863,7 +928,10 @@ router.get("/activity-history", (req, res) => {
       ORDER BY h.timestamp DESC, h.id DESC
     `)
     .all(params);
-  const consolidated = consolidateActivityRows(rows, { page, limit });
+  const consolidated = buildConsolidatedActivity(rawRows);
+  const paginated = paginateConsolidated(consolidated, { page, limit });
+  const analytics = computeActivityAnalytics(consolidated, rawRows);
+  const netValueRs = roundCurrency(consolidated.reduce((sum, row) => sum + Number(row.value_rs || 0), 0));
 
   const actors = db
     .prepare(`
@@ -876,12 +944,13 @@ router.get("/activity-history", (req, res) => {
   const actions = ["stock_in", "restock", "sell", "wastage", "adjustment"];
 
   res.json({
-    page: consolidated.page,
-    limit: consolidated.limit,
-    total: consolidated.total,
-    totalPages: consolidated.totalPages,
-    rows: consolidated.rows,
-    net_value_rs: consolidated.net_value_rs,
+    page: paginated.page,
+    limit: paginated.limit,
+    total: paginated.total,
+    totalPages: paginated.totalPages,
+    rows: paginated.rows,
+    net_value_rs: netValueRs,
+    analytics,
     actors,
     actions,
   });
@@ -904,11 +973,11 @@ router.get("/activity-history/export.csv", (req, res) => {
       ORDER BY h.timestamp DESC, h.id DESC
     `)
     .all(params);
-  const consolidated = consolidateActivityRows(rows, { page: 1, limit: Number.MAX_SAFE_INTEGER });
+  const consolidated = buildConsolidatedActivity(rows);
 
   const csvLines = [
     ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)"].join(","),
-    ...consolidated.rows.map((row) =>
+    ...consolidated.map((row) =>
       [
         escapeCsvValue(row.timestamp),
         escapeCsvValue(row.actor_name),

@@ -1,4 +1,4 @@
-import { ChevronDown, Download, Printer, Search } from "lucide-react";
+import { Activity, ChevronDown, Download, Printer, RotateCcw, Search, TrendingUp, Trophy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -98,6 +98,15 @@ function StockActivityPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [netValueRs, setNetValueRs] = useState(0);
+  const [analytics, setAnalytics] = useState({
+    total_transactions: 0,
+    total_units_moved: 0,
+    total_value_cost_rs: 0,
+    gross_margin_pct: null,
+    wastage_value_rs: 0,
+    wastage_pct: 0,
+    top_performer: null,
+  });
   const [search, setSearch] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [userId, setUserId] = useState("");
@@ -134,6 +143,9 @@ function StockActivityPage() {
         setTotalPages(nextTotalPages);
         setTotal(Number(payload?.total || 0));
         setNetValueRs(Number(payload?.net_value_rs || 0));
+        if (payload?.analytics) {
+          setAnalytics(payload.analytics);
+        }
         if (page > nextTotalPages) {
           setPage(nextTotalPages);
         }
@@ -171,6 +183,27 @@ function StockActivityPage() {
     if (selectedActions.length === 1) return actionDisplayLabel(selectedActions[0]);
     return `${selectedActions.length} selected`;
   }, [selectedActions]);
+
+  const filtersActive = Boolean(
+    search || userId || selectedActions.length || dateFrom || dateTo,
+  );
+
+  function clearAllFilters() {
+    setSearch("");
+    setSearchDraft("");
+    setUserId("");
+    setSelectedActions([]);
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  }
+
+  const sellFilterActive = selectedActions.includes("sell");
+  const wastageRisk = Number(analytics?.wastage_pct || 0) > 5;
+  const grossMarginValue =
+    typeof analytics?.gross_margin_pct === "number"
+      ? `${analytics.gross_margin_pct.toFixed(2)}%`
+      : "—";
 
   async function reprintReceipt(transactionId) {
     if (!transactionId) return;
@@ -230,7 +263,23 @@ function StockActivityPage() {
         }
       />
 
-      <SectionCard className="rounded-3xl" title="Filters" subtitle="Drill down by actor, action, date, and item name.">
+      <SectionCard
+        className="rounded-3xl"
+        title="Filters"
+        subtitle="Drill down by actor, action, date, and item name."
+        actions={
+          filtersActive ? (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <RotateCcw className="size-3.5" />
+              Clear all
+            </button>
+          ) : null
+        }
+      >
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
@@ -318,7 +367,76 @@ function StockActivityPage() {
         </div>
       </SectionCard>
 
-      <SectionCard className="rounded-3xl" title="Filtered Summary" subtitle="Live totals from the current filtered event view.">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Inventory Velocity</p>
+            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+              <Activity className="size-4" />
+            </span>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{analytics.total_transactions}</p>
+          <p className="text-xs text-slate-500">Total transactions in view</p>
+          <p className="mt-3 text-sm font-semibold text-slate-700">{analytics.total_units_moved} units moved</p>
+        </article>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Financial Health</p>
+            <span className="grid size-9 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
+              <Wallet className="size-4" />
+            </span>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.total_value_cost_rs || 0)}</p>
+          <p className="text-xs text-slate-500">Total value at cost (Rs MUR)</p>
+          {sellFilterActive ? (
+            <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
+          ) : (
+            <p className="mt-3 text-xs text-slate-400">Filter by Sell to see Gross Margin %.</p>
+          )}
+        </article>
+
+        <article className={`rounded-3xl border p-5 shadow-sm ${wastageRisk ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
+          <div className="flex items-center justify-between">
+            <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${wastageRisk ? "text-rose-600" : "text-slate-500"}`}>Clinical Wastage (Risk)</p>
+            <span className={`grid size-9 place-items-center rounded-2xl ${wastageRisk ? "bg-rose-200 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+              <TrendingUp className="size-4" />
+            </span>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.wastage_value_rs || 0)}</p>
+          <p className="text-xs text-slate-500">Wastage value (cost)</p>
+          <p className={`mt-3 text-sm font-semibold ${wastageRisk ? "text-rose-600" : "text-slate-700"}`}>
+            Wastage Rate: {Number(analytics.wastage_pct || 0).toFixed(2)}%
+          </p>
+        </article>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Top Performer</p>
+            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+              <Trophy className="size-4" />
+            </span>
+          </div>
+          {analytics.top_performer ? (
+            <>
+              <p className="mt-3 text-2xl font-bold text-slate-900">{analytics.top_performer.name}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{analytics.top_performer.role}</p>
+              <p className="mt-3 text-sm font-semibold text-[#1f7f7b]">{analytics.top_performer.count} events recorded</p>
+            </>
+          ) : (
+            <>
+              <p className="mt-3 text-2xl font-bold text-slate-400">—</p>
+              <p className="text-xs text-slate-400">No activity in this view.</p>
+            </>
+          )}
+        </article>
+      </div>
+
+      <SectionCard
+        className="rounded-3xl"
+        title="Filtered Summary"
+        subtitle="Live totals from the current filtered event view."
+      >
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total Events Found</p>
@@ -362,6 +480,7 @@ function StockActivityPage() {
                     meta = {};
                   }
                   const transactionId = row.transaction_id || meta.transaction_id || "";
+                  const isRestockTransfer = ["restock", "restock_in", "restock_out"].includes(label);
                   return (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-3 text-slate-700">{formatTimestamp(row.timestamp)}</td>
@@ -369,11 +488,11 @@ function StockActivityPage() {
                       <td className="px-3 py-3">
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`}>{actionDisplayLabel(label)}</span>
                       </td>
-                      <td className="px-3 py-3 text-slate-700">{absoluteQty} units - {row.item_name || "-"}</td>
+                      <td className="px-3 py-3 text-slate-700">{absoluteQty} units · {row.item_name || "-"}</td>
                       <td className="px-3 py-3 text-slate-700">{row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}</td>
                       <td className="px-3 py-3 text-xs text-slate-400">{row.batch_id || "-"}</td>
                       <td className="px-3 py-3 text-right">
-                        {transactionId ? (
+                        {transactionId && isRestockTransfer ? (
                           <button
                             type="button"
                             onClick={() => reprintReceipt(transactionId)}
