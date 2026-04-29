@@ -47,7 +47,7 @@ function normalizeBillingItems(items) {
 function calculateBillingTotal(items) {
   return Number(
     normalizeBillingItems(items)
-      .reduce((sum, item) => sum + (item.type === "Wastage" ? 0 : item.amount), 0)
+      .reduce((sum, item) => sum + (item.type === "Sale" ? item.amount : 0), 0)
       .toFixed(2),
   );
 }

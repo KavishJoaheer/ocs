@@ -9,6 +9,14 @@ const {
 
 const router = express.Router();
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
+const BILLING_ALLOWED_ROLES = new Set(["admin", "doctor", "accountant"]);
+
+router.use((req, res, next) => {
+  if (!BILLING_ALLOWED_ROLES.has(String(req.auth?.role || "").trim().toLowerCase())) {
+    return res.status(403).json({ error: "You do not have permission to access billing." });
+  }
+  return next();
+});
 
 function normalizePaymentMethod(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -60,17 +68,20 @@ function calculateAppointmentLossRevenue(items) {
       const amount = roundCurrency(item.amount);
       if (item.type === "Wastage") {
         acc.loss_rs += amount;
+      } else if (item.type === "Adjustment") {
+        acc.adjustment_rs += amount;
       } else if (item.type === "Sale") {
         acc.revenue_rs += amount;
       }
       return acc;
     },
-    { revenue_rs: 0, loss_rs: 0 },
+    { revenue_rs: 0, loss_rs: 0, adjustment_rs: 0 },
   );
 
   return {
     revenue_rs: roundCurrency(totals.revenue_rs),
     loss_rs: roundCurrency(totals.loss_rs),
+    adjustment_rs: roundCurrency(totals.adjustment_rs),
   };
 }
 
@@ -181,7 +192,12 @@ function applyInventoryTransactions({
       stockItem.id,
     );
 
-    const actionType = line.type === "Wastage" ? "wastage" : "sell";
+    const actionType =
+      line.type === "Wastage"
+        ? "wastage"
+        : line.type === "Adjustment"
+          ? "adjustment"
+          : "sell";
     insertInventoryMovement({
       itemId: stockItem.id,
       quantity: qty,
@@ -191,6 +207,8 @@ function applyInventoryTransactions({
       note:
         actionType === "wastage"
           ? "Marked as clinical wastage from billing."
+          : actionType === "adjustment"
+            ? "Inventory adjustment recorded from billing."
           : "Billed to patient.",
       userId,
       appointmentId: consultation.appointment_id,
@@ -204,7 +222,7 @@ function applyInventoryTransactions({
       ...line,
       description: line.description || stockItem.item_name,
       amount:
-        line.type === "Wastage"
+        line.type === "Wastage" || line.type === "Adjustment"
           ? roundCurrency(Number(stockItem.cost_price || 0) * qty)
           : roundCurrency(Number(stockItem.selling_price || 0) * qty),
       inventory_item_id: Number(stockItem.id),
