@@ -7,21 +7,23 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
+import { formatRupees } from "../lib/format.js";
 
 const BADGE_STYLES = {
+  restock: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
   restock_in: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
   restock_out: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
   stock_in: "bg-sky-100 text-sky-700",
-  sell: "bg-emerald-100 text-emerald-700",
+  sell: "bg-green-100 text-green-700",
   wastage: "bg-amber-100 text-amber-700",
   override: "bg-rose-100 text-rose-700",
-  adjustment: "bg-slate-200 text-slate-700",
+  adjustment: "bg-rose-100 text-rose-700",
 };
 
 const ACTION_LABELS = {
   restock_in: "Restock",
   restock_out: "Restock",
-  stock_in: "Intake",
+  stock_in: "Stock In",
   sell: "Sale",
   wastage: "Wastage",
   override: "Override",
@@ -95,6 +97,7 @@ function StockActivityPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [netValueRs, setNetValueRs] = useState(0);
   const [search, setSearch] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [userId, setUserId] = useState("");
@@ -130,6 +133,7 @@ function StockActivityPage() {
         setActions(payload?.actions || []);
         setTotalPages(nextTotalPages);
         setTotal(Number(payload?.total || 0));
+        setNetValueRs(Number(payload?.net_value_rs || 0));
         if (page > nextTotalPages) {
           setPage(nextTotalPages);
         }
@@ -138,6 +142,7 @@ function StockActivityPage() {
           setRows([]);
           setTotal(0);
           setTotalPages(1);
+          setNetValueRs(0);
           toast.error(error.message || "Failed to load stock activity.");
         }
       } finally {
@@ -313,6 +318,19 @@ function StockActivityPage() {
         </div>
       </SectionCard>
 
+      <SectionCard className="rounded-3xl" title="Filtered Summary" subtitle="Live totals from the current filtered event view.">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total Events Found</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{total}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Net Value (Rs)</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{formatRupees(netValueRs)}</p>
+          </div>
+        </div>
+      </SectionCard>
+
       <SectionCard className="rounded-3xl" title={`Activity (${total})`} subtitle="Server-side paginated at 50 rows per page.">
         {loading ? (
           <LoadingState message="Loading stock activity..." />
@@ -336,14 +354,14 @@ function StockActivityPage() {
                 {rows.map((row) => {
                   const label = actionLabel(row.action_type, row.meta_json);
                   const badgeClass = BADGE_STYLES[label] || "bg-slate-100 text-slate-700";
-                  const signedQty = row.direction === "out" ? `-${Math.abs(Number(row.quantity || 0))}` : `+${Math.abs(Number(row.quantity || 0))}`;
+                  const absoluteQty = Math.abs(Number(row.quantity || 0));
                   let meta = {};
                   try {
                     meta = row.meta_json ? JSON.parse(row.meta_json) : {};
                   } catch {
                     meta = {};
                   }
-                  const transactionId = meta.transaction_id || "";
+                  const transactionId = row.transaction_id || meta.transaction_id || "";
                   return (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-3 text-slate-700">{formatTimestamp(row.timestamp)}</td>
@@ -351,7 +369,7 @@ function StockActivityPage() {
                       <td className="px-3 py-3">
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`}>{actionDisplayLabel(label)}</span>
                       </td>
-                      <td className="px-3 py-3 text-slate-700">{signedQty} {row.item_name || "-"}</td>
+                      <td className="px-3 py-3 text-slate-700">{absoluteQty} units - {row.item_name || "-"}</td>
                       <td className="px-3 py-3 text-slate-700">{row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}</td>
                       <td className="px-3 py-3 text-xs text-slate-400">{row.batch_id || "-"}</td>
                       <td className="px-3 py-3 text-right">

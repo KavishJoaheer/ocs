@@ -705,8 +705,13 @@ function buildActivityHistoryFilter(query = {}) {
     where.push("date(timestamp) <= date(@dateTo)");
   }
   if (actionValues.length) {
-    where.push(`action_type IN (${actionValues.map((_, index) => `@action${index}`).join(", ")})`);
-    actionValues.forEach((action, index) => {
+    const expandedActions = [...new Set(actionValues.flatMap((action) => {
+      if (action === "restock") return ["restock_in", "restock_out", "restock"];
+      if (action === "adjustment") return ["adjustment", "override"];
+      return [action];
+    }))];
+    where.push(`action_type IN (${expandedActions.map((_, index) => `@action${index}`).join(", ")})`);
+    expandedActions.forEach((action, index) => {
       params[`action${index}`] = action;
     });
   }
@@ -720,6 +725,109 @@ function buildActivityHistoryFilter(query = {}) {
 function escapeCsvValue(value) {
   const normalized = String(value ?? "");
   return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+function calculateEventValue(row) {
+  const quantity = Math.abs(Number(row.quantity || 0));
+  const actionType = String(row.action_type || "").toLowerCase();
+  const cost = Number(row.cost_price || 0);
+  const sell = Number(row.selling_price || 0);
+  if (actionType === "sell") return roundCurrency(quantity * sell);
+  return roundCurrency(quantity * cost);
+}
+
+function consolidateActivityRows(rows, { page = 1, limit = 50 } = {}) {
+  const grouped = new Map();
+  const passthrough = [];
+
+  rows.forEach((row) => {
+    const meta = safeParseJson(row.meta_json, {});
+    const transactionId = String(meta.transaction_id || "").trim();
+    const actionType = String(row.action_type || "").toLowerCase();
+    if (!transactionId || (actionType !== "restock_in" && actionType !== "restock_out")) {
+      passthrough.push({
+        ...row,
+        action_type: actionType,
+        quantity: Math.abs(Number(row.quantity || 0)),
+        value_rs: calculateEventValue(row),
+        transaction_id: transactionId || null,
+      });
+      return;
+    }
+
+    const existing = grouped.get(transactionId) || {
+      id: `tx-${transactionId}`,
+      timestamp: row.timestamp,
+      actor_user_id: row.actor_user_id,
+      actor_name: row.actor_name,
+      actor_role: row.actor_role,
+      action_type: "restock",
+      item_name: "",
+      quantity: 0,
+      direction: "transfer",
+      source_text: "OCS Master",
+      destination_text: String(meta.received_by_name || row.destination_text || ""),
+      batch_id: "",
+      meta_json: JSON.stringify({ transaction_id: transactionId }),
+      transaction_id: transactionId,
+      value_rs: 0,
+      _itemNames: new Set(),
+      _batchParts: new Set(),
+    };
+
+    existing.timestamp = existing.timestamp > row.timestamp ? existing.timestamp : row.timestamp;
+    existing.actor_user_id = existing.actor_user_id || row.actor_user_id;
+    existing.actor_name = existing.actor_name || row.actor_name;
+    existing.actor_role = existing.actor_role || row.actor_role;
+    existing.destination_text = existing.destination_text || String(meta.received_by_name || row.destination_text || "");
+    if (actionType === "restock_out") {
+      existing.quantity += Math.abs(Number(row.quantity || 0));
+      existing.value_rs += calculateEventValue(row);
+    }
+    if (row.item_name) existing._itemNames.add(row.item_name);
+    String(row.batch_id || "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .forEach((part) => existing._batchParts.add(part));
+
+    grouped.set(transactionId, existing);
+  });
+
+  const consolidated = [
+    ...passthrough,
+    ...Array.from(grouped.values()).map((entry) => {
+      const itemNames = Array.from(entry._itemNames);
+      return {
+        ...entry,
+        item_name: itemNames.length <= 1 ? (itemNames[0] || "-") : `${itemNames.length} items`,
+        batch_id: Array.from(entry._batchParts).join(", "),
+        value_rs: roundCurrency(entry.value_rs || 0),
+      };
+    }),
+  ]
+    .sort((a, b) => {
+      const at = new Date(a.timestamp).getTime();
+      const bt = new Date(b.timestamp).getTime();
+      if (at !== bt) return bt - at;
+      return String(b.id).localeCompare(String(a.id));
+    });
+
+  const total = consolidated.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const offset = (safePage - 1) * limit;
+  const pageRows = consolidated.slice(offset, offset + limit);
+  const netValueRs = roundCurrency(consolidated.reduce((sum, row) => sum + Number(row.value_rs || 0), 0));
+
+  return {
+    page: safePage,
+    limit,
+    total,
+    totalPages,
+    rows: pageRows,
+    net_value_rs: netValueRs,
+  };
 }
 
 router.get("/", (req, res) => {
@@ -744,20 +852,18 @@ router.get("/activity-history", (req, res) => {
   ensureInfrastructure();
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
-  const offset = (page - 1) * limit;
   const { whereSql, params } = buildActivityHistoryFilter(req.query);
-  const totalRow = db
-    .prepare(`SELECT COUNT(*) AS total FROM inventory_activity_history WHERE ${whereSql}`)
-    .get(params);
   const rows = db
     .prepare(`
-      SELECT *
-      FROM inventory_activity_history
+      SELECT h.*, m.item_id AS movement_item_id, i.cost_price, i.selling_price
+      FROM inventory_activity_history h
+      LEFT JOIN inventory_movements m ON m.id = h.movement_id
+      LEFT JOIN inventory i ON i.id = m.item_id
       WHERE ${whereSql}
-      ORDER BY timestamp DESC, id DESC
-      LIMIT @limit OFFSET @offset
+      ORDER BY h.timestamp DESC, h.id DESC
     `)
-    .all({ ...params, limit, offset });
+    .all(params);
+  const consolidated = consolidateActivityRows(rows, { page, limit });
 
   const actors = db
     .prepare(`
@@ -767,22 +873,15 @@ router.get("/activity-history", (req, res) => {
       ORDER BY actor_name ASC
     `)
     .all();
-  const actions = db
-    .prepare(`
-      SELECT DISTINCT action_type
-      FROM inventory_activity_history
-      WHERE action_type != ''
-      ORDER BY action_type ASC
-    `)
-    .all()
-    .map((row) => row.action_type);
+  const actions = ["stock_in", "restock", "sell", "wastage", "adjustment"];
 
   res.json({
-    page,
-    limit,
-    total: Number(totalRow?.total || 0),
-    totalPages: Math.max(1, Math.ceil(Number(totalRow?.total || 0) / limit)),
-    rows,
+    page: consolidated.page,
+    limit: consolidated.limit,
+    total: consolidated.total,
+    totalPages: consolidated.totalPages,
+    rows: consolidated.rows,
+    net_value_rs: consolidated.net_value_rs,
     actors,
     actions,
   });
@@ -797,16 +896,19 @@ router.get("/activity-history/export.csv", (req, res) => {
   const { whereSql, params } = buildActivityHistoryFilter(req.query);
   const rows = db
     .prepare(`
-      SELECT *
-      FROM inventory_activity_history
+      SELECT h.*, m.item_id AS movement_item_id, i.cost_price, i.selling_price
+      FROM inventory_activity_history h
+      LEFT JOIN inventory_movements m ON m.id = h.movement_id
+      LEFT JOIN inventory i ON i.id = m.item_id
       WHERE ${whereSql}
-      ORDER BY timestamp DESC, id DESC
+      ORDER BY h.timestamp DESC, h.id DESC
     `)
     .all(params);
+  const consolidated = consolidateActivityRows(rows, { page: 1, limit: Number.MAX_SAFE_INTEGER });
 
   const csvLines = [
-    ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Direction", "Source", "Destination", "Batch ID"].join(","),
-    ...rows.map((row) =>
+    ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)"].join(","),
+    ...consolidated.rows.map((row) =>
       [
         escapeCsvValue(row.timestamp),
         escapeCsvValue(row.actor_name),
@@ -814,10 +916,10 @@ router.get("/activity-history/export.csv", (req, res) => {
         escapeCsvValue(row.action_type),
         escapeCsvValue(row.item_name),
         Number(row.quantity || 0),
-        escapeCsvValue(row.direction),
         escapeCsvValue(row.source_text),
         escapeCsvValue(row.destination_text),
         escapeCsvValue(row.batch_id),
+        Number(row.value_rs || 0).toFixed(2),
       ].join(","),
     ),
   ];
