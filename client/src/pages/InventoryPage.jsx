@@ -189,33 +189,62 @@ function ActionModal({ open, item, type, isSaving, onClose, onSubmit }) {
 }
 
 function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
-  const [quantityDelta, setQuantityDelta] = useState("1");
+  const [quantity, setQuantity] = useState("1");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [costPrice, setCostPrice] = useState("0.00");
 
   useEffect(() => {
     if (!open) return;
-    setQuantityDelta("1");
-  }, [open]);
+    setQuantity("1");
+    setExpiryDate("");
+    setCostPrice(String(item?.cost_price ?? 0));
+  }, [open, item]);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Add stock${item ? ` - ${item.item_name}` : ""}`} description="Increase item quantity in OCS Stock.">
+    <Modal open={open} onClose={onClose} title={`Stock In${item ? ` - ${item.item_name}` : ""}`} description="Add a new inventory batch using FEFO-safe batch tracking.">
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
-          const delta = Number(quantityDelta || 0);
-          if (!Number.isInteger(delta) || delta <= 0) return toast.error("Quantity must be a whole number greater than 0.");
-          onSubmit({ quantity_delta: delta });
+          const qty = Number(quantity || 0);
+          const cost = Number(costPrice || 0);
+          if (!Number.isInteger(qty) || qty <= 0) return toast.error("Quantity must be a whole number greater than 0.");
+          if (cost < 0) return toast.error("Cost price must be zero or more.");
+          onSubmit({ quantity: qty, expiry_date: expiryDate, cost_price: cost });
         }}
       >
         <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Quantity to add</span>
+          <span className="text-sm font-semibold text-slate-700">Quantity to Add</span>
           <input
             required
             min={1}
             step={1}
             type="number"
-            value={quantityDelta}
-            onChange={(event) => setQuantityDelta(event.target.value)}
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Batch Expiry Date</span>
+          <input
+            type="date"
+            value={expiryDate}
+            onChange={(event) => setExpiryDate(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Current Cost Price (Rs)</span>
+          <input
+            required
+            min={0}
+            step="0.01"
+            type="number"
+            value={costPrice}
+            onChange={(event) => setCostPrice(event.target.value)}
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
           />
         </label>
@@ -225,7 +254,63 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
             Cancel
           </button>
           <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Adding..." : "Add"}
+            {isSaving ? "Saving..." : "Stock In"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function RemoveStockModal({ open, item, isSaving, onClose, onSubmit }) {
+  const [quantity, setQuantity] = useState("1");
+  const [reason, setReason] = useState("Expired");
+
+  useEffect(() => {
+    if (!open) return;
+    setQuantity("1");
+    setReason("Expired");
+  }, [open]);
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Remove Stock${item ? ` - ${item.item_name}` : ""}`} description="Write off inventory using FEFO batch deduction.">
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const qty = Number(quantity || 0);
+          if (!Number.isInteger(qty) || qty <= 0) return toast.error("Quantity must be a whole number greater than 0.");
+          onSubmit({ quantity: qty, reason });
+        }}
+      >
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Quantity to Remove</span>
+          <input
+            required
+            min={1}
+            step={1}
+            type="number"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Reason</span>
+          <select value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <option value="Expired">Expired</option>
+            <option value="Discontinued">Discontinued</option>
+            <option value="Damaged">Damaged</option>
+          </select>
+        </label>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+            Cancel
+          </button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Removing..." : "Remove"}
           </button>
         </div>
       </form>
@@ -325,6 +410,7 @@ export default function InventoryPage() {
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
   const [addStock, setAddStock] = useState(null);
+  const [removeStock, setRemoveStock] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
 
   const isDoctor = user.role === "doctor";
@@ -430,29 +516,42 @@ export default function InventoryPage() {
 
   async function saveAddStock(payload) {
     if (!addStock?.item) return;
-    const delta = Number(payload?.quantity_delta || 0);
-    if (!Number.isInteger(delta) || delta <= 0) return;
+    const quantity = Number(payload?.quantity || 0);
+    if (!Number.isInteger(quantity) || quantity <= 0) return;
 
     setIsSaving(true);
     try {
-      const item = addStock.item;
-      const nextQuantity = Number(item.quantity || 0) + delta;
-      const next = await api.put(`/inventory/items/${item.id}`, {
-        item_name: item.item_name,
-        folder_id: item.folder_id,
-        quantity: nextQuantity,
-        minimum_quantity: item.minimum_quantity,
-        unit: item.unit,
-        cost_price: item.cost_price,
-        selling_price: item.selling_price,
-        attributes: item.attributes || "",
-        moa_notes: item.moa_notes || "",
-        expiry_date: item.expiry_date || "",
-        adjustment_note: `Added ${delta} units`,
+      const next = await api.post(`/inventory/items/${addStock.item.id}/ocs-actions`, {
+        action_type: "stock_in",
+        quantity,
+        expiry_date: payload.expiry_date || "",
+        cost_price: Number(payload.cost_price || 0),
       });
       setData(next);
       setAddStock(null);
-      toast.success("Stock added.");
+      toast.success("Stock In recorded.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveRemoveStock(payload) {
+    if (!removeStock?.item) return;
+    const quantity = Number(payload?.quantity || 0);
+    if (!Number.isInteger(quantity) || quantity <= 0) return;
+
+    setIsSaving(true);
+    try {
+      const next = await api.post(`/inventory/items/${removeStock.item.id}/ocs-actions`, {
+        action_type: "remove",
+        quantity,
+        reason: payload.reason,
+      });
+      setData(next);
+      setRemoveStock(null);
+      toast.success("Stock removed.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -550,7 +649,7 @@ export default function InventoryPage() {
                                 onClick={() => setAddStock({ item })}
                                 className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]"
                               >
-                                Add
+                                Stock In
                               </button>
                             ) : null}
                             <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
@@ -563,7 +662,11 @@ export default function InventoryPage() {
                             ) : canManageOcs ? (
                               <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
                             ) : null}
-                            <button type="button" onClick={() => setItemToDelete(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Delete</button>
+                            {canManageOcs ? (
+                              <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Remove</button>
+                            ) : (
+                              <button type="button" onClick={() => setItemToDelete(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Delete</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -607,6 +710,7 @@ export default function InventoryPage() {
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
+      <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
       <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
     </div>
   );

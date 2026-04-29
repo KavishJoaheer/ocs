@@ -124,6 +124,14 @@ function getItems({ stockScope, doctorId = null }) {
   return db
     .prepare(`
       SELECT i.*, f.name AS folder_name
+      ,
+        (
+          SELECT MIN(b.expiry_date)
+          FROM inventory_batches b
+          WHERE b.item_id = i.id
+            AND b.quantity_remaining > 0
+            AND b.expiry_date IS NOT NULL
+        ) AS nearest_expiry_date
       FROM inventory i
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
       WHERE i.stock_scope = @stockScope
@@ -140,8 +148,9 @@ function getItems({ stockScope, doctorId = null }) {
       minimum_quantity: Number(row.minimum_quantity || 0),
       cost_price: toNumber(row.cost_price, 0),
       selling_price: toNumber(row.selling_price, 0),
+      expiry_date: row.nearest_expiry_date || row.expiry_date || null,
       current_cost_value: roundCurrency(Number(row.quantity || 0) * toNumber(row.cost_price, 0)),
-      is_near_expiry: isNearExpiry(row.expiry_date),
+      is_near_expiry: isNearExpiry(row.nearest_expiry_date || row.expiry_date),
     }));
 }
 
@@ -516,6 +525,87 @@ router.put("/items/:id", (req, res) => {
   }
 
   res.json(getPayload(req));
+});
+
+router.post("/items/:id/ocs-actions", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin/operator can perform OCS stock actions." });
+  }
+
+  const itemId = Number(req.params.id);
+  const item = findItem(itemId, "ocs", null);
+  if (!item) return res.status(404).json({ error: "OCS stock item not found." });
+
+  const actionType = String(req.body.action_type || "").trim().toLowerCase();
+  const quantity = Number(req.body.quantity || 0);
+  if (!["stock_in", "remove"].includes(actionType)) {
+    return res.status(400).json({ error: "Action must be stock_in or remove." });
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: "Quantity must be greater than zero." });
+  }
+
+  const previousQuantity = Number(item.quantity || 0);
+  if (actionType === "stock_in") {
+    const costPrice = roundCurrency(req.body.cost_price ?? item.cost_price);
+    const expiryDate = String(req.body.expiry_date || "").trim() || null;
+    const nextQuantity = previousQuantity + quantity;
+
+    db.transaction(() => {
+      createBatch(itemId, quantity, expiryDate, costPrice);
+      db.prepare(`
+        UPDATE inventory
+        SET quantity = ?, cost_price = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(nextQuantity, costPrice, itemId);
+      recordMovement({
+        itemId,
+        movementType: "in",
+        quantity,
+        previousQuantity,
+        nextQuantity,
+        actionType: "stock_in",
+        note: "Stock In batch added",
+        userId: req.auth.id,
+      });
+    })();
+
+    return res.status(201).json(getPayload(req));
+  }
+
+  const reason = String(req.body.reason || "").trim();
+  if (!["Expired", "Discontinued", "Damaged"].includes(reason)) {
+    return res.status(400).json({ error: "Reason must be Expired, Discontinued, or Damaged." });
+  }
+  if (previousQuantity < quantity) {
+    return res.status(400).json({ error: "Cannot remove more stock than available." });
+  }
+
+  try {
+    db.transaction(() => {
+      const consumed = consumeBatches(itemId, quantity);
+      if (!consumed.ok) {
+        throw new Error("Insufficient batch stock.");
+      }
+      const nextQuantity = previousQuantity - quantity;
+      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
+      recordMovement({
+        itemId,
+        movementType: "out",
+        quantity,
+        previousQuantity,
+        nextQuantity,
+        actionType: "remove",
+        note: `Write-off (${reason})`,
+        userId: req.auth.id,
+      });
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Unable to remove stock." });
+  }
+
+  return res.status(201).json(getPayload(req));
 });
 
 router.post("/items/:id/actions", (req, res) => {
