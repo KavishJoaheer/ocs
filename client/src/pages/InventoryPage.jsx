@@ -500,53 +500,64 @@ function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
   );
 }
 
-function DoctorRestockModal({ open, items, isSaving, onClose, onSubmit }) {
+function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
+  const [quantity, setQuantity] = useState("1");
+
+  useEffect(() => {
+    if (!open) return;
+    setQuantity("1");
+  }, [open, item]);
+
+  const available = Number(item?.ocs_available || 0);
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Restock My Inventory"
-      description="Top up low items to 100% par level using an atomic FEFO transfer."
-      size="xl"
+      description="Transfer this item from OCS Master Stock into your inventory using atomic FEFO deduction."
+      size="lg"
     >
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
-          onSubmit(items);
+          const qty = Number(quantity || 0);
+          if (!Number.isInteger(qty) || qty <= 0) return;
+          onSubmit({
+            ocs_item_id: Number(item?.ocs_item_id || 0),
+            quantity: qty,
+            item_name: item?.item_name || "",
+            ocs_available: available,
+          });
         }}
       >
-        <div className="max-h-[360px] overflow-auto rounded-2xl border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
-              <tr>
-                <th className="px-4 py-3 text-left">Item</th>
-                <th className="px-4 py-3 text-left">Current</th>
-                <th className="px-4 py-3 text-left">Par Level</th>
-                <th className="px-4 py-3 text-left">Need</th>
-                <th className="px-4 py-3 text-left">OCS Available</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={`restock-${item.ocs_item_id}-${item.item_name}`} className="border-t border-slate-200/70">
-                  <td className="px-4 py-3">{item.item_name}</td>
-                  <td className="px-4 py-3">{item.current_quantity}</td>
-                  <td className="px-4 py-3">{item.par_level}</td>
-                  <td className="px-4 py-3 font-semibold text-[#4FB8B3]">{item.required_quantity}</td>
-                  <td className="px-4 py-3">{item.ocs_available}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
+          <p className="mt-1 text-xs text-slate-600">OCS Master available: {available}</p>
+          <label className="mt-4 block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Quantity to restock from Master Stock</span>
+            <input
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+            />
+          </label>
+          {Number(quantity || 0) > available ? (
+            <p className="mt-2 text-xs font-semibold text-rose-700">
+              Requested quantity exceeds OCS Master availability.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
             Cancel
           </button>
-          <button type="submit" disabled={isSaving || !items.length} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Restocking..." : `Restock ${items.length} item(s)`}
+          <button type="submit" disabled={isSaving || !item?.ocs_item_id || Number(quantity || 0) > available} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Restocking..." : "Restock My Inventory"}
           </button>
         </div>
       </form>
@@ -570,6 +581,7 @@ export default function InventoryPage() {
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
+  const [doctorRestockItem, setDoctorRestockItem] = useState(null);
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
   const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
@@ -634,6 +646,13 @@ export default function InventoryPage() {
       })
       .filter(Boolean);
   }, [isDoctor, data]);
+  const ocsByFolderAndName = useMemo(() => {
+    const map = new Map();
+    (data?.ocs_stock || []).forEach((item) => {
+      map.set(`${item.folder_id}::${String(item.item_name || "").toLowerCase()}`, item);
+    });
+    return map;
+  }, [data]);
 
   const selectedConsumption = useMemo(
     () => doctorConsumptionRows.find((row) => row.period_key === consumptionPeriod) || null,
@@ -809,21 +828,31 @@ export default function InventoryPage() {
     }
   }
 
-  async function saveDoctorRestock(itemsToRestock) {
-    if (!itemsToRestock.length) {
-      toast.error("No eligible low-stock items available to restock.");
+  async function saveDoctorRestock(restockRequest) {
+    const requests = Array.isArray(restockRequest)
+      ? restockRequest
+      : restockRequest?.ocs_item_id && Number(restockRequest?.quantity || 0) > 0
+        ? [restockRequest]
+        : [];
+    if (!requests.length) return;
+
+    const invalid = requests.find((item) => Number(item.quantity || 0) > Number(item.ocs_available || Number.MAX_SAFE_INTEGER));
+    if (invalid) {
+      toast.error(`Requested quantity exceeds OCS stock for ${invalid.item_name || "an item"}.`);
       return;
     }
+
     setIsSaving(true);
     try {
       const next = await api.post("/inventory/restock/my-inventory", {
-        items: itemsToRestock.map((item) => ({
+        items: requests.map((item) => ({
           ocs_item_id: Number(item.ocs_item_id),
-          quantity: Number(item.required_quantity),
+          quantity: Number(item.required_quantity || item.quantity),
         })),
       });
       setData(next);
       setDoctorRestockOpen(false);
+      setDoctorRestockItem(null);
       toast.success("My inventory restocked successfully.");
     } catch (error) {
       toast.error(error.message);
@@ -1131,7 +1160,7 @@ export default function InventoryPage() {
         {pagedItems.length ? (
           <div className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white">
             <div className="max-h-[560px] overflow-auto">
-              <table className="min-w-full text-left text-sm">
+              <table className="min-w-full table-fixed text-left text-sm">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <tr>
                     <th className="px-4 py-3">
@@ -1144,11 +1173,11 @@ export default function InventoryPage() {
                         />
                       ) : null}
                     </th>
-                    <th className="px-4 py-3">Item Name</th>
-                    <th className="px-4 py-3">Qty</th>
-                    <th className="px-4 py-3">Min Qty</th>
-                    <th className="px-4 py-3">Nearest Expiry</th>
-                    <th className="px-4 py-3">Actions</th>
+                    <th className="w-[34%] px-4 py-2.5">Item Name</th>
+                    <th className="w-[16%] px-4 py-2.5">Qty</th>
+                    <th className="w-[12%] px-4 py-2.5 text-left">Min Qty</th>
+                    <th className="w-[16%] px-4 py-2.5 text-left">Nearest Expiry</th>
+                    <th className="w-[22%] px-4 py-2.5 text-left">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1166,7 +1195,7 @@ export default function InventoryPage() {
                           <table className="w-full">
                             <tbody>
                               <tr className={`border-t border-slate-200/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
-                                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                                <td className="px-4 py-2" onClick={(event) => event.stopPropagation()}>
                                   {canManageOcs ? (
                                     <input
                                       type="checkbox"
@@ -1176,7 +1205,7 @@ export default function InventoryPage() {
                                     />
                                   ) : null}
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-4 py-2">
                                   <div className="flex items-center gap-2">
                                     <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
                                       {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -1184,7 +1213,7 @@ export default function InventoryPage() {
                                     <span className="font-semibold text-slate-900">{item.item_name}</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-4 py-2">
                                   <div className="inline-flex items-center gap-2">
                                     <span>{item.quantity}</span>
                                     {isDoctor && doctorViewIsMy ? (
@@ -1202,10 +1231,10 @@ export default function InventoryPage() {
                                     ) : null}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">{item.minimum_quantity}</td>
-                                <td className="px-4 py-3">{item.expiry_date || "Not set"}</td>
-                                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                                  <div className="flex flex-wrap gap-2">
+                                <td className="px-4 py-2 text-left">{item.minimum_quantity}</td>
+                                <td className="px-4 py-2 text-left">{item.expiry_date || "Not set"}</td>
+                                <td className="px-4 py-2 text-left" onClick={(event) => event.stopPropagation()}>
+                                  <div className="flex flex-nowrap items-center gap-1.5">
                                     {canManageOcs && contextIsOcs ? (
                                       <button type="button" onClick={() => setAddStock({ item })} className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]">
                                         Stock In
@@ -1217,13 +1246,27 @@ export default function InventoryPage() {
                                     {canManageOcs && contextIsOcs ? (
                                       <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
                                     ) : null}
-                                    {isDoctor && doctorViewIsOcs ? (
+                                    {isDoctor && doctorViewIsMy ? (
                                       <button
                                         type="button"
-                                        onClick={() => setDoctorRestockOpen(true)}
-                                        className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"
+                                        onClick={() => {
+                                          const source = ocsByFolderAndName.get(
+                                            `${item.folder_id}::${String(item.item_name || "").toLowerCase()}`,
+                                          );
+                                          if (!source?.id) {
+                                            toast.error("Item not available in OCS Master Stock.");
+                                            return;
+                                          }
+                                          setDoctorRestockItem({
+                                            ocs_item_id: Number(source.id),
+                                            item_name: item.item_name,
+                                            ocs_available: Number(source.quantity || 0),
+                                          });
+                                          setDoctorRestockOpen(true);
+                                        }}
+                                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1.5 text-xs font-semibold text-white"
                                       >
-                                        <Truck className="size-3.5" />
+                                        <Truck className="size-3" />
                                         Restock My Inventory
                                       </button>
                                     ) : null}
@@ -1352,7 +1395,16 @@ export default function InventoryPage() {
       <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
-      <DoctorRestockModal open={doctorRestockOpen} items={doctorRestockCandidates} isSaving={isSaving} onClose={() => setDoctorRestockOpen(false)} onSubmit={saveDoctorRestock} />
+      <DoctorRestockModal
+        open={doctorRestockOpen}
+        item={doctorRestockItem}
+        isSaving={isSaving}
+        onClose={() => {
+          setDoctorRestockOpen(false);
+          setDoctorRestockItem(null);
+        }}
+        onSubmit={saveDoctorRestock}
+      />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
       <BulkRemoveModal open={bulkRemoveOpen} count={selectedItems.length} isSaving={isSaving} onClose={() => setBulkRemoveOpen(false)} onSubmit={runBulkRemove} />

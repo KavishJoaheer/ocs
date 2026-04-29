@@ -1254,6 +1254,22 @@ router.post("/restock/my-inventory", (req, res) => {
             performed_by_name: req.auth.full_name || req.auth.username || "",
           }),
         });
+        recordAudit({
+          actionType: "restock_my_inventory",
+          itemId: source.id,
+          itemName: source.item_name,
+          quantity: request.quantity,
+          targetDoctorId: doctorId,
+          targetDoctorName: doctor.full_name,
+          performedByUserId: req.auth.id,
+          performedByRole: req.auth.role,
+          performedByName: req.auth.full_name || req.auth.username || "",
+          metaJson: JSON.stringify({
+            source_item_id: source.id,
+            target_item_id: targetItemId,
+            restocked_at: new Date().toISOString(),
+          }),
+        });
       }
     })();
   } catch (error) {
