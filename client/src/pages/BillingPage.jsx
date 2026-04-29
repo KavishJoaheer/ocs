@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   CreditCard,
   DollarSign,
   Plus,
   ReceiptText,
   SquarePen,
+  Trash2,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -30,7 +32,7 @@ const PAYMENT_METHOD_OPTIONS = [
 ];
 
 function createEmptyLineItem() {
-  return { description: "", amount: "0" };
+  return { description: "", amount: "0", type: "Sale" };
 }
 
 function BillingStat({ icon: Icon, label, value }) {
@@ -63,7 +65,7 @@ function BillingItemsEditor({ items, setItems }) {
   return (
     <div className="space-y-3">
       {items.map((item, index) => (
-        <div key={index} className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+        <div key={index} className="grid gap-3 md:grid-cols-[1fr_160px_150px_auto]">
           <input
             required
             value={item.description}
@@ -81,6 +83,15 @@ function BillingItemsEditor({ items, setItems }) {
             placeholder="Amount"
             className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
           />
+          <select
+            value={item.type || "Sale"}
+            onChange={(event) => updateItem(index, "type", event.target.value)}
+            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
+          >
+            <option value="Sale">Sale</option>
+            <option value="Wastage">Wastage</option>
+            <option value="Adjustment">Adjustment</option>
+          </select>
           <button
             type="button"
             onClick={() =>
@@ -203,7 +214,11 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
   }, [open, bill]);
 
   const total = useMemo(
-    () => items.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    () =>
+      items.reduce(
+        (sum, item) => sum + (String(item.type || "Sale") === "Wastage" ? 0 : Number(item.amount || 0)),
+        0,
+      ),
     [items],
   );
 
@@ -294,6 +309,10 @@ function CreateBillingModal({
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [items, setItems] = useState([createEmptyLineItem()]);
+  const [inventoryOptions, setInventoryOptions] = useState([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventorySelection, setInventorySelection] = useState("");
+  const [inventoryQty, setInventoryQty] = useState("1");
 
   useEffect(() => {
     if (!open) {
@@ -306,6 +325,9 @@ function CreateBillingModal({
     setPaymentMethod("");
     setPaymentDate("");
     setItems([createEmptyLineItem()]);
+    setInventoryOptions([]);
+    setInventorySelection("");
+    setInventoryQty("1");
   }, [open, preselectedPatientId]);
 
   const patientConsultations = useMemo(
@@ -334,8 +356,34 @@ function CreateBillingModal({
   const selectedConsultation =
     patientConsultations.find((consultation) => consultation.id === Number(consultationId)) || null;
 
+  useEffect(() => {
+    if (!open || !consultationId) return;
+    let ignore = false;
+    async function loadInventory() {
+      setInventoryLoading(true);
+      try {
+        const rows = await api.get(`/billing/inventory-options/${consultationId}`);
+        if (!ignore) {
+          setInventoryOptions(rows);
+        }
+      } catch (error) {
+        if (!ignore) toast.error(error.message);
+      } finally {
+        if (!ignore) setInventoryLoading(false);
+      }
+    }
+    loadInventory();
+    return () => {
+      ignore = true;
+    };
+  }, [open, consultationId]);
+
   const total = useMemo(
-    () => items.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    () =>
+      items.reduce(
+        (sum, item) => sum + (String(item.type || "Sale") === "Wastage" ? 0 : Number(item.amount || 0)),
+        0,
+      ),
     [items],
   );
 
@@ -363,11 +411,44 @@ function CreateBillingModal({
       items: items.map((item) => ({
         description: item.description,
         amount: Number(item.amount || 0),
+        type: item.type || "Sale",
+        quantity: Number(item.quantity || 0),
+        inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
+        emergency_override: Boolean(item.emergency_override),
       })),
       status,
       payment_method: status === "paid" ? paymentMethod : null,
       payment_date: status === "paid" ? paymentDate || null : null,
     });
+  }
+
+  function addInventoryLine(type) {
+    const selected = inventoryOptions.find((row) => Number(row.id) === Number(inventorySelection));
+    const qty = Number(inventoryQty || 0);
+    if (!selected) {
+      toast.error("Select an inventory item first.");
+      return;
+    }
+    if (!Number.isInteger(qty) || qty <= 0) {
+      toast.error("Quantity must be a whole number greater than 0.");
+      return;
+    }
+    const available = Number(selected.quantity || 0);
+    setItems((current) => [
+      ...current,
+      {
+        description: selected.item_name,
+        amount:
+          type === "Wastage"
+            ? Number(selected.cost_price || 0) * qty
+            : Number(selected.selling_price || 0) * qty,
+        type,
+        quantity: qty,
+        inventory_item_id: selected.id,
+        available,
+        emergency_override: false,
+      },
+    ]);
   }
 
   return (
@@ -709,6 +790,20 @@ function BillingPage() {
                             Bill #{bill.id} - {bill.items.length} line item
                             {bill.items.length === 1 ? "" : "s"}
                           </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {bill.items.slice(0, 4).map((item, idx) => (
+                              <span
+                                key={`bill-item-${bill.id}-${idx}`}
+                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                                  item.type === "Wastage"
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-[#4FB8B3]/15 text-[#2f8f8b]"
+                                }`}
+                              >
+                                {item.type || "Sale"}
+                              </span>
+                            ))}
+                          </div>
                         </td>
                         <td className="px-5 py-4 font-semibold text-slate-950">
                           {formatCurrency(bill.total_amount)}

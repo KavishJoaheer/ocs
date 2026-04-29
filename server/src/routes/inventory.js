@@ -255,6 +255,21 @@ function createBatch(itemId, quantity, expiryDate, unitCost) {
   `).run(itemId, quantity, expiryDate || null, roundCurrency(unitCost));
 }
 
+function allocateRestockBatchesToPositive(itemId, allocations, previousQuantity) {
+  // When stock is negative, inbound quantities first close the deficit without creating usable batches.
+  let deficit = Math.max(0, 0 - Number(previousQuantity || 0));
+  allocations.forEach((allocation) => {
+    const inbound = Number(allocation.quantity || 0);
+    if (inbound <= 0) return;
+    const usedToHealDeficit = Math.min(deficit, inbound);
+    deficit -= usedToHealDeficit;
+    const batchQty = inbound - usedToHealDeficit;
+    if (batchQty > 0) {
+      createBatch(itemId, batchQty, allocation.expiry_date, allocation.unit_cost);
+    }
+  });
+}
+
 function consumeBatches(itemId, quantity, { disallowExpired = false } = {}) {
   const rows = db
     .prepare(`
@@ -414,7 +429,15 @@ function getCompareRows() {
         d.id AS doctor_id,
         d.full_name AS doctor_name,
         COUNT(DISTINCT c.patient_id) AS patient_volume,
-        COALESCE(SUM(CASE WHEN m.action_type IN ('sell', 'remove') THEN m.quantity ELSE 0 END), 0) AS stock_consumption
+        COALESCE(
+          SUM(
+            CASE
+              WHEN m.action_type IN ('sell', 'remove', 'wastage') THEN m.quantity * i.cost_price
+              ELSE 0
+            END
+          ),
+          0
+        ) AS stock_consumption
       FROM doctors d
       LEFT JOIN consultations c
         ON c.doctor_id = d.id
@@ -433,7 +456,7 @@ function getCompareRows() {
     .map((row) => ({
       ...row,
       patient_volume: Number(row.patient_volume || 0),
-      stock_consumption: Number(row.stock_consumption || 0),
+      stock_consumption: roundCurrency(row.stock_consumption),
     }));
 }
 
@@ -919,7 +942,11 @@ router.post("/items/:id/actions", (req, res) => {
   if (nextQuantity < 0) return res.status(400).json({ error: "Cannot remove more stock than available." });
 
   if (movementType === "in") {
-    createBatch(itemId, quantity, item.expiry_date || null, item.cost_price);
+    const previousDeficit = Math.max(0, 0 - previousQuantity);
+    const batchQty = Math.max(0, quantity - previousDeficit);
+    if (batchQty > 0) {
+      createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price);
+    }
   } else {
     const consumed = consumeBatches(itemId, quantity, { disallowExpired: actionType === "sell" });
     if (!consumed.ok) {
@@ -1059,9 +1086,7 @@ router.post("/restock", (req, res) => {
         targetItemId = Number(created.lastInsertRowid);
       }
 
-      consumed.allocations.forEach((allocation) => {
-        createBatch(targetItemId, allocation.quantity, allocation.expiry_date, allocation.unit_cost);
-      });
+      allocateRestockBatchesToPositive(targetItemId, consumed.allocations, targetPrev);
       recordMovement({
         itemId: targetItemId,
         movementType: "in",
@@ -1211,9 +1236,7 @@ router.post("/restock/my-inventory", (req, res) => {
           targetItemId = Number(created.lastInsertRowid);
         }
 
-        consumed.allocations.forEach((allocation) => {
-          createBatch(targetItemId, allocation.quantity, allocation.expiry_date, allocation.unit_cost);
-        });
+        allocateRestockBatchesToPositive(targetItemId, consumed.allocations, targetPrev);
         recordMovement({
           itemId: targetItemId,
           movementType: "in",

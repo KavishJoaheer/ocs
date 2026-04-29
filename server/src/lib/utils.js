@@ -33,6 +33,13 @@ function normalizeBillingItems(items) {
     .map((item) => ({
       description: String(item?.description ?? "").trim(),
       amount: toNumber(item?.amount, 0),
+      type: ["Sale", "Wastage", "Adjustment"].includes(String(item?.type || "").trim())
+        ? String(item.type).trim()
+        : "Sale",
+      quantity: Number.isInteger(Number(item?.quantity)) ? Number(item.quantity) : 0,
+      inventory_item_id: item?.inventory_item_id ? Number(item.inventory_item_id) : null,
+      emergency_override: Boolean(item?.emergency_override),
+      appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,
     }))
     .filter((item) => item.description || item.amount);
 }
@@ -40,7 +47,7 @@ function normalizeBillingItems(items) {
 function calculateBillingTotal(items) {
   return Number(
     normalizeBillingItems(items)
-      .reduce((sum, item) => sum + item.amount, 0)
+      .reduce((sum, item) => sum + (item.type === "Wastage" ? 0 : item.amount), 0)
       .toFixed(2),
   );
 }
