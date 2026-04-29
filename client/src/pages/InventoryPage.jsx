@@ -258,6 +258,11 @@ export default function InventoryPage() {
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
   const isAdmin = user.role === "admin";
+  const folders = data?.folders || [];
+  const doctors = data?.doctors || [];
+  const items = isDoctor ? data?.my_stock || [] : data?.ocs_stock || [];
+  const lowStockItems = data?.low_stock_items || [];
+  const summary = data?.summary || {};
 
   async function load(doctorId = selectedDoctorId) {
     setLoading(true);
@@ -278,20 +283,19 @@ export default function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctorId]);
 
-  if (loading) return <LoadingState label="Loading inventory workspace" />;
-  if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
-
-  const folders = data.folders || [];
-  const doctors = data.doctors || [];
-  const items = isDoctor ? data.my_stock || [] : data.ocs_stock || [];
-  const lowStockItems = data.low_stock_items || [];
-  const summary = data.summary || {};
-
   const visibleItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    const source = selectedView === "low-stock" ? lowStockItems : selectedView === "all" ? items : items.filter((item) => String(item.folder_id) === String(selectedView));
+    const source =
+      selectedView === "low-stock"
+        ? lowStockItems
+        : selectedView === "all"
+          ? items
+          : items.filter((item) => String(item.folder_id) === String(selectedView));
     return source.filter((item) => !needle || item.item_name.toLowerCase().includes(needle));
   }, [items, lowStockItems, search, selectedView]);
+
+  if (loading) return <LoadingState label="Loading inventory workspace" />;
+  if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
 
   async function saveItem(payload) {
     setIsSaving(true);
