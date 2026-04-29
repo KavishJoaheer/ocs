@@ -293,6 +293,11 @@ export default function InventoryPage() {
           : items.filter((item) => String(item.folder_id) === String(selectedView));
     return source.filter((item) => !needle || item.item_name.toLowerCase().includes(needle));
   }, [items, lowStockItems, search, selectedView]);
+  const doctorOptions = useMemo(
+    () => [...doctors].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
+    [doctors],
+  );
+  const stockViewerItemCount = selectedDoctorId ? (data?.selected_doctor_stock || []).length : items.length;
 
   if (loading) return <LoadingState label="Loading inventory workspace" />;
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
@@ -397,51 +402,26 @@ export default function InventoryPage() {
         }
       />
 
+      {isAdmin ? (
+        <SectionCard title="Stock Viewer" subtitle="Inspect any doctor's My Stock instantly.">
+          <div className="flex flex-wrap items-center gap-3">
+            <select value={selectedDoctorId} onChange={(event) => setSelectedDoctorId(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+              <option value="">OCS Stock</option>
+              {doctorOptions.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-500">Selected stock items: {stockViewerItemCount}</span>
+          </div>
+        </SectionCard>
+      ) : null}
+
       <div className="grid gap-4 md:grid-cols-4">
         <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} description="Based on cost price." />
         <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} description="Sell actions synced to billing." />
         <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} description="Inbound restock and intake value." />
         <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" description="Traffic-light alert counters." />
       </div>
-
-      {isAdmin ? (
-        <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 text-left">Doctor</th>
-                  <th className="px-4 py-3 text-left">Patient Volume</th>
-                  <th className="px-4 py-3 text-left">Stock Consumption</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.compare_rows || []).map((row) => (
-                  <tr key={row.doctor_id} className="border-t border-slate-200/70">
-                    <td className="px-4 py-3">{row.doctor_name}</td>
-                    <td className="px-4 py-3">{row.patient_volume}</td>
-                    <td className="px-4 py-3">{row.stock_consumption}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-      ) : null}
-
-      {isAdmin ? (
-        <SectionCard title="Doctor Stock Viewer" subtitle="Inspect any doctor's My Stock instantly.">
-          <div className="flex flex-wrap items-center gap-3">
-            <select value={selectedDoctorId} onChange={(event) => setSelectedDoctorId(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
-              <option value="">Select doctor (optional)</option>
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
-              ))}
-            </select>
-            <span className="text-sm text-slate-500">Selected doctor items: {(data.selected_doctor_stock || []).length}</span>
-          </div>
-        </SectionCard>
-      ) : null}
 
       <SectionCard title="Folders and Search" subtitle="Browse mandatory folders and low-stock dashboard.">
         <div className="space-y-4">
@@ -548,6 +528,31 @@ export default function InventoryPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {isAdmin ? (
+        <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Doctor</th>
+                  <th className="px-4 py-3 text-left">Patient Volume</th>
+                  <th className="px-4 py-3 text-left">Stock Consumption</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.compare_rows || []).map((row) => (
+                  <tr key={row.doctor_id} className="border-t border-slate-200/70">
+                    <td className="px-4 py-3">{row.doctor_name}</td>
+                    <td className="px-4 py-3">{row.patient_volume}</td>
+                    <td className="px-4 py-3">{row.stock_consumption}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </SectionCard>
       ) : null}
