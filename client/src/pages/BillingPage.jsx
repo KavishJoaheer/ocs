@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CreditCard,
@@ -311,8 +311,12 @@ function CreateBillingModal({
   const [items, setItems] = useState([createEmptyLineItem()]);
   const [inventoryOptions, setInventoryOptions] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [inventorySelection, setInventorySelection] = useState("");
+  const [itemQuery, setItemQuery] = useState("");
+  const [inventorySelection, setInventorySelection] = useState(null);
   const [inventoryQty, setInventoryQty] = useState("1");
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const suggestionsRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -326,8 +330,11 @@ function CreateBillingModal({
     setPaymentDate("");
     setItems([createEmptyLineItem()]);
     setInventoryOptions([]);
-    setInventorySelection("");
+    setItemQuery("");
+    setInventorySelection(null);
     setInventoryQty("1");
+    setSuggestionsOpen(false);
+    setHighlightIndex(0);
   }, [open, preselectedPatientId]);
 
   const patientConsultations = useMemo(
@@ -356,6 +363,12 @@ function CreateBillingModal({
   const selectedConsultation =
     patientConsultations.find((consultation) => consultation.id === Number(consultationId)) || null;
 
+  const filteredSuggestions = useMemo(() => {
+    const needle = String(itemQuery || "").trim().toLowerCase();
+    if (!needle) return inventoryOptions;
+    return inventoryOptions.filter((item) => String(item.item_name || "").toLowerCase().includes(needle));
+  }, [inventoryOptions, itemQuery]);
+
   useEffect(() => {
     if (!open || !consultationId) return;
     let ignore = false;
@@ -377,6 +390,22 @@ function CreateBillingModal({
       ignore = true;
     };
   }, [open, consultationId]);
+
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [itemQuery, consultationId]);
+
+  function getSellingPriceFromDoctorStock(itemId) {
+    const row = inventoryOptions.find((item) => Number(item.id) === Number(itemId));
+    return Number(row?.selling_price || 0);
+  }
+
+  function handleSelectSuggestion(item) {
+    setInventorySelection(item);
+    setItemQuery(item.item_name || "");
+    setInventoryQty("1");
+    setSuggestionsOpen(false);
+  }
 
   const total = useMemo(
     () =>
@@ -423,7 +452,9 @@ function CreateBillingModal({
   }
 
   function addInventoryLine(type) {
-    const selected = inventoryOptions.find((row) => Number(row.id) === Number(inventorySelection));
+    const selected = inventorySelection
+      ? inventoryOptions.find((row) => Number(row.id) === Number(inventorySelection.id))
+      : null;
     const qty = Number(inventoryQty || 0);
     if (!selected) {
       toast.error("Select an inventory item first.");
@@ -434,6 +465,7 @@ function CreateBillingModal({
       return;
     }
     const available = Number(selected.quantity || 0);
+    const sellingPrice = getSellingPriceFromDoctorStock(selected.id);
     setItems((current) => [
       ...current,
       {
@@ -441,11 +473,12 @@ function CreateBillingModal({
         amount:
           type === "Wastage"
             ? Number(selected.cost_price || 0) * qty
-            : Number(selected.selling_price || 0) * qty,
+            : sellingPrice * qty,
         type,
         quantity: qty,
         inventory_item_id: selected.id,
         available,
+        folder_name: selected.folder_name || "",
         emergency_override: false,
       },
     ]);
@@ -514,7 +547,156 @@ function CreateBillingModal({
           </div>
         ) : null}
 
+        <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
+          <div className="grid gap-3 md:grid-cols-[1fr_130px_170px_auto_auto]">
+            <div className="relative">
+              <input
+                value={itemQuery}
+                onChange={(event) => {
+                  setItemQuery(event.target.value);
+                  setSuggestionsOpen(true);
+                }}
+                onFocus={() => setSuggestionsOpen(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setSuggestionsOpen(false), 120);
+                }}
+                onKeyDown={(event) => {
+                  if (!filteredSuggestions.length) return;
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setSuggestionsOpen(true);
+                    setHighlightIndex((prev) => Math.min(filteredSuggestions.length - 1, prev + 1));
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSuggestionsOpen(true);
+                    setHighlightIndex((prev) => Math.max(0, prev - 1));
+                    return;
+                  }
+                  if (event.key === "Enter") {
+                    if (!suggestionsOpen) return;
+                    event.preventDefault();
+                    const picked = filteredSuggestions[highlightIndex];
+                    if (picked) handleSelectSuggestion(picked);
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    setSuggestionsOpen(false);
+                  }
+                }}
+                placeholder={inventoryLoading ? "Loading doctor stock..." : "Item Name (type to search My Stock)"}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
+              />
+              {suggestionsOpen && filteredSuggestions.length ? (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border border-slate-200 bg-white shadow"
+                >
+                  {filteredSuggestions.map((item, index) => {
+                    const available = Number(item.quantity || 0);
+                    const isOut = available <= 0;
+                    const isActive = index === highlightIndex;
+                    return (
+                      <button
+                        key={`suggest-${item.id}`}
+                        type="button"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          handleSelectSuggestion(item);
+                        }}
+                        className={`w-full px-4 py-2 text-left text-sm ${
+                          isActive ? "bg-[#4FB8B3] text-white" : isOut ? "text-slate-400" : "text-slate-700"
+                        }`}
+                      >
+                        <p className="font-semibold">
+                          {item.item_name} ({available > 0 ? `${available} left` : "0 available"})
+                        </p>
+                        <p className={`text-xs ${isActive ? "text-white/85" : "text-slate-500"}`}>
+                          {item.folder_name || "Uncategorized"}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+            <input
+              min="1"
+              step="1"
+              type="number"
+              value={inventoryQty}
+              onChange={(event) => setInventoryQty(event.target.value)}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+            />
+            <input
+              readOnly
+              value={formatCurrency(getSellingPriceFromDoctorStock(inventorySelection?.id))}
+              className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700"
+            />
+            <button
+              type="button"
+              onClick={() => addInventoryLine("Sale")}
+              className="rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white"
+            >
+              Add Sale
+            </button>
+            <button
+              type="button"
+              onClick={() => addInventoryLine("Wastage")}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700"
+            >
+              <Trash2 className="size-4" />
+              Wastage
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">
+            Auto-suggest searches My Stock only (case-insensitive partial matches). Out-of-stock items show 0 available and can be used with Emergency Override.
+          </p>
+        </div>
+
         <BillingItemsEditor items={items} setItems={setItems} />
+        {items.some((item) => item.inventory_item_id) ? (
+          <div className="space-y-2">
+            {items
+              .map((item, index) => ({ ...item, index }))
+              .filter((item) => item.inventory_item_id)
+              .map((item) => {
+                const available = Number(item.available || 0);
+                const qty = Number(item.quantity || 0);
+                const needsOverride = qty > available;
+                return (
+                  <div key={`inv-line-${item.index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className={`text-sm font-semibold ${item.type === "Wastage" ? "text-amber-700" : "text-[#4FB8B3]"}`}>
+                        {item.description} - {item.type}
+                      </p>
+                      <p className="text-xs text-slate-500">Available: {available}</p>
+                    </div>
+                    {needsOverride ? (
+                      <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(item.emergency_override)}
+                          onChange={(event) =>
+                            setItems((current) =>
+                              current.map((row, rowIndex) =>
+                                rowIndex === item.index
+                                  ? { ...row, emergency_override: event.target.checked }
+                                  : row,
+                              ),
+                            )
+                          }
+                        />
+                        <AlertTriangle className="size-3.5" />
+                        Emergency override (allow negative stock)
+                      </label>
+                    ) : null}
+                  </div>
+                );
+              })}
+          </div>
+        ) : null}
 
         <BillingStatusFields
           status={status}

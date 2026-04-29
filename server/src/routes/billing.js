@@ -347,11 +347,19 @@ router.get("/inventory-options/:consultationId", (req, res) => {
 
   const rows = db
     .prepare(`
-      SELECT id, item_name, quantity, minimum_quantity, selling_price, cost_price
-      FROM inventory
+      SELECT
+        i.id,
+        i.item_name,
+        i.quantity,
+        i.minimum_quantity,
+        i.selling_price,
+        i.cost_price,
+        COALESCE(f.name, '') AS folder_name
+      FROM inventory i
+      LEFT JOIN inventory_folders f ON f.id = i.folder_id
       WHERE stock_scope = 'doctor'
         AND owner_doctor_id = ?
-      ORDER BY item_name ASC
+      ORDER BY i.item_name ASC
     `)
     .all(Number(consultation.doctor_id))
     .map((row) => ({
