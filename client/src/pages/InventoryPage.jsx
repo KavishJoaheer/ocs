@@ -838,8 +838,12 @@ export default function InventoryPage() {
   useEffect(() => {
     if (!isDoctor || !data) return;
     const shouldOpenRestock = searchParams.get("restock") === "alert";
-    if (!shouldOpenRestock || !doctorRestockCandidates.length) return;
-    setDoctorRestockOpen(true);
+    if (!shouldOpenRestock) return;
+    if (doctorRestockCandidates.length) {
+      setDoctorRestockOpen(true);
+    } else {
+      toast("Stock levels look healthy — no restock needed right now.");
+    }
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("restock");
     setSearchParams(nextParams, { replace: true });

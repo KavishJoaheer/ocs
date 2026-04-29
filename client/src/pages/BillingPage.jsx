@@ -58,7 +58,7 @@ function BillingStat({ icon: Icon, label, value }) {
   );
 }
 
-function BillingItemsEditor({ items, setItems }) {
+function BillingItemsEditor({ items, setItems, lockInventory = false }) {
   function updateItem(index, key, value) {
     setItems((current) =>
       current.map((item, itemIndex) =>
@@ -69,49 +69,60 @@ function BillingItemsEditor({ items, setItems }) {
 
   return (
     <div className="space-y-3">
-      {items.map((item, index) => (
-        <div key={index} className="grid gap-3 md:grid-cols-[1fr_160px_150px_auto]">
-          <input
-            required
-            value={item.description}
-            onChange={(event) => updateItem(index, "description", event.target.value)}
-            placeholder="Description"
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-          />
-          <input
-            required
-            min="0"
-            step="0.01"
-            type="number"
-            value={item.amount}
-            onChange={(event) => updateItem(index, "amount", event.target.value)}
-            placeholder="Amount"
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-          />
-          <select
-            value={item.type || "Sale"}
-            onChange={(event) => updateItem(index, "type", event.target.value)}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
-          >
-            <option value="Sale">Sale</option>
-            <option value="Wastage">Wastage</option>
-            <option value="Adjustment">Adjustment</option>
-          </select>
-          <button
-            type="button"
-            onClick={() =>
-              setItems((current) =>
-                current.length > 1
-                  ? current.filter((_, itemIndex) => itemIndex !== index)
-                  : current,
-              )
-            }
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-          >
-            Remove
-          </button>
-        </div>
-      ))}
+      {items.map((item, index) => {
+        const isInventoryLine = Boolean(item.inventory_item_id) && Number(item.quantity || 0) > 0;
+        const lineLocked = lockInventory && isInventoryLine;
+        return (
+          <div key={index} className="grid gap-3 md:grid-cols-[1fr_160px_150px_auto]">
+            <input
+              required
+              value={item.description}
+              onChange={(event) => updateItem(index, "description", event.target.value)}
+              placeholder="Description"
+              disabled={lineLocked}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+            />
+            <input
+              required
+              min="0"
+              step="0.01"
+              type="number"
+              value={item.amount}
+              onChange={(event) => updateItem(index, "amount", event.target.value)}
+              placeholder="Amount"
+              disabled={lineLocked}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+            />
+            <select
+              value={item.type || "Sale"}
+              onChange={(event) => updateItem(index, "type", event.target.value)}
+              disabled={lineLocked}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              <option value="Sale">Sale</option>
+              <option value="Wastage">Wastage</option>
+              <option value="Adjustment">Adjustment</option>
+            </select>
+            <button
+              type="button"
+              disabled={lineLocked}
+              onClick={() =>
+                setItems((current) =>
+                  current.length > 1
+                    ? current.filter((_, itemIndex) => itemIndex !== index)
+                    : current,
+                )
+              }
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {lineLocked ? "Locked" : "Remove"}
+            </button>
+          </div>
+        );
+      })}
+      {lockInventory && items.some((item) => item.inventory_item_id && Number(item.quantity || 0) > 0) ? (
+        <p className="text-xs text-slate-500">Inventory-linked lines cannot be edited after billing finalization to keep stock movements consistent.</p>
+      ) : null}
 
       <button
         type="button"
@@ -213,6 +224,10 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
         ? bill.items.map((item) => ({
             description: item.description,
             amount: String(item.amount),
+            type: item.type || "Sale",
+            quantity: Number(item.quantity || 0) || 0,
+            inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
+            emergency_override: Boolean(item.emergency_override),
           }))
         : [createEmptyLineItem()],
     );
@@ -220,10 +235,11 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
 
   const total = useMemo(
     () =>
-      items.reduce(
-        (sum, item) => sum + (String(item.type || "Sale") === "Wastage" ? 0 : Number(item.amount || 0)),
-        0,
-      ),
+      items.reduce((sum, item) => {
+        const itemType = String(item.type || "Sale");
+        if (itemType === "Wastage" || itemType === "Adjustment") return sum;
+        return sum + Number(item.amount || 0);
+      }, 0),
     [items],
   );
 
@@ -239,6 +255,10 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
       items: items.map((item) => ({
         description: item.description,
         amount: Number(item.amount || 0),
+        type: item.type || "Sale",
+        quantity: Number(item.quantity || 0) || 0,
+        inventory_item_id: item.inventory_item_id || null,
+        emergency_override: Boolean(item.emergency_override),
       })),
       status,
       payment_method: status === "paid" ? paymentMethod : null,
@@ -266,7 +286,7 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
           </p>
         </div>
 
-        <BillingItemsEditor items={items} setItems={setItems} />
+        <BillingItemsEditor items={items} setItems={setItems} lockInventory />
 
         <BillingStatusFields
           status={status}
@@ -418,10 +438,11 @@ function CreateBillingModal({
 
   const total = useMemo(
     () =>
-      items.reduce(
-        (sum, item) => sum + (String(item.type || "Sale") === "Wastage" ? 0 : Number(item.amount || 0)),
-        0,
-      ),
+      items.reduce((sum, item) => {
+        const itemType = String(item.type || "Sale");
+        if (itemType === "Wastage" || itemType === "Adjustment") return sum;
+        return sum + Number(item.amount || 0);
+      }, 0),
     [items],
   );
 

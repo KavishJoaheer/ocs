@@ -1228,52 +1228,70 @@ router.post("/items/:id/actions", (req, res) => {
   const nextQuantity = movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
   if (nextQuantity < 0) return res.status(400).json({ error: "Cannot remove more stock than available." });
 
-  if (movementType === "in") {
-    const previousDeficit = Math.max(0, 0 - previousQuantity);
-    const batchQty = Math.max(0, quantity - previousDeficit);
-    if (batchQty > 0) {
-      createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price);
-    }
-  } else {
-    const consumed = consumeBatches(itemId, quantity, { disallowExpired: actionType === "sell" });
-    if (!consumed.ok) {
-      return res.status(400).json({ error: actionType === "sell" ? "Cannot sell expired or unavailable stock." : "Insufficient stock." });
-    }
-  }
-
   if (actionType === "sell") {
     const patientId = Number(req.body.patient_id || 0);
     const consultationId = Number(req.body.consultation_id || 0);
     if (!patientId || !consultationId) {
       return res.status(400).json({ error: "Sell requires patient_id and consultation_id." });
     }
-    const billId = ensureBillingForConsultation(consultationId, patientId);
-    const bill = db.prepare("SELECT * FROM billing WHERE id = ?").get(billId);
-    const items = normalizeBillingItems(bill.items);
-    items.push({
-      description: `${item.item_name} x${quantity}`,
-      amount: roundCurrency(quantity * toNumber(item.selling_price, 0)),
-    });
-    db.prepare("UPDATE billing SET items = ?, total_amount = ? WHERE id = ?").run(
-      JSON.stringify(items),
-      calculateBillingTotal(items),
-      billId,
-    );
   }
 
-  db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
-  recordMovement({
-    itemId,
-    movementType,
-    quantity,
-    previousQuantity,
-    nextQuantity,
-    actionType,
-    note: note || (actionType === "sell" ? "Sold and synced to billing." : actionType === "remove" ? "Removed from stock." : "Added to stock."),
-    userId: req.auth.id,
-    referenceType: actionType === "sell" ? "patient" : null,
-    referenceId: actionType === "sell" ? Number(req.body.patient_id || 0) : null,
-  });
+  try {
+    db.transaction(() => {
+      if (movementType === "in") {
+        const previousDeficit = Math.max(0, 0 - previousQuantity);
+        const batchQty = Math.max(0, quantity - previousDeficit);
+        if (batchQty > 0) {
+          createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price);
+        }
+      } else {
+        const consumed = consumeBatches(itemId, quantity, { disallowExpired: actionType === "sell" });
+        if (!consumed.ok) {
+          throw new Error(
+            actionType === "sell" ? "Cannot sell expired or unavailable stock." : "Insufficient stock.",
+          );
+        }
+      }
+
+      if (actionType === "sell") {
+        const patientId = Number(req.body.patient_id || 0);
+        const consultationId = Number(req.body.consultation_id || 0);
+        const billId = ensureBillingForConsultation(consultationId, patientId);
+        const bill = db.prepare("SELECT * FROM billing WHERE id = ?").get(billId);
+        const items = normalizeBillingItems(bill.items);
+        items.push({
+          description: `${item.item_name} x${quantity}`,
+          amount: roundCurrency(quantity * toNumber(item.selling_price, 0)),
+        });
+        db.prepare("UPDATE billing SET items = ?, total_amount = ? WHERE id = ?").run(
+          JSON.stringify(items),
+          calculateBillingTotal(items),
+          billId,
+        );
+      }
+
+      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
+      recordMovement({
+        itemId,
+        movementType,
+        quantity,
+        previousQuantity,
+        nextQuantity,
+        actionType,
+        note: note || (actionType === "sell" ? "Sold and synced to billing." : actionType === "remove" ? "Removed from stock." : "Added to stock."),
+        userId: req.auth.id,
+        referenceType: actionType === "sell" ? "patient" : null,
+        referenceId: actionType === "sell" ? Number(req.body.patient_id || 0) : null,
+        metaJson: JSON.stringify({
+          performed_by_user_id: req.auth.id,
+          performed_by_role: req.auth.role,
+          performed_by_name: req.auth.full_name || req.auth.username || "",
+        }),
+      });
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Unable to process My Stock action." });
+  }
 
   res.status(201).json(getPayload(req));
 });

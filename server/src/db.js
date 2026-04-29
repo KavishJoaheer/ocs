@@ -861,6 +861,10 @@ function ensureInventoryColumns() {
       sql: "ALTER TABLE inventory ADD COLUMN folder_id INTEGER",
     },
     {
+      name: "stock_scope",
+      sql: "ALTER TABLE inventory ADD COLUMN stock_scope TEXT NOT NULL DEFAULT 'ocs'",
+    },
+    {
       name: "owner_doctor_id",
       sql: "ALTER TABLE inventory ADD COLUMN owner_doctor_id INTEGER",
     },

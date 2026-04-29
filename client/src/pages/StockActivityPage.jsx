@@ -123,13 +123,23 @@ function StockActivityPage() {
         setLoading(true);
         const payload = await api.get(`/inventory/activity-history?${query}`);
         if (ignore) return;
-        setRows(payload?.rows || []);
+        const nextRows = payload?.rows || [];
+        const nextTotalPages = Math.max(1, Number(payload?.totalPages || 1));
+        setRows(nextRows);
         setActors(payload?.actors || []);
         setActions(payload?.actions || []);
-        setTotalPages(Number(payload?.totalPages || 1));
+        setTotalPages(nextTotalPages);
         setTotal(Number(payload?.total || 0));
+        if (page > nextTotalPages) {
+          setPage(nextTotalPages);
+        }
       } catch (error) {
-        if (!ignore) toast.error(error.message || "Failed to load stock activity.");
+        if (!ignore) {
+          setRows([]);
+          setTotal(0);
+          setTotalPages(1);
+          toast.error(error.message || "Failed to load stock activity.");
+        }
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -138,7 +148,7 @@ function StockActivityPage() {
     return () => {
       ignore = true;
     };
-  }, [query]);
+  }, [query, page]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -226,7 +236,7 @@ function StockActivityPage() {
               ))}
             </select>
           </label>
-          <div className="space-y-1" ref={actionMenuRef}>
+          <div className="relative space-y-1" ref={actionMenuRef}>
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Action Types</span>
             <button
               type="button"

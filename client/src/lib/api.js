@@ -14,6 +14,23 @@ export function setStoredAuthToken(token) {
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
+function parseContentDispositionFilename(headerValue) {
+  if (!headerValue) return "";
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+  const quotedMatch = headerValue.match(/filename="([^"]+)"/i);
+  if (quotedMatch) return quotedMatch[1].trim();
+  const bareMatch = headerValue.match(/filename=([^;]+)/i);
+  if (bareMatch) return bareMatch[1].trim();
+  return "";
+}
+
 async function apiRequest(path, options = {}) {
   const authToken = getStoredAuthToken();
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
@@ -71,7 +88,10 @@ async function apiRequest(path, options = {}) {
     return {
       blob: await response.blob(),
       contentType: response.headers.get("content-type") || "",
-      filename: response.headers.get("x-file-name") || "",
+      filename:
+        response.headers.get("x-file-name") ||
+        parseContentDispositionFilename(response.headers.get("content-disposition")) ||
+        "",
     };
   }
 

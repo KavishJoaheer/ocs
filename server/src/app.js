@@ -126,8 +126,8 @@ function createApp() {
     "/api/billing",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "accountant", "doctor", "operator"],
-      POST: ["admin", "doctor"],
+      GET: ["admin", "accountant", "doctor"],
+      POST: ["admin", "accountant", "doctor"],
       PUT: ["admin", "accountant", "doctor"],
       PATCH: ["admin", "accountant", "doctor"],
     }),
