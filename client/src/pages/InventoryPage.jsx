@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FileUp, MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
+import { MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -326,7 +326,6 @@ export default function InventoryPage() {
   const [restock, setRestock] = useState(null);
   const [addStock, setAddStock] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
-  const [csvText, setCsvText] = useState("");
 
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
@@ -448,37 +447,6 @@ export default function InventoryPage() {
     }
   }
 
-  async function importCsv() {
-    if (!csvText.trim()) {
-      toast.error("Paste CSV content first.");
-      return;
-    }
-    setIsSaving(true);
-    try {
-      const next = await api.post("/inventory/staging/import-csv", { csv_text: csvText });
-      setData(next);
-      setCsvText("");
-      toast.success("CSV shipment imported to staging.");
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function releaseStaging(stagingId) {
-    setIsSaving(true);
-    try {
-      const next = await api.post(`/inventory/staging/${stagingId}/release`);
-      setData(next);
-      toast.success("Staging row released to OCS stock.");
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   async function removeItem() {
     if (!itemToDelete) return;
     try {
@@ -496,7 +464,7 @@ export default function InventoryPage() {
       <PageHeader
         eyebrow="Logistics"
         title={isDoctor ? "My Stock" : "OCS Stock"}
-        description={isDoctor ? "Editable personal inventory with billing-linked sell flow and expiry safety checks." : "Central master stock with replenishment controls, staging imports, and stocktake tools."}
+        description={isDoctor ? "Editable personal inventory with billing-linked sell flow and expiry safety checks." : "Central master stock with replenishment controls and stocktake tools."}
         actions={
           <button type="button" onClick={() => setEditor({ item: null })} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]">
             <Plus className="size-4" />
@@ -596,32 +564,6 @@ export default function InventoryPage() {
           <EmptyState title="No stock items found" description="Add stock to one of the required folders to begin tracking." />
         )}
       </SectionCard>
-
-      {canManageOcs ? (
-        <SectionCard title="Staging Area (CSV Intake)" subtitle="Paste shipment CSV, verify in staging, then release to OCS stock.">
-          <div className="space-y-4">
-            <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={6} placeholder="folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm" />
-            <button type="button" onClick={importCsv} disabled={isSaving} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-              <FileUp className="size-4" />
-              {isSaving ? "Importing..." : "Import to staging"}
-            </button>
-            <div className="space-y-2">
-              {(data.staging || []).slice(0, 20).map((row) => (
-                <div key={row.id} className="flex flex-wrap items-center justify-between rounded-2xl border border-slate-200 px-4 py-2">
-                  <p className="text-sm text-slate-700">
-                    #{row.id} {row.item_name} ({row.quantity}) - {row.status}
-                  </p>
-                  {row.status === "pending" ? (
-                    <button type="button" onClick={() => releaseStaging(row.id)} disabled={isSaving} className="rounded-xl border border-cyan-200 px-3 py-1 text-xs font-semibold text-cyan-700">
-                      Release
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-        </SectionCard>
-      ) : null}
 
       {isAdmin ? (
         <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
