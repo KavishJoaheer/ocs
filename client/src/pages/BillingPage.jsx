@@ -340,13 +340,16 @@ function DescriptionList({
   items,
   onRemoveLine,
   onToggleOverride,
+  onUpdateManual,
+  onAddManual,
 }) {
   const consultationSubtotal = Math.max(0, Number(consultationPrice || 0));
   const hasInventoryRows = items.length > 0;
+  const gridCols = "grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-start gap-3";
 
   return (
     <div className="rounded-[24px] border border-slate-200 bg-white">
-      <div className="grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+      <div className={`${gridCols} border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500`}>
         <span>Description</span>
         <span className="text-right">Qty</span>
         <span className="text-right">Unit Price</span>
@@ -356,7 +359,7 @@ function DescriptionList({
       </div>
 
       <div className="divide-y divide-slate-100">
-        <div className="grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-center gap-3 px-4 py-3 text-sm">
+        <div className={`${gridCols} items-center px-4 py-3 text-sm`}>
           <div className="flex items-center gap-2">
             <span className="grid size-7 place-items-center rounded-xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
               <Stethoscope className="size-3.5" />
@@ -382,8 +385,57 @@ function DescriptionList({
             const subtotal = item.type === "Wastage" ? 0 : Number(item.amount || 0);
             const available = Number(item.available || 0);
             const needsOverride = qty > available;
+
+            if (item.is_manual) {
+              return (
+                <div key={`manual-${index}`} className={`${gridCols} px-4 py-3 text-sm`}>
+                  <input
+                    value={item.description}
+                    onChange={(event) => onUpdateManual(index, { description: event.target.value })}
+                    placeholder="Custom item description"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={item.quantity}
+                    onChange={(event) => onUpdateManual(index, { quantity: event.target.value })}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={item.unit_price}
+                    onChange={(event) => onUpdateManual(index, { unit_price: event.target.value })}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
+                  />
+                  <select
+                    value={item.type}
+                    onChange={(event) => onUpdateManual(index, { type: event.target.value })}
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-[#4FB8B3]"
+                  >
+                    <option value="Sale">Sale</option>
+                    <option value="Wastage">Wastage</option>
+                  </select>
+                  <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                    {formatCurrency(subtotal)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveLine(index)}
+                    className="grid size-9 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600"
+                    title="Remove line"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              );
+            }
+
             return (
-              <div key={`line-${index}`} className="grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-start gap-3 px-4 py-3 text-sm">
+              <div key={`line-${index}`} className={`${gridCols} px-4 py-3 text-sm`}>
                 <div>
                   <p className="font-semibold text-slate-900">{item.description}</p>
                   <p className="text-xs text-slate-500">
@@ -421,9 +473,24 @@ function DescriptionList({
         ) : (
           <div className="px-4 py-6 text-center text-sm text-slate-500">
             Select an item from My Stock and click <span className="font-semibold text-[#1f7f7b]">Add Sale</span> or
-            <span className="font-semibold text-amber-700"> Wastage</span> to append it here.
+            <span className="font-semibold text-amber-700"> Wastage</span> to append it here, or use{" "}
+            <span className="font-semibold text-[#1f7f7b]">Add manual item</span> for off-stock charges.
           </div>
         )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+        <p className="text-xs text-slate-500">
+          Manual items aren't deducted from My Stock. Use them for services, external supplies, or one-off charges.
+        </p>
+        <button
+          type="button"
+          onClick={onAddManual}
+          className="inline-flex items-center gap-2 rounded-2xl border border-[#4FB8B3]/40 bg-white px-3 py-2 text-xs font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/10"
+        >
+          <Plus className="size-3.5" />
+          Add manual item
+        </button>
       </div>
     </div>
   );
@@ -588,6 +655,14 @@ function CreateBillingModal({
       return;
     }
 
+    const invalidManual = items.find(
+      (item) => item.is_manual && !String(item.description || "").trim(),
+    );
+    if (invalidManual) {
+      toast.error("Manual items need a description.");
+      return;
+    }
+
     const combinedItems = [
       {
         description: consultationType,
@@ -671,6 +746,43 @@ function CreateBillingModal({
         idx === index ? { ...row, emergency_override: Boolean(checked) } : row,
       ),
     );
+  }
+
+  function updateManualLine(index, patch) {
+    setItems((current) =>
+      current.map((row, idx) => {
+        if (idx !== index) return row;
+        if (!row.is_manual) return row;
+        const next = { ...row, ...patch };
+        const qty = Math.max(0, Number(next.quantity || 0));
+        const unitPrice = Math.max(0, Number(next.unit_price || 0));
+        next.quantity = qty;
+        next.unit_price = unitPrice;
+        next.amount = next.type === "Wastage" ? 0 : qty * unitPrice;
+        return next;
+      }),
+    );
+  }
+
+  function addManualLine() {
+    if (!patientId || !consultationId) {
+      toast.error("Select a patient and consultation first.");
+      return;
+    }
+    setItems((current) => [
+      ...current,
+      {
+        description: "",
+        amount: 0,
+        unit_price: 0,
+        type: "Sale",
+        quantity: 1,
+        inventory_item_id: null,
+        emergency_override: false,
+        is_manual: true,
+        folder_name: "Custom",
+      },
+    ]);
   }
 
   return (
@@ -884,6 +996,8 @@ function CreateBillingModal({
           items={items}
           onRemoveLine={removeLine}
           onToggleOverride={setLineEmergencyOverride}
+          onUpdateManual={updateManualLine}
+          onAddManual={addManualLine}
         />
 
         <BillingStatusFields
