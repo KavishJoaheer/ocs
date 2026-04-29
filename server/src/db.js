@@ -285,6 +285,10 @@ function createInventoryMovementsTable() {
       doctor_id INTEGER,
       recorded_by_user_id INTEGER,
       note TEXT NOT NULL DEFAULT '',
+      action_type TEXT NOT NULL DEFAULT '',
+      reference_type TEXT NOT NULL DEFAULT '',
+      reference_id TEXT,
+      meta_json TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (item_id) REFERENCES inventory(id) ON DELETE CASCADE,
       FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL,
@@ -899,6 +903,56 @@ function ensureInventoryColumns() {
       db.exec(column.sql);
     }
   });
+
+  const movementColumns = db
+    .prepare("PRAGMA table_info(inventory_movements)")
+    .all()
+    .map((column) => column.name);
+  const movementRequiredColumns = [
+    {
+      name: "action_type",
+      sql: "ALTER TABLE inventory_movements ADD COLUMN action_type TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "reference_type",
+      sql: "ALTER TABLE inventory_movements ADD COLUMN reference_type TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "reference_id",
+      sql: "ALTER TABLE inventory_movements ADD COLUMN reference_id TEXT",
+    },
+    {
+      name: "meta_json",
+      sql: "ALTER TABLE inventory_movements ADD COLUMN meta_json TEXT NOT NULL DEFAULT '{}'",
+    },
+  ];
+
+  movementRequiredColumns.forEach((column) => {
+    if (!movementColumns.includes(column.name)) {
+      db.exec(column.sql);
+    }
+  });
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inventory_activity_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      movement_id INTEGER,
+      timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      actor_user_id INTEGER,
+      actor_name TEXT NOT NULL DEFAULT '',
+      actor_role TEXT NOT NULL DEFAULT '',
+      action_type TEXT NOT NULL DEFAULT '',
+      item_name TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL DEFAULT 0,
+      direction TEXT NOT NULL DEFAULT '',
+      source_text TEXT NOT NULL DEFAULT '',
+      destination_text TEXT NOT NULL DEFAULT '',
+      batch_id TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
+  `);
 }
 
 function ensureInventorySeedData() {
