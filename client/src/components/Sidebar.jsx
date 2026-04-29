@@ -64,7 +64,7 @@ const navItems = [
     to: "/inventory",
     label: "Inventory",
     icon: Package,
-    roles: ["admin", "doctor", "lab_tech"],
+    roles: ["admin", "doctor", "operator"],
   },
   {
     to: "/team-operations",

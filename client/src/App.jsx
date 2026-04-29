@@ -35,7 +35,7 @@ function App() {
             <Route path="/patients/:id" element={<PatientProfilePage />} />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor", "lab_tech"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>
             <Route path="/inventory" element={<InventoryPage />} />
           </Route>
 
