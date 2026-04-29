@@ -1,5 +1,5 @@
-import { Download, Printer, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Download, Printer, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -101,6 +101,8 @@ function StockActivityPage() {
   const [selectedActions, setSelectedActions] = useState([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const actionMenuRef = useRef(null);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -137,6 +139,23 @@ function StockActivityPage() {
       ignore = true;
     };
   }, [query]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setActionMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const actionSummary = useMemo(() => {
+    if (!selectedActions.length) return "All actions";
+    if (selectedActions.length === 1) return actionDisplayLabel(selectedActions[0]);
+    return `${selectedActions.length} selected`;
+  }, [selectedActions]);
 
   async function reprintReceipt(transactionId) {
     if (!transactionId) return;
@@ -200,41 +219,70 @@ function StockActivityPage() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
-            <select className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm" value={userId} onChange={(event) => { setUserId(event.target.value); setPage(1); }}>
+            <select className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" value={userId} onChange={(event) => { setUserId(event.target.value); setPage(1); }}>
               <option value="">All users</option>
               {actors.map((actor) => (
                 <option key={actor.actor_user_id} value={actor.actor_user_id}>{actor.actor_name} ({actor.actor_role})</option>
               ))}
             </select>
           </label>
-          <label className="space-y-1">
+          <div className="space-y-1" ref={actionMenuRef}>
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Action Types</span>
-            <select
-              multiple
-              className="h-[42px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
-              value={selectedActions}
-              onChange={(event) => {
-                const values = Array.from(event.target.selectedOptions).map((option) => option.value);
-                setSelectedActions(values);
-                setPage(1);
-              }}
+            <button
+              type="button"
+              className="flex h-11 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 text-left text-sm text-slate-700"
+              onClick={() => setActionMenuOpen((prev) => !prev)}
             >
-              {actions.map((action) => (
-                <option key={action} value={action}>{actionDisplayLabel(action)}</option>
-              ))}
-            </select>
-          </label>
+              <span className="truncate">{actionSummary}</span>
+              <ChevronDown className="size-4 text-slate-400" />
+            </button>
+            {actionMenuOpen ? (
+              <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                <button
+                  type="button"
+                  className="mb-1 w-full rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#4FB8B3] hover:bg-slate-50"
+                  onClick={() => {
+                    setSelectedActions([]);
+                    setPage(1);
+                  }}
+                >
+                  Clear all
+                </button>
+                {actions.map((action) => {
+                  const checked = selectedActions.includes(action);
+                  return (
+                    <label key={action} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedActions((prev) => {
+                            if (prev.includes(action)) {
+                              return prev.filter((value) => value !== action);
+                            }
+                            return [...prev, action];
+                          });
+                          setPage(1);
+                        }}
+                      />
+                      <span>{actionDisplayLabel(action)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">From</span>
-            <input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+            <input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">To</span>
-            <input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+            <input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Search item</span>
-            <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-3">
+            <div className="flex h-11 items-center rounded-2xl border border-slate-200 bg-white px-3">
               <Search className="size-4 text-slate-400" />
               <input
                 className="w-full bg-transparent px-2 py-2.5 text-sm outline-none"
