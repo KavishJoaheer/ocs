@@ -12,6 +12,18 @@ function roundCurrency(value) {
   return Number(toNumber(value, 0).toFixed(2));
 }
 
+function createTransferTransactionId() {
+  return `TX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function safeParseJson(value, fallback = {}) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 function isNearExpiry(expiryDate) {
   if (!expiryDate) return false;
   const diff = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -139,6 +151,64 @@ function recordAudit({
     String(performedByName || ""),
     metaJson,
   );
+}
+
+function buildReceiptByTransaction(transactionId) {
+  const rows = db
+    .prepare(`
+      SELECT
+        m.id,
+        m.created_at,
+        m.quantity,
+        m.action_type,
+        m.meta_json,
+        i.item_name,
+        i.unit
+      FROM inventory_movements m
+      JOIN inventory i ON i.id = m.item_id
+      WHERE m.action_type IN ('restock_out', 'restock_in')
+      ORDER BY m.created_at DESC, m.id DESC
+      LIMIT 500
+    `)
+    .all()
+    .filter((row) => safeParseJson(row.meta_json, {}).transaction_id === transactionId);
+
+  if (!rows.length) return null;
+  const sourceRows = rows.filter((row) => row.action_type === "restock_out");
+  const primaryMeta = safeParseJson(rows[0].meta_json, {});
+  const items = sourceRows.map((row) => {
+    const meta = safeParseJson(row.meta_json, {});
+    const allocations = Array.isArray(meta.transfer_allocations) ? meta.transfer_allocations : [];
+    if (!allocations.length) {
+      return [
+        {
+          item_name: row.item_name,
+          batch_number: "N/A",
+          expiry: null,
+          quantity: Number(row.quantity || 0),
+          unit: row.unit || "unit",
+        },
+      ];
+    }
+    return allocations.map((allocation, index) => ({
+      item_name: row.item_name,
+      batch_number: `B${row.id}-${index + 1}`,
+      expiry: allocation.expiry_date || null,
+      quantity: Number(allocation.quantity || 0),
+      unit: row.unit || "unit",
+    }));
+  }).flat();
+
+  return {
+    transaction_id: transactionId,
+    title: "Stock Transfer Note",
+    date_time: rows[rows.length - 1]?.created_at || rows[0].created_at,
+    issued_by_name: primaryMeta.issued_by_name || "",
+    received_by_name: primaryMeta.received_by_name || "",
+    receipt_reference: `/inventory/receipts/${transactionId}`,
+    items,
+    printed_at: new Date().toISOString(),
+  };
 }
 
 function ensureFolders() {
@@ -540,6 +610,18 @@ router.get("/", (req, res) => {
   const selectedDoctorId = Number(req.query.doctorId || 0) || null;
   const doctorContext = String(req.query.context || "my").trim().toLowerCase() === "ocs" ? "ocs" : "my";
   res.json(getPayload(req, selectedDoctorId, doctorContext));
+});
+
+router.get("/receipts/:transactionId", (req, res) => {
+  const transactionId = String(req.params.transactionId || "").trim();
+  if (!transactionId) {
+    return res.status(400).json({ error: "Transaction ID is required." });
+  }
+  const receipt = buildReceiptByTransaction(transactionId);
+  if (!receipt) {
+    return res.status(404).json({ error: "Receipt not found for this transaction." });
+  }
+  res.json(receipt);
 });
 
 router.post("/items", (req, res) => {
@@ -1022,6 +1104,8 @@ router.post("/restock", (req, res) => {
       LIMIT 1
     `)
     .get(doctorId, source.folder_id, source.item_name);
+  const transactionId = createTransferTransactionId();
+  const receiptReference = `/inventory/receipts/${transactionId}`;
 
   try {
     db.transaction(() => {
@@ -1050,6 +1134,11 @@ router.post("/restock", (req, res) => {
         performed_by_user_id: req.auth.id,
         performed_by_role: req.auth.role,
         performed_by_name: req.auth.full_name || req.auth.username || "",
+        transaction_id: transactionId,
+        receipt_reference: receiptReference,
+        issued_by_name: req.auth.full_name || req.auth.username || "",
+        received_by_name: doctor.full_name,
+        transfer_allocations: consumed.allocations,
       }),
       });
 
@@ -1102,6 +1191,10 @@ router.post("/restock", (req, res) => {
         performed_by_user_id: req.auth.id,
         performed_by_role: req.auth.role,
         performed_by_name: req.auth.full_name || req.auth.username || "",
+        transaction_id: transactionId,
+        receipt_reference: receiptReference,
+        issued_by_name: req.auth.full_name || req.auth.username || "",
+        received_by_name: doctor.full_name,
       }),
       });
     recordAudit({
@@ -1114,14 +1207,22 @@ router.post("/restock", (req, res) => {
       performedByUserId: req.auth.id,
       performedByRole: req.auth.role,
       performedByName: req.auth.full_name || req.auth.username || "",
-      metaJson: JSON.stringify({ source_item_id: source.id, target_item_id: targetItemId }),
+      metaJson: JSON.stringify({
+        source_item_id: source.id,
+        target_item_id: targetItemId,
+        transaction_id: transactionId,
+        receipt_reference: receiptReference,
+      }),
     });
     })();
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Restock failed." });
   }
 
-  res.status(201).json(getPayload(req));
+  res.status(201).json({
+    ...getPayload(req),
+    restock_receipt: buildReceiptByTransaction(transactionId),
+  });
 });
 
 router.post("/restock/my-inventory", (req, res) => {
@@ -1151,6 +1252,8 @@ router.post("/restock/my-inventory", (req, res) => {
   if (!doctor) {
     return res.status(404).json({ error: "Doctor profile not found." });
   }
+  const transactionId = createTransferTransactionId();
+  const receiptReference = `/inventory/receipts/${transactionId}`;
 
   try {
     db.transaction(() => {
@@ -1188,6 +1291,11 @@ router.post("/restock/my-inventory", (req, res) => {
             performed_by_user_id: req.auth.id,
             performed_by_role: req.auth.role,
             performed_by_name: req.auth.full_name || req.auth.username || "",
+            transaction_id: transactionId,
+            receipt_reference: receiptReference,
+            issued_by_name: req.auth.full_name || req.auth.username || "",
+            received_by_name: doctor.full_name,
+            transfer_allocations: consumed.allocations,
           }),
         });
 
@@ -1252,6 +1360,10 @@ router.post("/restock/my-inventory", (req, res) => {
             performed_by_user_id: req.auth.id,
             performed_by_role: req.auth.role,
             performed_by_name: req.auth.full_name || req.auth.username || "",
+            transaction_id: transactionId,
+            receipt_reference: receiptReference,
+            issued_by_name: req.auth.full_name || req.auth.username || "",
+            received_by_name: doctor.full_name,
           }),
         });
         recordAudit({
@@ -1267,6 +1379,8 @@ router.post("/restock/my-inventory", (req, res) => {
           metaJson: JSON.stringify({
             source_item_id: source.id,
             target_item_id: targetItemId,
+            transaction_id: transactionId,
+            receipt_reference: receiptReference,
             restocked_at: new Date().toISOString(),
           }),
         });
@@ -1276,7 +1390,10 @@ router.post("/restock/my-inventory", (req, res) => {
     return res.status(400).json({ error: error?.message || "Doctor restock failed." });
   }
 
-  res.status(201).json(getPayload(req, null, "my"));
+  res.status(201).json({
+    ...getPayload(req, null, "my"),
+    restock_receipt: buildReceiptByTransaction(transactionId),
+  });
 });
 
 router.post("/staging/import-csv", (req, res) => {

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -648,6 +648,35 @@ function InventoryActionButtons({
   );
 }
 
+function RestockReceiptModal({ open, receipt, onClose, onPrint }) {
+  if (!receipt) return null;
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Restock completed"
+      description="Transfer saved successfully. You can print the stock transfer note now."
+      size="lg"
+    >
+      <div className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-semibold text-slate-900">Transaction ID: {receipt.transaction_id}</p>
+        <p className="text-xs text-slate-600">
+          Issued by {receipt.issued_by_name || "OCS User"} - Received by {receipt.received_by_name || "Doctor"}
+        </p>
+      </div>
+      <div className="mt-4 flex justify-end gap-3">
+        <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+          Close
+        </button>
+        <button type="button" onClick={onPrint} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white">
+          <Printer className="size-4" />
+          Print Restock Receipt
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function InventoryPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -665,6 +694,8 @@ export default function InventoryPage() {
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [doctorRestockItem, setDoctorRestockItem] = useState(null);
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [activeReceipt, setActiveReceipt] = useState(null);
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
   const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
@@ -701,6 +732,7 @@ export default function InventoryPage() {
   const summary = data?.summary || {};
   const pageSize = 50;
   const doctorConsumptionRows = data?.my_consumption_rows || [];
+  const movements = data?.movements || [];
 
   const doctorRestockCandidates = useMemo(() => {
     if (!isDoctor || !Array.isArray(data?.my_stock) || !Array.isArray(data?.ocs_stock)) return [];
@@ -740,6 +772,20 @@ export default function InventoryPage() {
   const selectedConsumption = useMemo(
     () => doctorConsumptionRows.find((row) => row.period_key === consumptionPeriod) || null,
     [doctorConsumptionRows, consumptionPeriod],
+  );
+  const parsedMovements = useMemo(
+    () =>
+      movements.map((movement) => ({
+        ...movement,
+        meta: (() => {
+          try {
+            return JSON.parse(movement.meta_json || "{}");
+          } catch {
+            return {};
+          }
+        })(),
+      })),
+    [movements],
   );
 
   async function load(contextDoctorId = selectedContextDoctorId, nextDoctorContext = doctorContext) {
@@ -904,6 +950,10 @@ export default function InventoryPage() {
       setData(next);
       setRestock(null);
       toast.success("Doctor restock completed.");
+      if (next?.restock_receipt) {
+        setActiveReceipt(next.restock_receipt);
+        setReceiptModalOpen(true);
+      }
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -937,10 +987,100 @@ export default function InventoryPage() {
       setDoctorRestockOpen(false);
       setDoctorRestockItem(null);
       toast.success("My inventory restocked successfully.");
+      if (next?.restock_receipt) {
+        setActiveReceipt(next.restock_receipt);
+        setReceiptModalOpen(true);
+      }
     } catch (error) {
       toast.error(error.message);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  function buildReceiptPrintHtml(receipt) {
+    const rows = (receipt.items || [])
+      .map(
+        (line) => `
+          <tr>
+            <td>${line.item_name || ""}</td>
+            <td>${line.batch_number || "N/A"} / ${line.expiry || "N/A"}</td>
+            <td>${line.quantity || 0}</td>
+            <td>${line.unit || "unit"}</td>
+          </tr>
+        `,
+      )
+      .join("");
+    return `
+      <html>
+        <head>
+          <title>Stock Transfer Note - ${receipt.transaction_id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111; padding: 20px; }
+            .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
+            .logo { font-weight:700; font-size:18px; }
+            .meta { font-size:12px; margin: 12px 0; }
+            table { width:100%; border-collapse:collapse; margin-top:12px; font-size:12px; }
+            th, td { border:1px solid #111; padding:8px; text-align:left; }
+            .footer { margin-top:24px; font-size:12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="logo">OCS Medecins</div>
+              <div>Stock Transfer Note</div>
+            </div>
+            <div><strong>Transaction ID:</strong> ${receipt.transaction_id}</div>
+          </div>
+          <div class="meta">
+            <div><strong>Date & Time:</strong> ${receipt.date_time || ""}</div>
+            <div><strong>Issued By:</strong> ${receipt.issued_by_name || ""}</div>
+            <div><strong>Received By:</strong> ${receipt.received_by_name || ""}</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item Name</th>
+                <th>Batch Number / Expiry</th>
+                <th>Quantity Transferred</th>
+                <th>Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+          <div class="footer">
+            <div>Digital Signature: ____________________</div>
+            <div>Generated at: ${new Date().toLocaleString()}</div>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  function printReceipt(receipt) {
+    if (!receipt) return;
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) {
+      toast.error("Unable to open print preview.");
+      return;
+    }
+    printWindow.document.write(buildReceiptPrintHtml(receipt));
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    toast.success("Receipt generated successfully.");
+  }
+
+  async function reprintByTransactionId(transactionId) {
+    if (!transactionId) return;
+    try {
+      const receipt = await api.get(`/inventory/receipts/${encodeURIComponent(transactionId)}`);
+      printReceipt(receipt);
+    } catch (error) {
+      toast.error(error.message);
     }
   }
 
@@ -1459,6 +1599,52 @@ export default function InventoryPage() {
         </SectionCard>
       ) : null}
 
+      <SectionCard title="Live Activity" subtitle="Recent inventory events with receipt reprint support for restock transfers.">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3 text-left">When</th>
+                <th className="px-4 py-3 text-left">Action</th>
+                <th className="px-4 py-3 text-left">Item</th>
+                <th className="px-4 py-3 text-left">Qty</th>
+                <th className="px-4 py-3 text-left">Performed By</th>
+                <th className="px-4 py-3 text-left">Receipt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parsedMovements.slice(0, 40).map((movement) => {
+                const transactionId = movement.meta?.transaction_id || "";
+                const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
+                return (
+                  <tr key={`mv-${movement.id}`} className="border-t border-slate-200/70 text-xs">
+                    <td className="px-4 py-3">{movement.created_at}</td>
+                    <td className="px-4 py-3">{movement.action_type}</td>
+                    <td className="px-4 py-3">{movement.item_name}</td>
+                    <td className="px-4 py-3">{movement.quantity}</td>
+                    <td className="px-4 py-3">{movement.meta?.performed_by_name || "-"}</td>
+                    <td className="px-4 py-3">
+                      {canPrint && transactionId ? (
+                        <button
+                          type="button"
+                          onClick={() => reprintByTransactionId(transactionId)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                          title="Print receipt"
+                        >
+                          <Printer className="size-3.5" />
+                        </button>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
       <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
@@ -1471,6 +1657,12 @@ export default function InventoryPage() {
           setDoctorRestockItem(null);
         }}
         onSubmit={saveDoctorRestock}
+      />
+      <RestockReceiptModal
+        open={receiptModalOpen}
+        receipt={activeReceipt}
+        onClose={() => setReceiptModalOpen(false)}
+        onPrint={() => printReceipt(activeReceipt)}
       />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
