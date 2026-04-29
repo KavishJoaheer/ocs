@@ -6,6 +6,7 @@ import {
   Plus,
   ReceiptText,
   SquarePen,
+  Stethoscope,
   Trash2,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -319,6 +320,115 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
   );
 }
 
+function TypeBadge({ type }) {
+  const palette =
+    type === "Wastage"
+      ? "bg-amber-100 text-amber-700"
+      : type === "Adjustment"
+        ? "bg-rose-100 text-rose-700"
+        : "bg-[#4FB8B3]/15 text-[#1f7f7b]";
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${palette}`}>
+      {type}
+    </span>
+  );
+}
+
+function DescriptionList({
+  consultationType,
+  consultationPrice,
+  items,
+  onRemoveLine,
+  onToggleOverride,
+}) {
+  const consultationSubtotal = Math.max(0, Number(consultationPrice || 0));
+  const hasInventoryRows = items.length > 0;
+
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white">
+      <div className="grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        <span>Description</span>
+        <span className="text-right">Qty</span>
+        <span className="text-right">Unit Price</span>
+        <span>Type</span>
+        <span className="text-right">Subtotal</span>
+        <span></span>
+      </div>
+
+      <div className="divide-y divide-slate-100">
+        <div className="grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-center gap-3 px-4 py-3 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="grid size-7 place-items-center rounded-xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+              <Stethoscope className="size-3.5" />
+            </span>
+            <div>
+              <p className="font-semibold text-slate-900">{consultationType}</p>
+              <p className="text-xs text-slate-500">Consultation charge</p>
+            </div>
+          </div>
+          <p className="text-right text-slate-700">1</p>
+          <p className="text-right text-slate-700">{formatCurrency(consultationSubtotal)}</p>
+          <TypeBadge type="Sale" />
+          <p className="text-right font-semibold text-slate-900">{formatCurrency(consultationSubtotal)}</p>
+          <span className="text-right text-xs text-slate-300">—</span>
+        </div>
+
+        {hasInventoryRows ? (
+          items.map((item, index) => {
+            const qty = Number(item.quantity || 0);
+            const unitPrice =
+              Number(item.unit_price) ||
+              (qty > 0 ? Number(item.amount || 0) / qty : Number(item.amount || 0));
+            const subtotal = item.type === "Wastage" ? 0 : Number(item.amount || 0);
+            const available = Number(item.available || 0);
+            const needsOverride = qty > available;
+            return (
+              <div key={`line-${index}`} className="grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-start gap-3 px-4 py-3 text-sm">
+                <div>
+                  <p className="font-semibold text-slate-900">{item.description}</p>
+                  <p className="text-xs text-slate-500">
+                    {item.folder_name || "Inventory"} · Available: {available}
+                  </p>
+                  {needsOverride ? (
+                    <label className="mt-1 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(item.emergency_override)}
+                        onChange={(event) => onToggleOverride(index, event.target.checked)}
+                      />
+                      <AlertTriangle className="size-3.5" />
+                      Emergency override
+                    </label>
+                  ) : null}
+                </div>
+                <p className="text-right text-slate-700">{qty}</p>
+                <p className="text-right text-slate-700">{formatCurrency(unitPrice)}</p>
+                <TypeBadge type={item.type || "Sale"} />
+                <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                  {formatCurrency(subtotal)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onRemoveLine(index)}
+                  className="grid size-9 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600"
+                  title="Remove line"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-4 py-6 text-center text-sm text-slate-500">
+            Select an item from My Stock and click <span className="font-semibold text-[#1f7f7b]">Add Sale</span> or
+            <span className="font-semibold text-amber-700"> Wastage</span> to append it here.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CreateBillingModal({
   open,
   onClose,
@@ -335,7 +445,7 @@ function CreateBillingModal({
   const [paymentDate, setPaymentDate] = useState("");
   const [consultationType, setConsultationType] = useState("Day Consultation");
   const [consultationPrice, setConsultationPrice] = useState("");
-  const [items, setItems] = useState([createEmptyLineItem()]);
+  const [items, setItems] = useState([]);
   const [inventoryOptions, setInventoryOptions] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [itemQuery, setItemQuery] = useState("");
@@ -357,7 +467,7 @@ function CreateBillingModal({
     setPaymentDate("");
     setConsultationType("Day Consultation");
     setConsultationPrice("");
-    setItems([createEmptyLineItem()]);
+    setItems([]);
     setInventoryOptions([]);
     setItemQuery("");
     setInventorySelection(null);
@@ -436,15 +546,24 @@ function CreateBillingModal({
     setSuggestionsOpen(false);
   }
 
-  const total = useMemo(
-    () =>
-      items.reduce((sum, item) => {
-        const itemType = String(item.type || "Sale");
-        if (itemType === "Wastage" || itemType === "Adjustment") return sum;
-        return sum + Number(item.amount || 0);
-      }, 0),
-    [items],
-  );
+  const consultationPriceNumber = Number(consultationPrice || 0);
+  const total = useMemo(() => {
+    const inventoryTotal = items.reduce((sum, item) => {
+      const itemType = String(item.type || "Sale");
+      if (itemType === "Wastage" || itemType === "Adjustment") return sum;
+      return sum + Number(item.amount || 0);
+    }, 0);
+    return inventoryTotal + Math.max(0, consultationPriceNumber);
+  }, [items, consultationPriceNumber]);
+
+  const canAddItemLine = Boolean(patientId && consultationId && inventorySelection);
+  const addLineDisabledReason = !patientId
+    ? "Select a patient first"
+    : !consultationId
+      ? "Select a consultation first"
+      : !inventorySelection
+        ? "Pick an item from the suggestions"
+        : "";
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -464,8 +583,7 @@ function CreateBillingModal({
       return;
     }
 
-    const manualConsultationPrice = Number(consultationPrice || 0);
-    if (manualConsultationPrice < 0) {
+    if (consultationPriceNumber < 0) {
       toast.error("Consultation price must be zero or more.");
       return;
     }
@@ -473,8 +591,9 @@ function CreateBillingModal({
     const combinedItems = [
       {
         description: consultationType,
-        amount: manualConsultationPrice,
+        amount: consultationPriceNumber,
         type: "Sale",
+        quantity: 1,
       },
       ...items,
     ];
@@ -496,7 +615,19 @@ function CreateBillingModal({
     });
   }
 
+  function resetItemSearch() {
+    setInventorySelection(null);
+    setItemQuery("");
+    setInventoryQty("1");
+    setSuggestionsOpen(false);
+    setHighlightIndex(0);
+  }
+
   function addInventoryLine(type) {
+    if (!patientId || !consultationId) {
+      toast.error("Select a patient and consultation first.");
+      return;
+    }
     const selected = inventorySelection
       ? inventoryOptions.find((row) => Number(row.id) === Number(inventorySelection.id))
       : null;
@@ -511,14 +642,14 @@ function CreateBillingModal({
     }
     const available = Number(selected.quantity || 0);
     const sellingPrice = getSellingPriceFromDoctorStock(selected.id);
+    const unitPrice =
+      type === "Wastage" ? Number(selected.cost_price || 0) : sellingPrice;
     setItems((current) => [
       ...current,
       {
         description: selected.item_name,
-        amount:
-          type === "Wastage"
-            ? Number(selected.cost_price || 0) * qty
-            : sellingPrice * qty,
+        amount: unitPrice * qty,
+        unit_price: unitPrice,
         type,
         quantity: qty,
         inventory_item_id: selected.id,
@@ -527,6 +658,19 @@ function CreateBillingModal({
         emergency_override: false,
       },
     ]);
+    resetItemSearch();
+  }
+
+  function removeLine(index) {
+    setItems((current) => current.filter((_, idx) => idx !== index));
+  }
+
+  function setLineEmergencyOverride(index, checked) {
+    setItems((current) =>
+      current.map((row, idx) =>
+        idx === index ? { ...row, emergency_override: Boolean(checked) } : row,
+      ),
+    );
   }
 
   return (
@@ -711,14 +855,18 @@ function CreateBillingModal({
             <button
               type="button"
               onClick={() => addInventoryLine("Sale")}
-              className="rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white"
+              disabled={!canAddItemLine}
+              title={addLineDisabledReason || "Add as a sale line item"}
+              className="rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Add Sale
             </button>
             <button
               type="button"
               onClick={() => addInventoryLine("Wastage")}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700"
+              disabled={!canAddItemLine}
+              title={addLineDisabledReason || "Mark as wastage (no charge to patient)"}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Trash2 className="size-4" />
               Wastage
@@ -726,51 +874,17 @@ function CreateBillingModal({
           </div>
           <p className="text-xs text-slate-500">
             Auto-suggest searches My Stock only (case-insensitive partial matches). Out-of-stock items show 0 available and can be used with Emergency Override.
+            {addLineDisabledReason ? <span className="ml-1 font-semibold text-amber-700">— {addLineDisabledReason}.</span> : null}
           </p>
         </div>
 
-        <BillingItemsEditor items={items} setItems={setItems} />
-        {items.some((item) => item.inventory_item_id) ? (
-          <div className="space-y-2">
-            {items
-              .map((item, index) => ({ ...item, index }))
-              .filter((item) => item.inventory_item_id)
-              .map((item) => {
-                const available = Number(item.available || 0);
-                const qty = Number(item.quantity || 0);
-                const needsOverride = qty > available;
-                return (
-                  <div key={`inv-line-${item.index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className={`text-sm font-semibold ${item.type === "Wastage" ? "text-amber-700" : "text-[#4FB8B3]"}`}>
-                        {item.description} - {item.type}
-                      </p>
-                      <p className="text-xs text-slate-500">Available: {available}</p>
-                    </div>
-                    {needsOverride ? (
-                      <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(item.emergency_override)}
-                          onChange={(event) =>
-                            setItems((current) =>
-                              current.map((row, rowIndex) =>
-                                rowIndex === item.index
-                                  ? { ...row, emergency_override: event.target.checked }
-                                  : row,
-                              ),
-                            )
-                          }
-                        />
-                        <AlertTriangle className="size-3.5" />
-                        Emergency override (allow negative stock)
-                      </label>
-                    ) : null}
-                  </div>
-                );
-              })}
-          </div>
-        ) : null}
+        <DescriptionList
+          consultationType={consultationType}
+          consultationPrice={consultationPriceNumber}
+          items={items}
+          onRemoveLine={removeLine}
+          onToggleOverride={setLineEmergencyOverride}
+        />
 
         <BillingStatusFields
           status={status}
@@ -793,7 +907,7 @@ function CreateBillingModal({
           <button
             type="submit"
             disabled={isSaving}
-            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+            className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
           >
             {isSaving ? "Saving..." : "Create bill"}
           </button>
@@ -925,7 +1039,7 @@ function BillingPage() {
 
     try {
       await api.post("/billing", payload);
-      toast.success("Billing entry created.");
+      toast.success("Bill created and inventory updated.");
       setCreatorOpen(false);
       await loadData();
     } catch (error) {
