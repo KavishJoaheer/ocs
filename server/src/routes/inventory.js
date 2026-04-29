@@ -95,7 +95,22 @@ function ensureFolders() {
 
 function getFolders() {
   ensureFolders();
-  return db.prepare("SELECT id, name FROM inventory_folders WHERE owner_doctor_id IS NULL ORDER BY name ASC").all();
+  return db
+    .prepare(`
+      SELECT id, name
+      FROM inventory_folders
+      WHERE owner_doctor_id IS NULL
+        AND name IN (${REQUIRED_FOLDERS.map(() => "?").join(", ")})
+      ORDER BY CASE name
+        WHEN 'Consumable' THEN 1
+        WHEN 'IM Drugs' THEN 2
+        WHEN 'IV Drugs' THEN 3
+        WHEN 'Wound Dressing' THEN 4
+        WHEN 'Pediatric Drugs' THEN 5
+        ELSE 999
+      END, name ASC
+    `)
+    .all(...REQUIRED_FOLDERS);
 }
 
 function getItems({ stockScope, doctorId = null }) {
