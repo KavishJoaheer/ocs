@@ -321,7 +321,6 @@ export default function InventoryPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedView, setSelectedView] = useState("");
-  const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
@@ -338,11 +337,10 @@ export default function InventoryPage() {
   const lowStockItems = data?.low_stock_items || [];
   const summary = data?.summary || {};
 
-  async function load(doctorId = selectedDoctorId) {
+  async function load() {
     setLoading(true);
     try {
-      const params = doctorId ? `?doctorId=${doctorId}` : "";
-      const payload = await api.get(`/inventory${params}`);
+      const payload = await api.get("/inventory");
       setData(payload);
     } catch (error) {
       toast.error(error.message);
@@ -354,8 +352,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoctorId]);
+  }, []);
 
   // Default "View By" folder after inventory payload loads.
   useEffect(() => {
@@ -371,11 +368,7 @@ export default function InventoryPage() {
     const source = selectedView ? items.filter((item) => String(item.folder_id) === String(selectedView)) : items;
     return source.filter((item) => !needle || item.item_name.toLowerCase().includes(needle));
   }, [items, search, selectedView]);
-  const doctorOptions = useMemo(
-    () => [...doctors].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
-    [doctors],
-  );
-  const stockViewerItemCount = selectedDoctorId ? (data?.selected_doctor_stock || []).length : items.length;
+  // "Stock Viewer" (doctor selector) removed per Phase 1 updates.
 
   if (loading) return <LoadingState label="Loading inventory workspace" />;
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
@@ -511,20 +504,6 @@ export default function InventoryPage() {
           </button>
         }
       />
-
-      {isAdmin ? (
-        <SectionCard title="Stock Viewer" subtitle="Inspect any doctor's My Stock instantly.">
-          <div className="flex flex-wrap items-center gap-3">
-            <select value={selectedDoctorId} onChange={(event) => setSelectedDoctorId(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
-              <option value="">OCS Stock</option>
-              {doctorOptions.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
-              ))}
-            </select>
-            <span className="text-sm text-slate-500">Selected stock items: {stockViewerItemCount}</span>
-          </div>
-        </SectionCard>
-      ) : null}
 
       <div className="grid gap-4 md:grid-cols-4">
         <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} description="Based on cost price." />
