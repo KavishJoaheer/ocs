@@ -30,6 +30,11 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: "card", label: "Card" },
   { value: "ib", label: "IB" },
 ];
+const CONSULTATION_TYPE_OPTIONS = [
+  "Day Consultation",
+  "Night Consultation",
+  "Review Consultation",
+];
 
 function createEmptyLineItem() {
   return { description: "", amount: "0", type: "Sale" };
@@ -308,6 +313,8 @@ function CreateBillingModal({
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
+  const [consultationType, setConsultationType] = useState("Day Consultation");
+  const [consultationPrice, setConsultationPrice] = useState("");
   const [items, setItems] = useState([createEmptyLineItem()]);
   const [inventoryOptions, setInventoryOptions] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -328,6 +335,8 @@ function CreateBillingModal({
     setStatus("unpaid");
     setPaymentMethod("");
     setPaymentDate("");
+    setConsultationType("Day Consultation");
+    setConsultationPrice("");
     setItems([createEmptyLineItem()]);
     setInventoryOptions([]);
     setItemQuery("");
@@ -434,10 +443,25 @@ function CreateBillingModal({
       return;
     }
 
+    const manualConsultationPrice = Number(consultationPrice || 0);
+    if (manualConsultationPrice < 0) {
+      toast.error("Consultation price must be zero or more.");
+      return;
+    }
+
+    const combinedItems = [
+      {
+        description: consultationType,
+        amount: manualConsultationPrice,
+        type: "Sale",
+      },
+      ...items,
+    ];
+
     onSubmit({
       patient_id: Number(patientId),
       consultation_id: Number(consultationId),
-      items: items.map((item) => ({
+      items: combinedItems.map((item) => ({
         description: item.description,
         amount: Number(item.amount || 0),
         type: item.type || "Sale",
@@ -546,6 +570,35 @@ function CreateBillingModal({
             </p>
           </div>
         ) : null}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Consultation Type</span>
+            <select
+              value={consultationType}
+              onChange={(event) => setConsultationType(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            >
+              {CONSULTATION_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Consultation Price (Rs)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={consultationPrice}
+              onChange={(event) => setConsultationPrice(event.target.value)}
+              placeholder="0.00"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+        </div>
 
         <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
           <div className="grid gap-3 md:grid-cols-[1fr_130px_170px_auto_auto]">
