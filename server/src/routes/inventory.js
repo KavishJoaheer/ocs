@@ -393,10 +393,16 @@ function getPayload(req, selectedDoctorId = null) {
   const ocsStock = getItems({ stockScope: "ocs" });
   const myStock = doctorId ? getItems({ stockScope: "doctor", doctorId }) : [];
   const selectedDoctorStock =
-    role === "admin" && selectedDoctorId
+    (role === "admin" || role === "operator") && selectedDoctorId
       ? getItems({ stockScope: "doctor", doctorId: selectedDoctorId })
       : [];
-  const activeItems = doctorId ? myStock : ocsStock;
+  const contextDoctorId = selectedDoctorId && (role === "admin" || role === "operator") ? Number(selectedDoctorId) : null;
+  const activeItems = doctorId
+    ? myStock
+    : contextDoctorId
+      ? selectedDoctorStock
+      : ocsStock;
+  const summaryDoctorId = doctorId || contextDoctorId || null;
 
   return {
     folders,
@@ -404,7 +410,7 @@ function getPayload(req, selectedDoctorId = null) {
     my_stock: myStock,
     selected_doctor_stock: selectedDoctorStock,
     doctors: role === "admin" || role === "operator" ? getDoctors() : [],
-    summary: summarize(activeItems, doctorId),
+    summary: summarize(activeItems, summaryDoctorId),
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
     near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
     movements: getMovements(role, doctorId),

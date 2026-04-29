@@ -506,6 +506,9 @@ export default function InventoryPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedView, setSelectedView] = useState("");
+  const [selectedContextDoctorId, setSelectedContextDoctorId] = useState("");
+  const [contextSearch, setContextSearch] = useState("OCS Stock");
+  const [contextOpen, setContextOpen] = useState(false);
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
@@ -527,14 +530,24 @@ export default function InventoryPage() {
   const isAdmin = user.role === "admin";
   const folders = data?.folders || [];
   const doctors = data?.doctors || [];
-  const items = isDoctor ? data?.my_stock || [] : data?.ocs_stock || [];
+  const doctorOptions = useMemo(
+    () => [...doctors].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
+    [doctors],
+  );
+  const contextIsOcs = !selectedContextDoctorId;
+  const items = isDoctor
+    ? data?.my_stock || []
+    : selectedContextDoctorId
+      ? data?.selected_doctor_stock || []
+      : data?.ocs_stock || [];
   const summary = data?.summary || {};
   const pageSize = 50;
 
-  async function load() {
+  async function load(contextDoctorId = selectedContextDoctorId) {
     setLoading(true);
     try {
-      const payload = await api.get("/inventory");
+      const params = contextDoctorId ? `?doctorId=${contextDoctorId}` : "";
+      const payload = await api.get(`/inventory${params}`);
       setData(payload);
     } catch (error) {
       toast.error(error.message);
@@ -546,7 +559,8 @@ export default function InventoryPage() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedContextDoctorId]);
 
   // Default "View By" folder after inventory payload loads.
   useEffect(() => {
@@ -556,6 +570,15 @@ export default function InventoryPage() {
       setSelectedView(String(data.folders[0].id));
     }
   }, [data, selectedView]);
+
+  useEffect(() => {
+    if (!selectedContextDoctorId) {
+      setContextSearch("OCS Stock");
+      return;
+    }
+    const doctor = doctorOptions.find((d) => String(d.id) === String(selectedContextDoctorId));
+    setContextSearch(doctor?.full_name || "OCS Stock");
+  }, [selectedContextDoctorId, doctorOptions]);
 
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -586,6 +609,15 @@ export default function InventoryPage() {
     const start = (currentPage - 1) * pageSize;
     return sortedItems.slice(start, start + pageSize);
   }, [sortedItems, currentPage]);
+
+  const filteredContextOptions = useMemo(() => {
+    const needle = contextSearch.trim().toLowerCase();
+    const ocsOption = [{ id: "", label: "OCS Stock" }];
+    const doctorRows = doctorOptions.map((doctor) => ({ id: String(doctor.id), label: doctor.full_name }));
+    const all = [...ocsOption, ...doctorRows];
+    if (!needle) return all;
+    return all.filter((opt) => opt.label.toLowerCase().includes(needle));
+  }, [contextSearch, doctorOptions]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -844,8 +876,46 @@ export default function InventoryPage() {
         <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" description="Traffic-light alert counters." />
       </div>
 
-      <SectionCard title="View OCS Stock by" subtitle="Filter OCS Stock by folder.">
+      <SectionCard title="View Stock Context" subtitle="Switch between Master OCS Stock and individual Doctor inventories.">
         <div className="space-y-4">
+          {!isDoctor ? (
+            <div className="relative">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Stock Context</label>
+              <input
+                value={contextSearch}
+                onChange={(event) => {
+                  setContextSearch(event.target.value);
+                  setContextOpen(true);
+                }}
+                onFocus={() => setContextOpen(true)}
+                onBlur={() => setTimeout(() => setContextOpen(false), 120)}
+                placeholder="Search OCS/doctor..."
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+              />
+              {contextOpen ? (
+                <div className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-2xl border border-slate-200 bg-white shadow">
+                  {filteredContextOptions.map((option) => (
+                    <button
+                      key={`ctx-${option.id || "ocs"}`}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setSelectedContextDoctorId(option.id);
+                        setContextSearch(option.label);
+                        setContextOpen(false);
+                      }}
+                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
+                        String(option.id) === String(selectedContextDoctorId) ? "bg-[rgba(79,184,179,0.12)] text-[#4FB8B3] font-semibold" : "text-slate-700"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <label className="relative block">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by item name" className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4" />
@@ -860,7 +930,16 @@ export default function InventoryPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title={isDoctor ? "My Stock Items" : "OCS Stock Items"} subtitle={`${sortedItems.length} filtered item(s)`}>
+      <SectionCard
+        title={
+          isDoctor
+            ? "My Stock Items"
+            : contextIsOcs
+              ? "OCS Stock Items"
+              : `${contextSearch || "Doctor"} - My Stock`
+        }
+        subtitle={`${sortedItems.length} filtered item(s)`}
+      >
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -954,8 +1033,14 @@ export default function InventoryPage() {
                                       </button>
                                     ) : null}
                                     <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
-                                    {canManageOcs ? (
+                                    {canManageOcs && contextIsOcs ? (
                                       <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
+                                    ) : null}
+                                    {canManageOcs && !contextIsOcs ? (
+                                      <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-700">
+                                        <MinusCircle className="size-3.5" />
+                                        Adjust/Reclaim
+                                      </button>
                                     ) : null}
                                     {canManageOcs ? (
                                       <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Remove</button>
@@ -1024,15 +1109,15 @@ export default function InventoryPage() {
                 <tr>
                   <th className="px-4 py-3 text-left">Doctor</th>
                   <th className="px-4 py-3 text-left">Patient Volume</th>
-                  <th className="px-4 py-3 text-left">Stock Consumption</th>
+                  <th className="px-4 py-3 text-left">Stock Consumption (Rs)</th>
                 </tr>
               </thead>
               <tbody>
                 {(data.compare_rows || []).map((row) => (
-                  <tr key={row.doctor_id} className="border-t border-slate-200/70">
+                  <tr key={row.doctor_id} className="border-t border-slate-200/70 text-xs">
                     <td className="px-4 py-3">{row.doctor_name}</td>
                     <td className="px-4 py-3">{row.patient_volume}</td>
-                    <td className="px-4 py-3">{row.stock_consumption}</td>
+                    <td className="px-4 py-3">{formatRupees(row.stock_consumption)}</td>
                   </tr>
                 ))}
               </tbody>
