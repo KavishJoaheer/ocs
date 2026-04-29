@@ -956,6 +956,67 @@ function ensureInventoryColumns() {
     );
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
+
+    CREATE TABLE IF NOT EXISTS inventory_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL,
+      quantity_remaining INTEGER NOT NULL DEFAULT 0 CHECK (quantity_remaining >= 0),
+      expiry_date TEXT,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (item_id) REFERENCES inventory(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_batches_item ON inventory_batches(item_id);
+
+    CREATE TABLE IF NOT EXISTS inventory_staging (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folder_id INTEGER NOT NULL,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      minimum_quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'unit',
+      cost_price REAL NOT NULL DEFAULT 0,
+      selling_price REAL NOT NULL DEFAULT 0,
+      attributes TEXT NOT NULL DEFAULT '',
+      moa_notes TEXT NOT NULL DEFAULT '',
+      expiry_date TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled')),
+      created_by_user_id INTEGER,
+      released_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_at TEXT,
+      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_stocktakes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL,
+      physical_quantity INTEGER NOT NULL DEFAULT 0,
+      digital_quantity INTEGER NOT NULL DEFAULT 0,
+      discrepancy INTEGER NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT '',
+      created_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (item_id) REFERENCES inventory(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action_type TEXT NOT NULL,
+      item_id INTEGER,
+      item_name TEXT NOT NULL DEFAULT '',
+      quantity INTEGER NOT NULL DEFAULT 0,
+      reason TEXT NOT NULL DEFAULT '',
+      target_doctor_id INTEGER,
+      target_doctor_name TEXT NOT NULL DEFAULT '',
+      performed_by_user_id INTEGER,
+      performed_by_role TEXT NOT NULL DEFAULT '',
+      performed_by_name TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_inventory_scope_owner ON inventory(stock_scope, owner_doctor_id);
   `);
 }
 

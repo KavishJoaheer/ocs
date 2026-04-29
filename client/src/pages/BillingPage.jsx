@@ -988,6 +988,11 @@ function CreateBillingModal({
             Auto-suggest searches My Stock only (case-insensitive partial matches). Out-of-stock items show 0 available and can be used with Emergency Override.
             {addLineDisabledReason ? <span className="ml-1 font-semibold text-amber-700">— {addLineDisabledReason}.</span> : null}
           </p>
+          {consultationId && !inventoryLoading && inventoryOptions.length === 0 ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+              My Stock has no items yet for this doctor. Use Inventory → Restock My Inventory before billing inventory items, or click <span className="text-[#1f7f7b]">Add manual item</span> below for off-stock charges.
+            </p>
+          ) : null}
         </div>
 
         <DescriptionList

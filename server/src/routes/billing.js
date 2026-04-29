@@ -410,50 +410,58 @@ router.get("/:id", (req, res) => {
 });
 
 router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
-  const consultationId = Number(req.params.consultationId || 0);
-  const consultation = getConsultationContext(consultationId);
-  if (!consultation) {
-    return res.status(404).json({ error: "Consultation not found." });
-  }
-  if (
-    req.auth?.role === "doctor" &&
-    req.auth.doctor_id &&
-    Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
-  ) {
-    return res.status(403).json({
-      error: "You can only access inventory linked to your own consultations.",
+  try {
+    const consultationId = Number(req.params.consultationId || 0);
+    const consultation = getConsultationContext(consultationId);
+    if (!consultation) {
+      return res.status(404).json({ error: "Consultation not found." });
+    }
+    if (
+      req.auth?.role === "doctor" &&
+      req.auth.doctor_id &&
+      Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
+    ) {
+      return res.status(403).json({
+        error: "You can only access inventory linked to your own consultations.",
+      });
+    }
+
+    const rows = db
+      .prepare(`
+        SELECT
+          i.id,
+          i.item_name,
+          i.quantity,
+          i.minimum_quantity,
+          i.selling_price,
+          i.cost_price,
+          COALESCE(f.name, '') AS folder_name
+        FROM inventory i
+        LEFT JOIN inventory_folders f ON f.id = i.folder_id
+        WHERE stock_scope = 'doctor'
+          AND owner_doctor_id = ?
+        ORDER BY i.item_name ASC
+      `)
+      .all(Number(consultation.doctor_id))
+      .map((row) => ({
+        ...row,
+        quantity: Number(row.quantity || 0),
+        minimum_quantity: Number(row.minimum_quantity || 0),
+        selling_price: roundCurrency(row.selling_price),
+        cost_price: roundCurrency(row.cost_price),
+      }));
+
+    res.json(rows);
+  } catch (error) {
+    console.error("[billing][GET /inventory-options]", error);
+    return res.status(500).json({
+      error: error?.message || "Failed to load inventory suggestions.",
     });
   }
-
-  const rows = db
-    .prepare(`
-      SELECT
-        i.id,
-        i.item_name,
-        i.quantity,
-        i.minimum_quantity,
-        i.selling_price,
-        i.cost_price,
-        COALESCE(f.name, '') AS folder_name
-      FROM inventory i
-      LEFT JOIN inventory_folders f ON f.id = i.folder_id
-      WHERE stock_scope = 'doctor'
-        AND owner_doctor_id = ?
-      ORDER BY i.item_name ASC
-    `)
-    .all(Number(consultation.doctor_id))
-    .map((row) => ({
-      ...row,
-      quantity: Number(row.quantity || 0),
-      minimum_quantity: Number(row.minimum_quantity || 0),
-      selling_price: roundCurrency(row.selling_price),
-      cost_price: roundCurrency(row.cost_price),
-    }));
-
-  res.json(rows);
 });
 
 router.post("/", (req, res) => {
+  try {
   const consultationId = Number(req.body.consultation_id);
   const patientId = Number(req.body.patient_id);
   const consultation = getConsultationContext(consultationId);
@@ -545,6 +553,12 @@ router.post("/", (req, res) => {
   }
 
   res.status(201).json(getJoinedBillById(createdId));
+  } catch (error) {
+    console.error("[billing][POST /]", error);
+    return res.status(500).json({
+      error: error?.message || "Failed to create billing entry.",
+    });
+  }
 });
 
 router.put("/:id", (req, res) => {
