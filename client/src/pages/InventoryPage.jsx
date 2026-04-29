@@ -613,7 +613,7 @@ function InventoryActionButtons({
         </button>
       ) : null}
 
-      {isDoctor && doctorViewIsMy ? (
+      {isDoctor ? (
         <button
           type="button"
           onClick={() => onRestockMyInventory(item)}
