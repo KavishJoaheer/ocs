@@ -437,7 +437,45 @@ function getCompareRows() {
     }));
 }
 
-function getPayload(req, selectedDoctorId = null) {
+function getDoctorConsumptionRecord(doctorId) {
+  const periods = [
+    { id: "week", label: "This Week", startSql: "date('now', 'weekday 1', '-7 days')" },
+    { id: "month", label: "This Month", startSql: "date('now', 'start of month')" },
+    { id: "ytd", label: "Year to Date", startSql: "date('now', 'start of year')" },
+  ];
+
+  return periods.map((period) => {
+    const patientVolumeRow = db
+      .prepare(`
+        SELECT COUNT(DISTINCT c.patient_id) AS patient_volume
+        FROM consultations c
+        WHERE c.doctor_id = ?
+          AND c.consultation_date BETWEEN ${period.startSql} AND date('now')
+      `)
+      .get(doctorId);
+
+    const stockConsumptionRow = db
+      .prepare(`
+        SELECT COALESCE(SUM(m.quantity * i.cost_price), 0) AS stock_consumption
+        FROM inventory_movements m
+        JOIN inventory i ON i.id = m.item_id
+        WHERE i.stock_scope = 'doctor'
+          AND i.owner_doctor_id = ?
+          AND m.movement_type = 'out'
+          AND date(m.created_at) BETWEEN ${period.startSql} AND date('now')
+      `)
+      .get(doctorId);
+
+    return {
+      period: period.label,
+      period_key: period.id,
+      patient_volume: Number(patientVolumeRow?.patient_volume || 0),
+      stock_consumption_rs: roundCurrency(stockConsumptionRow?.stock_consumption || 0),
+    };
+  });
+}
+
+function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   ensureInfrastructure();
   const role = req.auth.role;
   const doctorId = role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
@@ -449,12 +487,15 @@ function getPayload(req, selectedDoctorId = null) {
       ? getItems({ stockScope: "doctor", doctorId: selectedDoctorId })
       : [];
   const contextDoctorId = selectedDoctorId && (role === "admin" || role === "operator") ? Number(selectedDoctorId) : null;
+  const doctorViewIsOcs = role === "doctor" && doctorContext === "ocs";
   const activeItems = doctorId
-    ? myStock
+    ? doctorViewIsOcs
+      ? ocsStock
+      : myStock
     : contextDoctorId
       ? selectedDoctorStock
       : ocsStock;
-  const summaryDoctorId = doctorId || contextDoctorId || null;
+  const summaryDoctorId = doctorId && !doctorViewIsOcs ? doctorId : contextDoctorId || null;
 
   return {
     folders,
@@ -468,12 +509,14 @@ function getPayload(req, selectedDoctorId = null) {
     movements: getMovements(role, doctorId),
     staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
     compare_rows: role === "admin" || role === "operator" ? getCompareRows() : [],
+    my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],
   };
 }
 
 router.get("/", (req, res) => {
   const selectedDoctorId = Number(req.query.doctorId || 0) || null;
-  res.json(getPayload(req, selectedDoctorId));
+  const doctorContext = String(req.query.context || "my").trim().toLowerCase() === "ocs" ? "ocs" : "my";
+  res.json(getPayload(req, selectedDoctorId, doctorContext));
 });
 
 router.post("/items", (req, res) => {
@@ -1054,6 +1097,147 @@ router.post("/restock", (req, res) => {
   }
 
   res.status(201).json(getPayload(req));
+});
+
+router.post("/restock/my-inventory", (req, res) => {
+  ensureInfrastructure();
+  if (req.auth.role !== "doctor" || !req.auth.doctor_id) {
+    return res.status(403).json({ error: "Only doctor accounts can restock personal inventory." });
+  }
+
+  const doctorId = Number(req.auth.doctor_id || 0);
+  const requests = Array.isArray(req.body.items) ? req.body.items : [];
+  if (!requests.length) {
+    return res.status(400).json({ error: "At least one restock item is required." });
+  }
+
+  const sanitized = requests
+    .map((entry) => ({
+      ocs_item_id: Number(entry?.ocs_item_id || 0),
+      quantity: Number(entry?.quantity || 0),
+    }))
+    .filter((entry) => entry.ocs_item_id && Number.isInteger(entry.quantity) && entry.quantity > 0);
+
+  if (!sanitized.length) {
+    return res.status(400).json({ error: "Each restock item must include ocs_item_id and positive quantity." });
+  }
+
+  const doctor = db.prepare("SELECT id, full_name FROM doctors WHERE id = ? AND deleted_at IS NULL").get(doctorId);
+  if (!doctor) {
+    return res.status(404).json({ error: "Doctor profile not found." });
+  }
+
+  try {
+    db.transaction(() => {
+      for (const request of sanitized) {
+        const source = findItem(request.ocs_item_id, "ocs", null);
+        if (!source) {
+          throw new Error("One or more OCS stock items were not found.");
+        }
+
+        const sourceQty = Number(source.quantity || 0);
+        if (sourceQty < request.quantity) {
+          throw new Error(`Insufficient OCS stock for ${source.item_name}.`);
+        }
+
+        const consumed = consumeBatches(source.id, request.quantity);
+        if (!consumed.ok) {
+          throw new Error(`Insufficient FEFO batch stock for ${source.item_name}.`);
+        }
+
+        const sourceNext = sourceQty - request.quantity;
+        db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sourceNext, source.id);
+        recordMovement({
+          itemId: source.id,
+          movementType: "out",
+          quantity: request.quantity,
+          previousQuantity: sourceQty,
+          nextQuantity: sourceNext,
+          actionType: "restock_out",
+          note: "Doctor self-restock request",
+          userId: req.auth.id,
+          referenceType: "doctor",
+          referenceId: doctorId,
+          metaJson: JSON.stringify({
+            doctor_name: doctor.full_name,
+            performed_by_user_id: req.auth.id,
+            performed_by_role: req.auth.role,
+            performed_by_name: req.auth.full_name || req.auth.username || "",
+          }),
+        });
+
+        const targetExisting = db
+          .prepare(`
+            SELECT *
+            FROM inventory
+            WHERE stock_scope = 'doctor'
+              AND owner_doctor_id = ?
+              AND folder_id = ?
+              AND item_name = ?
+            LIMIT 1
+          `)
+          .get(doctorId, source.folder_id, source.item_name);
+
+        let targetItemId;
+        let targetPrev = 0;
+        let targetNext = request.quantity;
+        if (targetExisting) {
+          targetItemId = Number(targetExisting.id);
+          targetPrev = Number(targetExisting.quantity || 0);
+          targetNext = targetPrev + request.quantity;
+          db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(targetNext, targetItemId);
+        } else {
+          const created = db
+            .prepare(`
+              INSERT INTO inventory (
+                item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
+                cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+              )
+              VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+            `)
+            .run(
+              source.item_name,
+              source.folder_id,
+              doctorId,
+              request.quantity,
+              source.minimum_quantity,
+              source.unit,
+              source.cost_price,
+              source.selling_price,
+              source.attributes || "",
+              source.moa_notes || "",
+              source.expiry_date || null,
+            );
+          targetItemId = Number(created.lastInsertRowid);
+        }
+
+        consumed.allocations.forEach((allocation) => {
+          createBatch(targetItemId, allocation.quantity, allocation.expiry_date, allocation.unit_cost);
+        });
+        recordMovement({
+          itemId: targetItemId,
+          movementType: "in",
+          quantity: request.quantity,
+          previousQuantity: targetPrev,
+          nextQuantity: targetNext,
+          actionType: "restock_in",
+          note: "Restocked from OCS stock",
+          userId: req.auth.id,
+          referenceType: "doctor",
+          referenceId: doctorId,
+          metaJson: JSON.stringify({
+            performed_by_user_id: req.auth.id,
+            performed_by_role: req.auth.role,
+            performed_by_name: req.auth.full_name || req.auth.username || "",
+          }),
+        });
+      }
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Doctor restock failed." });
+  }
+
+  res.status(201).json(getPayload(req, null, "my"));
 });
 
 router.post("/staging/import-csv", (req, res) => {

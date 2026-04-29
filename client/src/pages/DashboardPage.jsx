@@ -785,7 +785,7 @@ function OperatorPersonalOperationUpdates({ monthLabel }) {
   );
 }
 
-function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
+function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -837,6 +837,28 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
             </div>
           </div>
         </div>
+
+        {lowStockAlert?.triggered ? (
+          <div className="mt-6 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4 shadow-[0_18px_40px_rgba(153,27,27,0.08)]">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Low stock alert</p>
+                <p className="mt-1 text-sm font-semibold text-rose-900">
+                  {lowStockAlert.total_items} item(s) below 50% par level in your kit.
+                </p>
+                <p className="mt-1 text-xs text-rose-700">
+                  Open Inventory with pre-filled quantities to recover each item to 100% par.
+                </p>
+              </div>
+              <Link
+                to="/inventory?context=my&restock=alert"
+                className="inline-flex items-center justify-center rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]"
+              >
+                Restock Now
+              </Link>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-8 rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:p-6">
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1617,7 +1639,9 @@ function DashboardPage() {
   if (user.role === "doctor") {
     return (
       <DoctorDashboardView
+        dashboard={dashboard}
         isSavingStatus={isSavingStatus}
+        lowStockAlert={dashboard.doctor_low_stock_alert}
         onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
         user={user}

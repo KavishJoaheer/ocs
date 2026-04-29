@@ -431,6 +431,58 @@ function getDoctorStatuses() {
     .all();
 }
 
+function getDoctorLowStockAlert(doctorId) {
+  try {
+    const rows = db
+      .prepare(`
+        SELECT
+          i.id AS my_item_id,
+          i.folder_id,
+          i.item_name,
+          i.quantity AS my_quantity,
+          i.minimum_quantity AS par_level,
+          o.id AS ocs_item_id,
+          o.quantity AS ocs_quantity
+        FROM inventory i
+        LEFT JOIN inventory o
+          ON o.stock_scope = 'ocs'
+         AND o.owner_doctor_id IS NULL
+         AND o.folder_id = i.folder_id
+         AND o.item_name = i.item_name
+        WHERE i.stock_scope = 'doctor'
+          AND i.owner_doctor_id = ?
+          AND i.minimum_quantity > 0
+      `)
+      .all(doctorId)
+      .map((row) => {
+        const parLevel = Number(row.par_level || 0);
+        const quantity = Number(row.my_quantity || 0);
+        const ratio = parLevel > 0 ? quantity / parLevel : 1;
+        const needed = Math.max(parLevel - quantity, 0);
+        return {
+          my_item_id: Number(row.my_item_id),
+          ocs_item_id: Number(row.ocs_item_id || 0),
+          item_name: row.item_name,
+          folder_id: Number(row.folder_id || 0),
+          par_level: parLevel,
+          current_quantity: quantity,
+          required_quantity: needed,
+          ocs_available: Number(row.ocs_quantity || 0),
+          ratio,
+        };
+      })
+      .filter((row) => row.par_level > 0 && row.ratio < 0.5 && row.required_quantity > 0);
+
+    return {
+      triggered: rows.length > 0,
+      total_items: rows.length,
+      items: rows,
+    };
+  } catch (_error) {
+    return { triggered: false, total_items: 0, items: [] };
+  }
+}
+
 function getDoctorWorkspacePayload(doctorId) {
   const today = getTodayLocal();
   const { weekStart, weekEnd } = getCurrentWeekRange();
@@ -828,6 +880,7 @@ function getOperatorWorkspacePayload() {
 }
 
 router.get("/", (_req, res) => {
+  const req = _req;
   const today = getTodayLocal();
   const nextWeek = offsetLocalDate(7);
 
@@ -940,6 +993,10 @@ router.get("/", (_req, res) => {
     .all();
 
   const doctorStatuses = getDoctorStatuses();
+  const doctorLowStockAlert =
+    req.auth.role === "doctor" && req.auth.doctor_id
+      ? getDoctorLowStockAlert(Number(req.auth.doctor_id))
+      : { triggered: false, total_items: 0, items: [] };
 
   res.json({
     summary: {
@@ -951,6 +1008,7 @@ router.get("/", (_req, res) => {
     upcomingAppointments,
     recentActivity,
     doctorStatuses,
+    doctor_low_stock_alert: doctorLowStockAlert,
   });
 });
 

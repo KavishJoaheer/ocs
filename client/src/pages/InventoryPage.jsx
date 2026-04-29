@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Download, MinusCircle, Plus, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -499,19 +500,76 @@ function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
   );
 }
 
+function DoctorRestockModal({ open, items, isSaving, onClose, onSubmit }) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Restock My Inventory"
+      description="Top up low items to 100% par level using an atomic FEFO transfer."
+      size="xl"
+    >
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit(items);
+        }}
+      >
+        <div className="max-h-[360px] overflow-auto rounded-2xl border border-slate-200">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3 text-left">Item</th>
+                <th className="px-4 py-3 text-left">Current</th>
+                <th className="px-4 py-3 text-left">Par Level</th>
+                <th className="px-4 py-3 text-left">Need</th>
+                <th className="px-4 py-3 text-left">OCS Available</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={`restock-${item.ocs_item_id}-${item.item_name}`} className="border-t border-slate-200/70">
+                  <td className="px-4 py-3">{item.item_name}</td>
+                  <td className="px-4 py-3">{item.current_quantity}</td>
+                  <td className="px-4 py-3">{item.par_level}</td>
+                  <td className="px-4 py-3 font-semibold text-[#4FB8B3]">{item.required_quantity}</td>
+                  <td className="px-4 py-3">{item.ocs_available}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+            Cancel
+          </button>
+          <button type="submit" disabled={isSaving || !items.length} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {isSaving ? "Restocking..." : `Restock ${items.length} item(s)`}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function InventoryPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedView, setSelectedView] = useState("");
   const [selectedContextDoctorId, setSelectedContextDoctorId] = useState("");
+  const [doctorContext, setDoctorContext] = useState("my");
   const [contextSearch, setContextSearch] = useState("OCS Stock");
   const [contextOpen, setContextOpen] = useState(false);
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
+  const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
   const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
@@ -524,6 +582,7 @@ export default function InventoryPage() {
   const [selectedItems, setSelectedItems] = useState([]);
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
+  const [consumptionPeriod, setConsumptionPeriod] = useState("month");
 
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
@@ -535,19 +594,59 @@ export default function InventoryPage() {
     [doctors],
   );
   const contextIsOcs = !selectedContextDoctorId;
+  const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
+  const doctorViewIsMy = isDoctor && doctorContext === "my";
   const items = isDoctor
-    ? data?.my_stock || []
+    ? doctorViewIsOcs
+      ? data?.ocs_stock || []
+      : data?.my_stock || []
     : selectedContextDoctorId
       ? data?.selected_doctor_stock || []
       : data?.ocs_stock || [];
   const summary = data?.summary || {};
   const pageSize = 50;
+  const doctorConsumptionRows = data?.my_consumption_rows || [];
 
-  async function load(contextDoctorId = selectedContextDoctorId) {
+  const doctorRestockCandidates = useMemo(() => {
+    if (!isDoctor || !Array.isArray(data?.my_stock) || !Array.isArray(data?.ocs_stock)) return [];
+    const ocsMap = new Map(
+      (data.ocs_stock || []).map((item) => [`${item.folder_id}::${String(item.item_name || "").toLowerCase()}`, item]),
+    );
+    return (data.my_stock || [])
+      .map((myItem) => {
+        const parLevel = Number(myItem.minimum_quantity || 0);
+        const currentQuantity = Number(myItem.quantity || 0);
+        const ratio = parLevel > 0 ? currentQuantity / parLevel : 1;
+        if (parLevel <= 0 || ratio >= 0.5) return null;
+        const needed = Math.max(parLevel - currentQuantity, 0);
+        const source = ocsMap.get(`${myItem.folder_id}::${String(myItem.item_name || "").toLowerCase()}`);
+        const ocsAvailable = Number(source?.quantity || 0);
+        const transferQty = Math.min(needed, ocsAvailable);
+        if (!source?.id || transferQty <= 0) return null;
+        return {
+          ocs_item_id: Number(source.id),
+          item_name: myItem.item_name,
+          current_quantity: currentQuantity,
+          par_level: parLevel,
+          required_quantity: transferQty,
+          ocs_available: ocsAvailable,
+        };
+      })
+      .filter(Boolean);
+  }, [isDoctor, data]);
+
+  const selectedConsumption = useMemo(
+    () => doctorConsumptionRows.find((row) => row.period_key === consumptionPeriod) || null,
+    [doctorConsumptionRows, consumptionPeriod],
+  );
+
+  async function load(contextDoctorId = selectedContextDoctorId, nextDoctorContext = doctorContext) {
     setLoading(true);
     try {
-      const params = contextDoctorId ? `?doctorId=${contextDoctorId}` : "";
-      const payload = await api.get(`/inventory${params}`);
+      const query = new URLSearchParams();
+      if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
+      if (isDoctor) query.set("context", nextDoctorContext);
+      const payload = await api.get(`/inventory${query.toString() ? `?${query.toString()}` : ""}`);
       setData(payload);
     } catch (error) {
       toast.error(error.message);
@@ -560,7 +659,7 @@ export default function InventoryPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContextDoctorId]);
+  }, [selectedContextDoctorId, doctorContext]);
 
   // Default "View By" folder after inventory payload loads.
   useEffect(() => {
@@ -579,6 +678,24 @@ export default function InventoryPage() {
     const doctor = doctorOptions.find((d) => String(d.id) === String(selectedContextDoctorId));
     setContextSearch(doctor?.full_name || "OCS Stock");
   }, [selectedContextDoctorId, doctorOptions]);
+
+  useEffect(() => {
+    if (!isDoctor) return;
+    const nextContext = searchParams.get("context");
+    if (nextContext === "ocs" || nextContext === "my") {
+      setDoctorContext(nextContext);
+    }
+  }, [isDoctor, searchParams]);
+
+  useEffect(() => {
+    if (!isDoctor || !data) return;
+    const shouldOpenRestock = searchParams.get("restock") === "alert";
+    if (!shouldOpenRestock || !doctorRestockCandidates.length) return;
+    setDoctorRestockOpen(true);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("restock");
+    setSearchParams(nextParams, { replace: true });
+  }, [isDoctor, data, doctorRestockCandidates, searchParams, setSearchParams]);
 
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -685,6 +802,29 @@ export default function InventoryPage() {
       setData(next);
       setRestock(null);
       toast.success("Doctor restock completed.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveDoctorRestock(itemsToRestock) {
+    if (!itemsToRestock.length) {
+      toast.error("No eligible low-stock items available to restock.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const next = await api.post("/inventory/restock/my-inventory", {
+        items: itemsToRestock.map((item) => ({
+          ocs_item_id: Number(item.ocs_item_id),
+          quantity: Number(item.required_quantity),
+        })),
+      });
+      setData(next);
+      setDoctorRestockOpen(false);
+      toast.success("My inventory restocked successfully.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -859,13 +999,25 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Logistics"
-        title={isDoctor ? "My Stock" : "OCS Stock"}
-        description={isDoctor ? "Editable personal inventory with billing-linked sell flow and expiry safety checks." : "Central master stock with replenishment controls and stocktake tools."}
+        title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
+        description={isDoctor ? "Doctor-facing inventory with read-only master visibility, FEFO restocking, and consumption tracking." : "Central master stock with replenishment controls and stocktake tools."}
         actions={
-          <button type="button" onClick={() => setEditor({ item: null })} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]">
-            <Plus className="size-4" />
-            Add Item
-          </button>
+          isDoctor ? (
+            <button
+              type="button"
+              onClick={() => setDoctorRestockOpen(true)}
+              disabled={!doctorRestockCandidates.length}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Truck className="size-4" />
+              Restock My Inventory
+            </button>
+          ) : (
+            <button type="button" onClick={() => setEditor({ item: null })} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]">
+              <Plus className="size-4" />
+              Add Item
+            </button>
+          )
         }
       />
 
@@ -878,7 +1030,24 @@ export default function InventoryPage() {
 
       <SectionCard title="View Stock Context" subtitle="Switch between Master OCS Stock and individual Doctor inventories.">
         <div className="space-y-4">
-          {!isDoctor ? (
+          {isDoctor ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setDoctorContext("my")}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsMy ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              >
+                My Stock (Default)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorContext("ocs")}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsOcs ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              >
+                OCS Master Stock (Read-only)
+              </button>
+            </div>
+          ) : (
             <div className="relative">
               <label className="mb-2 block text-sm font-semibold text-slate-700">Stock Context</label>
               <input
@@ -914,7 +1083,7 @@ export default function InventoryPage() {
                 </div>
               ) : null}
             </div>
-          ) : null}
+          )}
 
           <label className="relative block">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -962,7 +1131,7 @@ export default function InventoryPage() {
           </select>
         </div>
 
-        {selectedItems.length > 0 ? (
+        {canManageOcs && selectedItems.length > 0 ? (
           <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#4FB8B3] px-3 py-2 text-white shadow">
             <span className="text-sm font-semibold">{selectedItems.length} selected</span>
             <button type="button" onClick={() => setBulkRemoveOpen(true)} className="rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">Bulk Remove</button>
@@ -981,12 +1150,14 @@ export default function InventoryPage() {
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <tr>
                     <th className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={sortedItems.length > 0 && sortedItems.every((item) => selectedItems.includes(Number(item.id)))}
-                        onChange={toggleSelectAllFiltered}
-                        className="size-4 accent-[#4FB8B3]"
-                      />
+                      {canManageOcs ? (
+                        <input
+                          type="checkbox"
+                          checked={sortedItems.length > 0 && sortedItems.every((item) => selectedItems.includes(Number(item.id)))}
+                          onChange={toggleSelectAllFiltered}
+                          className="size-4 accent-[#4FB8B3]"
+                        />
+                      ) : null}
                     </th>
                     <th className="px-4 py-3">Item Name</th>
                     <th className="px-4 py-3">Qty</th>
@@ -1000,6 +1171,10 @@ export default function InventoryPage() {
                     const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
                     const expanded = Boolean(expandedRows[item.id]);
                     const batches = batchMap[item.id] || [];
+                    const parLevel = Number(item.minimum_quantity || 0);
+                    const quantity = Number(item.quantity || 0);
+                    const ratio = parLevel > 0 ? quantity / parLevel : 1;
+                    const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
                     return (
                       <tr key={item.id}>
                         <td colSpan={6} className="p-0">
@@ -1007,12 +1182,14 @@ export default function InventoryPage() {
                             <tbody>
                               <tr className={`border-t border-slate-200/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
                                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedItems.includes(Number(item.id))}
-                                    onChange={() => toggleSelected(item.id)}
-                                    className="size-4 accent-[#4FB8B3]"
-                                  />
+                                  {canManageOcs ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedItems.includes(Number(item.id))}
+                                      onChange={() => toggleSelected(item.id)}
+                                      className="size-4 accent-[#4FB8B3]"
+                                    />
+                                  ) : null}
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2">
@@ -1022,19 +1199,48 @@ export default function InventoryPage() {
                                     <span className="font-semibold text-slate-900">{item.item_name}</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">{item.quantity}</td>
+                                <td className="px-4 py-3">
+                                  <div className="inline-flex items-center gap-2">
+                                    <span>{item.quantity}</span>
+                                    {isDoctor && doctorViewIsMy ? (
+                                      <span
+                                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                                          trafficTone === "critical"
+                                            ? "bg-rose-100 text-rose-700"
+                                            : trafficTone === "warning"
+                                              ? "bg-amber-100 text-amber-700"
+                                              : "bg-teal-100 text-teal-700"
+                                        }`}
+                                      >
+                                        {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </td>
                                 <td className="px-4 py-3">{item.minimum_quantity}</td>
                                 <td className="px-4 py-3">{item.expiry_date || "Not set"}</td>
                                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                                   <div className="flex flex-wrap gap-2">
-                                    {canManageOcs ? (
+                                    {canManageOcs && contextIsOcs ? (
                                       <button type="button" onClick={() => setAddStock({ item })} className="rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1.5 text-xs font-semibold text-[#4FB8B3]">
                                         Stock In
                                       </button>
                                     ) : null}
-                                    <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
+                                    {!(isDoctor && doctorViewIsOcs) ? (
+                                      <button type="button" onClick={() => setEditor({ item })} className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button>
+                                    ) : null}
                                     {canManageOcs && contextIsOcs ? (
                                       <button type="button" onClick={() => setRestock({ item })} className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"><Truck className="size-3.5" />Restock Doctor</button>
+                                    ) : null}
+                                    {isDoctor && doctorViewIsOcs ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setDoctorRestockOpen(true)}
+                                        className="inline-flex items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 py-1.5 text-xs font-semibold text-white"
+                                      >
+                                        <Truck className="size-3.5" />
+                                        Restock My Inventory
+                                      </button>
                                     ) : null}
                                     {canManageOcs && !contextIsOcs ? (
                                       <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-700">
@@ -1042,7 +1248,7 @@ export default function InventoryPage() {
                                         Adjust/Reclaim
                                       </button>
                                     ) : null}
-                                    {canManageOcs ? (
+                                    {canManageOcs && contextIsOcs ? (
                                       <button type="button" onClick={() => setRemoveStock({ item })} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700"><Trash2 className="size-3.5" />Remove</button>
                                     ) : null}
                                   </div>
@@ -1101,7 +1307,39 @@ export default function InventoryPage() {
         </div>
       </SectionCard>
 
-      {canManageOcs ? (
+      {isDoctor ? (
+        <SectionCard title="My Consumption Record" subtitle="Track patient volume and stock consumption across key periods.">
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setConsumptionPeriod("week")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "week" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Week</button>
+            <button type="button" onClick={() => setConsumptionPeriod("month")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "month" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Month</button>
+            <button type="button" onClick={() => setConsumptionPeriod("ytd")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "ytd" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>Year to Date</button>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Period</th>
+                  <th className="px-4 py-3 text-left">Patient Volume</th>
+                  <th className="px-4 py-3 text-left">Stock Consumption (Rs)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedConsumption ? (
+                  <tr className="border-t border-slate-200/70 text-xs">
+                    <td className="px-4 py-3">{selectedConsumption.period}</td>
+                    <td className="px-4 py-3">{selectedConsumption.patient_volume}</td>
+                    <td className="px-4 py-3">{formatRupees(selectedConsumption.stock_consumption_rs)}</td>
+                  </tr>
+                ) : (
+                  <tr className="border-t border-slate-200/70 text-xs">
+                    <td className="px-4 py-3 text-slate-500" colSpan={3}>No consumption record available yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : canManageOcs ? (
         <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
@@ -1129,6 +1367,7 @@ export default function InventoryPage() {
       <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
+      <DoctorRestockModal open={doctorRestockOpen} items={doctorRestockCandidates} isSaving={isSaving} onClose={() => setDoctorRestockOpen(false)} onSubmit={saveDoctorRestock} />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
       <BulkRemoveModal open={bulkRemoveOpen} count={selectedItems.length} isSaving={isSaving} onClose={() => setBulkRemoveOpen(false)} onSubmit={runBulkRemove} />
