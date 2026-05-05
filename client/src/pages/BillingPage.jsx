@@ -51,7 +51,7 @@ function BillingStat({ icon: Icon, label, value }) {
   );
 }
 
-function BillingItemsEditor({ items, setItems }) {
+function BillingItemsEditor({ items, setItems, stockItemNames = [], suggestionsListId }) {
   function updateItem(index, key, value) {
     setItems((current) =>
       current.map((item, itemIndex) =>
@@ -68,7 +68,8 @@ function BillingItemsEditor({ items, setItems }) {
             required
             value={item.description}
             onChange={(event) => updateItem(index, "description", event.target.value)}
-            placeholder="Description"
+            list={suggestionsListId}
+            placeholder="Item name (Type to search my stock)"
             className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
           />
           <input
@@ -104,6 +105,11 @@ function BillingItemsEditor({ items, setItems }) {
       >
         Add line item
       </button>
+      <datalist id={suggestionsListId}>
+        {stockItemNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
     </div>
   );
 }
@@ -178,7 +184,7 @@ function BillingStatusFields({
   );
 }
 
-function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
+function EditBillingModal({ open, bill, onClose, onSubmit, isSaving, stockItemNames }) {
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
@@ -246,7 +252,12 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
           </p>
         </div>
 
-        <BillingItemsEditor items={items} setItems={setItems} />
+        <BillingItemsEditor
+          items={items}
+          setItems={setItems}
+          stockItemNames={stockItemNames}
+          suggestionsListId="edit-bill-item-suggestions"
+        />
 
         <BillingStatusFields
           status={status}
@@ -287,6 +298,7 @@ function CreateBillingModal({
   patients,
   consultations,
   preselectedPatientId,
+  stockItemNames,
 }) {
   const [patientId, setPatientId] = useState("");
   const [consultationId, setConsultationId] = useState("");
@@ -433,7 +445,12 @@ function CreateBillingModal({
           </div>
         ) : null}
 
-        <BillingItemsEditor items={items} setItems={setItems} />
+        <BillingItemsEditor
+          items={items}
+          setItems={setItems}
+          stockItemNames={stockItemNames}
+          suggestionsListId="create-bill-item-suggestions"
+        />
 
         <BillingStatusFields
           status={status}
@@ -480,6 +497,7 @@ function BillingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
+  const [stockItemNames, setStockItemNames] = useState([]);
   const canCreateBills = user.role === "admin" || user.role === "doctor";
 
   async function loadData() {
@@ -522,6 +540,18 @@ function BillingPage() {
 
       setPatientOptions(patients);
       setConsultationOptions(consultations);
+
+      try {
+        const inventoryPayload = await api.get("/inventory");
+        const stockItems =
+          user.role === "doctor"
+            ? inventoryPayload?.my_stock || []
+            : inventoryPayload?.ocs_stock || [];
+        const names = [...new Set(stockItems.map((item) => String(item.item_name || "").trim()).filter(Boolean))];
+        setStockItemNames(names.sort((a, b) => a.localeCompare(b)));
+      } catch {
+        setStockItemNames([]);
+      }
     } catch (error) {
       toast.error(error.message);
     }
@@ -793,6 +823,7 @@ function BillingPage() {
         onClose={() => setEditor(null)}
         onSubmit={handleSave}
         isSaving={isSaving}
+        stockItemNames={stockItemNames}
       />
 
       <CreateBillingModal
@@ -803,6 +834,7 @@ function BillingPage() {
         patients={patientOptions}
         consultations={consultationOptions}
         preselectedPatientId={patientIdFilter}
+        stockItemNames={stockItemNames}
       />
     </div>
   );

@@ -141,8 +141,8 @@ function findItem(itemId, stockScope, doctorId = null) {
       WHERE id = ?
         AND stock_scope = ?
         AND (
-          (? = 'doctor' AND owner_doctor_id = ?)
-          OR (? = 'ocs' AND owner_doctor_id IS NULL)
+          (? = 'doctor' AND inventory.owner_doctor_id = ?)
+          OR (? = 'ocs' AND inventory.owner_doctor_id IS NULL)
         )
     `)
     .get(itemId, stockScope, stockScope, doctorId, stockScope);
@@ -597,7 +597,7 @@ router.post("/restock", (req, res) => {
       SELECT *
       FROM inventory
       WHERE stock_scope = 'doctor'
-        AND owner_doctor_id = ?
+        AND inventory.owner_doctor_id = ?
         AND folder_id = ?
         AND item_name = ?
       LIMIT 1
@@ -741,7 +741,7 @@ router.post("/staging/:id/release", (req, res) => {
       SELECT *
       FROM inventory
       WHERE stock_scope = 'ocs'
-        AND owner_doctor_id IS NULL
+        AND inventory.owner_doctor_id IS NULL
         AND folder_id = ?
         AND item_name = ?
       LIMIT 1
