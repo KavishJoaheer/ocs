@@ -438,8 +438,8 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
           COALESCE(f.name, '') AS folder_name
         FROM inventory i
         LEFT JOIN inventory_folders f ON f.id = i.folder_id
-        WHERE stock_scope = 'doctor'
-          AND owner_doctor_id = ?
+        WHERE i.stock_scope = 'doctor'
+          AND i.owner_doctor_id = ?
         ORDER BY i.item_name ASC
       `)
       .all(Number(consultation.doctor_id))
