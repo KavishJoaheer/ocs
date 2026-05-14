@@ -571,7 +571,7 @@ function CreateBillingModal({
 
   const filteredSuggestions = useMemo(() => {
     const needle = String(itemQuery || "").trim().toLowerCase();
-    if (!needle) return inventoryOptions;
+    if (!needle) return [];
     return inventoryOptions.filter((item) => String(item.item_name || "").toLowerCase().includes(needle));
   }, [inventoryOptions, itemQuery]);
 
@@ -883,10 +883,10 @@ function CreateBillingModal({
               <input
                 value={itemQuery}
                 onChange={(event) => {
-                  setItemQuery(event.target.value);
-                  setSuggestionsOpen(true);
+                  const value = event.target.value;
+                  setItemQuery(value);
+                  setSuggestionsOpen(value.trim().length > 0);
                 }}
-                onFocus={() => setSuggestionsOpen(true)}
                 onBlur={() => {
                   window.setTimeout(() => setSuggestionsOpen(false), 120);
                 }}
@@ -895,13 +895,21 @@ function CreateBillingModal({
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
                     setSuggestionsOpen(true);
-                    setHighlightIndex((prev) => Math.min(filteredSuggestions.length - 1, prev + 1));
+                    setHighlightIndex((prev) => {
+                      const next = Math.min(filteredSuggestions.length - 1, prev + 1);
+                      suggestionsRef.current?.children[next]?.scrollIntoView({ block: "nearest" });
+                      return next;
+                    });
                     return;
                   }
                   if (event.key === "ArrowUp") {
                     event.preventDefault();
                     setSuggestionsOpen(true);
-                    setHighlightIndex((prev) => Math.max(0, prev - 1));
+                    setHighlightIndex((prev) => {
+                      const next = Math.max(0, prev - 1);
+                      suggestionsRef.current?.children[next]?.scrollIntoView({ block: "nearest" });
+                      return next;
+                    });
                     return;
                   }
                   if (event.key === "Enter") {
@@ -921,7 +929,7 @@ function CreateBillingModal({
               {suggestionsOpen && filteredSuggestions.length ? (
                 <div
                   ref={suggestionsRef}
-                  className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border border-slate-200 bg-white shadow"
+                  className="absolute z-20 mt-1 max-h-[168px] w-full overflow-auto rounded-2xl border border-slate-200 bg-white shadow"
                 >
                   {filteredSuggestions.map((item, index) => {
                     const available = Number(item.quantity || 0);
