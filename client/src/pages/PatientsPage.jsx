@@ -21,6 +21,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import {
   formatAgeFromDateOfBirth,
@@ -28,6 +29,15 @@ import {
   truncate,
 } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
+
+const DRAFT_KEY = "ocs_patient_draft";
+
+const WIZARD_STEPS = [
+  { label: "Identity" },
+  { label: "Logistics" },
+  { label: "Clinical" },
+  { label: "Next of Kin" },
+];
 
 const emptyPatient = {
   first_name: "",
@@ -91,6 +101,11 @@ function displayText(value, fallback = "Not recorded") {
   return value ? value : fallback;
 }
 
+const MOBILE_INPUT =
+  "w-full min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-[#2d8f98] focus:bg-white";
+const MOBILE_INPUT_DISABLED =
+  "w-full min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-[#2d8f98] focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100";
+
 function PatientFormModal({
   open,
   patient,
@@ -102,12 +117,38 @@ function PatientFormModal({
   onSubmit,
   isSaving,
 }) {
+  const isMobile = useIsMobile();
   const [form, setForm] = useState(emptyPatient);
+  const [wizardStep, setWizardStep] = useState(0);
 
   useEffect(() => {
     if (!open) return;
+    setWizardStep(0);
+
+    if (mode !== "edit") {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (raw) {
+          setForm(JSON.parse(raw));
+          toast("Draft restored", { icon: "\u{1F4CB}" });
+          return;
+        }
+      } catch {
+        /* corrupted draft — ignore */
+      }
+    }
+
     setForm(toPatientFormState(patient));
-  }, [open, patient]);
+  }, [open, patient, mode]);
+
+  useEffect(() => {
+    if (!open || mode === "edit") return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+    } catch {
+      /* storage full — ignore */
+    }
+  }, [form, open, mode]);
 
   const isEditing = mode === "edit";
   const actionLabel = isEditing ? "Update patient" : "Add patient";
@@ -122,8 +163,24 @@ function PatientFormModal({
     }));
   }
 
+  function clearDraft() {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function handleCancel() {
+    clearDraft();
+    setWizardStep(0);
+    onClose();
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
+    clearDraft();
+
     const locationTags = Array.isArray(form.location_tags) ? form.location_tags : [];
     const legacyLocation = locationTags.map((tag) => tag.name).join(", ");
 
@@ -136,10 +193,385 @@ function PatientFormModal({
     });
   }
 
+  /* ───────── Mobile: full-screen step wizard ───────── */
+  if (isMobile && open) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex flex-col bg-white"
+        style={{ padding: "var(--sat) var(--sar) 0 var(--sal)" }}
+      >
+        {/* Step progress indicator */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 pb-3 pt-4">
+          {WIZARD_STEPS.map((step, i) => (
+            <div key={step.label} className="flex flex-col items-center gap-1">
+              <div
+                className={cx(
+                  "flex size-9 items-center justify-center rounded-full text-sm font-bold transition",
+                  i === wizardStep
+                    ? "bg-[#2d8f98] text-white shadow-md"
+                    : i < wizardStep
+                      ? "bg-[#41c8c6] text-white"
+                      : "bg-slate-100 text-slate-400",
+                )}
+              >
+                {i + 1}
+              </div>
+              <span
+                className={cx(
+                  "text-[11px] leading-tight",
+                  i === wizardStep ? "font-semibold text-[#2d8f98]" : "text-slate-400",
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Scrollable content */}
+        <form
+          id="mobile-patient-form"
+          className="flex-1 overflow-y-auto px-4 py-5"
+          onSubmit={handleSubmit}
+        >
+          {/* Step 1 — Identity */}
+          {wizardStep === 0 && (
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">First name</span>
+                <input
+                  name="first_name"
+                  value={form.first_name}
+                  onChange={handleChange}
+                  placeholder="Enter first name"
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Last name</span>
+                <input
+                  name="last_name"
+                  value={form.last_name}
+                  onChange={handleChange}
+                  placeholder="Enter last name"
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">OCS care number</span>
+                <input
+                  name="patient_identifier"
+                  value={form.patient_identifier}
+                  onChange={handleChange}
+                  placeholder={isEditing ? "" : "Auto-assigned from OCS-150"}
+                  disabled={!canEditPatientIdentifier}
+                  className={MOBILE_INPUT_DISABLED}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Patient ID</span>
+                <input
+                  name="patient_id_number"
+                  value={form.patient_id_number}
+                  onChange={handleChange}
+                  placeholder="National ID card number or passport number"
+                  inputMode="numeric"
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Date of birth</span>
+                <input
+                  name="date_of_birth"
+                  type="date"
+                  value={form.date_of_birth}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Gender</span>
+                <select
+                  required
+                  name="gender"
+                  value={form.gender}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                >
+                  <option value="M">M</option>
+                  <option value="F">F</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          {/* Step 2 — Logistics */}
+          {wizardStep === 1 && (
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Status</span>
+                <select
+                  required
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                >
+                  <option value="active">Active</option>
+                  <option value="discharged">Discharged</option>
+                </select>
+              </label>
+
+              {canSelectAssignedDoctor ? (
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">Assigned doctor</span>
+                  <select
+                    required
+                    name="assigned_doctor_id"
+                    value={form.assigned_doctor_id}
+                    onChange={handleChange}
+                    className={MOBILE_INPUT}
+                  >
+                    <option value="">Select doctor</option>
+                    {doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.full_name} - {doctor.specialization}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              {isEditing && patient?.assigned_doctor_name && !canSelectAssignedDoctor ? (
+                <div className="rounded-[24px] border border-amber-100 bg-amber-50/80 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
+                      <LockKeyhole className="size-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">
+                        Only admin can change the assigned doctor
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {patient.assigned_doctor_name}
+                        {patient.assigned_doctor_specialization
+                          ? ` - ${patient.assigned_doctor_specialization}`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Patient contact number
+                </span>
+                <input
+                  required
+                  name="patient_contact_number"
+                  value={form.patient_contact_number}
+                  onChange={handleChange}
+                  inputMode="tel"
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Address</span>
+                <textarea
+                  required
+                  rows="2"
+                  name="address"
+                  value={form.address}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <div className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Locations and affiliations
+                </span>
+                <PatientLocationTags
+                  tags={form.location_tags}
+                  onChange={(nextTags) =>
+                    setForm((current) => ({ ...current, location_tags: nextTags }))
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Clinical */}
+          {wizardStep === 2 && (
+            <div className="space-y-4">
+              {form.status === "active" ? (
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">Ongoing treatment</span>
+                  <textarea
+                    rows="2"
+                    name="ongoing_treatment"
+                    value={form.ongoing_treatment}
+                    onChange={handleChange}
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+              ) : null}
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Past medical history</span>
+                <textarea
+                  rows="3"
+                  name="past_medical_history"
+                  value={form.past_medical_history}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Past surgical history</span>
+                <textarea
+                  rows="3"
+                  name="past_surgical_history"
+                  value={form.past_surgical_history}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Drug history</span>
+                <textarea
+                  rows="3"
+                  name="drug_history"
+                  value={form.drug_history}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Allergy History</span>
+                <textarea
+                  rows="2"
+                  name="drug_allergy_history"
+                  value={form.drug_allergy_history}
+                  onChange={handleChange}
+                  placeholder="Record medication, food, environmental, or other allergy details."
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="font-display text-lg font-semibold text-slate-700">
+                  Particularity
+                </span>
+                <textarea
+                  rows="4"
+                  name="particularity"
+                  value={form.particularity}
+                  onChange={handleChange}
+                  placeholder="Blank page for additional notes..."
+                  className={MOBILE_INPUT}
+                />
+              </label>
+            </div>
+          )}
+
+          {/* Step 4 — Next of Kin */}
+          {wizardStep === 3 && (
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Name</span>
+                <input
+                  name="next_of_kin_name"
+                  value={form.next_of_kin_name}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Relationship with patient
+                </span>
+                <input
+                  name="next_of_kin_relationship"
+                  value={form.next_of_kin_relationship}
+                  onChange={handleChange}
+                  placeholder="Spouse, daughter, son, sibling..."
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Contact number</span>
+                <input
+                  name="next_of_kin_contact_number"
+                  value={form.next_of_kin_contact_number}
+                  onChange={handleChange}
+                  inputMode="tel"
+                  className={MOBILE_INPUT}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Email address</span>
+                <input
+                  name="next_of_kin_email"
+                  type="email"
+                  value={form.next_of_kin_email}
+                  onChange={handleChange}
+                  className={MOBILE_INPUT}
+                />
+              </label>
+            </div>
+          )}
+        </form>
+
+        {/* Sticky wizard footer */}
+        <div
+          className="flex items-center justify-between border-t border-slate-100 bg-white px-4 py-3"
+          style={{ paddingBottom: "max(var(--sab), 12px)" }}
+        >
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Cancel
+          </button>
+          <div className="flex gap-2">
+            {wizardStep > 0 && (
+              <button
+                type="button"
+                onClick={() => setWizardStep((s) => s - 1)}
+                className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                Back
+              </button>
+            )}
+            {wizardStep < 3 ? (
+              <button
+                type="button"
+                onClick={() => setWizardStep((s) => s + 1)}
+                className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="submit"
+                form="mobile-patient-form"
+                disabled={isSaving}
+                className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "Saving..." : actionLabel}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ───────── Desktop: original Modal form (unchanged) ───────── */
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleCancel}
       title={isEditing ? "Edit patient" : "Add patient"}
       description="Register patient details, location, next of kin information, and doctor assignment in one place."
       size="xl"
@@ -437,7 +869,7 @@ function PatientFormModal({
         <div className="sticky bottom-0 mt-4 flex justify-end gap-3 border-t border-slate-100 bg-white py-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCancel}
             className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
           >
             Cancel
@@ -457,6 +889,7 @@ function PatientFormModal({
 
 function PatientsPage() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
@@ -624,6 +1057,9 @@ function PatientsPage() {
     return <LoadingState label="Loading patients" />;
   }
 
+  const mobileActionBtn =
+    "inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700";
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -742,154 +1178,229 @@ function PatientsPage() {
 
             {patients.length ? (
               <>
-                <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full bg-white text-left">
-                      <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        <tr>
-                          <th className="px-5 py-4">Patient</th>
-                          <th className="px-5 py-4">Patient details</th>
-                          <th className="px-5 py-4">Next of kin</th>
-                          <th className="px-5 py-4">Clinical</th>
-                          <th className="px-5 py-4">Created</th>
-                          <th className="px-5 py-4 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {patients.map((patient) => (
-                          <tr key={patient.id} className="border-t border-slate-200/70">
-                            <td className="px-5 py-4 align-top">
-                              <div className="flex items-start gap-3">
-                                <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
-                                  <UserRound className="size-5" />
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="font-semibold text-slate-950">{patient.full_name}</p>
-                                  <p className="inline-flex items-center gap-2 text-sm text-slate-500">
-                                    <IdCard className="size-4" />
-                                    OCS care number: {displayText(patient.patient_identifier)}
-                                  </p>
-                                  <p className="text-sm text-slate-500">
-                                    Patient ID: {displayText(patient.patient_id_number)}
-                                  </p>
-                                  <p className="text-sm text-slate-500">
-                                    {patient.gender}
-                                    {patient.date_of_birth
-                                      ? ` - ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
-                                      : ""}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
+                {isMobile ? (
+                  /* ── Mobile: card list ── */
+                  <div className="space-y-3">
+                    {patients.map((patient) => (
+                      <div
+                        key={patient.id}
+                        className="rounded-[24px] border border-slate-200/80 bg-white p-4"
+                      >
+                        <p className="font-semibold text-slate-950">{patient.full_name}</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          OCS care number: {displayText(patient.patient_identifier)}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          Patient ID: {displayText(patient.patient_id_number)}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {patient.gender}
+                          {patient.date_of_birth
+                            ? ` \u00B7 ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
+                            : ""}
+                        </p>
 
-                            <td className="px-5 py-4 align-top">
-                              <p className="font-medium text-slate-800">
-                                {displayText(patient.patient_contact_number)}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {displayText(patient.address)}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {displayText(patient.location, "Location not selected")}
-                              </p>
-                            </td>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <StatusBadge value={patient.status} />
+                          <span className="text-sm text-slate-600">
+                            {displayText(patient.assigned_doctor_name, "Not assigned")}
+                          </span>
+                        </div>
 
-                            <td className="px-5 py-4 align-top">
-                              <p className="font-medium text-slate-800">
-                                {displayText(patient.next_of_kin_name)}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {displayText(patient.next_of_kin_relationship)}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {displayText(patient.next_of_kin_contact_number)}
-                              </p>
-                            </td>
+                        {user.role === "operator" && patient.operator_edit_allowed ? (
+                          <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                            Edit enabled
+                          </span>
+                        ) : null}
 
-                            <td className="px-5 py-4 align-top">
-                              <div className="space-y-2">
-                                <StatusBadge value={patient.status} />
-                                <p className="text-sm text-slate-600">
-                                  Assigned doctor:{" "}
-                                  {displayText(patient.assigned_doctor_name, "Not assigned")}
-                                </p>
-                                <p className="text-sm text-slate-600">
-                                  {patient.status === "active"
-                                    ? truncate(
-                                        displayText(
-                                          patient.ongoing_treatment,
-                                          "Ongoing treatment not recorded",
-                                        ),
-                                        90,
-                                      )
-                                    : truncate(
-                                        displayText(
-                                          patient.drug_allergy_history,
-                                          "Allergy history not recorded",
-                                        ),
-                                        90,
-                                      )}
-                                </p>
-                                {user.role === "operator" && patient.operator_edit_allowed ? (
-                                  <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                                    Edit enabled
-                                  </span>
-                                ) : null}
-                              </div>
-                            </td>
-
-                            <td className="px-5 py-4 align-top text-sm text-slate-500">
-                              {formatDate(patient.created_at)}
-                            </td>
-
-                            <td className="px-5 py-4 align-top">
-                              <div className="flex flex-wrap justify-end gap-2">
-                                <Link
-                                  to={`/patients/${patient.id}`}
-                                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                >
-                                  View
-                                </Link>
-
-                                {canEditPatient(patient) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditor({ mode: "edit", patient })}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                  >
-                                    <SquarePen className="size-4" />
-                                    Edit
-                                  </button>
-                                ) : null}
-
-                                {canOpenBilling ? (
-                                  <Link
-                                    to={`/billing?patientId=${patient.id}`}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                  >
-                                    <CreditCard className="size-4" />
-                                    Billing
-                                  </Link>
-                                ) : null}
-
-                                {canDeletePatients ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setPatientToDelete(patient)}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                                  >
-                                    <Trash2 className="size-4" />
-                                    Delete
-                                  </button>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Link to={`/patients/${patient.id}`} className={mobileActionBtn}>
+                            View
+                          </Link>
+                          {canEditPatient(patient) ? (
+                            <button
+                              type="button"
+                              onClick={() => setEditor({ mode: "edit", patient })}
+                              className={mobileActionBtn}
+                            >
+                              <SquarePen className="size-4" />
+                              Edit
+                            </button>
+                          ) : null}
+                          {canOpenBilling ? (
+                            <Link
+                              to={`/billing?patientId=${patient.id}`}
+                              className={mobileActionBtn}
+                            >
+                              <CreditCard className="size-4" />
+                              Billing
+                            </Link>
+                          ) : null}
+                          {canDeletePatients ? (
+                            <button
+                              type="button"
+                              onClick={() => setPatientToDelete(patient)}
+                              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                            >
+                              <Trash2 className="size-4" />
+                              Delete
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                ) : (
+                  /* ── Desktop: original table ── */
+                  <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full bg-white text-left">
+                        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                          <tr>
+                            <th className="px-5 py-4">Patient</th>
+                            <th className="px-5 py-4">Patient details</th>
+                            <th className="px-5 py-4">Next of kin</th>
+                            <th className="px-5 py-4">Clinical</th>
+                            <th className="px-5 py-4">Created</th>
+                            <th className="px-5 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {patients.map((patient) => (
+                            <tr key={patient.id} className="border-t border-slate-200/70">
+                              <td className="px-5 py-4 align-top">
+                                <div className="flex items-start gap-3">
+                                  <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                                    <UserRound className="size-5" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="font-semibold text-slate-950">{patient.full_name}</p>
+                                    <p className="inline-flex items-center gap-2 text-sm text-slate-500">
+                                      <IdCard className="size-4" />
+                                      OCS care number: {displayText(patient.patient_identifier)}
+                                    </p>
+                                    <p className="text-sm text-slate-500">
+                                      Patient ID: {displayText(patient.patient_id_number)}
+                                    </p>
+                                    <p className="text-sm text-slate-500">
+                                      {patient.gender}
+                                      {patient.date_of_birth
+                                        ? ` - ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
+                                        : ""}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="px-5 py-4 align-top">
+                                <p className="font-medium text-slate-800">
+                                  {displayText(patient.patient_contact_number)}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {displayText(patient.address)}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {displayText(patient.location, "Location not selected")}
+                                </p>
+                              </td>
+
+                              <td className="px-5 py-4 align-top">
+                                <p className="font-medium text-slate-800">
+                                  {displayText(patient.next_of_kin_name)}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {displayText(patient.next_of_kin_relationship)}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {displayText(patient.next_of_kin_contact_number)}
+                                </p>
+                              </td>
+
+                              <td className="px-5 py-4 align-top">
+                                <div className="space-y-2">
+                                  <StatusBadge value={patient.status} />
+                                  <p className="text-sm text-slate-600">
+                                    Assigned doctor:{" "}
+                                    {displayText(patient.assigned_doctor_name, "Not assigned")}
+                                  </p>
+                                  <p className="text-sm text-slate-600">
+                                    {patient.status === "active"
+                                      ? truncate(
+                                          displayText(
+                                            patient.ongoing_treatment,
+                                            "Ongoing treatment not recorded",
+                                          ),
+                                          90,
+                                        )
+                                      : truncate(
+                                          displayText(
+                                            patient.drug_allergy_history,
+                                            "Allergy history not recorded",
+                                          ),
+                                          90,
+                                        )}
+                                  </p>
+                                  {user.role === "operator" && patient.operator_edit_allowed ? (
+                                    <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                                      Edit enabled
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </td>
+
+                              <td className="px-5 py-4 align-top text-sm text-slate-500">
+                                {formatDate(patient.created_at)}
+                              </td>
+
+                              <td className="px-5 py-4 align-top">
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  <Link
+                                    to={`/patients/${patient.id}`}
+                                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                  >
+                                    View
+                                  </Link>
+
+                                  {canEditPatient(patient) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditor({ mode: "edit", patient })}
+                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                    >
+                                      <SquarePen className="size-4" />
+                                      Edit
+                                    </button>
+                                  ) : null}
+
+                                  {canOpenBilling ? (
+                                    <Link
+                                      to={`/billing?patientId=${patient.id}`}
+                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                    >
+                                      <CreditCard className="size-4" />
+                                      Billing
+                                    </Link>
+                                  ) : null}
+
+                                  {canDeletePatients ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPatientToDelete(patient)}
+                                      className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                                    >
+                                      <Trash2 className="size-4" />
+                                      Delete
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-slate-500">
@@ -926,60 +1437,105 @@ function PatientsPage() {
             )}
           </>
         ) : deletedPatients.length ? (
-          <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white text-left">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  <tr>
-                    <th className="px-5 py-4">Patient</th>
-                    <th className="px-5 py-4">Assigned doctor</th>
-                    <th className="px-5 py-4">Clinical records</th>
-                    <th className="px-5 py-4">Deleted</th>
-                    <th className="px-5 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deletedPatients.map((patient) => (
-                    <tr key={patient.id} className="border-t border-slate-200/70">
-                      <td className="px-5 py-4 align-top">
-                        <p className="font-semibold text-slate-950">{patient.full_name}</p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          OCS care number: {displayText(patient.patient_identifier)}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Patient ID: {displayText(patient.patient_id_number)}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4 align-top text-sm text-slate-600">
-                        {displayText(patient.assigned_doctor_name, "Not assigned")}
-                      </td>
-                      <td className="px-5 py-4 align-top text-sm text-slate-600">
-                        <p>{patient.appointment_count} appointments</p>
-                        <p className="mt-1">{patient.consultation_count} consultations</p>
-                        <p className="mt-1">{patient.bill_count} bills</p>
-                      </td>
-                      <td className="px-5 py-4 align-top text-sm text-slate-500">
-                        {formatDate(patient.deleted_at)}
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => handleRestorePatient(patient.id)}
-                            disabled={restoringPatientId === patient.id}
-                            className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <RotateCcw className="size-4" />
-                            {restoringPatientId === patient.id ? "Restoring..." : "Restore"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          isMobile ? (
+            /* ── Mobile: deleted patient cards ── */
+            <div className="space-y-3">
+              {deletedPatients.map((patient) => (
+                <div
+                  key={patient.id}
+                  className="rounded-[24px] border border-slate-200/80 bg-white p-4"
+                >
+                  <p className="font-semibold text-slate-950">{patient.full_name}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    OCS care number: {displayText(patient.patient_identifier)}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    Patient ID: {displayText(patient.patient_id_number)}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {displayText(patient.assigned_doctor_name, "Not assigned")}
+                  </p>
+                  <div className="mt-1 text-sm text-slate-500">
+                    <span>{patient.appointment_count} appt</span>
+                    <span className="mx-1">&middot;</span>
+                    <span>{patient.consultation_count} consult</span>
+                    <span className="mx-1">&middot;</span>
+                    <span>{patient.bill_count} bills</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Deleted {formatDate(patient.deleted_at)}
+                  </p>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleRestorePatient(patient.id)}
+                      disabled={restoringPatientId === patient.id}
+                      className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <RotateCcw className="size-4" />
+                      {restoringPatientId === patient.id ? "Restoring..." : "Restore"}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          ) : (
+            /* ── Desktop: original deleted table ── */
+            <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white text-left">
+                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    <tr>
+                      <th className="px-5 py-4">Patient</th>
+                      <th className="px-5 py-4">Assigned doctor</th>
+                      <th className="px-5 py-4">Clinical records</th>
+                      <th className="px-5 py-4">Deleted</th>
+                      <th className="px-5 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deletedPatients.map((patient) => (
+                      <tr key={patient.id} className="border-t border-slate-200/70">
+                        <td className="px-5 py-4 align-top">
+                          <p className="font-semibold text-slate-950">{patient.full_name}</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            OCS care number: {displayText(patient.patient_identifier)}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Patient ID: {displayText(patient.patient_id_number)}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4 align-top text-sm text-slate-600">
+                          {displayText(patient.assigned_doctor_name, "Not assigned")}
+                        </td>
+                        <td className="px-5 py-4 align-top text-sm text-slate-600">
+                          <p>{patient.appointment_count} appointments</p>
+                          <p className="mt-1">{patient.consultation_count} consultations</p>
+                          <p className="mt-1">{patient.bill_count} bills</p>
+                        </td>
+                        <td className="px-5 py-4 align-top text-sm text-slate-500">
+                          {formatDate(patient.deleted_at)}
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleRestorePatient(patient.id)}
+                              disabled={restoringPatientId === patient.id}
+                              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <RotateCcw className="size-4" />
+                              {restoringPatientId === patient.id ? "Restoring..." : "Restore"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         ) : (
           <EmptyState
             title="No recently deleted patients"
