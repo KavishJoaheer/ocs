@@ -42,11 +42,11 @@ function Modal({ open, onClose, title, description, children, size = "lg" }) {
 
       <div
         className={cx(
-          "relative z-10 w-full rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-6 shadow-[0_40px_120px_rgba(34,72,91,0.18)]",
+          "relative z-10 flex w-full max-h-[calc(100vh-5rem)] flex-col rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-6 shadow-[0_40px_120px_rgba(34,72,91,0.18)]",
           sizeClass,
         )}
       >
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="mb-6 flex shrink-0 items-start justify-between gap-4">
           <div>
             <h3 className="text-xl font-semibold text-slate-950">{title}</h3>
             {description ? <p className="mt-2 text-sm text-slate-500">{description}</p> : null}
@@ -60,7 +60,9 @@ function Modal({ open, onClose, title, description, children, size = "lg" }) {
           </button>
         </div>
 
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {children}
+        </div>
       </div>
     </div>
   );
