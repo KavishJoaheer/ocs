@@ -573,7 +573,6 @@ function PatientFormModal({
       open={open}
       onClose={handleCancel}
       title={isEditing ? "Edit patient" : "Add patient"}
-      description="Register patient details, location, next of kin information, and doctor assignment in one place."
       size="xl"
     >
       <form className="max-h-[72vh] space-y-6 overflow-y-auto px-1" onSubmit={handleSubmit}>
@@ -1065,7 +1064,6 @@ function PatientsPage() {
       <PageHeader
         eyebrow="Registry"
         title="Patients"
-        description="Review patient details, next of kin records, and locked registration assignments across the full clinic."
         actions={headerActions}
       />
 

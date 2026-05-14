@@ -43,16 +43,16 @@ import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
 function HighlightStat({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-[26px] border border-white/80 bg-white/85 p-5">
-      <div className="flex items-center gap-4">
-        <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+    <div className="rounded-[22px] border border-white/80 bg-white/85 px-4 py-3.5">
+      <div className="flex items-center gap-3">
+        <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
           <Icon className="size-5" />
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             {label}
           </p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">{value}</p>
+          <p className="mt-0.5 text-xl font-bold text-slate-950">{value}</p>
         </div>
       </div>
     </div>
@@ -61,12 +61,12 @@ function HighlightStat({ icon: Icon, label, value }) {
 
 function ProfileField({ label, value, emphasize = false }) {
   return (
-    <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+    <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
         {label}
       </p>
       <p
-        className={`mt-2 text-sm leading-6 ${
+        className={`mt-1 text-sm leading-6 ${
           emphasize ? "font-semibold text-slate-900" : "text-slate-600"
         }`}
       >
@@ -200,7 +200,6 @@ function LabReportModal({
       open={open}
       onClose={onClose}
       title={isEditing ? "Edit Medical & Lab Report" : "Add Medical & Lab Report"}
-      description="Attach investigation findings and supporting files directly to this patient so the clinical profile carries both consultation notes and medical follow-up."
       size="xl"
     >
       <form className="space-y-5" onSubmit={handleSubmit}>
@@ -444,7 +443,6 @@ function ConsultationCreateModal({
       open={open}
       onClose={onClose}
       title="Add consultation note"
-      description="Create a new patient consultation directly from the profile. This also creates a completed visit and linked billing record."
       size="xl"
     >
       <form className="space-y-5" onSubmit={handleSubmit}>
@@ -908,7 +906,7 @@ function PatientProfilePage() {
           </div>
 
           {activeTab === "summary" && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <HighlightStat
                   icon={CalendarClock}
@@ -933,10 +931,9 @@ function PatientProfilePage() {
               </div>
 
               <SectionCard
-                title="Patient details"
-                subtitle="Core demographics, assigned doctor, and current care status."
+          title="Patient details"
               >
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <ProfileField
                     label="OCS care number"
                     value={data.patient.patient_identifier}
@@ -952,22 +949,22 @@ function PatientProfilePage() {
                   />
                   <ProfileField label="Gender" value={data.patient.gender} emphasize />
                   <ProfileField label="Assigned doctor" value={assignedDoctor} emphasize />
-                  <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                       Status
                     </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <div className="mt-1 flex flex-wrap items-center gap-3">
                       <StatusBadge value={data.patient.status} />
                       <span className="text-sm text-slate-600">{statusDetail}</span>
                     </div>
                   </div>
                   <ProfileField label="Patient contact number" value={patientContactNumber} />
                   <ProfileField label="Address" value={data.patient.address} />
-                  <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                       Locations and affiliations
                     </p>
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <PatientLocationTags
                         tags={data.patient.location_tags || []}
                         onChange={() => {}}
@@ -979,10 +976,9 @@ function PatientProfilePage() {
               </SectionCard>
 
               <SectionCard
-                title="Next of kin"
-                subtitle="Family or support contact details kept alongside the patient record."
+          title="Next of kin"
               >
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <ProfileField label="Name" value={data.patient.next_of_kin_name} emphasize />
                   <ProfileField
                     label="Relationship with patient"
@@ -997,60 +993,59 @@ function PatientProfilePage() {
               </SectionCard>
 
               <SectionCard
-                title="Clinical history"
-                subtitle="Historical information captured at registration."
+          title="Clinical history"
               >
-                <div className="space-y-4">
-                  <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className="space-y-3">
+                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                      <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
                         <UserRound className="size-5" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Past medical history</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
                           {data.patient.past_medical_history || "Not recorded"}
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                      <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
                         <HeartPulse className="size-5" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
                           {data.patient.past_surgical_history || "Not recorded"}
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700">
+                      <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700">
                         <Pill className="size-5" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Drug history</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
                           {data.patient.drug_history || "Not recorded"}
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-2xl bg-amber-50 p-3 text-amber-700">
+                      <div className="rounded-xl bg-amber-50 p-2.5 text-amber-700">
                         <ShieldAlert className="size-5" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Allergy History</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
                           {data.patient.drug_allergy_history || "Not recorded"}
                         </p>
                       </div>
@@ -1060,14 +1055,13 @@ function PatientProfilePage() {
               </SectionCard>
 
               <SectionCard
-                title="Particularity"
-                subtitle="Additional patient-specific notes captured at registration."
+          title="Particularity"
               >
-                <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-5">
+                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Particularity
                   </p>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">
                     {data.patient.particularity || "No particularity recorded during intake."}
                   </p>
                 </div>
@@ -1544,12 +1538,11 @@ function PatientProfilePage() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
             <SectionCard
-              title="Patient details"
-              subtitle="Core demographics, assigned doctor, and current care status."
+          title="Patient details"
             >
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 <ProfileField
                   label="OCS care number"
                   value={data.patient.patient_identifier}
@@ -1565,22 +1558,22 @@ function PatientProfilePage() {
                 />
                 <ProfileField label="Gender" value={data.patient.gender} emphasize />
                 <ProfileField label="Assigned doctor" value={assignedDoctor} emphasize />
-                <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Status
                   </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <div className="mt-1 flex flex-wrap items-center gap-3">
                     <StatusBadge value={data.patient.status} />
                     <span className="text-sm text-slate-600">{statusDetail}</span>
                   </div>
                 </div>
                 <ProfileField label="Patient contact number" value={patientContactNumber} />
                 <ProfileField label="Address" value={data.patient.address} />
-                <div className="md:col-span-2 rounded-[22px] border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className="md:col-span-2 rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Locations and affiliations
                   </p>
-                  <div className="mt-3">
+                  <div className="mt-2">
                     <PatientLocationTags
                       tags={data.patient.location_tags || []}
                       onChange={() => {}}
@@ -1592,10 +1585,9 @@ function PatientProfilePage() {
             </SectionCard>
 
             <SectionCard
-              title="Next of kin"
-              subtitle="Family or support contact details kept alongside the patient record."
+          title="Next of kin"
             >
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 <ProfileField label="Name" value={data.patient.next_of_kin_name} emphasize />
                 <ProfileField
                   label="Relationship with patient"
@@ -1610,60 +1602,59 @@ function PatientProfilePage() {
             </SectionCard>
 
             <SectionCard
-              title="Clinical history"
-              subtitle="Historical information captured at registration."
+          title="Clinical history"
             >
-              <div className="space-y-4">
-                <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+              <div className="space-y-3">
+                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                    <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
                       <UserRound className="size-5" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Past medical history</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
                         {data.patient.past_medical_history || "Not recorded"}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+                    <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
                       <HeartPulse className="size-5" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
                         {data.patient.past_surgical_history || "Not recorded"}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700">
+                    <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700">
                       <Pill className="size-5" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Drug history</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
                         {data.patient.drug_history || "Not recorded"}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-amber-50 p-3 text-amber-700">
+                    <div className="rounded-xl bg-amber-50 p-2.5 text-amber-700">
                       <ShieldAlert className="size-5" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Allergy History</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
                         {data.patient.drug_allergy_history || "Not recorded"}
                       </p>
                     </div>
@@ -1673,14 +1664,13 @@ function PatientProfilePage() {
             </SectionCard>
 
             <SectionCard
-              title="Particularity"
-              subtitle="Additional patient-specific notes captured at registration."
+          title="Particularity"
             >
-              <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-5">
+              <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   Particularity
                 </p>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">
                   {data.patient.particularity || "No particularity recorded during intake."}
                 </p>
               </div>
@@ -1688,8 +1678,7 @@ function PatientProfilePage() {
           </div>
 
           <SectionCard
-            title="Billing history"
-            subtitle="Every bill attached to this patient's consultations."
+        title="Billing history"
             actions={
               canOpenBilling ? (
                 <Link
@@ -1765,8 +1754,7 @@ function PatientProfilePage() {
           </SectionCard>
 
           <SectionCard
-            title="Consultation notes"
-            subtitle="A patient-level consultation notes table with expandable rows and dedicated consultation pages."
+        title="Consultation notes"
             actions={
               canManageConsultations ? (
                 <button
@@ -2009,8 +1997,7 @@ function PatientProfilePage() {
           </SectionCard>
 
           <SectionCard
-            title="Medical & Lab Reports"
-            subtitle="Investigation results, clinical documents, and specimen follow-up kept directly on the patient record."
+        title="Medical & Lab Reports"
             actions={
               canManageLabReports ? (
                   <button
