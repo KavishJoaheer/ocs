@@ -108,7 +108,6 @@ function AppShell() {
   const isDashboard = location.pathname === "/";
   const hideBottomNav = isDashboard && isMobile;
   const alwaysHideTopHeader = isDashboard && user.role === "doctor";
-  const hideTopHeaderOnMobileOnly = isDashboard && !alwaysHideTopHeader;
 
   const dashboardMetaByRole = {
     doctor: {
@@ -150,7 +149,7 @@ function AppShell() {
         <main className="min-w-0 flex-1">
           {!alwaysHideTopHeader ? (
             <div
-              className={`border-b border-white/70 bg-white/65 px-5 py-5 backdrop-blur lg:px-8 ${hideTopHeaderOnMobileOnly ? "hidden md:block" : ""}`}
+              className="hidden border-b border-white/70 bg-white/65 px-5 py-5 backdrop-blur md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}
             >
               <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
@@ -180,7 +179,7 @@ function AppShell() {
           ) : null}
 
           <div
-            className={`px-4 py-6 md:px-5 lg:px-8 ${alwaysHideTopHeader ? "lg:py-6" : "lg:py-8"}`}
+            className={`px-4 py-3 md:px-5 md:py-6 lg:px-8 ${alwaysHideTopHeader ? "lg:py-6" : "lg:py-8"}`}
             style={{ paddingBottom: `max(1.5rem, var(--sab))`, paddingRight: `max(1.25rem, var(--sar))` }}
           >
             <Outlet />
