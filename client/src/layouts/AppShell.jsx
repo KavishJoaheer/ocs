@@ -138,13 +138,13 @@ function AppShell() {
       : pageMeta[location.pathname] || pageMeta["/"];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
-      <div className="mx-auto min-h-screen max-w-[1600px] lg:flex">
+    <div className="min-h-dvh bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
+      <div className="mx-auto min-h-dvh max-w-[1600px] lg:flex">
         <Sidebar />
 
         <main className="min-w-0 flex-1">
           {!hideTopHeader ? (
-            <div className="border-b border-white/70 bg-white/65 px-5 py-5 backdrop-blur lg:px-8">
+            <div className="border-b border-white/70 bg-white/65 px-5 py-5 backdrop-blur lg:px-8" style={{ paddingRight: `max(1.25rem, var(--sar))` }}>
               <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
@@ -171,7 +171,10 @@ function AppShell() {
             </div>
           ) : null}
 
-          <div className={`px-5 py-6 lg:px-8 ${hideTopHeader ? "lg:py-6" : "lg:py-8"}`}>
+          <div
+            className={`px-5 py-6 lg:px-8 ${hideTopHeader ? "lg:py-6" : "lg:py-8"}`}
+            style={{ paddingBottom: `max(1.5rem, var(--sab))`, paddingRight: `max(1.25rem, var(--sar))` }}
+          >
             <Outlet />
           </div>
         </main>

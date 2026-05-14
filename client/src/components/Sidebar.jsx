@@ -128,7 +128,10 @@ function Sidebar() {
 
   return (
     <>
-      <div className="border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-4 backdrop-blur lg:hidden">
+      <div
+        className="border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-4 backdrop-blur lg:hidden"
+        style={{ paddingTop: `max(1rem, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
+      >
         <div className="mb-4 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <BrandMark maxWidth={180} size={42} />
@@ -158,7 +161,7 @@ function Sidebar() {
           </div>
         </div>
 
-        <nav className="flex gap-3 overflow-x-auto pb-1">
+        <nav className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2" style={{ paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}>
           {visibleNavItems.map((item) => (
             <SidebarLink
               key={item.to}
