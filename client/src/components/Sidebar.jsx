@@ -144,8 +144,10 @@ function Sidebar() {
     return new Set(paths);
   }, [user.role]);
 
+  const desktopOnlyPaths = new Set(["/hcm-news", "/appointments", "/live-report"]);
+
   const drawerNavItems = useMemo(
-    () => visibleNavItems.filter((item) => !bottomPaths.has(item.to)),
+    () => visibleNavItems.filter((item) => !bottomPaths.has(item.to) && !desktopOnlyPaths.has(item.to)),
     [visibleNavItems, bottomPaths],
   );
 

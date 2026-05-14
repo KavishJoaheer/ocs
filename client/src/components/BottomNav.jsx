@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useMemo } from "react";
 import {
-  BellRing,
   ClipboardList,
   CreditCard,
   LayoutDashboard,
@@ -20,7 +19,6 @@ export const bottomNavItems = [
   { to: "/lab", label: "Lab", icon: Stethoscope, roles: ["lab_tech"] },
   { to: "/consultations", label: "Consults", icon: ClipboardList, roles: ["lab_tech"] },
   { to: "/inventory", label: "Inventory", icon: Package, roles: ["admin", "doctor", "operator"] },
-  { to: "/hcm-news", label: "News", icon: BellRing, roles: ["accountant"] },
 ];
 
 function BottomNav() {
@@ -35,7 +33,7 @@ function BottomNav() {
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-[rgba(65,200,198,0.14)] bg-white/95 backdrop-blur-lg md:hidden"
       style={{ paddingBottom: `max(0.5rem, var(--sab))`, paddingLeft: "var(--sal)", paddingRight: "var(--sar)" }}
     >
-      <div className="flex items-stretch justify-around px-1 pt-1">
+      <div className="flex items-stretch justify-around px-2 pt-2 pb-1">
         {items.map((item) => {
           const Icon = item.icon;
           return (
@@ -45,12 +43,12 @@ function BottomNav() {
               to={item.to}
               className={({ isActive }) =>
                 cx(
-                  "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition",
-                  isActive ? "text-[#2d8f98]" : "text-slate-400",
+                  "flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-semibold transition",
+                  isActive ? "bg-[rgba(65,200,198,0.1)] text-[#2d8f98]" : "text-slate-400",
                 )
               }
             >
-              <Icon className={cx("size-5 transition")} />
+              <Icon className="size-6 transition" />
               <span>{item.label}</span>
             </NavLink>
           );
