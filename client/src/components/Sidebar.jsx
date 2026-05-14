@@ -2,6 +2,7 @@ import {
   BellRing,
   CalendarDays,
   CreditCard,
+  Home,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -12,7 +13,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
 import { bottomNavItems } from "./BottomNav.jsx";
@@ -182,7 +183,17 @@ function Sidebar() {
           <Menu className="size-5" />
         </button>
         <BrandMark maxWidth={140} size={34} />
-        <div className="min-w-10" />
+        {location.pathname !== "/" ? (
+          <Link
+            to="/"
+            className="grid min-h-12 min-w-10 place-items-center rounded-xl text-[#2d8f98] transition active:bg-[rgba(65,200,198,0.1)]"
+            aria-label="Home"
+          >
+            <Home className="size-5" />
+          </Link>
+        ) : (
+          <div className="min-w-10" />
+        )}
       </div>
 
       {/* ─── Phone: slide-out drawer ─── */}

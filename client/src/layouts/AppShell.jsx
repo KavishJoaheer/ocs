@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 
 const pageMeta = {
   "/": {
@@ -102,8 +103,10 @@ const pageMeta = {
 function AppShell() {
   const location = useLocation();
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const isPatientProfile = location.pathname.startsWith("/patients/");
   const isDashboard = location.pathname === "/";
+  const hideBottomNav = isDashboard && isMobile;
   const alwaysHideTopHeader = isDashboard && user.role === "doctor";
   const hideTopHeaderOnMobileOnly = isDashboard && !alwaysHideTopHeader;
 
@@ -181,12 +184,12 @@ function AppShell() {
             style={{ paddingBottom: `max(1.5rem, var(--sab))`, paddingRight: `max(1.25rem, var(--sar))` }}
           >
             <Outlet />
-            <div className="h-20 md:hidden" aria-hidden="true" />
+            {!hideBottomNav && <div className="h-20 md:hidden" aria-hidden="true" />}
           </div>
         </main>
       </div>
 
-      <BottomNav />
+      {!hideBottomNav && <BottomNav />}
     </div>
   );
 }

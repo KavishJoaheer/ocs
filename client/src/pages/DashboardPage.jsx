@@ -39,9 +39,18 @@ function MobileLauncher({ user }) {
 
   if (["admin", "doctor", "operator"].includes(user.role)) {
     cards.push({
+      label: "Patient Directory",
+      icon: UsersRound,
+      to: "/patients",
+      description: "Search and open existing patient records.",
+    });
+  }
+
+  if (["admin", "doctor", "operator"].includes(user.role)) {
+    cards.push({
       label: "Add a Patient",
       icon: UserPlus,
-      to: "/patients",
+      to: "/patients?action=add",
       description: "Register a new patient into the OCS system.",
     });
   }
@@ -74,7 +83,7 @@ function MobileLauncher({ user }) {
   if (user.role === "lab_tech") {
     cards.push(
       { label: "Lab Queue", icon: ClipboardList, to: "/lab", description: "Open the active lab workspace and blood test queue." },
-      { label: "Patients", icon: UsersRound, to: "/patients", description: "Review patient records and lab-linked history." },
+      { label: "Patient Directory", icon: UsersRound, to: "/patients", description: "Search and open existing patient records." },
       { label: "Inventory", icon: Package, to: "/inventory", description: "Check supplies and internal stock visibility." },
     );
   }
@@ -86,23 +95,23 @@ function MobileLauncher({ user }) {
       </h1>
       <p className="mt-1 text-sm text-[#51717b]">What would you like to do?</p>
 
-      <div className="mt-6 flex flex-1 flex-col gap-4">
+      <div className="mt-6 flex flex-1 flex-col gap-3.5 overflow-y-auto">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
             <Link
-              key={card.to}
+              key={card.label}
               to={card.to}
-              className="group flex w-full items-center gap-5 rounded-[28px] border border-[rgba(65,200,198,0.2)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] px-6 py-8 shadow-[0_20px_50px_rgba(34,72,91,0.08)] transition duration-150 active:scale-[0.97] active:shadow-[0_10px_30px_rgba(34,72,91,0.12)]"
+              className="group flex w-full items-center gap-5 rounded-[24px] border border-[rgba(65,200,198,0.2)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] px-5 py-6 shadow-[0_20px_50px_rgba(34,72,91,0.08)] transition duration-150 active:scale-[0.97] active:shadow-[0_10px_30px_rgba(34,72,91,0.12)]"
             >
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(229,245,246,0.92))] text-[#2d8f98] shadow-sm transition group-active:bg-[#2d8f98] group-active:text-white">
-                <Icon className="size-7" />
+              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(229,245,246,0.92))] text-[#2d8f98] shadow-sm transition group-active:bg-[#2d8f98] group-active:text-white">
+                <Icon className="size-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-lg font-bold tracking-tight text-slate-950">
+                <p className="text-[1.05rem] font-bold tracking-tight text-slate-950">
                   {card.label}
                 </p>
-                <p className="mt-1 text-sm leading-6 text-[#51717b]">
+                <p className="mt-0.5 text-sm leading-6 text-[#51717b]">
                   {card.description}
                 </p>
               </div>
