@@ -304,18 +304,18 @@ function RoleDashboardStudio({
   rightItems,
 }) {
   return (
-    <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-[56px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-5 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:p-7">
+    <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <div className="flex justify-end">
+        <div className="hidden justify-end md:flex">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
             <ShieldCheck className="size-4" />
             {roleBadge}
           </div>
         </div>
 
-        <div className="mt-7 grid gap-6 xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
+        <div className="mt-7 hidden gap-6 md:grid xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
           <div>
             <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
               OCS M&#201;DECINS
@@ -347,7 +347,7 @@ function RoleDashboardStudio({
           </div>
         </div>
 
-        <div className="mt-8 rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:p-6">
+        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-8 md:rounded-[42px] md:p-6">
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-5">
               <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
@@ -789,18 +789,18 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
   const monthLabel = dayjs().format("MMMM");
 
   return (
-    <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-[56px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-5 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:p-7">
+    <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <div className="flex justify-end">
+        <div className="hidden justify-end md:flex">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
             <ShieldCheck className="size-4" />
             Doctor workspace
           </div>
         </div>
 
-        <div className="mt-7 grid gap-6 xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
+        <div className="mt-7 hidden gap-6 md:grid xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
           <div>
             <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
               OCS M&#201;DECINS
@@ -860,10 +860,10 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
           </div>
         ) : null}
 
-        <div className="mt-8 rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:p-6">
+        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-8 md:rounded-[42px] md:p-6">
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-5">
-              <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
+              <div className="rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-4 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:rounded-[34px] md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                   Shifts
                 </p>
@@ -917,18 +917,18 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
   const monthLabel = dayjs().format("MMMM");
 
   return (
-    <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-[56px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-5 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:p-7">
+    <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <div className="flex justify-end">
+        <div className="hidden justify-end md:flex">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
             <ShieldCheck className="size-4" />
             Operator workspace
           </div>
         </div>
 
-        <div className="mt-7 grid gap-6 xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
+        <div className="mt-7 hidden gap-6 md:grid xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
           <div>
             <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
               OCS M&#201;DECINS
@@ -967,7 +967,7 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
           </div>
         </div>
 
-        <div className="mt-8 rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:p-6">
+        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-8 md:rounded-[42px] md:p-6">
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-5">
               <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
@@ -1208,18 +1208,18 @@ function AdminDashboardView({
 }) {
   return (
     <div className="space-y-6">
-      <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-[56px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-5 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:p-7">
+      <section className="relative mx-auto max-w-[1180px] overflow-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
         <div className="relative z-10">
-          <div className="flex justify-end">
+          <div className="hidden justify-end md:flex">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
               <ShieldCheck className="size-4" />
               Admin workspace
             </div>
           </div>
 
-          <div className="mt-7">
+          <div className="mt-7 hidden md:block">
             <div>
               <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
                 OCS M&#201;DECINS
