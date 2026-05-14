@@ -237,21 +237,6 @@ function Sidebar() {
             </nav>
           </div>
 
-          <div className="mt-auto rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
-              Service coverage
-            </p>
-            <p className="mt-3 text-lg font-semibold text-[#22485b]">24/7 home visit workflow.</p>
-            <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
-              Keep hotline requests, doctor assignments, consultation notes, and payment follow-up in one calm workspace.
-            </p>
-            <div className="mt-4 rounded-[24px] bg-[linear-gradient(90deg,rgba(65,200,198,0.14),rgba(242,193,77,0.14))] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
-                Hotline
-              </p>
-              <p className="mt-1 text-xl font-bold tracking-tight text-[#22485b]">52 52 22 34</p>
-            </div>
-          </div>
         </div>
       </aside>
     </>
