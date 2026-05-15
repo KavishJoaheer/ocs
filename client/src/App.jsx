@@ -17,6 +17,7 @@ import OperatorBillingStatusPage from "./pages/OperatorBillingStatusPage.jsx";
 import OperatorWorkspacePage from "./pages/OperatorWorkspacePage.jsx";
 import PatientProfilePage from "./pages/PatientProfilePage.jsx";
 import PatientAddPage from "./pages/PatientAddPage.jsx";
+import PatientsPage from "./pages/PatientsPage.jsx";
 import StockActivityPage from "./pages/StockActivityPage.jsx";
 
 function App() {
