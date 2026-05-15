@@ -91,7 +91,7 @@ function getAdminBillingDateRange(preset, anchorDateStr) {
 function AdminBillingDateRangeFilter({ preset, anchorDate, onPresetChange, onAnchorDateChange }) {
   return (
     <div
-      className="flex w-full max-w-full flex-wrap items-center justify-end gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm"
+      className="inline-flex max-w-full flex-wrap items-center justify-end gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm"
       role="group"
       aria-label="Billing period"
     >
@@ -167,7 +167,7 @@ function BillingStat({ icon: Icon, label, value }) {
   return (
     <div className="rounded-[28px] border border-white/80 bg-white/90 p-5 shadow-[0_25px_70px_rgba(15,23,42,0.08)]">
       <div className="flex items-center gap-4">
-        <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
+        <div className="rounded-2xl bg-teal-50 p-3 text-teal-700">
           <Icon className="size-5" />
         </div>
         <div>
@@ -1935,29 +1935,28 @@ function BillingPage() {
         eyebrow="Revenue"
         title="Billing"
         actions={
-          !isMobile && canCreateBills ? (
-            <button
-              type="button"
-              onClick={() => setCreatorOpen(true)}
-              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
-            >
-              <Plus className="size-4" />
-              Add bill
-            </button>
-          ) : null
+          <>
+            {user?.role === "admin" ? (
+              <AdminBillingDateRangeFilter
+                anchorDate={adminBillingAnchorDate}
+                preset={adminBillingPreset}
+                onAnchorDateChange={setAdminBillingAnchorDate}
+                onPresetChange={handleAdminBillingPresetChange}
+              />
+            ) : null}
+            {!isMobile && canCreateBills ? (
+              <button
+                type="button"
+                onClick={() => setCreatorOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+              >
+                <Plus className="size-4" />
+                Add bill
+              </button>
+            ) : null}
+          </>
         }
       />
-
-      {user?.role === "admin" ? (
-        <div className="flex justify-end">
-          <AdminBillingDateRangeFilter
-            anchorDate={adminBillingAnchorDate}
-            preset={adminBillingPreset}
-            onAnchorDateChange={setAdminBillingAnchorDate}
-            onPresetChange={handleAdminBillingPresetChange}
-          />
-        </div>
-      ) : null}
 
       {user?.role !== "doctor" ? (
         <div className="hidden gap-4 md:grid md:grid-cols-3">
@@ -1988,7 +1987,7 @@ function BillingPage() {
       <div
         className={cx(
           "grid gap-6",
-          !isMobile && "xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start",
+          !isMobile && "xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start",
         )}
       >
         <SectionCard
@@ -2183,7 +2182,7 @@ function BillingPage() {
         </SectionCard>
 
         <SectionCard
-          className={cx("w-full max-w-sm xl:justify-self-end", isMobile ? "hidden" : undefined)}
+          className={cx("min-w-0 w-full", isMobile ? "hidden" : undefined)}
           title="Pending payments from unpaid patients"
         >
           {pendingPayments.length ? (
