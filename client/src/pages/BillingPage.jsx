@@ -635,21 +635,14 @@ function DescriptionList({
             );
           })
         ) : (
-          <div className="px-4 py-6 text-center text-sm text-slate-500">
-            <span className="hidden md:inline">
-              Select an item from My Stock and click <span className="font-semibold text-[#1f7f7b]">Add Sale</span> or
-              <span className="font-semibold text-amber-700"> Wastage</span> to append it here, or use{" "}
-              <span className="font-semibold text-[#1f7f7b]">Add manual item</span> for off-stock charges.
-            </span>
+          <div className="px-4 py-5 text-center text-sm text-slate-400 md:py-4">
+            <span className="hidden md:inline">No line items yet.</span>
             <span className="md:hidden">Use Select from Inventory or Add manual item.</span>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="hidden text-xs text-slate-500 md:block">
-          Manual items aren't deducted from My Stock. Use them for services, external supplies, or one-off charges.
-        </p>
+      <div className="flex justify-end border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 md:py-2">
         <button
           type="button"
           onClick={onAddManual}
@@ -1107,18 +1100,13 @@ function CreateBillingModal({
       open={open}
       onClose={onClose}
       title={isMobile ? "New invoice" : "Add billing entry"}
-      description={
-        isMobile
-          ? undefined
-          : "Create another bill for a patient by selecting the linked consultation and line items."
-      }
       size="xl"
       innerScroll={!isMobile}
     >
       <form
         className={cx(
           "min-w-0 w-full max-w-full",
-          isMobile ? "flex min-h-0 flex-1 flex-col" : "space-y-5",
+          isMobile ? "flex min-h-0 flex-1 flex-col" : "space-y-3",
         )}
         onSubmit={handleSubmit}
       >
@@ -1130,7 +1118,7 @@ function CreateBillingModal({
               : "contents",
           )}
         >
-        <div className="hidden min-w-0 gap-4 md:grid md:grid-cols-2">
+        <div className="hidden min-w-0 gap-3 md:grid md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
             {doctorHasNoAssignedPatients ? (
@@ -1231,7 +1219,7 @@ function CreateBillingModal({
         </div>
 
         {selectedConsultation ? (
-          <div className="rounded-[26px] border border-sky-100 bg-sky-50/70 p-4">
+          <div className="rounded-[26px] border border-sky-100 bg-sky-50/70 p-3 md:hidden">
             <p className="text-lg font-semibold text-slate-950">
               {selectedConsultation.patient_name}
             </p>
@@ -1241,8 +1229,8 @@ function CreateBillingModal({
           </div>
         ) : null}
 
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <label className="min-w-0 space-y-2">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2">
+          <label className="min-w-0 space-y-1.5">
             <span className="text-sm font-semibold text-slate-700">Consultation Type</span>
             <select
               value={consultationType}
@@ -1256,7 +1244,7 @@ function CreateBillingModal({
               ))}
             </select>
           </label>
-          <label className="min-w-0 space-y-2">
+          <label className="min-w-0 space-y-1.5">
             <span className="text-sm font-semibold text-slate-700">Consultation Price (Rs)</span>
             <div className="relative min-w-0">
               <input
@@ -1286,8 +1274,8 @@ function CreateBillingModal({
           </label>
         </div>
 
-        <div className="hidden space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4 md:block">
-          <div className="grid gap-3 md:grid-cols-[1fr_130px_170px_auto_auto]">
+        <div className="hidden rounded-[24px] border border-slate-200 bg-slate-50/60 p-3 md:block">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_88px_120px_auto] md:items-center">
             <div className="relative">
               <input
                 value={itemQuery}
@@ -1332,8 +1320,8 @@ function CreateBillingModal({
                     setSuggestionsOpen(false);
                   }
                 }}
-                placeholder={inventoryLoading ? "Loading doctor stock..." : "Item Name (type to search My Stock)"}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
+                placeholder={inventoryLoading ? "Loading stock…" : "Search inventory"}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
               />
               {suggestionsOpen && filteredSuggestions.length ? (
                 <div
@@ -1375,41 +1363,38 @@ function CreateBillingModal({
               inputMode="numeric"
               value={inventoryQty}
               onChange={(event) => setInventoryQty(event.target.value)}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700"
             />
             <input
               readOnly
               value={formatCurrency(getSellingPriceFromDoctorStock(inventorySelection?.id))}
-              className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700"
+              className="rounded-2xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700"
             />
-            <button
-              type="button"
-              onClick={() => addInventoryLine("Sale")}
-              disabled={!canAddItemLine}
-              title={addLineDisabledReason || "Add as a sale line item"}
-              className="rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Add Sale
-            </button>
-            <button
-              type="button"
-              onClick={() => addInventoryLine("Wastage")}
-              disabled={!canAddItemLine}
-              title={addLineDisabledReason || "Mark as wastage (no charge to patient)"}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Trash2 className="size-4" />
-              Wastage
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => addInventoryLine("Sale")}
+                disabled={!canAddItemLine}
+                title={addLineDisabledReason || "Add to bill"}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-2xl bg-[#4FB8B3] px-3 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus className="size-4" />
+                + Add to Bill
+              </button>
+              <button
+                type="button"
+                onClick={() => addInventoryLine("Wastage")}
+                disabled={!canAddItemLine}
+                title={addLineDisabledReason || "Mark as wastage (no charge)"}
+                aria-label="Mark as wastage"
+                className="grid size-10 shrink-0 place-items-center rounded-2xl border border-amber-200/80 bg-amber-50 text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-slate-500">
-            Auto-suggest searches My Stock only (case-insensitive partial matches). Out-of-stock items show 0 available and can be used with Emergency Override.
-            {addLineDisabledReason ? <span className="ml-1 font-semibold text-amber-700">— {addLineDisabledReason}.</span> : null}
-          </p>
-          {consultationId && !inventoryLoading && inventoryOptions.length === 0 ? (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-              My Stock has no items yet for this doctor. Use Inventory → Restock My Inventory before billing inventory items, or click <span className="text-[#1f7f7b]">Add manual item</span> below for off-stock charges.
-            </p>
+          {addLineDisabledReason ? (
+            <p className="mt-2 text-xs font-semibold text-amber-700">{addLineDisabledReason}.</p>
           ) : null}
         </div>
 
@@ -1822,12 +1807,17 @@ function BillingPage() {
       <PageHeader
         eyebrow="Revenue"
         title="Billing"
-        description={
-          isMobile
-            ? undefined
-            : user?.role === "doctor"
-              ? "Review consultation-linked billing, update payment status, and add new billing entries for your patients."
-              : "Track every billing entry, maintain line items, and monitor which patients still have balances outstanding."
+        actions={
+          !isMobile && canCreateBills ? (
+            <button
+              type="button"
+              onClick={() => setCreatorOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+            >
+              <Plus className="size-4" />
+              Add bill
+            </button>
+          ) : null
         }
       />
 
@@ -1860,42 +1850,36 @@ function BillingPage() {
       <div className={cx("grid gap-6", !isMobile && "xl:grid-cols-[1.1fr_0.9fr]")}>
         <SectionCard
           title="Bills"
-          subtitle={
-            isMobile
-              ? undefined
-              : "Review line items, payment status, and each consultation-linked billing entry."
-          }
           actions={
-            <div className="flex flex-wrap gap-2">
+            isMobile ? (
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Filter by patient or date…"
+                className="min-h-12 w-full min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
+              />
+            ) : null
+          }
+        >
+          {!isMobile ? (
+            <div className="mb-4 flex flex-row items-center gap-4">
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Search patient or date…"
+                className="min-w-0 max-w-md flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
+              />
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white md:block"
+                className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
               >
                 <option value="">All bills</option>
                 <option value="unpaid">Unpaid only</option>
                 <option value="paid">Paid only</option>
               </select>
-              <input
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Filter by patient or date…"
-                className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white md:min-h-0 md:flex-none"
-              />
-
-              {canCreateBills ? (
-                <button
-                  type="button"
-                  onClick={() => setCreatorOpen(true)}
-                  className="hidden items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 md:inline-flex"
-                >
-                  <Plus className="size-4" />
-                  Add bill
-                </button>
-              ) : null}
             </div>
-          }
-        >
+          ) : null}
           {isMobile ? (
             <div className="mb-4 flex rounded-2xl border border-slate-200 bg-slate-100 p-1 md:hidden">
               <button
@@ -2055,7 +2039,6 @@ function BillingPage() {
         <SectionCard
           className={isMobile ? "hidden" : undefined}
           title="Pending payments from unpaid patients"
-          subtitle="Patients with due balances only, updated automatically after bill edits."
         >
           {pendingPayments.length ? (
             <div className="space-y-3">

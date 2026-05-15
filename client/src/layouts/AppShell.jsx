@@ -92,7 +92,7 @@ const pageMeta = {
   },
   "/billing": {
     label: "Billing",
-    helper: "Track invoices, payment status, and each patient's billing summary.",
+    helper: "",
   },
   "/team-operations": {
     label: "Team operations",
