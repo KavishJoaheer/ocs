@@ -570,7 +570,7 @@ function getCompareRows() {
         COALESCE(
           SUM(
             CASE
-              WHEN m.action_type IN ('sell', 'remove', 'wastage') THEN m.quantity * i.cost_price
+              WHEN m.action_type IN ('sell', 'remove', 'wastage', 'stock_out') THEN m.quantity * i.cost_price
               ELSE 0
             END
           ),
@@ -941,7 +941,7 @@ router.get("/activity-history", (req, res) => {
       ORDER BY actor_name ASC
     `)
     .all();
-  const actions = ["stock_in", "restock", "sell", "wastage", "adjustment"];
+  const actions = ["stock_in", "restock", "sell", "wastage", "adjustment", "stock_out"];
 
   res.json({
     page: paginated.page,
@@ -1074,13 +1074,21 @@ router.put("/items/:id", (req, res) => {
   const existing = findItem(itemId, stockScope, doctorId);
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
 
-  const itemName = String(req.body.item_name ?? existing.item_name).trim();
-  const folderId = Number(req.body.folder_id || existing.folder_id || 0);
+  const itemName = isDoctor
+    ? String(existing.item_name || "").trim()
+    : String(req.body.item_name ?? existing.item_name).trim();
+  const folderId = isDoctor
+    ? Number(existing.folder_id || 0)
+    : Number(req.body.folder_id || existing.folder_id || 0);
   const quantity = Number(req.body.quantity ?? existing.quantity);
   const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity);
   const unit = String(req.body.unit ?? existing.unit ?? "unit").trim();
-  const costPrice = roundCurrency(req.body.cost_price ?? existing.cost_price);
-  const sellingPrice = roundCurrency(req.body.selling_price ?? existing.selling_price);
+  const costPrice = isDoctor
+    ? roundCurrency(existing.cost_price)
+    : roundCurrency(req.body.cost_price ?? existing.cost_price);
+  const sellingPrice = isDoctor
+    ? roundCurrency(existing.selling_price)
+    : roundCurrency(req.body.selling_price ?? existing.selling_price);
   const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
   const moaNotes = String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
   const expiryDate = String(req.body.expiry_date ?? existing.expiry_date ?? "").trim() || null;
@@ -1387,11 +1395,20 @@ router.post("/items/:id/actions", (req, res) => {
   const actionType = String(req.body.action_type || "").trim().toLowerCase();
   const quantity = Number(req.body.quantity || 0);
   const note = String(req.body.note || "").trim();
-  if (!["add", "remove", "sell"].includes(actionType)) {
-    return res.status(400).json({ error: "Action must be add, remove, or sell." });
+  if (!["add", "remove", "sell", "stock_out"].includes(actionType)) {
+    return res.status(400).json({ error: "Action must be add, remove, sell, or stock_out." });
   }
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return res.status(400).json({ error: "Quantity must be greater than zero." });
+  }
+
+  const STOCK_OUT_REASONS = new Set(["Sold", "Wasted", "Expired"]);
+  let stockOutReason = null;
+  if (actionType === "stock_out") {
+    stockOutReason = String(req.body.reason || "").trim();
+    if (!STOCK_OUT_REASONS.has(stockOutReason)) {
+      return res.status(400).json({ error: "Reason must be Sold, Wasted, or Expired." });
+    }
   }
 
   const movementType = actionType === "add" ? "in" : "out";
@@ -1424,6 +1441,17 @@ router.post("/items/:id/actions", (req, res) => {
         }
       }
 
+      const movementActionType = actionType === "stock_out" ? "stock_out" : actionType;
+      const movementNote =
+        actionType === "stock_out"
+          ? [
+              `Stock out (${stockOutReason})`,
+              note ? note : null,
+            ]
+              .filter(Boolean)
+              .join(" — ")
+          : note || (actionType === "sell" ? "Sold and synced to billing." : actionType === "remove" ? "Removed from stock." : "Added to stock.");
+
       if (actionType === "sell") {
         const patientId = Number(req.body.patient_id || 0);
         const consultationId = Number(req.body.consultation_id || 0);
@@ -1448,8 +1476,8 @@ router.post("/items/:id/actions", (req, res) => {
         quantity,
         previousQuantity,
         nextQuantity,
-        actionType,
-        note: note || (actionType === "sell" ? "Sold and synced to billing." : actionType === "remove" ? "Removed from stock." : "Added to stock."),
+        actionType: movementActionType,
+        note: movementNote,
         userId: req.auth.id,
         referenceType: actionType === "sell" ? "patient" : null,
         referenceId: actionType === "sell" ? Number(req.body.patient_id || 0) : null,
@@ -1457,6 +1485,9 @@ router.post("/items/:id/actions", (req, res) => {
           performed_by_user_id: req.auth.id,
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
+          ...(actionType === "stock_out"
+            ? { stock_out_reason: stockOutReason, stock_out_note: note || "" }
+            : {}),
         }),
       });
     })();

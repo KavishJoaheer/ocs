@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Printer, Search, Trash2, Truck } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Minus, MinusCircle, Pencil, Plus, Printer, Search, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -43,17 +43,31 @@ function itemFormState(item) {
   };
 }
 
-function ItemModal({ open, item, folders, isSaving, onClose, onSubmit }) {
+function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, onClose, onSubmit }) {
   const [form, setForm] = useState(itemFormState(item));
 
   useEffect(() => {
     if (open) setForm(itemFormState(item));
   }, [item, open]);
 
+  const masterReadOnly = lockMasterFields;
+  const fieldClass = (locked) =>
+    cx(
+      "w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition",
+      locked ? "cursor-not-allowed bg-slate-100 text-slate-600" : "bg-slate-50",
+    );
+
   return (
-    <Modal open={open} onClose={onClose} title={item ? "Edit stock item" : "Add stock item"} description="Save quantity, pricing, and expiry details." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={item ? "Edit stock item" : "Add stock item"}
+      description="Save quantity, pricing, and expiry details."
+      size="xl"
+      innerScroll={false}
+    >
       <form
-        className="space-y-4"
+        className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit({
@@ -66,14 +80,29 @@ function ItemModal({ open, item, folders, isSaving, onClose, onSubmit }) {
           });
         }}
       >
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-24 pr-1">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Item Name</span>
-            <input required name="item_name" value={form.item_name} onChange={(event) => setForm((prev) => ({ ...prev, item_name: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input
+              required
+              name="item_name"
+              value={form.item_name}
+              readOnly={masterReadOnly}
+              onChange={(event) => setForm((prev) => ({ ...prev, item_name: event.target.value }))}
+              className={fieldClass(masterReadOnly)}
+            />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Folder</span>
-            <select required name="folder_id" value={form.folder_id} onChange={(event) => setForm((prev) => ({ ...prev, folder_id: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <select
+              required
+              name="folder_id"
+              value={form.folder_id}
+              disabled={masterReadOnly}
+              onChange={(event) => setForm((prev) => ({ ...prev, folder_id: event.target.value }))}
+              className={fieldClass(masterReadOnly)}
+            >
               <option value="">Select folder</option>
               {folders.map((folder) => (
                 <option key={folder.id} value={folder.id}>{folder.name}</option>
@@ -84,46 +113,67 @@ function ItemModal({ open, item, folders, isSaving, onClose, onSubmit }) {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Attributes</span>
-            <input name="attributes" value={form.attributes} onChange={(event) => setForm((prev) => ({ ...prev, attributes: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input name="attributes" value={form.attributes} onChange={(event) => setForm((prev) => ({ ...prev, attributes: event.target.value }))} className={fieldClass(false)} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Expiry Date</span>
-            <input type="date" name="expiry_date" value={form.expiry_date} onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input type="date" name="expiry_date" value={form.expiry_date} onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))} className={fieldClass(false)} />
           </label>
         </div>
         <label className="space-y-2">
           <span className="text-sm font-semibold text-slate-700">MOA Notes</span>
-          <textarea rows="3" name="moa_notes" value={form.moa_notes} onChange={(event) => setForm((prev) => ({ ...prev, moa_notes: event.target.value }))} className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3" />
+          <textarea rows="3" name="moa_notes" value={form.moa_notes} onChange={(event) => setForm((prev) => ({ ...prev, moa_notes: event.target.value }))} className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition" />
         </label>
         <div className="grid gap-4 md:grid-cols-3">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Current Quantity</span>
-            <input required min="0" type="number" name="quantity" value={form.quantity} onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input required min="0" type="number" name="quantity" value={form.quantity} onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))} className={fieldClass(false)} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Minimum Quantity</span>
-            <input required min="0" type="number" name="minimum_quantity" value={form.minimum_quantity} onChange={(event) => setForm((prev) => ({ ...prev, minimum_quantity: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input required min="0" type="number" name="minimum_quantity" value={form.minimum_quantity} onChange={(event) => setForm((prev) => ({ ...prev, minimum_quantity: event.target.value }))} className={fieldClass(false)} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Unit</span>
-            <input required name="unit" value={form.unit} onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input required name="unit" value={form.unit} onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))} className={fieldClass(false)} />
           </label>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Cost Price (Rs)</span>
-            <input required min="0" step="0.01" type="number" name="cost_price" value={form.cost_price} onChange={(event) => setForm((prev) => ({ ...prev, cost_price: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input
+              required
+              min="0"
+              step="0.01"
+              type="number"
+              name="cost_price"
+              value={form.cost_price}
+              readOnly={masterReadOnly}
+              onChange={(event) => setForm((prev) => ({ ...prev, cost_price: event.target.value }))}
+              className={fieldClass(masterReadOnly)}
+            />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Selling Price (Rs)</span>
-            <input required min="0" step="0.01" type="number" name="selling_price" value={form.selling_price} onChange={(event) => setForm((prev) => ({ ...prev, selling_price: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+            <input
+              required
+              min="0"
+              step="0.01"
+              type="number"
+              name="selling_price"
+              value={form.selling_price}
+              readOnly={masterReadOnly}
+              onChange={(event) => setForm((prev) => ({ ...prev, selling_price: event.target.value }))}
+              className={fieldClass(masterReadOnly)}
+            />
           </label>
         </div>
         <label className="space-y-2">
           <span className="text-sm font-semibold text-slate-700">Adjustment Note</span>
           <input name="adjustment_note" value={form.adjustment_note} onChange={(event) => setForm((prev) => ({ ...prev, adjustment_note: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
         </label>
-        <div className="flex justify-end gap-3 pt-2">
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 py-4">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
           <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : item ? "Update Item" : "Add Item"}</button>
         </div>
@@ -519,7 +569,7 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
       open={open}
       onClose={onClose}
       title="Restock My Inventory"
-      description="Transfer this item from OCS Master Stock into your inventory using atomic FEFO deduction."
+      description="Transfer this item from Master Stock into your medical bag."
       size="lg"
     >
       <form
@@ -569,6 +619,103 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
+const STOCK_OUT_REASONS = ["Sold", "Wasted", "Expired"];
+
+function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
+  const [quantity, setQuantity] = useState("1");
+  const [reason, setReason] = useState("Sold");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setQuantity("1");
+    setReason("Sold");
+    setNote("");
+  }, [open, item]);
+
+  const available = Number(item?.quantity || 0);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Stock Out" description="Remove quantity from your medical bag and record why it left your stock." size="lg">
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const qty = Number(quantity || 0);
+          if (!Number.isInteger(qty) || qty <= 0) return;
+          onSubmit({ quantity: qty, reason, note: note.trim() });
+        }}
+      >
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
+          <p className="mt-1 text-xs text-slate-600">Available in your stock: {available}</p>
+
+          <label className="mt-4 block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Quantity</span>
+            <input
+              type="number"
+              min="1"
+              max={available || undefined}
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+            />
+          </label>
+
+          <label className="mt-4 block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Reason</span>
+            <select
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+            >
+              {STOCK_OUT_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="mt-4 block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Notes (optional)</span>
+            <textarea
+              rows={3}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+              placeholder="e.g. batch reference, disposal details"
+            />
+          </label>
+
+          {Number(quantity || 0) > available ? (
+            <p className="mt-2 text-xs font-semibold text-rose-700">Quantity exceeds available stock.</p>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={
+              isSaving ||
+              !item?.id ||
+              !Number.isInteger(Number(quantity || 0)) ||
+              Number(quantity || 0) <= 0 ||
+              Number(quantity || 0) > available
+            }
+            className="rounded-2xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+          >
+            {isSaving ? "Recording..." : "Confirm Stock Out"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function LiveActivitySection({ movements, onReprint }) {
   const rows = movements.slice(0, 40);
   return (
@@ -589,11 +736,15 @@ function LiveActivitySection({ movements, onReprint }) {
             {rows.map((movement) => {
               const transactionId = movement.meta?.transaction_id || "";
               const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
+              const actionDisplay =
+                movement.action_type === "stock_out" && movement.meta?.stock_out_reason
+                  ? `Stock out (${movement.meta.stock_out_reason})`
+                  : movement.action_type;
               return (
                 <tr key={`mv-${movement.id}`} className="border-t border-slate-200/70 text-xs">
                   <td className="whitespace-nowrap px-3 py-2 text-slate-700">{movement.created_at}</td>
                   <td className="max-w-[6.5rem] truncate px-3 py-2 font-medium text-slate-800" title={movement.action_type}>
-                    {movement.action_type}
+                    {actionDisplay}
                   </td>
                   <td className="max-w-[7rem] truncate px-3 py-2 text-slate-700" title={movement.item_name}>
                     {movement.item_name}
@@ -637,6 +788,7 @@ function InventoryActionButtons({
   onEdit,
   onRestockDoctor,
   onRestockMyInventory,
+  onStockOut,
   onAdjustReclaim,
   onRemove,
   touchWrap = false,
@@ -648,6 +800,9 @@ function InventoryActionButtons({
   const restockBtn = touchWrap
     ? "inline-flex min-h-10 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-xl bg-[#4FB8B3] px-4 py-2 text-xs font-bold text-white shadow-sm"
     : "inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1 text-xs font-semibold text-white";
+  const stockOutBtn = touchWrap
+    ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl bg-orange-100 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-200"
+    : "inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-200";
 
   return (
     <div className={cx("flex items-center gap-2", touchWrap ? "max-w-full flex-wrap justify-end" : "flex-nowrap")}>
@@ -675,6 +830,13 @@ function InventoryActionButtons({
         <button type="button" onClick={() => onRestockMyInventory(item)} className={`${restockBtn}`}>
           <Truck className="size-3.5 shrink-0" />
           Restock
+        </button>
+      ) : null}
+
+      {isDoctor && doctorViewIsMy && onStockOut ? (
+        <button type="button" onClick={() => onStockOut(item)} className={stockOutBtn}>
+          <Minus className="size-3.5 shrink-0" />
+          Stock Out
         </button>
       ) : null}
 
@@ -744,6 +906,7 @@ export default function InventoryPage() {
   const [activeReceipt, setActiveReceipt] = useState(null);
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
+  const [stockOut, setStockOut] = useState(null);
   const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -1193,6 +1356,29 @@ export default function InventoryPage() {
     }
   }
 
+  async function saveStockOut(payload) {
+    if (!stockOut?.item) return;
+    const quantity = Number(payload?.quantity || 0);
+    if (!Number.isInteger(quantity) || quantity <= 0) return;
+
+    setIsSaving(true);
+    try {
+      const next = await api.post(`/inventory/items/${stockOut.item.id}/actions`, {
+        action_type: "stock_out",
+        quantity,
+        reason: payload.reason,
+        note: payload.note || "",
+      });
+      setData(next);
+      setStockOut(null);
+      toast.success("Stock out recorded.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function loadBatches(itemId) {
     const key = Number(itemId);
     if (!key || batchMap[key]) return;
@@ -1543,6 +1729,7 @@ export default function InventoryPage() {
                                 onEdit={(nextItem) => setEditor({ item: nextItem })}
                                 onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
                                 onRestockMyInventory={openDoctorRestockForItem}
+                                onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                                 onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
                               />
@@ -1642,14 +1829,26 @@ export default function InventoryPage() {
                       {showProminentRestock ? (
                         <div className="flex shrink-0 items-center gap-2">
                           {isDoctor ? (
-                            <button
-                              type="button"
-                              onClick={() => openDoctorRestockForItem(item)}
-                              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#4FB8B3] px-3.5 py-2 text-xs font-bold text-white shadow-sm active:brightness-95"
-                            >
-                              <Truck className="size-3.5" />
-                              Restock
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openDoctorRestockForItem(item)}
+                                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#4FB8B3] px-3.5 py-2 text-xs font-bold text-white shadow-sm active:brightness-95"
+                              >
+                                <Truck className="size-3.5" />
+                                Restock
+                              </button>
+                              {doctorViewIsMy ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setStockOut({ item })}
+                                  className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-orange-100 px-3.5 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-200 active:brightness-95"
+                                >
+                                  <Minus className="size-3.5" />
+                                  Stock Out
+                                </button>
+                              ) : null}
+                            </>
                           ) : (
                             <button
                               type="button"
@@ -1673,6 +1872,7 @@ export default function InventoryPage() {
                           onEdit={(nextItem) => setEditor({ item: nextItem })}
                           onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
                           onRestockMyInventory={openDoctorRestockForItem}
+                          onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                           onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                           onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
                           touchWrap
@@ -1693,6 +1893,7 @@ export default function InventoryPage() {
                           onEdit={(nextItem) => setEditor({ item: nextItem })}
                           onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
                           onRestockMyInventory={openDoctorRestockForItem}
+                          onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                           onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                           onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
                           touchWrap
@@ -1808,7 +2009,15 @@ export default function InventoryPage() {
         </div>
       )}
 
-      <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
+      <ItemModal
+        open={Boolean(editor)}
+        item={editor?.item}
+        folders={folders}
+        isSaving={isSaving}
+        lockMasterFields={Boolean(editor?.item) && isDoctor}
+        onClose={() => setEditor(null)}
+        onSubmit={saveItem}
+      />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
       <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
       <DoctorRestockModal
@@ -1820,6 +2029,13 @@ export default function InventoryPage() {
           setDoctorRestockItem(null);
         }}
         onSubmit={saveDoctorRestock}
+      />
+      <StockOutModal
+        open={Boolean(stockOut)}
+        item={stockOut?.item}
+        isSaving={isSaving}
+        onClose={() => setStockOut(null)}
+        onSubmit={saveStockOut}
       />
       <RestockReceiptModal
         open={receiptModalOpen}

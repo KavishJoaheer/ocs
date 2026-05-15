@@ -16,6 +16,7 @@ const BADGE_STYLES = {
   stock_in: "bg-sky-100 text-sky-700",
   sell: "bg-green-100 text-green-700",
   wastage: "bg-amber-100 text-amber-700",
+  stock_out: "bg-orange-100 text-orange-800",
   override: "bg-rose-100 text-rose-700",
   adjustment: "bg-rose-100 text-rose-700",
 };
@@ -26,6 +27,7 @@ const ACTION_LABELS = {
   stock_in: "Stock In",
   sell: "Sale",
   wastage: "Wastage",
+  stock_out: "Stock Out",
   override: "Override",
   adjustment: "Adjustment",
   add: "Add",
@@ -481,12 +483,16 @@ function StockActivityPage() {
                   }
                   const transactionId = row.transaction_id || meta.transaction_id || "";
                   const isRestockTransfer = ["restock", "restock_in", "restock_out"].includes(label);
+                  const actionCellText =
+                    label === "stock_out" && meta.stock_out_reason
+                      ? `${actionDisplayLabel(label)} (${meta.stock_out_reason})`
+                      : actionDisplayLabel(label);
                   return (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-3 text-slate-700">{formatTimestamp(row.timestamp)}</td>
                       <td className="px-3 py-3 text-slate-700">{row.actor_name || "System"} <span className="text-slate-400">({row.actor_role || "N/A"})</span></td>
                       <td className="px-3 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`}>{actionDisplayLabel(label)}</span>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`}>{actionCellText}</span>
                       </td>
                       <td className="px-3 py-3 text-slate-700">{absoluteQty} units · {row.item_name || "-"}</td>
                       <td className="px-3 py-3 text-slate-700">{row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}</td>
