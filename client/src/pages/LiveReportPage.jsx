@@ -431,13 +431,20 @@ export default function LiveReportPage() {
             )}
           >
             <p className="text-xs font-bold uppercase tracking-wide text-[#1a5c62]">Doctor Net Revenue</p>
-            <p className="mt-2 text-2xl font-extrabold text-slate-950">
+            <p className="mt-2 text-4xl font-bold text-teal-700">
               {formatCurrency(statement.doctorNetRevenue || 0)}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs uppercase text-slate-500">Total Revenue</p>
-            <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(statement.totalRevenue || 0)}</p>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <p className="text-xs uppercase text-slate-500">Unpaid Revenue</p>
+            <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(statement.unpaidRevenue || 0)}</p>
+            <button
+              type="button"
+              onClick={() => navigate("/billing?status=unpaid")}
+              className="mt-2 text-xs font-semibold text-rose-700 underline"
+            >
+              View Details
+            </button>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs uppercase text-slate-500">OCS Commission (60%)</p>
@@ -459,21 +466,19 @@ export default function LiveReportPage() {
             <p className="text-xs uppercase text-slate-500">Paid Revenue</p>
             <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(statement.paidRevenue || 0)}</p>
           </div>
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-            <p className="text-xs uppercase text-slate-500">Unpaid Revenue</p>
-            <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(statement.unpaidRevenue || 0)}</p>
-            <button
-              type="button"
-              onClick={() => navigate("/billing?status=unpaid")}
-              className="mt-2 text-xs font-semibold text-rose-700 underline"
-            >
-              View Details
-            </button>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs uppercase text-slate-500">Total Revenue</p>
+            <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(statement.totalRevenue || 0)}</p>
           </div>
         </div>
       </SectionCard>
 
       <SectionCard title="Revenue Reports">
+        {revenueRows.length === 0 ? (
+          <div className="flex h-32 items-center justify-center text-sm italic text-gray-400">
+            No data available for the selected period.
+          </div>
+        ) : (
         <div
           className="overflow-x-auto rounded-[20px] border border-slate-200 transition-all duration-300 ease-in-out"
           style={{ maxHeight: isRevenueExpanded ? "999px" : "280px" }}
@@ -501,6 +506,7 @@ export default function LiveReportPage() {
             </tbody>
           </table>
         </div>
+        )}
         {revenueRows.length > 3 ? (
           <div className="mt-3 flex justify-center">
             <button
@@ -515,41 +521,53 @@ export default function LiveReportPage() {
       </SectionCard>
 
       <SectionCard title="Patients Volume">
-        <div className="h-72 md:h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={volumeRows}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="patient_count" fill="#2d8f98" radius={[8, 8, 0, 0]}>
-                <LabelList dataKey="patient_count" position="top" />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {volumeRows.length === 0 ? (
+          <div className="flex h-32 items-center justify-center text-sm italic text-gray-400">
+            No data available for the selected period.
+          </div>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={volumeRows}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="label" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="patient_count" fill="#2d8f98" radius={[8, 8, 0, 0]}>
+                  <LabelList dataKey="patient_count" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </SectionCard>
 
       <SectionCard title="Patients Seen Per Location">
-        <div className="h-72 md:h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={locationRows}
-                dataKey="patient_count"
-                nameKey="location"
-                outerRadius={110}
-                label
-              >
-                {locationRows.map((_, index) => (
-                  <Cell key={`loc-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+        {locationRows.length === 0 ? (
+          <div className="flex h-32 items-center justify-center text-sm italic text-gray-400">
+            No data available for the selected period.
+          </div>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={locationRows}
+                  dataKey="patient_count"
+                  nameKey="location"
+                  outerRadius={78}
+                  label
+                >
+                  {locationRows.map((_, index) => (
+                    <Cell key={`loc-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </SectionCard>
     </div>
   );
