@@ -190,6 +190,25 @@ function roleLabel(role) {
   return "Team";
 }
 
+/** Public http(s) URLs: use a real <a> so mobile Safari/Chrome do not block navigation. */
+function getLabReportAttachmentPublicUrl(attachment) {
+  if (!attachment) {
+    return null;
+  }
+
+  const candidates = [attachment.public_url, attachment.file_url, attachment.download_url];
+  for (const value of candidates) {
+    if (typeof value === "string" && /^https?:\/\//i.test(value.trim())) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+const LAB_REPORT_OPEN_FILE_BUTTON_CLASS =
+  "inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700";
+
 function LabReportAttachmentRow({
   attachment,
   user,
@@ -200,6 +219,7 @@ function LabReportAttachmentRow({
 }) {
   const canDelete = canDeleteLabReportAttachment(user, attachment);
   const touchStyle = compact ? { minHeight: 48 } : undefined;
+  const publicFileUrl = getLabReportAttachmentPublicUrl(attachment);
 
   return (
     <div
@@ -221,15 +241,28 @@ function LabReportAttachmentRow({
         </p>
       </div>
       <div className="flex shrink-0 flex-row items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onOpen(attachment)}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-          style={touchStyle}
-        >
-          <Paperclip className="size-4" />
-          Open file
-        </button>
+        {publicFileUrl ? (
+          <a
+            href={publicFileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={LAB_REPORT_OPEN_FILE_BUTTON_CLASS}
+            style={touchStyle}
+          >
+            <Paperclip className="size-4" />
+            Open file
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpen(attachment)}
+            className={LAB_REPORT_OPEN_FILE_BUTTON_CLASS}
+            style={touchStyle}
+          >
+            <Paperclip className="size-4" />
+            Open file
+          </button>
+        )}
         {canDelete ? (
           <button
             type="button"
@@ -743,6 +776,16 @@ function PatientProfilePage() {
   }
 
   async function handleOpenLabReportAttachment(attachment) {
+    if (getLabReportAttachmentPublicUrl(attachment)) {
+      return;
+    }
+
+    const previewTab = window.open("about:blank", "_blank");
+    if (!previewTab) {
+      toast.error("Pop-up blocked. Allow pop-ups to open this file.");
+      return;
+    }
+
     try {
       const response = await api.getBlob(attachment.download_url);
       const mime =
@@ -760,13 +803,12 @@ function PatientProfilePage() {
         /\.(pdf|png|jpe?g|gif|webp)$/i.test(attachment.original_name || "");
 
       if (isViewable) {
-        const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
-        if (!opened) {
-          toast.error("Pop-up blocked. Allow pop-ups to open this file.");
-        }
+        previewTab.location.href = objectUrl;
         window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 120_000);
         return;
       }
+
+      previewTab.close();
 
       const link = document.createElement("a");
       link.href = objectUrl;
@@ -779,6 +821,7 @@ function PatientProfilePage() {
       link.remove();
       window.URL.revokeObjectURL(objectUrl);
     } catch (error) {
+      previewTab.close();
       toast.error(error.message);
     }
   }
