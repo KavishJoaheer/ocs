@@ -168,10 +168,10 @@ function Sidebar() {
   }, [drawerOpen]);
 
   return (
-    <>
+    <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
-        className="sticky top-0 z-30 flex items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white/92 px-4 py-2.5 backdrop-blur-lg md:hidden"
+        className="sticky top-0 z-30 flex w-full min-w-0 items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white/92 px-4 py-2.5 backdrop-blur-lg md:hidden"
         style={{ paddingTop: `max(0.625rem, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button
@@ -270,7 +270,7 @@ function Sidebar() {
 
       {/* ─── Tablet: horizontal scroll nav (existing mobile layout) ─── */}
       <div
-        className="hidden border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-4 backdrop-blur md:block lg:hidden"
+        className="hidden w-full min-w-0 border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-4 backdrop-blur md:block lg:hidden"
         style={{ paddingTop: `max(1rem, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <div className="mb-4 flex flex-col gap-4">
@@ -315,7 +315,7 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] text-[#22485b] lg:flex lg:flex-col">
+      <aside className="hidden w-full min-w-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] text-[#22485b] lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-6">
           <div className="inline-flex w-fit rounded-[22px] border border-[rgba(65,200,198,0.2)] bg-white p-4 shadow-[0_12px_32px_rgba(34,72,91,0.08)]">
             <BrandMark
@@ -364,7 +364,7 @@ function Sidebar() {
 
         </div>
       </aside>
-    </>
+    </div>
   );
 }
 

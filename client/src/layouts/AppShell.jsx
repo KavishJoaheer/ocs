@@ -148,10 +148,10 @@ function AppShell() {
 
   return (
     <div className="min-h-svh w-full max-w-[100vw] min-w-0 overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
-      <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] lg:flex">
+      <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col lg:flex-row">
         <Sidebar />
 
-        <main className="min-w-0 w-full max-w-full flex-1 overflow-x-hidden">
+        <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden">
           {!alwaysHideTopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-5 backdrop-blur md:block lg:px-8"
