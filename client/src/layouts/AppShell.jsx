@@ -140,7 +140,7 @@ function AppShell() {
   const activeMeta = isPatientProfile
     ? {
         label: "Patient profile",
-        helper: "A complete record of visits, notes, and billing for one patient.",
+        helper: "",
       }
     : isDashboard
       ? dashboardMetaByRole[user.role] || pageMeta["/"]
@@ -170,15 +170,17 @@ function AppShell() {
                   ) : null}
                 </div>
 
-                <p className="shrink-0 whitespace-nowrap text-sm font-medium text-slate-500 md:text-right">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    Dispatch desk
-                  </span>
-                  <span className="mx-2 text-slate-300" aria-hidden="true">
-                    ·
-                  </span>
-                  {dayjs().format("dddd, MMMM D")}
-                </p>
+                {!isPatientProfile ? (
+                  <p className="shrink-0 whitespace-nowrap text-sm font-medium text-slate-500 md:text-right">
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      Dispatch desk
+                    </span>
+                    <span className="mx-2 text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
+                    {dayjs().format("dddd, MMMM D")}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : null}

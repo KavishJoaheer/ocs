@@ -76,6 +76,45 @@ function ProfileField({ label, value, emphasize = false }) {
   );
 }
 
+function profileLine(value, emptyLabel = "Not recorded") {
+  const t = value != null && String(value).trim() !== "" ? String(value).trim() : "";
+  return { text: t || emptyLabel, isEmpty: !t };
+}
+
+function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
+  const { text, isEmpty } = profileLine(value, emptyLabel);
+  return (
+    <div className="min-w-0 border-b border-slate-100 pb-1.5 md:border-0 md:pb-0">
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</dt>
+      <dd
+        className={cx(
+          "mt-0.5 break-words text-xs leading-snug",
+          isEmpty ? "text-slate-400" : emphasize ? "font-semibold text-slate-900" : "text-slate-700",
+        )}
+      >
+        {text}
+      </dd>
+    </div>
+  );
+}
+
+function ClinicalGridItem({ label, value }) {
+  const { text, isEmpty } = profileLine(value);
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-200/60 bg-slate-50/40 px-2 py-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p
+        className={cx(
+          "mt-0.5 line-clamp-2 break-words text-xs leading-snug",
+          isEmpty ? "text-slate-400" : "text-slate-700",
+        )}
+      >
+        {text}
+      </p>
+    </div>
+  );
+}
+
 const CONSULTATION_ROWS_LIMIT = 5;
 const CONSULTATION_PREVIEW_LIMIT = 220;
 const MOBILE_NOTE_PREVIEW_LIMIT = 80;
@@ -86,16 +125,6 @@ const MOBILE_TABS = [
   { key: "reports", label: "Reports" },
   { key: "billing", label: "Billing" },
 ];
-
-function getConsultationPreview(note, limit = CONSULTATION_PREVIEW_LIMIT) {
-  const normalized = String(note || "").trim();
-
-  if (normalized.length <= limit) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, limit).trimEnd()}...`;
-}
 
 function getEmptyLabReport() {
   return {
@@ -858,7 +887,6 @@ function PatientProfilePage() {
       <PageHeader
         eyebrow="Patient profile"
         title={data.patient.full_name}
-        description={`${data.patient.patient_identifier || "No OCS care number yet"} - ${data.patient.gender} - ${formatAgeFromDateOfBirth(data.patient.date_of_birth)}`}
         actions={
           <div className="flex flex-wrap justify-end gap-3">
             {canOpenBilling ? (
@@ -1418,19 +1446,6 @@ function PatientProfilePage() {
                 <EmptyState
                   title="No Medical & Lab Reports yet"
                   description="Add a Medical & Lab Report here to keep investigations, consultation notes, and uploaded files together on the same patient profile."
-                  action={
-                    canManageLabReports ? (
-                      <button
-                        type="button"
-                        onClick={() => setReportEditor({ id: null })}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white"
-                        style={{ minHeight: 48 }}
-                      >
-                        <Plus className="size-4" />
-                        Add Medical & Lab Report
-                      </button>
-                    ) : null
-                  }
                 />
               )}
             </div>
@@ -1538,142 +1553,72 @@ function PatientProfilePage() {
             />
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-            <SectionCard
-          title="Patient details"
-            >
-              <div className="grid gap-3 md:grid-cols-2">
-                <ProfileField
-                  label="OCS care number"
-                  value={data.patient.patient_identifier}
-                  emphasize
-                />
-                <ProfileField label="Patient ID" value={data.patient.patient_id_number} emphasize />
-                <ProfileField label="First name" value={data.patient.first_name} emphasize />
-                <ProfileField label="Last name" value={data.patient.last_name} emphasize />
-                <ProfileField
+          <div className="grid gap-3 xl:grid-cols-12">
+            <SectionCard className="xl:col-span-7" title="Patient details">
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                <ProfileDlItem label="OCS care number" value={data.patient.patient_identifier} emphasize />
+                <ProfileDlItem label="Patient ID" value={data.patient.patient_id_number} emphasize />
+                <ProfileDlItem label="First name" value={data.patient.first_name} emphasize />
+                <ProfileDlItem label="Last name" value={data.patient.last_name} emphasize />
+                <ProfileDlItem
                   label="Age"
                   value={formatAgeFromDateOfBirth(data.patient.date_of_birth)}
                   emphasize
                 />
-                <ProfileField label="Gender" value={data.patient.gender} emphasize />
-                <ProfileField label="Assigned doctor" value={assignedDoctor} emphasize />
-                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Status
-                  </p>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
-                    <StatusBadge value={data.patient.status} />
-                    <span className="min-w-0 break-words text-sm text-slate-600">{statusDetail}</span>
-                  </div>
-                </div>
-                <ProfileField label="Patient contact number" value={patientContactNumber} />
-                <ProfileField label="Address" value={data.patient.address} />
-                <div className="md:col-span-2 rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Locations and affiliations
-                  </p>
-                  <div className="mt-2">
-                    <PatientLocationTags
-                      tags={data.patient.location_tags || []}
-                      onChange={() => {}}
-                      readOnly
-                    />
-                  </div>
-                </div>
+                <ProfileDlItem label="Gender" value={data.patient.gender} emphasize />
+                <ProfileDlItem label="Assigned doctor" value={assignedDoctor} emphasize />
+                <ProfileDlItem label="Contact" value={patientContactNumber} />
+                <ProfileDlItem label="Address" value={data.patient.address} />
+                <ProfileDlItem label="Location" value={data.patient.location} emptyLabel="Location not selected" />
+              </dl>
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Status
+                </span>
+                <StatusBadge value={data.patient.status} />
+                <span className="min-w-0 text-xs leading-snug text-slate-600">{statusDetail}</span>
               </div>
-            </SectionCard>
-
-            <SectionCard
-          title="Next of kin"
-            >
-              <div className="grid gap-3 md:grid-cols-2">
-                <ProfileField label="Name" value={data.patient.next_of_kin_name} emphasize />
-                <ProfileField
-                  label="Relationship with patient"
-                  value={data.patient.next_of_kin_relationship}
-                />
-                <ProfileField
-                  label="Contact number"
-                  value={data.patient.next_of_kin_contact_number}
-                />
-                <ProfileField label="Email address" value={data.patient.next_of_kin_email} />
-              </div>
-            </SectionCard>
-
-            <SectionCard
-          title="Clinical history"
-            >
-              <div className="space-y-3">
-                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
-                      <UserRound className="size-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">Past medical history</p>
-                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                        {data.patient.past_medical_history || "Not recorded"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
-                      <HeartPulse className="size-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
-                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                        {data.patient.past_surgical_history || "Not recorded"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700">
-                      <Pill className="size-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">Drug history</p>
-                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                        {data.patient.drug_history || "Not recorded"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-amber-50 p-2.5 text-amber-700">
-                      <ShieldAlert className="size-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">Allergy History</p>
-                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                        {data.patient.drug_allergy_history || "Not recorded"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard
-          title="Particularity"
-            >
-              <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Particularity
+              <div className="mt-2 border-t border-slate-100 pt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Locations and affiliations
                 </p>
-                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
-                  {data.patient.particularity || "No particularity recorded during intake."}
-                </p>
+                <div className="mt-1">
+                  <PatientLocationTags
+                    tags={data.patient.location_tags || []}
+                    onChange={() => {}}
+                    readOnly
+                  />
+                </div>
               </div>
+            </SectionCard>
+
+            <SectionCard className="xl:col-span-5" title="Next of kin">
+              <dl className="grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-2">
+                <ProfileDlItem label="Name" value={data.patient.next_of_kin_name} emphasize />
+                <ProfileDlItem label="Relationship" value={data.patient.next_of_kin_relationship} />
+                <ProfileDlItem label="Phone" value={data.patient.next_of_kin_contact_number} />
+                <ProfileDlItem label="Email" value={data.patient.next_of_kin_email} />
+              </dl>
+            </SectionCard>
+
+            <SectionCard className="xl:col-span-7" title="Clinical history">
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
+                <ClinicalGridItem label="Past surgical history" value={data.patient.past_surgical_history} />
+                <ClinicalGridItem label="Drug history" value={data.patient.drug_history} />
+                <ClinicalGridItem label="Allergy history" value={data.patient.drug_allergy_history} />
+              </div>
+            </SectionCard>
+
+            <SectionCard className="xl:col-span-5" title="Particularity">
+              <p
+                className={cx(
+                  "whitespace-pre-wrap text-xs leading-snug",
+                  data.patient.particularity ? "text-slate-700 line-clamp-4" : "text-slate-400",
+                )}
+              >
+                {data.patient.particularity || "No particularity recorded during intake."}
+              </p>
             </SectionCard>
           </div>
 
@@ -1692,58 +1637,47 @@ function PatientProfilePage() {
             }
           >
               {data.bills.length ? (
-                <div className="space-y-3">
-                  {data.bills.map((bill) => (
-                    <div
-                      key={bill.id}
-                      className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-950">
-                            {formatCurrency(bill.total_amount)}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            Bill #{bill.id} - {bill.doctor_name} - {formatDate(bill.consultation_date)}
-                          </p>
-                        </div>
-                        <StatusBadge value={bill.status} />
-                      </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Pay by
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">
-                            {formatPaymentMethod(bill.payment_method)}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Payment date
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">
-                            {bill.payment_date ? formatDate(bill.payment_date) : "Not recorded"}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Consultation
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">
+                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
+                  <table className="min-w-full table-fixed text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <tr>
+                        <th className="w-[26%] px-3 py-2">Bill / recorded</th>
+                        <th className="w-[22%] px-3 py-2">Consultation</th>
+                        <th className="w-[18%] px-3 py-2">Amount</th>
+                        <th className="w-[18%] px-3 py-2">Status</th>
+                        <th className="w-[16%] px-3 py-2 text-right">Open</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.bills.map((bill) => (
+                        <tr key={bill.id} className="align-middle">
+                          <td className="px-3 py-1.5 align-middle">
+                            <p className="truncate font-semibold text-slate-900">Bill #{bill.id}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              Recorded {formatDate(bill.created_at)}
+                            </p>
+                          </td>
+                          <td className="px-3 py-1.5 align-middle text-xs text-slate-600">
                             {formatDate(bill.consultation_date)}
-                          </p>
-                        </div>
-                      </div>
-                      <ul className="mt-3 space-y-1 text-sm text-slate-600">
-                        {bill.items.map((item, index) => (
-                          <li key={`${bill.id}-${index}`}>
-                            {item.description}: {formatCurrency(item.amount)}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
+                          </td>
+                          <td className="px-3 py-1.5 align-middle font-semibold text-slate-900">
+                            {formatCurrency(bill.total_amount)}
+                          </td>
+                          <td className="px-3 py-1.5 align-middle">
+                            <StatusBadge value={bill.status} />
+                          </td>
+                          <td className="px-3 py-1.5 align-middle text-right">
+                            <Link
+                              to={`/billing?patientId=${id}`}
+                              className="inline-flex rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              Open
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <EmptyState
@@ -1772,22 +1706,22 @@ function PatientProfilePage() {
               <div className="space-y-4">
                 <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_22px_50px_-38px_rgba(15,23,42,0.35)]">
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 text-left">
+                    <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
                       <thead className="bg-slate-50/90">
                         <tr>
-                          <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[12%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Date
                           </th>
-                          <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[18%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Doctor
                           </th>
-                          <th className="min-w-0 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 md:min-w-[16rem] lg:min-w-[22rem]">
+                          <th className="min-w-0 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Consultation note
                           </th>
-                          <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[12%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Created
                           </th>
-                          <th className="px-5 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[22%] px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Action
                           </th>
                         </tr>
@@ -1798,17 +1732,15 @@ function PatientProfilePage() {
                           const canEditRow = canEditConsultation(consultation);
                           const note = consultation.doctor_notes || "";
                           const isExpanded = expandedConsultations[consultation.id] || isEditing;
-                          const shouldTruncate = note.length > CONSULTATION_PREVIEW_LIMIT;
-                          const noteToDisplay = isExpanded
-                            ? note
-                            : getConsultationPreview(note, CONSULTATION_PREVIEW_LIMIT);
+                          const shouldTruncate =
+                            note.length > CONSULTATION_PREVIEW_LIMIT || /\r?\n/.test(note);
 
                           return (
                             <tr key={consultation.id} className="align-top">
-                              <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                              <td className="px-4 py-2.5 text-sm font-semibold text-slate-900">
                                 {formatDate(consultation.consultation_date)}
                               </td>
-                              <td className="px-5 py-4 text-sm text-slate-600">
+                              <td className="px-4 py-2.5 text-sm text-slate-600">
                                 <p className="font-semibold text-slate-900">
                                   {consultation.doctor_name}
                                 </p>
@@ -1816,7 +1748,7 @@ function PatientProfilePage() {
                                   {consultation.specialization || "General practice"}
                                 </p>
                               </td>
-                              <td className="px-5 py-4">
+                              <td className="min-w-0 max-w-0 px-4 py-2.5">
                                 {isEditing ? (
                                   <div className="space-y-3">
                                     {user.role === "admin" ? (
@@ -1894,9 +1826,16 @@ function PatientProfilePage() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="space-y-2">
-                                    <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
-                                      {noteToDisplay || "No note recorded."}
+                                  <div className="min-w-0 space-y-2">
+                                    <p
+                                      className={cx(
+                                        "break-words text-sm leading-7 text-slate-600",
+                                        isExpanded
+                                          ? "whitespace-pre-wrap"
+                                          : "line-clamp-3 [overflow-wrap:anywhere]",
+                                      )}
+                                    >
+                                      {note || "No note recorded."}
                                     </p>
                                     {shouldTruncate ? (
                                       <button
@@ -1915,10 +1854,10 @@ function PatientProfilePage() {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-5 py-4 text-sm text-slate-600">
+                              <td className="px-4 py-2.5 text-sm text-slate-600">
                                 {formatDate(consultation.created_at)}
                               </td>
-                              <td className="px-5 py-4">
+                              <td className="px-4 py-2.5">
                                 <div className="flex justify-end gap-2">
                                   <Link
                                     to={`/consultations/${consultation.id}`}
@@ -2121,18 +2060,6 @@ function PatientProfilePage() {
               <EmptyState
                 title="No Medical & Lab Reports yet"
                 description="Add a Medical & Lab Report here to keep investigations, consultation notes, and uploaded files together on the same patient profile."
-                action={
-                  canManageLabReports ? (
-                    <button
-                      type="button"
-                      onClick={() => setReportEditor({ id: null })}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
-                    >
-                      <Plus className="size-4" />
-                      Add Medical & Lab Report
-                    </button>
-                  ) : null
-                }
               />
             )}
           </SectionCard>
