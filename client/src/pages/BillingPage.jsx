@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CreditCard,
   DollarSign,
+  Eye,
   Package,
   Pencil,
   Plus,
@@ -1847,8 +1848,14 @@ function BillingPage() {
         </div>
       ) : null}
 
-      <div className={cx("grid gap-6", !isMobile && "xl:grid-cols-[1.1fr_0.9fr]")}>
+      <div
+        className={cx(
+          "grid gap-6",
+          !isMobile && "xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start",
+        )}
+      >
         <SectionCard
+          className="min-w-0"
           title="Bills"
           actions={
             isMobile ? (
@@ -1911,28 +1918,30 @@ function BillingPage() {
 
           {billsForDisplay.length ? (
             <>
-              <div className="hidden overflow-hidden rounded-[24px] border border-slate-200/80 md:block">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full bg-white text-left">
+              <div className="hidden min-w-0 rounded-[24px] border border-slate-200/80 md:block">
+                <div className="overflow-x-auto overscroll-x-contain">
+                  <table className="min-w-[920px] w-full bg-white text-left">
                     <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                       <tr>
-                        <th className="px-5 py-4">Patient</th>
-                        <th className="px-5 py-4">Consultation</th>
-                        <th className="px-5 py-4">Total</th>
-                        <th className="px-5 py-4">Status</th>
-                        <th className="px-5 py-4">Pay by</th>
-                        <th className="px-5 py-4">Payment date</th>
-                        <th className="px-5 py-4 text-right">Actions</th>
+                        <th className="sticky left-0 z-[1] bg-slate-50 px-5 py-3 shadow-[2px_0_0_rgba(226,232,240,0.9)] md:py-3">
+                          Patient
+                        </th>
+                        <th className="px-5 py-3">Consultation</th>
+                        <th className="px-5 py-3">Total</th>
+                        <th className="px-5 py-3">Status</th>
+                        <th className="px-5 py-3">Pay by</th>
+                        <th className="px-5 py-3">Payment date</th>
+                        <th className="px-5 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {billsForDisplay.map((bill) => (
-                        <tr key={bill.id} className="border-t border-slate-200/70">
-                          <td className="px-5 py-4">
+                        <tr key={bill.id} className="group border-t border-slate-200/70 hover:bg-slate-50/70">
+                          <td className="sticky left-0 z-[1] bg-white px-5 py-3 align-middle shadow-[2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <p className="font-semibold text-slate-950">{bill.patient_name}</p>
                             <p className="mt-1 text-sm text-slate-500">{bill.doctor_name}</p>
                           </td>
-                          <td className="px-5 py-4 text-sm text-slate-600">
+                          <td className="px-5 py-3 text-sm text-slate-600">
                             <p>{formatDate(bill.consultation_date)}</p>
                             <p className="mt-1 text-slate-500">
                               Bill #{bill.id} - {bill.items.length} line item
@@ -1953,35 +1962,35 @@ function BillingPage() {
                               ))}
                             </div>
                           </td>
-                          <td className="px-5 py-4 font-semibold text-slate-950">
+                          <td className="px-5 py-3 font-semibold text-slate-950">
                             {formatCurrency(bill.total_amount)}
                           </td>
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-3">
                             <StatusBadge value={bill.status} />
                           </td>
-                          <td className="px-5 py-4 text-sm text-slate-600">
+                          <td className="px-5 py-3 text-sm text-slate-600">
                             {formatPaymentMethod(bill.payment_method)}
                           </td>
-                          <td className="px-5 py-4 text-sm text-slate-600">
+                          <td className="px-5 py-3 text-sm text-slate-600">
                             {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
                           </td>
-                          <td className="px-5 py-4">
-                            <div className="flex flex-wrap justify-end gap-2">
+                          <td className="px-5 py-3">
+                            <div className="flex flex-row items-center justify-end gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleShareBillPdf(bill)}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-[#4FB8B3]/35 bg-[#4FB8B3]/10 px-3 py-2 text-sm font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20"
+                                className="inline-flex items-center gap-1.5 rounded-2xl border border-[#4FB8B3]/35 bg-[#4FB8B3]/10 px-3 py-1.5 text-sm font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20"
                               >
-                                <Share2 className="size-4" />
-                                PDF
+                                <Eye className="size-4 shrink-0" />
+                                View
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditor({ bill })}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                aria-label="Edit bill"
+                                className="grid size-9 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                               >
                                 <SquarePen className="size-4" />
-                                Edit
                               </button>
                             </div>
                           </td>
@@ -2007,7 +2016,7 @@ function BillingPage() {
                         type="button"
                         onClick={() => handleShareBillPdf(bill)}
                         className="grid size-12 shrink-0 place-items-center rounded-2xl border-2 border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b] transition active:scale-95"
-                        aria-label="Share or download invoice PDF"
+                        aria-label="View or share invoice"
                       >
                         <Share2 className="size-5" />
                       </button>
@@ -2037,7 +2046,7 @@ function BillingPage() {
         </SectionCard>
 
         <SectionCard
-          className={isMobile ? "hidden" : undefined}
+          className={cx("w-full max-w-sm xl:justify-self-end", isMobile ? "hidden" : undefined)}
           title="Pending payments from unpaid patients"
         >
           {pendingPayments.length ? (
