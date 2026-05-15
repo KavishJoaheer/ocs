@@ -99,7 +99,6 @@ function StockActivityPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [netValueRs, setNetValueRs] = useState(0);
   const [analytics, setAnalytics] = useState({
     total_transactions: 0,
     total_units_moved: 0,
@@ -144,7 +143,6 @@ function StockActivityPage() {
         setActions(payload?.actions || []);
         setTotalPages(nextTotalPages);
         setTotal(Number(payload?.total || 0));
-        setNetValueRs(Number(payload?.net_value_rs || 0));
         if (payload?.analytics) {
           setAnalytics(payload.analytics);
         }
@@ -156,7 +154,6 @@ function StockActivityPage() {
           setRows([]);
           setTotal(0);
           setTotalPages(1);
-          setNetValueRs(0);
           toast.error(error.message || "Failed to load stock activity.");
         }
       } finally {
@@ -250,7 +247,6 @@ function StockActivityPage() {
       <PageHeader
         eyebrow="Inventory"
         title="Stock Activity Log"
-        description="Real-time audit of all stock intake, transfers, and consumption."
         actions={
           user?.role === "admin" ? (
             <button
@@ -265,25 +261,65 @@ function StockActivityPage() {
         }
       />
 
-      <SectionCard
-        className="rounded-3xl"
-        title="Filters"
-        subtitle="Drill down by actor, action, date, and item name."
-        actions={
-          filtersActive ? (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              <RotateCcw className="size-3.5" />
-              Clear all
-            </button>
-          ) : null
-        }
-      >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <label className="space-y-1">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Inventory Velocity</p>
+            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+              <Activity className="size-4" />
+            </span>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{analytics.total_transactions}</p>
+          <p className="mt-3 text-sm font-semibold text-slate-700">{analytics.total_units_moved} units moved</p>
+        </article>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Financial Health</p>
+            <span className="grid size-9 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
+              <Wallet className="size-4" />
+            </span>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.total_value_cost_rs || 0)}</p>
+          {sellFilterActive ? (
+            <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
+          ) : null}
+        </article>
+
+        <article className={`rounded-3xl border p-5 shadow-sm ${wastageRisk ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
+          <div className="flex items-center justify-between">
+            <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${wastageRisk ? "text-rose-600" : "text-slate-500"}`}>Clinical Wastage (Risk)</p>
+            <span className={`grid size-9 place-items-center rounded-2xl ${wastageRisk ? "bg-rose-200 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+              <TrendingUp className="size-4" />
+            </span>
+          </div>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.wastage_value_rs || 0)}</p>
+          <p className={`mt-3 text-sm font-semibold ${wastageRisk ? "text-rose-600" : "text-slate-700"}`}>
+            Wastage Rate: {Number(analytics.wastage_pct || 0).toFixed(2)}%
+          </p>
+        </article>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Top Performer</p>
+            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+              <Trophy className="size-4" />
+            </span>
+          </div>
+          {analytics.top_performer ? (
+            <>
+              <p className="mt-3 text-2xl font-bold text-slate-900">{analytics.top_performer.name}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{analytics.top_performer.role}</p>
+            </>
+          ) : (
+            <p className="mt-3 text-2xl font-bold text-slate-400">—</p>
+          )}
+        </article>
+      </div>
+
+      <SectionCard title={`Activity (${total})`}>
+        <div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
+          <label className="min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[14rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
             <select className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" value={userId} onChange={(event) => { setUserId(event.target.value); setPage(1); }}>
               <option value="">All users</option>
@@ -292,7 +328,7 @@ function StockActivityPage() {
               ))}
             </select>
           </label>
-          <div className="relative space-y-1" ref={actionMenuRef}>
+          <div className="relative min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[12rem]" ref={actionMenuRef}>
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Action Types</span>
             <button
               type="button"
@@ -300,7 +336,7 @@ function StockActivityPage() {
               onClick={() => setActionMenuOpen((prev) => !prev)}
             >
               <span className="truncate">{actionSummary}</span>
-              <ChevronDown className="size-4 text-slate-400" />
+              <ChevronDown className="size-4 shrink-0 text-slate-400" />
             </button>
             {actionMenuOpen ? (
               <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
@@ -338,20 +374,20 @@ function StockActivityPage() {
               </div>
             ) : null}
           </div>
-          <label className="space-y-1">
+          <label className="w-full space-y-1 sm:w-auto sm:min-w-[9.5rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">From</span>
             <input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" />
           </label>
-          <label className="space-y-1">
+          <label className="w-full space-y-1 sm:w-auto sm:min-w-[9.5rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">To</span>
             <input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" />
           </label>
-          <label className="space-y-1">
+          <label className="min-w-0 flex-1 space-y-1 sm:min-w-[12rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Search item</span>
             <div className="flex h-11 items-center rounded-2xl border border-slate-200 bg-white px-3">
-              <Search className="size-4 text-slate-400" />
+              <Search className="size-4 shrink-0 text-slate-400" />
               <input
-                className="w-full bg-transparent px-2 py-2.5 text-sm outline-none"
+                className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm outline-none"
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 onKeyDown={(event) => {
@@ -363,95 +399,21 @@ function StockActivityPage() {
                 }}
                 placeholder="Cannula G20"
               />
-              <button type="button" className="text-xs font-semibold text-[#4FB8B3]" onClick={() => { setSearch(searchDraft.trim()); setPage(1); }}>Apply</button>
+              <button type="button" className="shrink-0 text-xs font-semibold text-[#4FB8B3]" onClick={() => { setSearch(searchDraft.trim()); setPage(1); }}>Apply</button>
             </div>
           </label>
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <RotateCcw className="size-3.5" />
+              Clear all
+            </button>
+          ) : null}
         </div>
-      </SectionCard>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Inventory Velocity</p>
-            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
-              <Activity className="size-4" />
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{analytics.total_transactions}</p>
-          <p className="text-xs text-slate-500">Total transactions in view</p>
-          <p className="mt-3 text-sm font-semibold text-slate-700">{analytics.total_units_moved} units moved</p>
-        </article>
-
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Financial Health</p>
-            <span className="grid size-9 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
-              <Wallet className="size-4" />
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.total_value_cost_rs || 0)}</p>
-          <p className="text-xs text-slate-500">Total value at cost (Rs MUR)</p>
-          {sellFilterActive ? (
-            <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
-          ) : (
-            <p className="mt-3 text-xs text-slate-400">Filter by Sell to see Gross Margin %.</p>
-          )}
-        </article>
-
-        <article className={`rounded-3xl border p-5 shadow-sm ${wastageRisk ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
-          <div className="flex items-center justify-between">
-            <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${wastageRisk ? "text-rose-600" : "text-slate-500"}`}>Clinical Wastage (Risk)</p>
-            <span className={`grid size-9 place-items-center rounded-2xl ${wastageRisk ? "bg-rose-200 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
-              <TrendingUp className="size-4" />
-            </span>
-          </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.wastage_value_rs || 0)}</p>
-          <p className="text-xs text-slate-500">Wastage value (cost)</p>
-          <p className={`mt-3 text-sm font-semibold ${wastageRisk ? "text-rose-600" : "text-slate-700"}`}>
-            Wastage Rate: {Number(analytics.wastage_pct || 0).toFixed(2)}%
-          </p>
-        </article>
-
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Top Performer</p>
-            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
-              <Trophy className="size-4" />
-            </span>
-          </div>
-          {analytics.top_performer ? (
-            <>
-              <p className="mt-3 text-2xl font-bold text-slate-900">{analytics.top_performer.name}</p>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{analytics.top_performer.role}</p>
-              <p className="mt-3 text-sm font-semibold text-[#1f7f7b]">{analytics.top_performer.count} events recorded</p>
-            </>
-          ) : (
-            <>
-              <p className="mt-3 text-2xl font-bold text-slate-400">—</p>
-              <p className="text-xs text-slate-400">No activity in this view.</p>
-            </>
-          )}
-        </article>
-      </div>
-
-      <SectionCard
-        className="rounded-3xl"
-        title="Filtered Summary"
-        subtitle="Live totals from the current filtered event view."
-      >
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total Events Found</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{total}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Net Value (Rs)</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{formatRupees(netValueRs)}</p>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard className="rounded-3xl" title={`Activity (${total})`} subtitle="Server-side paginated at 50 rows per page.">
         {loading ? (
           <LoadingState message="Loading stock activity..." />
         ) : rows.length === 0 ? (
@@ -502,10 +464,11 @@ function StockActivityPage() {
                           <button
                             type="button"
                             onClick={() => reprintReceipt(transactionId)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2 py-1 text-xs font-semibold text-[#4FB8B3] hover:bg-slate-50"
+                            className="inline-grid size-9 place-items-center rounded-xl bg-transparent text-teal-600 transition hover:text-teal-800"
+                            title="Print receipt"
+                            aria-label="Print receipt"
                           >
-                            <Printer className="size-3.5" />
-                            Print
+                            <Printer className="size-4" />
                           </button>
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
