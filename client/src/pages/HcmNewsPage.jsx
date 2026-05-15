@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { Eye, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -25,17 +25,6 @@ function formatTimestamp(value) {
   return dayjs(value).format("MMM D, YYYY [at] h:mm A");
 }
 
-function toExcerpt(text, maxLength = 180) {
-  const normalized = String(text || "").replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return "";
-  }
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength).trim()}...`;
-}
-
 function mergePostsChronologically(posts = [], history = []) {
   const byId = new Map();
 
@@ -48,60 +37,95 @@ function mergePostsChronologically(posts = [], history = []) {
   );
 }
 
-function isRecentHighlight(post, index) {
-  if (index !== 0 || !post?.updated_at) {
+function isPostNew(post) {
+  if (!post?.created_at) {
     return false;
   }
-
-  return dayjs().diff(dayjs(post.updated_at), "hour") < 24;
+  return dayjs().diff(dayjs(post.created_at), "hour") < 48;
 }
 
-function NewsPostCard({ post, index, user, onView, onEdit, onDelete }) {
-  const highlighted = isRecentHighlight(post, index);
-  const isArchived = post.status === "archived";
+function toDisplayAuthorName(name) {
+  const raw = String(name || "").trim();
+  if (!raw) {
+    return "Admin";
+  }
+  return raw
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : ""))
+    .join(" ");
+}
+
+function NewsPostCard({ post, user, onEdit, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const bodyRef = useRef(null);
+  const isNew = isPostNew(post);
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) {
+      return undefined;
+    }
+    if (expanded) {
+      setIsTruncated(false);
+      return undefined;
+    }
+    const id = requestAnimationFrame(() => {
+      const node = bodyRef.current;
+      if (!node) {
+        return;
+      }
+      setIsTruncated(node.scrollHeight > node.clientHeight + 1);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [post.body, expanded]);
+
+  const authorLabel = toDisplayAuthorName(post.updated_by_name || post.created_by_name);
 
   return (
-    <article
-      className={cx(
-        "rounded-[24px] border bg-white/90 p-5 transition",
-        highlighted
-          ? "border-l-4 border-l-[#2d8f98] border-slate-200/80 shadow-[0_12px_30px_rgba(45,143,152,0.08)]"
-          : "border-slate-200/80",
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-semibold text-slate-950">{post.title}</h3>
-            {highlighted ? (
-              <span className="rounded-full bg-[#2d8f98]/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#2d8f98]">
-                New
-              </span>
-            ) : null}
-            {isArchived ? (
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Archived
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-2 text-sm leading-7 text-[#3f6270]">{toExcerpt(post.body)}</p>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#6e949b]">
-            {post.updated_by_name || post.created_by_name || "Admin"}
-            <span className="mx-2 text-slate-300">·</span>
-            {formatTimestamp(post.updated_at)}
-          </p>
+    <article className="rounded-[24px] border border-slate-200/80 bg-white/90 p-5 transition">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-950">{post.title}</h3>
+          {isNew ? (
+            <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-800">
+              NEW
+            </span>
+          ) : null}
         </div>
+        <time
+          className="shrink-0 text-xs font-medium text-gray-500"
+          dateTime={post.updated_at || post.created_at}
+        >
+          {formatTimestamp(post.updated_at)}
+        </time>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => onView(post)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+      <div className="mt-3">
+        <p
+          ref={bodyRef}
+          className={cx(
+            "whitespace-pre-wrap break-words text-[15px] leading-[1.65] text-slate-700",
+            !expanded && "line-clamp-4",
+          )}
         >
-          <Eye className="size-3.5" />
-          View
-        </button>
+          {post.body || ""}
+        </p>
+        {isTruncated || expanded ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="mt-2 text-xs font-medium text-teal-700 underline-offset-2 hover:text-teal-900 hover:underline"
+          >
+            {expanded ? "Show less" : "Read more..."}
+          </button>
+        ) : null}
+      </div>
+
+      <p className="mt-3 text-xs font-medium text-gray-500">{authorLabel}</p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
         {user.role === "admin" ? (
           <>
             <button
@@ -136,8 +160,6 @@ function HcmNewsPage() {
   const [isSavingPost, setIsSavingPost] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [viewPost, setViewPost] = useState(null);
-
   const feedPosts = useMemo(
     () => (data ? mergePostsChronologically(data.posts, data.history) : []),
     [data],
@@ -332,14 +354,12 @@ function HcmNewsPage() {
       />
 
       {feedPosts.length ? (
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {feedPosts.map((post, index) => (
+        <div className="mx-auto flex max-w-4xl flex-col gap-4">
+          {feedPosts.map((post) => (
             <NewsPostCard
               key={post.id}
               post={post}
-              index={index}
               user={user}
-              onView={setViewPost}
               onEdit={openEditModal}
               onDelete={setDeleteTarget}
             />
@@ -419,26 +439,6 @@ function HcmNewsPage() {
         confirmLabel={isDeletingPost ? "Deleting..." : "Delete update"}
       />
 
-      <Modal
-        open={Boolean(viewPost)}
-        onClose={() => setViewPost(null)}
-        title={viewPost?.title || "HCM Update"}
-        description={viewPost ? `Published ${formatTimestamp(viewPost.updated_at)}` : ""}
-        size="lg"
-      >
-        <div className="space-y-4">
-          <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{viewPost?.body}</p>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setViewPost(null)}
-              className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
