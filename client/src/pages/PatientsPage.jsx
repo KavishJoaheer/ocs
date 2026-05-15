@@ -25,7 +25,7 @@ import {
   formatAgeFromDateOfBirth,
   formatDate,
 } from "../lib/format.js";
-import { cx } from "../lib/utils.js";
+import { cx, pageContainerClass } from "../lib/utils.js";
 
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 
@@ -199,7 +199,7 @@ function PatientsPage() {
   }
 
   return (
-    <div className="w-full min-w-0 max-w-full space-y-4">
+    <div className={cx(pageContainerClass, "space-y-4")}>
       <PageHeader
         title="Patients"
         actions={headerActions}

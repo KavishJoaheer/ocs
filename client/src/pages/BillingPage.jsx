@@ -31,7 +31,12 @@ import {
   formatDate,
   formatPaymentMethod,
 } from "../lib/format.js";
-import { cx } from "../lib/utils.js";
+import { cx, formControlClass, pageContainerClass } from "../lib/utils.js";
+
+const BILLING_FIELD = cx(
+  formControlClass,
+  "rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white",
+);
 
 const PAYMENT_METHOD_OPTIONS = [
   { value: "cash", label: "Cash" },
@@ -82,14 +87,14 @@ function BillingItemsEditor({ items, setItems, lockInventory = false }) {
         const isInventoryLine = Boolean(item.inventory_item_id) && Number(item.quantity || 0) > 0;
         const lineLocked = lockInventory && isInventoryLine;
         return (
-          <div key={index} className="grid gap-3 md:grid-cols-[1fr_160px_150px_auto]">
+          <div key={index} className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_160px_150px_auto]">
             <input
               required
               value={item.description}
               onChange={(event) => updateItem(index, "description", event.target.value)}
               placeholder="Description"
               disabled={lineLocked}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+              className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500")}
             />
             <input
               required
@@ -100,13 +105,13 @@ function BillingItemsEditor({ items, setItems, lockInventory = false }) {
               onChange={(event) => updateItem(index, "amount", event.target.value)}
               placeholder="Amount"
               disabled={lineLocked}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+              className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500")}
             />
             <select
               value={item.type || "Sale"}
               onChange={(event) => updateItem(index, "type", event.target.value)}
               disabled={lineLocked}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+              className={cx(BILLING_FIELD, "px-3 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:bg-slate-100")}
             >
               <option value="Sale">Sale</option>
               <option value="Wastage">Wastage</option>
@@ -163,26 +168,26 @@ function BillingStatusFields({
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-4">
-      <label className="space-y-2">
+    <div className="grid min-w-0 gap-4 md:grid-cols-4">
+      <label className="min-w-0 space-y-2">
         <span className="text-sm font-semibold text-slate-700">Status</span>
         <select
           value={status}
           onChange={(event) => handleStatusChange(event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+          className={BILLING_FIELD}
         >
           <option value="unpaid">Unpaid</option>
           <option value="paid">Paid</option>
         </select>
       </label>
 
-      <label className="space-y-2">
+      <label className="min-w-0 space-y-2">
         <span className="text-sm font-semibold text-slate-700">Pay by</span>
         <select
           disabled={status !== "paid"}
           value={paymentMethod}
           onChange={(event) => setPaymentMethod(event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+          className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100")}
         >
           <option value="">Select method</option>
           {PAYMENT_METHOD_OPTIONS.map((method) => (
@@ -200,11 +205,11 @@ function BillingStatusFields({
           disabled={status !== "paid"}
           value={paymentDate}
           onChange={(event) => setPaymentDate(event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+          className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100")}
         />
       </label>
 
-      <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
           Total
         </p>
@@ -292,7 +297,7 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
       }
       size="xl"
     >
-      <form className="space-y-5" onSubmit={handleSubmit}>
+      <form className="min-w-0 w-full max-w-full space-y-5" onSubmit={handleSubmit}>
         <div className="rounded-[26px] border border-sky-100 bg-sky-50/70 p-4">
           <p className="text-lg font-semibold text-slate-950">{bill.patient_name}</p>
           <p className="mt-1 text-sm text-slate-600">
@@ -363,7 +368,7 @@ function DescriptionList({
   const gridCols = "grid grid-cols-[2fr_70px_120px_110px_120px_44px] items-start gap-3";
 
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white">
+    <div className="min-w-0 w-full max-w-full overflow-x-hidden rounded-[24px] border border-slate-200 bg-white">
       <div
         className={`${gridCols} hidden border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 md:grid`}
       >
@@ -1051,8 +1056,8 @@ function CreateBillingModal({
       }
       size="xl"
     >
-      <form className="space-y-5" onSubmit={handleSubmit}>
-        <div className="hidden gap-4 md:grid md:grid-cols-2">
+      <form className="min-w-0 w-full max-w-full space-y-5" onSubmit={handleSubmit}>
+        <div className="hidden min-w-0 gap-4 md:grid md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
             {doctorHasNoAssignedPatients ? (
@@ -1064,7 +1069,7 @@ function CreateBillingModal({
                 required
                 value={patientId}
                 onChange={(event) => setPatientId(event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+                className={BILLING_FIELD}
               >
                 <option value="">Select patient</option>
                 {patients.map((patient) => (
@@ -1083,7 +1088,7 @@ function CreateBillingModal({
               disabled={!patientId || !patientConsultations.length}
               value={consultationId}
               onChange={(event) => setConsultationId(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+              className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100")}
             >
               <option value="">
                 {!patientId
@@ -1101,7 +1106,7 @@ function CreateBillingModal({
           </label>
         </div>
 
-        <div className="space-y-3 md:hidden">
+        <div className="min-w-0 space-y-3 md:hidden">
           <div>
             <span className="text-sm font-semibold text-slate-700">Patient</span>
             {doctorHasNoAssignedPatients ? (
@@ -1115,7 +1120,10 @@ function CreateBillingModal({
                   setPatientSearchQuery("");
                   setPatientPickerOpen(true);
                 }}
-                className="mt-2 flex min-h-12 w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 outline-none transition focus:border-[#4FB8B3]"
+                className={cx(
+                  BILLING_FIELD,
+                  "mt-2 flex min-h-12 items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 focus:border-[#4FB8B3]",
+                )}
               >
                 <span className={patientId ? "text-slate-900" : "text-slate-400"}>
                   {patientId ? selectedPatientLabel : "Search and select patient"}
@@ -1124,14 +1132,14 @@ function CreateBillingModal({
               </button>
             )}
           </div>
-          <label className="block space-y-2">
+          <label className="block min-w-0 space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation</span>
             <select
               required
               disabled={!patientId || !patientConsultations.length}
               value={consultationId}
               onChange={(event) => setConsultationId(event.target.value)}
-              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+              className={cx(BILLING_FIELD, "min-h-12 disabled:cursor-not-allowed disabled:bg-slate-100")}
             >
               <option value="">
                 {!patientId
@@ -1160,13 +1168,13 @@ function CreateBillingModal({
           </div>
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2">
+          <label className="min-w-0 space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation Type</span>
             <select
               value={consultationType}
               onChange={(event) => setConsultationType(event.target.value)}
-              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:min-h-0"
+              className={cx(BILLING_FIELD, "min-h-12 md:min-h-0")}
             >
               {CONSULTATION_TYPE_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -1175,7 +1183,7 @@ function CreateBillingModal({
               ))}
             </select>
           </label>
-          <label className="space-y-2">
+          <label className="min-w-0 space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation Price (Rs)</span>
             <input
               inputMode="decimal"
@@ -1185,7 +1193,7 @@ function CreateBillingModal({
               value={consultationPrice}
               onChange={(event) => setConsultationPrice(event.target.value)}
               placeholder="0.00"
-              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:min-h-0"
+              className={cx(BILLING_FIELD, "min-h-12 md:min-h-0")}
             />
           </label>
         </div>
@@ -1676,7 +1684,7 @@ function BillingPage() {
   }
 
   return (
-    <div className={cx("space-y-6", isMobile && canCreateBills && "pb-28")}>
+    <div className={cx(pageContainerClass, "space-y-6", isMobile && canCreateBills && "pb-28")}>
       <PageHeader
         eyebrow="Revenue"
         title="Billing"

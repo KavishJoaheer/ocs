@@ -302,7 +302,11 @@ function Sidebar() {
           </div>
         </div>
 
-        <nav className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2" style={{ paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}>
+        <div className="min-w-0 overflow-x-hidden">
+          <nav
+            className="flex gap-3 overflow-x-auto pb-2"
+            style={{ paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
+          >
           {visibleNavItems.map((item) => (
             <SidebarLink
               key={item.to}
@@ -312,6 +316,7 @@ function Sidebar() {
             />
           ))}
         </nav>
+        </div>
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}

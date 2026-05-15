@@ -11,7 +11,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
-import { cx } from "../lib/utils.js";
+import { cx, pageContainerClass } from "../lib/utils.js";
 
 function SummaryCard({ title, value, tone = "teal", description }) {
   const toneClass = tone === "amber" ? "text-amber-700" : "text-[#4FB8B3]";
@@ -1252,7 +1252,7 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={cx(pageContainerClass, "space-y-6")}>
       <PageHeader
         eyebrow="Logistics"
         title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}

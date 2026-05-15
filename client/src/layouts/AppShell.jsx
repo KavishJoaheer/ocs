@@ -150,11 +150,11 @@ function AppShell() {
       : pageMeta[location.pathname] || pageMeta["/"];
 
   return (
-    <div className="min-h-svh w-full max-w-[100vw] min-w-0 overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
-      <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col lg:flex-row">
+    <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
+      <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
         <Sidebar />
 
-        <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden">
+        <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
           {!alwaysHideTopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
@@ -189,7 +189,7 @@ function AppShell() {
           ) : null}
 
           <div
-            className={`w-full min-w-0 max-w-full overflow-x-hidden px-4 py-3 md:px-5 md:py-6 lg:px-8 ${alwaysHideTopHeader ? "lg:py-6" : "lg:py-8"}`}
+            className={`ocs-page w-full min-w-0 max-w-full overflow-x-hidden overscroll-x-none px-4 py-3 sm:px-6 md:px-5 md:py-6 lg:px-8 ${alwaysHideTopHeader ? "lg:py-6" : "lg:py-8"}`}
             style={{
               paddingBottom: `max(1.5rem, var(--sab))`,
               paddingLeft: `max(1rem, var(--sal))`,

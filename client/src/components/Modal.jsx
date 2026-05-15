@@ -41,7 +41,7 @@ function Modal({
   }[size];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-x-hidden overscroll-x-none p-4 sm:items-center sm:py-10">
       <button
         aria-label="Close modal"
         className="absolute inset-0 bg-[rgba(34,72,91,0.42)] backdrop-blur-sm"
@@ -51,7 +51,7 @@ function Modal({
 
       <div
         className={cx(
-          "relative z-10 flex w-full max-h-[90vh] flex-col rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-6 shadow-[0_40px_120px_rgba(34,72,91,0.18)]",
+          "relative z-10 flex w-full min-w-0 max-w-[min(100%,calc(100vw-2rem))] max-h-[min(90vh,100dvh-2rem)] flex-col overflow-x-hidden rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:p-6",
           sizeClass,
         )}
       >
@@ -71,8 +71,8 @@ function Modal({
 
         <div
           className={cx(
-            "min-h-0 flex-1",
-            innerScroll ? "overflow-y-auto" : "flex flex-col overflow-hidden",
+            "min-h-0 min-w-0 flex-1",
+            innerScroll ? "overflow-x-hidden overflow-y-auto" : "flex flex-col overflow-hidden",
           )}
         >
           {children}

@@ -960,7 +960,7 @@ function PatientProfilePage() {
   ];
 
   return (
-    <div className="w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
+    <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
       {isMobile && (
         <div
           className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"

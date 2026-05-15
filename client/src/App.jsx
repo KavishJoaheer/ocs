@@ -22,7 +22,7 @@ import StockActivityPage from "./pages/StockActivityPage.jsx";
 
 function App() {
   return (
-    <div className="min-h-svh w-full max-w-[100vw] min-w-0 overflow-x-hidden">
+    <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none">
       <Routes>
       <Route path="/login" element={<LoginPage />} />
 
