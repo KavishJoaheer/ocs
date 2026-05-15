@@ -1,8 +1,9 @@
 import { cx } from "../lib/utils.js";
 
-function SectionCard({ title, subtitle, actions, className, children }) {
+function SectionCard({ title, subtitle, actions, className, children, id }) {
   return (
     <section
+      id={id}
       className={cx(
         "max-w-full min-w-0 rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(242,251,250,0.9))] p-5 shadow-[0_30px_80px_rgba(34,72,91,0.09)] backdrop-blur",
         className,

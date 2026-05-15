@@ -9,6 +9,7 @@ import {
   Download,
   FileText,
   FlaskConical,
+  History,
   HeartPulse,
   Paperclip,
   Phone,
@@ -852,6 +853,9 @@ function PatientProfilePage() {
     data.consultations.length - visibleConsultations.length,
     0,
   );
+  const lastVisitDate = data.consultations[0]?.consultation_date
+    ? formatDate(data.consultations[0].consultation_date)
+    : "Not recorded";
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
@@ -884,17 +888,7 @@ function PatientProfilePage() {
         eyebrow="Patient profile"
         title={data.patient.full_name}
         actions={
-          <div className="flex flex-wrap justify-end gap-3">
-            {canOpenBilling ? (
-              <Link
-                to={`/billing?patientId=${id}`}
-                className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
-              >
-                <CreditCard className="size-4" />
-                Open billing
-              </Link>
-            ) : null}
-
+          isMobile ? (
             <Link
               to="/patients"
               className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
@@ -902,7 +896,44 @@ function PatientProfilePage() {
               <ArrowLeft className="size-4" />
               Back to patients
             </Link>
-          </div>
+          ) : (
+            <div className="flex flex-row flex-wrap items-center justify-end gap-3">
+              {canManageConsultations ? (
+                <button
+                  type="button"
+                  onClick={() => setConsultationComposerOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
+                >
+                  <Plus className="size-4" />
+                  New Consultation Note
+                </button>
+              ) : null}
+              <a
+                href="#consultation-notes"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+              >
+                <FileText className="size-4" />
+                View Past Notes
+              </a>
+              {canOpenBilling ? (
+                <Link
+                  to={`/billing?patientId=${id}`}
+                  aria-label="Open billing"
+                  title="Open billing"
+                  className="inline-flex items-center justify-center rounded-2xl border border-transparent p-3 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <CreditCard className="size-5" />
+                </Link>
+              ) : null}
+              <Link
+                to="/patients"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+              >
+                <ArrowLeft className="size-4" />
+                Back to patients
+              </Link>
+            </div>
+          )
         }
       />
 
@@ -1547,9 +1578,9 @@ function PatientProfilePage() {
               value={data.labReports.length}
             />
             <HighlightStat
-              icon={CreditCard}
-              label="Total billed"
-              value={formatCurrency(totalBilled)}
+              icon={History}
+              label="Last visit date"
+              value={lastVisitDate}
             />
           </div>
 
@@ -1688,7 +1719,9 @@ function PatientProfilePage() {
           </SectionCard>
 
           <SectionCard
-        title="Consultation notes"
+            id="consultation-notes"
+            className="scroll-mt-28"
+            title="Consultation notes"
             actions={
               canManageConsultations ? (
                 <button
