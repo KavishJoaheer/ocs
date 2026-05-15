@@ -50,7 +50,7 @@ function MobileLauncher({ user }) {
     cards.push({
       label: "Add a Patient",
       icon: UserPlus,
-      to: "/patients?action=add",
+      to: "/patients/add",
       description: "Register a new patient into the OCS system.",
     });
   }

@@ -10,6 +10,10 @@ const pageMeta = {
     label: "Dashboard",
     helper: "Live operational view of patients, appointments, billing, and dispatch activity.",
   },
+  "/patients/add": {
+    label: "Add patient",
+    helper: "Register a new patient record.",
+  },
   "/patients": {
     label: "Patients",
     helper: "Manage patient records and review each OCS Medecins care timeline at a glance.",
@@ -104,7 +108,8 @@ function AppShell() {
   const location = useLocation();
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const isPatientProfile = location.pathname.startsWith("/patients/");
+  const isPatientProfile =
+    /^\/patients\/[^/]+$/.test(location.pathname) && location.pathname !== "/patients/add";
   const isDashboard = location.pathname === "/";
   const hideBottomNav = isDashboard && isMobile;
   const alwaysHideTopHeader = isDashboard && user.role === "doctor";

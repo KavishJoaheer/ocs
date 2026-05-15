@@ -16,7 +16,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import OperatorBillingStatusPage from "./pages/OperatorBillingStatusPage.jsx";
 import OperatorWorkspacePage from "./pages/OperatorWorkspacePage.jsx";
 import PatientProfilePage from "./pages/PatientProfilePage.jsx";
-import PatientsPage from "./pages/PatientsPage.jsx";
+import PatientAddPage from "./pages/PatientAddPage.jsx";
 import StockActivityPage from "./pages/StockActivityPage.jsx";
 
 function App() {
@@ -29,6 +29,10 @@ function App() {
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "lab_tech", "accountant"]} />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/hcm-news" element={<HcmNewsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>
+            <Route path="/patients/add" element={<PatientAddPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "lab_tech"]} />}>
