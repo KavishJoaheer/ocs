@@ -1,0 +1,18 @@
+# Named Cloudflare Tunnel (custom domain). Create the tunnel in Zero Trust first,
+# then paste the connector token below. Requires the app stack already deployed
+# so the external network clinicflow-public exists.
+#
+# See NAS_DEPLOYMENT.md → "Part 4: Cloudflare Named Tunnel (custom domain)".
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: clinicflow-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    networks:
+      - clinicflow-public
+
+networks:
+  clinicflow-public:
+    external: true

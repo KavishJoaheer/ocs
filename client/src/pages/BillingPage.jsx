@@ -1,13 +1,18 @@
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CreditCard,
   DollarSign,
+  Package,
   Plus,
   ReceiptText,
+  Search,
+  Share2,
   SquarePen,
   Stethoscope,
   Trash2,
+  X,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -18,12 +23,15 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
+import { shareOrDownloadBillPdf } from "../lib/billPdf.js";
 import {
   formatCurrency,
   formatDate,
   formatPaymentMethod,
 } from "../lib/format.js";
+import { cx } from "../lib/utils.js";
 
 const PAYMENT_METHOD_OPTIONS = [
   { value: "cash", label: "Cash" },
@@ -207,6 +215,7 @@ function BillingStatusFields({
 }
 
 function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
+  const isMobile = useIsMobile();
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
@@ -276,7 +285,11 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
       open={open}
       onClose={onClose}
       title={`Edit bill #${bill.id}`}
-      description="Update line items, payment status, payment method, and payment date for this billing entry."
+      description={
+        isMobile
+          ? undefined
+          : "Update line items, payment status, payment method, and payment date for this billing entry."
+      }
       size="xl"
     >
       <form className="space-y-5" onSubmit={handleSubmit}>
@@ -342,6 +355,8 @@ function DescriptionList({
   onToggleOverride,
   onUpdateManual,
   onAddManual,
+  compactMobile = false,
+  onUpdateInventoryLine = null,
 }) {
   const consultationSubtotal = Math.max(0, Number(consultationPrice || 0));
   const hasInventoryRows = items.length > 0;
@@ -349,7 +364,9 @@ function DescriptionList({
 
   return (
     <div className="rounded-[24px] border border-slate-200 bg-white">
-      <div className={`${gridCols} border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500`}>
+      <div
+        className={`${gridCols} hidden border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 md:grid`}
+      >
         <span>Description</span>
         <span className="text-right">Qty</span>
         <span className="text-right">Unit Price</span>
@@ -359,7 +376,7 @@ function DescriptionList({
       </div>
 
       <div className="divide-y divide-slate-100">
-        <div className={`${gridCols} items-center px-4 py-3 text-sm`}>
+        <div className="hidden items-center px-4 py-3 text-sm md:grid md:grid-cols-[2fr_70px_120px_110px_120px_44px] md:items-start md:gap-3">
           <div className="flex items-center gap-2">
             <span className="grid size-7 place-items-center rounded-xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
               <Stethoscope className="size-3.5" />
@@ -375,6 +392,19 @@ function DescriptionList({
           <p className="text-right font-semibold text-slate-900">{formatCurrency(consultationSubtotal)}</p>
           <span className="text-right text-xs text-slate-300">—</span>
         </div>
+        {compactMobile ? (
+          <div className="md:hidden space-y-2 border-b border-slate-100 px-4 py-3">
+            <div className="flex min-h-12 items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+                <Stethoscope className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-900">{consultationType}</p>
+                <p className="text-xs text-slate-500">Consultation · {formatCurrency(consultationSubtotal)}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {hasInventoryRows ? (
           items.map((item, index) => {
@@ -385,40 +415,136 @@ function DescriptionList({
             const subtotal = item.type === "Wastage" ? 0 : Number(item.amount || 0);
             const available = Number(item.available || 0);
             const needsOverride = qty > available;
+            const canEditInventoryQty = Boolean(compactMobile && onUpdateInventoryLine && !item.is_manual);
 
             if (item.is_manual) {
               return (
-                <div key={`manual-${index}`} className={`${gridCols} px-4 py-3 text-sm`}>
-                  <input
-                    value={item.description}
-                    onChange={(event) => onUpdateManual(index, { description: event.target.value })}
-                    placeholder="Custom item description"
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={item.quantity}
-                    onChange={(event) => onUpdateManual(index, { quantity: event.target.value })}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={item.unit_price}
-                    onChange={(event) => onUpdateManual(index, { unit_price: event.target.value })}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
-                  />
-                  <select
-                    value={item.type}
-                    onChange={(event) => onUpdateManual(index, { type: event.target.value })}
-                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-[#4FB8B3]"
-                  >
-                    <option value="Sale">Sale</option>
-                    <option value="Wastage">Wastage</option>
-                  </select>
+                <div key={`manual-${index}`}>
+                  <div className={`${gridCols} hidden px-4 py-3 text-sm md:grid`}>
+                    <input
+                      value={item.description}
+                      onChange={(event) => onUpdateManual(index, { description: event.target.value })}
+                      placeholder="Custom item description"
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
+                    />
+                    <input
+                      inputMode="numeric"
+                      min="0"
+                      step="1"
+                      value={item.quantity}
+                      onChange={(event) => onUpdateManual(index, { quantity: event.target.value })}
+                      className="min-h-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
+                    />
+                    <input
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={item.unit_price}
+                      onChange={(event) => onUpdateManual(index, { unit_price: event.target.value })}
+                      className="min-h-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
+                    />
+                    <select
+                      value={item.type}
+                      onChange={(event) => onUpdateManual(index, { type: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-[#4FB8B3]"
+                    >
+                      <option value="Sale">Sale</option>
+                      <option value="Wastage">Wastage</option>
+                    </select>
+                    <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                      {formatCurrency(subtotal)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveLine(index)}
+                      className="grid size-9 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600"
+                      title="Remove line"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                  {compactMobile ? (
+                    <div className="md:hidden space-y-3 px-4 py-3">
+                      <input
+                        value={item.description}
+                        onChange={(event) => onUpdateManual(index, { description: event.target.value })}
+                        placeholder="Description"
+                        className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#4FB8B3]"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="space-y-1">
+                          <span className="text-xs font-semibold text-slate-500">Qty</span>
+                          <input
+                            inputMode="numeric"
+                            min="0"
+                            step="1"
+                            value={item.quantity}
+                            onChange={(event) => onUpdateManual(index, { quantity: event.target.value })}
+                            className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none focus:border-[#4FB8B3]"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs font-semibold text-slate-500">Unit (Rs)</span>
+                          <input
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_price}
+                            onChange={(event) => onUpdateManual(index, { unit_price: event.target.value })}
+                            className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none focus:border-[#4FB8B3]"
+                          />
+                        </label>
+                      </div>
+                      <div className="flex min-h-12 items-center justify-between gap-2">
+                        <select
+                          value={item.type}
+                          onChange={(event) => onUpdateManual(index, { type: event.target.value })}
+                          className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 outline-none focus:border-[#4FB8B3]"
+                        >
+                          <option value="Sale">Sale</option>
+                          <option value="Wastage">Wastage</option>
+                        </select>
+                        <p className={`text-sm font-bold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                          {formatCurrency(subtotal)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveLine(index)}
+                          className="grid size-12 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-500"
+                          title="Remove"
+                        >
+                          <Trash2 className="size-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
+            return (
+              <div key={`line-${index}`}>
+                <div className={`${gridCols} hidden px-4 py-3 text-sm md:grid`}>
+                  <div>
+                    <p className="font-semibold text-slate-900">{item.description}</p>
+                    <p className="text-xs text-slate-500">
+                      {item.folder_name || "Inventory"} · Available: {available}
+                    </p>
+                    {needsOverride ? (
+                      <label className="mt-1 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(item.emergency_override)}
+                          onChange={(event) => onToggleOverride(index, event.target.checked)}
+                        />
+                        <AlertTriangle className="size-3.5" />
+                        Emergency override
+                      </label>
+                    ) : null}
+                  </div>
+                  <p className="text-right text-slate-700">{qty}</p>
+                  <p className="text-right text-slate-700">{formatCurrency(unitPrice)}</p>
+                  <TypeBadge type={item.type || "Sale"} />
                   <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
                     {formatCurrency(subtotal)}
                   </p>
@@ -431,64 +557,92 @@ function DescriptionList({
                     <Trash2 className="size-4" />
                   </button>
                 </div>
-              );
-            }
-
-            return (
-              <div key={`line-${index}`} className={`${gridCols} px-4 py-3 text-sm`}>
-                <div>
-                  <p className="font-semibold text-slate-900">{item.description}</p>
-                  <p className="text-xs text-slate-500">
-                    {item.folder_name || "Inventory"} · Available: {available}
-                  </p>
-                  {needsOverride ? (
-                    <label className="mt-1 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(item.emergency_override)}
-                        onChange={(event) => onToggleOverride(index, event.target.checked)}
-                      />
-                      <AlertTriangle className="size-3.5" />
-                      Emergency override
-                    </label>
-                  ) : null}
-                </div>
-                <p className="text-right text-slate-700">{qty}</p>
-                <p className="text-right text-slate-700">{formatCurrency(unitPrice)}</p>
-                <TypeBadge type={item.type || "Sale"} />
-                <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                  {formatCurrency(subtotal)}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onRemoveLine(index)}
-                  className="grid size-9 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:text-rose-600"
-                  title="Remove line"
-                >
-                  <Trash2 className="size-4" />
-                </button>
+                {compactMobile ? (
+                  <div className="md:hidden space-y-2 px-4 py-3">
+                    <div className="flex min-h-12 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900">{item.description}</p>
+                        <p className="text-xs text-slate-500">
+                          {item.folder_name || "Inventory"} · Stock {available}
+                        </p>
+                        {available <= 0 ? (
+                          <p className="mt-1 text-xs font-bold text-rose-600">Out of stock</p>
+                        ) : needsOverride ? (
+                          <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
+                            <AlertTriangle className="size-3.5" />
+                            Above on-hand stock — billing uses emergency override
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveLine(index)}
+                        className="grid size-12 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-500"
+                        title="Remove"
+                      >
+                        <Trash2 className="size-5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="space-y-1">
+                        <span className="text-xs font-semibold text-slate-500">Qty</span>
+                        {canEditInventoryQty ? (
+                          <input
+                            inputMode="numeric"
+                            min="1"
+                            step="1"
+                            value={qty || ""}
+                            onChange={(event) =>
+                              onUpdateInventoryLine(index, { quantity: event.target.value })
+                            }
+                            className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm font-semibold outline-none focus:border-[#4FB8B3]"
+                          />
+                        ) : (
+                          <div className="flex min-h-12 items-center rounded-2xl border border-slate-100 bg-slate-50 px-3 text-right text-sm font-semibold text-slate-800">
+                            {qty}
+                          </div>
+                        )}
+                      </label>
+                      <div className="space-y-1">
+                        <span className="text-xs font-semibold text-slate-500">Unit</span>
+                        <div className="flex min-h-12 items-center rounded-2xl border border-slate-100 bg-slate-50 px-3 text-sm font-semibold text-slate-800">
+                          {formatCurrency(unitPrice)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex min-h-12 items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+                      <TypeBadge type={item.type || "Sale"} />
+                      <p className={`text-sm font-bold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                        {formatCurrency(subtotal)}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })
         ) : (
           <div className="px-4 py-6 text-center text-sm text-slate-500">
-            Select an item from My Stock and click <span className="font-semibold text-[#1f7f7b]">Add Sale</span> or
-            <span className="font-semibold text-amber-700"> Wastage</span> to append it here, or use{" "}
-            <span className="font-semibold text-[#1f7f7b]">Add manual item</span> for off-stock charges.
+            <span className="hidden md:inline">
+              Select an item from My Stock and click <span className="font-semibold text-[#1f7f7b]">Add Sale</span> or
+              <span className="font-semibold text-amber-700"> Wastage</span> to append it here, or use{" "}
+              <span className="font-semibold text-[#1f7f7b]">Add manual item</span> for off-stock charges.
+            </span>
+            <span className="md:hidden">Use Select from Inventory or Add manual item.</span>
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-3">
-        <p className="text-xs text-slate-500">
+      <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="hidden text-xs text-slate-500 md:block">
           Manual items aren't deducted from My Stock. Use them for services, external supplies, or one-off charges.
         </p>
         <button
           type="button"
           onClick={onAddManual}
-          className="inline-flex items-center gap-2 rounded-2xl border border-[#4FB8B3]/40 bg-white px-3 py-2 text-xs font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/10"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#4FB8B3]/40 bg-white px-4 py-3 text-sm font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/10 md:min-h-0 md:px-3 md:py-2 md:text-xs"
         >
-          <Plus className="size-3.5" />
+          <Plus className="size-4 md:size-3.5" />
           Add manual item
         </button>
       </div>
@@ -521,6 +675,11 @@ function CreateBillingModal({
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const suggestionsRef = useRef(null);
+  const isMobile = useIsMobile();
+  const [patientPickerOpen, setPatientPickerOpen] = useState(false);
+  const [patientSearchQuery, setPatientSearchQuery] = useState("");
+  const [inventoryOverlayOpen, setInventoryOverlayOpen] = useState(false);
+  const [inventoryOverlayQuery, setInventoryOverlayQuery] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -541,6 +700,10 @@ function CreateBillingModal({
     setInventoryQty("1");
     setSuggestionsOpen(false);
     setHighlightIndex(0);
+    setPatientPickerOpen(false);
+    setPatientSearchQuery("");
+    setInventoryOverlayOpen(false);
+    setInventoryOverlayQuery("");
   }, [open, preselectedPatientId]);
 
   const patientConsultations = useMemo(
@@ -574,6 +737,32 @@ function CreateBillingModal({
     if (!needle) return [];
     return inventoryOptions.filter((item) => String(item.item_name || "").toLowerCase().includes(needle));
   }, [inventoryOptions, itemQuery]);
+
+  const filteredPatientsForPicker = useMemo(() => {
+    const needle = String(patientSearchQuery || "").trim().toLowerCase();
+    if (!needle) return patients;
+    return patients.filter((patient) => {
+      const name = String(patient.full_name || "").toLowerCase();
+      const id = String(patient.patient_identifier || patient.patient_id_number || "").toLowerCase();
+      return name.includes(needle) || id.includes(needle);
+    });
+  }, [patients, patientSearchQuery]);
+
+  const filteredInventoryOverlayRows = useMemo(() => {
+    const needle = String(inventoryOverlayQuery || "").trim().toLowerCase();
+    if (!needle) return inventoryOptions;
+    return inventoryOptions.filter((item) => {
+      const name = String(item.item_name || "").toLowerCase();
+      const folder = String(item.folder_name || "").toLowerCase();
+      return name.includes(needle) || folder.includes(needle);
+    });
+  }, [inventoryOptions, inventoryOverlayQuery]);
+
+  const selectedPatientLabel = useMemo(() => {
+    const row = patients.find((patient) => Number(patient.id) === Number(patientId));
+    if (!row) return "";
+    return `${row.full_name} — ${row.patient_identifier || row.patient_id_number || ""}`;
+  }, [patients, patientId]);
 
   useEffect(() => {
     if (!open || !consultationId) return;
@@ -730,10 +919,60 @@ function CreateBillingModal({
         inventory_item_id: selected.id,
         available,
         folder_name: selected.folder_name || "",
-        emergency_override: false,
+        emergency_override: qty > available,
       },
     ]);
     resetItemSearch();
+  }
+
+  function appendSaleFromInventoryRow(stockRow) {
+    if (!patientId || !consultationId) {
+      toast.error("Select a patient and consultation first.");
+      return;
+    }
+    const selected = inventoryOptions.find((row) => Number(row.id) === Number(stockRow.id));
+    if (!selected) {
+      return;
+    }
+    const qty = 1;
+    const available = Number(selected.quantity || 0);
+    const sellingPrice = Number(selected.selling_price || 0);
+    setItems((current) => [
+      ...current,
+      {
+        description: selected.item_name,
+        amount: sellingPrice * qty,
+        unit_price: sellingPrice,
+        type: "Sale",
+        quantity: qty,
+        inventory_item_id: selected.id,
+        available,
+        folder_name: selected.folder_name || "",
+        emergency_override: qty > available,
+      },
+    ]);
+    setInventoryOverlayOpen(false);
+    setInventoryOverlayQuery("");
+  }
+
+  function updateInventoryLine(index, patch) {
+    setItems((current) =>
+      current.map((row, idx) => {
+        if (idx !== index || row.is_manual) return row;
+        const qty = Math.max(1, Math.floor(Number(patch.quantity !== undefined ? patch.quantity : row.quantity || 1)));
+        const unitPrice = Number(row.unit_price || 0);
+        const itemType = String(row.type || "Sale");
+        const amount =
+          itemType === "Wastage" ? Number(row.unit_price || 0) * qty : itemType === "Adjustment" ? 0 : unitPrice * qty;
+        const available = Number(row.available || 0);
+        return {
+          ...row,
+          quantity: qty,
+          amount,
+          emergency_override: qty > available,
+        };
+      }),
+    );
   }
 
   function removeLine(index) {
@@ -789,12 +1028,16 @@ function CreateBillingModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Add billing entry"
-      description="Create another bill for a patient by selecting the linked consultation and line items."
+      title={isMobile ? "New invoice" : "Add billing entry"}
+      description={
+        isMobile
+          ? undefined
+          : "Create another bill for a patient by selecting the linked consultation and line items."
+      }
       size="xl"
     >
       <form className="space-y-5" onSubmit={handleSubmit}>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="hidden gap-4 md:grid md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
             <select
@@ -837,6 +1080,48 @@ function CreateBillingModal({
           </label>
         </div>
 
+        <div className="space-y-3 md:hidden">
+          <div>
+            <span className="text-sm font-semibold text-slate-700">Patient</span>
+            <button
+              type="button"
+              onClick={() => {
+                setPatientSearchQuery("");
+                setPatientPickerOpen(true);
+              }}
+              className="mt-2 flex min-h-12 w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 outline-none transition focus:border-[#4FB8B3]"
+            >
+              <span className={patientId ? "text-slate-900" : "text-slate-400"}>
+                {patientId ? selectedPatientLabel : "Search and select patient"}
+              </span>
+              <Search className="size-5 shrink-0 text-slate-400" />
+            </button>
+          </div>
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Consultation</span>
+            <select
+              required
+              disabled={!patientId || !patientConsultations.length}
+              value={consultationId}
+              onChange={(event) => setConsultationId(event.target.value)}
+              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              <option value="">
+                {!patientId
+                  ? "Select a patient first"
+                  : patientConsultations.length
+                    ? "Select consultation"
+                    : "No consultations available"}
+              </option>
+              {patientConsultations.map((consultation) => (
+                <option key={consultation.id} value={consultation.id}>
+                  {formatDate(consultation.consultation_date)} - {consultation.doctor_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         {selectedConsultation ? (
           <div className="rounded-[26px] border border-sky-100 bg-sky-50/70 p-4">
             <p className="text-lg font-semibold text-slate-950">
@@ -854,7 +1139,7 @@ function CreateBillingModal({
             <select
               value={consultationType}
               onChange={(event) => setConsultationType(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:min-h-0"
             >
               {CONSULTATION_TYPE_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -866,18 +1151,19 @@ function CreateBillingModal({
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation Price (Rs)</span>
             <input
+              inputMode="decimal"
               type="number"
               min="0"
               step="0.01"
               value={consultationPrice}
               onChange={(event) => setConsultationPrice(event.target.value)}
               placeholder="0.00"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:min-h-0"
             />
           </label>
         </div>
 
-        <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
+        <div className="hidden space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4 md:block">
           <div className="grid gap-3 md:grid-cols-[1fr_130px_170px_auto_auto]">
             <div className="relative">
               <input
@@ -963,6 +1249,7 @@ function CreateBillingModal({
               min="1"
               step="1"
               type="number"
+              inputMode="numeric"
               value={inventoryQty}
               onChange={(event) => setInventoryQty(event.target.value)}
               className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
@@ -1003,6 +1290,26 @@ function CreateBillingModal({
           ) : null}
         </div>
 
+        <div className="space-y-2 md:hidden">
+          <button
+            type="button"
+            disabled={!consultationId || inventoryLoading}
+            onClick={() => {
+              setInventoryOverlayQuery("");
+              setInventoryOverlayOpen(true);
+            }}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#4FB8B3]/50 bg-[#4FB8B3]/10 px-4 py-3 text-sm font-bold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Package className="size-5" />
+            {inventoryLoading ? "Loading stock…" : "Select from Inventory"}
+          </button>
+          {consultationId && !inventoryLoading && inventoryOptions.length === 0 ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+              No stock rows for this visit. Restock in Inventory or use Add manual item.
+            </p>
+          ) : null}
+        </div>
+
         <DescriptionList
           consultationType={consultationType}
           consultationPrice={consultationPriceNumber}
@@ -1011,6 +1318,8 @@ function CreateBillingModal({
           onToggleOverride={setLineEmergencyOverride}
           onUpdateManual={updateManualLine}
           onAddManual={addManualLine}
+          compactMobile={isMobile}
+          onUpdateInventoryLine={isMobile ? updateInventoryLine : null}
         />
 
         <BillingStatusFields
@@ -1036,10 +1345,134 @@ function CreateBillingModal({
             disabled={isSaving}
             className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
           >
-            {isSaving ? "Saving..." : "Create bill"}
+            {isSaving ? "Saving…" : isMobile ? "Save invoice" : "Create bill"}
           </button>
         </div>
       </form>
+      {isMobile && open && typeof document !== "undefined"
+        ? createPortal(
+            <>
+              {patientPickerOpen ? (
+                <div
+                  className="fixed inset-0 z-[60] flex flex-col bg-white"
+                  style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+                >
+                  <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 px-2">
+                    <button
+                      type="button"
+                      onClick={() => setPatientPickerOpen(false)}
+                      className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-600"
+                    >
+                      Cancel
+                    </button>
+                    <span className="text-sm font-bold text-slate-900">Select patient</span>
+                    <span className="w-16" />
+                  </div>
+                  <div className="shrink-0 border-b border-slate-100 p-3">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        autoFocus
+                        value={patientSearchQuery}
+                        onChange={(event) => setPatientSearchQuery(event.target.value)}
+                        placeholder="Search name or patient ID"
+                        className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#4FB8B3]"
+                      />
+                    </div>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    {filteredPatientsForPicker.map((patient) => (
+                      <button
+                        key={patient.id}
+                        type="button"
+                        className="flex min-h-[48px] w-full flex-col items-start justify-center border-b border-slate-100 px-4 py-3 text-left active:bg-[#4FB8B3]/10"
+                        onClick={() => {
+                          setPatientId(String(patient.id));
+                          setPatientPickerOpen(false);
+                          setPatientSearchQuery("");
+                        }}
+                      >
+                        <span className="font-bold text-slate-950">{patient.full_name}</span>
+                        <span className="text-xs font-medium text-slate-500">
+                          {patient.patient_identifier || patient.patient_id_number || "—"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {inventoryOverlayOpen ? (
+                <div
+                  className="fixed inset-0 z-[60] flex flex-col bg-white"
+                  style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+                >
+                  <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 px-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInventoryOverlayOpen(false);
+                        setInventoryOverlayQuery("");
+                      }}
+                      className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-600"
+                    >
+                      Close
+                    </button>
+                    <span className="text-sm font-bold text-slate-900">My stock</span>
+                    <span className="w-16" />
+                  </div>
+                  <div className="shrink-0 border-b border-slate-100 p-3">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        autoFocus
+                        value={inventoryOverlayQuery}
+                        onChange={(event) => setInventoryOverlayQuery(event.target.value)}
+                        placeholder="Search consumables, drugs, consultations…"
+                        className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#4FB8B3]"
+                      />
+                    </div>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    {inventoryLoading ? (
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">Loading…</p>
+                    ) : filteredInventoryOverlayRows.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">No matching items.</p>
+                    ) : (
+                      filteredInventoryOverlayRows.map((item) => {
+                        const available = Number(item.quantity || 0);
+                        const out = available <= 0;
+                        const price = Number(item.selling_price || 0);
+                        return (
+                          <button
+                            key={`inv-row-${item.id}`}
+                            type="button"
+                            disabled={!consultationId}
+                            onClick={() => appendSaleFromInventoryRow(item)}
+                            className="flex min-h-[48px] w-full flex-col items-start justify-center gap-0.5 border-b border-slate-100 px-4 py-3 text-left active:bg-[#4FB8B3]/10 disabled:opacity-50"
+                          >
+                            <div className="flex w-full items-start justify-between gap-2">
+                              <span className="font-bold text-slate-950">{item.item_name}</span>
+                              <span className="shrink-0 text-sm font-bold text-[#1f7f7b]">{formatCurrency(price)}</span>
+                            </div>
+                            <div className="flex w-full flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+                              <span>{item.folder_name || "Uncategorized"}</span>
+                              <span className="text-slate-300">·</span>
+                              <span>{available > 0 ? `${available} on hand` : null}</span>
+                              {out ? (
+                                <span className="font-bold uppercase tracking-wide text-rose-600">Out of stock</span>
+                              ) : null}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </>,
+            document.body,
+          )
+        : null}
     </Modal>
   );
 }
@@ -1059,12 +1492,16 @@ function BillingPage() {
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
   const canCreateBills = user.role === "admin" || user.role === "doctor";
+  const isMobile = useIsMobile();
+  const [mobileBillTab, setMobileBillTab] = useState(() =>
+    searchParams.get("status") === "paid" ? "paid" : "pending",
+  );
 
   async function loadData() {
     try {
       const filterQuery = new URLSearchParams();
 
-      if (statusFilter) {
+      if (statusFilter && !isMobile) {
         filterQuery.set("status", statusFilter);
       }
 
@@ -1114,7 +1551,7 @@ function BillingPage() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter, patientIdFilter]);
+  }, [statusFilter, patientIdFilter, isMobile]);
 
   useEffect(() => {
     loadReferenceData();
@@ -1140,7 +1577,23 @@ function BillingPage() {
       bill.consultation_date?.toLowerCase().includes(query)
     );
   });
+
+  const billsForDisplay = useMemo(() => {
+    if (!isMobile) return filteredBills;
+    return filteredBills.filter((bill) =>
+      mobileBillTab === "pending" ? bill.status === "unpaid" : bill.status === "paid",
+    );
+  }, [filteredBills, isMobile, mobileBillTab]);
+
   const pendingPayments = patientSummary.filter((patient) => Number(patient.unpaid_amount || 0) > 0);
+
+  async function handleShareBillPdf(bill) {
+    try {
+      await shareOrDownloadBillPdf(bill);
+    } catch (error) {
+      toast.error(error.message || "Could not create PDF.");
+    }
+  }
 
   async function handleSave(payload) {
     if (!editor?.bill) {
@@ -1187,19 +1640,21 @@ function BillingPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={cx("space-y-6", isMobile && canCreateBills && "pb-28")}>
       <PageHeader
         eyebrow="Revenue"
         title="Billing"
         description={
-          user.role === "doctor"
-            ? "Review consultation-linked billing, update payment status, and add new billing entries for your patients."
-            : "Track every billing entry, maintain line items, and monitor which patients still have balances outstanding."
+          isMobile
+            ? undefined
+            : user.role === "doctor"
+              ? "Review consultation-linked billing, update payment status, and add new billing entries for your patients."
+              : "Track every billing entry, maintain line items, and monitor which patients still have balances outstanding."
         }
       />
 
       {user.role !== "doctor" ? (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="hidden gap-4 md:grid md:grid-cols-3">
           <BillingStat icon={DollarSign} label="Total billed" value={formatCurrency(overallBilled)} />
           <BillingStat icon={CreditCard} label="Collected" value={formatCurrency(overallPaid)} />
           <BillingStat icon={ReceiptText} label="Outstanding" value={formatCurrency(overallUnpaid)} />
@@ -1210,7 +1665,7 @@ function BillingPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-sky-100 bg-sky-50/80 px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">Patient billing filter active</p>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 hidden text-sm text-slate-600 sm:block">
               Showing bills only for the selected patient.
             </p>
           </div>
@@ -1224,16 +1679,20 @@ function BillingPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className={cx("grid gap-6", !isMobile && "xl:grid-cols-[1.1fr_0.9fr]")}>
         <SectionCard
           title="Bills"
-          subtitle="Review line items, payment status, and each consultation-linked billing entry."
+          subtitle={
+            isMobile
+              ? undefined
+              : "Review line items, payment status, and each consultation-linked billing entry."
+          }
           actions={
             <div className="flex flex-wrap gap-2">
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
+                className="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white md:block"
               >
                 <option value="">All bills</option>
                 <option value="unpaid">Unpaid only</option>
@@ -1242,15 +1701,15 @@ function BillingPage() {
               <input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Filter by patient or consultation date..."
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
+                placeholder="Filter by patient or date…"
+                className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white md:min-h-0 md:flex-none"
               />
 
               {canCreateBills ? (
                 <button
                   type="button"
                   onClick={() => setCreatorOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+                  className="hidden items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 md:inline-flex"
                 >
                   <Plus className="size-4" />
                   Add bill
@@ -1259,79 +1718,154 @@ function BillingPage() {
             </div>
           }
         >
-          {filteredBills.length ? (
-            <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white text-left">
-                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    <tr>
-                      <th className="px-5 py-4">Patient</th>
-                      <th className="px-5 py-4">Consultation</th>
-                      <th className="px-5 py-4">Total</th>
-                      <th className="px-5 py-4">Status</th>
-                      <th className="px-5 py-4">Pay by</th>
-                      <th className="px-5 py-4">Payment date</th>
-                      <th className="px-5 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredBills.map((bill) => (
-                      <tr key={bill.id} className="border-t border-slate-200/70">
-                        <td className="px-5 py-4">
-                          <p className="font-semibold text-slate-950">{bill.patient_name}</p>
-                          <p className="mt-1 text-sm text-slate-500">{bill.doctor_name}</p>
-                        </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          <p>{formatDate(bill.consultation_date)}</p>
-                          <p className="mt-1 text-slate-500">
-                            Bill #{bill.id} - {bill.items.length} line item
-                            {bill.items.length === 1 ? "" : "s"}
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {bill.items.slice(0, 4).map((item, idx) => (
-                              <span
-                                key={`bill-item-${bill.id}-${idx}`}
-                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                                  item.type === "Wastage"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : "bg-[#4FB8B3]/15 text-[#2f8f8b]"
-                                }`}
-                              >
-                                {item.type || "Sale"}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 font-semibold text-slate-950">
-                          {formatCurrency(bill.total_amount)}
-                        </td>
-                        <td className="px-5 py-4">
-                          <StatusBadge value={bill.status} />
-                        </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          {formatPaymentMethod(bill.payment_method)}
-                        </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditor({ bill })}
-                              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                            >
-                              <SquarePen className="size-4" />
-                              Edit
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          {isMobile ? (
+            <div className="mb-4 flex rounded-2xl border border-slate-200 bg-slate-100 p-1 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileBillTab("pending")}
+                className={cx(
+                  "min-h-12 flex-1 rounded-xl py-2.5 text-sm font-bold transition",
+                  mobileBillTab === "pending"
+                    ? "bg-white text-[#1f7f7b] shadow-sm"
+                    : "text-slate-500",
+                )}
+              >
+                Pending
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileBillTab("paid")}
+                className={cx(
+                  "min-h-12 flex-1 rounded-xl py-2.5 text-sm font-bold transition",
+                  mobileBillTab === "paid"
+                    ? "bg-white text-[#1f7f7b] shadow-sm"
+                    : "text-slate-500",
+                )}
+              >
+                Paid
+              </button>
             </div>
+          ) : null}
+
+          {billsForDisplay.length ? (
+            <>
+              <div className="hidden overflow-hidden rounded-[24px] border border-slate-200/80 md:block">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white text-left">
+                    <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      <tr>
+                        <th className="px-5 py-4">Patient</th>
+                        <th className="px-5 py-4">Consultation</th>
+                        <th className="px-5 py-4">Total</th>
+                        <th className="px-5 py-4">Status</th>
+                        <th className="px-5 py-4">Pay by</th>
+                        <th className="px-5 py-4">Payment date</th>
+                        <th className="px-5 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billsForDisplay.map((bill) => (
+                        <tr key={bill.id} className="border-t border-slate-200/70">
+                          <td className="px-5 py-4">
+                            <p className="font-semibold text-slate-950">{bill.patient_name}</p>
+                            <p className="mt-1 text-sm text-slate-500">{bill.doctor_name}</p>
+                          </td>
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            <p>{formatDate(bill.consultation_date)}</p>
+                            <p className="mt-1 text-slate-500">
+                              Bill #{bill.id} - {bill.items.length} line item
+                              {bill.items.length === 1 ? "" : "s"}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {bill.items.slice(0, 4).map((item, idx) => (
+                                <span
+                                  key={`bill-item-${bill.id}-${idx}`}
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                                    item.type === "Wastage"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-[#4FB8B3]/15 text-[#2f8f8b]"
+                                  }`}
+                                >
+                                  {item.type || "Sale"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 font-semibold text-slate-950">
+                            {formatCurrency(bill.total_amount)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <StatusBadge value={bill.status} />
+                          </td>
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            {formatPaymentMethod(bill.payment_method)}
+                          </td>
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleShareBillPdf(bill)}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-[#4FB8B3]/35 bg-[#4FB8B3]/10 px-3 py-2 text-sm font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20"
+                              >
+                                <Share2 className="size-4" />
+                                PDF
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditor({ bill })}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                              >
+                                <SquarePen className="size-4" />
+                                Edit
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-3 md:hidden">
+                {billsForDisplay.map((bill) => (
+                  <div
+                    key={`card-${bill.id}`}
+                    className="rounded-[24px] border border-slate-200/80 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.06)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-lg font-bold text-slate-950">{bill.patient_name}</p>
+                        <p className="mt-1 text-xs font-medium text-slate-500">Invoice #{bill.id}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleShareBillPdf(bill)}
+                        className="grid size-12 shrink-0 place-items-center rounded-2xl border-2 border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b] transition active:scale-95"
+                        aria-label="Share or download invoice PDF"
+                      >
+                        <Share2 className="size-5" />
+                      </button>
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xl font-bold text-[#1f7f7b]">{formatCurrency(bill.total_amount)}</p>
+                      <StatusBadge value={bill.status} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditor({ bill })}
+                      className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-800"
+                    >
+                      <SquarePen className="size-4" />
+                      Edit invoice
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <EmptyState
               title="No bills found"
@@ -1341,6 +1875,7 @@ function BillingPage() {
         </SectionCard>
 
         <SectionCard
+          className={isMobile ? "hidden" : undefined}
           title="Pending payments from unpaid patients"
           subtitle="Patients with due balances only, updated automatically after bill edits."
         >
@@ -1378,6 +1913,17 @@ function BillingPage() {
           )}
         </SectionCard>
       </div>
+
+      {canCreateBills && isMobile ? (
+        <button
+          type="button"
+          aria-label="Create new invoice"
+          onClick={() => setCreatorOpen(true)}
+          className="fixed bottom-24 right-6 z-[45] grid size-14 place-items-center rounded-full bg-[#4FB8B3] text-white shadow-lg shadow-teal-900/25 md:hidden"
+        >
+          <Plus className="size-7 stroke-[2.5]" />
+        </button>
+      ) : null}
 
       <EditBillingModal
         open={Boolean(editor)}

@@ -95,7 +95,8 @@ From the repo root:
 
 ## Deployment Notes
 
-- UGREEN NAS / Docker Compose deployment guide: [NAS_DEPLOYMENT.md](/C:/Users/kavis/OneDrive/Desktop/varun/NAS_DEPLOYMENT.md)
+- Publish Docker image to Docker Hub (Phase 1): [docs/PHASE1_DOCKER_HUB.md](docs/PHASE1_DOCKER_HUB.md)
+- UGREEN NAS / Docker Compose deployment guide: [NAS_DEPLOYMENT.md](NAS_DEPLOYMENT.md) (includes Cloudflare Quick and Named tunnel compose files)
 
 ### Frontend
 
