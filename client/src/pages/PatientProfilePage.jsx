@@ -122,8 +122,6 @@ function ClinicalGridItem({ label, value }) {
 }
 
 const CONSULTATION_ROWS_LIMIT = 5;
-const MOBILE_NOTE_PREVIEW_LIMIT = 80;
-
 /** Collapses runs of blank lines so pre-line rendering stays readable. */
 function formatConsultationNoteForDisplay(text) {
   if (text == null || text === "") {
@@ -134,6 +132,14 @@ function formatConsultationNoteForDisplay(text) {
     .replace(/\r\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd();
+}
+
+function hasMeaningfulPatientField(value) {
+  if (value == null) return false;
+  const t = String(value).trim();
+  if (!t) return false;
+  if (t.toLowerCase() === "not recorded") return false;
+  return true;
 }
 
 const MOBILE_TABS = [
@@ -845,7 +851,6 @@ function PatientProfilePage() {
     );
   }
 
-  const totalBilled = data.bills.reduce((sum, bill) => sum + Number(bill.total_amount || 0), 0);
   const statusDetail =
     data.patient.status === "active"
       ? data.patient.ongoing_treatment || "Ongoing treatment not recorded"
@@ -870,6 +875,89 @@ function PatientProfilePage() {
   const lastVisitDate = data.consultations[0]?.consultation_date
     ? formatDate(data.consultations[0].consultation_date)
     : "Not recorded";
+
+  const mobileDemographicsPrimary = [
+    [data.patient.first_name, data.patient.last_name].filter(Boolean).join(" ").trim(),
+    [data.patient.gender, data.patient.date_of_birth ? formatAgeFromDateOfBirth(data.patient.date_of_birth) : ""]
+      .filter(Boolean)
+      .join(" — "),
+    hasMeaningfulPatientField(data.patient.patient_identifier)
+      ? `OCS ${String(data.patient.patient_identifier).trim()}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const rawContactDigits = data.patient.patient_contact_number || data.patient.contact_number;
+  const showMobileContact = hasMeaningfulPatientField(rawContactDigits);
+  const showMobileAddress = hasMeaningfulPatientField(data.patient.address);
+  const showMobileLocations =
+    (data.patient.location_tags && data.patient.location_tags.length > 0) ||
+    hasMeaningfulPatientField(data.patient.location);
+
+  const mobileNokHasAny =
+    hasMeaningfulPatientField(data.patient.next_of_kin_name) ||
+    hasMeaningfulPatientField(data.patient.next_of_kin_relationship) ||
+    hasMeaningfulPatientField(data.patient.next_of_kin_contact_number) ||
+    hasMeaningfulPatientField(data.patient.next_of_kin_email);
+
+  const mobileClinicalBlocks = [
+    ...(data.patient.status === "active" && hasMeaningfulPatientField(data.patient.ongoing_treatment)
+      ? [
+          {
+            key: "ongoing",
+            icon: HeartPulse,
+            label: "Ongoing treatment",
+            value: data.patient.ongoing_treatment,
+            iconBg: "bg-teal-50 text-teal-700",
+          },
+        ]
+      : []),
+    ...(hasMeaningfulPatientField(data.patient.past_medical_history)
+      ? [
+          {
+            key: "pmh",
+            icon: UserRound,
+            label: "Past medical history",
+            value: data.patient.past_medical_history,
+            iconBg: "bg-sky-50 text-sky-700",
+          },
+        ]
+      : []),
+    ...(hasMeaningfulPatientField(data.patient.past_surgical_history)
+      ? [
+          {
+            key: "psh",
+            icon: HeartPulse,
+            label: "Past surgical history",
+            value: data.patient.past_surgical_history,
+            iconBg: "bg-sky-50 text-sky-700",
+          },
+        ]
+      : []),
+    ...(hasMeaningfulPatientField(data.patient.drug_history)
+      ? [
+          {
+            key: "drug",
+            icon: Pill,
+            label: "Drug history",
+            value: data.patient.drug_history,
+            iconBg: "bg-emerald-50 text-emerald-700",
+          },
+        ]
+      : []),
+    ...(hasMeaningfulPatientField(data.patient.drug_allergy_history)
+      ? [
+          {
+            key: "allergy",
+            icon: ShieldAlert,
+            label: "Allergy history",
+            value: data.patient.drug_allergy_history,
+            iconBg: "bg-amber-50 text-amber-700",
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
@@ -976,7 +1064,7 @@ function PatientProfilePage() {
 
           {activeTab === "summary" && (
             <div className="space-y-4">
-              <div className="grid min-w-0 grid-cols-2 gap-3">
+              <div className="grid min-w-0 grid-cols-3 gap-2">
                 <HighlightStat
                   icon={CalendarClock}
                   label="Appointments"
@@ -992,149 +1080,135 @@ function PatientProfilePage() {
                   label="Lab Reports"
                   value={data.labReports.length}
                 />
-                <HighlightStat
-                  icon={CreditCard}
-                  label="Total billed"
-                  value={formatCurrency(totalBilled)}
-                />
               </div>
 
-              <SectionCard
-          title="Patient details"
-              >
-                <div className="space-y-2">
-                  <ProfileField
-                    label="OCS care number"
-                    value={data.patient.patient_identifier}
-                    emphasize
-                  />
-                  <ProfileField label="Patient ID" value={data.patient.patient_id_number} emphasize />
-                  <ProfileField label="First name" value={data.patient.first_name} emphasize />
-                  <ProfileField label="Last name" value={data.patient.last_name} emphasize />
-                  <ProfileField
-                    label="Age"
-                    value={formatAgeFromDateOfBirth(data.patient.date_of_birth)}
-                    emphasize
-                  />
-                  <ProfileField label="Gender" value={data.patient.gender} emphasize />
-                  <ProfileField label="Assigned doctor" value={assignedDoctor} emphasize />
-                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                      Status
-                    </p>
-                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
-                      <StatusBadge value={data.patient.status} />
-                      <span className="min-w-0 break-words text-sm text-slate-600">{statusDetail}</span>
-                    </div>
-                  </div>
-                  <ProfileField label="Patient contact number" value={patientContactNumber} />
-                  <ProfileField label="Address" value={data.patient.address} />
-                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                      Locations and affiliations
-                    </p>
-                    <div className="mt-2">
-                      <PatientLocationTags
-                        tags={data.patient.location_tags || []}
-                        onChange={() => {}}
-                        readOnly
-                      />
-                    </div>
-                  </div>
-                </div>
-              </SectionCard>
-
-              <SectionCard
-          title="Next of kin"
-              >
-                <div className="space-y-2">
-                  <ProfileField label="Name" value={data.patient.next_of_kin_name} emphasize />
-                  <ProfileField
-                    label="Relationship with patient"
-                    value={data.patient.next_of_kin_relationship}
-                  />
-                  <ProfileField
-                    label="Contact number"
-                    value={data.patient.next_of_kin_contact_number}
-                  />
-                  <ProfileField label="Email address" value={data.patient.next_of_kin_email} />
-                </div>
-              </SectionCard>
-
-              <SectionCard
-          title="Clinical history"
-              >
+              <SectionCard title="Patient details">
                 <div className="space-y-3">
-                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
-                        <UserRound className="size-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Past medical history</p>
-                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                          {data.patient.past_medical_history || "Not recorded"}
-                        </p>
+                  {mobileDemographicsPrimary ? (
+                    <p className="break-words text-sm font-semibold leading-snug text-slate-900">
+                      {mobileDemographicsPrimary}
+                    </p>
+                  ) : null}
+                  {hasMeaningfulPatientField(data.patient.patient_id_number) ? (
+                    <p className="text-sm text-slate-600">
+                      Patient ID: {data.patient.patient_id_number}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge value={data.patient.status} />
+                    {assignedDoctor !== "Unassigned" ? (
+                      <span className="min-w-0 text-xs text-slate-600">{assignedDoctor}</span>
+                    ) : null}
+                  </div>
+                  {data.patient.status === "active" &&
+                  hasMeaningfulPatientField(data.patient.ongoing_treatment) ? (
+                    <p className="text-xs leading-snug text-slate-600">
+                      {data.patient.ongoing_treatment}
+                    </p>
+                  ) : null}
+                  {showMobileContact ? (
+                    <p className="text-sm text-slate-700">
+                      <span className="font-medium text-slate-500">Contact </span>
+                      {rawContactDigits}
+                    </p>
+                  ) : null}
+                  {showMobileAddress ? (
+                    <p className="text-sm leading-snug text-slate-700">
+                      <span className="font-medium text-slate-500">Address </span>
+                      {data.patient.address}
+                    </p>
+                  ) : null}
+                  {showMobileLocations ? (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Locations
+                      </p>
+                      <div className="mt-1">
+                        <PatientLocationTags
+                          tags={data.patient.location_tags || []}
+                          onChange={() => {}}
+                          readOnly
+                        />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
-                        <HeartPulse className="size-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
-                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                          {data.patient.past_surgical_history || "Not recorded"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700">
-                        <Pill className="size-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Drug history</p>
-                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                          {data.patient.drug_history || "Not recorded"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-amber-50 p-2.5 text-amber-700">
-                        <ShieldAlert className="size-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Allergy History</p>
-                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
-                          {data.patient.drug_allergy_history || "Not recorded"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
               </SectionCard>
 
-              <SectionCard
-          title="Particularity"
-              >
-                <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Particularity
+              {mobileNokHasAny ? (
+                <SectionCard title="Next of kin">
+                  <dl className="space-y-2 text-sm">
+                    {hasMeaningfulPatientField(data.patient.next_of_kin_name) ? (
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Name
+                        </dt>
+                        <dd className="font-medium text-slate-900">{data.patient.next_of_kin_name}</dd>
+                      </div>
+                    ) : null}
+                    {hasMeaningfulPatientField(data.patient.next_of_kin_relationship) ? (
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Relationship
+                        </dt>
+                        <dd className="text-slate-700">{data.patient.next_of_kin_relationship}</dd>
+                      </div>
+                    ) : null}
+                    {hasMeaningfulPatientField(data.patient.next_of_kin_contact_number) ? (
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Contact
+                        </dt>
+                        <dd className="text-slate-700">{data.patient.next_of_kin_contact_number}</dd>
+                      </div>
+                    ) : null}
+                    {hasMeaningfulPatientField(data.patient.next_of_kin_email) ? (
+                      <div>
+                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Email
+                        </dt>
+                        <dd className="text-slate-700">{data.patient.next_of_kin_email}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </SectionCard>
+              ) : null}
+
+              {mobileClinicalBlocks.length ? (
+                <SectionCard title="Clinical history">
+                  <div className="space-y-2">
+                    {mobileClinicalBlocks.map((block) => {
+                      const Icon = block.icon;
+                      return (
+                        <div
+                          key={block.key}
+                          className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-3 py-2.5"
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div className={cx("shrink-0 rounded-lg p-2", block.iconBg)}>
+                              <Icon className="size-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-slate-950">{block.label}</p>
+                              <p className="mt-0.5 line-clamp-3 break-words text-sm leading-snug text-slate-700">
+                                {block.value}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SectionCard>
+              ) : null}
+
+              {hasMeaningfulPatientField(data.patient.particularity) ? (
+                <SectionCard title="Particularity">
+                  <p className="whitespace-pre-line break-words text-sm leading-snug text-slate-700">
+                    {data.patient.particularity}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
-                    {data.patient.particularity || "No particularity recorded during intake."}
-                  </p>
-                </div>
-              </SectionCard>
+                </SectionCard>
+              ) : null}
             </div>
           )}
 
@@ -1159,11 +1233,6 @@ function PatientProfilePage() {
                     const canEditRow = canEditConsultation(consultation);
                     const note = consultation.doctor_notes || "";
                     const isExpanded = expandedConsultations[consultation.id] || isEditing;
-                    const preview =
-                      note.length > MOBILE_NOTE_PREVIEW_LIMIT
-                        ? `${note.slice(0, MOBILE_NOTE_PREVIEW_LIMIT).trimEnd()}...`
-                        : note;
-
                     return (
                       <div
                         key={consultation.id}
@@ -1195,7 +1264,9 @@ function PatientProfilePage() {
                         </button>
 
                         {!isExpanded && note && (
-                          <p className="px-4 pb-4 break-words text-sm text-slate-500">{preview}</p>
+                          <p className="line-clamp-2 px-4 pb-4 break-words text-sm leading-snug text-slate-600">
+                            {formatConsultationNoteForDisplay(note)}
+                          </p>
                         )}
 
                         {isExpanded && (
@@ -1303,10 +1374,10 @@ function PatientProfilePage() {
                                     </button>
                                   ) : canManageConsultations && !isEditing ? (
                                     <span
-                                      className="pointer-events-none inline-flex select-none items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 py-1 text-xs font-medium normal-case tracking-normal text-slate-500"
+                                      className="inline-flex items-center gap-1 px-1 text-xs text-slate-500"
                                       title="You can only edit notes you authored"
                                     >
-                                      <LockKeyhole className="size-3.5 shrink-0 text-slate-400" aria-hidden />
+                                      <LockKeyhole className="size-3 shrink-0 text-slate-400" aria-hidden />
                                       View only
                                     </span>
                                   ) : null}

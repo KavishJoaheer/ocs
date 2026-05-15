@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   CreditCard,
   IdCard,
+  MoreVertical,
   Plus,
   RotateCcw,
   Search,
@@ -53,6 +54,7 @@ function PatientsPage() {
   const [editor, setEditor] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
+  const [patientCardMenu, setPatientCardMenu] = useState(null);
   const [restoringPatientId, setRestoringPatientId] = useState(null);
 
   function canEditPatient(patient) {
@@ -196,9 +198,6 @@ function PatientsPage() {
     return <LoadingState label="Loading patients" />;
   }
 
-  const mobileActionBtn =
-    "inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700";
-
   return (
     <div className="w-full min-w-0 max-w-full space-y-4">
       <PageHeader
@@ -321,69 +320,52 @@ function PatientsPage() {
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
-                        className="min-w-0 max-w-full rounded-[24px] border border-slate-200/80 bg-white p-4"
+                        className="relative min-w-0 max-w-full overflow-hidden rounded-[24px] border border-slate-200/80 bg-white"
                       >
-                        <p className="break-words font-semibold text-slate-950">{patient.full_name}</p>
-                        <p className="mt-1 break-words text-sm text-slate-500">
-                          OCS care number: {displayText(patient.patient_identifier)}
-                        </p>
-                        <p className="break-words text-sm text-slate-500">
-                          Patient ID: {displayText(patient.patient_id_number)}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {patient.gender}
-                          {patient.date_of_birth
-                            ? ` \u00B7 ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
-                            : ""}
-                        </p>
+                        <Link
+                          to={`/patients/${patient.id}`}
+                          className="block min-h-[4.5rem] p-4 pr-14"
+                        >
+                          <p className="break-words font-semibold text-slate-950">{patient.full_name}</p>
+                          <p className="mt-1 break-words text-sm text-slate-500">
+                            OCS care number: {displayText(patient.patient_identifier)}
+                          </p>
+                          <p className="break-words text-sm text-slate-500">
+                            Patient ID: {displayText(patient.patient_id_number)}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {patient.gender}
+                            {patient.date_of_birth
+                              ? ` \u00B7 ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
+                              : ""}
+                          </p>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <StatusBadge value={patient.status} />
-                          <span className="text-sm text-slate-600">
-                            {displayText(patient.assigned_doctor_name, "Not assigned")}
-                          </span>
-                        </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <StatusBadge value={patient.status} />
+                            <span className="text-sm text-slate-600">
+                              {displayText(patient.assigned_doctor_name, "Not assigned")}
+                            </span>
+                          </div>
 
-                        {user.role === "operator" && patient.operator_edit_allowed ? (
-                          <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                            Edit enabled
-                          </span>
-                        ) : null}
+                          {user.role === "operator" && patient.operator_edit_allowed ? (
+                            <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                              Edit enabled
+                            </span>
+                          ) : null}
+                        </Link>
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Link to={`/patients/${patient.id}`} className={mobileActionBtn}>
-                            View
-                          </Link>
-                          {canEditPatient(patient) ? (
-                            <button
-                              type="button"
-                              onClick={() => setEditor({ mode: "edit", patient })}
-                              className={mobileActionBtn}
-                            >
-                              <SquarePen className="size-4" />
-                              Edit
-                            </button>
-                          ) : null}
-                          {canOpenBilling ? (
-                            <Link
-                              to={`/billing?patientId=${patient.id}`}
-                              className={mobileActionBtn}
-                            >
-                              <CreditCard className="size-4" />
-                              Billing
-                            </Link>
-                          ) : null}
-                          {canDeletePatients ? (
-                            <button
-                              type="button"
-                              onClick={() => setPatientToDelete(patient)}
-                              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                            >
-                              <Trash2 className="size-4" />
-                              Delete
-                            </button>
-                          ) : null}
-                        </div>
+                        <button
+                          type="button"
+                          aria-label="Patient actions"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setPatientCardMenu(patient);
+                          }}
+                          className="absolute right-2 top-2 z-10 grid size-11 shrink-0 place-items-center rounded-2xl border border-slate-200/80 bg-white/90 text-slate-600 shadow-sm transition active:bg-slate-100"
+                        >
+                          <MoreVertical className="size-5" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -697,6 +679,76 @@ function PatientsPage() {
           />
         )}
       </SectionCard>
+
+      {isMobile && patientCardMenu ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="fixed inset-0 z-[60] bg-black/35 backdrop-blur-[1px]"
+            onClick={() => setPatientCardMenu(null)}
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-[61] rounded-t-[28px] border border-slate-200/80 bg-white px-4 pt-3 shadow-[0_-12px_40px_rgba(15,23,42,0.12)]"
+            style={{
+              paddingBottom: "max(1rem, var(--sab))",
+              paddingLeft: "max(1rem, var(--sal))",
+              paddingRight: "max(1rem, var(--sar))",
+            }}
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" aria-hidden />
+            <p className="truncate text-base font-semibold text-slate-950">{patientCardMenu.full_name}</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {displayText(patientCardMenu.patient_identifier)}
+            </p>
+            <div className="mt-4 grid gap-2">
+              {canEditPatient(patientCardMenu) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPatientCardMenu(null);
+                    setEditor({ mode: "edit", patient: patientCardMenu });
+                  }}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm font-semibold text-slate-800 transition active:bg-slate-100"
+                >
+                  <SquarePen className="size-4" />
+                  Edit patient
+                </button>
+              ) : null}
+              {canOpenBilling ? (
+                <Link
+                  to={`/billing?patientId=${patientCardMenu.id}`}
+                  onClick={() => setPatientCardMenu(null)}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm font-semibold text-slate-800 transition active:bg-slate-100"
+                >
+                  <CreditCard className="size-4" />
+                  Billing
+                </Link>
+              ) : null}
+              {canDeletePatients ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPatientCardMenu(null);
+                    setPatientToDelete(patientCardMenu);
+                  }}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50/60 py-3 text-sm font-semibold text-rose-700 transition active:bg-rose-100"
+                >
+                  <Trash2 className="size-4" />
+                  Delete patient
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setPatientCardMenu(null)}
+                className="mt-1 min-h-12 w-full rounded-2xl py-3 text-sm font-semibold text-slate-500"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <PatientFormModal
         canEditPatientIdentifier={canEditPatientIdentifier}

@@ -77,6 +77,10 @@ const MOBILE_INPUT =
   "w-full min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-[#2d8f98] focus:bg-white";
 const MOBILE_INPUT_DISABLED =
   "w-full min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-[#2d8f98] focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100";
+const MOBILE_TEXTAREA = cx(
+  MOBILE_INPUT,
+  "min-h-[2.75rem] resize-y py-2 leading-relaxed",
+);
 
 const DESKTOP_TABS = [
   { key: "info", label: "Patient info" },
@@ -108,6 +112,7 @@ function PatientFormModal({
   const [wizardStep, setWizardStep] = useState(0);
   const [desktopTab, setDesktopTab] = useState(0);
   const firstNameRef = useRef(null);
+  const stepFirstInputRef = useRef(null);
   const isPageLayout = layout === "page";
 
   useEffect(() => {
@@ -141,13 +146,12 @@ function PatientFormModal({
   }, [form, open, mode]);
 
   useEffect(() => {
-    if (!isPageLayout || !open) return;
-    if (isMobile && wizardStep !== 0) return;
+    if (!open || !isMobile) return;
     const id = window.requestAnimationFrame(() => {
-      firstNameRef.current?.focus();
+      stepFirstInputRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [isPageLayout, open, isMobile, wizardStep]);
+  }, [open, isMobile, wizardStep]);
 
   const isEditing = mode === "edit";
   const actionLabel = isEditing ? "Update patient" : "Add patient";
@@ -256,7 +260,7 @@ function PatientFormModal({
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">First name</span>
                 <input
-                  ref={wizardStep === 0 ? firstNameRef : undefined}
+                  ref={wizardStep === 0 ? stepFirstInputRef : undefined}
                   name="first_name"
                   value={form.first_name}
                   onChange={handleChange}
@@ -328,6 +332,7 @@ function PatientFormModal({
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Status</span>
                 <select
+                  ref={stepFirstInputRef}
                   required
                   name="status"
                   value={form.status}
@@ -397,11 +402,11 @@ function PatientFormModal({
                 <span className="text-sm font-semibold text-slate-700">Address</span>
                 <textarea
                   required
-                  rows="2"
+                  rows={2}
                   name="address"
                   value={form.address}
                   onChange={handleChange}
-                  className={MOBILE_INPUT}
+                  className={MOBILE_TEXTAREA}
                 />
               </label>
               <div className="space-y-2">
@@ -425,53 +430,55 @@ function PatientFormModal({
                 <label className="block space-y-2">
                   <span className="text-sm font-semibold text-slate-700">Ongoing treatment</span>
                   <textarea
-                    rows="2"
+                    ref={stepFirstInputRef}
+                    rows={2}
                     name="ongoing_treatment"
                     value={form.ongoing_treatment}
                     onChange={handleChange}
-                    className={MOBILE_INPUT}
+                    className={MOBILE_TEXTAREA}
                   />
                 </label>
               ) : null}
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Past medical history</span>
                 <textarea
-                  rows="3"
+                  ref={form.status !== "active" ? stepFirstInputRef : undefined}
+                  rows={2}
                   name="past_medical_history"
                   value={form.past_medical_history}
                   onChange={handleChange}
-                  className={MOBILE_INPUT}
+                  className={MOBILE_TEXTAREA}
                 />
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Past surgical history</span>
                 <textarea
-                  rows="3"
+                  rows={2}
                   name="past_surgical_history"
                   value={form.past_surgical_history}
                   onChange={handleChange}
-                  className={MOBILE_INPUT}
+                  className={MOBILE_TEXTAREA}
                 />
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Drug history</span>
                 <textarea
-                  rows="3"
+                  rows={2}
                   name="drug_history"
                   value={form.drug_history}
                   onChange={handleChange}
-                  className={MOBILE_INPUT}
+                  className={MOBILE_TEXTAREA}
                 />
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Allergy History</span>
                 <textarea
-                  rows="2"
+                  rows={2}
                   name="drug_allergy_history"
                   value={form.drug_allergy_history}
                   onChange={handleChange}
                   placeholder="Record medication, food, environmental, or other allergy details."
-                  className={MOBILE_INPUT}
+                  className={MOBILE_TEXTAREA}
                 />
               </label>
               <label className="block space-y-2">
@@ -479,12 +486,12 @@ function PatientFormModal({
                   Particularity
                 </span>
                 <textarea
-                  rows="4"
+                  rows={2}
                   name="particularity"
                   value={form.particularity}
                   onChange={handleChange}
                   placeholder="Blank page for additional notes..."
-                  className={MOBILE_INPUT}
+                  className={MOBILE_TEXTAREA}
                 />
               </label>
             </div>
@@ -496,6 +503,7 @@ function PatientFormModal({
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Name</span>
                 <input
+                  ref={stepFirstInputRef}
                   name="next_of_kin_name"
                   value={form.next_of_kin_name}
                   onChange={handleChange}

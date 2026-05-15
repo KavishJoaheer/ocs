@@ -110,8 +110,11 @@ function AppShell() {
   const isMobile = useIsMobile();
   const isPatientProfile =
     /^\/patients\/[^/]+$/.test(location.pathname) && location.pathname !== "/patients/add";
+  const isPatientNestedMobile =
+    isMobile &&
+    (/^\/patients\/[^/]+$/.test(location.pathname) || location.pathname === "/patients/add");
   const isDashboard = location.pathname === "/";
-  const hideBottomNav = isDashboard && isMobile;
+  const hideBottomNav = (isDashboard && isMobile) || isPatientNestedMobile;
   const alwaysHideTopHeader = isDashboard && user.role === "doctor";
 
   const dashboardMetaByRole = {
