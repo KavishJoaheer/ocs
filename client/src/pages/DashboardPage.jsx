@@ -384,20 +384,43 @@ function RoleBoard({
   );
 }
 
+function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup }) {
+  return (
+    <div className="mb-2 hidden items-start justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] pb-3 md:flex">
+      <div className="min-w-0 flex-1 pr-4">
+        <p className="text-[1rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.2rem]">
+          OCS M&#201;DECINS
+        </p>
+        <h2 className="mt-2 font-display text-[2rem] leading-[0.98] tracking-tight text-slate-950 md:text-[2.65rem]">
+          {title}
+        </h2>
+      </div>
+      <div className="flex min-w-0 shrink-0 flex-col items-end gap-2">
+        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98] shadow-sm">
+          <ShieldCheck className="size-3.5 shrink-0" />
+          <span className="truncate">{roleBadge}</span>
+        </div>
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/92 px-3 py-2 shadow-[0_8px_22px_rgba(34,72,91,0.06)] sm:gap-3 sm:px-4">
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b9499]">
+            Live status
+          </span>
+          <div className="min-w-0">{statusMarkup}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RoleDashboardStudio({
   roleBadge,
   title = "Operations Dashboard",
   statusMarkup,
-  promiseLabel = "Care promise",
-  promiseText = "Bringing healthcare to every doorstep",
   leftEyebrow,
   leftTitle,
-  leftDescription,
   leftItems,
   promoItem,
   rightEyebrow,
   rightTitle,
-  rightDescription,
   rightItems,
 }) {
   return (
@@ -405,58 +428,24 @@ function RoleDashboardStudio({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <div className="hidden justify-end md:flex">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
-            <ShieldCheck className="size-4" />
-            {roleBadge}
-          </div>
-        </div>
+        <OperationsDashboardDesktopHeader
+          roleBadge={roleBadge}
+          statusMarkup={statusMarkup}
+          title={title}
+        />
 
-        <div className="mt-7 hidden gap-6 md:grid xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
-          <div>
-            <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
-              OCS M&#201;DECINS
-            </p>
-            <h2 className="mt-3 font-display text-[2.4rem] leading-[0.96] tracking-tight text-slate-950 md:text-[4rem]">
-              {title}
-            </h2>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(244,252,252,0.9))] px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
-                {promiseLabel}
-              </p>
-              <p className="mt-3 text-[1.5rem] font-semibold uppercase leading-[1.14] tracking-tight text-[#2d5f69] md:text-[2rem]">
-                <span className="text-[#f1bc35]">Together,</span> {promiseText}
-              </p>
-            </div>
-
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
-                Live status
-              </p>
-              <div className="mt-4">{statusMarkup}</div>
-              <p className="mt-4 text-sm leading-6 text-[#51717b]">
-                Visible to the wider OCS Medecins team in real time.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-8 md:rounded-[42px] md:p-6">
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-5">
+        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-1 md:rounded-[42px] md:p-5">
+          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="space-y-4">
               <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                   {leftEyebrow}
                 </p>
-                <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+                <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
                   {leftTitle}
                 </p>
-                <p className="mt-2 text-sm leading-6 text-[#51717b]">{leftDescription}</p>
 
-                <div className="mt-5 space-y-4">
+                <div className="mt-4 space-y-4">
                   {leftItems.map((item) => (
                     <DoctorDashboardTile key={item.title} {...item} />
                   ))}
@@ -470,12 +459,11 @@ function RoleDashboardStudio({
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                 {rightEyebrow}
               </p>
-              <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+              <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
                 {rightTitle}
               </p>
-              <p className="mt-2 text-sm leading-6 text-[#51717b]">{rightDescription}</p>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
                 {rightItems.map((item) => (
                   <DoctorDashboardTile key={item.title} {...item} />
                 ))}
@@ -715,7 +703,7 @@ function DoctorStatusPanel({ doctors = [] }) {
 
 function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, icon: Icon }) {
   const classes = cx(
-    "group relative overflow-hidden rounded-[30px] border px-5 py-5 shadow-[0_18px_42px_rgba(34,72,91,0.08)] transition duration-200 md:px-6 md:py-6",
+    "group relative overflow-hidden rounded-[30px] border px-5 py-5 shadow-[0_18px_42px_rgba(34,72,91,0.08)] transition duration-200 md:px-6 md:py-5",
     accent
       ? "border-[rgba(65,200,198,0.22)] bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))]"
       : "border-[rgba(106,129,138,0.2)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,251,251,0.95))]",
@@ -748,16 +736,22 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
           ) : null}
         </div>
 
-        <p className="mt-7 text-[1.12rem] font-semibold leading-[1.18] tracking-tight text-slate-950 md:text-[1.26rem]">
+        <p
+          className={cx(
+            "text-[1.12rem] font-semibold leading-[1.18] tracking-tight text-slate-950 md:text-[1.26rem]",
+            subtitle ? "mt-7" : "mt-5",
+          )}
+        >
           {title}
         </p>
-        <p className="mt-4 max-w-[14rem] text-sm leading-7 text-[#496773] md:text-[1.01rem]">
-          {subtitle}
-        </p>
+        {subtitle ? (
+          <p className="mt-4 max-w-[14rem] text-sm leading-7 text-[#496773] md:text-[1.01rem]">{subtitle}</p>
+        ) : null}
 
         <div
           className={cx(
-            "mt-6 h-[3px] w-16 rounded-full",
+            "h-[3px] w-16 rounded-full",
+            subtitle ? "mt-6" : "mt-5",
             accent
               ? "bg-[linear-gradient(90deg,#41c8c6,#2d8f98)]"
               : "bg-[linear-gradient(90deg,rgba(241,188,53,0.78),rgba(65,200,198,0.5))]",
@@ -778,7 +772,7 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
   return <div className={classes}>{content}</div>;
 }
 
-function DoctorPersonalOperationUpdates({ monthLabel }) {
+function DoctorPersonalOperationUpdates() {
   return (
     <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 shadow-[0_28px_70px_rgba(34,72,91,0.1)] md:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
@@ -787,40 +781,32 @@ function DoctorPersonalOperationUpdates({ monthLabel }) {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7da2aa]">
           Clinical flow
         </p>
-        <h3 className="mt-3 text-[1.85rem] font-semibold tracking-tight text-slate-950 md:text-[2.25rem]">
+        <h3 className="mt-2 text-[1.65rem] font-semibold tracking-tight text-slate-950 md:text-[2rem]">
           Personal operation updates
         </h3>
-        <p className="mt-3 max-w-2xl text-sm leading-8 text-[#68838d] md:text-base">
-          Everything you need for day-to-day follow-up, consultation movement, and patient
-          visibility.
-        </p>
 
-        <div className="mt-5 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
+        <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <PersonalOperationOverviewCard
             accent
             icon={CalendarClock}
-            subtitle="View upcoming visits"
             title="Scheduled visits"
             to="/doctor/scheduled-visits"
           />
           <PersonalOperationOverviewCard
             icon={CreditCard}
-            subtitle="Check unpaid bills"
             title="Pending payment"
             to="/doctor/pending-payment"
           />
           <PersonalOperationOverviewCard
             icon={Activity}
-            subtitle={`Patients seen in ${monthLabel}`}
             title="Total patients seen"
             to="/doctor/patients-seen-april"
           />
           <PersonalOperationOverviewCard
             accent
             icon={UsersRound}
-            subtitle="Patient under my care"
             title="Assigned patients"
             to="/doctor/assigned-patients"
           />
@@ -830,7 +816,7 @@ function DoctorPersonalOperationUpdates({ monthLabel }) {
   );
 }
 
-function OperatorPersonalOperationUpdates({ monthLabel }) {
+function OperatorPersonalOperationUpdates() {
   return (
     <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 shadow-[0_28px_70px_rgba(34,72,91,0.1)] md:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
@@ -839,40 +825,32 @@ function OperatorPersonalOperationUpdates({ monthLabel }) {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7da2aa]">
           Coordination flow
         </p>
-        <h3 className="mt-3 text-[1.85rem] font-semibold tracking-tight text-slate-950 md:text-[2.25rem]">
+        <h3 className="mt-2 text-[1.65rem] font-semibold tracking-tight text-slate-950 md:text-[2rem]">
           Personal operation updates
         </h3>
-        <p className="mt-3 max-w-2xl text-sm leading-8 text-[#68838d] md:text-base">
-          The operator shortcuts for visit dispatch, pending payment, long-term review, and
-          appointment tracking.
-        </p>
 
-        <div className="mt-5 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
+        <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <PersonalOperationOverviewCard
             accent
             icon={CalendarClock}
-            subtitle="Track scheduled visits across the roster."
             title="Scheduled visits"
             to="/operator/scheduled-visits"
           />
           <PersonalOperationOverviewCard
             icon={CreditCard}
-            subtitle="Open unpaid billing follow-up by doctor."
             title="Pending payment"
             to="/operator/pending-payment"
           />
           <PersonalOperationOverviewCard
             icon={Stethoscope}
-            subtitle="Review ongoing-treatment and particularity cases."
             title="Long term review"
             to="/operator/long-term-review"
           />
           <PersonalOperationOverviewCard
             accent
             icon={UsersRound}
-            subtitle={`Inspect appointment activity across ${monthLabel}.`}
             title="Review appointment"
             to="/operator/review-appointments-april"
           />
@@ -890,53 +868,22 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <div className="hidden justify-end md:flex">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
-            <ShieldCheck className="size-4" />
-            Doctor workspace
-          </div>
-        </div>
-
-        <div className="mt-7 hidden gap-6 md:grid xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
-          <div>
-            <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
-              OCS M&#201;DECINS
-            </p>
-            <h2 className="mt-3 font-display text-[2.4rem] leading-[0.96] tracking-tight text-slate-950 md:text-[4rem]">
-              Operations Dashboard
-            </h2>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(244,252,252,0.9))] px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
-                Care promise
-              </p>
-              <p className="mt-3 text-[1.5rem] font-semibold uppercase leading-[1.14] tracking-tight text-[#2d5f69] md:text-[2rem]">
-                <span className="text-[#f1bc35]">Together,</span> bringing healthcare to every doorstep
-              </p>
-            </div>
-
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
-                Live status
-              </p>
-              <OperationStatusSelector
-                align="left"
-                className="mt-4"
-                disabled={isSavingStatus}
-                onChange={onStatusChange}
-                value={user.operation_status}
-              />
-              <p className="mt-4 text-sm leading-6 text-[#51717b]">
-                Visible to other OCS Medecins users in real time.
-              </p>
-            </div>
-          </div>
-        </div>
+        <OperationsDashboardDesktopHeader
+          roleBadge="Doctor workspace"
+          statusMarkup={
+            <OperationStatusSelector
+              align="right"
+              className="mt-0"
+              disabled={isSavingStatus}
+              onChange={onStatusChange}
+              value={user.operation_status}
+            />
+          }
+          title="Operations Dashboard"
+        />
 
         {lowStockAlert?.triggered ? (
-          <div className="mt-6 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4 shadow-[0_18px_40px_rgba(153,27,27,0.08)]">
+          <div className="mt-4 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4 shadow-[0_18px_40px_rgba(153,27,27,0.08)]">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Low stock alert</p>
@@ -957,26 +904,22 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
           </div>
         ) : null}
 
-        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-8 md:rounded-[42px] md:p-6">
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-5">
+        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
+          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="space-y-4">
               <div className="rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-4 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:rounded-[34px] md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                   Shifts
                 </p>
-                <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+                <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
                   My shifts
                 </p>
-                <p className="mt-2 text-sm leading-6 text-[#51717b]">
-                  Jump straight into the roster views you use most often during clinic operations.
-                </p>
 
-                <div className="mt-5 space-y-4">
+                <div className="mt-4 space-y-4">
                   <DoctorDashboardTile
                     eyebrow="Weekly schedule"
                     icon={CalendarClock}
                     size="hero"
-                    subtitle="Open your current week home visit roster."
                     title="Current week roster"
                     onClick={onOpenRosterPdf}
                   />
@@ -984,7 +927,6 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
                     eyebrow="Monthly view"
                     icon={ClipboardList}
                     size="compact"
-                    subtitle={`See the full ${monthLabel} planning board.`}
                     title={`${monthLabel} roster`}
                     onClick={onOpenRosterPdf}
                   />
@@ -996,13 +938,12 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
                 eyebrow="Health care manager"
                 icon={BellRing}
                 size="hero"
-                subtitle="Read the latest shared coordination bulletin from HCM."
                 title="Updates from HCM"
                 to="/hcm-news"
               />
             </div>
 
-            <DoctorPersonalOperationUpdates monthLabel={monthLabel} />
+            <DoctorPersonalOperationUpdates />
           </div>
         </div>
       </div>
@@ -1018,72 +959,37 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <div className="hidden justify-end md:flex">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
-            <ShieldCheck className="size-4" />
-            Operator workspace
-          </div>
-        </div>
+        <OperationsDashboardDesktopHeader
+          roleBadge="Operator workspace"
+          statusMarkup={
+            <OperationStatusSelector
+              align="right"
+              className="mt-0"
+              disabled={isSavingStatus}
+              onChange={onStatusChange}
+              options={["active", "offline"]}
+              value={user.operation_status}
+            />
+          }
+          title="Operations Dashboard"
+        />
 
-        <div className="mt-7 hidden gap-6 md:grid xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
-          <div>
-            <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
-              OCS M&#201;DECINS
-            </p>
-            <h2 className="mt-3 font-display text-[2.4rem] leading-[0.96] tracking-tight text-slate-950 md:text-[4rem]">
-              Operations Dashboard
-            </h2>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(244,252,252,0.9))] px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
-                Care promise
-              </p>
-              <p className="mt-3 text-[1.5rem] font-semibold uppercase leading-[1.14] tracking-tight text-[#2d5f69] md:text-[2rem]">
-                <span className="text-[#f1bc35]">Together,</span> bringing healthcare to every doorstep
-              </p>
-            </div>
-
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
-                Live status
-              </p>
-              <OperationStatusSelector
-                align="left"
-                className="mt-4"
-                disabled={isSavingStatus}
-                onChange={onStatusChange}
-                options={["active", "offline"]}
-                value={user.operation_status}
-              />
-              <p className="mt-4 text-sm leading-6 text-[#51717b]">
-                Shared instantly with doctors, lab, and admin.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-8 md:rounded-[42px] md:p-6">
-          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-5">
+        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
+          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="space-y-4">
               <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                   Shared roster
                 </p>
-                <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+                <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
                   Doctors shifts
                 </p>
-                <p className="mt-2 text-sm leading-6 text-[#51717b]">
-                  Review the main shift boards you use to coordinate care across the doctor team.
-                </p>
 
-                <div className="mt-5 space-y-4">
+                <div className="mt-4 space-y-4">
                   <DoctorDashboardTile
                     eyebrow="Weekly schedule"
                     icon={CalendarClock}
                     size="hero"
-                    subtitle="Open the current shared weekly doctor roster."
                     title="Current week roster"
                     onClick={onOpenRosterPdf}
                   />
@@ -1091,7 +997,6 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
                     eyebrow="Monthly view"
                     icon={ClipboardList}
                     size="compact"
-                    subtitle={`See the full ${monthLabel} roster across the team.`}
                     title={`${monthLabel} roster`}
                     onClick={onOpenRosterPdf}
                   />
@@ -1103,13 +1008,12 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
                 eyebrow="Health care manager"
                 icon={BellRing}
                 size="hero"
-                subtitle="Read fresh operational news and HCM notices."
                 title="Updates from HCM"
                 to="/hcm-news"
               />
             </div>
 
-            <OperatorPersonalOperationUpdates monthLabel={monthLabel} />
+            <OperatorPersonalOperationUpdates />
           </div>
         </div>
       </div>
@@ -1125,24 +1029,21 @@ function LabDashboardView({ dashboard, user, onStatusChange, isSavingStatus }) {
         title="Operations Dashboard"
         statusMarkup={
           <OperationStatusSelector
-            align="left"
+            align="right"
+            className="mt-0"
             disabled={isSavingStatus}
             onChange={onStatusChange}
             options={["active", "offline"]}
             value={user.operation_status}
           />
         }
-        promiseLabel="Clinical support"
-        promiseText="keeping lab coordination close to every doorstep"
         leftEyebrow="Lab operations"
         leftTitle="Blood test workflow"
-        leftDescription="Open the tools you need for sample preparation, recent handoffs, and patient follow-up inside the lab desk."
         leftItems={[
           {
             eyebrow: "Lab queue",
             icon: ClipboardList,
             title: "Blood test queue",
-            subtitle: "Open the live lab workspace and active queue.",
             size: "hero",
             to: "/lab",
           },
@@ -1150,7 +1051,6 @@ function LabDashboardView({ dashboard, user, onStatusChange, isSavingStatus }) {
             eyebrow: "Patient view",
             icon: UsersRound,
             title: "Patient records",
-            subtitle: "Review patient details and lab-linked history.",
             size: "compact",
             to: "/patients",
           },
@@ -1159,40 +1059,34 @@ function LabDashboardView({ dashboard, user, onStatusChange, isSavingStatus }) {
           eyebrow: "Health care manager",
           icon: BellRing,
           title: "Updates from HCM",
-          subtitle: "Stay aligned with the latest operations notices.",
           size: "hero",
           to: "/hcm-news",
         }}
         rightEyebrow="Lab coordination"
         rightTitle="Personal operation updates"
-        rightDescription="Move quickly between visit planning, consultation review, stock checks, and longer-term case follow-up."
         rightItems={[
           {
             eyebrow: "Visit planning",
             icon: CalendarClock,
             title: "Scheduled visits",
-            subtitle: "For blood test coordination and same-day prep.",
             to: "/lab",
           },
           {
             eyebrow: "Consultation handoff",
             icon: Stethoscope,
             title: "Consultations",
-            subtitle: "Review clinical notes linked to the lab workflow.",
             to: "/consultations",
           },
           {
             eyebrow: "Inventory",
             icon: Activity,
             title: "Inventory",
-            subtitle: "Check supplies and internal stock visibility.",
             to: "/inventory",
           },
           {
             eyebrow: "Long-term review",
             icon: UsersRound,
             title: "Patient review",
-            subtitle: "Open patient records needing extra follow-up.",
             to: "/patients",
           },
         ]}
@@ -1211,24 +1105,21 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
         title="Operations Dashboard"
         statusMarkup={
           <OperationStatusSelector
-            align="left"
+            align="right"
+            className="mt-0"
             disabled={isSavingStatus}
             onChange={onStatusChange}
             options={["active", "offline"]}
             value={user.operation_status}
           />
         }
-        promiseLabel="Finance desk"
-        promiseText="keeping payment follow-up clear and coordinated"
         leftEyebrow="Billing operations"
         leftTitle="Collections workspace"
-        leftDescription="Open the core finance areas used for bill review, payment follow-up, and collected revenue visibility."
         leftItems={[
           {
             eyebrow: "Billing desk",
             icon: CreditCard,
             title: "Billing workspace",
-            subtitle: "Open bills, payment states, and patient finance records.",
             size: "hero",
             to: "/billing",
           },
@@ -1236,7 +1127,6 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
             eyebrow: "Revenue",
             icon: DollarSign,
             title: "Collected revenue",
-            subtitle: "Review totals and payment completion from the billing board.",
             size: "compact",
             to: "/billing",
           },
@@ -1245,40 +1135,34 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
           eyebrow: "Health care manager",
           icon: BellRing,
           title: "Updates from HCM",
-          subtitle: "Stay in sync with operations news and team-wide notices.",
           size: "hero",
           to: "/hcm-news",
         }}
         rightEyebrow="Finance follow-up"
         rightTitle="Personal operation updates"
-        rightDescription="Use these shortcuts to move quickly between the most important finance views in the clinic workflow."
         rightItems={[
           {
             eyebrow: "Outstanding bills",
             icon: CreditCard,
             title: "Pending payment",
-            subtitle: "Track unpaid consultation-linked billing entries.",
             to: "/billing",
           },
           {
             eyebrow: "Collection review",
             icon: DollarSign,
             title: "Payment review",
-            subtitle: "Check completed collections and recent movement.",
             to: "/billing",
           },
           {
             eyebrow: "Billing summary",
             icon: ClipboardList,
             title: "Patient billing",
-            subtitle: "Open patient-level finance summaries and line items.",
             to: "/billing",
           },
           {
             eyebrow: "Operations news",
             icon: BellRing,
             title: "HCM news",
-            subtitle: "Read the latest broadcast from the care desk.",
             to: "/hcm-news",
           },
         ]}
@@ -1316,22 +1200,22 @@ function AdminDashboardView({
             </div>
           </div>
 
-          <div className="mt-7 hidden md:block">
+          <div className="mt-3 hidden md:block">
             <div>
               <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
                 OCS M&#201;DECINS
               </p>
-              <h2 className="mt-3 font-display text-[2.4rem] leading-[0.96] tracking-tight text-slate-950 md:text-[4rem]">
+              <h2 className="mt-2 font-display text-[2.4rem] leading-[0.96] tracking-tight text-slate-950 md:text-[3.25rem]">
                 Operations Dashboard
               </h2>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-[#51717b]">
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-[#51717b]">
                 Keep the leadership view focused on doctor availability, the next visits in the queue,
                 shared HCM updates, and live operational reporting.
               </p>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
+          <div className="mt-5 grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
             <DoctorStatusPanel doctors={dashboard.doctorStatuses} />
             <UpcomingAppointmentsPanel dashboard={dashboard} />
           </div>
@@ -1341,21 +1225,16 @@ function AdminDashboardView({
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                 Health care manager
               </p>
-              <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+              <p className="mt-2 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
                 Updates from HCM
               </p>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#51717b]">
-                Publish and review the shared operations news board used by doctors, operators, lab,
-                finance, and admin.
-              </p>
 
-              <div className="mt-5">
+              <div className="mt-4">
                 <DoctorDashboardTile
                   dark
                   eyebrow="Health care manager"
                   icon={BellRing}
                   size="hero"
-                  subtitle="Open the team-wide HCM news board."
                   title="Updates from HCM"
                   to="/hcm-news"
                 />
@@ -1366,20 +1245,15 @@ function AdminDashboardView({
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
                 Operational analytics
               </p>
-              <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+              <p className="mt-2 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
                 Live Report
               </p>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#51717b]">
-                Review live patient distribution, doctor activity, and revenue performance from one
-                reporting workspace.
-              </p>
 
-              <div className="mt-5">
+              <div className="mt-4">
                 <DoctorDashboardTile
                   eyebrow="Admin report"
                   icon={Activity}
                   size="hero"
-                  subtitle="Open charts for locations, doctors, and revenue."
                   title="Live Report"
                   to="/live-report"
                 />

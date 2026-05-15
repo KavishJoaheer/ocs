@@ -315,34 +315,17 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] text-white lg:flex lg:flex-col">
-        <div className="flex flex-1 flex-col px-6 py-8">
-          <div className="relative overflow-hidden rounded-[38px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,#a9b8bf_0%,#9aaab2_100%)] p-5 shadow-[0_32px_80px_rgba(34,72,91,0.16)]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.38),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(26,56,68,0.08))]" />
-            <div className="relative z-10 flex min-h-[370px] flex-col">
-              <div className="inline-flex self-center rounded-[20px] bg-white px-4 py-3 shadow-[0_16px_40px_rgba(34,72,91,0.14)]">
-                <BrandMark
-                  maxWidth={190}
-                  logoClassName="drop-shadow-[0_8px_24px_rgba(34,72,91,0.06)]"
-                  size={42}
-                />
-              </div>
-
-              <div className="mt-12 max-w-[15rem] space-y-5">
-                <h1 className="font-display text-[2.05rem] leading-[1.02] tracking-tight text-[#f3c438]">
-                  Every visit is a team effort.
-                </h1>
-                <p className="text-[1.05rem] font-semibold leading-8 text-white">
-                  Our coordination is the key to our success and quality care.
-                </p>
-                <p className="text-[1.02rem] font-semibold leading-8 text-[#224f5a]">
-                  Let&apos;s make every SOS Alert count today.
-                </p>
-              </div>
-            </div>
+      <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] text-[#22485b] lg:flex lg:flex-col">
+        <div className="flex flex-1 flex-col px-6 py-6">
+          <div className="inline-flex w-fit rounded-[22px] border border-[rgba(65,200,198,0.2)] bg-white p-4 shadow-[0_12px_32px_rgba(34,72,91,0.08)]">
+            <BrandMark
+              maxWidth={190}
+              logoClassName="drop-shadow-[0_6px_18px_rgba(34,72,91,0.05)]"
+              size={42}
+            />
           </div>
 
-          <div className="mt-6 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+          <div className="mt-5 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
@@ -364,11 +347,11 @@ function Sidebar() {
             </div>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-6">
             <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
               Navigation
             </p>
-            <nav className="mt-4 space-y-2">
+            <nav className="mt-3 space-y-2">
               {visibleNavItems.map((item) => (
                 <SidebarLink
                   key={item.to}
