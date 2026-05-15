@@ -28,7 +28,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
-import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
+import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
 function MobileLauncher({ user }) {
@@ -125,20 +125,15 @@ function MobileLauncher({ user }) {
   );
 }
 
-function SummaryCard({ icon: Icon, label, value, accent, iconClassName = "text-white" }) {
+function SummaryCard({ label, value }) {
   return (
     <div className="max-w-full min-w-0 rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-white/88 p-5 shadow-[0_24px_64px_rgba(34,72,91,0.08)]">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            {label}
-          </p>
-          <p className="mt-3 break-words text-3xl font-bold tabular-nums tracking-tight text-slate-950 no-underline">
+      <div className="flex min-h-[5.5rem] flex-col justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+        <div className="mt-3 min-w-0 max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <p className="inline-block text-2xl font-bold tabular-nums tracking-tight text-slate-950 no-underline whitespace-nowrap md:text-3xl">
             {value}
           </p>
-        </div>
-        <div className={`flex shrink-0 rounded-3xl p-4 ${accent}`}>
-          <Icon className={cx("size-6", iconClassName)} />
         </div>
       </div>
     </div>
@@ -506,33 +501,11 @@ function DashboardSupportSections({ dashboard, upcomingTitle = "Upcoming appoint
 
 function DashboardSummaryCards({ dashboard }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <SummaryCard
-        icon={Activity}
-        label="Total patients"
-        value={dashboard.summary.totalPatients}
-        accent="bg-gradient-to-br from-sky-500 to-blue-600"
-      />
-      <SummaryCard
-        icon={CalendarClock}
-        label="Today's appointments"
-        value={dashboard.summary.todaysAppointments}
-        accent="bg-gradient-to-br from-cyan-500 to-sky-600"
-      />
-      <SummaryCard
-        icon={CreditCard}
-        label="Pending bills"
-        value={dashboard.summary.pendingBills}
-        accent="bg-teal-50"
-        iconClassName="text-teal-600"
-      />
-      <SummaryCard
-        icon={DollarSign}
-        label="Total revenue"
-        value={formatCurrency(dashboard.summary.totalRevenue)}
-        accent="bg-teal-50"
-        iconClassName="text-teal-600"
-      />
+    <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <SummaryCard label="Total patients" value={dashboard.summary.totalPatients} />
+      <SummaryCard label="Today's appointments" value={dashboard.summary.todaysAppointments} />
+      <SummaryCard label="Pending bills" value={dashboard.summary.pendingBills} />
+      <SummaryCard label="Total revenue" value={formatCurrency(dashboard.summary.totalRevenue)} />
     </div>
   );
 }
@@ -645,6 +618,19 @@ function DashboardActionSections({ sections }) {
   );
 }
 
+function doctorOperationStatusDotClass(status) {
+  switch (String(status || "").toLowerCase()) {
+    case "available":
+      return "bg-emerald-500";
+    case "active":
+      return "bg-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.35)]";
+    case "offline":
+      return "bg-slate-300";
+    default:
+      return "bg-slate-200";
+  }
+}
+
 function DoctorStatusPanel({ doctors = [] }) {
   const availableCount = doctors.filter((doctor) => doctor.operation_status === "available").length;
   const activeCount = doctors.filter((doctor) => doctor.operation_status === "active").length;
@@ -662,14 +648,20 @@ function DoctorStatusPanel({ doctors = [] }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20">
+        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-600">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
             Available {availableCount}
           </span>
-          <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-600/20">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="size-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.35)]"
+              aria-hidden
+            />
             Active {activeCount}
           </span>
-          <span className="inline-flex rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-600/20">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-2.5 shrink-0 rounded-full bg-slate-300" aria-hidden />
             Offline {offlineCount}
           </span>
         </div>
@@ -677,23 +669,33 @@ function DoctorStatusPanel({ doctors = [] }) {
 
       <div className="mt-3 max-h-[280px] divide-y divide-slate-200/80 overflow-y-auto pr-0.5">
         {doctors.length ? (
-          doctors.map((doctor) => (
-            <div
-              key={doctor.id}
-              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 py-2 text-sm text-slate-950"
-            >
-              <StatusBadge value={doctor.operation_status || "not linked"} />
-              <span className="min-w-0 shrink font-semibold">{doctor.full_name}</span>
-              <span className="hidden shrink-0 text-slate-400 sm:inline" aria-hidden="true">
-                —
-              </span>
-              <span className="min-w-0 shrink-0 text-xs text-slate-500 sm:text-sm">
-                {doctor.operation_status_updated_at
-                  ? `Updated ${dayjs(doctor.operation_status_updated_at).format("MMM D, YYYY [at] h:mm A")}`
-                  : "No status update yet"}
-              </span>
-            </div>
-          ))
+          doctors.map((doctor) => {
+            const status = doctor.operation_status || "not linked";
+            const dotClass = doctorOperationStatusDotClass(status);
+            const label = statusLabel(status);
+            return (
+              <div key={doctor.id} className="flex min-w-0 items-center gap-3 py-2.5">
+                <span className="sr-only">
+                  {doctor.full_name}
+                  {label ? `, ${label}` : ""}
+                  {doctor.operation_status_updated_at
+                    ? `, updated ${dayjs(doctor.operation_status_updated_at).format("MMM D, YYYY [at] h:mm A")}`
+                    : ""}
+                </span>
+                <div
+                  className={cx("size-3 shrink-0 rounded-full", dotClass)}
+                  title={label}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 truncate font-semibold text-slate-950">{doctor.full_name}</span>
+                <span className="shrink-0 text-xs font-normal text-gray-400">
+                  {doctor.operation_status_updated_at
+                    ? dayjs(doctor.operation_status_updated_at).format("MMM D, YYYY [at] h:mm A")
+                    : "No update yet"}
+                </span>
+              </div>
+            );
+          })
         ) : (
           <EmptyState
             title="No doctor statuses available"
