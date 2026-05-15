@@ -659,6 +659,7 @@ function CreateBillingModal({
   consultations,
   preselectedPatientId,
 }) {
+  const { user: authUser } = useAuth();
   const [patientId, setPatientId] = useState("");
   const [consultationId, setConsultationId] = useState("");
   const [status, setStatus] = useState("unpaid");
@@ -748,6 +749,15 @@ function CreateBillingModal({
     });
   }, [patients, patientSearchQuery]);
 
+  const doctorHasNoAssignedPatients = authUser?.role === "doctor" && patients.length === 0;
+
+  useEffect(() => {
+    if (!open || !patientId || !patients.length) return;
+    if (!patients.some((p) => String(p.id) === String(patientId))) {
+      setPatientId("");
+    }
+  }, [open, patients, patientId]);
+
   const filteredInventoryOverlayRows = useMemo(() => {
     const needle = String(inventoryOverlayQuery || "").trim().toLowerCase();
     if (!needle) return inventoryOptions;
@@ -823,6 +833,11 @@ function CreateBillingModal({
 
   function handleSubmit(event) {
     event.preventDefault();
+
+    if (doctorHasNoAssignedPatients) {
+      toast.error("No patients are assigned to your account.");
+      return;
+    }
 
     if (!patientId) {
       toast.error("Select a patient.");
@@ -1040,19 +1055,25 @@ function CreateBillingModal({
         <div className="hidden gap-4 md:grid md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
-            <select
-              required
-              value={patientId}
-              onChange={(event) => setPatientId(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-            >
-              <option value="">Select patient</option>
-              {patients.map((patient) => (
-                <option key={patient.id} value={patient.id}>
-                  {patient.full_name} - {patient.patient_identifier || patient.patient_id_number}
-                </option>
-              ))}
-            </select>
+            {doctorHasNoAssignedPatients ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
+                No patients currently assigned to you.
+              </div>
+            ) : (
+              <select
+                required
+                value={patientId}
+                onChange={(event) => setPatientId(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              >
+                <option value="">Select patient</option>
+                {patients.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.full_name} - {patient.patient_identifier || patient.patient_id_number}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
 
           <label className="space-y-2">
@@ -1083,19 +1104,25 @@ function CreateBillingModal({
         <div className="space-y-3 md:hidden">
           <div>
             <span className="text-sm font-semibold text-slate-700">Patient</span>
-            <button
-              type="button"
-              onClick={() => {
-                setPatientSearchQuery("");
-                setPatientPickerOpen(true);
-              }}
-              className="mt-2 flex min-h-12 w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 outline-none transition focus:border-[#4FB8B3]"
-            >
-              <span className={patientId ? "text-slate-900" : "text-slate-400"}>
-                {patientId ? selectedPatientLabel : "Search and select patient"}
-              </span>
-              <Search className="size-5 shrink-0 text-slate-400" />
-            </button>
+            {doctorHasNoAssignedPatients ? (
+              <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
+                No patients currently assigned to you.
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientSearchQuery("");
+                  setPatientPickerOpen(true);
+                }}
+                className="mt-2 flex min-h-12 w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 outline-none transition focus:border-[#4FB8B3]"
+              >
+                <span className={patientId ? "text-slate-900" : "text-slate-400"}>
+                  {patientId ? selectedPatientLabel : "Search and select patient"}
+                </span>
+                <Search className="size-5 shrink-0 text-slate-400" />
+              </button>
+            )}
           </div>
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation</span>
@@ -1342,7 +1369,7 @@ function CreateBillingModal({
           </button>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || doctorHasNoAssignedPatients}
             className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
           >
             {isSaving ? "Saving…" : isMobile ? "Save invoice" : "Create bill"}
@@ -1381,23 +1408,29 @@ function CreateBillingModal({
                     </div>
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                    {filteredPatientsForPicker.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        className="flex min-h-[48px] w-full flex-col items-start justify-center border-b border-slate-100 px-4 py-3 text-left active:bg-[#4FB8B3]/10"
-                        onClick={() => {
-                          setPatientId(String(patient.id));
-                          setPatientPickerOpen(false);
-                          setPatientSearchQuery("");
-                        }}
-                      >
-                        <span className="font-bold text-slate-950">{patient.full_name}</span>
-                        <span className="text-xs font-medium text-slate-500">
-                          {patient.patient_identifier || patient.patient_id_number || "—"}
-                        </span>
-                      </button>
-                    ))}
+                    {doctorHasNoAssignedPatients ? (
+                      <p className="px-4 py-10 text-center text-sm font-semibold text-rose-900">No patients currently assigned to you.</p>
+                    ) : filteredPatientsForPicker.length === 0 ? (
+                      <p className="px-4 py-10 text-center text-sm text-slate-500">No matches.</p>
+                    ) : (
+                      filteredPatientsForPicker.map((patient) => (
+                        <button
+                          key={patient.id}
+                          type="button"
+                          className="flex min-h-[48px] w-full flex-col items-start justify-center border-b border-slate-100 px-4 py-3 text-left active:bg-[#4FB8B3]/10"
+                          onClick={() => {
+                            setPatientId(String(patient.id));
+                            setPatientPickerOpen(false);
+                            setPatientSearchQuery("");
+                          }}
+                        >
+                          <span className="font-bold text-slate-950">{patient.full_name}</span>
+                          <span className="text-xs font-medium text-slate-500">
+                            {patient.patient_identifier || patient.patient_id_number || "—"}
+                          </span>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -1491,7 +1524,7 @@ function BillingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
-  const canCreateBills = user.role === "admin" || user.role === "doctor";
+  const canCreateBills = user?.role === "admin" || user?.role === "doctor";
   const isMobile = useIsMobile();
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",
@@ -1525,7 +1558,10 @@ function BillingPage() {
   }
 
   async function loadReferenceData() {
-    if (!canCreateBills) {
+    if (!user) {
+      return;
+    }
+    if (!(user.role === "admin" || user.role === "doctor")) {
       return;
     }
 
@@ -1555,7 +1591,7 @@ function BillingPage() {
 
   useEffect(() => {
     loadReferenceData();
-  }, [canCreateBills]);
+  }, [user?.id, user?.doctor_id, user?.role]);
 
   const overallPaid = patientSummary.reduce(
     (sum, patient) => sum + Number(patient.paid_amount || 0),
@@ -1647,13 +1683,13 @@ function BillingPage() {
         description={
           isMobile
             ? undefined
-            : user.role === "doctor"
+            : user?.role === "doctor"
               ? "Review consultation-linked billing, update payment status, and add new billing entries for your patients."
               : "Track every billing entry, maintain line items, and monitor which patients still have balances outstanding."
         }
       />
 
-      {user.role !== "doctor" ? (
+      {user?.role !== "doctor" ? (
         <div className="hidden gap-4 md:grid md:grid-cols-3">
           <BillingStat icon={DollarSign} label="Total billed" value={formatCurrency(overallBilled)} />
           <BillingStat icon={CreditCard} label="Collected" value={formatCurrency(overallPaid)} />

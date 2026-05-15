@@ -626,7 +626,29 @@ function getLabReportsByPatientId(patientId) {
   }));
 }
 
-router.get("/options", (_req, res) => {
+router.get("/options", (req, res) => {
+  const auth = req.auth;
+  if (!auth) {
+    return res.status(401).json({ error: "Authentication is required." });
+  }
+
+  if (auth.role === "doctor") {
+    const doctorId = auth.doctor_id ? Number(auth.doctor_id) : null;
+    if (!doctorId) {
+      return res.json([]);
+    }
+    const patients = db
+      .prepare(`
+        SELECT id, patient_identifier, patient_id_number, full_name
+        FROM patients
+        WHERE deleted_at IS NULL
+          AND assigned_doctor_id = ?
+        ORDER BY full_name ASC
+      `)
+      .all(doctorId);
+    return res.json(patients);
+  }
+
   const patients = db
     .prepare(`
       SELECT id, patient_identifier, patient_id_number, full_name
