@@ -11,6 +11,10 @@ import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
+import {
+  canEditConsultationNote,
+  canManageConsultationNotes,
+} from "../lib/consultationAccess.js";
 import { formatDate, formatDateTime, truncate } from "../lib/format.js";
 
 const noteTemplates = [
@@ -218,7 +222,7 @@ function ConsultationModal({
 
 function ConsultationsPage() {
   const { user } = useAuth();
-  const canManageConsultations = user.role === "admin" || user.role === "doctor";
+  const canManageConsultations = canManageConsultationNotes(user);
   const [consultations, setConsultations] = useState([]);
   const [availableAppointments, setAvailableAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -306,48 +310,55 @@ function ConsultationsPage() {
       >
         {consultations.length ? (
           <div className="grid gap-4 xl:grid-cols-2">
-            {consultations.map((consultation) => (
-              <article
-                key={consultation.id}
-                className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)]"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-slate-950">
-                      {consultation.patient_name}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {consultation.doctor_name} • {consultation.specialization}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {formatDateTime(
-                        consultation.appointment_date,
-                        consultation.appointment_time,
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <StatusBadge value={consultation.bill_status || "unpaid"} />
-                    <Link
-                      to={`/consultations/${consultation.id}`}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                    >
-                      Open
-                    </Link>
-                    {canManageConsultations ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditor({ consultation })}
+            {consultations.map((consultation) => {
+              const canEditRow = canEditConsultationNote(user, consultation);
+
+              return (
+                <article
+                  key={consultation.id}
+                  className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-semibold text-slate-950">
+                        {consultation.patient_name}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {consultation.doctor_name} • {consultation.specialization}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {formatDateTime(
+                          consultation.appointment_date,
+                          consultation.appointment_time,
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge value={consultation.bill_status || "unpaid"} />
+                      <Link
+                        to={`/consultations/${consultation.id}`}
                         className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                       >
-                        <SquarePen className="size-4" />
-                        Edit
-                      </button>
-                    ) : null}
+                        Open
+                      </Link>
+                      {canEditRow ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditor({ consultation })}
+                          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                        >
+                          <SquarePen className="size-4" />
+                          Edit
+                        </button>
+                      ) : canManageConsultations ? (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          View only
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
 
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
                   {truncate(consultation.doctor_notes, 260)}
                 </p>
 
@@ -362,8 +373,9 @@ function ConsultationsPage() {
                     {Number(consultation.bill_count || 0) === 1 ? "" : "s"}
                   </span>
                 </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <EmptyState

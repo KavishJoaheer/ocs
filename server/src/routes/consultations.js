@@ -4,6 +4,19 @@ const { parseBillingRow, toNumber } = require("../lib/utils");
 
 const router = express.Router();
 
+const UNAUTHORIZED_EDIT_MESSAGE =
+  "Unauthorized: You can only edit your own consultation notes.";
+const UNAUTHORIZED_DELETE_MESSAGE =
+  "Unauthorized: You can only delete your own consultation notes.";
+
+function doctorMayModifyConsultation(auth, consultationDoctorId) {
+  return (
+    auth?.role === "doctor" &&
+    auth.doctor_id &&
+    Number(consultationDoctorId) === Number(auth.doctor_id)
+  );
+}
+
 function validateConsultationPayload(body, options = {}) {
   const requireAppointment = options.requireAppointment ?? true;
   const appointmentId = Number(body.appointment_id);
@@ -170,13 +183,9 @@ router.get("/", (req, res) => {
       JOIN doctors d ON d.id = c.doctor_id
       JOIN appointments a ON a.id = c.appointment_id
       WHERE p.deleted_at IS NULL
-        AND (@doctorId = '' OR CAST(c.doctor_id AS TEXT) = @doctorId)
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
-    .all({
-      doctorId:
-        req.auth?.role === "doctor" && req.auth.doctor_id ? String(req.auth.doctor_id) : "",
-    })
+    .all()
     .map((consultation) => ({
       ...consultation,
       bill_count: Number(consultation.bill_count || 0),
@@ -191,14 +200,6 @@ router.get("/:id", (req, res) => {
 
   if (!consultation) {
     return res.status(404).json({ error: "Consultation not found." });
-  }
-
-  if (
-    req.auth?.role === "doctor" &&
-    req.auth.doctor_id &&
-    Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
-  ) {
-    return res.status(403).json({ error: "You can only view your own consultations." });
   }
 
   res.json(consultation);
@@ -265,12 +266,8 @@ router.put("/:id", (req, res) => {
 
   if (!existing) return res.status(404).json({ error: "Consultation not found." });
 
-  if (
-    req.auth?.role === "doctor" &&
-    req.auth.doctor_id &&
-    Number(existing.doctor_id) !== Number(req.auth.doctor_id)
-  ) {
-    return res.status(403).json({ error: "You can only edit your own consultations." });
+  if (req.auth?.role === "doctor" && !doctorMayModifyConsultation(req.auth, existing.doctor_id)) {
+    return res.status(403).json({ error: UNAUTHORIZED_EDIT_MESSAGE });
   }
 
   const validationError = validateConsultationPayload({
@@ -324,10 +321,16 @@ router.put("/:id", (req, res) => {
 
 router.delete("/:id", (req, res) => {
   const consultationId = Number(req.params.id);
-  const existing = db.prepare("SELECT id FROM consultations WHERE id = ?").get(consultationId);
+  const existing = db
+    .prepare("SELECT id, doctor_id FROM consultations WHERE id = ?")
+    .get(consultationId);
 
   if (!existing) {
     return res.status(404).json({ error: "Consultation not found." });
+  }
+
+  if (req.auth?.role === "doctor" && !doctorMayModifyConsultation(req.auth, existing.doctor_id)) {
+    return res.status(403).json({ error: UNAUTHORIZED_DELETE_MESSAGE });
   }
 
   db.transaction(() => {

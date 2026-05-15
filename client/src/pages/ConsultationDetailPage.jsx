@@ -15,6 +15,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
+import { canEditConsultationNote } from "../lib/consultationAccess.js";
 import {
   formatCurrency,
   formatDate,
@@ -34,10 +35,8 @@ function ConsultationDetailPage() {
   });
   const [isSaving, setIsSaving] = useState(false);
 
-  const canEdit =
-    consultation &&
-    (user.role === "admin" ||
-      (user.role === "doctor" && Number(user.doctor_id) === Number(consultation.doctor_id)));
+  const canEdit = consultation && canEditConsultationNote(user, consultation);
+  const canViewConsultationNotes = user.role === "admin" || user.role === "doctor";
 
   useEffect(() => {
     let ignore = false;
@@ -317,6 +316,10 @@ function ConsultationDetailPage() {
                 <SquarePen className="size-4" />
                 Edit consultation
               </button>
+            ) : canViewConsultationNotes && !isEditing ? (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                View only
+              </span>
             ) : null
           }
         >

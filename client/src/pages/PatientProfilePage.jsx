@@ -33,6 +33,10 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import {
+  canEditConsultationNote,
+  canManageConsultationNotes,
+} from "../lib/consultationAccess.js";
+import {
   formatAgeFromDateOfBirth,
   formatCurrency,
   formatDate,
@@ -591,7 +595,7 @@ function PatientProfilePage() {
   const canManageLabReports =
     user.role === "admin" || user.role === "doctor" || user.role === "lab_tech";
   const canDeleteReportFiles = user.role === "admin";
-  const canManageConsultations = user.role === "admin" || user.role === "doctor";
+  const canManageConsultations = canManageConsultationNotes(user);
 
   useEffect(() => {
     let ignore = false;
@@ -717,15 +721,7 @@ function PatientProfilePage() {
   }
 
   function canEditConsultation(consultation) {
-    if (!canManageConsultations) {
-      return false;
-    }
-
-    if (user.role === "admin") {
-      return true;
-    }
-
-    return Number(consultation.doctor_id) === Number(user.doctor_id);
+    return canEditConsultationNote(user, consultation);
   }
 
   function handleConsultationEditStart(consultation) {
@@ -1259,8 +1255,12 @@ function PatientProfilePage() {
                                       <SquarePen className="size-4" />
                                       Edit
                                     </button>
+                                  ) : canManageConsultations && !isEditing ? (
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                      View only
+                                    </span>
                                   ) : null}
-                                  {user.role === "admin" ? (
+                                  {canEditRow ? (
                                     <button
                                       type="button"
                                       onClick={() => setConsultationToDelete(consultation)}
@@ -1881,7 +1881,7 @@ function PatientProfilePage() {
                                       View only
                                     </span>
                                   )}
-                                  {user.role === "admin" ? (
+                                  {canEditRow ? (
                                     <button
                                       type="button"
                                       onClick={() => setConsultationToDelete(consultation)}
