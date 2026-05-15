@@ -1835,71 +1835,6 @@ function PatientProfilePage() {
           </div>
 
           <SectionCard
-        title="Billing history"
-            actions={
-              canOpenBilling ? (
-                <Link
-                  to={`/billing?patientId=${id}`}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                >
-                  <CreditCard className="size-4" />
-                  Open billing workspace
-                </Link>
-              ) : null
-            }
-          >
-              {data.bills.length ? (
-                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
-                  <table className="min-w-full table-fixed text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      <tr>
-                        <th className="w-[26%] px-3 py-2">Bill / recorded</th>
-                        <th className="w-[22%] px-3 py-2">Consultation</th>
-                        <th className="w-[18%] px-3 py-2">Amount</th>
-                        <th className="w-[18%] px-3 py-2">Status</th>
-                        <th className="w-[16%] px-3 py-2 text-right">Open</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {data.bills.map((bill) => (
-                        <tr key={bill.id} className="align-middle">
-                          <td className="px-3 py-1.5 align-middle">
-                            <p className="truncate font-semibold text-slate-900">Bill #{bill.id}</p>
-                            <p className="truncate text-xs text-slate-500">
-                              Recorded {formatDate(bill.created_at)}
-                            </p>
-                          </td>
-                          <td className="px-3 py-1.5 align-middle text-xs text-slate-600">
-                            {formatDate(bill.consultation_date)}
-                          </td>
-                          <td className="px-3 py-1.5 align-middle font-semibold text-slate-900">
-                            {formatCurrency(bill.total_amount)}
-                          </td>
-                          <td className="px-3 py-1.5 align-middle">
-                            <StatusBadge value={bill.status} />
-                          </td>
-                          <td className="px-3 py-1.5 align-middle text-right">
-                            <Link
-                              to={`/billing?patientId=${id}`}
-                              className="inline-flex rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                            >
-                              Open
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No billing records"
-                  description="Bills are created automatically when a consultation is saved."
-                />
-              )}
-          </SectionCard>
-
-          <SectionCard
             id="consultation-notes"
             className="scroll-mt-28"
             title="Consultation notes"
@@ -2225,6 +2160,71 @@ function PatientProfilePage() {
               <EmptyState
                 title="No Medical & Lab Reports yet"
                 description="Add a Medical & Lab Report here to keep investigations, consultation notes, and uploaded files together on the same patient profile."
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Billing history"
+            actions={
+              canOpenBilling ? (
+                <Link
+                  to={`/billing?patientId=${id}`}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                >
+                  <CreditCard className="size-4" />
+                  Open billing workspace
+                </Link>
+              ) : null
+            }
+          >
+            {data.bills.length ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
+                <table className="min-w-full table-fixed text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <tr>
+                      <th className="w-[26%] px-3 py-2">Bill / recorded</th>
+                      <th className="w-[22%] px-3 py-2">Consultation</th>
+                      <th className="w-[18%] px-3 py-2">Amount</th>
+                      <th className="w-[18%] px-3 py-2">Status</th>
+                      <th className="w-[16%] px-3 py-2 text-right">Open</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data.bills.map((bill) => (
+                      <tr key={bill.id} className="align-middle">
+                        <td className="px-3 py-1.5 align-middle">
+                          <p className="truncate font-semibold text-slate-900">Bill #{bill.id}</p>
+                          <p className="truncate text-xs text-slate-500">
+                            Recorded {formatDate(bill.created_at)}
+                          </p>
+                        </td>
+                        <td className="px-3 py-1.5 align-middle text-xs text-slate-600">
+                          {formatDate(bill.consultation_date)}
+                        </td>
+                        <td className="px-3 py-1.5 align-middle font-semibold text-slate-900">
+                          {formatCurrency(bill.total_amount)}
+                        </td>
+                        <td className="px-3 py-1.5 align-middle">
+                          <StatusBadge value={bill.status} />
+                        </td>
+                        <td className="px-3 py-1.5 align-middle text-right">
+                          <Link
+                            to={`/billing?patientId=${id}`}
+                            className="inline-flex rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                          >
+                            Open
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                title="No billing records"
+                description="Bills are created automatically when a consultation is saved."
               />
             )}
           </SectionCard>

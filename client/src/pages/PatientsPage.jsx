@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CreditCard,
   IdCard,
@@ -35,6 +35,7 @@ function displayText(value, fallback = "Not recorded") {
 
 function PatientsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
@@ -56,7 +57,21 @@ function PatientsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [patientCardMenu, setPatientCardMenu] = useState(null);
+  const [desktopTableMenu, setDesktopTableMenu] = useState(null);
   const [restoringPatientId, setRestoringPatientId] = useState(null);
+
+  useEffect(() => {
+    if (!desktopTableMenu) return undefined;
+
+    function handleKey(event) {
+      if (event.key === "Escape") {
+        setDesktopTableMenu(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [desktopTableMenu]);
 
   function canEditPatient(patient) {
     if (user.role === "admin" || user.role === "doctor") {
@@ -388,12 +403,27 @@ function PatientsPage() {
                             <th className="w-[16%] px-4 py-2.5">Next of kin</th>
                             <th className="w-[22%] px-4 py-2.5">Clinical</th>
                             <th className="w-[10%] px-4 py-2.5">Created</th>
-                            <th className="w-[13%] px-4 py-2.5 text-right">Actions</th>
+                            <th className="w-12 px-2 py-2.5 text-right">
+                              <span className="sr-only">Row actions</span>
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {patients.map((patient) => (
-                            <tr key={patient.id} className="border-t border-slate-200/70">
+                            <tr
+                              key={patient.id}
+                              onClick={() => navigate(`/patients/${patient.id}`)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  navigate(`/patients/${patient.id}`);
+                                }
+                              }}
+                              tabIndex={0}
+                              role="link"
+                              aria-label={`Open patient profile for ${patient.full_name}`}
+                              className="cursor-pointer border-t border-slate-200/70 outline-none transition hover:bg-slate-50/80 focus-visible:bg-slate-50/80 focus-visible:ring-2 focus-visible:ring-sky-400/40"
+                            >
                               <td className="px-4 py-2 align-top">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <div className="shrink-0 rounded-xl bg-sky-50 p-2 text-sky-700">
@@ -493,46 +523,33 @@ function PatientsPage() {
                                 {formatDate(patient.created_at)}
                               </td>
 
-                              <td className="px-4 py-2 align-top">
-                                <div className="flex flex-nowrap items-center justify-end gap-1.5">
-                                  <Link
-                                    to={`/patients/${patient.id}`}
-                                    className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                              <td className="px-2 py-2 align-top">
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    aria-label={`More actions for ${patient.full_name}`}
+                                    aria-expanded={
+                                      desktopTableMenu?.patient.id === patient.id
+                                    }
+                                    aria-haspopup="menu"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (desktopTableMenu?.patient.id === patient.id) {
+                                        setDesktopTableMenu(null);
+                                        return;
+                                      }
+                                      const rect = event.currentTarget.getBoundingClientRect();
+                                      const menuWidth = 176;
+                                      setDesktopTableMenu({
+                                        patient,
+                                        top: rect.bottom + 6,
+                                        left: Math.max(8, rect.right - menuWidth),
+                                      });
+                                    }}
+                                    className="grid size-9 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50"
                                   >
-                                    View
-                                  </Link>
-
-                                  {canEditPatient(patient) ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditor({ mode: "edit", patient })}
-                                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                    >
-                                      <SquarePen className="size-3.5" />
-                                      Edit
-                                    </button>
-                                  ) : null}
-
-                                  {canOpenBilling ? (
-                                    <Link
-                                      to={`/billing?patientId=${patient.id}`}
-                                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                    >
-                                      <CreditCard className="size-3.5" />
-                                      Billing
-                                    </Link>
-                                  ) : null}
-
-                                  {canDeletePatients ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setPatientToDelete(patient)}
-                                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
-                                    >
-                                      <Trash2 className="size-3.5" />
-                                      Delete
-                                    </button>
-                                  ) : null}
+                                    <MoreVertical className="size-4" aria-hidden />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -686,6 +703,64 @@ function PatientsPage() {
           />
         )}
       </SectionCard>
+
+      {desktopTableMenu ? (
+        <>
+          <button
+            type="button"
+            aria-label="Dismiss menu"
+            className="fixed inset-0 z-[45] cursor-default bg-transparent"
+            onClick={() => setDesktopTableMenu(null)}
+          />
+          <div
+            role="menu"
+            className="fixed z-[50] min-w-[11rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+            style={{ top: desktopTableMenu.top, left: desktopTableMenu.left }}
+          >
+            {canEditPatient(desktopTableMenu.patient) ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  const p = desktopTableMenu.patient;
+                  setDesktopTableMenu(null);
+                  setEditor({ mode: "edit", patient: p });
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+              >
+                <SquarePen className="size-4 shrink-0 text-slate-500" />
+                Edit
+              </button>
+            ) : null}
+            {canOpenBilling ? (
+              <Link
+                role="menuitem"
+                to={`/billing?patientId=${desktopTableMenu.patient.id}`}
+                onClick={() => setDesktopTableMenu(null)}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+              >
+                <CreditCard className="size-4 shrink-0 text-slate-500" />
+                Billing
+              </Link>
+            ) : null}
+            {canDeletePatients ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  const p = desktopTableMenu.patient;
+                  setDesktopTableMenu(null);
+                  setPatientToDelete(p);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+              >
+                <Trash2 className="size-4 shrink-0" />
+                Delete
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       {isMobile && patientCardMenu ? (
         <>

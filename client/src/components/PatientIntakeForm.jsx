@@ -82,12 +82,6 @@ const MOBILE_TEXTAREA = cx(
   "min-h-[2.75rem] resize-y py-2 leading-relaxed",
 );
 
-const DESKTOP_TABS = [
-  { key: "info", label: "Patient info" },
-  { key: "clinical", label: "Clinical history" },
-  { key: "nok", label: "Next of kin" },
-];
-
 const DESKTOP_INPUT =
   "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-sky-400 focus:bg-white";
 const DESKTOP_TEXTAREA = cx(
@@ -110,7 +104,7 @@ function PatientFormModal({
   const isMobile = useIsMobile();
   const [form, setForm] = useState(emptyPatient);
   const [wizardStep, setWizardStep] = useState(0);
-  const [desktopTab, setDesktopTab] = useState(0);
+  const [desktopWizardStep, setDesktopWizardStep] = useState(0);
   const firstNameRef = useRef(null);
   const stepFirstInputRef = useRef(null);
   const isPageLayout = layout === "page";
@@ -118,7 +112,7 @@ function PatientFormModal({
   useEffect(() => {
     if (!open) return;
     setWizardStep(0);
-    setDesktopTab(0);
+    setDesktopWizardStep(0);
 
     if (mode !== "edit") {
       try {
@@ -177,11 +171,15 @@ function PatientFormModal({
   function handleCancel() {
     clearDraft();
     setWizardStep(0);
+    setDesktopWizardStep(0);
     onClose();
   }
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (!isMobile && desktopWizardStep < 2) {
+      return;
+    }
     clearDraft();
 
     const locationTags = Array.isArray(form.location_tags) ? form.location_tags : [];
@@ -632,27 +630,22 @@ function PatientFormModal({
             </label>
           ) : null}
 
-          <div className="flex flex-wrap gap-1 border-b border-slate-200/90">
-            {DESKTOP_TABS.map((tab, index) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setDesktopTab(index)}
-                className={cx(
-                  "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition",
-                  desktopTab === index
-                    ? "border-sky-600 text-sky-800"
-                    : "border-transparent text-slate-500 hover:text-slate-700",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/90 pb-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Step {desktopWizardStep + 1} of 3
+            </span>
+            <span className="text-sm font-semibold text-slate-800">
+              {desktopWizardStep === 0
+                ? "Patient info"
+                : desktopWizardStep === 1
+                  ? "Clinical history"
+                  : "Next of kin"}
+            </span>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-28 pt-4">
-          {desktopTab === 0 ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-32 pt-4">
+          {desktopWizardStep === 0 ? (
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">First name</span>
@@ -809,7 +802,7 @@ function PatientFormModal({
             </div>
           ) : null}
 
-          {desktopTab === 1 ? (
+          {desktopWizardStep === 1 ? (
             <div className="grid gap-4 md:grid-cols-2">
               {form.status === "active" ? (
                 <label className="space-y-2 md:col-span-2">
@@ -868,10 +861,24 @@ function PatientFormModal({
                   className={DESKTOP_TEXTAREA}
                 />
               </label>
+
+              <label className="block space-y-2 md:col-span-2">
+                <span className="font-display text-base font-semibold text-slate-700">
+                  Particularity
+                </span>
+                <textarea
+                  rows={2}
+                  name="particularity"
+                  value={form.particularity}
+                  onChange={handleChange}
+                  placeholder="Blank page for additional notes..."
+                  className={DESKTOP_TEXTAREA}
+                />
+              </label>
             </div>
           ) : null}
 
-          {desktopTab === 2 ? (
+          {desktopWizardStep === 2 ? (
             <div className="space-y-4">
               <div className="rounded-[26px] border border-slate-200/80 bg-slate-50/80 p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
@@ -923,41 +930,44 @@ function PatientFormModal({
                   </label>
                 </div>
               </div>
-
-              <label className="block space-y-2">
-                <span className="font-display text-base font-semibold text-slate-700">
-                  Particularity
-                </span>
-                <textarea
-                  rows={2}
-                  name="particularity"
-                  value={form.particularity}
-                  onChange={handleChange}
-                  placeholder="Blank page for additional notes..."
-                  className={DESKTOP_TEXTAREA}
-                />
-              </label>
             </div>
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-slate-200/80 bg-white/95 py-4 backdrop-blur-sm">
-          <div className="flex justify-end gap-3">
+        <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-3 border-t border-gray-200 bg-white p-4">
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Cancel
+          </button>
+          {desktopWizardStep > 0 ? (
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={() => setDesktopWizardStep((s) => Math.max(0, s - 1))}
               className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
             >
-              Cancel
+              Back
             </button>
+          ) : null}
+          {desktopWizardStep < 2 ? (
+            <button
+              type="button"
+              onClick={() => setDesktopWizardStep((s) => Math.min(2, s + 1))}
+              className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700"
+            >
+              {desktopWizardStep === 0 ? "Next: Clinical history" : "Next: Next of kin"}
+            </button>
+          ) : (
             <button
               type="submit"
               disabled={isSaving}
               className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSaving ? "Saving..." : actionLabel}
+              {isSaving ? "Saving..." : isEditing ? "Update patient" : "Save patient"}
             </button>
-          </div>
+          )}
         </div>
       </form>
     </Modal>
