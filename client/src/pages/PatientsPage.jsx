@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   CreditCard,
   IdCard,
@@ -35,12 +35,13 @@ function displayText(value, fallback = "Not recorded") {
 
 function PatientsPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
   const canOpenBilling = user.role === "admin" || user.role === "doctor";
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [doctorIdFilter, setDoctorIdFilter] = useState("");
@@ -113,6 +114,12 @@ function PatientsPage() {
       setRefreshing(false);
     }
   }
+
+  useEffect(() => {
+    const next = searchParams.get("search") || "";
+    setSearch((prev) => (prev === next ? prev : next));
+    setPage(1);
+  }, [searchParams]);
 
   useEffect(() => {
     loadDoctors();

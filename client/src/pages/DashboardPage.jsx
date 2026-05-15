@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import {
   Activity,
@@ -11,6 +11,7 @@ import {
   MapPinned,
   Package,
   PhoneCall,
+  Search,
   ShieldCheck,
   Stethoscope,
   Upload,
@@ -18,7 +19,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import OperationStatusSelector from "../components/OperationStatusSelector.jsx";
@@ -228,6 +229,7 @@ function DoctorDashboardTile({
   icon: Icon,
   dark = false,
   size = "regular",
+  flat = false,
 }) {
   const sizeClasses =
     size === "hero"
@@ -239,9 +241,13 @@ function DoctorDashboardTile({
   const classes = cx(
     "group flex w-full rounded-[30px] border transition duration-200",
     sizeClasses,
-    dark
-      ? "border-[rgba(45,143,152,0.34)] bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white shadow-[0_22px_50px_rgba(45,143,152,0.28)] hover:-translate-y-0.5 hover:shadow-[0_28px_60px_rgba(45,143,152,0.32)]"
-      : "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-[rgba(45,143,152,0.26)] hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
+    flat
+      ? dark
+        ? "border-white/25 bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white hover:border-white/35"
+        : "border-gray-200 bg-white text-slate-950 hover:border-gray-300"
+      : dark
+        ? "border-[rgba(45,143,152,0.34)] bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white shadow-[0_22px_50px_rgba(45,143,152,0.28)] hover:-translate-y-0.5 hover:shadow-[0_28px_60px_rgba(45,143,152,0.32)]"
+        : "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-[rgba(45,143,152,0.26)] hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
   );
 
   const content = (
@@ -283,7 +289,7 @@ function DoctorDashboardTile({
           <p
             className={cx(
               "mt-2 break-words text-sm leading-6",
-              dark ? "text-white/84" : "text-[#51717b]",
+              dark ? "line-clamp-3 text-white/90" : "text-[#51717b]",
             )}
           >
             {subtitle}
@@ -291,14 +297,15 @@ function DoctorDashboardTile({
         ) : null}
       </div>
 
-      <div
-        className={cx(
-          "hidden rounded-full px-3 py-1 text-xs font-semibold md:inline-flex md:items-center md:gap-1.5",
-          dark
-            ? "bg-white/12 text-white/90"
-            : "bg-[rgba(45,143,152,0.08)] text-[#2d8f98]",
-        )}
-      >
+        <div
+          className={cx(
+            "hidden rounded-full px-3 py-1 text-xs font-semibold md:inline-flex md:items-center md:gap-1.5",
+            flat && !dark && "border border-gray-200 bg-slate-50",
+            dark
+              ? "bg-white/12 text-white/90"
+              : "bg-[rgba(45,143,152,0.08)] text-[#2d8f98]",
+          )}
+        >
         Open
         <ArrowUpRight className="size-3.5 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
       </div>
@@ -388,7 +395,7 @@ function RoleBoard({
   );
 }
 
-function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup }) {
+function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup, beforeStatus }) {
   return (
     <div className="mb-2 hidden items-start justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] pb-3 md:flex">
       <div className="min-w-0 flex-1 pr-4">
@@ -400,11 +407,12 @@ function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup }) {
         </h1>
       </div>
       <div className="flex min-w-0 shrink-0 flex-col items-end gap-2">
-        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98] shadow-sm">
+        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
           <ShieldCheck className="size-3.5 shrink-0" />
           <span className="truncate">{roleBadge}</span>
         </div>
-        <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/92 px-3 py-1.5 shadow-[0_8px_22px_rgba(34,72,91,0.06)] sm:gap-2.5 sm:px-3.5">
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/92 px-3 py-1.5 sm:gap-2.5 sm:px-3.5">
+          {beforeStatus}
           <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400">
             Live status
           </span>
@@ -693,15 +701,115 @@ function DoctorStatusPanel({ doctors = [] }) {
   );
 }
 
+function DoctorPatientQuickSearch() {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+
+  function submit() {
+    const trimmed = query.trim();
+    navigate(trimmed ? `/patients?search=${encodeURIComponent(trimmed)}` : "/patients");
+  }
+
+  return (
+    <div className="relative hidden min-w-0 max-w-[11rem] flex-1 md:block lg:max-w-[14rem]">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+      <input
+        type="search"
+        enterKeyHint="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Search patients…"
+        aria-label="Search patients"
+        className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#2d8f98]"
+      />
+    </div>
+  );
+}
+
+function DoctorScheduledVisitsWidget({ today, visits, listPath }) {
+  const todayRows = useMemo(() => {
+    const rows = visits || [];
+    return rows.filter((row) => row.appointment_date === today).slice(0, 3);
+  }, [visits, today]);
+
+  return (
+    <div className="relative flex min-h-[140px] flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white px-5 py-5 md:px-6 md:py-5">
+      <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50 text-[#2d8f98]">
+            <CalendarClock className="size-5" />
+          </div>
+          <p className="text-base font-medium leading-snug tracking-tight text-slate-950">Scheduled visits</p>
+        </div>
+        <Link
+          to={listPath}
+          className="shrink-0 text-xs font-semibold text-[#2d8f98] transition hover:text-[#236d75] hover:underline"
+        >
+          View all
+        </Link>
+      </div>
+      <div className="mt-4 flex flex-1 flex-col gap-3">
+        {todayRows.length === 0 ? (
+          <p className="text-sm text-slate-500">No visits scheduled for today.</p>
+        ) : (
+          todayRows.map((row) => (
+            <div key={row.id} className="min-w-0 border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+              <p className="truncate text-sm font-semibold text-slate-900">{row.patient_name}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                {formatDateTime(row.appointment_date, row.appointment_time)}
+                {row.location ? (
+                  <>
+                    <span className="text-slate-300"> · </span>
+                    <span className="inline-flex items-start gap-1">
+                      <MapPinned className="mt-0.5 size-3 shrink-0 text-slate-400" aria-hidden />
+                      <span>{row.location}</span>
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DoctorAssignedPatientsMetricCard({ activeCount, listPath }) {
+  return (
+    <Link
+      to={listPath}
+      className="group relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-[30px] border border-gray-200 bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))] px-5 py-5 transition hover:border-[#2d8f98]/40 md:px-6 md:py-5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white text-[#2d8f98]">
+          <UsersRound className="size-5" />
+        </div>
+        <span className="inline-flex size-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
+          <ArrowUpRight className="size-4" />
+        </span>
+      </div>
+      <div className="mt-6 text-center">
+        <p className="text-4xl font-semibold tabular-nums tracking-tight text-slate-950">{activeCount}</p>
+        <p className="mt-1 text-sm font-medium text-slate-600">Active patients</p>
+      </div>
+    </Link>
+  );
+}
+
 function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, icon: Icon }) {
   const classes = cx(
-    "group relative overflow-hidden rounded-[30px] border px-5 py-5 shadow-[0_18px_42px_rgba(34,72,91,0.08)] transition duration-200 md:px-6 md:py-5",
+    "group relative overflow-hidden rounded-[30px] border border-gray-200 px-5 py-5 transition duration-200 md:px-6 md:py-5",
     accent
-      ? "border-[rgba(65,200,198,0.22)] bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))]"
-      : "border-[rgba(106,129,138,0.2)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,251,251,0.95))]",
-    to
-      ? "block hover:-translate-y-1 hover:border-[rgba(45,143,152,0.28)] hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]"
-      : "",
+      ? "bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))]"
+      : "bg-white",
+    to ? "block hover:border-gray-300" : "",
   );
 
   const content = (
@@ -712,17 +820,15 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
         <div className="flex items-start justify-between gap-4">
           <div
             className={cx(
-              "flex size-12 shrink-0 items-center justify-center rounded-2xl border shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
-              accent
-                ? "border-[rgba(65,200,198,0.24)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(229,245,246,0.92))] text-[#2d8f98]"
-                : "border-[rgba(106,129,138,0.18)] bg-white/90 text-[#5c7c86]",
+              "flex size-12 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50",
+              accent ? "text-[#2d8f98]" : "text-[#5c7c86]",
             )}
           >
             {Icon ? <Icon className="size-5" /> : null}
           </div>
 
           {to ? (
-            <span className="inline-flex size-9 items-center justify-center rounded-full border border-[rgba(65,200,198,0.18)] bg-white/84 text-[#2d8f98] shadow-[0_10px_24px_rgba(34,72,91,0.08)] transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
+            <span className="inline-flex size-9 items-center justify-center rounded-full border border-gray-200 bg-white text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
               <ArrowUpRight className="size-4" />
             </span>
           ) : null}
@@ -764,9 +870,13 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
   return <div className={classes}>{content}</div>;
 }
 
-function DoctorPersonalOperationUpdates() {
+function DoctorPersonalOperationUpdates({ dashboard }) {
+  const today = dashboard?.periods?.today || "";
+  const visits = dashboard?.scheduledVisits || [];
+  const activeAssigned = Number(dashboard?.summary?.activeAssignedPatientsCount ?? 0);
+
   return (
-    <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 shadow-[0_28px_70px_rgba(34,72,91,0.1)] md:p-7">
+    <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
@@ -780,12 +890,7 @@ function DoctorPersonalOperationUpdates() {
         <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <PersonalOperationOverviewCard
-            accent
-            icon={CalendarClock}
-            title="Scheduled visits"
-            to="/doctor/scheduled-visits"
-          />
+          <DoctorScheduledVisitsWidget listPath="/doctor/scheduled-visits" today={today} visits={visits} />
           <PersonalOperationOverviewCard
             icon={CreditCard}
             title="Pending payment"
@@ -796,12 +901,7 @@ function DoctorPersonalOperationUpdates() {
             title="Total patients seen"
             to="/doctor/patients-seen-april"
           />
-          <PersonalOperationOverviewCard
-            accent
-            icon={UsersRound}
-            title="Assigned patients"
-            to="/doctor/assigned-patients"
-          />
+          <DoctorAssignedPatientsMetricCard activeCount={activeAssigned} listPath="/doctor/assigned-patients" />
         </div>
       </div>
     </div>
@@ -810,7 +910,7 @@ function DoctorPersonalOperationUpdates() {
 
 function OperatorPersonalOperationUpdates() {
   return (
-    <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 shadow-[0_28px_70px_rgba(34,72,91,0.1)] md:p-7">
+    <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
@@ -852,7 +952,7 @@ function OperatorPersonalOperationUpdates() {
   );
 }
 
-function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
+function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -861,6 +961,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
 
       <div className="relative z-10">
         <OperationsDashboardDesktopHeader
+          beforeStatus={<DoctorPatientQuickSearch />}
           roleBadge="Doctor workspace"
           statusMarkup={
             <OperationStatusSelector
@@ -875,7 +976,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
         />
 
         {lowStockAlert?.triggered ? (
-          <div className="mt-4 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4 shadow-[0_18px_40px_rgba(153,27,27,0.08)]">
+          <div className="mt-4 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Low stock alert</p>
@@ -899,7 +1000,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
         <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-4">
-              <div className="rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-4 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:rounded-[34px] md:p-6">
+              <div className="rounded-[24px] border border-gray-200 bg-white/90 p-4 md:rounded-[34px] md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   Shifts
                 </p>
@@ -909,6 +1010,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
 
                 <div className="mt-4 space-y-4">
                   <DoctorDashboardTile
+                    flat
                     eyebrow="Weekly schedule"
                     icon={CalendarClock}
                     size="hero"
@@ -916,6 +1018,7 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
                     onClick={onOpenRosterPdf}
                   />
                   <DoctorDashboardTile
+                    flat
                     eyebrow="Monthly view"
                     icon={ClipboardList}
                     size="compact"
@@ -927,15 +1030,21 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
 
               <DoctorDashboardTile
                 dark
+                flat
                 eyebrow="Health care manager"
                 icon={BellRing}
                 size="hero"
+                subtitle={
+                  hcmLatestTitle
+                    ? truncate(hcmLatestTitle, 120)
+                    : "No HCM announcements yet. Open news for updates."
+                }
                 title="Updates from HCM"
                 to="/hcm-news"
               />
             </div>
 
-            <DoctorPersonalOperationUpdates />
+            <DoctorPersonalOperationUpdates dashboard={dashboard} />
           </div>
         </div>
       </div>
@@ -1393,6 +1502,7 @@ function DashboardPage() {
   const { user, updateUser } = useAuth();
   const isMobile = useIsMobile();
   const [dashboard, setDashboard] = useState(null);
+  const [doctorHcmHeadline, setDoctorHcmHeadline] = useState(null);
   const [operatorAccessData, setOperatorAccessData] = useState(null);
   const [rosterMeta, setRosterMeta] = useState(null);
   const [rosterUploadFile, setRosterUploadFile] = useState(null);
@@ -1419,10 +1529,21 @@ function DashboardPage() {
             : Promise.resolve(null),
         ]);
 
+        let headline = null;
+        if (user.role === "doctor") {
+          try {
+            const hcm = await api.get("/hcm-news");
+            headline = String(hcm.posts?.[0]?.title || "").trim() || null;
+          } catch {
+            headline = null;
+          }
+        }
+
         if (!ignore) {
           setDashboard(data);
           setOperatorAccessData(accessData);
           setRosterMeta(rosterData);
+          setDoctorHcmHeadline(headline);
         }
       } catch (error) {
         if (!ignore) {
@@ -1563,6 +1684,7 @@ function DashboardPage() {
     return (
       <DoctorDashboardView
         dashboard={dashboard}
+        hcmLatestTitle={doctorHcmHeadline}
         isSavingStatus={isSavingStatus}
         lowStockAlert={dashboard.doctor_low_stock_alert}
         onOpenRosterPdf={handleOpenRosterPdf}
