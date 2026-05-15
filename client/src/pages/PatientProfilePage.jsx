@@ -11,6 +11,7 @@ import {
   FlaskConical,
   History,
   HeartPulse,
+  LockKeyhole,
   Paperclip,
   Phone,
   Pill,
@@ -121,8 +122,19 @@ function ClinicalGridItem({ label, value }) {
 }
 
 const CONSULTATION_ROWS_LIMIT = 5;
-const CONSULTATION_PREVIEW_LIMIT = 220;
 const MOBILE_NOTE_PREVIEW_LIMIT = 80;
+
+/** Collapses runs of blank lines so pre-line rendering stays readable. */
+function formatConsultationNoteForDisplay(text) {
+  if (text == null || text === "") {
+    return "";
+  }
+
+  return String(text)
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
+}
 
 const MOBILE_TABS = [
   { key: "summary", label: "Summary" },
@@ -591,6 +603,7 @@ function PatientProfilePage() {
   const [consultationComposerOpen, setConsultationComposerOpen] = useState(false);
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
   const [consultationToDelete, setConsultationToDelete] = useState(null);
+  const [consultationNoteViewer, setConsultationNoteViewer] = useState(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [fabOpen, setFabOpen] = useState(false);
   const canManageLabReports =
@@ -726,6 +739,7 @@ function PatientProfilePage() {
   }
 
   function handleConsultationEditStart(consultation) {
+    setConsultationNoteViewer(null);
     setConsultationEditorId(consultation.id);
     setConsultationDraft(getConsultationDraft(consultation));
     setExpandedConsultations((current) => ({ ...current, [consultation.id]: true }));
@@ -1265,17 +1279,18 @@ function PatientProfilePage() {
                               </div>
                             ) : (
                               <>
-                                <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
-                                  {note || "No note recorded."}
+                                <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">
+                                  {formatConsultationNoteForDisplay(note) || "No note recorded."}
                                 </p>
                                 <div className="flex flex-wrap gap-2">
-                                  <Link
-                                    to={`/consultations/${consultation.id}`}
+                                  <button
+                                    type="button"
+                                    onClick={() => setConsultationNoteViewer(consultation)}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
                                     style={{ minHeight: 48 }}
                                   >
                                     Open
-                                  </Link>
+                                  </button>
                                   {canEditRow && !isEditing ? (
                                     <button
                                       type="button"
@@ -1287,7 +1302,11 @@ function PatientProfilePage() {
                                       Edit
                                     </button>
                                   ) : canManageConsultations && !isEditing ? (
-                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    <span
+                                      className="pointer-events-none inline-flex select-none items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 py-1 text-xs font-medium normal-case tracking-normal text-slate-500"
+                                      title="You can only edit notes you authored"
+                                    >
+                                      <LockKeyhole className="size-3.5 shrink-0 text-slate-400" aria-hidden />
                                       View only
                                     </span>
                                   ) : null}
@@ -1742,19 +1761,16 @@ function PatientProfilePage() {
                     <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
                       <thead className="bg-slate-50/90">
                         <tr>
-                          <th className="w-[12%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[11%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Date
                           </th>
-                          <th className="w-[18%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[17%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Doctor
                           </th>
                           <th className="min-w-0 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Consultation note
                           </th>
-                          <th className="w-[12%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Created
-                          </th>
-                          <th className="w-[22%] px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[28%] px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Action
                           </th>
                         </tr>
@@ -1764,9 +1780,6 @@ function PatientProfilePage() {
                           const isEditing = consultationEditorId === consultation.id;
                           const canEditRow = canEditConsultation(consultation);
                           const note = consultation.doctor_notes || "";
-                          const isExpanded = expandedConsultations[consultation.id] || isEditing;
-                          const shouldTruncate =
-                            note.length > CONSULTATION_PREVIEW_LIMIT || /\r?\n/.test(note);
 
                           return (
                             <tr key={consultation.id} className="align-top">
@@ -1859,45 +1872,22 @@ function PatientProfilePage() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="min-w-0 space-y-2">
-                                    <p
-                                      className={cx(
-                                        "break-words text-sm leading-7 text-slate-600",
-                                        isExpanded
-                                          ? "whitespace-pre-wrap"
-                                          : "line-clamp-3 [overflow-wrap:anywhere]",
-                                      )}
-                                    >
-                                      {note || "No note recorded."}
+                                  <div className="min-w-0">
+                                    <p className="line-clamp-3 break-words text-sm leading-snug text-slate-800 [overflow-wrap:anywhere]">
+                                      {formatConsultationNoteForDisplay(note) || "No note recorded."}
                                     </p>
-                                    {shouldTruncate ? (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setExpandedConsultations((current) => ({
-                                            ...current,
-                                            [consultation.id]: !current[consultation.id],
-                                          }))
-                                        }
-                                        className="text-sm font-semibold text-sky-700 transition hover:text-sky-800"
-                                      >
-                                        {isExpanded ? "View less" : "View more"}
-                                      </button>
-                                    ) : null}
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-2.5 text-sm text-slate-600">
-                                {formatDate(consultation.created_at)}
-                              </td>
                               <td className="px-4 py-2.5">
                                 <div className="flex justify-end gap-2">
-                                  <Link
-                                    to={`/consultations/${consultation.id}`}
+                                  <button
+                                    type="button"
+                                    onClick={() => setConsultationNoteViewer(consultation)}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                                   >
                                     Open
-                                  </Link>
+                                  </button>
                                   {canEditRow ? (
                                     !isEditing ? (
                                       <button
@@ -1910,7 +1900,11 @@ function PatientProfilePage() {
                                       </button>
                                     ) : null
                                   ) : (
-                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    <span
+                                      className="pointer-events-none inline-flex select-none items-center gap-1.5 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium normal-case tracking-normal text-slate-500"
+                                      title="You can only edit notes you authored"
+                                    >
+                                      <LockKeyhole className="size-3.5 shrink-0 text-slate-400" aria-hidden />
                                       View only
                                     </span>
                                   )}
@@ -2199,6 +2193,41 @@ function PatientProfilePage() {
         onSubmit={handleCreateConsultation}
         isSaving={isCreatingConsultation}
       />
+
+      {consultationNoteViewer ? (
+        <Modal
+          open
+          onClose={() => setConsultationNoteViewer(null)}
+          title={`${formatDate(consultationNoteViewer.consultation_date)} · ${consultationNoteViewer.doctor_name}`}
+          description={`${consultationNoteViewer.specialization || "General practice"} · Consultation note`}
+          size="lg"
+        >
+          <div className="space-y-5">
+            <div className="max-h-[min(60vh,28rem)] overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
+              <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">
+                {formatConsultationNoteForDisplay(consultationNoteViewer.doctor_notes) ||
+                  "No note recorded."}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConsultationNoteViewer(null)}
+                className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                Close
+              </button>
+              <Link
+                to={`/consultations/${consultationNoteViewer.id}`}
+                onClick={() => setConsultationNoteViewer(null)}
+                className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+              >
+                Open full consultation record
+              </Link>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(consultationToDelete)}
