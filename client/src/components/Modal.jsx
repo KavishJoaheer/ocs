@@ -2,7 +2,16 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { cx } from "../lib/utils.js";
 
-function Modal({ open, onClose, title, description, children, size = "lg" }) {
+function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  size = "lg",
+  /** When false, children manage their own scroll (e.g. sticky footer inside form). */
+  innerScroll = true,
+}) {
   useEffect(() => {
     if (!open) return undefined;
 
@@ -42,7 +51,7 @@ function Modal({ open, onClose, title, description, children, size = "lg" }) {
 
       <div
         className={cx(
-          "relative z-10 flex w-full max-h-[calc(100vh-5rem)] flex-col rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-6 shadow-[0_40px_120px_rgba(34,72,91,0.18)]",
+          "relative z-10 flex w-full max-h-[90vh] flex-col rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-6 shadow-[0_40px_120px_rgba(34,72,91,0.18)]",
           sizeClass,
         )}
       >
@@ -60,7 +69,12 @@ function Modal({ open, onClose, title, description, children, size = "lg" }) {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          className={cx(
+            "min-h-0 flex-1",
+            innerScroll ? "overflow-y-auto" : "flex flex-col overflow-hidden",
+          )}
+        >
           {children}
         </div>
       </div>
