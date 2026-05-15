@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, MinusCircle, Pencil, Plus, Printer, Search, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -11,14 +11,15 @@ import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
+import { cx } from "../lib/utils.js";
 
 function SummaryCard({ title, value, tone = "teal", description }) {
   const toneClass = tone === "amber" ? "text-amber-700" : "text-[#4FB8B3]";
   return (
-    <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_16px_36px_rgba(34,72,91,0.06)]">
-      <p className={`text-xs font-semibold uppercase tracking-[0.22em] ${toneClass}`}>{title}</p>
-      <p className="mt-3 text-3xl font-bold text-slate-950">{value}</p>
-      <p className="mt-2 text-sm text-slate-600">{description}</p>
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_16px_36px_rgba(34,72,91,0.06)] md:rounded-3xl md:p-5">
+      <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] md:text-xs md:tracking-[0.22em] ${toneClass}`}>{title}</p>
+      <p className="mt-1.5 text-xl font-bold leading-tight text-slate-950 md:mt-3 md:text-3xl">{value}</p>
+      {description ? <p className="mt-1 hidden text-sm text-slate-600 md:mt-2 md:block">{description}</p> : null}
     </div>
   );
 }
@@ -578,70 +579,55 @@ function InventoryActionButtons({
   onRestockMyInventory,
   onAdjustReclaim,
   onRemove,
+  touchWrap = false,
+  omitRestock = false,
 }) {
+  const btn = touchWrap
+    ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold"
+    : "inline-flex items-center gap-1 whitespace-nowrap rounded-xl px-2.5 py-1 text-xs font-semibold";
+  const restockBtn = touchWrap
+    ? "inline-flex min-h-10 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-xl bg-[#4FB8B3] px-4 py-2 text-xs font-bold text-white shadow-sm"
+    : "inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1 text-xs font-semibold text-white";
+
   return (
-    <div className="flex flex-nowrap items-center gap-2">
+    <div className={cx("flex items-center gap-2", touchWrap ? "max-w-full flex-wrap justify-end" : "flex-nowrap")}>
       {canManageOcs && contextIsOcs ? (
-        <button
-          type="button"
-          onClick={() => onStockIn(item)}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 py-1 text-xs font-semibold text-[#4FB8B3]"
-        >
-          <Plus className="size-3" />
+        <button type="button" onClick={() => onStockIn(item)} className={`${btn} border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#4FB8B3]`}>
+          <Plus className="size-3.5 shrink-0" />
           In
         </button>
       ) : null}
 
       {!(isDoctor && doctorViewIsOcs) ? (
-        <button
-          type="button"
-          onClick={() => onEdit(item)}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700"
-        >
-          <Pencil className="size-3" />
+        <button type="button" onClick={() => onEdit(item)} className={`${btn} border border-slate-200 text-slate-700`}>
+          <Pencil className="size-3.5 shrink-0" />
         </button>
       ) : null}
 
-      {canManageOcs && contextIsOcs ? (
-        <button
-          type="button"
-          onClick={() => onRestockDoctor(item)}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-2.5 py-1 text-xs font-semibold text-white"
-        >
-          <Truck className="size-3" />
+      {canManageOcs && contextIsOcs && !omitRestock ? (
+        <button type="button" onClick={() => onRestockDoctor(item)} className={`${restockBtn}`}>
+          <Truck className="size-3.5 shrink-0" />
           Restock
         </button>
       ) : null}
 
-      {isDoctor ? (
-        <button
-          type="button"
-          onClick={() => onRestockMyInventory(item)}
-          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1 text-xs font-semibold text-white"
-        >
-          <Truck className="size-3" />
+      {isDoctor && !omitRestock ? (
+        <button type="button" onClick={() => onRestockMyInventory(item)} className={`${restockBtn}`}>
+          <Truck className="size-3.5 shrink-0" />
           Restock
         </button>
       ) : null}
 
       {canManageOcs && !contextIsOcs ? (
-        <button
-          type="button"
-          onClick={() => onAdjustReclaim(item)}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-700"
-        >
-          <MinusCircle className="size-3" />
+        <button type="button" onClick={() => onAdjustReclaim(item)} className={`${btn} border border-amber-200 text-amber-700`}>
+          <MinusCircle className="size-3.5 shrink-0" />
           Adjust
         </button>
       ) : null}
 
       {canManageOcs && contextIsOcs ? (
-        <button
-          type="button"
-          onClick={() => onRemove(item)}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700"
-        >
-          <Trash2 className="size-3" />
+        <button type="button" onClick={() => onRemove(item)} className={`${btn} border border-rose-200 bg-rose-50 text-rose-700`}>
+          <Trash2 className="size-3.5 shrink-0" />
         </button>
       ) : null}
     </div>
@@ -901,6 +887,20 @@ export default function InventoryPage() {
     const allowed = new Set(sortedItems.map((item) => Number(item.id)));
     setSelectedItems((prev) => prev.filter((id) => allowed.has(Number(id))));
   }, [sortedItems]);
+
+  function openDoctorRestockForItem(nextItem) {
+    const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
+    if (!source?.id) {
+      toast.error("Item not available in OCS Master Stock.");
+      return;
+    }
+    setDoctorRestockItem({
+      ocs_item_id: Number(source.id),
+      item_name: nextItem.item_name,
+      ocs_available: Number(source.quantity || 0),
+    });
+    setDoctorRestockOpen(true);
+  }
 
   if (loading) return <LoadingState label="Loading inventory workspace" />;
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
@@ -1256,7 +1256,6 @@ export default function InventoryPage() {
       <PageHeader
         eyebrow="Logistics"
         title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
-        description={isDoctor ? "Doctor-facing inventory with read-only master visibility, FEFO restocking, and consumption tracking." : "Central master stock with replenishment controls and stocktake tools."}
         actions={
           isDoctor ? (
             <button
@@ -1277,14 +1276,14 @@ export default function InventoryPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} description="Based on cost price." />
         <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} description="Sell actions synced to billing." />
         <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} description="Inbound restock and intake value." />
-        <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" description="Traffic-light alert counters." />
+        <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" />
       </div>
 
-      <SectionCard title="View Stock Context" subtitle="Switch between Master OCS Stock and individual Doctor inventories.">
+      <SectionCard title="View Stock Context">
         <div className="space-y-4">
           {isDoctor ? (
             <div className="flex flex-wrap gap-2">
@@ -1330,9 +1329,14 @@ export default function InventoryPage() {
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by item name" className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4" />
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="-mx-1 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {folders.map((folder) => (
-              <button key={folder.id} type="button" onClick={() => setSelectedView(String(folder.id))} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => setSelectedView(String(folder.id))}
+                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              >
                 {folder.name}
               </button>
             ))}
@@ -1385,148 +1389,278 @@ export default function InventoryPage() {
         ) : null}
 
         {pagedItems.length ? (
-          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white">
-            <div className="max-h-[560px] overflow-auto overflow-x-auto">
-              <table className="min-w-full table-fixed text-left text-sm">
-                <colgroup>
-                  <col style={{ width: "50px" }} />
-                  <col style={{ width: "30%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "25%" }} />
-                </colgroup>
-                <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  <tr>
-                    <th className="w-[50px] px-4 py-2.5 align-middle">
-                      {canManageOcs ? (
-                        <input
-                          type="checkbox"
-                          checked={sortedItems.length > 0 && sortedItems.every((item) => selectedItems.includes(Number(item.id)))}
-                          onChange={toggleSelectAllFiltered}
-                          className="size-4 accent-[#4FB8B3]"
-                        />
-                      ) : null}
-                    </th>
-                    <th className="w-[30%] px-4 py-2.5 text-left align-middle">Item Name</th>
-                    <th className="w-[10%] px-4 py-2.5 text-center align-middle">Qty</th>
-                    <th className="w-[10%] px-4 py-2.5 text-center align-middle">Min Qty</th>
-                    <th className="w-[20%] px-4 py-2.5 text-center align-middle">Nearest Expiry</th>
-                    <th className="w-[25%] px-4 py-2.5 text-left align-middle">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedItems.map((item) => {
-                    const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
-                    const expanded = Boolean(expandedRows[item.id]);
-                    const batches = batchMap[item.id] || [];
-                    const parLevel = Number(item.minimum_quantity || 0);
-                    const quantity = Number(item.quantity || 0);
-                    const ratio = parLevel > 0 ? quantity / parLevel : 1;
-                    const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
-                    return (
-                      <Fragment key={item.id}>
-                        <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
-                          <td className="px-4 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
-                            {canManageOcs ? (
-                              <input
-                                type="checkbox"
-                                checked={selectedItems.includes(Number(item.id))}
-                                onChange={() => toggleSelected(item.id)}
-                                className="size-4 accent-[#4FB8B3]"
-                              />
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-2 align-middle text-left">
-                            <div className="flex items-center gap-2">
-                              <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
-                                {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                              </button>
-                              <span className="font-semibold text-slate-900">{item.item_name}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 align-middle text-center">
-                            <div className="inline-flex items-center justify-center gap-2">
-                              <span>{item.quantity}</span>
-                              {isDoctor && doctorViewIsMy ? (
-                                <span
-                                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
-                                    trafficTone === "critical"
-                                      ? "bg-rose-100 text-rose-700"
-                                      : trafficTone === "warning"
-                                        ? "bg-amber-100 text-amber-700"
-                                        : "bg-teal-100 text-teal-700"
-                                  }`}
-                                >
-                                  {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
-                                </span>
+          <>
+            <div className="hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-white md:block">
+              <div className="max-h-[560px] overflow-auto overflow-x-auto">
+                <table className="min-w-full table-fixed text-left text-sm">
+                  <colgroup>
+                    <col style={{ width: "50px" }} />
+                    <col style={{ width: "30%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "20%" }} />
+                    <col style={{ width: "25%" }} />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    <tr>
+                      <th className="w-[50px] px-4 py-2.5 align-middle">
+                        {canManageOcs ? (
+                          <input
+                            type="checkbox"
+                            checked={sortedItems.length > 0 && sortedItems.every((item) => selectedItems.includes(Number(item.id)))}
+                            onChange={toggleSelectAllFiltered}
+                            className="size-4 accent-[#4FB8B3]"
+                          />
+                        ) : null}
+                      </th>
+                      <th className="w-[30%] px-4 py-2.5 text-left align-middle">Item Name</th>
+                      <th className="w-[10%] px-4 py-2.5 text-center align-middle">Qty</th>
+                      <th className="w-[10%] px-4 py-2.5 text-center align-middle">Min Qty</th>
+                      <th className="w-[20%] px-4 py-2.5 text-center align-middle">Nearest Expiry</th>
+                      <th className="w-[25%] px-4 py-2.5 text-left align-middle">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedItems.map((item) => {
+                      const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
+                      const expanded = Boolean(expandedRows[item.id]);
+                      const batches = batchMap[item.id] || [];
+                      const parLevel = Number(item.minimum_quantity || 0);
+                      const quantity = Number(item.quantity || 0);
+                      const ratio = parLevel > 0 ? quantity / parLevel : 1;
+                      const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
+                      return (
+                        <Fragment key={item.id}>
+                          <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
+                            <td className="px-4 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
+                              {canManageOcs ? (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedItems.includes(Number(item.id))}
+                                  onChange={() => toggleSelected(item.id)}
+                                  className="size-4 accent-[#4FB8B3]"
+                                />
                               ) : null}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 align-middle text-center">{item.minimum_quantity}</td>
-                          <td className="px-4 py-2 align-middle text-center">{item.expiry_date || "Not set"}</td>
-                          <td className="px-4 py-2 align-middle text-left" onClick={(event) => event.stopPropagation()}>
-                            <InventoryActionButtons
-                              item={item}
-                              canManageOcs={canManageOcs}
-                              contextIsOcs={contextIsOcs}
-                              isDoctor={isDoctor}
-                              doctorViewIsMy={doctorViewIsMy}
-                              doctorViewIsOcs={doctorViewIsOcs}
-                              onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                              onEdit={(nextItem) => setEditor({ item: nextItem })}
-                              onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
-                              onRestockMyInventory={(nextItem) => {
-                                const source = ocsByFolderAndName.get(
-                                  `${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`,
-                                );
-                                if (!source?.id) {
-                                  toast.error("Item not available in OCS Master Stock.");
-                                  return;
-                                }
-                                setDoctorRestockItem({
-                                  ocs_item_id: Number(source.id),
-                                  item_name: nextItem.item_name,
-                                  ocs_available: Number(source.quantity || 0),
-                                });
-                                setDoctorRestockOpen(true);
-                              }}
-                              onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                              onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                            />
-                          </td>
-                        </tr>
-                        {expanded ? (
-                          <tr className="border-t border-slate-100 bg-slate-50/60">
-                            <td colSpan={6} className="px-4 py-3">
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
-                                  <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
-                                  <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
-                                  <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
-                                </div>
-                                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
-                                  <div className="mt-2 space-y-1">
-                                    {batches.length ? batches.map((batch) => (
-                                      <p key={batch.id} className="text-sm text-slate-700">
-                                        Batch #{batch.id} - Qty {batch.quantity_remaining} - Exp {batch.expiry_date || "N/A"} - Cost {formatRupees(batch.unit_cost)}
-                                      </p>
-                                    )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
-                                  </div>
-                                </div>
+                            </td>
+                            <td className="px-4 py-2 align-middle text-left">
+                              <div className="flex items-center gap-2">
+                                <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
+                                  {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                                </button>
+                                <span className="font-semibold text-slate-900">{item.item_name}</span>
                               </div>
                             </td>
+                            <td className="px-4 py-2 align-middle text-center">
+                              <div className="inline-flex items-center justify-center gap-2">
+                                <span>{item.quantity}</span>
+                                {isDoctor && doctorViewIsMy ? (
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                                      trafficTone === "critical"
+                                        ? "bg-rose-100 text-rose-700"
+                                        : trafficTone === "warning"
+                                          ? "bg-amber-100 text-amber-700"
+                                          : "bg-teal-100 text-teal-700"
+                                    }`}
+                                  >
+                                    {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 align-middle text-center">{item.minimum_quantity}</td>
+                            <td className="px-4 py-2 align-middle text-center">{item.expiry_date || "Not set"}</td>
+                            <td className="px-4 py-2 align-middle text-left" onClick={(event) => event.stopPropagation()}>
+                              <InventoryActionButtons
+                                item={item}
+                                canManageOcs={canManageOcs}
+                                contextIsOcs={contextIsOcs}
+                                isDoctor={isDoctor}
+                                doctorViewIsMy={doctorViewIsMy}
+                                doctorViewIsOcs={doctorViewIsOcs}
+                                onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                                onEdit={(nextItem) => setEditor({ item: nextItem })}
+                                onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                                onRestockMyInventory={openDoctorRestockForItem}
+                                onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                                onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                              />
+                            </td>
                           </tr>
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          {expanded ? (
+                            <tr className="border-t border-slate-100 bg-slate-50/60">
+                              <td colSpan={6} className="px-4 py-3">
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
+                                    <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
+                                    <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
+                                    <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
+                                    <div className="mt-2 space-y-1">
+                                      {batches.length ? batches.map((batch) => (
+                                        <p key={batch.id} className="text-sm text-slate-700">
+                                          Batch #{batch.id} - Qty {batch.quantity_remaining} - Exp {batch.expiry_date || "N/A"} - Cost {formatRupees(batch.unit_cost)}
+                                        </p>
+                                      )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            <div className="space-y-2 md:hidden">
+              {pagedItems.map((item) => {
+                const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
+                const expanded = Boolean(expandedRows[item.id]);
+                const batches = batchMap[item.id] || [];
+                const parLevel = Number(item.minimum_quantity || 0);
+                const quantity = Number(item.quantity || 0);
+                const ratio = parLevel > 0 ? quantity / parLevel : 1;
+                const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
+                const stockLabel =
+                  isDoctor && doctorViewIsMy
+                    ? trafficTone === "critical"
+                      ? "CRITICAL"
+                      : trafficTone === "warning"
+                        ? "LOW"
+                        : "HEALTHY"
+                    : isLow
+                      ? "LOW"
+                      : "OK";
+                const badgeIsAlert =
+                  quantity <= 0 ||
+                  isLow ||
+                  trafficTone === "critical" ||
+                  (isDoctor && doctorViewIsMy && trafficTone === "warning");
+                const showProminentRestock = isDoctor || (canManageOcs && contextIsOcs);
+
+                return (
+                  <div
+                    key={`m-${item.id}`}
+                    className={`rounded-xl border px-2.5 py-2 shadow-sm ${isLow ? "border-rose-200/80 bg-rose-50/40" : "border-slate-200/80 bg-white"}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(item.id)}
+                            className="grid size-7 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500"
+                            aria-expanded={expanded}
+                          >
+                            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                          </button>
+                          <p className="truncate font-bold leading-snug text-slate-950">{item.item_name}</p>
+                        </div>
+                      </div>
+                      <span
+                        className={cx(
+                          "shrink-0 rounded-full px-2 py-0.5 text-center text-[10px] font-bold uppercase leading-tight tracking-wide",
+                          badgeIsAlert ? "bg-rose-100 text-rose-700" : "bg-[#4FB8B3]/20 text-[#1f7f7b]",
+                        )}
+                      >
+                        {quantity} {stockLabel}
+                      </span>
+                    </div>
+
+                    <div className="mt-1.5 flex min-h-10 items-center justify-between gap-2 border-t border-slate-100 pt-1.5">
+                      <p className="min-w-0 text-[11px] leading-tight text-slate-500">
+                        <span className="font-semibold text-slate-600">Exp:</span> {item.expiry_date || "—"}
+                      </p>
+                      {showProminentRestock ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isDoctor ? (
+                            <button
+                              type="button"
+                              onClick={() => openDoctorRestockForItem(item)}
+                              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#4FB8B3] px-3.5 py-2 text-xs font-bold text-white shadow-sm active:brightness-95"
+                            >
+                              <Truck className="size-3.5" />
+                              Restock
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setRestock({ item })}
+                              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#4FB8B3] px-3.5 py-2 text-xs font-bold text-white shadow-sm active:brightness-95"
+                            >
+                              <Truck className="size-3.5" />
+                              Restock
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <InventoryActionButtons
+                          item={item}
+                          canManageOcs={canManageOcs}
+                          contextIsOcs={contextIsOcs}
+                          isDoctor={isDoctor}
+                          doctorViewIsMy={doctorViewIsMy}
+                          doctorViewIsOcs={doctorViewIsOcs}
+                          onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                          onEdit={(nextItem) => setEditor({ item: nextItem })}
+                          onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                          onRestockMyInventory={openDoctorRestockForItem}
+                          onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                          onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                          touchWrap
+                        />
+                      )}
+                    </div>
+
+                    {showProminentRestock ? (
+                      <div className="mt-1.5 flex flex-wrap justify-end gap-1.5 border-t border-slate-100 pt-1.5">
+                        <InventoryActionButtons
+                          item={item}
+                          canManageOcs={canManageOcs}
+                          contextIsOcs={contextIsOcs}
+                          isDoctor={isDoctor}
+                          doctorViewIsMy={doctorViewIsMy}
+                          doctorViewIsOcs={doctorViewIsOcs}
+                          onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                          onEdit={(nextItem) => setEditor({ item: nextItem })}
+                          onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                          onRestockMyInventory={openDoctorRestockForItem}
+                          onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                          onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                          touchWrap
+                          omitRestock
+                        />
+                      </div>
+                    ) : null}
+
+                    {expanded ? (
+                      <div className="mt-1.5 space-y-2 border-t border-slate-100 pt-1.5">
+                        <p className="text-[11px] text-slate-600">
+                          Min {item.minimum_quantity} · {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}
+                        </p>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2 text-[11px] text-slate-700">
+                          {batches.length
+                            ? batches.map((batch) => (
+                                <p key={batch.id}>
+                                  #{batch.id} · Qty {batch.quantity_remaining} · Exp {batch.expiry_date || "—"}
+                                </p>
+                              ))
+                            : "Open row to load batches."}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <EmptyState title="No stock items found" description="Add stock to one of the required folders to begin tracking." />
         )}
@@ -1547,7 +1681,8 @@ export default function InventoryPage() {
       </SectionCard>
 
       {isDoctor ? (
-        <SectionCard title="My Consumption Record" subtitle="Track patient volume and stock consumption across key periods.">
+        <div className="hidden md:block">
+          <SectionCard title="My Consumption Record" subtitle="Track patient volume and stock consumption across key periods.">
           <div className="mb-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => setConsumptionPeriod("week")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "week" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Week</button>
             <button type="button" onClick={() => setConsumptionPeriod("month")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "month" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Month</button>
@@ -1578,8 +1713,10 @@ export default function InventoryPage() {
             </table>
           </div>
         </SectionCard>
+        </div>
       ) : canManageOcs ? (
-        <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
+        <div className="hidden md:block">
+          <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
@@ -1601,9 +1738,11 @@ export default function InventoryPage() {
             </table>
           </div>
         </SectionCard>
+        </div>
       ) : null}
 
-      <SectionCard title="Live Activity" subtitle="Recent inventory events with receipt reprint support for restock transfers.">
+      <div className="hidden md:block">
+        <SectionCard title="Live Activity" subtitle="Recent inventory events with receipt reprint support for restock transfers.">
         <div className="overflow-x-auto rounded-2xl border border-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
@@ -1648,6 +1787,7 @@ export default function InventoryPage() {
           </table>
         </div>
       </SectionCard>
+      </div>
 
       <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
