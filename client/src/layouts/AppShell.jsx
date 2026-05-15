@@ -8,7 +8,11 @@ import { useIsMobile } from "../hooks/useIsMobile.js";
 const pageMeta = {
   "/": {
     label: "Dashboard",
-    helper: "Live operational view of patients, appointments, billing, and dispatch activity.",
+    helper: "",
+  },
+  "/inventory": {
+    label: "Inventory",
+    helper: "",
   },
   "/patients/add": {
     label: "Add patient",
@@ -120,23 +124,23 @@ function AppShell() {
   const dashboardMetaByRole = {
     doctor: {
       label: "Doctor dashboard",
-      helper: "Clinical operations, patient requests, consultation flow, and billing tracking.",
+      helper: "",
     },
     operator: {
       label: "Operator dashboard",
-      helper: "Dispatch, roster updates, patient coordination, and payment follow-up.",
+      helper: "",
     },
     lab_tech: {
       label: "Lab dashboard",
-      helper: "Review blood-test workflow, consultation handoffs, patient follow-up, and stock visibility.",
+      helper: "",
     },
     admin: {
       label: "Admin dashboard",
-      helper: "Clinic-wide control for patients, staffing, billing, HCM notices, and access approvals.",
+      helper: "",
     },
     accountant: {
       label: "Finance dashboard",
-      helper: "Track billing, payment follow-up, revenue visibility, and finance-side operations updates.",
+      helper: "",
     },
   };
 
@@ -162,20 +166,18 @@ function AppShell() {
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                     OCS Medecins Operations
                   </p>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-600">
-                    {activeMeta.label}
-                  </p>
+                  <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-900">{activeMeta.label}</p>
                   {activeMeta.helper ? (
-                    <p className="mt-2 max-w-3xl text-sm leading-7 text-[#3f6270]">{activeMeta.helper}</p>
+                    <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-500">{activeMeta.helper}</p>
                   ) : null}
                 </div>
 
                 {!isPatientProfile ? (
                   <p className="shrink-0 whitespace-nowrap text-sm font-medium text-slate-500 md:text-right">
-                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                       Dispatch desk
                     </span>
                     <span className="mx-2 text-slate-300" aria-hidden="true">

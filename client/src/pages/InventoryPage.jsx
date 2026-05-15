@@ -14,11 +14,15 @@ import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 function SummaryCard({ title, value, tone = "teal" }) {
-  const toneClass = tone === "amber" ? "text-amber-700" : "text-[#4FB8B3]";
+  const valueToneClass = tone === "amber" ? "text-amber-700" : "text-slate-950";
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_16px_36px_rgba(34,72,91,0.06)] md:rounded-3xl md:p-5">
-      <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] md:text-xs md:tracking-[0.22em] ${toneClass}`}>{title}</p>
-      <p className="mt-1.5 text-xl font-bold leading-tight text-slate-950 md:mt-3 md:text-3xl">{value}</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{title}</p>
+      <p
+        className={`mt-1.5 text-lg font-semibold leading-tight tabular-nums md:mt-2.5 md:text-2xl ${valueToneClass}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
