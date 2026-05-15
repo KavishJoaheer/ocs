@@ -125,7 +125,7 @@ function MobileLauncher({ user }) {
   );
 }
 
-function SummaryCard({ icon: Icon, label, value, accent }) {
+function SummaryCard({ icon: Icon, label, value, accent, iconClassName = "text-white" }) {
   return (
     <div className="max-w-full min-w-0 rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-white/88 p-5 shadow-[0_24px_64px_rgba(34,72,91,0.08)]">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -133,14 +133,12 @@ function SummaryCard({ icon: Icon, label, value, accent }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
             {label}
           </p>
-          <div className="mt-3 min-w-0 overflow-x-auto">
-            <p className="whitespace-nowrap text-2xl font-semibold tabular-nums tracking-tight text-slate-950 md:text-3xl">
-              {value}
-            </p>
-          </div>
+          <p className="mt-3 break-words text-3xl font-bold tabular-nums tracking-tight text-slate-950 no-underline">
+            {value}
+          </p>
         </div>
-        <div className={`rounded-3xl p-4 ${accent}`}>
-          <Icon className="size-6 text-white" />
+        <div className={`flex shrink-0 rounded-3xl p-4 ${accent}`}>
+          <Icon className={cx("size-6", iconClassName)} />
         </div>
       </div>
     </div>
@@ -525,13 +523,15 @@ function DashboardSummaryCards({ dashboard }) {
         icon={CreditCard}
         label="Pending bills"
         value={dashboard.summary.pendingBills}
-        accent="bg-gradient-to-br from-amber-400 to-orange-500"
+        accent="bg-teal-50"
+        iconClassName="text-teal-600"
       />
       <SummaryCard
         icon={DollarSign}
         label="Total revenue"
         value={formatCurrency(dashboard.summary.totalRevenue)}
-        accent="bg-gradient-to-br from-emerald-500 to-teal-600"
+        accent="bg-teal-50"
+        iconClassName="text-teal-600"
       />
     </div>
   );
@@ -543,11 +543,15 @@ function UpcomingAppointmentsPanel({
   subtitle = "The next seven days of scheduled home visits.",
   titleClassName,
 }) {
+  const upcomingAppointments = (dashboard.upcomingAppointments || []).filter(
+    (appointment) => String(appointment.status || "").toLowerCase() !== "completed",
+  );
+
   return (
     <SectionCard title={upcomingTitle} subtitle={subtitle || undefined} titleClassName={titleClassName}>
-      {dashboard.upcomingAppointments.length ? (
+      {upcomingAppointments.length ? (
         <div className="space-y-4">
-          {dashboard.upcomingAppointments.map((appointment) => (
+          {upcomingAppointments.map((appointment) => (
             <div
               key={appointment.id}
               className="flex flex-col gap-3 rounded-[26px] border border-slate-200/80 bg-slate-50/70 p-4 lg:flex-row lg:items-center lg:justify-between"
@@ -1481,6 +1485,7 @@ function AdminDashboardView({
               </div>
             ) : (
               <EmptyState
+                compact
                 title="No active operator approvals"
                 description="Grant temporary access here when an operator needs to edit an existing patient record."
               />
