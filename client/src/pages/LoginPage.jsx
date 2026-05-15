@@ -51,10 +51,10 @@ function LoginPage() {
 
   return (
     <div
-      className="min-h-svh bg-[radial-gradient(circle_at_top_right,_rgba(65,200,198,0.18),_transparent_24%),linear-gradient(180deg,_#f8fdfd_0%,_#edf8f8_100%)] px-4 py-8 text-slate-900 lg:px-8"
+      className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden bg-[radial-gradient(circle_at_top_right,_rgba(65,200,198,0.18),_transparent_24%),linear-gradient(180deg,_#f8fdfd_0%,_#edf8f8_100%)] px-4 py-8 text-slate-900 lg:px-8"
       style={{ paddingTop: `max(2rem, var(--sat))`, paddingBottom: `max(2rem, var(--sab))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
     >
-      <div className="mx-auto grid min-h-[calc(100svh-4rem)] max-w-7xl gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
+      <div className="mx-auto grid min-h-[calc(100svh-4rem)] w-full min-w-0 max-w-7xl gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
         <section className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(236,246,247,0.94))] p-5 shadow-[0_36px_90px_rgba(34,72,91,0.16)] lg:p-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.62),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.08),transparent_22%)]" />
 

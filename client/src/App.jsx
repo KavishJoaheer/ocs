@@ -22,7 +22,8 @@ import StockActivityPage from "./pages/StockActivityPage.jsx";
 
 function App() {
   return (
-    <Routes>
+    <div className="min-h-svh w-full max-w-[100vw] min-w-0 overflow-x-hidden">
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>
@@ -137,6 +138,7 @@ function App() {
         </Route>
       </Route>
     </Routes>
+    </div>
   );
 }
 

@@ -201,7 +201,7 @@ function PatientsPage() {
     "inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700";
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 max-w-full space-y-4">
       <PageHeader
         title="Patients"
         actions={headerActions}
@@ -322,13 +322,13 @@ function PatientsPage() {
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
-                        className="rounded-[24px] border border-slate-200/80 bg-white p-4"
+                        className="min-w-0 max-w-full rounded-[24px] border border-slate-200/80 bg-white p-4"
                       >
-                        <p className="font-semibold text-slate-950">{patient.full_name}</p>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="break-words font-semibold text-slate-950">{patient.full_name}</p>
+                        <p className="mt-1 break-words text-sm text-slate-500">
                           OCS care number: {displayText(patient.patient_identifier)}
                         </p>
-                        <p className="text-sm text-slate-500">
+                        <p className="break-words text-sm text-slate-500">
                           Patient ID: {displayText(patient.patient_id_number)}
                         </p>
                         <p className="mt-1 text-sm text-slate-600">
@@ -540,11 +540,11 @@ function PatientsPage() {
                   </div>
                 )}
 
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-5 flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-slate-500">
                     Page {pagination.page} of {pagination.totalPages}
                   </p>
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
                       disabled={pagination.page <= 1}

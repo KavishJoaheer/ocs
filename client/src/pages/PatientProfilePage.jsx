@@ -43,16 +43,16 @@ import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
 function HighlightStat({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-[22px] border border-white/80 bg-white/85 px-4 py-3.5">
-      <div className="flex items-center gap-3">
-        <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700">
+    <div className="max-w-full min-w-0 rounded-[22px] border border-white/80 bg-white/85 px-4 py-3.5">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="shrink-0 rounded-xl bg-sky-50 p-2.5 text-sky-700">
           <Icon className="size-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             {label}
           </p>
-          <p className="mt-0.5 text-xl font-bold text-slate-950">{value}</p>
+          <p className="mt-0.5 break-words text-xl font-bold text-slate-950">{value}</p>
         </div>
       </div>
     </div>
@@ -61,12 +61,12 @@ function HighlightStat({ icon: Icon, label, value }) {
 
 function ProfileField({ label, value, emphasize = false }) {
   return (
-    <div className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
+    <div className="max-w-full min-w-0 rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
         {label}
       </p>
       <p
-        className={`mt-1 text-sm leading-6 ${
+        className={`mt-1 break-words text-sm leading-6 ${
           emphasize ? "font-semibold text-slate-900" : "text-slate-600"
         }`}
       >
@@ -829,13 +829,13 @@ function PatientProfilePage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
       {isMobile && (
         <div
-          className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
+          className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
           style={{ paddingTop: "var(--sat)" }}
         >
-          <div className="flex items-center justify-between gap-3 pt-3">
+          <div className="flex min-w-0 items-center justify-between gap-3 pt-3">
             <div className="min-w-0">
               <p className="truncate text-base font-bold text-slate-950">
                 {data.patient.full_name}
@@ -884,8 +884,8 @@ function PatientProfilePage() {
 
       {isMobile ? (
         <>
-          <div className="-mx-4 overflow-x-auto px-4">
-            <div className="flex gap-2">
+          <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden [-webkit-overflow-scrolling:touch] pb-0.5">
+            <div className="flex w-max min-w-0 gap-2">
               {MOBILE_TABS.map((tab) => (
                 <button
                   key={tab.key}
@@ -907,7 +907,7 @@ function PatientProfilePage() {
 
           {activeTab === "summary" && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid min-w-0 grid-cols-2 gap-3">
                 <HighlightStat
                   icon={CalendarClock}
                   label="Appointments"
@@ -953,9 +953,9 @@ function PatientProfilePage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                       Status
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-3">
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
                       <StatusBadge value={data.patient.status} />
-                      <span className="text-sm text-slate-600">{statusDetail}</span>
+                      <span className="min-w-0 break-words text-sm text-slate-600">{statusDetail}</span>
                     </div>
                   </div>
                   <ProfileField label="Patient contact number" value={patientContactNumber} />
@@ -1003,7 +1003,7 @@ function PatientProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Past medical history</p>
-                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                           {data.patient.past_medical_history || "Not recorded"}
                         </p>
                       </div>
@@ -1017,7 +1017,7 @@ function PatientProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
-                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                           {data.patient.past_surgical_history || "Not recorded"}
                         </p>
                       </div>
@@ -1031,7 +1031,7 @@ function PatientProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Drug history</p>
-                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                           {data.patient.drug_history || "Not recorded"}
                         </p>
                       </div>
@@ -1045,7 +1045,7 @@ function PatientProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Allergy History</p>
-                        <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                        <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                           {data.patient.drug_allergy_history || "Not recorded"}
                         </p>
                       </div>
@@ -1061,7 +1061,7 @@ function PatientProfilePage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Particularity
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
                     {data.patient.particularity || "No particularity recorded during intake."}
                   </p>
                 </div>
@@ -1109,13 +1109,13 @@ function PatientProfilePage() {
                               [consultation.id]: !prev[consultation.id],
                             }))
                           }
-                          className="flex w-full items-center justify-between gap-3 p-4"
+                          className="flex w-full min-w-0 items-center justify-between gap-3 p-4"
                           style={{ minHeight: 48 }}
                         >
-                          <span className="text-sm font-semibold text-slate-900">
+                          <span className="shrink-0 text-sm font-semibold text-slate-900">
                             {formatDate(consultation.consultation_date)}
                           </span>
-                          <span className="truncate text-sm text-slate-600">
+                          <span className="min-w-0 flex-1 truncate text-right text-sm text-slate-600">
                             {consultation.doctor_name}
                           </span>
                           {isExpanded ? (
@@ -1126,7 +1126,7 @@ function PatientProfilePage() {
                         </button>
 
                         {!isExpanded && note && (
-                          <p className="px-4 pb-4 text-sm text-slate-500">{preview}</p>
+                          <p className="px-4 pb-4 break-words text-sm text-slate-500">{preview}</p>
                         )}
 
                         {isExpanded && (
@@ -1210,7 +1210,7 @@ function PatientProfilePage() {
                               </div>
                             ) : (
                               <>
-                                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                                <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                                   {note || "No note recorded."}
                                 </p>
                                 <div className="flex flex-wrap gap-2">
@@ -1310,9 +1310,9 @@ function PatientProfilePage() {
                       key={report.id}
                       className="rounded-[26px] border border-slate-200/80 bg-white p-5"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold text-slate-950">
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words text-lg font-semibold text-slate-950">
                             {report.report_title}
                           </p>
                           <p className="mt-1 text-sm text-slate-500">
@@ -1352,7 +1352,7 @@ function PatientProfilePage() {
                         </div>
                       ) : null}
 
-                      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                      <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                         {report.report_details}
                       </p>
 
@@ -1562,9 +1562,9 @@ function PatientProfilePage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Status
                   </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
                     <StatusBadge value={data.patient.status} />
-                    <span className="text-sm text-slate-600">{statusDetail}</span>
+                    <span className="min-w-0 break-words text-sm text-slate-600">{statusDetail}</span>
                   </div>
                 </div>
                 <ProfileField label="Patient contact number" value={patientContactNumber} />
@@ -1612,7 +1612,7 @@ function PatientProfilePage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Past medical history</p>
-                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                         {data.patient.past_medical_history || "Not recorded"}
                       </p>
                     </div>
@@ -1626,7 +1626,7 @@ function PatientProfilePage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Past surgical history</p>
-                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                         {data.patient.past_surgical_history || "Not recorded"}
                       </p>
                     </div>
@@ -1640,7 +1640,7 @@ function PatientProfilePage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Drug history</p>
-                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                         {data.patient.drug_history || "Not recorded"}
                       </p>
                     </div>
@@ -1654,7 +1654,7 @@ function PatientProfilePage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Allergy History</p>
-                      <p className="mt-0.5 text-sm leading-6 text-slate-600">
+                      <p className="mt-0.5 break-words text-sm leading-6 text-slate-600">
                         {data.patient.drug_allergy_history || "Not recorded"}
                       </p>
                     </div>
@@ -1670,7 +1670,7 @@ function PatientProfilePage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   Particularity
                 </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
                   {data.patient.particularity || "No particularity recorded during intake."}
                 </p>
               </div>
@@ -1781,7 +1781,7 @@ function PatientProfilePage() {
                           <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             Doctor
                           </th>
-                          <th className="min-w-[22rem] px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="min-w-0 px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 md:min-w-[16rem] lg:min-w-[22rem]">
                             Consultation note
                           </th>
                           <th className="px-5 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -1895,7 +1895,7 @@ function PatientProfilePage() {
                                   </div>
                                 ) : (
                                   <div className="space-y-2">
-                                    <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                                    <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                                       {noteToDisplay || "No note recorded."}
                                     </p>
                                     {shouldTruncate ? (
@@ -2057,7 +2057,7 @@ function PatientProfilePage() {
                       </div>
                     ) : null}
 
-                    <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                    <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                       {report.report_details}
                     </p>
 
