@@ -1,6 +1,26 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const AUTH_TOKEN_KEY = "ocs_medecins_auth_token";
 
+/** Normalize API paths so `/api/...` is not doubled when API_BASE is already `/api`. */
+export function resolveApiPath(path) {
+  if (!path || path.startsWith("http")) {
+    return path;
+  }
+
+  const base = API_BASE.replace(/\/$/, "");
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+
+  if (normalized.startsWith(`${base}/`) || normalized === base) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("/api/") && base.endsWith("/api")) {
+    return normalized;
+  }
+
+  return `${base}${normalized}`;
+}
+
 export function getStoredAuthToken() {
   return window.localStorage.getItem(AUTH_TOKEN_KEY);
 }
@@ -43,7 +63,7 @@ async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(resolveApiPath(path), {
     ...options,
     headers,
     body: options.body

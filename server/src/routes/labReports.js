@@ -126,7 +126,7 @@ function attachFilesToReports(reports) {
     const current = attachmentsByReportId.get(attachment.report_id) || [];
     current.push({
       ...attachment,
-      download_url: `/api/lab-reports/attachments/${attachment.id}/download`,
+      download_url: `/lab-reports/attachments/${attachment.id}/download`,
     });
     attachmentsByReportId.set(attachment.report_id, current);
   });
@@ -497,16 +497,42 @@ router.get("/attachments/:attachmentId/download", (req, res) => {
   res.sendFile(filePath);
 });
 
-router.delete("/attachments/:attachmentId", (req, res) => {
-  if (req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only admin can delete uploaded files." });
+function canDeleteAttachment(auth, attachment) {
+  if (!auth || !attachment) {
+    return false;
   }
 
+  if (auth.role === "admin") {
+    return true;
+  }
+
+  return Number(attachment.uploaded_by_user_id) === Number(auth.id);
+}
+
+router.delete("/attachments/:attachmentId", (req, res) => {
   const attachmentId = Number(req.params.attachmentId);
   const attachment = getAttachmentById(attachmentId);
 
   if (!attachment) {
     return res.status(404).json({ error: "Attachment not found." });
+  }
+
+  const patient = getPatientById(attachment.report_patient_id);
+
+  if (!patient) {
+    return res.status(404).json({ error: "Patient not found." });
+  }
+
+  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+    return res.status(403).json({
+      error: "You can only access Medical & Lab Report files for patients assigned to your doctor profile.",
+    });
+  }
+
+  if (!canDeleteAttachment(req.auth, attachment)) {
+    return res.status(403).json({
+      error: "You can only delete files you uploaded.",
+    });
   }
 
   const filePath = path.join(labReportAttachmentsDir, attachment.relative_path);

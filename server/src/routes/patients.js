@@ -615,7 +615,7 @@ function getLabReportsByPatientId(patientId) {
     const current = attachmentsByReportId.get(attachment.report_id) || [];
     current.push({
       ...attachment,
-      download_url: `/api/lab-reports/attachments/${attachment.id}/download`,
+      download_url: `/lab-reports/attachments/${attachment.id}/download`,
     });
     attachmentsByReportId.set(attachment.report_id, current);
   });

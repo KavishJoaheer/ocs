@@ -38,6 +38,7 @@ import {
   canEditConsultationNote,
   canManageConsultationNotes,
 } from "../lib/consultationAccess.js";
+import { canDeleteLabReportAttachment } from "../lib/labReportAccess.js";
 import {
   formatAgeFromDateOfBirth,
   formatCurrency,
@@ -189,6 +190,62 @@ function roleLabel(role) {
   return "Team";
 }
 
+function LabReportAttachmentRow({
+  attachment,
+  user,
+  onOpen,
+  onDelete,
+  className,
+  compact = false,
+}) {
+  const canDelete = canDeleteLabReportAttachment(user, attachment);
+  const touchStyle = compact ? { minHeight: 48 } : undefined;
+
+  return (
+    <div
+      className={cx(
+        "flex flex-wrap items-center justify-between gap-3",
+        className || "rounded-2xl bg-white px-4 py-3",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-900">{attachment.original_name}</p>
+        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+          {formatAttachmentSize(attachment.file_size)}
+          {attachment.uploaded_by_role ? (
+            <>
+              {" "}
+              • {roleLabel(attachment.uploaded_by_role)} upload
+            </>
+          ) : null}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-row items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onOpen(attachment)}
+          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+          style={touchStyle}
+        >
+          <Paperclip className="size-4" />
+          Open file
+        </button>
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={() => onDelete(attachment)}
+            className="inline-flex items-center gap-1.5 rounded-2xl px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50"
+            style={touchStyle}
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function getConsultationDraft(consultation) {
   return {
     doctor_id: consultation?.doctor_id ? String(consultation.doctor_id) : "",
@@ -211,7 +268,6 @@ function LabReportModal({
   const [form, setForm] = useState(getEmptyLabReport());
   const [selectedFiles, setSelectedFiles] = useState([]);
   const isEditing = Boolean(report?.id);
-  const canDeleteSavedAttachments = user?.role === "admin";
 
   useEffect(() => {
     if (!open) {
@@ -390,48 +446,15 @@ function LabReportModal({
             </p>
             <div className="space-y-2">
               {report.attachments.map((attachment) => (
-                <div
+                <LabReportAttachmentRow
                   key={attachment.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      {attachment.original_name}
-                    </p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                      {formatAttachmentSize(attachment.file_size)} •{" "}
-                      {roleLabel(attachment.uploaded_by_role)} upload
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onDownloadAttachment(attachment)}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                    >
-                      <Download className="size-4" />
-                      Open file
-                    </button>
-                    {canDeleteSavedAttachments ? (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteAttachment(attachment)}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                      >
-                        <Trash2 className="size-4" />
-                        Delete file
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
+                  attachment={attachment}
+                  user={user}
+                  onOpen={onDownloadAttachment}
+                  onDelete={onDeleteAttachment}
+                />
               ))}
             </div>
-            {!canDeleteSavedAttachments ? (
-              <p className="text-xs leading-5 text-slate-500">
-                Uploaded files are visible to Doctor, Admin, and Lab Tech. Only Admin can delete a
-                saved file.
-              </p>
-            ) : null}
           </div>
         ) : null}
 
@@ -614,7 +637,6 @@ function PatientProfilePage() {
   const [fabOpen, setFabOpen] = useState(false);
   const canManageLabReports =
     user.role === "admin" || user.role === "doctor" || user.role === "lab_tech";
-  const canDeleteReportFiles = user.role === "admin";
   const canManageConsultations = canManageConsultationNotes(user);
 
   useEffect(() => {
@@ -689,13 +711,68 @@ function PatientProfilePage() {
     }
   }
 
-  async function handleDownloadLabReportAttachment(attachment) {
+  function removeLabReportAttachmentFromState(attachment) {
+    setData((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        labReports: (current.labReports || []).map((report) =>
+          Number(report.id) === Number(attachment.report_id)
+            ? {
+                ...report,
+                attachments: (report.attachments || []).filter(
+                  (item) => item.id !== attachment.id,
+                ),
+              }
+            : report,
+        ),
+      };
+    });
+
+    setReportEditor((current) =>
+      current && Number(current.id) === Number(attachment.report_id)
+        ? {
+            ...current,
+            attachments: (current.attachments || []).filter((item) => item.id !== attachment.id),
+          }
+        : current,
+    );
+  }
+
+  async function handleOpenLabReportAttachment(attachment) {
     try {
       const response = await api.getBlob(attachment.download_url);
-      const objectUrl = window.URL.createObjectURL(response.blob);
+      const mime =
+        response.contentType ||
+        attachment.mime_type ||
+        (attachment.original_name?.toLowerCase().endsWith(".pdf")
+          ? "application/pdf"
+          : "application/octet-stream");
+      const blob =
+        response.blob instanceof Blob ? response.blob : new Blob([response.blob], { type: mime });
+      const objectUrl = window.URL.createObjectURL(blob);
+      const isViewable =
+        mime.includes("pdf") ||
+        mime.startsWith("image/") ||
+        /\.(pdf|png|jpe?g|gif|webp)$/i.test(attachment.original_name || "");
+
+      if (isViewable) {
+        const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          toast.error("Pop-up blocked. Allow pop-ups to open this file.");
+        }
+        window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 120_000);
+        return;
+      }
+
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = decodeURIComponent(response.filename || attachment.original_name || "report-file");
+      link.download = decodeURIComponent(
+        response.filename || attachment.original_name || "report-file",
+      );
       link.rel = "noopener";
       document.body.appendChild(link);
       link.click();
@@ -707,24 +784,21 @@ function PatientProfilePage() {
   }
 
   async function handleDeleteLabReportAttachment(attachment) {
-    if (!canDeleteReportFiles) {
+    if (!canDeleteLabReportAttachment(user, attachment)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to remove this attached report?",
+    );
+    if (!confirmed) {
       return;
     }
 
     try {
       await api.delete(`/lab-reports/attachments/${attachment.id}`);
-      await reloadPatientProfile();
-      if (reportEditor?.id === attachment.report_id) {
-        setReportEditor((current) =>
-          current
-            ? {
-                ...current,
-                attachments: (current.attachments || []).filter((item) => item.id !== attachment.id),
-              }
-            : current,
-        );
-      }
-      toast.success("Uploaded file deleted.");
+      removeLabReportAttachmentFromState(attachment);
+      toast.success("Attached file removed.");
     } catch (error) {
       toast.error(error.message);
     }
@@ -1512,41 +1586,15 @@ function PatientProfilePage() {
                           </p>
                           <div className="space-y-2">
                             {report.attachments.map((attachment) => (
-                              <div
+                              <LabReportAttachmentRow
                                 key={attachment.id}
-                                className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-slate-200/80 bg-slate-50/80 px-4 py-3"
-                              >
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-semibold text-slate-900">
-                                    {attachment.original_name}
-                                  </p>
-                                  <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                                    {formatAttachmentSize(attachment.file_size)}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDownloadLabReportAttachment(attachment)}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                    style={{ minHeight: 48 }}
-                                  >
-                                    <Paperclip className="size-4" />
-                                    Open file
-                                  </button>
-                                  {canDeleteReportFiles ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteLabReportAttachment(attachment)}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                                      style={{ minHeight: 48 }}
-                                    >
-                                      <Trash2 className="size-4" />
-                                      Delete file
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </div>
+                                attachment={attachment}
+                                user={user}
+                                onOpen={handleOpenLabReportAttachment}
+                                onDelete={handleDeleteLabReportAttachment}
+                                className="rounded-[22px] border border-slate-200/80 bg-slate-50/80 px-4 py-3"
+                                compact
+                              />
                             ))}
                           </div>
                         </div>
@@ -2105,40 +2153,16 @@ function PatientProfilePage() {
                         </p>
                         <div className="space-y-2">
                           {report.attachments.map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-slate-200/80 bg-slate-50/80 px-4 py-3"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-slate-900">
-                                  {attachment.original_name}
-                                </p>
-                                <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                                  {formatAttachmentSize(attachment.file_size)}
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadLabReportAttachment(attachment)}
-                                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                >
-                                  <Paperclip className="size-4" />
-                                  Open file
-                                </button>
-                                {canDeleteReportFiles ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteLabReportAttachment(attachment)}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                                  >
-                                    <Trash2 className="size-4" />
-                                    Delete file
-                                  </button>
-                                ) : null}
-                              </div>
-                            </div>
-                          ))}
+                              <LabReportAttachmentRow
+                                key={attachment.id}
+                                attachment={attachment}
+                                user={user}
+                                onOpen={handleOpenLabReportAttachment}
+                                onDelete={handleDeleteLabReportAttachment}
+                                className="rounded-[22px] border border-slate-200/80 bg-slate-50/80 px-4 py-3"
+                                compact
+                              />
+                            ))}
                         </div>
                       </div>
                     ) : null}
@@ -2250,7 +2274,7 @@ function PatientProfilePage() {
         consultations={data.consultations}
         user={user}
         onDeleteAttachment={handleDeleteLabReportAttachment}
-        onDownloadAttachment={handleDownloadLabReportAttachment}
+        onDownloadAttachment={handleOpenLabReportAttachment}
         onClose={() => setReportEditor(null)}
         onSubmit={handleSaveLabReport}
         isSaving={isSavingReport}
