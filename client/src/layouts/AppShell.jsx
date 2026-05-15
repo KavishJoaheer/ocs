@@ -36,7 +36,7 @@ const pageMeta = {
   },
   "/hcm-news": {
     label: "HCM news",
-    helper: "Read team-wide updates from the health care manager and review live staff status in one shared board.",
+    helper: "",
   },
   "/doctor/scheduled-visits": {
     label: "Scheduled visits",
