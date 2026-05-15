@@ -23,7 +23,6 @@ import { api } from "../lib/api.js";
 import {
   formatAgeFromDateOfBirth,
   formatDate,
-  truncate,
 } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
@@ -78,7 +77,7 @@ function PatientsPage() {
     target(true);
 
     try {
-      let url = `/patients?search=${encodeURIComponent(deferredSearch)}&page=${page}&limit=8`;
+      let url = `/patients?search=${encodeURIComponent(deferredSearch)}&page=${page}&limit=15`;
 
       if (statusFilter !== "all") {
         url += `&status=${statusFilter}`;
@@ -392,109 +391,124 @@ function PatientsPage() {
                   /* ── Desktop: original table ── */
                   <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
                     <div className="overflow-x-auto">
-                      <table className="min-w-full bg-white text-left">
+                      <table className="min-w-full table-fixed bg-white text-left">
                         <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                           <tr>
-                            <th className="px-5 py-4">Patient</th>
-                            <th className="px-5 py-4">Patient details</th>
-                            <th className="px-5 py-4">Next of kin</th>
-                            <th className="px-5 py-4">Clinical</th>
-                            <th className="px-5 py-4">Created</th>
-                            <th className="px-5 py-4 text-right">Actions</th>
+                            <th className="w-[19%] px-4 py-2.5">Patient</th>
+                            <th className="w-[20%] px-4 py-2.5">Patient details</th>
+                            <th className="w-[16%] px-4 py-2.5">Next of kin</th>
+                            <th className="w-[22%] px-4 py-2.5">Clinical</th>
+                            <th className="w-[10%] px-4 py-2.5">Created</th>
+                            <th className="w-[13%] px-4 py-2.5 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {patients.map((patient) => (
                             <tr key={patient.id} className="border-t border-slate-200/70">
-                              <td className="px-5 py-4 align-top">
-                                <div className="flex items-start gap-3">
-                                  <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
-                                    <UserRound className="size-5" />
+                              <td className="px-4 py-2 align-top">
+                                <div className="flex min-w-0 items-start gap-2">
+                                  <div className="shrink-0 rounded-xl bg-sky-50 p-2 text-sky-700">
+                                    <UserRound className="size-4" />
                                   </div>
-                                  <div className="space-y-1">
-                                    <p className="font-semibold text-slate-950">{patient.full_name}</p>
-                                    <p className="inline-flex items-center gap-2 text-sm text-slate-500">
-                                      <IdCard className="size-4" />
-                                      OCS care number: {displayText(patient.patient_identifier)}
+                                  <div className="min-w-0 space-y-0.5">
+                                    <p className="truncate font-semibold leading-tight text-slate-950">
+                                      {patient.full_name}
                                     </p>
-                                    <p className="text-sm text-slate-500">
-                                      Patient ID: {displayText(patient.patient_id_number)}
+                                    <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500">
+                                      <IdCard className="size-3.5 shrink-0" />
+                                      <span className="truncate">
+                                        {displayText(patient.patient_identifier)}
+                                      </span>
                                     </p>
-                                    <p className="text-sm text-slate-500">
+                                    <p className="truncate text-xs text-slate-500">
+                                      ID: {displayText(patient.patient_id_number)}
+                                    </p>
+                                    <p className="truncate text-xs text-slate-500">
                                       {patient.gender}
                                       {patient.date_of_birth
-                                        ? ` - ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
+                                        ? ` · ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
                                         : ""}
                                     </p>
                                   </div>
                                 </div>
                               </td>
 
-                              <td className="px-5 py-4 align-top">
-                                <p className="font-medium text-slate-800">
+                              <td className="px-4 py-2 align-top">
+                                <p className="truncate text-sm font-medium leading-tight text-slate-800">
                                   {displayText(patient.patient_contact_number)}
                                 </p>
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p
+                                  className="mt-0.5 line-clamp-1 break-words text-xs leading-snug text-slate-500"
+                                  title={patient.address || undefined}
+                                >
                                   {displayText(patient.address)}
                                 </p>
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-slate-500">
                                   {displayText(patient.location, "Location not selected")}
                                 </p>
                               </td>
 
-                              <td className="px-5 py-4 align-top">
-                                <p className="font-medium text-slate-800">
+                              <td className="px-4 py-2 align-top">
+                                <p className="truncate text-sm font-semibold leading-tight text-slate-900">
                                   {displayText(patient.next_of_kin_name)}
                                 </p>
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-slate-500">
                                   {displayText(patient.next_of_kin_relationship)}
                                 </p>
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p className="mt-0.5 truncate text-xs leading-snug text-slate-500">
                                   {displayText(patient.next_of_kin_contact_number)}
                                 </p>
                               </td>
 
-                              <td className="px-5 py-4 align-top">
-                                <div className="space-y-2">
+                              <td className="max-w-0 px-4 py-2 align-top">
+                                <div className="flex min-w-0 items-start gap-2">
                                   <StatusBadge value={patient.status} />
-                                  <p className="text-sm text-slate-600">
-                                    Assigned doctor:{" "}
-                                    {displayText(patient.assigned_doctor_name, "Not assigned")}
-                                  </p>
-                                  <p className="text-sm text-slate-600">
-                                    {patient.status === "active"
-                                      ? truncate(
-                                          displayText(
+                                  <div className="min-w-0 flex-1 space-y-0.5">
+                                    <p className="line-clamp-1 text-xs leading-snug text-slate-600">
+                                      {displayText(patient.assigned_doctor_name, "Not assigned")}
+                                    </p>
+                                    <p
+                                      className="line-clamp-1 text-xs leading-snug text-slate-600"
+                                      title={
+                                        patient.status === "active"
+                                          ? displayText(
+                                              patient.ongoing_treatment,
+                                              "Ongoing treatment not recorded",
+                                            )
+                                          : displayText(
+                                              patient.drug_allergy_history,
+                                              "Allergy history not recorded",
+                                            )
+                                      }
+                                    >
+                                      {patient.status === "active"
+                                        ? displayText(
                                             patient.ongoing_treatment,
                                             "Ongoing treatment not recorded",
-                                          ),
-                                          90,
-                                        )
-                                      : truncate(
-                                          displayText(
+                                          )
+                                        : displayText(
                                             patient.drug_allergy_history,
                                             "Allergy history not recorded",
-                                          ),
-                                          90,
-                                        )}
-                                  </p>
-                                  {user.role === "operator" && patient.operator_edit_allowed ? (
-                                    <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                                      Edit enabled
-                                    </span>
-                                  ) : null}
+                                          )}
+                                    </p>
+                                    {user.role === "operator" && patient.operator_edit_allowed ? (
+                                      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                                        Edit enabled
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </td>
 
-                              <td className="px-5 py-4 align-top text-sm text-slate-500">
+                              <td className="px-4 py-2 align-top text-xs leading-snug text-slate-500">
                                 {formatDate(patient.created_at)}
                               </td>
 
-                              <td className="px-5 py-4 align-top">
-                                <div className="flex flex-wrap justify-end gap-2">
+                              <td className="px-4 py-2 align-top">
+                                <div className="flex flex-nowrap items-center justify-end gap-1.5">
                                   <Link
                                     to={`/patients/${patient.id}`}
-                                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                    className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                                   >
                                     View
                                   </Link>
@@ -503,9 +517,9 @@ function PatientsPage() {
                                     <button
                                       type="button"
                                       onClick={() => setEditor({ mode: "edit", patient })}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                                     >
-                                      <SquarePen className="size-4" />
+                                      <SquarePen className="size-3.5" />
                                       Edit
                                     </button>
                                   ) : null}
@@ -513,9 +527,9 @@ function PatientsPage() {
                                   {canOpenBilling ? (
                                     <Link
                                       to={`/billing?patientId=${patient.id}`}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                                     >
-                                      <CreditCard className="size-4" />
+                                      <CreditCard className="size-3.5" />
                                       Billing
                                     </Link>
                                   ) : null}
@@ -524,9 +538,9 @@ function PatientsPage() {
                                     <button
                                       type="button"
                                       onClick={() => setPatientToDelete(patient)}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
                                     >
-                                      <Trash2 className="size-4" />
+                                      <Trash2 className="size-3.5" />
                                       Delete
                                     </button>
                                   ) : null}
@@ -621,48 +635,50 @@ function PatientsPage() {
             /* ── Desktop: original deleted table ── */
             <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
               <div className="overflow-x-auto">
-                <table className="min-w-full bg-white text-left">
+                <table className="min-w-full table-fixed bg-white text-left">
                   <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-4">Patient</th>
-                      <th className="px-5 py-4">Assigned doctor</th>
-                      <th className="px-5 py-4">Clinical records</th>
-                      <th className="px-5 py-4">Deleted</th>
-                      <th className="px-5 py-4 text-right">Actions</th>
+                      <th className="w-[30%] px-4 py-2.5">Patient</th>
+                      <th className="w-[22%] px-4 py-2.5">Assigned doctor</th>
+                      <th className="w-[26%] px-4 py-2.5">Clinical records</th>
+                      <th className="w-[12%] px-4 py-2.5">Deleted</th>
+                      <th className="w-[10%] px-4 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {deletedPatients.map((patient) => (
                       <tr key={patient.id} className="border-t border-slate-200/70">
-                        <td className="px-5 py-4 align-top">
-                          <p className="font-semibold text-slate-950">{patient.full_name}</p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            OCS care number: {displayText(patient.patient_identifier)}
+                        <td className="px-4 py-2 align-top">
+                          <p className="truncate font-semibold leading-tight text-slate-950">
+                            {patient.full_name}
                           </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            Patient ID: {displayText(patient.patient_id_number)}
+                          <p className="mt-0.5 truncate text-xs text-slate-500">
+                            OCS: {displayText(patient.patient_identifier)}
+                          </p>
+                          <p className="truncate text-xs text-slate-500">
+                            ID: {displayText(patient.patient_id_number)}
                           </p>
                         </td>
-                        <td className="px-5 py-4 align-top text-sm text-slate-600">
+                        <td className="px-4 py-2 align-top text-xs leading-snug text-slate-600">
                           {displayText(patient.assigned_doctor_name, "Not assigned")}
                         </td>
-                        <td className="px-5 py-4 align-top text-sm text-slate-600">
-                          <p>{patient.appointment_count} appointments</p>
-                          <p className="mt-1">{patient.consultation_count} consultations</p>
-                          <p className="mt-1">{patient.bill_count} bills</p>
+                        <td className="px-4 py-2 align-top text-xs leading-snug text-slate-600">
+                          <p className="truncate">{patient.appointment_count} appointments</p>
+                          <p className="truncate">{patient.consultation_count} consultations</p>
+                          <p className="truncate">{patient.bill_count} bills</p>
                         </td>
-                        <td className="px-5 py-4 align-top text-sm text-slate-500">
+                        <td className="px-4 py-2 align-top text-xs text-slate-500">
                           {formatDate(patient.deleted_at)}
                         </td>
-                        <td className="px-5 py-4 align-top">
+                        <td className="px-4 py-2 align-top">
                           <div className="flex justify-end">
                             <button
                               type="button"
                               onClick={() => handleRestorePatient(patient.id)}
                               disabled={restoringPatientId === patient.id}
-                              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              <RotateCcw className="size-4" />
+                              <RotateCcw className="size-3.5" />
                               {restoringPatientId === patient.id ? "Restoring..." : "Restore"}
                             </button>
                           </div>

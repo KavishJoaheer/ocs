@@ -16,7 +16,7 @@ const pageMeta = {
   },
   "/patients": {
     label: "Patients",
-    helper: "Manage patient records and review each OCS Medecins care timeline at a glance.",
+    helper: "",
   },
   "/appointments": {
     label: "Appointments",
@@ -154,31 +154,31 @@ function AppShell() {
         <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden">
           {!alwaysHideTopHeader ? (
             <div
-              className="hidden border-b border-white/70 bg-white/65 px-5 py-5 backdrop-blur md:block lg:px-8"
+              className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}
             >
-              <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-                <div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
                     OCS Medecins Operations
                   </p>
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-600">
                     {activeMeta.label}
                   </p>
-                  <p className="mt-2 max-w-3xl text-sm leading-7 text-[#3f6270]">
-                    {activeMeta.helper}
-                  </p>
+                  {activeMeta.helper ? (
+                    <p className="mt-2 max-w-3xl text-sm leading-7 text-[#3f6270]">{activeMeta.helper}</p>
+                  ) : null}
                 </div>
 
-                <div className="rounded-[30px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(241,251,250,0.9))] px-5 py-4 shadow-[0_16px_40px_rgba(34,72,91,0.1)]">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#4c727d]">
-                    OCS Medecins Dispatch Desk
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-slate-950">
-                    {dayjs().format("dddd, MMMM D")}
-                  </p>
-                  <p className="mt-1 text-sm text-[#2d8f98]">Home visit coordination ready</p>
-                </div>
+                <p className="shrink-0 whitespace-nowrap text-sm font-medium text-slate-500 md:text-right">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Dispatch desk
+                  </span>
+                  <span className="mx-2 text-slate-300" aria-hidden="true">
+                    ·
+                  </span>
+                  {dayjs().format("dddd, MMMM D")}
+                </p>
               </div>
             </div>
           ) : null}
