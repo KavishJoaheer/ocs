@@ -1,5 +1,19 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Minus, MinusCircle, MoreVertical, Pencil, Plus, Printer, Search, Trash2, Truck } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Minus,
+  MinusCircle,
+  MoreVertical,
+  Pencil,
+  Plus,
+  Printer,
+  Search,
+  Trash2,
+  Truck,
+} from "lucide-react";
+import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -1123,6 +1137,34 @@ export default function InventoryPage() {
     setDoctorRestockOpen(true);
   }
 
+  function downloadOcsStockExcel() {
+    if (!isAdmin || !contextIsOcs) return;
+    if (!sortedItems.length) {
+      toast.error("No stock rows match the current filters.");
+      return;
+    }
+    const rows = sortedItems.map((item) => ({
+      Category: item.folder_name || "",
+      "Item name": item.item_name || "",
+      Quantity: Number(item.quantity ?? 0),
+      "Min qty": Number(item.minimum_quantity ?? 0),
+      Unit: item.unit ?? "",
+      "Nearest expiry": item.expiry_date || "Not set",
+      "Cost (Rs)": Number(item.cost_price ?? 0),
+      "Selling price (Rs)": Number(item.selling_price ?? 0),
+      Attributes: item.attributes || "",
+      "MOA notes": item.moa_notes || "",
+    }));
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "OCS Stock");
+    const folderLabel = folders.find((f) => String(f.id) === String(selectedView))?.name || "category";
+    const safe = String(folderLabel).replace(/[\\/:*?"<>|]/g, "-");
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `ocs_stock_${safe}_${stamp}.xlsx`);
+    toast.success("Excel file downloaded.");
+  }
+
   if (loading) return <LoadingState label="Loading inventory workspace" />;
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
 
@@ -1426,10 +1468,26 @@ export default function InventoryPage() {
               Restock My Inventory
             </button>
           ) : (
-            <button type="button" onClick={() => setEditor({ item: null })} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]">
-              <Plus className="size-4" />
-              Add Item
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {isAdmin && contextIsOcs ? (
+                <button
+                  type="button"
+                  onClick={downloadOcsStockExcel}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
+                >
+                  <Download className="size-4 text-[#1f7f7b]" />
+                  Download Excel
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setEditor({ item: null })}
+                className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]"
+              >
+                <Plus className="size-4" />
+                Add Item
+              </button>
+            </div>
           )
         }
       />
