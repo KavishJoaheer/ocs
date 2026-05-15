@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import {
   ArrowLeft,
@@ -38,6 +38,7 @@ import {
   canEditConsultationNote,
   canManageConsultationNotes,
 } from "../lib/consultationAccess.js";
+import { canBillPatientForUser } from "../lib/access.js";
 import { canDeleteLabReportAttachment } from "../lib/labReportAccess.js";
 import {
   formatAgeFromDateOfBirth,
@@ -672,6 +673,22 @@ function PatientProfilePage() {
     user.role === "admin" || user.role === "doctor" || user.role === "lab_tech";
   const canManageConsultations = canManageConsultationNotes(user);
 
+  const showPatientBillingUi = useMemo(
+    () => Boolean(data && canBillPatientForUser(user, data.patient)),
+    [data, user],
+  );
+
+  const mobileProfileTabs = useMemo(
+    () => MOBILE_TABS.filter((tab) => tab.key !== "billing" || showPatientBillingUi),
+    [showPatientBillingUi],
+  );
+
+  useEffect(() => {
+    if (activeTab === "billing" && !showPatientBillingUi) {
+      setActiveTab("summary");
+    }
+  }, [activeTab, showPatientBillingUi]);
+
   useEffect(() => {
     let ignore = false;
 
@@ -972,7 +989,6 @@ function PatientProfilePage() {
     data.patient.status === "active"
       ? data.patient.ongoing_treatment || "Ongoing treatment not recorded"
       : "Patient has been discharged from active treatment.";
-  const canOpenBilling = user.role === "admin" || user.role === "doctor";
   const assignedDoctor = data.patient.assigned_doctor_name
     ? `${data.patient.assigned_doctor_name}${
         data.patient.assigned_doctor_specialization
@@ -1134,7 +1150,7 @@ function PatientProfilePage() {
                 <FileText className="size-4" />
                 View Past Notes
               </a>
-              {canOpenBilling ? (
+              {showPatientBillingUi ? (
                 <Link
                   to={`/billing?patientId=${id}`}
                   aria-label="Open billing"
@@ -1160,7 +1176,7 @@ function PatientProfilePage() {
         <>
           <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden [-webkit-overflow-scrolling:touch] pb-0.5">
             <div className="flex w-max min-w-0 gap-2">
-              {MOBILE_TABS.map((tab) => (
+              {mobileProfileTabs.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
@@ -1665,7 +1681,7 @@ function PatientProfilePage() {
 
           {activeTab === "billing" && (
             <div className="space-y-4">
-              {canOpenBilling && (
+              {showPatientBillingUi && (
                 <Link
                   to={`/billing?patientId=${id}`}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
@@ -2164,10 +2180,10 @@ function PatientProfilePage() {
             )}
           </SectionCard>
 
-          <SectionCard
-            title="Billing history"
-            actions={
-              canOpenBilling ? (
+          {showPatientBillingUi ? (
+            <SectionCard
+              title="Billing history"
+              actions={
                 <Link
                   to={`/billing?patientId=${id}`}
                   className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
@@ -2175,63 +2191,63 @@ function PatientProfilePage() {
                   <CreditCard className="size-4" />
                   Open billing workspace
                 </Link>
-              ) : null
-            }
-          >
-            {data.bills.length ? (
-              <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
-                <table className="min-w-full table-fixed text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    <tr>
-                      <th className="w-[26%] px-3 py-2">Bill / recorded</th>
-                      <th className="w-[22%] px-3 py-2">Consultation</th>
-                      <th className="w-[18%] px-3 py-2">Amount</th>
-                      <th className="w-[18%] px-3 py-2">Status</th>
-                      <th className="w-[16%] px-3 py-2 text-right">Open</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {data.bills.map((bill) => (
-                      <tr key={bill.id} className="align-middle">
-                        <td className="px-3 py-1.5 align-middle">
-                          <p className="truncate font-semibold text-slate-900">Bill #{bill.id}</p>
-                          <p className="truncate text-xs text-slate-500">
-                            Recorded {formatDate(bill.created_at)}
-                          </p>
-                        </td>
-                        <td className="px-3 py-1.5 align-middle text-xs text-slate-600">
-                          {formatDate(bill.consultation_date)}
-                        </td>
-                        <td className="px-3 py-1.5 align-middle font-semibold text-slate-900">
-                          {formatCurrency(bill.total_amount)}
-                        </td>
-                        <td className="px-3 py-1.5 align-middle">
-                          <StatusBadge value={bill.status} />
-                        </td>
-                        <td className="px-3 py-1.5 align-middle text-right">
-                          <Link
-                            to={`/billing?patientId=${id}`}
-                            className="inline-flex rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                          >
-                            Open
-                          </Link>
-                        </td>
+              }
+            >
+              {data.bills.length ? (
+                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
+                  <table className="min-w-full table-fixed text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <tr>
+                        <th className="w-[26%] px-3 py-2">Bill / recorded</th>
+                        <th className="w-[22%] px-3 py-2">Consultation</th>
+                        <th className="w-[18%] px-3 py-2">Amount</th>
+                        <th className="w-[18%] px-3 py-2">Status</th>
+                        <th className="w-[16%] px-3 py-2 text-right">Open</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <EmptyState
-                title="No billing records"
-                description="Bills are created automatically when a consultation is saved."
-              />
-            )}
-          </SectionCard>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.bills.map((bill) => (
+                        <tr key={bill.id} className="align-middle">
+                          <td className="px-3 py-1.5 align-middle">
+                            <p className="truncate font-semibold text-slate-900">Bill #{bill.id}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              Recorded {formatDate(bill.created_at)}
+                            </p>
+                          </td>
+                          <td className="px-3 py-1.5 align-middle text-xs text-slate-600">
+                            {formatDate(bill.consultation_date)}
+                          </td>
+                          <td className="px-3 py-1.5 align-middle font-semibold text-slate-900">
+                            {formatCurrency(bill.total_amount)}
+                          </td>
+                          <td className="px-3 py-1.5 align-middle">
+                            <StatusBadge value={bill.status} />
+                          </td>
+                          <td className="px-3 py-1.5 align-middle text-right">
+                            <Link
+                              to={`/billing?patientId=${id}`}
+                              className="inline-flex rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              Open
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState
+                  title="No billing records"
+                  description="Bills are created automatically when a consultation is saved."
+                />
+              )}
+            </SectionCard>
+          ) : null}
         </>
       )}
 
-      {isMobile && (canManageConsultations || canOpenBilling || canManageLabReports) && (
+      {isMobile && (canManageConsultations || showPatientBillingUi || canManageLabReports) && (
         <>
           {fabOpen && (
             <div
@@ -2259,7 +2275,7 @@ function PatientProfilePage() {
                     </span>
                   </button>
                 )}
-                {canOpenBilling && (
+                {showPatientBillingUi && (
                   <button
                     type="button"
                     onClick={() => {

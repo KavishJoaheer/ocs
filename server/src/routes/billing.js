@@ -527,6 +527,22 @@ router.post("/", (req, res) => {
     });
   }
 
+  if (req.auth?.role === "doctor" && req.auth.doctor_id) {
+    const patientRow = db
+      .prepare(
+        `SELECT assigned_doctor_id FROM patients WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .get(patientId);
+    if (
+      !patientRow ||
+      Number(patientRow.assigned_doctor_id || 0) !== Number(req.auth.doctor_id)
+    ) {
+      return res.status(403).json({
+        error: "You can only create billing for patients assigned to you.",
+      });
+    }
+  }
+
   const items = normalizeBillingItems(req.body.items);
   if (!items.length) {
     return res.status(400).json({ error: "At least one billing line item is required." });

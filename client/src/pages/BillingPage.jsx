@@ -236,9 +236,10 @@ function BillingItemsEditor({ items, setItems, lockInventory = false }) {
                     : current,
                 )
               }
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              title={lineLocked ? "Inventory line is locked" : "Remove line"}
+              className="grid size-10 place-items-center self-center rounded-xl border border-transparent bg-transparent text-red-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {lineLocked ? "Locked" : "Remove"}
+              <Trash2 className="size-4" aria-hidden />
             </button>
           </div>
         );
@@ -247,13 +248,18 @@ function BillingItemsEditor({ items, setItems, lockInventory = false }) {
         <p className="text-xs text-slate-500">Inventory-linked lines cannot be edited after billing finalization to keep stock movements consistent.</p>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => setItems((current) => [...current, createEmptyLineItem()])}
-        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-      >
-        Add line item
-      </button>
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_150px_auto]">
+        <span className="hidden md:block" aria-hidden />
+        <div className="flex justify-end md:col-span-3">
+          <button
+            type="button"
+            onClick={() => setItems((current) => [...current, createEmptyLineItem()])}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+          >
+            Add line item
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1376,8 +1382,8 @@ function CreateBillingModal({
         </div>
 
         <div className="hidden rounded-[24px] border border-slate-200 bg-slate-50/60 p-3 md:block">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_88px_120px_auto] md:items-center">
-            <div className="relative">
+          <div className="flex flex-row flex-wrap items-center gap-3">
+            <div className="relative min-w-0 flex-1 basis-[min(100%,220px)]">
               <input
                 value={itemQuery}
                 onChange={(event) => {
@@ -1464,23 +1470,23 @@ function CreateBillingModal({
               inputMode="numeric"
               value={inventoryQty}
               onChange={(event) => setInventoryQty(event.target.value)}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700"
+              className="h-10 w-[5.25rem] shrink-0 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold text-slate-700"
             />
             <input
               readOnly
               value={formatCurrency(getSellingPriceFromDoctorStock(inventorySelection?.id))}
-              className="rounded-2xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700"
+              className="h-10 w-[7.75rem] shrink-0 rounded-2xl border border-slate-200 bg-slate-100 px-3 py-2 text-right text-sm font-semibold text-slate-700"
             />
-            <div className="flex items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => addInventoryLine("Sale")}
                 disabled={!canAddItemLine}
                 title={addLineDisabledReason || "Add to bill"}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-2xl bg-[#4FB8B3] px-3 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-[#4FB8B3] px-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Plus className="size-4" />
-                + Add to Bill
+                <Plus className="size-4 shrink-0" />
+                Add to Bill
               </button>
               <button
                 type="button"
@@ -1494,9 +1500,6 @@ function CreateBillingModal({
               </button>
             </div>
           </div>
-          {addLineDisabledReason ? (
-            <p className="mt-2 text-xs font-semibold text-amber-700">{addLineDisabledReason}.</p>
-          ) : null}
         </div>
 
         <div className="space-y-2 md:hidden">

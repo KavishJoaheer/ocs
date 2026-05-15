@@ -150,6 +150,11 @@ router.get("/available-appointments", (_req, res) => {
 });
 
 router.get("/", (req, res) => {
+  const doctorScoped =
+    req.auth?.role === "doctor" && req.auth.doctor_id
+      ? Number(req.auth.doctor_id)
+      : null;
+
   const consultations = db
     .prepare(`
       SELECT
@@ -183,9 +188,10 @@ router.get("/", (req, res) => {
       JOIN doctors d ON d.id = c.doctor_id
       JOIN appointments a ON a.id = c.appointment_id
       WHERE p.deleted_at IS NULL
+        AND (@doctorScoped IS NULL OR c.doctor_id = @doctorScoped)
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
-    .all()
+    .all({ doctorScoped })
     .map((consultation) => ({
       ...consultation,
       bill_count: Number(consultation.bill_count || 0),

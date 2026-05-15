@@ -25,6 +25,7 @@ import {
   formatAgeFromDateOfBirth,
   formatDate,
 } from "../lib/format.js";
+import { canBillPatientForUser } from "../lib/access.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
@@ -732,7 +733,7 @@ function PatientsPage() {
                 Edit
               </button>
             ) : null}
-            {canOpenBilling ? (
+            {canOpenBilling && canBillPatientForUser(user, desktopTableMenu.patient) ? (
               <Link
                 role="menuitem"
                 to={`/billing?patientId=${desktopTableMenu.patient.id}`}
@@ -797,7 +798,7 @@ function PatientsPage() {
                   Edit patient
                 </button>
               ) : null}
-              {canOpenBilling ? (
+              {canOpenBilling && canBillPatientForUser(user, patientCardMenu) ? (
                 <Link
                   to={`/billing?patientId=${patientCardMenu.id}`}
                   onClick={() => setPatientCardMenu(null)}
