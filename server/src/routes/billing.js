@@ -340,6 +340,8 @@ function ensureBillAccess(req, bill) {
 
 router.get("/patient-summary", (req, res) => {
   const doctorAccess = buildDoctorAccessClause(req.auth);
+  const dateFrom = String(req.query.dateFrom ?? "").trim();
+  const dateTo = String(req.query.dateTo ?? "").trim();
 
   const summary = db
     .prepare(`
@@ -351,15 +353,20 @@ router.get("/patient-summary", (req, res) => {
         COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.total_amount ELSE 0 END), 0) AS paid_amount,
         COALESCE(SUM(CASE WHEN b.status = 'unpaid' THEN b.total_amount ELSE 0 END), 0) AS unpaid_amount
       FROM patients p
-      LEFT JOIN billing b ON b.patient_id = p.id
-      LEFT JOIN consultations c ON c.id = b.consultation_id
+      JOIN billing b ON b.patient_id = p.id
+      JOIN consultations c ON c.id = b.consultation_id
       WHERE p.deleted_at IS NULL
+        AND (@dateFrom = '' OR date(c.consultation_date) >= date(@dateFrom))
+        AND (@dateTo = '' OR date(c.consultation_date) <= date(@dateTo))
         ${doctorAccess.clause}
       GROUP BY p.id
-      HAVING bill_count > 0
       ORDER BY unpaid_amount DESC, total_billed DESC, patient_name ASC
     `)
-    .all(doctorAccess.params);
+    .all({
+      dateFrom,
+      dateTo,
+      ...doctorAccess.params,
+    });
 
   res.json(summary);
 });
@@ -367,6 +374,8 @@ router.get("/patient-summary", (req, res) => {
 router.get("/", (req, res) => {
   const status = String(req.query.status ?? "").trim();
   const patientId = String(req.query.patientId ?? "").trim();
+  const dateFrom = String(req.query.dateFrom ?? "").trim();
+  const dateTo = String(req.query.dateTo ?? "").trim();
   const doctorAccess = buildDoctorAccessClause(req.auth);
 
   const bills = db
@@ -384,12 +393,16 @@ router.get("/", (req, res) => {
       WHERE p.deleted_at IS NULL
         AND (@status = '' OR b.status = @status)
         AND (@patientId = '' OR CAST(b.patient_id AS TEXT) = @patientId)
+        AND (@dateFrom = '' OR date(c.consultation_date) >= date(@dateFrom))
+        AND (@dateTo = '' OR date(c.consultation_date) <= date(@dateTo))
         ${doctorAccess.clause}
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)
     .all({
       status,
       patientId,
+      dateFrom,
+      dateTo,
       ...doctorAccess.params,
     })
     .map(parseBillingRow);

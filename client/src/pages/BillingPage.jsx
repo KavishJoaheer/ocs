@@ -1,7 +1,10 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
+import dayjs from "dayjs";
+import isoWeek from "dayjs/plugin/isoWeek";
 import {
   AlertTriangle,
+  Calendar,
   CreditCard,
   DollarSign,
   Eye,
@@ -16,6 +19,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+
+dayjs.extend(isoWeek);
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -34,6 +39,101 @@ import {
   formatPaymentMethod,
 } from "../lib/format.js";
 import { cx, formControlClass, pageContainerClass } from "../lib/utils.js";
+
+function billingPageTodayInputValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const local = new Date(now.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+const ADMIN_BILLING_PRESETS = [
+  { id: "yearly", label: "Yearly" },
+  { id: "monthly", label: "Monthly" },
+  { id: "weekly", label: "Weekly" },
+];
+
+function getAdminBillingDateRange(preset, anchorDateStr) {
+  const anchor = dayjs(anchorDateStr || billingPageTodayInputValue());
+  if (!anchor.isValid()) {
+    const today = billingPageTodayInputValue();
+    return { from: today, to: today };
+  }
+  switch (preset) {
+    case "yearly":
+      return {
+        from: anchor.startOf("year").format("YYYY-MM-DD"),
+        to: anchor.endOf("year").format("YYYY-MM-DD"),
+      };
+    case "monthly":
+      return {
+        from: anchor.startOf("month").format("YYYY-MM-DD"),
+        to: anchor.endOf("month").format("YYYY-MM-DD"),
+      };
+    case "weekly":
+      return {
+        from: anchor.startOf("isoWeek").format("YYYY-MM-DD"),
+        to: anchor.endOf("isoWeek").format("YYYY-MM-DD"),
+      };
+    case "specific":
+      return {
+        from: anchorDateStr,
+        to: anchorDateStr,
+      };
+    default:
+      return {
+        from: anchor.startOf("month").format("YYYY-MM-DD"),
+        to: anchor.endOf("month").format("YYYY-MM-DD"),
+      };
+  }
+}
+
+function AdminBillingDateRangeFilter({ preset, anchorDate, onPresetChange, onAnchorDateChange }) {
+  return (
+    <div
+      className="flex w-full max-w-full flex-wrap items-center justify-end gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm"
+      role="group"
+      aria-label="Billing period"
+    >
+      {ADMIN_BILLING_PRESETS.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onPresetChange(opt.id)}
+          className={cx(
+            "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+            preset === opt.id
+              ? "bg-[#2d8f98] text-white shadow-sm"
+              : "border border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+      <label
+        title="Specific date"
+        className={cx(
+          "flex cursor-pointer items-center gap-1 rounded-xl border bg-white px-2 py-1 transition",
+          preset === "specific"
+            ? "border-[#2d8f98] bg-[#ecf8f7] ring-1 ring-[#2d8f98]/30"
+            : "border-slate-200 hover:border-slate-300",
+        )}
+      >
+        <Calendar className="size-3.5 shrink-0 text-[#2d8f98]" />
+        <span className="sr-only">Specific date</span>
+        <input
+          type="date"
+          value={anchorDate}
+          onChange={(event) => {
+            onAnchorDateChange(event.target.value);
+            onPresetChange("specific");
+          }}
+          className="max-w-[10rem] cursor-pointer border-0 bg-transparent py-0.5 text-xs font-semibold text-slate-800 outline-none"
+        />
+      </label>
+    </div>
+  );
+}
 
 const BILLING_FIELD = cx(
   formControlClass,
@@ -1657,6 +1757,22 @@ function BillingPage() {
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",
   );
+  const [adminBillingPreset, setAdminBillingPreset] = useState("monthly");
+  const [adminBillingAnchorDate, setAdminBillingAnchorDate] = useState(() => billingPageTodayInputValue());
+
+  const adminBillingDateRange = useMemo(() => {
+    if (user?.role !== "admin") {
+      return null;
+    }
+    return getAdminBillingDateRange(adminBillingPreset, adminBillingAnchorDate);
+  }, [user?.role, adminBillingPreset, adminBillingAnchorDate]);
+
+  function handleAdminBillingPresetChange(next) {
+    setAdminBillingPreset(next);
+    if (next !== "specific") {
+      setAdminBillingAnchorDate(billingPageTodayInputValue());
+    }
+  }
 
   async function loadData() {
     try {
@@ -1668,6 +1784,11 @@ function BillingPage() {
 
       if (patientIdFilter) {
         filterQuery.set("patientId", patientIdFilter);
+      }
+
+      if (user?.role === "admin" && adminBillingDateRange) {
+        filterQuery.set("dateFrom", adminBillingDateRange.from);
+        filterQuery.set("dateTo", adminBillingDateRange.to);
       }
 
       const queryString = filterQuery.toString();
@@ -1715,7 +1836,7 @@ function BillingPage() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter, patientIdFilter, isMobile]);
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate]);
 
   useEffect(() => {
     loadReferenceData();
@@ -1735,10 +1856,12 @@ function BillingPage() {
   );
   const filteredBills = bills.filter((bill) => {
     if (!searchText.trim()) return true;
-    const query = searchText.trim().toLowerCase();
+    const query = searchText.trim().toLowerCase().replace(/^#/, "");
+    const idStr = String(bill.id ?? "");
     return (
       bill.patient_name?.toLowerCase().includes(query) ||
-      bill.consultation_date?.toLowerCase().includes(query)
+      idStr.includes(query) ||
+      idStr === searchText.trim()
     );
   });
 
@@ -1822,6 +1945,17 @@ function BillingPage() {
         }
       />
 
+      {user?.role === "admin" ? (
+        <div className="flex justify-end">
+          <AdminBillingDateRangeFilter
+            anchorDate={adminBillingAnchorDate}
+            preset={adminBillingPreset}
+            onAnchorDateChange={setAdminBillingAnchorDate}
+            onPresetChange={handleAdminBillingPresetChange}
+          />
+        </div>
+      ) : null}
+
       {user?.role !== "doctor" ? (
         <div className="hidden gap-4 md:grid md:grid-cols-3">
           <BillingStat icon={DollarSign} label="Total billed" value={formatCurrency(overallBilled)} />
@@ -1862,7 +1996,7 @@ function BillingPage() {
               <input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Filter by patient or date…"
+                placeholder="Filter by patient or invoice ID…"
                 className="min-h-12 w-full min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
               />
             ) : null
@@ -1873,7 +2007,7 @@ function BillingPage() {
               <input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Search patient or date…"
+                placeholder="Search patient or invoice ID…"
                 className="min-w-0 max-w-md flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
               />
               <select
