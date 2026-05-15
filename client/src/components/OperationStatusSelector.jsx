@@ -32,12 +32,12 @@ function OperationStatusSelector({
   return (
     <div
       className={cx(
-        "flex flex-wrap items-center gap-1.5",
+        "flex flex-wrap items-center gap-1 text-sm",
         align === "right" ? "justify-end" : "justify-start",
         className,
       )}
     >
-      <span className="text-[#f1bc35]">STATUS:</span>
+      <span className="shrink-0 font-semibold text-[#f1bc35]">STATUS:</span>
 
       {options.map((status, index) => {
         const meta = STATUS_META[status];
@@ -50,7 +50,7 @@ function OperationStatusSelector({
               onClick={() => onChange?.(status)}
               disabled={disabled || isActive}
               className={cx(
-                "rounded-full px-3 py-1 text-[0.92em] font-semibold normal-case transition disabled:cursor-default",
+                "rounded-full px-2.5 py-0.5 text-sm font-semibold normal-case transition disabled:cursor-default",
                 meta?.textClassName,
                 isActive
                   ? meta?.activeClassName
@@ -59,7 +59,7 @@ function OperationStatusSelector({
             >
               {meta?.label || status}
             </button>
-            {index < options.length - 1 ? <span className="text-[#2d5f69]">/</span> : null}
+            {index < options.length - 1 ? <span className="text-sm text-[#2d5f69]">/</span> : null}
           </div>
         );
       })}

@@ -13,7 +13,7 @@ function SectionCard({ title, subtitle, actions, className, children, id }) {
         <div className="mb-3 flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             {title ? (
-              <h3 className="break-words text-lg font-semibold text-slate-950">{title}</h3>
+              <h3 className="break-words text-base font-semibold text-slate-950">{title}</h3>
             ) : null}
             {subtitle ? (
               <p className={`break-words text-sm text-[#4f6f7a]${title ? " mt-1" : ""}`}>{subtitle}</p>

@@ -129,7 +129,7 @@ function SummaryCard({ icon: Icon, label, value, accent }) {
     <div className="max-w-full min-w-0 rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-white/88 p-5 shadow-[0_24px_64px_rgba(34,72,91,0.08)]">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
             {label}
           </p>
           <p className="mt-3 break-words text-3xl font-bold tracking-tight text-slate-950">{value}</p>
@@ -148,7 +148,7 @@ function QuickLinkCard({ id, title, description, to, onClick }) {
 
   const content = (
     <>
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{title}</p>
       <p className="mt-3 text-base leading-7 text-[#486976]">{description}</p>
     </>
   );
@@ -259,8 +259,8 @@ function DoctorDashboardTile({
         {eyebrow ? (
           <p
             className={cx(
-              "text-[11px] font-semibold uppercase tracking-[0.26em]",
-              dark ? "text-white/72" : "text-[#6a9297]",
+              "text-xs font-semibold uppercase tracking-wider",
+              dark ? "text-white/50" : "text-gray-400",
             )}
           >
             {eyebrow}
@@ -268,8 +268,8 @@ function DoctorDashboardTile({
         ) : null}
         <p
           className={cx(
-            "break-words font-semibold tracking-tight",
-            size === "hero" ? "mt-2 text-[1.18rem] md:text-[1.45rem]" : "mt-1 text-[1.04rem] md:text-[1.18rem]",
+            "break-words text-base font-medium tracking-tight",
+            eyebrow ? (size === "hero" ? "mt-2" : "mt-1") : size === "hero" ? "mt-2" : "mt-1",
             dark ? "text-white" : "text-slate-950",
           )}
         >
@@ -327,10 +327,10 @@ function RoleBoard({
 }) {
   return (
     <section className="rounded-[38px] border border-[rgba(106,129,138,0.4)] bg-[#aebdc3] p-5 shadow-[0_36px_90px_rgba(34,72,91,0.12)]">
-      <p className="pl-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#2f646e]">
+      <p className="pl-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
         {eyebrow}
       </p>
-      <h2 className="mt-3 pl-2 font-display text-4xl tracking-tight text-slate-950">
+      <h2 className="mt-3 pl-2 font-display text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
         {title}
       </h2>
 
@@ -342,14 +342,14 @@ function RoleBoard({
               DOORSTEP
             </p>
           </div>
-          <div className="text-left text-[17px] font-semibold uppercase tracking-[0.08em] text-[#2e5f68] xl:text-right xl:pt-1">
+          <div className="text-left text-sm font-semibold uppercase tracking-[0.08em] text-[#2e5f68] xl:text-right xl:pt-1">
             {statusMarkup}
           </div>
         </div>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-2">
           <div className="rounded-[30px] border border-[rgba(106,129,138,0.34)] bg-[rgba(255,255,255,0.38)] px-6 py-6">
-            <p className="text-2xl font-semibold text-slate-950">{leftTitle}</p>
+            <p className="text-lg font-semibold text-slate-950 md:text-xl">{leftTitle}</p>
             <div className="mt-5 space-y-4">
               {leftItems.map((item, index) => (
                 <DashboardPill
@@ -365,7 +365,7 @@ function RoleBoard({
           </div>
 
           <div className="rounded-[30px] border border-[rgba(106,129,138,0.34)] bg-[rgba(255,255,255,0.38)] px-6 py-6">
-            <p className="text-2xl font-semibold text-slate-950">{rightTitle}</p>
+            <p className="text-lg font-semibold text-slate-950 md:text-xl">{rightTitle}</p>
             <div className="mt-5 space-y-4">
               {rightItems.map((item, index) => (
                 <DashboardPill
@@ -388,20 +388,20 @@ function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup }) {
   return (
     <div className="mb-2 hidden items-start justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] pb-3 md:flex">
       <div className="min-w-0 flex-1 pr-4">
-        <p className="text-[1rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.2rem]">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
           OCS M&#201;DECINS
         </p>
-        <h2 className="mt-2 font-display text-[2rem] leading-[0.98] tracking-tight text-slate-950 md:text-[2.65rem]">
+        <h1 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl">
           {title}
-        </h2>
+        </h1>
       </div>
       <div className="flex min-w-0 shrink-0 flex-col items-end gap-2">
         <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98] shadow-sm">
           <ShieldCheck className="size-3.5 shrink-0" />
           <span className="truncate">{roleBadge}</span>
         </div>
-        <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/92 px-3 py-2 shadow-[0_8px_22px_rgba(34,72,91,0.06)] sm:gap-3 sm:px-4">
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b9499]">
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/92 px-3 py-1.5 shadow-[0_8px_22px_rgba(34,72,91,0.06)] sm:gap-2.5 sm:px-3.5">
+          <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400">
             Live status
           </span>
           <div className="min-w-0">{statusMarkup}</div>
@@ -438,10 +438,10 @@ function RoleDashboardStudio({
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-4">
               <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   {leftEyebrow}
                 </p>
-                <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
+                <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
                   {leftTitle}
                 </p>
 
@@ -456,10 +456,10 @@ function RoleDashboardStudio({
             </div>
 
             <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 {rightEyebrow}
               </p>
-              <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
+              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
                 {rightTitle}
               </p>
 
@@ -586,7 +586,7 @@ function RecentActivityPanel({ dashboard }) {
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="font-semibold text-slate-950">{activity.title}</p>
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                     {activity.type}
                   </span>
                 </div>
@@ -639,10 +639,10 @@ function DoctorStatusPanel({ doctors = [] }) {
     <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
             Doctors live status
           </p>
-          <p className="mt-2 text-[1.25rem] font-semibold tracking-tight text-slate-950">
+          <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
             Doctor availability overview
           </p>
           <p className="mt-2 text-sm leading-6 text-[#51717b]">
@@ -738,7 +738,7 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
 
         <p
           className={cx(
-            "text-[1.12rem] font-semibold leading-[1.18] tracking-tight text-slate-950 md:text-[1.26rem]",
+            "text-base font-medium leading-snug tracking-tight text-slate-950",
             subtitle ? "mt-7" : "mt-5",
           )}
         >
@@ -778,10 +778,10 @@ function DoctorPersonalOperationUpdates() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7da2aa]">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
           Clinical flow
         </p>
-        <h3 className="mt-2 text-[1.65rem] font-semibold tracking-tight text-slate-950 md:text-[2rem]">
+        <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
           Personal operation updates
         </h3>
 
@@ -822,10 +822,10 @@ function OperatorPersonalOperationUpdates() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7da2aa]">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
           Coordination flow
         </p>
-        <h3 className="mt-2 text-[1.65rem] font-semibold tracking-tight text-slate-950 md:text-[2rem]">
+        <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
           Personal operation updates
         </h3>
 
@@ -908,10 +908,10 @@ function DoctorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRoste
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-4">
               <div className="rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-4 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:rounded-[34px] md:p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   Shifts
                 </p>
-                <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
+                <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
                   My shifts
                 </p>
 
@@ -978,10 +978,10 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="space-y-4">
               <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   Shared roster
                 </p>
-                <p className="mt-2 text-[1.35rem] font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">
+                <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
                   Doctors shifts
                 </p>
 
@@ -1202,12 +1202,12 @@ function AdminDashboardView({
 
           <div className="mt-3 hidden md:block">
             <div>
-              <p className="text-[1.12rem] font-medium uppercase tracking-[0.12em] text-[#2f6670] md:text-[1.35rem]">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 OCS M&#201;DECINS
               </p>
-              <h2 className="mt-2 font-display text-[2.4rem] leading-[0.96] tracking-tight text-slate-950 md:text-[3.25rem]">
+              <h1 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl">
                 Operations Dashboard
-              </h2>
+              </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-[#51717b]">
                 Keep the leadership view focused on doctor availability, the next visits in the queue,
                 shared HCM updates, and live operational reporting.
@@ -1222,10 +1222,10 @@ function AdminDashboardView({
 
           <div className="mt-6 grid gap-6 xl:grid-cols-2">
             <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 Health care manager
               </p>
-              <p className="mt-2 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
                 Updates from HCM
               </p>
 
@@ -1242,10 +1242,10 @@ function AdminDashboardView({
             </div>
 
             <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 Operational analytics
               </p>
-              <p className="mt-2 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
                 Live Report
               </p>
 
@@ -1262,10 +1262,10 @@ function AdminDashboardView({
           </div>
 
           <div className="mt-6 rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b9499]">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
               Roster management
             </p>
-            <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-slate-950 md:text-[1.85rem]">
+            <p className="mt-3 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
               Current roster PDF
             </p>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#51717b]">
