@@ -397,6 +397,30 @@ router.get("/", (req, res) => {
   res.json(bills);
 });
 
+router.get("/consultation-fees", (req, res) => {
+  try {
+    const rows = db
+      .prepare(`
+        SELECT type_name, default_amount
+        FROM consultation_fee_types
+        ORDER BY id ASC
+      `)
+      .all();
+
+    const fees = rows.reduce((acc, row) => {
+      acc[row.type_name] = roundCurrency(row.default_amount);
+      return acc;
+    }, {});
+
+    res.json(fees);
+  } catch (error) {
+    console.error("[billing][GET /consultation-fees]", error);
+    return res.status(500).json({
+      error: error?.message || "Failed to load consultation fees.",
+    });
+  }
+});
+
 router.get("/:id", (req, res) => {
   const billId = Number(req.params.id);
   const bill = getJoinedBillById(billId);

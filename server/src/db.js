@@ -537,6 +537,7 @@ function initializeDatabase() {
   ensureUserColumns();
   ensureHcmNewsColumns();
   ensureBillingColumns();
+  ensureConsultationFeeTypes();
   ensureInventoryColumns();
   backfillPatientRecords();
   backfillPatientLocations();
@@ -838,6 +839,33 @@ function ensureBillingColumns() {
       db.pragma("foreign_keys = ON");
     }
   }
+}
+
+function ensureConsultationFeeTypes() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS consultation_fee_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type_name TEXT NOT NULL UNIQUE,
+      default_amount REAL NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  const defaults = [
+    ["Day Consultation", 1500],
+    ["Night Consultation", 2500],
+    ["Review Consultation", 800],
+  ];
+
+  const upsert = db.prepare(`
+    INSERT INTO consultation_fee_types (type_name, default_amount)
+    VALUES (?, ?)
+    ON CONFLICT(type_name) DO NOTHING
+  `);
+
+  defaults.forEach(([typeName, amount]) => {
+    upsert.run(typeName, amount);
+  });
 }
 
 function ensureInventoryColumns() {

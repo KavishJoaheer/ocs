@@ -5,6 +5,7 @@ import {
   CreditCard,
   DollarSign,
   Package,
+  Pencil,
   Plus,
   ReceiptText,
   Search,
@@ -49,6 +50,13 @@ const CONSULTATION_TYPE_OPTIONS = [
   "Night Consultation",
   "Review Consultation",
 ];
+
+function resolveConsultationFee(feeMap, typeName) {
+  if (!feeMap || !typeName) return "";
+  const value = feeMap[typeName];
+  if (value == null || Number.isNaN(Number(value))) return "";
+  return String(Number(value));
+}
 
 function createEmptyLineItem() {
   return { description: "", amount: "0", type: "Sale" };
@@ -398,14 +406,14 @@ function DescriptionList({
           <span className="text-right text-xs text-slate-300">—</span>
         </div>
         {compactMobile ? (
-          <div className="md:hidden space-y-2 border-b border-slate-100 px-4 py-3">
-            <div className="flex min-h-12 items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
-                <Stethoscope className="size-4" />
+          <div className="border-b border-slate-100 px-3 py-2 md:hidden">
+            <div className="flex min-h-10 items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-1.5">
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#4FB8B3]/15 text-[#1f7f7b]">
+                <Stethoscope className="size-3.5" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-slate-900">{consultationType}</p>
-                <p className="text-xs text-slate-500">Consultation · {formatCurrency(consultationSubtotal)}</p>
+                <p className="text-sm font-semibold leading-tight text-slate-900">{consultationType}</p>
+                <p className="text-xs text-slate-500">{formatCurrency(consultationSubtotal)}</p>
               </div>
             </div>
           </div>
@@ -686,6 +694,9 @@ function CreateBillingModal({
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
   const [inventoryOverlayOpen, setInventoryOverlayOpen] = useState(false);
   const [inventoryOverlayQuery, setInventoryOverlayQuery] = useState("");
+  const [inventoryCategory, setInventoryCategory] = useState("All");
+  const [consultationFees, setConsultationFees] = useState({});
+  const [consultationPriceEditable, setConsultationPriceEditable] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -710,7 +721,32 @@ function CreateBillingModal({
     setPatientSearchQuery("");
     setInventoryOverlayOpen(false);
     setInventoryOverlayQuery("");
+    setInventoryCategory("All");
+    setConsultationPriceEditable(false);
+    setConsultationFees({});
   }, [open, preselectedPatientId]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let ignore = false;
+    api
+      .get("/billing/consultation-fees")
+      .then((fees) => {
+        if (!ignore) setConsultationFees(fees || {});
+      })
+      .catch(() => {
+        if (!ignore) setConsultationFees({});
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || consultationPriceEditable) return;
+    const fee = resolveConsultationFee(consultationFees, consultationType);
+    if (fee !== "") setConsultationPrice(fee);
+  }, [open, consultationFees, consultationType, consultationPriceEditable]);
 
   const patientConsultations = useMemo(
     () =>
@@ -763,15 +799,37 @@ function CreateBillingModal({
     }
   }, [open, patients, patientId]);
 
+  const inventoryCategories = useMemo(() => {
+    const folders = new Set();
+    inventoryOptions.forEach((item) => {
+      folders.add(String(item.folder_name || "").trim() || "Uncategorized");
+    });
+    return ["All", ...Array.from(folders).sort((a, b) => a.localeCompare(b))];
+  }, [inventoryOptions]);
+
   const filteredInventoryOverlayRows = useMemo(() => {
+    let rows = inventoryOptions;
+    if (inventoryCategory !== "All") {
+      rows = rows.filter(
+        (item) => (String(item.folder_name || "").trim() || "Uncategorized") === inventoryCategory,
+      );
+    }
     const needle = String(inventoryOverlayQuery || "").trim().toLowerCase();
-    if (!needle) return inventoryOptions;
-    return inventoryOptions.filter((item) => {
+    if (!needle) return rows;
+    return rows.filter((item) => {
       const name = String(item.item_name || "").toLowerCase();
       const folder = String(item.folder_name || "").toLowerCase();
       return name.includes(needle) || folder.includes(needle);
     });
-  }, [inventoryOptions, inventoryOverlayQuery]);
+  }, [inventoryOptions, inventoryOverlayQuery, inventoryCategory]);
+
+  function handleConsultationTypeChange(nextType) {
+    setConsultationType(nextType);
+    if (!consultationPriceEditable) {
+      const fee = resolveConsultationFee(consultationFees, nextType);
+      if (fee !== "") setConsultationPrice(fee);
+    }
+  }
 
   const selectedPatientLabel = useMemo(() => {
     const row = patients.find((patient) => Number(patient.id) === Number(patientId));
@@ -1055,8 +1113,23 @@ function CreateBillingModal({
           : "Create another bill for a patient by selecting the linked consultation and line items."
       }
       size="xl"
+      innerScroll={!isMobile}
     >
-      <form className="min-w-0 w-full max-w-full space-y-5" onSubmit={handleSubmit}>
+      <form
+        className={cx(
+          "min-w-0 w-full max-w-full",
+          isMobile ? "flex min-h-0 flex-1 flex-col" : "space-y-5",
+        )}
+        onSubmit={handleSubmit}
+      >
+        <div
+          className={cx(
+            "min-w-0 w-full max-w-full",
+            isMobile
+              ? "flex-1 space-y-4 overflow-x-hidden overflow-y-auto pb-4"
+              : "contents",
+          )}
+        >
         <div className="hidden min-w-0 gap-4 md:grid md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
@@ -1173,7 +1246,7 @@ function CreateBillingModal({
             <span className="text-sm font-semibold text-slate-700">Consultation Type</span>
             <select
               value={consultationType}
-              onChange={(event) => setConsultationType(event.target.value)}
+              onChange={(event) => handleConsultationTypeChange(event.target.value)}
               className={cx(BILLING_FIELD, "min-h-12 md:min-h-0")}
             >
               {CONSULTATION_TYPE_OPTIONS.map((option) => (
@@ -1185,16 +1258,31 @@ function CreateBillingModal({
           </label>
           <label className="min-w-0 space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation Price (Rs)</span>
-            <input
-              inputMode="decimal"
-              type="number"
-              min="0"
-              step="0.01"
-              value={consultationPrice}
-              onChange={(event) => setConsultationPrice(event.target.value)}
-              placeholder="0.00"
-              className={cx(BILLING_FIELD, "min-h-12 md:min-h-0")}
-            />
+            <div className="relative min-w-0">
+              <input
+                inputMode="decimal"
+                type="number"
+                min="0"
+                step="0.01"
+                readOnly={!consultationPriceEditable}
+                value={consultationPrice}
+                onChange={(event) => setConsultationPrice(event.target.value)}
+                placeholder="0.00"
+                className={cx(
+                  BILLING_FIELD,
+                  "min-h-12 pr-12 md:min-h-0",
+                  !consultationPriceEditable && "cursor-default bg-slate-100/90",
+                )}
+              />
+              <button
+                type="button"
+                aria-label={consultationPriceEditable ? "Lock consultation price" : "Edit consultation price"}
+                onClick={() => setConsultationPriceEditable((current) => !current)}
+                className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-xl border border-slate-200/80 bg-white text-slate-600 transition hover:border-[#4FB8B3]/40 hover:text-[#1f7f7b]"
+              >
+                <Pencil className="size-4" />
+              </button>
+            </div>
           </label>
         </div>
 
@@ -1331,6 +1419,7 @@ function CreateBillingModal({
             disabled={!consultationId || inventoryLoading}
             onClick={() => {
               setInventoryOverlayQuery("");
+              setInventoryCategory("All");
               setInventoryOverlayOpen(true);
             }}
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#4FB8B3]/50 bg-[#4FB8B3]/10 px-4 py-3 text-sm font-bold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1338,11 +1427,6 @@ function CreateBillingModal({
             <Package className="size-5" />
             {inventoryLoading ? "Loading stock…" : "Select from Inventory"}
           </button>
-          {consultationId && !inventoryLoading && inventoryOptions.length === 0 ? (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-              No stock rows for this visit. Restock in Inventory or use Add manual item.
-            </p>
-          ) : null}
         </div>
 
         <DescriptionList
@@ -1366,23 +1450,48 @@ function CreateBillingModal({
           setPaymentDate={setPaymentDate}
           total={total}
         />
-
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving || doctorHasNoAssignedPatients}
-            className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
-          >
-            {isSaving ? "Saving…" : isMobile ? "Save invoice" : "Create bill"}
-          </button>
         </div>
+
+        {isMobile ? (
+          <div
+            className="shrink-0 border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(242,251,250,0.98))] px-1 pt-3"
+            style={{ paddingBottom: "max(1.5rem, var(--sab))" }}
+          >
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-12 flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving || doctorHasNoAssignedPatients}
+                className="min-h-12 flex-1 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {isSaving ? "Saving…" : "Save invoice"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || doctorHasNoAssignedPatients}
+              className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
+            >
+              {isSaving ? "Saving…" : "Create bill"}
+            </button>
+          </div>
+        )}
       </form>
       {isMobile && open && typeof document !== "undefined"
         ? createPortal(
@@ -1453,6 +1562,7 @@ function CreateBillingModal({
                       onClick={() => {
                         setInventoryOverlayOpen(false);
                         setInventoryOverlayQuery("");
+                        setInventoryCategory("All");
                       }}
                       className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-600"
                     >
@@ -1461,23 +1571,47 @@ function CreateBillingModal({
                     <span className="text-sm font-bold text-slate-900">My stock</span>
                     <span className="w-16" />
                   </div>
-                  <div className="shrink-0 border-b border-slate-100 p-3">
-                    <div className="relative">
+                  <div className="shrink-0 space-y-3 border-b border-slate-100 p-3">
+                    {inventoryCategories.length > 1 ? (
+                      <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        {inventoryCategories.map((category) => (
+                          <button
+                            key={category}
+                            type="button"
+                            onClick={() => setInventoryCategory(category)}
+                            className={cx(
+                              "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                              inventoryCategory === category
+                                ? "bg-[#4FB8B3] text-white"
+                                : "bg-slate-100 text-slate-600",
+                            )}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="relative min-w-0">
                       <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
                       <input
-                        autoFocus
                         value={inventoryOverlayQuery}
                         onChange={(event) => setInventoryOverlayQuery(event.target.value)}
-                        placeholder="Search consumables, drugs, consultations…"
-                        className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#4FB8B3]"
+                        placeholder="Filter stock…"
+                        className={cx(BILLING_FIELD, "min-h-12 pl-11")}
                       />
                     </div>
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                     {inventoryLoading ? (
-                      <p className="px-4 py-6 text-center text-sm text-slate-500">Loading…</p>
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">Loading stock…</p>
+                    ) : inventoryOptions.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">
+                        No items in My Stock for this visit.
+                      </p>
                     ) : filteredInventoryOverlayRows.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-sm text-slate-500">No matching items.</p>
+                      <p className="px-4 py-6 text-center text-sm text-slate-500">
+                        No items match this filter.
+                      </p>
                     ) : (
                       filteredInventoryOverlayRows.map((item) => {
                         const available = Number(item.quantity || 0);
