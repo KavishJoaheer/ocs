@@ -13,13 +13,12 @@ import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
-function SummaryCard({ title, value, tone = "teal", description }) {
+function SummaryCard({ title, value, tone = "teal" }) {
   const toneClass = tone === "amber" ? "text-amber-700" : "text-[#4FB8B3]";
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_16px_36px_rgba(34,72,91,0.06)] md:rounded-3xl md:p-5">
       <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] md:text-xs md:tracking-[0.22em] ${toneClass}`}>{title}</p>
       <p className="mt-1.5 text-xl font-bold leading-tight text-slate-950 md:mt-3 md:text-3xl">{value}</p>
-      {description ? <p className="mt-1 hidden text-sm text-slate-600 md:mt-2 md:block">{description}</p> : null}
     </div>
   );
 }
@@ -563,6 +562,63 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+function LiveActivitySection({ movements, onReprint }) {
+  const rows = movements.slice(0, 40);
+  return (
+    <SectionCard title="Live Activity">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+            <tr>
+              <th className="px-3 py-2 text-left">When</th>
+              <th className="min-w-0 px-3 py-2 text-left">Action</th>
+              <th className="min-w-0 px-3 py-2 text-left">Item</th>
+              <th className="px-3 py-2 text-left">Qty</th>
+              <th className="min-w-0 px-3 py-2 text-left">Performed By</th>
+              <th className="px-2 py-2 text-left">Receipt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((movement) => {
+              const transactionId = movement.meta?.transaction_id || "";
+              const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
+              return (
+                <tr key={`mv-${movement.id}`} className="border-t border-slate-200/70 text-xs">
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-700">{movement.created_at}</td>
+                  <td className="max-w-[6.5rem] truncate px-3 py-2 font-medium text-slate-800" title={movement.action_type}>
+                    {movement.action_type}
+                  </td>
+                  <td className="max-w-[7rem] truncate px-3 py-2 text-slate-700" title={movement.item_name}>
+                    {movement.item_name}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">{movement.quantity}</td>
+                  <td className="max-w-[6rem] truncate px-3 py-2 text-slate-600" title={movement.meta?.performed_by_name || ""}>
+                    {movement.meta?.performed_by_name || "-"}
+                  </td>
+                  <td className="px-2 py-2">
+                    {canPrint && transactionId ? (
+                      <button
+                        type="button"
+                        onClick={() => onReprint(transactionId)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-1.5 py-1 text-slate-600 hover:bg-slate-50"
+                        title="Print receipt"
+                      >
+                        <Printer className="size-3.5 shrink-0" />
+                      </button>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -1277,72 +1333,11 @@ export default function InventoryPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} description="Based on cost price." />
-        <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} description="Sell actions synced to billing." />
-        <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} description="Inbound restock and intake value." />
+        <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} />
+        <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} />
+        <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} />
         <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" />
       </div>
-
-      <SectionCard title="View Stock Context">
-        <div className="space-y-4">
-          {isDoctor ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setDoctorContext("my")}
-                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsMy ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
-              >
-                My Stock (Default)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDoctorContext("ocs")}
-                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsOcs ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
-              >
-                OCS Master Stock (Read-only)
-              </button>
-            </div>
-          ) : (
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Stock Context</label>
-              <select
-                value={selectedContextDoctorId}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSelectedContextDoctorId(value);
-                  const option = filteredContextOptions.find((row) => String(row.id) === String(value));
-                  setContextSearch(option?.label || "OCS Stock");
-                }}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-              >
-                <option value="">OCS Stock</option>
-                {doctorOptions.map((doctor) => (
-                  <option key={`ctx-doctor-${doctor.id}`} value={String(doctor.id)}>
-                    {doctor.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by item name" className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4" />
-          </label>
-          <div className="-mx-1 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {folders.map((folder) => (
-              <button
-                key={folder.id}
-                type="button"
-                onClick={() => setSelectedView(String(folder.id))}
-                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
-              >
-                {folder.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      </SectionCard>
 
       <SectionCard
         title={
@@ -1352,8 +1347,70 @@ export default function InventoryPage() {
               ? "OCS Stock Items"
               : `${contextSearch || "Doctor"} - My Stock`
         }
-        subtitle={`${sortedItems.length} filtered item(s)`}
       >
+        <div className="mb-4 space-y-3 border-b border-slate-100 pb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {isDoctor ? (
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDoctorContext("my")}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsMy ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                >
+                  My Stock (Default)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDoctorContext("ocs")}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsOcs ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                >
+                  OCS Master Stock (Read-only)
+                </button>
+              </div>
+            ) : (
+              <select
+                aria-label="Stock context"
+                value={selectedContextDoctorId}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedContextDoctorId(value);
+                  const option = filteredContextOptions.find((row) => String(row.id) === String(value));
+                  setContextSearch(option?.label || "OCS Stock");
+                }}
+                className="w-full shrink-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 sm:w-56"
+              >
+                <option value="">OCS Stock</option>
+                {doctorOptions.map((doctor) => (
+                  <option key={`ctx-doctor-${doctor.id}`} value={String(doctor.id)}>
+                    {doctor.full_name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <label className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by item name"
+                className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
+              />
+            </label>
+          </div>
+          <div className="-mx-1 flex flex-wrap gap-2">
+            {folders.map((folder) => (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => setSelectedView(String(folder.id))}
+                className={`shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold sm:text-sm ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              >
+                {folder.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -1403,7 +1460,7 @@ export default function InventoryPage() {
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                     <tr>
-                      <th className="w-[50px] px-4 py-2.5 align-middle">
+                      <th className="w-[50px] px-3 py-2 align-middle">
                         {canManageOcs ? (
                           <input
                             type="checkbox"
@@ -1413,11 +1470,11 @@ export default function InventoryPage() {
                           />
                         ) : null}
                       </th>
-                      <th className="w-[30%] px-4 py-2.5 text-left align-middle">Item Name</th>
-                      <th className="w-[10%] px-4 py-2.5 text-center align-middle">Qty</th>
-                      <th className="w-[10%] px-4 py-2.5 text-center align-middle">Min Qty</th>
-                      <th className="w-[20%] px-4 py-2.5 text-center align-middle">Nearest Expiry</th>
-                      <th className="w-[25%] px-4 py-2.5 text-left align-middle">Actions</th>
+                      <th className="w-[30%] px-3 py-2 text-left align-middle">Item Name</th>
+                      <th className="w-[10%] px-3 py-2 text-center align-middle">Qty</th>
+                      <th className="w-[10%] px-3 py-2 text-center align-middle">Min Qty</th>
+                      <th className="w-[20%] px-3 py-2 text-center align-middle">Nearest Expiry</th>
+                      <th className="w-[25%] px-3 py-2 text-left align-middle">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1432,7 +1489,7 @@ export default function InventoryPage() {
                       return (
                         <Fragment key={item.id}>
                           <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
-                            <td className="px-4 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
+                            <td className="px-3 py-1.5 align-middle" onClick={(event) => event.stopPropagation()}>
                               {canManageOcs ? (
                                 <input
                                   type="checkbox"
@@ -1442,7 +1499,7 @@ export default function InventoryPage() {
                                 />
                               ) : null}
                             </td>
-                            <td className="px-4 py-2 align-middle text-left">
+                            <td className="px-3 py-1.5 align-middle text-left">
                               <div className="flex items-center gap-2">
                                 <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
                                   {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -1450,7 +1507,7 @@ export default function InventoryPage() {
                                 <span className="font-semibold text-slate-900">{item.item_name}</span>
                               </div>
                             </td>
-                            <td className="px-4 py-2 align-middle text-center">
+                            <td className="px-3 py-1.5 align-middle text-center">
                               <div className="inline-flex items-center justify-center gap-2">
                                 <span>{item.quantity}</span>
                                 {isDoctor && doctorViewIsMy ? (
@@ -1468,9 +1525,9 @@ export default function InventoryPage() {
                                 ) : null}
                               </div>
                             </td>
-                            <td className="px-4 py-2 align-middle text-center">{item.minimum_quantity}</td>
-                            <td className="px-4 py-2 align-middle text-center">{item.expiry_date || "Not set"}</td>
-                            <td className="px-4 py-2 align-middle text-left" onClick={(event) => event.stopPropagation()}>
+                            <td className="px-3 py-1.5 align-middle text-center">{item.minimum_quantity}</td>
+                            <td className="px-3 py-1.5 align-middle text-center">{item.expiry_date || "Not set"}</td>
+                            <td className="px-3 py-1.5 align-middle text-left" onClick={(event) => event.stopPropagation()}>
                               <InventoryActionButtons
                                 item={item}
                                 canManageOcs={canManageOcs}
@@ -1489,7 +1546,7 @@ export default function InventoryPage() {
                           </tr>
                           {expanded ? (
                             <tr className="border-t border-slate-100 bg-slate-50/60">
-                              <td colSpan={6} className="px-4 py-3">
+                              <td colSpan={6} className="px-3 py-2">
                                 <div className="grid gap-3 md:grid-cols-2">
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
@@ -1681,8 +1738,8 @@ export default function InventoryPage() {
       </SectionCard>
 
       {isDoctor ? (
-        <div className="hidden md:block">
-          <SectionCard title="My Consumption Record" subtitle="Track patient volume and stock consumption across key periods.">
+        <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
+          <SectionCard title="My Consumption Record">
           <div className="mb-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => setConsumptionPeriod("week")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "week" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Week</button>
             <button type="button" onClick={() => setConsumptionPeriod("month")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "month" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Month</button>
@@ -1690,104 +1747,62 @@ export default function InventoryPage() {
           </div>
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
                 <tr>
-                  <th className="px-4 py-3 text-left">Period</th>
-                  <th className="px-4 py-3 text-left">Patient Volume</th>
-                  <th className="px-4 py-3 text-left">Stock Consumption (Rs)</th>
+                  <th className="px-3 py-2 text-left">Period</th>
+                  <th className="px-3 py-2 text-left">Patient Volume</th>
+                  <th className="px-3 py-2 text-left">Stock Consumption (Rs)</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedConsumption ? (
                   <tr className="border-t border-slate-200/70 text-xs">
-                    <td className="px-4 py-3">{selectedConsumption.period}</td>
-                    <td className="px-4 py-3">{selectedConsumption.patient_volume}</td>
-                    <td className="px-4 py-3">{formatRupees(selectedConsumption.stock_consumption_rs)}</td>
+                    <td className="px-3 py-2">{selectedConsumption.period}</td>
+                    <td className="px-3 py-2">{selectedConsumption.patient_volume}</td>
+                    <td className="px-3 py-2">{formatRupees(selectedConsumption.stock_consumption_rs)}</td>
                   </tr>
                 ) : (
                   <tr className="border-t border-slate-200/70 text-xs">
-                    <td className="px-4 py-3 text-slate-500" colSpan={3}>No consumption record available yet.</td>
+                    <td className="px-3 py-2 text-slate-500" colSpan={3}>No consumption record available yet.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
         </SectionCard>
+        <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
         </div>
       ) : canManageOcs ? (
-        <div className="hidden md:block">
-          <SectionCard title="Admin Compare Tool" subtitle="Compare doctor consumption against patient volume (current month).">
+        <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
+          <SectionCard title="Admin Compare Tool">
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
                 <tr>
-                  <th className="px-4 py-3 text-left">Doctor</th>
-                  <th className="px-4 py-3 text-left">Patient Volume</th>
-                  <th className="px-4 py-3 text-left">Stock Consumption (Rs)</th>
+                  <th className="px-3 py-2 text-left">Doctor</th>
+                  <th className="px-3 py-2 text-left">Patient Volume</th>
+                  <th className="px-3 py-2 text-left">Stock Consumption (Rs)</th>
                 </tr>
               </thead>
               <tbody>
                 {(data.compare_rows || []).map((row) => (
                   <tr key={row.doctor_id} className="border-t border-slate-200/70 text-xs">
-                    <td className="px-4 py-3">{row.doctor_name}</td>
-                    <td className="px-4 py-3">{row.patient_volume}</td>
-                    <td className="px-4 py-3">{formatRupees(row.stock_consumption)}</td>
+                    <td className="px-3 py-2">{row.doctor_name}</td>
+                    <td className="px-3 py-2">{row.patient_volume}</td>
+                    <td className="px-3 py-2">{formatRupees(row.stock_consumption)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </SectionCard>
+        <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
         </div>
-      ) : null}
-
-      <div className="hidden md:block">
-        <SectionCard title="Live Activity" subtitle="Recent inventory events with receipt reprint support for restock transfers.">
-        <div className="overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-[0.2em] text-slate-500">
-              <tr>
-                <th className="px-4 py-3 text-left">When</th>
-                <th className="px-4 py-3 text-left">Action</th>
-                <th className="px-4 py-3 text-left">Item</th>
-                <th className="px-4 py-3 text-left">Qty</th>
-                <th className="px-4 py-3 text-left">Performed By</th>
-                <th className="px-4 py-3 text-left">Receipt</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parsedMovements.slice(0, 40).map((movement) => {
-                const transactionId = movement.meta?.transaction_id || "";
-                const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
-                return (
-                  <tr key={`mv-${movement.id}`} className="border-t border-slate-200/70 text-xs">
-                    <td className="px-4 py-3">{movement.created_at}</td>
-                    <td className="px-4 py-3">{movement.action_type}</td>
-                    <td className="px-4 py-3">{movement.item_name}</td>
-                    <td className="px-4 py-3">{movement.quantity}</td>
-                    <td className="px-4 py-3">{movement.meta?.performed_by_name || "-"}</td>
-                    <td className="px-4 py-3">
-                      {canPrint && transactionId ? (
-                        <button
-                          type="button"
-                          onClick={() => reprintByTransactionId(transactionId)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
-                          title="Print receipt"
-                        >
-                          <Printer className="size-3.5" />
-                        </button>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      ) : (
+        <div className="hidden md:block">
+          <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
         </div>
-      </SectionCard>
-      </div>
+      )}
 
       <ItemModal open={Boolean(editor)} item={editor?.item} folders={folders} isSaving={isSaving} onClose={() => setEditor(null)} onSubmit={saveItem} />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
