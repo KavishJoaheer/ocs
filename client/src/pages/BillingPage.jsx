@@ -37,6 +37,7 @@ import {
   formatCurrency,
   formatDate,
   formatPaymentMethod,
+  formatRupees,
 } from "../lib/format.js";
 import { cx, formControlClass, pageContainerClass } from "../lib/utils.js";
 
@@ -1795,9 +1796,16 @@ function BillingPage() {
       }
 
       const queryString = filterQuery.toString();
+      const summaryQuery = new URLSearchParams();
+      if (user?.role === "admin" && adminBillingDateRange) {
+        summaryQuery.set("dateFrom", adminBillingDateRange.from);
+        summaryQuery.set("dateTo", adminBillingDateRange.to);
+      }
+      const summaryQueryString = summaryQuery.toString();
+
       const [billingData, summaryData] = await Promise.all([
         api.get(`/billing${queryString ? `?${queryString}` : ""}`),
-        api.get("/billing/patient-summary"),
+        api.get(`/billing/patient-summary${summaryQueryString ? `?${summaryQueryString}` : ""}`),
       ]);
 
       setBills(billingData);
@@ -1845,18 +1853,20 @@ function BillingPage() {
     loadReferenceData();
   }, [user?.id, user?.doctor_id, user?.role]);
 
-  const overallPaid = patientSummary.reduce(
-    (sum, patient) => sum + Number(patient.paid_amount || 0),
-    0,
+  /** Admin: `/billing/patient-summary` is requested with the same date range as the list (see `loadData`), so these totals match the period and stay correct when the table status filter narrows `bills`. */
+  const billingDashboardTotals = useMemo(
+    () =>
+      patientSummary.reduce(
+        (acc, p) => ({
+          totalBilled: acc.totalBilled + Number(p.total_billed || 0),
+          collected: acc.collected + Number(p.paid_amount || 0),
+          outstanding: acc.outstanding + Number(p.unpaid_amount || 0),
+        }),
+        { totalBilled: 0, collected: 0, outstanding: 0 },
+      ),
+    [patientSummary],
   );
-  const overallUnpaid = patientSummary.reduce(
-    (sum, patient) => sum + Number(patient.unpaid_amount || 0),
-    0,
-  );
-  const overallBilled = patientSummary.reduce(
-    (sum, patient) => sum + Number(patient.total_billed || 0),
-    0,
-  );
+
   const filteredBills = bills.filter((bill) => {
     if (!searchText.trim()) return true;
     const query = searchText.trim().toLowerCase().replace(/^#/, "");
@@ -1960,9 +1970,9 @@ function BillingPage() {
 
       {user?.role !== "doctor" ? (
         <div className="hidden gap-4 md:grid md:grid-cols-3">
-          <BillingStat icon={DollarSign} label="Total billed" value={formatCurrency(overallBilled)} />
-          <BillingStat icon={CreditCard} label="Collected" value={formatCurrency(overallPaid)} />
-          <BillingStat icon={ReceiptText} label="Outstanding" value={formatCurrency(overallUnpaid)} />
+          <BillingStat icon={DollarSign} label="Total billed" value={formatRupees(billingDashboardTotals.totalBilled)} />
+          <BillingStat icon={CreditCard} label="Collected" value={formatRupees(billingDashboardTotals.collected)} />
+          <BillingStat icon={ReceiptText} label="Outstanding" value={formatRupees(billingDashboardTotals.outstanding)} />
         </div>
       ) : null}
 
