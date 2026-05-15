@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Download, Minus, MinusCircle, Pencil, Plus, Printer, Search, Trash2, Truck } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Minus, MinusCircle, MoreVertical, Pencil, Plus, Printer, Search, Trash2, Truck } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -70,14 +70,16 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
-          onSubmit({
+          const payload = {
             ...form,
             folder_id: Number(form.folder_id || 0),
             quantity: Number(form.quantity || 0),
             minimum_quantity: Number(form.minimum_quantity || 0),
             cost_price: Number(form.cost_price || 0),
             selling_price: Number(form.selling_price || 0),
-          });
+          };
+          if (!item) delete payload.adjustment_note;
+          onSubmit(payload);
         }}
       >
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-24 pr-1">
@@ -168,10 +170,12 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
             />
           </label>
         </div>
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Adjustment Note</span>
-          <input name="adjustment_note" value={form.adjustment_note} onChange={(event) => setForm((prev) => ({ ...prev, adjustment_note: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
-        </label>
+        {item ? (
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Adjustment Note</span>
+            <input name="adjustment_note" value={form.adjustment_note} onChange={(event) => setForm((prev) => ({ ...prev, adjustment_note: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
+          </label>
+        ) : null}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 py-4">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
@@ -256,9 +260,16 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
   }, [open, item]);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Stock In${item ? ` - ${item.item_name}` : ""}`} description="Add a new inventory batch using FEFO-safe batch tracking.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Stock In${item ? ` - ${item.item_name}` : ""}`}
+      description="Add a new inventory batch using FEFO-safe batch tracking."
+      size="lg"
+      innerScroll={false}
+    >
       <form
-        className="space-y-4"
+        className="flex min-h-0 w-full flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
           const qty = Number(quantity || 0);
@@ -268,43 +279,45 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
           onSubmit({ quantity: qty, expiry_date: expiryDate, cost_price: cost });
         }}
       >
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Quantity to Add</span>
-          <input
-            required
-            min={1}
-            step={1}
-            type="number"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-          />
-        </label>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-24 pr-1">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Quantity to Add</span>
+            <input
+              required
+              min={1}
+              step={1}
+              type="number"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+            />
+          </label>
 
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Batch Expiry Date</span>
-          <input
-            type="date"
-            value={expiryDate}
-            onChange={(event) => setExpiryDate(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-          />
-        </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Batch Expiry Date</span>
+            <input
+              type="date"
+              value={expiryDate}
+              onChange={(event) => setExpiryDate(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+            />
+          </label>
 
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Current Cost Price (Rs)</span>
-          <input
-            required
-            min={0}
-            step="0.01"
-            type="number"
-            value={costPrice}
-            onChange={(event) => setCostPrice(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-          />
-        </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Current Cost Price (Rs)</span>
+            <input
+              required
+              min={0}
+              step="0.01"
+              type="number"
+              value={costPrice}
+              onChange={(event) => setCostPrice(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+            />
+          </label>
+        </div>
 
-        <div className="flex justify-end gap-3">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 py-4">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
             Cancel
           </button>
@@ -366,106 +379,6 @@ function RemoveStockModal({ open, item, isSaving, onClose, onSubmit }) {
           </button>
           <button type="submit" disabled={isSaving} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {isSaving ? "Removing..." : "Remove"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function BulkRemoveModal({ open, count, isSaving, onClose, onSubmit }) {
-  const [reason, setReason] = useState("Discontinued");
-
-  useEffect(() => {
-    if (!open) return;
-    setReason("Discontinued");
-  }, [open]);
-
-  return (
-    <Modal open={open} onClose={onClose} title="Bulk Remove" description={`Apply write-off to ${count} selected item(s).`}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit({ reason });
-        }}
-      >
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Reason</span>
-          <select value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <option value="Expired">Expired</option>
-            <option value="Discontinued">Discontinued</option>
-            <option value="Damaged">Damaged</option>
-          </select>
-        </label>
-
-        <p className="text-xs text-rose-700">
-          This action removes all currently available quantity for selected items using FEFO batch deduction.
-        </p>
-
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
-            Cancel
-          </button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Removing..." : "Confirm Bulk Remove"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function BulkEditModal({ open, folders, isSaving, onClose, onSubmit }) {
-  const [minimumQty, setMinimumQty] = useState("");
-  const [folderId, setFolderId] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    setMinimumQty("");
-    setFolderId("");
-  }, [open]);
-
-  return (
-    <Modal open={open} onClose={onClose} title="Bulk Edit" description="Update minimum qty and/or folder for selected items.">
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit({
-            minimum_quantity: minimumQty,
-            folder_id: folderId,
-          });
-        }}
-      >
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Minimum Qty (optional)</span>
-          <input
-            min={0}
-            step={1}
-            type="number"
-            value={minimumQty}
-            onChange={(event) => setMinimumQty(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-          />
-        </label>
-
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Category / Folder (optional)</span>
-          <select value={folderId} onChange={(event) => setFolderId(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <option value="">Keep existing folder</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>{folder.name}</option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
-            Cancel
-          </button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Saving..." : "Apply Bulk Edit"}
           </button>
         </div>
       </form>
@@ -777,6 +690,106 @@ function LiveActivitySection({ movements, onReprint }) {
   );
 }
 
+function InventoryOcsMasterActions({
+  item,
+  touchWrap = false,
+  omitRestock = false,
+  onStockIn,
+  onEdit,
+  onRestockDoctor,
+  onRemove,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function handleMouseDown(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [menuOpen]);
+
+  const receiveBtn = touchWrap
+    ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b]"
+    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20";
+
+  const moreBtn = touchWrap
+    ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
+    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+
+  const menuItem =
+    "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50";
+
+  return (
+    <div className={cx("flex w-full min-w-0 items-center justify-end gap-2", touchWrap && "flex-wrap")}>
+      <button
+        type="button"
+        title="Receive stock"
+        aria-label="Receive stock"
+        className={receiveBtn}
+        onClick={() => onStockIn(item)}
+      >
+        <Plus className="size-4 shrink-0" />
+      </button>
+      <div className="relative shrink-0" ref={menuRef}>
+        <button
+          type="button"
+          title="More actions"
+          aria-label="More actions"
+          aria-expanded={menuOpen}
+          className={moreBtn}
+          onClick={() => setMenuOpen((prev) => !prev)}
+        >
+          <MoreVertical className="size-4 shrink-0" />
+        </button>
+        {menuOpen ? (
+          <div className="absolute right-0 z-30 mt-1 min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+            <button
+              type="button"
+              className={menuItem}
+              onClick={() => {
+                setMenuOpen(false);
+                onEdit(item);
+              }}
+            >
+              <Pencil className="size-3.5 shrink-0 text-slate-500" />
+              Edit
+            </button>
+            {!omitRestock ? (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onRestockDoctor(item);
+                }}
+              >
+                <Truck className="size-3.5 shrink-0 text-slate-500" />
+                Restock / Transfer
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={`${menuItem} text-rose-700 hover:bg-rose-50`}
+              onClick={() => {
+                setMenuOpen(false);
+                onRemove(item);
+              }}
+            >
+              <Trash2 className="size-3.5 shrink-0" />
+              Remove stock
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function InventoryActionButtons({
   item,
   canManageOcs,
@@ -794,6 +807,20 @@ function InventoryActionButtons({
   touchWrap = false,
   omitRestock = false,
 }) {
+  if (canManageOcs && contextIsOcs) {
+    return (
+      <InventoryOcsMasterActions
+        item={item}
+        touchWrap={touchWrap}
+        omitRestock={omitRestock}
+        onStockIn={onStockIn}
+        onEdit={onEdit}
+        onRestockDoctor={onRestockDoctor}
+        onRemove={onRemove}
+      />
+    );
+  }
+
   const btn = touchWrap
     ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold"
     : "inline-flex items-center gap-1 whitespace-nowrap rounded-xl px-2.5 py-1 text-xs font-semibold";
@@ -806,23 +833,9 @@ function InventoryActionButtons({
 
   return (
     <div className={cx("flex items-center gap-2", touchWrap ? "max-w-full flex-wrap justify-end" : "flex-nowrap")}>
-      {canManageOcs && contextIsOcs ? (
-        <button type="button" onClick={() => onStockIn(item)} className={`${btn} border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#4FB8B3]`}>
-          <Plus className="size-3.5 shrink-0" />
-          In
-        </button>
-      ) : null}
-
       {!(isDoctor && doctorViewIsOcs) ? (
         <button type="button" onClick={() => onEdit(item)} className={`${btn} border border-slate-200 text-slate-700`}>
           <Pencil className="size-3.5 shrink-0" />
-        </button>
-      ) : null}
-
-      {canManageOcs && contextIsOcs && !omitRestock ? (
-        <button type="button" onClick={() => onRestockDoctor(item)} className={`${restockBtn}`}>
-          <Truck className="size-3.5 shrink-0" />
-          Restock
         </button>
       ) : null}
 
@@ -844,12 +857,6 @@ function InventoryActionButtons({
         <button type="button" onClick={() => onAdjustReclaim(item)} className={`${btn} border border-amber-200 text-amber-700`}>
           <MinusCircle className="size-3.5 shrink-0" />
           Adjust
-        </button>
-      ) : null}
-
-      {canManageOcs && contextIsOcs ? (
-        <button type="button" onClick={() => onRemove(item)} className={`${btn} border border-rose-200 bg-rose-50 text-rose-700`}>
-          <Trash2 className="size-3.5 shrink-0" />
         </button>
       ) : null}
     </div>
@@ -907,14 +914,11 @@ export default function InventoryPage() {
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
   const [stockOut, setStockOut] = useState(null);
-  const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
-  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
   const [sortMode, setSortMode] = useState("expiry_asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedItems, setSelectedItems] = useState([]);
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
   const [consumptionPeriod, setConsumptionPeriod] = useState("month");
@@ -1104,12 +1108,6 @@ export default function InventoryPage() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
-
-  useEffect(() => {
-    // Keep only still-visible selections when filtering changes.
-    const allowed = new Set(sortedItems.map((item) => Number(item.id)));
-    setSelectedItems((prev) => prev.filter((id) => allowed.has(Number(id))));
-  }, [sortedItems]);
 
   function openDoctorRestockForItem(nextItem) {
     const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
@@ -1399,92 +1397,6 @@ export default function InventoryPage() {
     }
   }
 
-  function toggleSelected(itemId) {
-    const key = Number(itemId);
-    setSelectedItems((prev) => (prev.includes(key) ? prev.filter((id) => id !== key) : [...prev, key]));
-  }
-
-  function toggleSelectAllFiltered() {
-    const filteredIds = sortedItems.map((item) => Number(item.id));
-    const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedItems.includes(id));
-    if (allSelected) {
-      setSelectedItems((prev) => prev.filter((id) => !filteredIds.includes(id)));
-    } else {
-      setSelectedItems((prev) => Array.from(new Set([...prev, ...filteredIds])));
-    }
-  }
-
-  async function runBulkRemove({ reason }) {
-    if (!selectedItems.length) return;
-    setIsSaving(true);
-    try {
-      const next = await api.post("/inventory/bulk/remove", {
-        item_ids: selectedItems,
-        reason,
-      });
-      setData(next);
-      setSelectedItems([]);
-      setBulkRemoveOpen(false);
-      toast.success("Bulk remove completed.");
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function runBulkEdit({ minimum_quantity, folder_id }) {
-    if (!selectedItems.length) return;
-    const hasMin = minimum_quantity !== undefined && minimum_quantity !== null && String(minimum_quantity) !== "";
-    const hasFolder = folder_id !== undefined && folder_id !== null && String(folder_id) !== "";
-    if (!hasMin && !hasFolder) {
-      toast.error("Set at least one value for bulk edit.");
-      return;
-    }
-    setIsSaving(true);
-    try {
-      const next = await api.post("/inventory/bulk/edit", {
-        item_ids: selectedItems,
-        minimum_quantity,
-        folder_id,
-      });
-      setData(next);
-      setSelectedItems([]);
-      setBulkEditOpen(false);
-      toast.success("Bulk edit applied.");
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  function exportSelectedCsv() {
-    if (!selectedItems.length) return;
-    const selectedSet = new Set(selectedItems.map((id) => Number(id)));
-    const rows = sortedItems.filter((item) => selectedSet.has(Number(item.id)));
-    const header = ["Item Name", "Qty", "Min Qty", "Nearest Expiry", "Cost (Rs)", "Sell (Rs)", "Folder"];
-    const lines = rows.map((item) => [
-      item.item_name,
-      item.quantity,
-      item.minimum_quantity,
-      item.expiry_date || "",
-      Number(item.cost_price || 0).toFixed(2),
-      Number(item.selling_price || 0).toFixed(2),
-      item.folder_name || "",
-    ]);
-    const csv = [header, ...lines]
-      .map((line) => line.map((value) => `"${String(value).replace(/"/g, "\"\"")}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `ocs-stock-selection-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
   async function removeItem() {
     if (!itemToDelete) return;
     try {
@@ -1623,48 +1535,25 @@ export default function InventoryPage() {
           </select>
         </div>
 
-        {canManageOcs && selectedItems.length > 0 ? (
-          <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#4FB8B3] px-3 py-2 text-white shadow">
-            <span className="text-sm font-semibold">{selectedItems.length} selected</span>
-            <button type="button" onClick={() => setBulkRemoveOpen(true)} className="rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">Bulk Remove</button>
-            <button type="button" onClick={() => setBulkEditOpen(true)} className="rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">Bulk Edit</button>
-            <button type="button" onClick={exportSelectedCsv} className="inline-flex items-center gap-1 rounded-xl bg-white/20 px-3 py-1 text-xs font-semibold">
-              <Download className="size-3.5" />
-              Bulk Export CSV
-            </button>
-          </div>
-        ) : null}
-
         {pagedItems.length ? (
           <>
             <div className="hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-white md:block">
               <div className="max-h-[560px] overflow-auto overflow-x-auto">
                 <table className="min-w-full table-fixed text-left text-sm">
                   <colgroup>
-                    <col style={{ width: "50px" }} />
-                    <col style={{ width: "30%" }} />
-                    <col style={{ width: "10%" }} />
-                    <col style={{ width: "10%" }} />
-                    <col style={{ width: "20%" }} />
-                    <col style={{ width: "25%" }} />
+                    <col style={{ width: "32%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "22%" }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                     <tr>
-                      <th className="w-[50px] px-3 py-2 align-middle">
-                        {canManageOcs ? (
-                          <input
-                            type="checkbox"
-                            checked={sortedItems.length > 0 && sortedItems.every((item) => selectedItems.includes(Number(item.id)))}
-                            onChange={toggleSelectAllFiltered}
-                            className="size-4 accent-[#4FB8B3]"
-                          />
-                        ) : null}
-                      </th>
-                      <th className="w-[30%] px-3 py-2 text-left align-middle">Item Name</th>
-                      <th className="w-[10%] px-3 py-2 text-center align-middle">Qty</th>
-                      <th className="w-[10%] px-3 py-2 text-center align-middle">Min Qty</th>
-                      <th className="w-[20%] px-3 py-2 text-center align-middle">Nearest Expiry</th>
-                      <th className="w-[25%] px-3 py-2 text-left align-middle">Actions</th>
+                      <th className="px-3 py-2 text-left align-middle">Item Name</th>
+                      <th className="px-3 py-2 text-center align-middle">Qty</th>
+                      <th className="px-3 py-2 text-center align-middle">Min Qty</th>
+                      <th className="px-3 py-2 text-center align-middle">Nearest Expiry</th>
+                      <th className="px-3 py-2 text-left align-middle">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1679,16 +1568,6 @@ export default function InventoryPage() {
                       return (
                         <Fragment key={item.id}>
                           <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
-                            <td className="px-3 py-1.5 align-middle" onClick={(event) => event.stopPropagation()}>
-                              {canManageOcs ? (
-                                <input
-                                  type="checkbox"
-                                  checked={selectedItems.includes(Number(item.id))}
-                                  onChange={() => toggleSelected(item.id)}
-                                  className="size-4 accent-[#4FB8B3]"
-                                />
-                              ) : null}
-                            </td>
                             <td className="px-3 py-1.5 align-middle text-left">
                               <div className="flex items-center gap-2">
                                 <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
@@ -1737,7 +1616,7 @@ export default function InventoryPage() {
                           </tr>
                           {expanded ? (
                             <tr className="border-t border-slate-100 bg-slate-50/60">
-                              <td colSpan={6} className="px-3 py-2">
+                              <td colSpan={5} className="px-3 py-2">
                                 <div className="grid gap-3 md:grid-cols-2">
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
@@ -2045,8 +1924,6 @@ export default function InventoryPage() {
       />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
-      <BulkRemoveModal open={bulkRemoveOpen} count={selectedItems.length} isSaving={isSaving} onClose={() => setBulkRemoveOpen(false)} onSubmit={runBulkRemove} />
-      <BulkEditModal open={bulkEditOpen} folders={folders} isSaving={isSaving} onClose={() => setBulkEditOpen(false)} onSubmit={runBulkEdit} />
       <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
     </div>
   );
