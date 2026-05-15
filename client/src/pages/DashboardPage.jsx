@@ -132,7 +132,11 @@ function SummaryCard({ icon: Icon, label, value, accent }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
             {label}
           </p>
-          <p className="mt-3 break-words text-3xl font-bold tracking-tight text-slate-950">{value}</p>
+          <div className="mt-3 min-w-0 overflow-x-auto">
+            <p className="whitespace-nowrap text-2xl font-semibold tabular-nums tracking-tight text-slate-950 md:text-3xl">
+              {value}
+            </p>
+          </div>
         </div>
         <div className={`rounded-3xl p-4 ${accent}`}>
           <Icon className="size-6 text-white" />
@@ -528,12 +532,11 @@ function DashboardSummaryCards({ dashboard }) {
 function UpcomingAppointmentsPanel({
   dashboard,
   upcomingTitle = "Upcoming appointments",
+  subtitle = "The next seven days of scheduled home visits.",
+  titleClassName,
 }) {
   return (
-    <SectionCard
-      title={upcomingTitle}
-      subtitle="The next seven days of scheduled home visits."
-    >
+    <SectionCard title={upcomingTitle} subtitle={subtitle || undefined} titleClassName={titleClassName}>
       {dashboard.upcomingAppointments.length ? (
         <div className="space-y-4">
           {dashboard.upcomingAppointments.map((appointment) => (
@@ -636,58 +639,47 @@ function DoctorStatusPanel({ doctors = [] }) {
   const offlineCount = doctors.filter((doctor) => doctor.operation_status === "offline").length;
 
   return (
-    <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-5 py-5 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-4 py-4 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur md:px-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
             Doctors live status
           </p>
-          <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
+          <p className="mt-1.5 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
             Doctor availability overview
-          </p>
-          <p className="mt-2 text-sm leading-6 text-[#51717b]">
-            A read-only view of each doctor account status across OCS Medecins.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20">
+          <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20">
             Available {availableCount}
           </span>
-          <span className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-600/20">
+          <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-600/20">
             Active {activeCount}
           </span>
-          <span className="inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-600/20">
+          <span className="inline-flex rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-600/20">
             Offline {offlineCount}
           </span>
         </div>
       </div>
 
-      <div className="mt-5 max-h-[280px] space-y-3 overflow-y-auto pr-1">
+      <div className="mt-3 max-h-[280px] divide-y divide-slate-200/80 overflow-y-auto pr-0.5">
         {doctors.length ? (
           doctors.map((doctor) => (
             <div
               key={doctor.id}
-              className="flex flex-col gap-3 rounded-[24px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(243,251,250,0.9))] px-4 py-4 shadow-[0_10px_24px_rgba(34,72,91,0.05)] md:flex-row md:items-center md:justify-between"
+              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 py-2 text-sm text-slate-950"
             >
-              <div className="min-w-0">
-                <p className="font-semibold text-slate-950">{doctor.full_name}</p>
-                <p className="mt-1 text-sm text-[#51717b]">
-                  {doctor.specialization || "General practice"}
-                </p>
-                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                  {doctor.username ? `@${doctor.username}` : "No linked login"}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <StatusBadge value={doctor.operation_status || "not linked"} />
-                <span className="text-xs text-slate-500">
-                  {doctor.operation_status_updated_at
-                    ? `Updated ${dayjs(doctor.operation_status_updated_at).format("MMM D, h:mm A")}`
-                    : "No status update yet"}
-                </span>
-              </div>
+              <StatusBadge value={doctor.operation_status || "not linked"} />
+              <span className="min-w-0 shrink font-semibold">{doctor.full_name}</span>
+              <span className="hidden shrink-0 text-slate-400 sm:inline" aria-hidden="true">
+                —
+              </span>
+              <span className="min-w-0 shrink-0 text-xs text-slate-500 sm:text-sm">
+                {doctor.operation_status_updated_at
+                  ? `Updated ${dayjs(doctor.operation_status_updated_at).format("MMM D, YYYY [at] h:mm A")}`
+                  : "No status update yet"}
+              </span>
             </div>
           ))
         ) : (
@@ -1205,74 +1197,34 @@ function AdminDashboardView({
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 OCS M&#201;DECINS
               </p>
-              <h1 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl">
+              <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl">
                 Operations Dashboard
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-[#51717b]">
-                Keep the leadership view focused on doctor availability, the next visits in the queue,
-                shared HCM updates, and live operational reporting.
-              </p>
             </div>
+          </div>
+
+          <div className="mt-4">
+            <DashboardSummaryCards dashboard={dashboard} />
           </div>
 
           <div className="mt-5 grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
             <DoctorStatusPanel doctors={dashboard.doctorStatuses} />
-            <UpcomingAppointmentsPanel dashboard={dashboard} />
-          </div>
-
-          <div className="mt-6 grid gap-6 xl:grid-cols-2">
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                Health care manager
-              </p>
-              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
-                Updates from HCM
-              </p>
-
-              <div className="mt-4">
-                <DoctorDashboardTile
-                  dark
-                  eyebrow="Health care manager"
-                  icon={BellRing}
-                  size="hero"
-                  title="Updates from HCM"
-                  to="/hcm-news"
-                />
-              </div>
-            </div>
-
-            <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                Operational analytics
-              </p>
-              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
-                Live Report
-              </p>
-
-              <div className="mt-4">
-                <DoctorDashboardTile
-                  eyebrow="Admin report"
-                  icon={Activity}
-                  size="hero"
-                  title="Live Report"
-                  to="/live-report"
-                />
-              </div>
-            </div>
+            <UpcomingAppointmentsPanel
+              dashboard={dashboard}
+              subtitle=""
+              titleClassName="text-lg md:text-xl"
+            />
           </div>
 
           <div className="mt-6 rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
               Roster management
             </p>
-            <p className="mt-3 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
+            <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
               Current roster PDF
             </p>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#51717b]">
-              Upload a PDF roster to publish `current_roster.pdf` for doctors and operators.
-            </p>
 
-            <form className="mt-5 flex flex-col gap-3 md:flex-row md:items-center" onSubmit={handleUploadRoster}>
+            <form className="mt-4 flex flex-col gap-3 md:flex-row md:items-center" onSubmit={handleUploadRoster}>
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-white">
                 <Upload className="size-4" />
                 Select PDF
@@ -1300,13 +1252,8 @@ function AdminDashboardView({
         </div>
       </section>
 
-      <DashboardSummaryCards dashboard={dashboard} />
-
       <div id="admin-operator-access">
-      <SectionCard
-        title="Operator access"
-        subtitle="Grant or revoke temporary operator edit access across all patient records from one dashboard."
-      >
+        <SectionCard title="Operator access" subtitle="" titleClassName="text-lg md:text-xl">
         {operatorAccessData ? (
           <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
             <form className="space-y-4" onSubmit={handleGrantOperatorAccess}>
