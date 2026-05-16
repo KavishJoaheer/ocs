@@ -919,6 +919,35 @@ function getOperatorWorkspacePayload() {
   };
 }
 
+function getLongTermReviewCount() {
+  const row = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM patients p
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'active'
+        AND (
+          COALESCE(NULLIF(trim(p.ongoing_treatment), ''), '') != ''
+          OR COALESCE(NULLIF(trim(p.particularity), ''), '') != ''
+        )
+    `)
+    .get();
+  return Number(row?.count || 0);
+}
+
+function getActiveSubscriptionPatientsCount() {
+  const row = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM patients
+      WHERE deleted_at IS NULL
+        AND status = 'active'
+        AND is_subscribed = 1
+    `)
+    .get();
+  return Number(row?.count || 0);
+}
+
 router.get("/", (_req, res) => {
   const req = _req;
   const today = getTodayLocal();
@@ -1044,6 +1073,8 @@ router.get("/", (_req, res) => {
       todaysAppointments,
       pendingBills,
       totalRevenue: toNumber(revenueRow.total, 0),
+      longTermReviewCount: getLongTermReviewCount(),
+      activeSubscriptionPatientsCount: getActiveSubscriptionPatientsCount(),
     },
     upcomingAppointments,
     recentActivity,

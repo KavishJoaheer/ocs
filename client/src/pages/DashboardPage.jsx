@@ -15,6 +15,7 @@ import {
   Search,
   ShieldCheck,
   Stethoscope,
+  TrendingUp,
   Upload,
   UserPlus,
   UserRound,
@@ -895,6 +896,41 @@ function OperatorScheduledVisitsMetricCard({ summary, listPath }) {
   );
 }
 
+function AdminClinicalTrackingCards({ dashboard }) {
+  const longTermReviewCount = Number(dashboard?.summary?.longTermReviewCount ?? 0);
+  const activeSubscriptionPatientsCount = Number(dashboard?.summary?.activeSubscriptionPatientsCount ?? 0);
+
+  return (
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/90 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Long term review</p>
+        <p className="mt-4 text-5xl font-semibold tabular-nums tracking-tight text-slate-950">
+          {longTermReviewCount}
+        </p>
+        <p className="mt-2 text-sm font-medium text-slate-600">Patients in active clinical follow-up</p>
+      </div>
+
+      <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(255,255,255,0.96))] p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Health plans (subscriptions)
+          </p>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#4FB8B3]/35 bg-[#4FB8B3]/12 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#1f7f7b]">
+            <TrendingUp className="size-3" aria-hidden />
+            Active
+          </span>
+        </div>
+        <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-slate-950">
+          {activeSubscriptionPatientsCount}
+        </p>
+        <p className="mt-2 text-sm font-medium text-slate-600">
+          Active subscription patients across Mauritius
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function OperatorHealthPlansMetricCard({ activeCount, listPath }) {
   return (
     <Link
@@ -1424,12 +1460,6 @@ function AdminDashboardView({
   setRosterUploadFile,
   isUploadingRoster,
   handleUploadRoster,
-  operatorAccessData,
-  operatorGrant,
-  setOperatorGrant,
-  isSavingOperatorAccess,
-  handleGrantOperatorAccess,
-  handleRevokeOperatorAccess,
 }) {
   return (
     <div className="space-y-6">
@@ -1504,140 +1534,7 @@ function AdminDashboardView({
         </div>
       </section>
 
-      <div id="admin-operator-access">
-        <SectionCard title="Operator access" subtitle="" titleClassName="text-lg md:text-xl">
-        {operatorAccessData ? (
-          <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
-            <form className="space-y-4" onSubmit={handleGrantOperatorAccess}>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Patient</span>
-                <select
-                  required
-                  value={operatorGrant.patient_id}
-                  onChange={(event) =>
-                    setOperatorGrant((current) => ({
-                      ...current,
-                      patient_id: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-                >
-                  <option value="">Select patient</option>
-                  {operatorAccessData.patients.map((patient) => (
-                    <option key={patient.id} value={patient.id}>
-                      {patient.full_name} - {patient.patient_identifier || "No OCS care number"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Operator</span>
-                <select
-                  required
-                  value={operatorGrant.operator_user_id}
-                  onChange={(event) =>
-                    setOperatorGrant((current) => ({
-                      ...current,
-                      operator_user_id: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-                >
-                  <option value="">Select operator</option>
-                  {operatorAccessData.operators.map((operator) => (
-                    <option key={operator.id} value={operator.id}>
-                      {operator.full_name} - @{operator.username}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Edit access until</span>
-                <input
-                  required
-                  type="datetime-local"
-                  value={operatorGrant.expires_at}
-                  onChange={(event) =>
-                    setOperatorGrant((current) => ({
-                      ...current,
-                      expires_at: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
-                />
-              </label>
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={isSavingOperatorAccess}
-                  className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingOperatorAccess ? "Saving..." : "Grant temporary access"}
-                </button>
-              </div>
-            </form>
-
-            {operatorAccessData.access.length ? (
-              <div className="space-y-3">
-                {operatorAccessData.access.map((access) => (
-                  <div
-                    key={access.id}
-                    className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-950">
-                          {access.operator_name} - @{access.operator_username}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {access.patient_name} - {access.patient_identifier || "No OCS care number"}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Active until {dayjs(access.expires_at).format("MMM D, YYYY [at] h:mm A")}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Granted by {access.granted_by_name || "Admin"}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Link
-                          to={`/patients/${access.patient_id}`}
-                          className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                        >
-                          Open patient
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleRevokeOperatorAccess(access.id)}
-                          className="rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                        >
-                          Remove access
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                compact
-                title="No active operator approvals"
-                description="Grant temporary access here when an operator needs to edit an existing patient record."
-              />
-            )}
-          </div>
-        ) : (
-          <EmptyState
-            title="Operator access unavailable"
-            description="Reload the dashboard to retry loading the admin access controls."
-          />
-        )}
-      </SectionCard>
-      </div>
+      <AdminClinicalTrackingCards dashboard={dashboard} />
     </div>
   );
 }
@@ -1647,27 +1544,19 @@ function DashboardPage() {
   const isMobile = useIsMobile();
   const [dashboard, setDashboard] = useState(null);
   const [doctorHcmHeadline, setDoctorHcmHeadline] = useState(null);
-  const [operatorAccessData, setOperatorAccessData] = useState(null);
   const [rosterMeta, setRosterMeta] = useState(null);
   const [rosterUploadFile, setRosterUploadFile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isSavingOperatorAccess, setIsSavingOperatorAccess] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [isUploadingRoster, setIsUploadingRoster] = useState(false);
-  const [operatorGrant, setOperatorGrant] = useState({
-    patient_id: "",
-    operator_user_id: "",
-    expires_at: dayjs().add(24, "hour").format("YYYY-MM-DDTHH:mm"),
-  });
 
   useEffect(() => {
     let ignore = false;
 
     async function loadDashboard() {
       try {
-        const [data, accessData, rosterData, doctorWorkspace] = await Promise.all([
+        const [data, rosterData, doctorWorkspace] = await Promise.all([
           api.get("/dashboard"),
-          user.role === "admin" ? api.get("/dashboard/operator-access") : Promise.resolve(null),
           ["admin", "doctor", "operator"].includes(user.role)
             ? api.get("/dashboard/roster")
             : Promise.resolve(null),
@@ -1699,7 +1588,6 @@ function DashboardPage() {
 
         if (!ignore) {
           setDashboard(merged);
-          setOperatorAccessData(accessData);
           setRosterMeta(rosterData);
           setDoctorHcmHeadline(headline);
         }
@@ -1754,50 +1642,6 @@ function DashboardPage() {
       const blobUrl = window.URL.createObjectURL(file.blob);
       window.open(blobUrl, "_blank", "noopener,noreferrer");
       window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60 * 1000);
-    } catch (error) {
-      toast.error(error.message);
-    }
-  }
-
-  async function refreshOperatorAccess() {
-    if (user.role !== "admin") {
-      return;
-    }
-
-    const data = await api.get("/dashboard/operator-access");
-    setOperatorAccessData(data);
-  }
-
-  async function handleGrantOperatorAccess(event) {
-    event.preventDefault();
-    setIsSavingOperatorAccess(true);
-
-    try {
-      await api.post("/dashboard/operator-access", {
-        patient_id: Number(operatorGrant.patient_id),
-        operator_user_id: Number(operatorGrant.operator_user_id),
-        expires_at: new Date(operatorGrant.expires_at).toISOString(),
-      });
-
-      await refreshOperatorAccess();
-      setOperatorGrant({
-        patient_id: "",
-        operator_user_id: "",
-        expires_at: dayjs().add(24, "hour").format("YYYY-MM-DDTHH:mm"),
-      });
-      toast.success("Temporary operator access granted.");
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSavingOperatorAccess(false);
-    }
-  }
-
-  async function handleRevokeOperatorAccess(accessId) {
-    try {
-      await api.delete(`/dashboard/operator-access/${accessId}`);
-      await refreshOperatorAccess();
-      toast.success("Operator access removed.");
     } catch (error) {
       toast.error(error.message);
     }
@@ -1894,15 +1738,6 @@ function DashboardPage() {
       setRosterUploadFile={setRosterUploadFile}
       isUploadingRoster={isUploadingRoster}
       handleUploadRoster={handleUploadRoster}
-      isSavingStatus={isSavingStatus}
-      onStatusChange={handleStatusChange}
-      operatorAccessData={operatorAccessData}
-      operatorGrant={operatorGrant}
-      setOperatorGrant={setOperatorGrant}
-      user={user}
-      isSavingOperatorAccess={isSavingOperatorAccess}
-      handleGrantOperatorAccess={handleGrantOperatorAccess}
-      handleRevokeOperatorAccess={handleRevokeOperatorAccess}
     />
   );
 }
