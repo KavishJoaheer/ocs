@@ -77,23 +77,23 @@ function DoctorMobileLauncher({ user, dashboard }) {
   const cards = buildDoctorMobileCards(dashboard);
 
   return (
-    <div className="mx-auto flex w-full max-w-md min-w-0 flex-col px-1">
-      <header className="mb-5">
+    <div className="mx-auto flex min-h-[75vh] w-full max-w-md min-w-0 flex-col justify-between px-4 py-6">
+      <header>
         <h1 className="text-xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-1.5 text-sm text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
 
-      <nav className="flex flex-col gap-2" aria-label="Doctor quick actions">
+      <nav className="flex flex-col gap-4.5" aria-label="Doctor quick actions">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
             <Link
               key={card.label}
               to={card.to}
-              className="group flex items-center space-x-4 rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white p-4.5 shadow-[0_8px_24px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+              className="group flex items-center space-x-4 rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white p-5.5 shadow-[0_8px_24px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
             >
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
-                <Icon className="size-5" strokeWidth={2} />
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
+                <Icon className="size-6" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-base font-semibold leading-snug text-gray-900">{card.label}</p>
