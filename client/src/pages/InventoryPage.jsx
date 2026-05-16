@@ -1299,6 +1299,7 @@ export default function InventoryPage() {
   const [consumptionPeriod, setConsumptionPeriod] = useState("month");
   const [activityRoleFilter, setActivityRoleFilter] = useState("");
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
+  const [mobileBagTab, setMobileBagTab] = useState("all");
 
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
@@ -1313,7 +1314,6 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
-  const [mobileBagTab, setMobileBagTab] = useState("all");
   const showMobileDoctorBag = isDoctor && isMobile && doctorViewIsMy;
   const items = isDoctor
     ? doctorViewIsOcs
@@ -1537,6 +1537,35 @@ export default function InventoryPage() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    if (showMobileDoctorBag && currentPage > mobileBagTotalPages) {
+      setCurrentPage(mobileBagTotalPages);
+    }
+  }, [showMobileDoctorBag, currentPage, mobileBagTotalPages]);
+
+  async function loadBatches(itemId) {
+    const key = Number(itemId);
+    if (!key || batchMap[key]) return;
+    try {
+      const response = await api.get(`/inventory/items/${key}/batches`);
+      setBatchMap((prev) => ({ ...prev, [key]: response.batches || [] }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  useEffect(() => {
+    if (loading || !data || !showMobileDoctorBag || mobileBagTab === "restock_request") {
+      return;
+    }
+    mobileBagPagedItems.forEach((item) => {
+      if (!batchMap[item.id]) {
+        loadBatches(item.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, data, showMobileDoctorBag, mobileBagTab, mobileBagPagedItems]);
 
   function openDoctorRestockForItem(nextItem) {
     const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
@@ -1868,17 +1897,6 @@ export default function InventoryPage() {
     }
   }
 
-  async function loadBatches(itemId) {
-    const key = Number(itemId);
-    if (!key || batchMap[key]) return;
-    try {
-      const response = await api.get(`/inventory/items/${key}/batches`);
-      setBatchMap((prev) => ({ ...prev, [key]: response.batches || [] }));
-    } catch (error) {
-      toast.error(error.message);
-    }
-  }
-
   function toggleExpanded(itemId) {
     const key = Number(itemId);
     const willExpand = !expandedRows[key];
@@ -1887,18 +1905,6 @@ export default function InventoryPage() {
       loadBatches(key);
     }
   }
-
-  useEffect(() => {
-    if (!showMobileDoctorBag || mobileBagTab === "restock_request") {
-      return;
-    }
-    mobileBagPagedItems.forEach((item) => {
-      if (!batchMap[item.id]) {
-        loadBatches(item.id);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMobileDoctorBag, mobileBagTab, mobileBagPagedItems]);
 
   async function removeItem() {
     if (!itemToDelete) return;
