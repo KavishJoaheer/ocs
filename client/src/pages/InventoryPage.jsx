@@ -72,6 +72,11 @@ const DOCTOR_MOBILE_BAG_TABS = [
   { id: "restock_request", label: "Restock Request" },
 ];
 
+const DOCTOR_MOBILE_STOCK_SCOPES = [
+  { id: "my", label: "My Stock" },
+  { id: "ocs", label: "OCS Stock" },
+];
+
 function formatDoctorMobileBatchLabel(item, batches) {
   const first = Array.isArray(batches) ? batches[0] : null;
   if (first?.batch_number && first.batch_number !== "N/A") {
@@ -1092,6 +1097,12 @@ function RestockReceiptModal({ open, receipt, onClose, onPrint }) {
 function MobileDoctorBagLayout({
   search,
   setSearch,
+  doctorContext,
+  onDoctorContextChange,
+  folders,
+  selectedView,
+  onSelectedViewChange,
+  doctorViewIsOcs,
   mobileBagTab,
   setMobileBagTab,
   mobileBagPagedItems,
@@ -1105,20 +1116,47 @@ function MobileDoctorBagLayout({
   onStockOutItem,
   findMyStockItemByName,
 }) {
+  const mobileRestockCandidates = doctorRestockCandidates.filter((candidate) => {
+    const myItem = findMyStockItemByName(candidate.item_name);
+    return myItem && String(myItem.folder_id) === String(selectedView);
+  });
+
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3">
       <header className="flex items-start justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">My Stock</h1>
-        <button
-          type="button"
-          onClick={onOpenRestockInventory}
-          disabled={!doctorRestockCandidates.length}
-          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Truck className="size-4" />
-          Restock
-        </button>
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">
+          {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
+        </h1>
+        {!doctorViewIsOcs ? (
+          <button
+            type="button"
+            onClick={onOpenRestockInventory}
+            disabled={!doctorRestockCandidates.length}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Truck className="size-4" />
+            Restock
+          </button>
+        ) : null}
       </header>
+
+      <div className="flex gap-2">
+        {DOCTOR_MOBILE_STOCK_SCOPES.map((scope) => (
+          <button
+            key={scope.id}
+            type="button"
+            onClick={() => onDoctorContextChange(scope.id)}
+            className={cx(
+              "min-h-11 flex-1 rounded-2xl px-3 py-2.5 text-sm font-bold transition",
+              doctorContext === scope.id
+                ? "bg-[#4FB8B3] text-white shadow-sm"
+                : "border border-slate-200 bg-white text-slate-700",
+            )}
+          >
+            {scope.label}
+          </button>
+        ))}
+      </div>
 
       <label className="relative block w-full">
         <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
@@ -1130,29 +1168,55 @@ function MobileDoctorBagLayout({
         />
       </label>
 
-      <div className="flex justify-between space-x-2">
-        {DOCTOR_MOBILE_BAG_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setMobileBagTab(tab.id)}
-            className={cx(
-              "min-h-11 flex-1 rounded-2xl px-2 py-2.5 text-center text-[11px] font-bold leading-tight transition",
-              mobileBagTab === tab.id
-                ? "bg-[#4FB8B3] text-white shadow-sm"
-                : "border border-slate-200 bg-white text-slate-600",
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {folders.length ? (
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {folders.map((folder) => (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => onSelectedViewChange(String(folder.id))}
+              className={cx(
+                "shrink-0 rounded-2xl px-3.5 py-2 text-xs font-bold transition",
+                selectedView === String(folder.id)
+                  ? "bg-[#4FB8B3] text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-700",
+              )}
+            >
+              {folder.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {doctorViewIsOcs ? (
+        <p className="rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs font-medium leading-relaxed text-sky-900">
+          OCS master stock is read-only. Switch to My Stock to stock out or request restock.
+        </p>
+      ) : (
+        <div className="flex justify-between space-x-2">
+          {DOCTOR_MOBILE_BAG_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setMobileBagTab(tab.id)}
+              className={cx(
+                "min-h-11 flex-1 rounded-2xl px-2 py-2.5 text-center text-[11px] font-bold leading-tight transition",
+                mobileBagTab === tab.id
+                  ? "bg-[#4FB8B3] text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <SectionCard className="flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]">
-        {mobileBagTab === "restock_request" ? (
-          doctorRestockCandidates.length ? (
+        {!doctorViewIsOcs && mobileBagTab === "restock_request" ? (
+          mobileRestockCandidates.length ? (
             <div className="flex flex-col space-y-4 pb-8">
-              {doctorRestockCandidates.map((candidate) => {
+              {mobileRestockCandidates.map((candidate) => {
                 const myItem = findMyStockItemByName(candidate.item_name);
                 const unit = myItem?.unit || "units";
                 return (
@@ -1191,7 +1255,8 @@ function MobileDoctorBagLayout({
               const quantity = Number(item.quantity || 0);
               const unit = item.unit || "units";
               const batchLabel = formatDoctorMobileBatchLabel(item, batches);
-              const showStockOut = mobileBagTab === "stock_out" || mobileBagTab === "all";
+              const showStockOut =
+                !doctorViewIsOcs && (mobileBagTab === "stock_out" || mobileBagTab === "all");
 
               return (
                 <div
@@ -1212,7 +1277,9 @@ function MobileDoctorBagLayout({
                       Stock Out
                     </button>
                   ) : null}
-                  {mobileBagTab === "all" && quantity <= Number(item.minimum_quantity || 0) ? (
+                  {!doctorViewIsOcs &&
+                  mobileBagTab === "all" &&
+                  quantity <= Number(item.minimum_quantity || 0) ? (
                     <button
                       type="button"
                       onClick={() => onRestockItem(item)}
@@ -1254,11 +1321,19 @@ function MobileDoctorBagLayout({
           </div>
         ) : (
           <EmptyState
-            title={mobileBagTab === "stock_out" ? "No stock to remove" : "No stock items found"}
+            title={
+              doctorViewIsOcs
+                ? "No items in this category"
+                : mobileBagTab === "stock_out"
+                  ? "No stock to remove"
+                  : "No stock items found"
+            }
             description={
-              mobileBagTab === "stock_out"
-                ? "Items with available quantity will appear here for stock out."
-                : "Search or restock from OCS Master Stock to fill your medical bag."
+              doctorViewIsOcs
+                ? "Try another category or search term."
+                : mobileBagTab === "stock_out"
+                  ? "Items with available quantity will appear here for stock out."
+                  : "Search or restock from OCS Master Stock to fill your medical bag."
             }
           />
         )}
@@ -1314,7 +1389,7 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
-  const showMobileDoctorBag = isDoctor && isMobile && doctorViewIsMy;
+  const showMobileDoctorBag = isDoctor && isMobile;
   const items = isDoctor
     ? doctorViewIsOcs
       ? data?.ocs_stock || []
@@ -1504,15 +1579,27 @@ export default function InventoryPage() {
   const mobileBagFilteredItems = useMemo(() => {
     if (!showMobileDoctorBag) return [];
     const needle = search.trim().toLowerCase();
-    let rows = (data?.my_stock || []).filter(
+    const sourceStock = doctorViewIsOcs ? data?.ocs_stock || [] : data?.my_stock || [];
+    let rows = selectedView
+      ? sourceStock.filter((item) => String(item.folder_id) === String(selectedView))
+      : sourceStock;
+    rows = rows.filter(
       (item) => !needle || String(item.item_name || "").toLowerCase().includes(needle),
     );
-    if (mobileBagTab === "stock_out") {
+    if (!doctorViewIsOcs && mobileBagTab === "stock_out") {
       rows = rows.filter((item) => Number(item.quantity || 0) > 0);
     }
     const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
     return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
-  }, [showMobileDoctorBag, data?.my_stock, search, mobileBagTab]);
+  }, [
+    showMobileDoctorBag,
+    doctorViewIsOcs,
+    data?.my_stock,
+    data?.ocs_stock,
+    search,
+    selectedView,
+    mobileBagTab,
+  ]);
 
   const mobileBagPagedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -1532,7 +1619,13 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode, mobileBagTab]);
+  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode, mobileBagTab, doctorContext]);
+
+  useEffect(() => {
+    if (doctorViewIsOcs && mobileBagTab !== "all") {
+      setMobileBagTab("all");
+    }
+  }, [doctorViewIsOcs, mobileBagTab]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1924,6 +2017,12 @@ export default function InventoryPage() {
         <MobileDoctorBagLayout
           search={search}
           setSearch={setSearch}
+          doctorContext={doctorContext}
+          onDoctorContextChange={setDoctorContext}
+          folders={folders}
+          selectedView={selectedView}
+          onSelectedViewChange={setSelectedView}
+          doctorViewIsOcs={doctorViewIsOcs}
           mobileBagTab={mobileBagTab}
           setMobileBagTab={setMobileBagTab}
           mobileBagPagedItems={mobileBagPagedItems}
