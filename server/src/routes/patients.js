@@ -113,6 +113,21 @@ function parseBooleanField(value) {
   return value === true || value === 1 || value === "1" || value === "true";
 }
 
+function formatPatientRecord(patient) {
+  if (!patient) {
+    return patient;
+  }
+
+  const reviewNote = String(patient.review_reason_note ?? "").trim();
+
+  return {
+    ...patient,
+    is_subscribed: parseBooleanField(patient.is_subscribed),
+    is_under_review: parseBooleanField(patient.is_under_review),
+    review_reason_note: reviewNote || null,
+  };
+}
+
 function normalizePatientPayload(body) {
   const status = String(body.status ?? "active").trim().toLowerCase();
   const assignedDoctorRaw = String(body.assigned_doctor_id ?? "").trim();
@@ -353,6 +368,8 @@ function getPatientSnapshot(patient) {
     status: patient.status || "",
     ongoing_treatment: patient.ongoing_treatment || "",
     is_subscribed: parseBooleanField(patient.is_subscribed),
+    is_under_review: parseBooleanField(patient.is_under_review),
+    review_reason_note: String(patient.review_reason_note ?? "").trim(),
   };
 }
 
@@ -757,11 +774,13 @@ router.get("/", (req, res) => {
     .all({ ...filters, limit, offset });
 
   res.json({
-    items: patients.map((patient) => ({
-      ...patient,
-      operator_edit_allowed: Boolean(patient.operator_edit_allowed),
-      location_tags: getPatientLocationTags(patient.id),
-    })),
+    items: patients.map((patient) =>
+      formatPatientRecord({
+        ...patient,
+        operator_edit_allowed: Boolean(patient.operator_edit_allowed),
+        location_tags: getPatientLocationTags(patient.id),
+      }),
+    ),
     pagination: {
       page,
       limit,
@@ -876,10 +895,10 @@ router.get("/:id", (req, res) => {
   const operatorOptions = req.auth.role === "admin" ? getOperatorOptions() : [];
 
   res.json({
-    patient: {
+    patient: formatPatientRecord({
       ...patient,
       location_tags: getPatientLocationTags(patientId),
-    },
+    }),
     appointments,
     consultations,
     bills,
@@ -892,6 +911,41 @@ router.get("/:id", (req, res) => {
         ? hasActiveOperatorEditAccess(patientId, Number(req.auth.id))
         : false,
   });
+});
+
+router.patch("/:id/long-term-review", (req, res) => {
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin and operator accounts can update long term review flags." });
+  }
+
+  const patientId = Number(req.params.id);
+  const existing = getPatientById(patientId);
+
+  if (!existing) {
+    return res.status(404).json({ error: "Patient not found." });
+  }
+
+  const isUnderReview = parseBooleanField(req.body.is_under_review);
+  const reviewReasonNote = isUnderReview ? String(req.body.review_reason_note ?? "").trim() : "";
+
+  if (isUnderReview && !reviewReasonNote) {
+    return res.status(400).json({ error: "Enter a reason for continuous follow-up tracking." });
+  }
+
+  db.prepare(`
+    UPDATE patients
+    SET
+      is_under_review = ?,
+      review_reason_note = ?
+    WHERE id = ?
+  `).run(isUnderReview ? 1 : 0, reviewReasonNote || null, patientId);
+
+  res.json(
+    formatPatientRecord({
+      ...getPatientById(patientId),
+      location_tags: getPatientLocationTags(patientId),
+    }),
+  );
 });
 
 router.post("/", (req, res) => {

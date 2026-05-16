@@ -51,10 +51,7 @@ function getOperatorDashboardMetrics() {
       FROM patients p
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
-        AND (
-          COALESCE(NULLIF(trim(p.ongoing_treatment), ''), '') != ''
-          OR COALESCE(NULLIF(trim(p.particularity), ''), '') != ''
-        )
+        AND p.is_under_review = 1
     `)
     .get();
 

@@ -817,6 +817,7 @@ function getOperatorWorkspacePayload() {
         p.status,
         p.ongoing_treatment,
         p.particularity,
+        p.review_reason_note,
         p.created_at,
         d.full_name AS assigned_doctor_name,
         d.specialization AS assigned_doctor_specialization,
@@ -826,10 +827,7 @@ function getOperatorWorkspacePayload() {
       LEFT JOIN consultations c ON c.patient_id = p.id
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
-        AND (
-          COALESCE(NULLIF(trim(p.ongoing_treatment), ''), '') != ''
-          OR COALESCE(NULLIF(trim(p.particularity), ''), '') != ''
-        )
+        AND p.is_under_review = 1
       GROUP BY
         p.id,
         p.full_name,
@@ -839,6 +837,7 @@ function getOperatorWorkspacePayload() {
         p.status,
         p.ongoing_treatment,
         p.particularity,
+        p.review_reason_note,
         p.created_at,
         d.full_name,
         d.specialization
@@ -926,10 +925,7 @@ function getLongTermReviewCount() {
       FROM patients p
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
-        AND (
-          COALESCE(NULLIF(trim(p.ongoing_treatment), ''), '') != ''
-          OR COALESCE(NULLIF(trim(p.particularity), ''), '') != ''
-        )
+        AND p.is_under_review = 1
     `)
     .get();
   return Number(row?.count || 0);

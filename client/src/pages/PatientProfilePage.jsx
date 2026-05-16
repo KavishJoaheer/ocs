@@ -52,6 +52,7 @@ import {
   formatPaymentMethod,
 } from "../lib/format.js";
 import { isPatientSubscribed } from "../lib/patientSubscription.js";
+import { isPatientUnderReview } from "../lib/patientReview.js";
 import { cx } from "../lib/utils.js";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
@@ -65,6 +66,115 @@ function HealthPlanBadge({ className }) {
     >
       ★ HEALTH PLAN
     </span>
+  );
+}
+
+function LongTermReviewAlertBanner({ note }) {
+  const trimmed = String(note || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm"
+      role="status"
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+        Long term review — operator desk flag
+      </p>
+      <p className="mt-1 text-sm font-medium leading-relaxed text-amber-950">{trimmed}</p>
+    </div>
+  );
+}
+
+function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setNote("");
+    }
+  }, [open]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Flag for long term review"
+      description="Enter reason for continuous follow-up tracking..."
+      size="md"
+    >
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const trimmed = note.trim();
+          if (!trimmed) {
+            toast.error("Enter a reason for continuous follow-up tracking.");
+            return;
+          }
+          onSubmit(trimmed);
+        }}
+      >
+        <label className="block space-y-2">
+          <span className="sr-only">Review reason</span>
+          <textarea
+            required
+            rows={4}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="e.g. chronic glucose monitoring, geriatric fall risk, medication adherence"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-amber-400 focus:bg-white"
+          />
+        </label>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : "Save flag"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, onUnflag }) {
+  const flagged = isPatientUnderReview(patient);
+
+  if (flagged) {
+    return (
+      <button
+        type="button"
+        disabled={disabled || isSaving}
+        onClick={onUnflag}
+        className="inline-flex items-center gap-2 rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        👤 Under Active Review
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled || isSaving}
+      onClick={onRequestFlag}
+      className="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      🔍 Flag for Long Term Review
+    </button>
   );
 }
 
@@ -690,10 +800,13 @@ function PatientProfilePage() {
   const [fabOpen, setFabOpen] = useState(false);
   const [patientEditorOpen, setPatientEditorOpen] = useState(false);
   const [isSavingPatient, setIsSavingPatient] = useState(false);
+  const [longTermReviewModalOpen, setLongTermReviewModalOpen] = useState(false);
+  const [isSavingLongTermReview, setIsSavingLongTermReview] = useState(false);
   const canManageLabReports = canManageLabReportsForUser(user);
   const canManageConsultations = canManageConsultationNotes(user);
   const isOperatorViewOnlyConsultations = isOperatorConsultationViewOnly(user);
   const canEditPatientProfile = ["admin", "doctor", "operator"].includes(user.role);
+  const canFlagLongTermReview = ["admin", "operator"].includes(user.role);
 
   const showPatientBillingUi = useMemo(
     () => Boolean(data && canBillPatientForUser(user, data.patient)),
@@ -913,6 +1026,48 @@ function PatientProfilePage() {
     } finally {
       setIsSavingPatient(false);
     }
+  }
+
+  async function saveLongTermReviewFlag(isUnderReview, reviewReasonNote = "") {
+    if (!data?.patient?.id) {
+      return;
+    }
+
+    setIsSavingLongTermReview(true);
+
+    try {
+      const updatedPatient = await api.patch(`/patients/${data.patient.id}/long-term-review`, {
+        is_under_review: isUnderReview,
+        review_reason_note: reviewReasonNote,
+      });
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              patient: {
+                ...current.patient,
+                ...updatedPatient,
+              },
+            }
+          : current,
+      );
+      toast.success(
+        isUnderReview ? "Patient flagged for long term review." : "Long term review flag removed.",
+      );
+      setLongTermReviewModalOpen(false);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSavingLongTermReview(false);
+    }
+  }
+
+  async function handleUnflagLongTermReview() {
+    await saveLongTermReviewFlag(false);
+  }
+
+  async function handleConfirmLongTermReviewFlag(reviewReasonNote) {
+    await saveLongTermReviewFlag(true, reviewReasonNote);
   }
 
   function canEditConsultation(consultation) {
@@ -1174,6 +1329,15 @@ function PatientProfilePage() {
         actions={
           isMobile ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {canFlagLongTermReview ? (
+                <LongTermReviewFlagButton
+                  patient={data.patient}
+                  disabled={isSavingLongTermReview}
+                  isSaving={isSavingLongTermReview}
+                  onRequestFlag={() => setLongTermReviewModalOpen(true)}
+                  onUnflag={handleUnflagLongTermReview}
+                />
+              ) : null}
               {canEditPatientProfile ? (
                 <button
                   type="button"
@@ -1194,6 +1358,15 @@ function PatientProfilePage() {
             </div>
           ) : (
             <div className="flex flex-row flex-wrap items-center justify-end gap-3">
+              {canFlagLongTermReview ? (
+                <LongTermReviewFlagButton
+                  patient={data.patient}
+                  disabled={isSavingLongTermReview}
+                  isSaving={isSavingLongTermReview}
+                  onRequestFlag={() => setLongTermReviewModalOpen(true)}
+                  onUnflag={handleUnflagLongTermReview}
+                />
+              ) : null}
               {canEditPatientProfile ? (
                 <button
                   type="button"
@@ -1378,8 +1551,9 @@ function PatientProfilePage() {
                 </SectionCard>
               ) : null}
 
-              {mobileClinicalBlocks.length ? (
+              {mobileClinicalBlocks.length || isPatientUnderReview(data.patient) ? (
                 <SectionCard title="Clinical history">
+                  <LongTermReviewAlertBanner note={data.patient.review_reason_note} />
                   <div className="space-y-2">
                     {mobileClinicalBlocks.map((block) => {
                       const Icon = block.icon;
@@ -1905,6 +2079,7 @@ function PatientProfilePage() {
             </SectionCard>
 
             <SectionCard className="xl:col-span-7" title="Clinical history">
+              <LongTermReviewAlertBanner note={data.patient.review_reason_note} />
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
                 <ClinicalGridItem label="Past surgical history" value={data.patient.past_surgical_history} />
@@ -2403,6 +2578,13 @@ function PatientProfilePage() {
           </div>
         </>
       )}
+
+      <LongTermReviewReasonModal
+        open={longTermReviewModalOpen}
+        isSaving={isSavingLongTermReview}
+        onClose={() => setLongTermReviewModalOpen(false)}
+        onSubmit={handleConfirmLongTermReviewFlag}
+      />
 
       <PatientFormModal
         canEditPatientIdentifier={user.role === "admin"}

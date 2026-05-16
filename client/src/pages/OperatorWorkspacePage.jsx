@@ -183,7 +183,7 @@ function LongTermReviewList({ patients }) {
     return (
       <EmptyState
         title="No long term review patients"
-        description="Patients with ongoing treatment or particularity notes will appear here."
+        description="Patients flagged by the operator desk for long term review will appear here."
       />
     );
   }
@@ -203,7 +203,7 @@ function LongTermReviewList({ patients }) {
                 Assigned doctor: {patient.assigned_doctor_name || "Not assigned"}
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                {truncate(patient.ongoing_treatment || patient.particularity, 160) ||
+                {truncate(patient.review_reason_note || patient.ongoing_treatment || patient.particularity, 160) ||
                   "No long-term review note saved yet."}
               </p>
               <p className="mt-2 text-sm text-slate-500">

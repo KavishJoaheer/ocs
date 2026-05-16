@@ -718,6 +718,14 @@ function ensurePatientColumns() {
       name: "is_subscribed",
       sql: "ALTER TABLE patients ADD COLUMN is_subscribed INTEGER NOT NULL DEFAULT 0",
     },
+    {
+      name: "is_under_review",
+      sql: "ALTER TABLE patients ADD COLUMN is_under_review INTEGER NOT NULL DEFAULT 0",
+    },
+    {
+      name: "review_reason_note",
+      sql: "ALTER TABLE patients ADD COLUMN review_reason_note TEXT",
+    },
   ];
 
   requiredColumns.forEach((column) => {
