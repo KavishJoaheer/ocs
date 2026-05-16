@@ -10,11 +10,13 @@ import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import LongTermReviewWorkspaceList from "../components/LongTermReviewWorkspaceList.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
-import { formatCurrency, formatDate, formatDateTime, truncate } from "../lib/format.js";
+import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
+import { cx } from "../lib/utils.js";
 
 const workspaceMeta = {
   "current-week-roster": {
@@ -48,8 +50,7 @@ const workspaceMeta = {
   "long-term-review": {
     eyebrow: "Patient review",
     title: () => "Long term review",
-    description:
-      "Focus on active patients with ongoing treatment or important particularity notes that need continued attention.",
+    description: "",
     icon: Stethoscope,
   },
   "review-appointments-april": {
@@ -178,61 +179,6 @@ function PendingPaymentsList({ bills }) {
   );
 }
 
-function LongTermReviewList({ patients }) {
-  if (!patients.length) {
-    return (
-      <EmptyState
-        title="No long term review patients"
-        description="Patients flagged by the operator desk for long term review will appear here."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {patients.map((patient) => (
-        <div key={patient.id} className="rounded-[26px] border border-slate-200/80 bg-slate-50/70 p-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-lg font-semibold text-slate-950">{patient.full_name}</p>
-              <p className="mt-1 text-sm text-[#4f6f7a]">
-                {patient.patient_identifier || "No OCS care number"}
-                {patient.location ? ` - ${patient.location}` : ""}
-              </p>
-              <p className="mt-2 text-sm text-slate-500">
-                Assigned doctor: {patient.assigned_doctor_name || "Not assigned"}
-              </p>
-              {patient.review_due_date ? (
-                <p className="mt-2 text-xs font-semibold text-amber-700">
-                  ⏱️ Due: {formatDate(patient.review_due_date)}
-                </p>
-              ) : null}
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {truncate(patient.review_reason_note || patient.ongoing_treatment || patient.particularity, 160) ||
-                  "No long-term review note saved yet."}
-              </p>
-              <p className="mt-2 text-sm text-slate-500">
-                Last consultation:{" "}
-                {patient.last_consultation_date ? formatDate(patient.last_consultation_date) : "Not yet recorded"}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <StatusBadge value={patient.status} />
-              <Link
-                className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
-                to={`/patients/${patient.id}`}
-              >
-                Open patient
-              </Link>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function OperatorWorkspacePage({ workspaceKey }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -266,7 +212,17 @@ function OperatorWorkspacePage({ workspaceKey }) {
     };
   }, []);
 
+  async function reloadWorkspace() {
+    try {
+      const payload = await api.get("/dashboard/operator-workspace");
+      setData(payload);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
   const title = useMemo(() => (meta ? meta.title(data) : "Operator workspace"), [data, meta]);
+  const isLongTermReview = workspaceKey === "long-term-review";
 
   if (!meta) {
     return (
@@ -499,12 +455,11 @@ function OperatorWorkspacePage({ workspaceKey }) {
     ];
 
     content = (
-      <SectionCard
-        actions={sharedActions}
-        subtitle="Patients needing longer-term attention from the operator coordination team."
-        title="Long term review"
-      >
-        <LongTermReviewList patients={data.longTermReview} />
+      <SectionCard actions={sharedActions}>
+        <LongTermReviewWorkspaceList
+          patients={data.longTermReview}
+          onPatientsChange={reloadWorkspace}
+        />
       </SectionCard>
     );
   }
@@ -552,8 +507,12 @@ function OperatorWorkspacePage({ workspaceKey }) {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader eyebrow={meta.eyebrow} title={title} description={meta.description} />
+    <div className={cx("space-y-6", isLongTermReview && "space-y-4")}>
+      <PageHeader
+        eyebrow={meta.eyebrow}
+        title={title}
+        description={isLongTermReview ? undefined : meta.description}
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {metrics.map((metric) => (

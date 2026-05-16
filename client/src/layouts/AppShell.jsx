@@ -80,7 +80,7 @@ const pageMeta = {
   },
   "/operator/long-term-review": {
     label: "Long term review",
-    helper: "Open the active-care review list for patients needing longer-term operator follow-up.",
+    helper: "",
   },
   "/operator/review-appointments-april": {
     label: "Monthly review",
