@@ -106,7 +106,7 @@ function InventoryPeriodFilter({ preset, anchorDate, onPresetChange, onAnchorDat
   return (
     <div
       className={cx(
-        "inline-flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm",
+        "flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm",
         className,
       )}
       role="group"
@@ -1158,19 +1158,20 @@ function LiveActivitySection({
   const emptyFilteredUser = showStaffFilters && rows.length === 0 && activityStaffUserId;
 
   return (
-    <SectionCard>
-      <div className="flex flex-col space-y-3 border-b border-gray-100 pb-4">
+    <SectionCard className="min-w-0">
+      <div className="mb-4 flex min-w-0 flex-col space-y-3 border-b border-gray-100 pb-4">
         <h3 className="text-base font-bold text-gray-900">Live Activity</h3>
         {showStaffFilters ? (
-          <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:space-x-3">
+          <div className="flex w-full min-w-0 flex-col gap-3">
             <InventoryPeriodFilter
               preset={periodPreset}
               anchorDate={periodAnchorDate}
               onPresetChange={onPeriodPresetChange}
               onAnchorDateChange={onPeriodAnchorDateChange}
+              className="w-full max-w-none"
             />
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:space-x-3">
-              <label className="flex min-w-0 flex-col gap-1 sm:min-w-[14rem]">
+            <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Filter by Staff
                 </span>
@@ -1212,17 +1213,17 @@ function LiveActivitySection({
                     compareRows,
                   })
                 }
-                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1]"
+                className="inline-flex w-full min-h-10 shrink-0 items-center justify-center gap-2 self-stretch rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] sm:w-auto"
               >
                 <Download className="size-4 shrink-0" />
-                📥 Download History Excel
+                <span className="whitespace-nowrap">📥 Download History Excel</span>
               </button>
             </div>
           </div>
         ) : null}
       </div>
 
-      <div className={cx("mt-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-2 py-2", scrollClassName)}>
+      <div className={cx("overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-2 py-2", scrollClassName)}>
         {emptyFilteredUser ? (
           <p className="py-8 text-center text-sm text-slate-500">
             No logged stock movements found for this user.
