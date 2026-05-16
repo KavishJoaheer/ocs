@@ -8,6 +8,7 @@ import {
   ClipboardList,
   CreditCard,
   DollarSign,
+  HeartPulse,
   MapPinned,
   Package,
   PhoneCall,
@@ -392,10 +393,7 @@ function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup, befo
   return (
     <div className="mb-2 hidden items-start justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] pb-3 md:flex">
       <div className="min-w-0 flex-1 pr-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-          OCS M&#201;DECINS
-        </p>
-        <h1 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl">
+        <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-slate-950 md:text-[2.125rem] md:leading-snug">
           {title}
         </h1>
       </div>
@@ -787,6 +785,61 @@ function DoctorScheduledVisitsWidget({ today, visits, listPath }) {
   );
 }
 
+function OperatorScheduledVisitsMetricCard({ summary, listPath }) {
+  const pending = Number(summary?.pendingDispatchCount ?? 0);
+  const today = Number(summary?.scheduledTodayCount ?? 0);
+  const workloadLine = `${pending} pending dispatch · ${today} scheduled today`;
+
+  return (
+    <Link
+      to={listPath}
+      className="group relative flex min-h-[140px] flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white px-5 py-5 transition hover:border-[#2d8f98]/35 md:px-6 md:py-5"
+    >
+      <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50 text-[#2d8f98]">
+            <CalendarClock className="size-5" />
+          </div>
+          <p className="text-base font-medium leading-snug tracking-tight text-slate-950">Scheduled visits</p>
+        </div>
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
+          <ArrowUpRight className="size-4" />
+        </span>
+      </div>
+      <p className="mt-4 text-base font-semibold leading-snug tracking-tight text-[#1e3d44]">{workloadLine}</p>
+      <p className="mt-2 text-xs font-medium text-slate-500">Across all doctors · live from appointments</p>
+    </Link>
+  );
+}
+
+function OperatorHealthPlansMetricCard({ activeCount, listPath }) {
+  return (
+    <Link
+      to={listPath}
+      className="group relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-[30px] border border-gray-200 bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))] px-5 py-5 transition hover:border-[#2d8f98]/40 md:px-6 md:py-5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white text-[#2d8f98]">
+            <HeartPulse className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Subscription management</p>
+            <p className="mt-1.5 text-base font-medium leading-snug tracking-tight text-slate-950">Health Plans</p>
+          </div>
+        </div>
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
+          <ArrowUpRight className="size-4" />
+        </span>
+      </div>
+      <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-1">
+        <p className="text-4xl font-semibold tabular-nums tracking-tight text-slate-950">{activeCount}</p>
+        <p className="max-w-[12rem] pb-1 text-sm font-medium leading-snug text-slate-600">Active subscription patients</p>
+      </div>
+    </Link>
+  );
+}
+
 function DoctorAssignedPatientsMetricCard({ activeCount, listPath }) {
   return (
     <Link
@@ -809,7 +862,7 @@ function DoctorAssignedPatientsMetricCard({ activeCount, listPath }) {
   );
 }
 
-function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, icon: Icon }) {
+function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, icon: Icon, metricLine }) {
   const classes = cx(
     "group relative overflow-hidden rounded-[30px] border border-gray-200 px-5 py-5 transition duration-200 md:px-6 md:py-5",
     accent
@@ -843,11 +896,14 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
         <p
           className={cx(
             "text-base font-medium leading-snug tracking-tight text-slate-950",
-            subtitle ? "mt-7" : "mt-5",
+            metricLine ? "mt-4" : subtitle ? "mt-7" : "mt-5",
           )}
         >
           {title}
         </p>
+        {metricLine ? (
+          <p className="mt-2 text-sm font-semibold leading-snug text-[#2e5f68]">{metricLine}</p>
+        ) : null}
         {subtitle ? (
           <p className="mt-4 max-w-[14rem] text-sm leading-7 text-[#496773] md:text-[1.01rem]">{subtitle}</p>
         ) : null}
@@ -855,7 +911,7 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
         <div
           className={cx(
             "h-[3px] w-16 rounded-full",
-            subtitle ? "mt-6" : "mt-5",
+            metricLine ? "mt-5" : subtitle ? "mt-6" : "mt-5",
             accent
               ? "bg-[linear-gradient(90deg,#41c8c6,#2d8f98)]"
               : "bg-[linear-gradient(90deg,rgba(241,188,53,0.78),rgba(65,200,198,0.5))]",
@@ -914,7 +970,12 @@ function DoctorPersonalOperationUpdates({ dashboard }) {
   );
 }
 
-function OperatorPersonalOperationUpdates() {
+function OperatorPersonalOperationUpdates({ workspace }) {
+  const summary = workspace?.summary || {};
+  const pendingBills = Number(summary.pendingPaymentsCount ?? 0);
+  const longTerm = Number(summary.longTermReviewCount ?? 0);
+  const activeSubs = Number(summary.activeSubscriptionPatientsCount ?? 0);
+
   return (
     <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
@@ -930,28 +991,21 @@ function OperatorPersonalOperationUpdates() {
         <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <OperatorScheduledVisitsMetricCard summary={summary} listPath="/operator/scheduled-visits" />
           <PersonalOperationOverviewCard
             accent
-            icon={CalendarClock}
-            title="Scheduled visits"
-            to="/operator/scheduled-visits"
-          />
-          <PersonalOperationOverviewCard
             icon={CreditCard}
+            metricLine={`${pendingBills} unpaid bill${pendingBills === 1 ? "" : "s"}`}
             title="Pending payment"
             to="/operator/pending-payment"
           />
           <PersonalOperationOverviewCard
             icon={Stethoscope}
+            metricLine={`${longTerm} patient${longTerm === 1 ? "" : "s"} in active follow-up`}
             title="Long term review"
             to="/operator/long-term-review"
           />
-          <PersonalOperationOverviewCard
-            accent
-            icon={UsersRound}
-            title="Review appointment"
-            to="/operator/review-appointments-april"
-          />
+          <OperatorHealthPlansMetricCard activeCount={activeSubs} listPath="/patients" />
         </div>
       </div>
     </div>
@@ -1058,7 +1112,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
   );
 }
 
-function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
+function OperatorDashboardView({ user, dashboard, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -1120,7 +1174,7 @@ function OperatorDashboardView({ user, onStatusChange, isSavingStatus, onOpenRos
               />
             </div>
 
-            <OperatorPersonalOperationUpdates />
+            <OperatorPersonalOperationUpdates workspace={dashboard?.operatorWorkspace} />
           </div>
         </div>
       </div>
@@ -1536,6 +1590,16 @@ function DashboardPage() {
             : Promise.resolve(null),
         ]);
 
+        let merged = data;
+        if (user.role === "operator") {
+          try {
+            const operatorWorkspace = await api.get("/dashboard/operator-workspace");
+            merged = { ...data, operatorWorkspace };
+          } catch (opError) {
+            toast.error(opError.message || "Could not load operator workspace metrics.");
+          }
+        }
+
         let headline = null;
         if (user.role === "doctor") {
           try {
@@ -1547,7 +1611,7 @@ function DashboardPage() {
         }
 
         if (!ignore) {
-          setDashboard(data);
+          setDashboard(merged);
           setOperatorAccessData(accessData);
           setRosterMeta(rosterData);
           setDoctorHcmHeadline(headline);
@@ -1704,6 +1768,7 @@ function DashboardPage() {
   if (user.role === "operator") {
     return (
       <OperatorDashboardView
+        dashboard={dashboard}
         isSavingStatus={isSavingStatus}
         onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}

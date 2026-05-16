@@ -852,6 +852,42 @@ function getOperatorWorkspacePayload() {
     0,
   );
 
+  const activeSubscriptionPatientsRow = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM patients
+      WHERE deleted_at IS NULL
+        AND status = 'active'
+    `)
+    .get();
+  const activeSubscriptionPatientsCount = Number(activeSubscriptionPatientsRow?.count || 0);
+
+  const pendingDispatchRow = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM appointments a
+      JOIN patients p ON p.id = a.patient_id
+      LEFT JOIN consultations c ON c.appointment_id = a.id
+      WHERE p.deleted_at IS NULL
+        AND a.status = 'scheduled'
+        AND a.appointment_date = ?
+        AND c.id IS NULL
+    `)
+    .get(today);
+  const pendingDispatchCount = Number(pendingDispatchRow?.count || 0);
+
+  const scheduledTodayRow = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM appointments a
+      JOIN patients p ON p.id = a.patient_id
+      WHERE p.deleted_at IS NULL
+        AND a.status = 'scheduled'
+        AND a.appointment_date = ?
+    `)
+    .get(today);
+  const scheduledTodayCount = Number(scheduledTodayRow?.count || 0);
+
   return {
     periods: {
       today,
@@ -869,6 +905,9 @@ function getOperatorWorkspacePayload() {
       pendingPaymentAmount: Number(pendingPaymentAmount.toFixed(2)),
       longTermReviewCount: longTermReview.length,
       reviewAppointmentsCount: reviewAppointmentsThisMonth.length,
+      activeSubscriptionPatientsCount,
+      pendingDispatchCount,
+      scheduledTodayCount,
     },
     currentWeekRoster,
     currentMonthRoster,

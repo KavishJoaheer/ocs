@@ -119,7 +119,7 @@ function AppShell() {
     (/^\/patients\/[^/]+$/.test(location.pathname) || location.pathname === "/patients/add");
   const isDashboard = location.pathname === "/";
   const hideBottomNav = (isDashboard && isMobile) || isPatientNestedMobile;
-  const alwaysHideTopHeader = isDashboard && user.role === "doctor";
+  const alwaysHideTopHeader = isDashboard && (user.role === "doctor" || user.role === "operator");
 
   const dashboardMetaByRole = {
     doctor: {
