@@ -17,6 +17,7 @@ import {
   Stethoscope,
   Upload,
   UserPlus,
+  UserRound,
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -32,10 +33,96 @@ import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
-function MobileLauncher({ user }) {
+function buildDoctorMobileSubtitle(dashboard) {
+  const lowStock = dashboard?.doctor_low_stock_alert;
+  const inventoryStamp = lowStock?.triggered
+    ? `${Number(lowStock.total_items || 0)} Item${Number(lowStock.total_items || 0) === 1 ? "" : "s"} Low`
+    : "Healthy";
+  return `${dayjs().format("dddd, MMMM D")} — Bag Inventory: ${inventoryStamp}`;
+}
+
+function buildDoctorMobileCards(dashboard) {
+  const summary = dashboard?.doctorWorkspace?.summary || {};
+  const activePatients = Number(summary.activeAssignedPatientsCount ?? 0);
+  const unpaidBills = Number(summary.pendingPaymentsCount ?? 0);
+  const lowStock = dashboard?.doctor_low_stock_alert;
+  const lowCount = Number(lowStock?.total_items || 0);
+
+  return [
+    {
+      label: "Patient Directory",
+      icon: UserRound,
+      to: "/patients",
+      meta: `${activePatients} Assigned Patient${activePatients === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Add a Patient",
+      icon: UserPlus,
+      to: "/patients/add",
+      meta: null,
+    },
+    {
+      label: "Billing & Finance",
+      icon: CreditCard,
+      to: "/billing",
+      meta: `${unpaidBills} Unpaid ${unpaidBills === 1 ? "Entry" : "Entries"}`,
+    },
+    {
+      label: "Inventory",
+      icon: Package,
+      to: "/inventory",
+      meta: lowStock?.triggered ? `${lowCount} Item${lowCount === 1 ? "" : "s"} Low` : "Healthy",
+    },
+  ];
+}
+
+function DoctorMobileLauncher({ user, dashboard }) {
+  const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
+  const cards = buildDoctorMobileCards(dashboard);
+
+  return (
+    <motion.div className="mx-auto flex w-full max-w-md min-w-0 flex-col px-1">
+      <header className="mb-5">
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
+        <p className="mt-1.5 text-sm text-slate-600">{buildDoctorMobileSubtitle(dashboard)}</p>
+      </header>
+
+      <nav className="flex flex-col gap-2" aria-label="Doctor quick actions">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Link
+              key={card.label}
+              to={card.to}
+              className="group flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white px-3.5 py-3 shadow-[0_8px_24px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+            >
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
+                <Icon className="size-5" strokeWidth={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-snug text-slate-900">{card.label}</p>
+                {card.meta ? (
+                  <p className="mt-0.5 text-xs font-medium text-teal-600">{card.meta}</p>
+                ) : null}
+              </div>
+              <ArrowUpRight className="size-4 shrink-0 text-[#2d8f98]/70" />
+            </Link>
+          );
+        })}
+      </nav>
+    </motion.div>
+  );
+}
+
+function MobileLauncher({ user, dashboard }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const isDoctor = user.role === "doctor";
-  const greeting = isDoctor ? `Hello, Dr. ${firstName}` : `Hello, ${firstName}`;
+
+  if (isDoctor) {
+    return <DoctorMobileLauncher user={user} dashboard={dashboard} />;
+  }
+
+  const greeting = `Hello, ${firstName}`;
 
   const cards = [];
 
@@ -1582,15 +1669,19 @@ function DashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [data, accessData, rosterData] = await Promise.all([
+        const [data, accessData, rosterData, doctorWorkspace] = await Promise.all([
           api.get("/dashboard"),
           user.role === "admin" ? api.get("/dashboard/operator-access") : Promise.resolve(null),
           ["admin", "doctor", "operator"].includes(user.role)
             ? api.get("/dashboard/roster")
             : Promise.resolve(null),
+          user.role === "doctor" ? api.get("/dashboard/doctor-workspace") : Promise.resolve(null),
         ]);
 
         let merged = data;
+        if (doctorWorkspace) {
+          merged = { ...merged, doctorWorkspace };
+        }
         if (user.role === "operator") {
           try {
             const operatorWorkspace = await api.get("/dashboard/operator-workspace");
@@ -1748,7 +1839,7 @@ function DashboardPage() {
   }
 
   if (isMobile) {
-    return <MobileLauncher user={user} />;
+    return <MobileLauncher user={user} dashboard={dashboard} />;
   }
 
   if (user.role === "doctor") {
