@@ -77,10 +77,10 @@ function DoctorMobileLauncher({ user, dashboard }) {
   const cards = buildDoctorMobileCards(dashboard);
 
   return (
-    <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-4 py-6">
-      <header>
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
-        <p className="mt-1.5 text-sm text-slate-600">{buildDoctorMobileDateLabel()}</p>
+    <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
+      <header className="shrink-0 pb-5">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
+        <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
 
       <nav className="navigation-card-list" aria-label="Doctor quick actions">
@@ -90,18 +90,18 @@ function DoctorMobileLauncher({ user, dashboard }) {
             <Link
               key={card.label}
               to={card.to}
-              className="navigation-card-item group flex items-center space-x-4 rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white px-4 shadow-[0_8px_24px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+              className="navigation-card-item group flex items-center gap-5 rounded-3xl border border-[rgba(65,200,198,0.18)] bg-white px-5 shadow-[0_10px_28px_rgba(34,72,91,0.08)] transition active:scale-[0.99] active:bg-slate-50/80"
             >
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
-                <Icon className="size-6" strokeWidth={2} />
+              <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
+                <Icon className="size-7" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-base font-semibold leading-snug text-gray-900">{card.label}</p>
+                <p className="text-lg font-bold leading-snug text-gray-900">{card.label}</p>
                 {card.meta ? (
-                  <p className="mt-0.5 text-sm font-medium text-teal-600">{card.meta}</p>
+                  <p className="mt-1 text-base font-medium text-teal-600">{card.meta}</p>
                 ) : null}
               </div>
-              <ArrowUpRight className="size-5 shrink-0 text-teal-500" strokeWidth={2} />
+              <ArrowUpRight className="size-6 shrink-0 text-teal-500" strokeWidth={2} />
             </Link>
           );
         })}

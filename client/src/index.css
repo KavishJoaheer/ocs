@@ -66,26 +66,25 @@ textarea {
   max-width: 100%;
 }
 
-/* Doctor mobile home — fills viewport and centers action cards in thumb zone */
+/* Doctor mobile home — action cards grow to fill the viewport below the greeting */
 .mobile-dashboard-wrapper {
   display: flex;
   flex-direction: column;
-  min-height: 85vh;
-  justify-content: space-between;
-  padding-bottom: 2rem;
+  min-height: calc(100dvh - 3.25rem);
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
 }
 
 .navigation-card-list {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
-  gap: 1.25rem;
-  flex-grow: 1;
-  justify-content: center;
+  gap: 1rem;
+  min-height: 0;
 }
 
 .navigation-card-item {
-  padding-top: 1.25rem;
-  padding-bottom: 1.25rem;
+  flex: 1 1 0;
+  min-height: 4.75rem;
 }
 
 /* Standard page width — horizontal padding lives on AppShell; pages use this for alignment only */
