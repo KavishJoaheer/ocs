@@ -9,11 +9,21 @@ import { cx } from "../lib/utils.js";
 const DRAFT_KEY = "ocs_patient_draft";
 
 const WIZARD_STEPS = [
-  { label: "Identity" },
-  { label: "Logistics" },
+  { label: "Intake" },
   { label: "Clinical" },
   { label: "Next of Kin" },
 ];
+
+const MOBILE_FIELD_LABEL = "mb-1.5 block text-sm font-semibold text-gray-700";
+const MOBILE_STEP_STACK = "space-y-5.5";
+const MOBILE_INPUT =
+  "h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98] focus:bg-white";
+const MOBILE_INPUT_DISABLED =
+  "h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98] focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100";
+const MOBILE_TEXTAREA = cx(
+  MOBILE_INPUT,
+  "h-auto min-h-[5.5rem] resize-y leading-relaxed",
+);
 
 const emptyPatient = {
   first_name: "",
@@ -75,15 +85,6 @@ function toPatientFormState(patient) {
       patient.is_subscribed === true || patient.is_subscribed === 1 || patient.is_subscribed === "1",
   };
 }
-
-const MOBILE_INPUT =
-  "w-full min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-[#2d8f98] focus:bg-white";
-const MOBILE_INPUT_DISABLED =
-  "w-full min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-[#2d8f98] focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100";
-const MOBILE_TEXTAREA = cx(
-  MOBILE_INPUT,
-  "min-h-[2.75rem] resize-y py-2 leading-relaxed",
-);
 
 const DESKTOP_INPUT =
   "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-sky-400 focus:bg-white";
@@ -264,354 +265,347 @@ function PatientFormModal({
                   i === wizardStep ? "font-semibold text-[#2d8f98]" : "text-slate-400",
                 )}
               >
-                {step.label}
+                {i + 1}. {step.label}
               </span>
             </div>
           ))}
         </div>
 
-        {/* Scrollable content */}
         <form
           id="mobile-patient-form"
-          className="flex-1 overflow-y-auto px-4 py-5"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={handleSubmit}
         >
-          {/* Step 1 — Identity */}
-          {wizardStep === 0 && (
-            <div className="space-y-4">
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">First name</span>
-                <input
-                  ref={wizardStep === 0 ? stepFirstInputRef : undefined}
-                  name="first_name"
-                  value={form.first_name}
-                  onChange={handleChange}
-                  placeholder="Enter first name"
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Last name</span>
-                <input
-                  name="last_name"
-                  value={form.last_name}
-                  onChange={handleChange}
-                  placeholder="Enter last name"
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">OCS care number</span>
-                <input
-                  name="patient_identifier"
-                  value={form.patient_identifier}
-                  onChange={handleChange}
-                  placeholder={isEditing ? "" : "Auto-assigned from OCS-150"}
-                  disabled={!canEditPatientIdentifier}
-                  className={MOBILE_INPUT_DISABLED}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Patient ID</span>
-                <input
-                  name="patient_id_number"
-                  value={form.patient_id_number}
-                  onChange={handleChange}
-                  placeholder="National ID card number or passport number"
-                  inputMode="numeric"
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Date of birth</span>
-                <input
-                  name="date_of_birth"
-                  type="date"
-                  value={form.date_of_birth}
-                  onChange={handleChange}
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Gender</span>
-                <select
-                  required
-                  name="gender"
-                  value={form.gender}
-                  onChange={handleChange}
-                  className={MOBILE_INPUT}
-                >
-                  <option value="M">M</option>
-                  <option value="F">F</option>
-                </select>
-              </label>
-
-              <SubscriptionPlanField checked={form.is_subscribed} onChange={handleChange} />
-            </div>
-          )}
-
-          {/* Step 2 — Logistics */}
-          {wizardStep === 1 && (
-            <div className="space-y-4">
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Status</span>
-                <select
-                  ref={stepFirstInputRef}
-                  required
-                  name="status"
-                  value={form.status}
-                  onChange={handleChange}
-                  className={MOBILE_INPUT}
-                >
-                  <option value="active">Active</option>
-                  <option value="discharged">Discharged</option>
-                </select>
-              </label>
-
-              {canSelectAssignedDoctor ? (
-                <label className="block space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">Assigned doctor</span>
+          <div className="flex-1 overflow-y-auto px-4 py-5">
+            {wizardStep === 0 && (
+              <div className={MOBILE_STEP_STACK}>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>First name</span>
+                  <input
+                    ref={wizardStep === 0 ? stepFirstInputRef : undefined}
+                    name="first_name"
+                    value={form.first_name}
+                    onChange={handleChange}
+                    placeholder="Enter first name"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Last name</span>
+                  <input
+                    name="last_name"
+                    value={form.last_name}
+                    onChange={handleChange}
+                    placeholder="Enter last name"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>OCS care number</span>
+                  <input
+                    name="patient_identifier"
+                    value={form.patient_identifier}
+                    onChange={handleChange}
+                    placeholder={isEditing ? "" : "Auto-assigned from OCS-150"}
+                    disabled={!canEditPatientIdentifier}
+                    className={MOBILE_INPUT_DISABLED}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Patient ID</span>
+                  <input
+                    name="patient_id_number"
+                    value={form.patient_id_number}
+                    onChange={handleChange}
+                    placeholder="National ID card number or passport number"
+                    inputMode="numeric"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Date of birth</span>
+                  <input
+                    name="date_of_birth"
+                    type="date"
+                    value={form.date_of_birth}
+                    onChange={handleChange}
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Gender</span>
                   <select
                     required
-                    name="assigned_doctor_id"
-                    value={form.assigned_doctor_id}
+                    name="gender"
+                    value={form.gender}
                     onChange={handleChange}
                     className={MOBILE_INPUT}
                   >
-                    <option value="">Select doctor</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>
-                        {doctor.full_name} - {doctor.specialization}
-                      </option>
-                    ))}
+                    <option value="M">M</option>
+                    <option value="F">F</option>
                   </select>
                 </label>
-              ) : null}
 
-              {isEditing && patient?.assigned_doctor_name && !canSelectAssignedDoctor ? (
-                <div className="rounded-[24px] border border-amber-100 bg-amber-50/80 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
-                      <LockKeyhole className="size-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">
-                        Only admin can change the assigned doctor
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {patient.assigned_doctor_name}
-                        {patient.assigned_doctor_specialization
-                          ? ` - ${patient.assigned_doctor_specialization}`
-                          : ""}
-                      </p>
+                <SubscriptionPlanField checked={form.is_subscribed} onChange={handleChange} />
+
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Status</span>
+                  <select
+                    required
+                    name="status"
+                    value={form.status}
+                    onChange={handleChange}
+                    className={MOBILE_INPUT}
+                  >
+                    <option value="active">Active</option>
+                    <option value="discharged">Discharged</option>
+                  </select>
+                </label>
+
+                {canSelectAssignedDoctor ? (
+                  <label className="block">
+                    <span className={MOBILE_FIELD_LABEL}>Assigned doctor</span>
+                    <select
+                      required
+                      name="assigned_doctor_id"
+                      value={form.assigned_doctor_id}
+                      onChange={handleChange}
+                      className={MOBILE_INPUT}
+                    >
+                      <option value="">Select doctor</option>
+                      {doctors.map((doctor) => (
+                        <option key={doctor.id} value={doctor.id}>
+                          {doctor.full_name} - {doctor.specialization}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
+                {isEditing && patient?.assigned_doctor_name && !canSelectAssignedDoctor ? (
+                  <div className="rounded-[24px] border border-amber-100 bg-amber-50/80 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-2xl bg-white p-3 text-amber-700 shadow-sm">
+                        <LockKeyhole className="size-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">
+                          Only admin can change the assigned doctor
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {patient.assigned_doctor_name}
+                          {patient.assigned_doctor_specialization
+                            ? ` - ${patient.assigned_doctor_specialization}`
+                            : ""}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">
-                  Patient contact number
-                </span>
-                <input
-                  required
-                  name="patient_contact_number"
-                  value={form.patient_contact_number}
-                  onChange={handleChange}
-                  inputMode="tel"
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Address</span>
-                <textarea
-                  required
-                  rows={2}
-                  name="address"
-                  value={form.address}
-                  onChange={handleChange}
-                  className={MOBILE_TEXTAREA}
-                />
-              </label>
-              <div className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">
-                  Locations and affiliations
-                </span>
-                <PatientLocationTags
-                  tags={form.location_tags}
-                  onChange={(nextTags) =>
-                    setForm((current) => ({ ...current, location_tags: nextTags }))
-                  }
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Step 3 — Clinical */}
-          {wizardStep === 2 && (
-            <div className="space-y-4">
-              {form.status === "active" ? (
-                <label className="block space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">Ongoing treatment</span>
-                  <textarea
-                    ref={stepFirstInputRef}
-                    rows={2}
-                    name="ongoing_treatment"
-                    value={form.ongoing_treatment}
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Patient contact number</span>
+                  <input
+                    required
+                    name="patient_contact_number"
+                    value={form.patient_contact_number}
                     onChange={handleChange}
+                    inputMode="tel"
+                    placeholder="Mobile or landline number"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Address</span>
+                  <textarea
+                    required
+                    rows={2}
+                    name="address"
+                    value={form.address}
+                    onChange={handleChange}
+                    placeholder="Street, area, and locality"
                     className={MOBILE_TEXTAREA}
                   />
                 </label>
-              ) : null}
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Past medical history</span>
-                <textarea
-                  ref={form.status !== "active" ? stepFirstInputRef : undefined}
-                  rows={2}
-                  name="past_medical_history"
-                  value={form.past_medical_history}
-                  onChange={handleChange}
-                  className={MOBILE_TEXTAREA}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Past surgical history</span>
-                <textarea
-                  rows={2}
-                  name="past_surgical_history"
-                  value={form.past_surgical_history}
-                  onChange={handleChange}
-                  className={MOBILE_TEXTAREA}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Drug history</span>
-                <textarea
-                  rows={2}
-                  name="drug_history"
-                  value={form.drug_history}
-                  onChange={handleChange}
-                  className={MOBILE_TEXTAREA}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Allergy History</span>
-                <textarea
-                  rows={2}
-                  name="drug_allergy_history"
-                  value={form.drug_allergy_history}
-                  onChange={handleChange}
-                  placeholder="Record medication, food, environmental, or other allergy details."
-                  className={MOBILE_TEXTAREA}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="font-display text-lg font-semibold text-slate-700">
-                  Particularity
-                </span>
-                <textarea
-                  rows={2}
-                  name="particularity"
-                  value={form.particularity}
-                  onChange={handleChange}
-                  placeholder="Blank page for additional notes..."
-                  className={MOBILE_TEXTAREA}
-                />
-              </label>
-            </div>
-          )}
-
-          {/* Step 4 — Next of Kin */}
-          {wizardStep === 3 && (
-            <div className="space-y-4">
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Name</span>
-                <input
-                  ref={stepFirstInputRef}
-                  name="next_of_kin_name"
-                  value={form.next_of_kin_name}
-                  onChange={handleChange}
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">
-                  Relationship with patient
-                </span>
-                <input
-                  name="next_of_kin_relationship"
-                  value={form.next_of_kin_relationship}
-                  onChange={handleChange}
-                  placeholder="Spouse, daughter, son, sibling..."
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Contact number</span>
-                <input
-                  name="next_of_kin_contact_number"
-                  value={form.next_of_kin_contact_number}
-                  onChange={handleChange}
-                  inputMode="tel"
-                  className={MOBILE_INPUT}
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Email address</span>
-                <input
-                  name="next_of_kin_email"
-                  type="email"
-                  value={form.next_of_kin_email}
-                  onChange={handleChange}
-                  className={MOBILE_INPUT}
-                />
-              </label>
-            </div>
-          )}
-        </form>
-
-        {/* Sticky wizard footer */}
-        <div
-          className="flex items-center justify-between border-t border-slate-100 bg-white px-4 py-3"
-          style={{ paddingBottom: "max(var(--sab), 12px)" }}
-        >
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-          >
-            Cancel
-          </button>
-          <div className="flex gap-2">
-            {wizardStep > 0 && (
-              <button
-                type="button"
-                onClick={() => setWizardStep((s) => s - 1)}
-                className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-              >
-                Back
-              </button>
+                <div>
+                  <span className={MOBILE_FIELD_LABEL}>Locations and affiliations</span>
+                  <PatientLocationTags
+                    tags={form.location_tags}
+                    onChange={(nextTags) =>
+                      setForm((current) => ({ ...current, location_tags: nextTags }))
+                    }
+                  />
+                </div>
+              </div>
             )}
-            {wizardStep < 3 ? (
-              <button
-                type="button"
-                onClick={() => setWizardStep((s) => s + 1)}
-                className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
-              >
-                Next
-              </button>
-            ) : (
-              <button
-                type="submit"
-                form="mobile-patient-form"
-                disabled={isSaving}
-                className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSaving ? "Saving..." : actionLabel}
-              </button>
+
+            {wizardStep === 1 && (
+              <div className={MOBILE_STEP_STACK}>
+                {form.status === "active" ? (
+                  <label className="block">
+                    <span className={MOBILE_FIELD_LABEL}>Ongoing treatment</span>
+                    <textarea
+                      ref={stepFirstInputRef}
+                      rows={2}
+                      name="ongoing_treatment"
+                      value={form.ongoing_treatment}
+                      onChange={handleChange}
+                      placeholder="Current treatment plan or follow-up notes"
+                      className={MOBILE_TEXTAREA}
+                    />
+                  </label>
+                ) : null}
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Past medical history</span>
+                  <textarea
+                    ref={form.status !== "active" ? stepFirstInputRef : undefined}
+                    rows={2}
+                    name="past_medical_history"
+                    value={form.past_medical_history}
+                    onChange={handleChange}
+                    placeholder="Prior diagnoses and conditions"
+                    className={MOBILE_TEXTAREA}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Past surgical history</span>
+                  <textarea
+                    rows={2}
+                    name="past_surgical_history"
+                    value={form.past_surgical_history}
+                    onChange={handleChange}
+                    placeholder="Previous surgeries or procedures"
+                    className={MOBILE_TEXTAREA}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Drug history</span>
+                  <textarea
+                    rows={2}
+                    name="drug_history"
+                    value={form.drug_history}
+                    onChange={handleChange}
+                    placeholder="Current and past medications"
+                    className={MOBILE_TEXTAREA}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Allergy history</span>
+                  <textarea
+                    rows={2}
+                    name="drug_allergy_history"
+                    value={form.drug_allergy_history}
+                    onChange={handleChange}
+                    placeholder="Record medication, food, environmental, or other allergy details."
+                    className={MOBILE_TEXTAREA}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Particularity</span>
+                  <textarea
+                    rows={2}
+                    name="particularity"
+                    value={form.particularity}
+                    onChange={handleChange}
+                    placeholder="Additional clinical notes or particularities"
+                    className={MOBILE_TEXTAREA}
+                  />
+                </label>
+              </div>
+            )}
+
+            {wizardStep === 2 && (
+              <div className={MOBILE_STEP_STACK}>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Name</span>
+                  <input
+                    ref={stepFirstInputRef}
+                    name="next_of_kin_name"
+                    value={form.next_of_kin_name}
+                    onChange={handleChange}
+                    placeholder="Next of kin full name"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Relationship with patient</span>
+                  <input
+                    name="next_of_kin_relationship"
+                    value={form.next_of_kin_relationship}
+                    onChange={handleChange}
+                    placeholder="Spouse, daughter, son, sibling..."
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Contact number</span>
+                  <input
+                    name="next_of_kin_contact_number"
+                    value={form.next_of_kin_contact_number}
+                    onChange={handleChange}
+                    inputMode="tel"
+                    placeholder="Next of kin phone number"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+                <label className="block">
+                  <span className={MOBILE_FIELD_LABEL}>Email address</span>
+                  <input
+                    name="next_of_kin_email"
+                    type="email"
+                    value={form.next_of_kin_email}
+                    onChange={handleChange}
+                    placeholder="Optional email address"
+                    className={MOBILE_INPUT}
+                  />
+                </label>
+              </div>
             )}
           </div>
-        </div>
+
+          <div
+            className="mt-auto shrink-0 border-t border-slate-100 bg-white px-4 pt-6"
+            style={{ paddingBottom: "max(var(--sab), 12px)" }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+              <div className="flex gap-2">
+                {wizardStep > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setWizardStep((s) => s - 1)}
+                    className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                  >
+                    Back
+                  </button>
+                )}
+                {wizardStep < 2 ? (
+                  <button
+                    type="button"
+                    onClick={() => setWizardStep((s) => s + 1)}
+                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSaving ? "Saving..." : actionLabel}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </form>
       </div>
     );
   }
