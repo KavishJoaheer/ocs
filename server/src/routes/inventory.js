@@ -531,8 +531,25 @@ function summarize(items, doctorId = null) {
   };
 }
 
-function getMovements(role, doctorId = null) {
+function getActivityStaffList() {
   return db
+    .prepare(`
+      SELECT id, full_name, role
+      FROM users
+      WHERE is_active = 1
+        AND role IN ('doctor', 'operator')
+      ORDER BY
+        CASE role WHEN 'doctor' THEN 1 WHEN 'operator' THEN 2 ELSE 3 END,
+        full_name ASC
+    `)
+    .all();
+}
+
+function getMovements(role, doctorId = null, activityFilters = {}) {
+  const filterUserId = Number(activityFilters.userId || 0);
+  const filterActorRole = String(activityFilters.actorRole || "").trim().toLowerCase();
+
+  const rows = db
     .prepare(`
       SELECT
         m.*, i.item_name, i.stock_scope, i.owner_doctor_id, f.name AS folder_name,
@@ -550,14 +567,34 @@ function getMovements(role, doctorId = null) {
       ORDER BY m.created_at DESC, m.id DESC
       LIMIT 200
     `)
-    .all({ role, doctorId })
-    .map((row) => ({
-      ...row,
-      visible_target_doctor_name:
-        role === "operator" && row.action_type === "restock_out"
-          ? "Doctor (hidden)"
-          : row.target_doctor_name,
-    }));
+    .all({ role, doctorId });
+
+  const filtered =
+    role === "admin" && (filterUserId || filterActorRole)
+      ? rows.filter((row) => {
+          let meta = {};
+          try {
+            meta = JSON.parse(row.meta_json || "{}");
+          } catch {
+            meta = {};
+          }
+          if (filterUserId && Number(meta.performed_by_user_id) !== filterUserId) {
+            return false;
+          }
+          if (filterActorRole && String(meta.performed_by_role || "").toLowerCase() !== filterActorRole) {
+            return false;
+          }
+          return true;
+        })
+      : rows;
+
+  return filtered.map((row) => ({
+    ...row,
+    visible_target_doctor_name:
+      role === "operator" && row.action_type === "restock_out"
+        ? "Doctor (hidden)"
+        : row.target_doctor_name,
+  }));
 }
 
 function getCompareRows() {
@@ -667,7 +704,11 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     summary: summarize(activeItems, summaryDoctorId),
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
     near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
-    movements: getMovements(role, doctorId),
+    movements: getMovements(role, doctorId, {
+      userId: req.query.activityUserId,
+      actorRole: req.query.activityRole,
+    }),
+    activity_staff: role === "admin" ? getActivityStaffList() : [],
     staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
     compare_rows: role === "admin" || role === "operator" ? getCompareRows() : [],
     my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],

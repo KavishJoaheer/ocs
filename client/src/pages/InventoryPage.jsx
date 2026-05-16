@@ -681,16 +681,21 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
-function formatMovementTimeShort(value) {
+const ACTIVITY_FILTER_SELECT_CLASS =
+  "min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3] focus:ring-1 focus:ring-[#4FB8B3]/25";
+
+function formatMovementTimestampEnterprise(value) {
   if (!value) return "—";
   const d = dayjs(value);
   if (!d.isValid()) {
     const s = String(value);
-    return s.length >= 16 ? s.slice(11, 16) : s;
+    if (s.length >= 16) {
+      const parsed = dayjs(s.slice(0, 16));
+      if (parsed.isValid()) return parsed.format("DD MMM, HH:mm");
+    }
+    return s;
   }
-  const today = dayjs().format("YYYY-MM-DD");
-  if (d.format("YYYY-MM-DD") === today) return d.format("HH:mm");
-  return d.format("MMM D · HH:mm");
+  return d.format("DD MMM, HH:mm");
 }
 
 function formatMovementVerb(actionType, meta) {
@@ -698,8 +703,6 @@ function formatMovementVerb(actionType, meta) {
     return `stocked out (${meta.stock_out_reason})`;
   }
   const map = {
-    restock_in: "restocked",
-    restock_out: "dispatched",
     restock: "restocked",
     add: "added",
     remove: "removed",
@@ -712,25 +715,105 @@ function formatMovementVerb(actionType, meta) {
   return String(actionType || "updated").replace(/_/g, " ");
 }
 
-function movementActionAccentClass(actionType) {
-  if (
-    actionType === "stock_out" ||
-    actionType === "remove" ||
-    actionType === "sell" ||
-    actionType === "restock_out"
-  ) {
-    return "font-semibold text-amber-700";
+function MovementActionBadge({ actionType }) {
+  if (actionType === "restock_in") {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
+        Inflow
+      </span>
+    );
   }
-  return "font-semibold text-emerald-700";
+  if (actionType === "restock_out") {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-semibold text-gray-700">
+        Outflow
+      </span>
+    );
+  }
+  if (actionType === "correction" || actionType === "adjustment" || actionType === "override") {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+        Correction
+      </span>
+    );
+  }
+  return null;
 }
 
-function LiveActivitySection({ movements, onReprint, maxRows = 55, scrollClassName = "max-h-80" }) {
-  const rows = movements.slice(0, maxRows);
+const BADGED_ACTION_TYPES = new Set(["restock_in", "restock_out", "correction", "adjustment", "override"]);
+
+function LiveActivitySection({
+  movements,
+  onReprint,
+  maxRows = 55,
+  scrollClassName = "max-h-80",
+  showStaffFilters = false,
+  staffOptions = [],
+  activityRoleFilter = "",
+  activityStaffUserId = "",
+  onActivityRoleFilterChange,
+  onActivityStaffUserIdChange,
+  staffFilterActive = false,
+}) {
+  const monthKey = dayjs().format("YYYY-MM");
+  const monthRows = useMemo(
+    () => movements.filter((m) => dayjs(m.created_at).format("YYYY-MM") === monthKey),
+    [movements, monthKey],
+  );
+  const rows = monthRows.slice(0, maxRows);
+
+  const staffSelectOptions = useMemo(() => {
+    if (!showStaffFilters) return [];
+    const role = activityRoleFilter;
+    return staffOptions.filter((member) => {
+      if (!role) return true;
+      return String(member.role || "").toLowerCase() === role;
+    });
+  }, [showStaffFilters, staffOptions, activityRoleFilter]);
+
+  const emptyFilteredUser =
+    staffFilterActive && rows.length === 0 && (activityStaffUserId || activityRoleFilter);
   return (
     <SectionCard title="Live Activity">
-      <div className={cx("overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-3 py-3", scrollClassName)}>
-        {rows.length ? (
-          <div className="flex flex-col space-y-2">
+      {showStaffFilters ? (
+        <div className="mb-4 mt-2 flex flex-row flex-wrap items-center gap-3">
+          <label className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:min-w-[10rem]">
+            <span className="sr-only">Filter by role</span>
+            <select
+              value={activityRoleFilter}
+              onChange={(event) => onActivityRoleFilterChange?.(event.target.value)}
+              className={cx(ACTIVITY_FILTER_SELECT_CLASS, "flex-1 sm:w-40")}
+            >
+              <option value="">All Accounts</option>
+              <option value="doctor">Doctors</option>
+              <option value="operator">Operators</option>
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:min-w-[12rem]">
+            <span className="sr-only">Filter by staff member</span>
+            <select
+              value={activityStaffUserId}
+              onChange={(event) => onActivityStaffUserIdChange?.(event.target.value)}
+              className={cx(ACTIVITY_FILTER_SELECT_CLASS, "flex-1 sm:w-52")}
+            >
+              <option value="">All staff</option>
+              {staffSelectOptions.map((member) => (
+                <option key={member.id} value={String(member.id)}>
+                  {member.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+
+      <div className={cx("overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-2 py-2", scrollClassName)}>
+        {emptyFilteredUser ? (
+          <p className="py-8 text-center text-sm text-slate-500">
+            No logged stock movements found for this user.
+          </p>
+        ) : rows.length ? (
+          <div className="flex flex-col space-y-1">
             {rows.map((movement) => {
               const transactionId = movement.meta?.transaction_id || "";
               const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
@@ -739,21 +822,23 @@ function LiveActivitySection({ movements, onReprint, maxRows = 55, scrollClassNa
               const itemName = movement.item_name || "item";
               const verb = formatMovementVerb(movement.action_type, movement.meta);
               const unitLabel = qty === 1 ? "unit" : "units";
-              const timeShort = formatMovementTimeShort(movement.created_at);
-              const actionClass = movementActionAccentClass(movement.action_type);
+              const timeLabel = formatMovementTimestampEnterprise(movement.created_at);
 
               return (
                 <div
                   key={`mv-${movement.id}`}
-                  className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-slate-100 pb-2 text-sm last:border-b-0 last:pb-0"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 py-1.5 text-sm last:border-b-0"
                 >
-                  <span className="shrink-0 text-xs text-gray-400">{timeShort}</span>
+                  <span className="shrink-0 text-xs text-gray-400">{timeLabel}</span>
                   <span className="shrink-0 text-xs text-gray-400" aria-hidden>
                     •
                   </span>
-                  <p className="min-w-0 flex-1 leading-snug text-slate-900">
-                    <span className="font-medium text-slate-900">{actor}</span>{" "}
-                    <span className={actionClass}>{verb}</span>{" "}
+                  <p className="min-w-0 flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-snug text-slate-900">
+                    <span className="font-medium text-slate-900">{actor}</span>
+                    <MovementActionBadge actionType={movement.action_type} />
+                    {!BADGED_ACTION_TYPES.has(movement.action_type) ? (
+                      <span className="text-xs font-semibold text-slate-600">{verb}</span>
+                    ) : null}
                     <span className="tabular-nums text-slate-800">
                       {qty} {unitLabel} of{" "}
                     </span>
@@ -774,7 +859,7 @@ function LiveActivitySection({ movements, onReprint, maxRows = 55, scrollClassNa
             })}
           </div>
         ) : (
-          <p className="py-4 text-center text-sm text-slate-500">No movement activity recorded yet.</p>
+          <p className="py-6 text-center text-sm text-slate-500">No movement activity recorded yet.</p>
         )}
       </div>
     </SectionCard>
@@ -1013,6 +1098,8 @@ export default function InventoryPage() {
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
   const [consumptionPeriod, setConsumptionPeriod] = useState("month");
+  const [activityRoleFilter, setActivityRoleFilter] = useState("");
+  const [activityStaffUserId, setActivityStaffUserId] = useState("");
 
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
@@ -1092,26 +1179,55 @@ export default function InventoryPage() {
     [movements],
   );
 
-  async function load(contextDoctorId = selectedContextDoctorId, nextDoctorContext = doctorContext) {
-    setLoading(true);
+  async function load(
+    contextDoctorId = selectedContextDoctorId,
+    nextDoctorContext = doctorContext,
+    { silent = false } = {},
+  ) {
+    if (!silent) setLoading(true);
     try {
       const query = new URLSearchParams();
       if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
       if (isDoctor) query.set("context", nextDoctorContext);
+      if (isAdmin && activityRoleFilter) query.set("activityRole", activityRoleFilter);
+      if (isAdmin && activityStaffUserId) query.set("activityUserId", activityStaffUserId);
       const payload = await api.get(`/inventory${query.toString() ? `?${query.toString()}` : ""}`);
       setData(payload);
     } catch (error) {
       toast.error(error.message);
-      setData(null);
+      if (!silent) setData(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  function handleActivityRoleFilterChange(value) {
+    setActivityRoleFilter(value);
+    setActivityStaffUserId("");
+  }
+
+  const liveActivityStaffFilterProps = isAdmin
+    ? {
+        showStaffFilters: true,
+        staffOptions: data?.activity_staff || [],
+        activityRoleFilter,
+        activityStaffUserId,
+        onActivityRoleFilterChange: handleActivityRoleFilterChange,
+        onActivityStaffUserIdChange: setActivityStaffUserId,
+        staffFilterActive: true,
+      }
+    : {};
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContextDoctorId, doctorContext]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    load(selectedContextDoctorId, doctorContext, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityRoleFilter, activityStaffUserId]);
 
   // Default "View By" folder after inventory payload loads.
   useEffect(() => {
@@ -2056,6 +2172,7 @@ export default function InventoryPage() {
           onReprint={reprintByTransactionId}
           maxRows={55}
           scrollClassName="max-h-[min(28rem,55vh)]"
+          {...liveActivityStaffFilterProps}
         />
         </div>
       ) : canManageOcs ? (
