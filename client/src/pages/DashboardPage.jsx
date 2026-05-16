@@ -1124,7 +1124,7 @@ function OperatorPersonalOperationUpdates({ metrics }) {
             title="Long term review"
             to="/patients?tab=under_review"
           />
-          <OperatorHealthPlansMetricCard activeCount={activeSubs} listPath="/patients" />
+          <OperatorHealthPlansMetricCard activeCount={activeSubs} listPath="/patients?filter=subscribed" />
         </div>
       </div>
     </div>

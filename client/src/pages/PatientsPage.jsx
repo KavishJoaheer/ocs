@@ -10,6 +10,7 @@ import {
   SquarePen,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -101,7 +102,8 @@ function formatMobilePatientMetaLine(patient) {
 function PatientsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const subscriberFilterActive = searchParams.get("filter") === "subscribed";
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = user.role === "admin";
@@ -170,6 +172,10 @@ function PatientsPage() {
         url += `&doctorId=${doctorIdFilter}`;
       }
 
+      if (subscriberFilterActive) {
+        url += "&subscribed=1";
+      }
+
       const data = await api.get(url);
       setPatientsData(data);
     } catch (error) {
@@ -204,6 +210,10 @@ function PatientsPage() {
       setViewMode("active");
     }
 
+    if (searchParams.get("filter") === "subscribed") {
+      setViewMode("active");
+    }
+
     setPage(1);
   }, [searchParams]);
 
@@ -220,7 +230,7 @@ function PatientsPage() {
     }
 
     loadPatients();
-  }, [canDeletePatients, deferredSearch, page, statusFilter, doctorIdFilter, viewMode]);
+  }, [canDeletePatients, deferredSearch, page, statusFilter, doctorIdFilter, viewMode, subscriberFilterActive]);
 
   const patients = patientsData?.items || [];
   const pagination = patientsData?.pagination;
@@ -273,6 +283,13 @@ function PatientsPage() {
     }
   }
 
+  function clearSubscriberFilter() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("filter");
+    setSearchParams(nextParams, { replace: true });
+    setPage(1);
+  }
+
   async function handleRestorePatient(patientId) {
     setRestoringPatientId(patientId);
 
@@ -313,6 +330,20 @@ function PatientsPage() {
       />
     </label>
   );
+
+  const subscriberFilterBadge = subscriberFilterActive ? (
+    <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-800">
+      <span>Active filter: Subscribers</span>
+      <button
+        type="button"
+        onClick={clearSubscriberFilter}
+        className="inline-flex size-6 items-center justify-center rounded-full text-teal-700 transition hover:bg-teal-100"
+        aria-label="Clear subscriber filter"
+      >
+        <X className="size-3.5" />
+      </button>
+    </span>
+  ) : null;
 
   const statusFilters = (
     <div className="flex flex-wrap items-center gap-2">
@@ -444,6 +475,7 @@ function PatientsPage() {
                   {searchField}
                   {statusFilters}
                 </div>
+                {subscriberFilterBadge}
 
                 {user.role === "operator" ? (
                   <div className="rounded-[24px] border border-amber-100 bg-amber-50/75 px-4 py-3 text-sm text-amber-800">
@@ -455,6 +487,7 @@ function PatientsPage() {
             ) : (
               <div className="mb-3 space-y-3">
                 {statusFilters}
+                {subscriberFilterBadge}
                 {user.role === "operator" ? (
                   <div className="rounded-[20px] border border-amber-100 bg-amber-50/75 px-3 py-2.5 text-sm text-amber-800">
                     Operators can add new patients anytime. Existing patient records stay

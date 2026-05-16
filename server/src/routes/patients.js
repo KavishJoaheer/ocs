@@ -702,14 +702,27 @@ router.get("/", (req, res) => {
   const underReview =
     String(req.query.underReview ?? "").trim() === "1" ||
     String(req.query.underReview ?? "").trim().toLowerCase() === "true";
+  const subscribed =
+    String(req.query.subscribed ?? "").trim() === "1" ||
+    String(req.query.subscribed ?? "").trim().toLowerCase() === "true" ||
+    String(req.query.filter ?? "").trim() === "subscribed";
   const requestedDoctorId = Number(req.query.doctorId);
   const doctorId =
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0 ? requestedDoctorId : null;
   const { page, limit, offset } = toPagination(req.query.page, req.query.limit, 8);
   const operatorUserId = req.auth?.role === "operator" ? Number(req.auth.id) : null;
 
-  const filters = { search, searchTerm, status, doctorId, operatorUserId, underReview: underReview ? 1 : 0 };
+  const filters = {
+    search,
+    searchTerm,
+    status,
+    doctorId,
+    operatorUserId,
+    underReview: underReview ? 1 : 0,
+    subscribed: subscribed ? 1 : 0,
+  };
   const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
+  const subscribedFilterSql = "AND (@subscribed = 0 OR p.is_subscribed = 1)";
   const listOrderSql = underReview
     ? `ORDER BY
         CASE
@@ -747,6 +760,7 @@ router.get("/", (req, res) => {
         AND (@status = '' OR p.status = @status)
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
+        ${subscribedFilterSql}
     `)
     .get(filters).count;
 
@@ -793,6 +807,7 @@ router.get("/", (req, res) => {
         AND (@status = '' OR p.status = @status)
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
+        ${subscribedFilterSql}
       GROUP BY p.id, d.full_name, d.specialization
       ${listOrderSql}
       LIMIT @limit OFFSET @offset
