@@ -1017,7 +1017,7 @@ function DoctorExecutiveSummaryRow({ dashboard }) {
   const patientWord = longTermCount === 1 ? "Patient" : "Patients";
 
   return (
-    <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div className="mb-6 grid w-full grid-cols-1 gap-6 md:grid-cols-2">
       <Link
         to="/doctor/scheduled-visits"
         className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-teal-100"
@@ -1047,36 +1047,66 @@ function DoctorExecutiveSummaryRow({ dashboard }) {
   );
 }
 
-function DoctorDesktopQuickActions() {
-  const links = [
-    { label: "Patient Directory", icon: UserRound, to: "/patients" },
-    { label: "Add a Patient", icon: UserPlus, to: "/patients/add" },
-    { label: "Inventory", icon: Package, to: "/inventory" },
-  ];
+const DOCTOR_ASSIGNED_PATIENTS_PREVIEW_LIMIT = 10;
+
+function DoctorAssignedPatientsPanel({ dashboard }) {
+  const patients = dashboard?.doctorWorkspace?.assignedPatients || [];
+  const previewPatients = patients.slice(0, DOCTOR_ASSIGNED_PATIENTS_PREVIEW_LIMIT);
 
   return (
-    <nav
-      className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm"
-      aria-label="Doctor quick actions"
-    >
-      <p className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-400">Quick actions</p>
-      <ul className="space-y-1">
-        {links.map((item) => {
-          const Icon = item.icon;
-          return (
-            <li key={item.label}>
-              <Link
-                to={item.to}
-                className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm font-semibold text-slate-800 transition-colors hover:bg-teal-50/50 hover:text-teal-700"
-              >
-                <Icon className="size-4 shrink-0 text-slate-500" strokeWidth={2.25} />
-                {item.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <div className="flex h-full min-h-[360px] flex-col rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 md:px-6">
+        <h3 className="text-lg font-semibold tracking-tight text-slate-950">My Assigned Patients</h3>
+        <Link
+          to="/patients"
+          className="shrink-0 text-xs font-semibold text-teal-700 transition hover:text-teal-800"
+        >
+          View Full Directory ➔
+        </Link>
+      </div>
+
+      {previewPatients.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center px-5 py-10 md:px-6">
+          <p className="text-sm text-slate-500">No patients are assigned to you yet.</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden">
+          <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] gap-3 border-b border-gray-100 bg-gray-50/80 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 md:grid md:px-6">
+            <span>Patient name &amp; OCS ID</span>
+            <span>Location (district)</span>
+            <span className="text-right">Status</span>
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {previewPatients.map((patient) => (
+              <li key={patient.id}>
+                <Link
+                  to={`/patients/${patient.id}`}
+                  className="grid grid-cols-1 gap-2 px-5 py-3 transition hover:bg-teal-50/40 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] md:items-center md:gap-3 md:px-6 md:py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{patient.full_name}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {patient.patient_identifier || "No OCS ID"}
+                    </p>
+                  </div>
+                  <p className="truncate text-sm text-slate-600 md:text-xs">
+                    {patient.location || "—"}
+                  </p>
+                  <div className="md:text-right">
+                    <StatusBadge value={patient.status} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {patients.length > previewPatients.length ? (
+            <p className="border-t border-gray-100 px-5 py-2.5 text-xs text-slate-500 md:px-6">
+              Showing {previewPatients.length} of {patients.length} assigned patients.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1203,60 +1233,52 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
           </div>
         ) : null}
 
-        <div className="mt-4 grid gap-6 lg:mt-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] lg:items-start">
-          <div className="min-w-0 space-y-6">
-            <DoctorExecutiveSummaryRow dashboard={dashboard} />
+        <DoctorExecutiveSummaryRow dashboard={dashboard} />
 
-            <div className="rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:rounded-[42px] md:p-5">
-              <div className="space-y-4">
-                <div className="rounded-[24px] border border-gray-200 bg-white/90 p-4 md:rounded-[34px] md:p-6">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Shifts
-                </p>
-                <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
-                  My shifts
-                </p>
+        <div className="mt-4 grid w-full grid-cols-1 gap-6 lg:mt-2 lg:grid-cols-3 lg:items-stretch">
+          <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+            <DoctorAssignedPatientsPanel dashboard={dashboard} />
 
-                <div className="mt-4 space-y-4">
-                  <DoctorDashboardTile
-                    flat
-                    eyebrow="Weekly schedule"
-                    icon={CalendarClock}
-                    size="hero"
-                    title="Current week roster"
-                    onClick={onOpenRosterPdf}
-                  />
-                  <DoctorDashboardTile
-                    flat
-                    eyebrow="Monthly view"
-                    icon={ClipboardList}
-                    size="compact"
-                    title={`${monthLabel} roster`}
-                    onClick={onOpenRosterPdf}
-                  />
-                </div>
-              </div>
-
-              <DoctorDashboardTile
-                dark
-                flat
-                eyebrow="Health care manager"
-                icon={BellRing}
-                size="hero"
-                subtitle={
-                  hcmLatestTitle
-                    ? truncate(hcmLatestTitle, 120)
-                    : "No HCM announcements yet. Open news for updates."
-                }
-                title="Updates from HCM"
-                to="/hcm-news"
-              />
-              </div>
-            </div>
+            <DoctorDashboardTile
+              dark
+              flat
+              eyebrow="Health care manager"
+              icon={BellRing}
+              size="hero"
+              subtitle={
+                hcmLatestTitle
+                  ? truncate(hcmLatestTitle, 120)
+                  : "No HCM announcements yet. Open news for updates."
+              }
+              title="Updates from HCM"
+              to="/hcm-news"
+            />
           </div>
 
-          <aside className="min-w-0 lg:sticky lg:top-6">
-            <DoctorDesktopQuickActions />
+          <aside className="flex min-w-0 flex-col lg:col-span-1">
+            <div className="flex h-full flex-col rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm md:rounded-[34px] md:p-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Shifts</p>
+              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">My shifts</p>
+
+              <div className="mt-4 flex flex-1 flex-col justify-center space-y-4">
+                <DoctorDashboardTile
+                  flat
+                  eyebrow="Weekly schedule"
+                  icon={CalendarClock}
+                  size="hero"
+                  title="Current week roster"
+                  onClick={onOpenRosterPdf}
+                />
+                <DoctorDashboardTile
+                  flat
+                  eyebrow="Monthly view"
+                  icon={ClipboardList}
+                  size="compact"
+                  title={`${monthLabel} roster`}
+                  onClick={onOpenRosterPdf}
+                />
+              </div>
+            </div>
           </aside>
         </div>
       </div>
