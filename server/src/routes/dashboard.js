@@ -1124,8 +1124,8 @@ router.post("/roster", rosterUpload.single("roster"), (req, res) => {
 });
 
 router.get("/roster/file", (req, res) => {
-  if (!["doctor", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Roster PDF is available to doctors and operators only." });
+  if (!["admin", "doctor", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "You do not have permission to access the roster PDF." });
   }
 
   if (!fs.existsSync(CURRENT_ROSTER_PATH)) {

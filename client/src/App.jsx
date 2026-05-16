@@ -5,6 +5,7 @@ import AppointmentsPage from "./pages/AppointmentsPage.jsx";
 import BillingPage from "./pages/BillingPage.jsx";
 import ConsultationDetailPage from "./pages/ConsultationDetailPage.jsx";
 import ConsultationsPage from "./pages/ConsultationsPage.jsx";
+import AdminRosterPage from "./pages/AdminRosterPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import DoctorWorkspacePage from "./pages/DoctorWorkspacePage.jsx";
 import DoctorsPage from "./pages/DoctorsPage.jsx";
@@ -132,6 +133,11 @@ function App() {
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "accountant"]} />}>
             <Route path="/billing" element={<BillingPage />} />
+            <Route path="/admin/finance" element={<BillingPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={["admin"]} />}>
+            <Route path="/admin/roster" element={<AdminRosterPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

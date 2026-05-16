@@ -14,15 +14,12 @@ import {
   Search,
   ShieldCheck,
   Stethoscope,
-  Upload,
   UserPlus,
   UserRound,
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
-import AdminInventoryReconciliationPanel from "../components/AdminInventoryReconciliationPanel.jsx";
-import AdminPendingPaymentsLedger from "../components/AdminPendingPaymentsLedger.jsx";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
@@ -33,10 +30,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
-import {
-  getClinicalTwinMetricRoutes,
-  resolveClinicalTwinCounts,
-} from "../lib/clinicalTwinMetrics.js";
+import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -1460,116 +1454,109 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
 }
 
 
-function AdminExecutiveSummaryRow({ dashboard }) {
-  const routes = getClinicalTwinMetricRoutes("admin");
+
+function AdminExecutiveCard({ title, to, accent, anchorAccent = "teal", children }) {
+  return (
+    <div
+      className={cx(
+        "rounded-2xl border border-gray-100 bg-white p-6 shadow-sm",
+        accent === "amber" && "border-l-4 border-l-amber-500",
+        accent === "teal" && "border-l-4 border-l-teal-500",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{title}</span>
+        {to ? (
+          <Link to={to} className="group shrink-0" aria-label={`Open ${title}`}>
+            <MetricNavAnchor accent={anchorAccent} />
+          </Link>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
   const counts = resolveClinicalTwinCounts("admin", { dashboard });
+  const totalPatients = Number(dashboard?.summary?.totalPatients ?? 0);
+  const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
 
   return (
-    <div className="mb-8 grid w-full grid-cols-1 gap-6 md:grid-cols-2">
-      <Link
-        to={routes.longTermReview}
-        className="group relative cursor-pointer rounded-2xl border border-gray-100 border-l-4 border-l-amber-500 bg-white p-6 shadow-sm transition-all hover:border-amber-200"
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Long Term Review</span>
-          <MetricNavAnchor accent="amber" />
+    <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 p-6 md:grid-cols-2">
+      <AdminExecutiveCard title="Practice Statistics" to="/admin/finance" anchorAccent="teal">
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs font-medium text-gray-500">Total Patients</p>
+            <p className="mt-1 text-3xl font-black text-gray-900 tabular-nums">{totalPatients}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500">Total Revenue</p>
+            <p className="mt-1 text-2xl font-black text-gray-900 tabular-nums">{formatCurrency(totalRevenue)}</p>
+          </div>
         </div>
-        <div className="mt-2 text-3xl font-black text-gray-900">
-          {counts.longTermReviewCount}{" "}
-          <span className="ml-1 text-xs font-medium text-gray-400">Patients Active</span>
-        </div>
-      </Link>
+      </AdminExecutiveCard>
 
-      <Link
-        to={routes.healthPlans}
-        className="group relative cursor-pointer rounded-2xl border border-gray-100 border-l-4 border-l-teal-500 bg-white p-6 shadow-sm transition-all hover:border-teal-100"
+      <AdminExecutiveCard
+        title="Long Term Review"
+        to="/patients?tab=under_review"
+        accent="amber"
+        anchorAccent="amber"
       >
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Health Plans</span>
-          <MetricNavAnchor accent="teal" />
-        </div>
-        <div className="mt-2 text-3xl font-black text-gray-900">
-          {counts.healthPlansCount}{" "}
-          <span className="ml-1 text-xs font-medium text-gray-400">Active Subscribers</span>
-        </div>
-      </Link>
+        <p className="mt-4 text-3xl font-black text-gray-900 tabular-nums">{counts.longTermReviewCount}</p>
+        <p className="mt-1 text-xs font-medium text-gray-500">
+          Patients under active surveillance tracking
+        </p>
+      </AdminExecutiveCard>
+
+      <AdminExecutiveCard
+        title="Health Plans & Subscriptions"
+        to="/patients?filter=subscribed"
+        accent="teal"
+        anchorAccent="teal"
+      >
+        <p className="mt-4 text-3xl font-black text-gray-900 tabular-nums">{counts.healthPlansCount}</p>
+        <p className="mt-1 text-xs font-medium text-gray-500">
+          Active premium subscriber base across Mauritius
+        </p>
+      </AdminExecutiveCard>
+
+      <AdminExecutiveCard title="Roster Management" to="/admin/roster" anchorAccent="teal">
+        <button
+          type="button"
+          onClick={onOpenRosterPdf}
+          disabled={!rosterMeta?.has_roster}
+          className="mt-2 flex w-full items-center justify-center rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          📥 Download Current Roster PDF
+        </button>
+      </AdminExecutiveCard>
     </div>
   );
 }
 
-function AdminDashboardView({
-  dashboard,
-  rosterMeta,
-  rosterUploadFile,
-  setRosterUploadFile,
-  isUploadingRoster,
-  handleUploadRoster,
-}) {
+function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
   return (
-    <div className="space-y-6">
-      <section className="relative mx-auto w-full min-w-0 max-w-6xl overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
-
-        <div className="relative z-10">
-          <div className="hidden justify-end md:flex">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
-              <ShieldCheck className="size-4" />
-              Admin workspace
-            </div>
-          </div>
-
-          <div className="mt-3 hidden md:block">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">OCS M&#201;DECINS</p>
-            <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl">
-              Operations Dashboard
-            </h1>
-          </div>
-
-          <AdminExecutiveSummaryRow dashboard={dashboard} />
-
-          <div className="grid w-full grid-cols-1 gap-6 lg:grid-cols-3 lg:items-stretch">
-            <div className="lg:col-span-2">
-              <AdminInventoryReconciliationPanel />
-            </div>
-            <div className="lg:col-span-1">
-              <AdminPendingPaymentsLedger />
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Roster management</p>
-            <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">Current roster PDF</p>
-
-            <form className="mt-4 flex flex-col gap-3 md:flex-row md:items-center" onSubmit={handleUploadRoster}>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-white">
-                <Upload className="size-4" />
-                Select PDF
-                <input
-                  accept="application/pdf"
-                  type="file"
-                  className="hidden"
-                  onChange={(event) => setRosterUploadFile(event.target.files?.[0] || null)}
-                />
-              </label>
-              <button
-                type="submit"
-                disabled={!rosterUploadFile || isUploadingRoster}
-                className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isUploadingRoster ? "Uploading..." : "Upload current_roster.pdf"}
-              </button>
-              <p className="text-sm text-slate-500">
-                {rosterMeta?.has_roster
-                  ? `Last updated ${dayjs(rosterMeta.updated_at).format("MMM D, YYYY [at] h:mm A")}`
-                  : "No roster PDF uploaded yet"}
-              </p>
-            </form>
-          </div>
+    <div className="w-full">
+      <div className="hidden justify-end px-6 pt-6 md:flex">
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
+          <ShieldCheck className="size-4" />
+          Admin workspace
         </div>
-      </section>
+      </div>
+
+      <div className="px-6 pb-2 pt-2 md:pt-0">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">OCS M&#201;DECINS</p>
+        <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl">
+          Operations Dashboard
+        </h1>
+      </div>
+
+      <AdminExecutiveGrid dashboard={dashboard} onOpenRosterPdf={onOpenRosterPdf} rosterMeta={rosterMeta} />
     </div>
   );
 }
+
 
 function DashboardPage() {
   const { user, updateUser } = useAuth();
@@ -1579,10 +1566,8 @@ function DashboardPage() {
   const [dashboard, setDashboard] = useState(null);
   const [doctorHcmHeadline, setDoctorHcmHeadline] = useState(null);
   const [rosterMeta, setRosterMeta] = useState(null);
-  const [rosterUploadFile, setRosterUploadFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
-  const [isUploadingRoster, setIsUploadingRoster] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -1642,28 +1627,6 @@ function DashboardPage() {
       ignore = true;
     };
   }, [user.role]);
-
-  async function handleUploadRoster(event) {
-    event.preventDefault();
-    if (!rosterUploadFile) {
-      toast.error("Please choose a PDF roster file first.");
-      return;
-    }
-
-    setIsUploadingRoster(true);
-    try {
-      const formData = new FormData();
-      formData.append("roster", rosterUploadFile);
-      const payload = await api.post("/dashboard/roster", formData);
-      setRosterMeta(payload);
-      setRosterUploadFile(null);
-      toast.success("Roster PDF uploaded.");
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsUploadingRoster(false);
-    }
-  }
 
   async function handleOpenRosterPdf() {
     if (!rosterMeta?.has_roster) {
@@ -1768,11 +1731,8 @@ function DashboardPage() {
   return (
     <AdminDashboardView
       dashboard={dashboard}
+      onOpenRosterPdf={handleOpenRosterPdf}
       rosterMeta={rosterMeta}
-      rosterUploadFile={rosterUploadFile}
-      setRosterUploadFile={setRosterUploadFile}
-      isUploadingRoster={isUploadingRoster}
-      handleUploadRoster={handleUploadRoster}
     />
   );
 }
