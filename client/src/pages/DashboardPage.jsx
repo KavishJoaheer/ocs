@@ -33,12 +33,8 @@ import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
-function buildDoctorMobileSubtitle(dashboard) {
-  const lowStock = dashboard?.doctor_low_stock_alert;
-  const inventoryStamp = lowStock?.triggered
-    ? `${Number(lowStock.total_items || 0)} Item${Number(lowStock.total_items || 0) === 1 ? "" : "s"} Low`
-    : "Healthy";
-  return `${dayjs().format("dddd, MMMM D")} — Bag Inventory: ${inventoryStamp}`;
+function buildDoctorMobileDateLabel() {
+  return dayjs().format("dddd, MMMM D");
 }
 
 function buildDoctorMobileCards(dashboard) {
@@ -84,7 +80,7 @@ function DoctorMobileLauncher({ user, dashboard }) {
     <div className="mx-auto flex w-full max-w-md min-w-0 flex-col px-1">
       <header className="mb-5">
         <h1 className="text-xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
-        <p className="mt-1.5 text-sm text-slate-600">{buildDoctorMobileSubtitle(dashboard)}</p>
+        <p className="mt-1.5 text-sm text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
 
       <nav className="flex flex-col gap-2" aria-label="Doctor quick actions">
@@ -94,18 +90,18 @@ function DoctorMobileLauncher({ user, dashboard }) {
             <Link
               key={card.label}
               to={card.to}
-              className="group flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white px-3.5 py-3 shadow-[0_8px_24px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+              className="group flex items-center space-x-4 rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white p-4.5 shadow-[0_8px_24px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
             >
               <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
                 <Icon className="size-5" strokeWidth={2} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold leading-snug text-slate-900">{card.label}</p>
+                <p className="text-base font-semibold leading-snug text-gray-900">{card.label}</p>
                 {card.meta ? (
-                  <p className="mt-0.5 text-xs font-medium text-teal-600">{card.meta}</p>
+                  <p className="mt-0.5 text-sm font-medium text-teal-600">{card.meta}</p>
                 ) : null}
               </div>
-              <ArrowUpRight className="size-4 shrink-0 text-[#2d8f98]/70" />
+              <ArrowUpRight className="size-5 shrink-0 text-teal-500" strokeWidth={2} />
             </Link>
           );
         })}
