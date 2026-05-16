@@ -26,12 +26,31 @@ import {
   formatDate,
 } from "../lib/format.js";
 import { canBillPatientForUser } from "../lib/access.js";
+import { isPatientSubscribed } from "../lib/patientSubscription.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 
 function displayText(value, fallback = "Not recorded") {
   return value ? value : fallback;
+}
+
+function PatientCareNumber({ patient, className }) {
+  const identifier = displayText(patient.patient_identifier);
+
+  if (!isPatientSubscribed(patient)) {
+    return <span className={className}>{identifier}</span>;
+  }
+
+  return (
+    <span className={className}>
+      {identifier}
+      <span className="ml-1 font-semibold text-teal-600" title="Health plan subscriber">
+        {" "}
+        ★
+      </span>
+    </span>
+  );
 }
 
 function PatientsPage() {
@@ -351,7 +370,8 @@ function PatientsPage() {
                         >
                           <p className="break-words font-semibold text-slate-950">{patient.full_name}</p>
                           <p className="mt-1 break-words text-sm text-slate-500">
-                            OCS care number: {displayText(patient.patient_identifier)}
+                            OCS care number:{" "}
+                            <PatientCareNumber patient={patient} />
                           </p>
                           <p className="break-words text-sm text-slate-500">
                             Patient ID: {displayText(patient.patient_id_number)}
@@ -436,9 +456,7 @@ function PatientsPage() {
                                     </p>
                                     <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500">
                                       <IdCard className="size-3.5 shrink-0" />
-                                      <span className="truncate">
-                                        {displayText(patient.patient_identifier)}
-                                      </span>
+                                      <PatientCareNumber patient={patient} className="truncate" />
                                     </p>
                                     <p className="truncate text-xs text-slate-500">
                                       ID: {displayText(patient.patient_id_number)}
@@ -606,7 +624,7 @@ function PatientsPage() {
                 >
                   <p className="font-semibold text-slate-950">{patient.full_name}</p>
                   <p className="mt-1 text-sm text-slate-500">
-                    OCS care number: {displayText(patient.patient_identifier)}
+                    OCS care number: <PatientCareNumber patient={patient} />
                   </p>
                   <p className="text-sm text-slate-500">
                     Patient ID: {displayText(patient.patient_id_number)}
@@ -660,7 +678,7 @@ function PatientsPage() {
                             {patient.full_name}
                           </p>
                           <p className="mt-0.5 truncate text-xs text-slate-500">
-                            OCS: {displayText(patient.patient_identifier)}
+                            OCS: <PatientCareNumber patient={patient} />
                           </p>
                           <p className="truncate text-xs text-slate-500">
                             ID: {displayText(patient.patient_id_number)}

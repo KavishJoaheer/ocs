@@ -858,6 +858,7 @@ function getOperatorWorkspacePayload() {
       FROM patients
       WHERE deleted_at IS NULL
         AND status = 'active'
+        AND is_subscribed = 1
     `)
     .get();
   const activeSubscriptionPatientsCount = Number(activeSubscriptionPatientsRow?.count || 0);

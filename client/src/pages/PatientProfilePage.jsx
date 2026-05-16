@@ -46,8 +46,22 @@ import {
   formatDate,
   formatPaymentMethod,
 } from "../lib/format.js";
+import { isPatientSubscribed } from "../lib/patientSubscription.js";
 import { cx } from "../lib/utils.js";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
+
+function HealthPlanBadge({ className }) {
+  return (
+    <span
+      className={cx(
+        "ml-3 inline-flex items-center rounded-full bg-teal-600 px-2.5 py-1 text-xs font-bold tracking-wide text-white shadow-sm",
+        className,
+      )}
+    >
+      ★ HEALTH PLAN
+    </span>
+  );
+}
 
 function HighlightStat({ icon: Icon, label, value }) {
   return (
@@ -1101,8 +1115,11 @@ function PatientProfilePage() {
         >
           <div className="flex min-w-0 items-center justify-between gap-3 pt-3">
             <div className="min-w-0">
-              <p className="truncate text-base font-bold text-slate-950">
-                {data.patient.full_name}
+              <p className="flex min-w-0 flex-wrap items-center gap-y-1 truncate text-base font-bold text-slate-950">
+                <span className="truncate">{data.patient.full_name}</span>
+                {isPatientSubscribed(data.patient) ? (
+                  <HealthPlanBadge className="ml-0 shrink-0 sm:ml-2" />
+                ) : null}
               </p>
               <p className="text-xs text-slate-500">
                 {data.patient.patient_identifier || "No OCS care number"}
@@ -1121,7 +1138,12 @@ function PatientProfilePage() {
 
       <PageHeader
         eyebrow="Patient profile"
-        title={data.patient.full_name}
+        title={
+          <>
+            {data.patient.full_name}
+            {isPatientSubscribed(data.patient) ? <HealthPlanBadge /> : null}
+          </>
+        }
         actions={
           isMobile ? (
             <Link

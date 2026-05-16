@@ -38,6 +38,7 @@ const emptyPatient = {
   next_of_kin_email: "",
   status: "active",
   ongoing_treatment: "",
+  is_subscribed: false,
 };
 
 function toPatientFormState(patient) {
@@ -70,6 +71,8 @@ function toPatientFormState(patient) {
     next_of_kin_email: patient.next_of_kin_email ?? "",
     status: patient.status ?? "active",
     ongoing_treatment: patient.ongoing_treatment ?? "",
+    is_subscribed:
+      patient.is_subscribed === true || patient.is_subscribed === 1 || patient.is_subscribed === "1",
   };
 }
 
@@ -88,6 +91,27 @@ const DESKTOP_TEXTAREA = cx(
   DESKTOP_INPUT,
   "min-h-[2.75rem] resize-y py-2 leading-relaxed",
 );
+
+function SubscriptionPlanField({ checked, onChange, className }) {
+  return (
+    <label
+      className={cx(
+        "flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-400/40",
+        checked && "border-teal-200/80 bg-teal-50/40",
+        className,
+      )}
+    >
+      <input
+        type="checkbox"
+        name="is_subscribed"
+        checked={checked}
+        onChange={onChange}
+        className="size-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+      />
+      <span className="text-sm font-semibold text-slate-700">On Active Subscription Plan</span>
+    </label>
+  );
+}
 
 function PatientFormModal({
   open,
@@ -151,11 +175,11 @@ function PatientFormModal({
   const actionLabel = isEditing ? "Update patient" : "Add patient";
 
   function handleChange(event) {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
 
     setForm((current) => ({
       ...current,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
       ...(name === "status" && value === "discharged" ? { ongoing_treatment: "" } : {}),
     }));
   }
@@ -321,6 +345,8 @@ function PatientFormModal({
                   <option value="F">F</option>
                 </select>
               </label>
+
+              <SubscriptionPlanField checked={form.is_subscribed} onChange={handleChange} />
             </div>
           )}
 
@@ -719,6 +745,12 @@ function PatientFormModal({
                   <option value="discharged">Discharged</option>
                 </select>
               </label>
+
+              <SubscriptionPlanField
+                checked={form.is_subscribed}
+                onChange={handleChange}
+                className="md:col-span-2"
+              />
 
               {canSelectAssignedDoctor ? (
                 <label className="space-y-2 md:col-span-2">

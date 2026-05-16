@@ -7,7 +7,7 @@ function PageHeader({ eyebrow, title, description, actions }) {
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="mt-1 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl">
+        <h1 className="mt-1 flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl">
           {title}
         </h1>
         {description ? (

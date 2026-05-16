@@ -714,6 +714,10 @@ function ensurePatientColumns() {
       name: "deleted_at",
       sql: "ALTER TABLE patients ADD COLUMN deleted_at TEXT",
     },
+    {
+      name: "is_subscribed",
+      sql: "ALTER TABLE patients ADD COLUMN is_subscribed INTEGER NOT NULL DEFAULT 0",
+    },
   ];
 
   requiredColumns.forEach((column) => {

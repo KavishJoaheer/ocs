@@ -109,6 +109,10 @@ function getNextPatientIdentifier() {
   return `OCS-${nextNumber}`;
 }
 
+function parseBooleanField(value) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 function normalizePatientPayload(body) {
   const status = String(body.status ?? "active").trim().toLowerCase();
   const assignedDoctorRaw = String(body.assigned_doctor_id ?? "").trim();
@@ -153,6 +157,7 @@ function normalizePatientPayload(body) {
     status,
     ongoing_treatment:
       status === "active" ? String(body.ongoing_treatment ?? "").trim() : "",
+    is_subscribed: parseBooleanField(body.is_subscribed),
   };
 }
 
@@ -347,6 +352,7 @@ function getPatientSnapshot(patient) {
     next_of_kin_address: patient.next_of_kin_address || "",
     status: patient.status || "",
     ongoing_treatment: patient.ongoing_treatment || "",
+    is_subscribed: parseBooleanField(patient.is_subscribed),
   };
 }
 
@@ -952,9 +958,10 @@ router.post("/", (req, res) => {
         next_of_kin_email,
         next_of_kin_address,
         status,
-        ongoing_treatment
+        ongoing_treatment,
+        is_subscribed
       )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
     .run(
       fullName,
@@ -984,6 +991,7 @@ router.post("/", (req, res) => {
       payload.next_of_kin_address || "",
       payload.status,
       payload.ongoing_treatment,
+      payload.is_subscribed ? 1 : 0,
     );
 
   if (PATIENT_TAG_ROLES.has(req.auth.role)) {
@@ -1092,6 +1100,7 @@ router.put("/:id", (req, res) => {
     next_of_kin_address: preservedNextOfKinAddress,
     status: payload.status,
     ongoing_treatment: payload.ongoing_treatment,
+    is_subscribed: payload.is_subscribed,
   };
   const calculatedAge = calculateAgeFromDateOfBirth(payload.date_of_birth);
 
@@ -1125,7 +1134,8 @@ router.put("/:id", (req, res) => {
         next_of_kin_email = ?,
         next_of_kin_address = ?,
         status = ?,
-        ongoing_treatment = ?
+        ongoing_treatment = ?,
+        is_subscribed = ?
       WHERE id = ?
     `).run(
       fullName,
@@ -1155,6 +1165,7 @@ router.put("/:id", (req, res) => {
       preservedNextOfKinAddress,
       payload.status,
       payload.ongoing_treatment,
+      payload.is_subscribed ? 1 : 0,
       patientId,
     );
 
