@@ -1661,6 +1661,11 @@ export default function InventoryPage() {
       const query = new URLSearchParams();
       if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
       if (isDoctor) query.set("context", nextDoctorContext);
+      if (isAdmin) {
+        query.set("dateFrom", adminPeriodRange.from);
+        query.set("dateTo", adminPeriodRange.to);
+        if (activityStaffUserId) query.set("activityUserId", activityStaffUserId);
+      }
       const payload = await api.get(`/inventory${query.toString() ? `?${query.toString()}` : ""}`);
       setData(payload);
     } catch (error) {
@@ -2672,7 +2677,19 @@ export default function InventoryPage() {
         </div>
       ) : isAdmin ? (
         <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
-          <SectionCard title="Admin Compare Tool">
+          <SectionCard
+            title="Admin Compare Tool"
+            subtitle={formatInventoryPeriodLabel(adminPeriodPreset, adminPeriodRange.from, adminPeriodRange.to)}
+            actions={
+              <InventoryPeriodFilter
+                preset={adminPeriodPreset}
+                anchorDate={adminPeriodAnchor}
+                onPresetChange={setAdminPeriodPreset}
+                onAnchorDateChange={setAdminPeriodAnchor}
+                className="shrink-0"
+              />
+            }
+          >
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
