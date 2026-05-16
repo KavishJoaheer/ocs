@@ -66,12 +66,6 @@ function excelSafeSheetTitle(title) {
   return cleaned || "Stock";
 }
 
-const DOCTOR_MOBILE_BAG_TABS = [
-  { id: "all", label: "All Stock Items" },
-  { id: "stock_out", label: "Stock Out" },
-  { id: "restock_request", label: "Restock Request" },
-];
-
 const DOCTOR_MOBILE_STOCK_SCOPES = [
   { id: "my", label: "My Stock" },
   { id: "ocs", label: "OCS Stock" },
@@ -84,6 +78,10 @@ function formatDoctorMobileBatchLabel(item, batches) {
   }
   if (first?.id) {
     return `BATCH-${String(first.id).padStart(3, "0")}`;
+  }
+  if (item?.expiry_date) {
+    const expiry = dayjs(item.expiry_date);
+    return expiry.isValid() ? expiry.format("DD MMM YYYY") : String(item.expiry_date);
   }
   if (item?.id) {
     return `BATCH-${String(item.id).padStart(3, "0")}`;
@@ -1250,24 +1248,13 @@ function MobileDoctorBagLayout({
   selectedView,
   onSelectedViewChange,
   doctorViewIsOcs,
-  mobileBagTab,
-  setMobileBagTab,
   mobileBagPagedItems,
   mobileBagTotalPages,
   currentPage,
   setCurrentPage,
   batchMap,
-  doctorRestockCandidates,
   onOpenRestockInventory,
-  onRestockItem,
-  onStockOutItem,
-  findMyStockItemByName,
 }) {
-  const mobileRestockCandidates = doctorRestockCandidates.filter((candidate) => {
-    const myItem = findMyStockItemByName(candidate.item_name);
-    return myItem && String(myItem.folder_id) === String(selectedView);
-  });
-
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3">
       <header className="flex items-start justify-between gap-3">
@@ -1337,73 +1324,18 @@ function MobileDoctorBagLayout({
 
       {doctorViewIsOcs ? (
         <p className="rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs font-medium leading-relaxed text-sky-900">
-          OCS master stock is read-only. Switch to My Stock to stock out or request restock.
+          OCS master stock is read-only. Switch to My Stock to restock your medical bag.
         </p>
-      ) : (
-        <div className="flex justify-between space-x-2">
-          {DOCTOR_MOBILE_BAG_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setMobileBagTab(tab.id)}
-              className={cx(
-                "min-h-11 flex-1 rounded-2xl px-2 py-2.5 text-center text-[11px] font-bold leading-tight transition",
-                mobileBagTab === tab.id
-                  ? "bg-[#4FB8B3] text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-600",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      )}
+      ) : null}
 
       <SectionCard className="flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]">
-        {!doctorViewIsOcs && mobileBagTab === "restock_request" ? (
-          mobileRestockCandidates.length ? (
-            <div className="flex flex-col space-y-4 pb-8">
-              {mobileRestockCandidates.map((candidate) => {
-                const myItem = findMyStockItemByName(candidate.item_name);
-                const unit = myItem?.unit || "units";
-                return (
-                  <div
-                    key={`${candidate.ocs_item_id}-${candidate.item_name}`}
-                    className="rounded-[20px] border border-amber-200/80 bg-amber-50/50 px-4 py-3.5"
-                  >
-                    <p className="text-base font-bold text-gray-900">{candidate.item_name}</p>
-                    <p className="mt-1 text-sm font-medium text-gray-500">
-                      Par {candidate.par_level} • Bag {candidate.current_quantity} {unit} • Need{" "}
-                      {candidate.required_quantity}
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!myItem}
-                      onClick={() => myItem && onRestockItem(myItem)}
-                      className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Truck className="size-4" />
-                      Restock Request
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              title="No restock requests"
-              description="Your bag stock is above the restock threshold for all tracked items."
-            />
-          )
-        ) : mobileBagPagedItems.length ? (
+        {mobileBagPagedItems.length ? (
           <div className="flex flex-col space-y-4 pb-8">
             {mobileBagPagedItems.map((item) => {
-              const batches = batchMap[item.id] || [];
+              const batches = doctorViewIsOcs ? [] : batchMap[item.id] || [];
               const quantity = Number(item.quantity || 0);
               const unit = item.unit || "units";
               const batchLabel = formatDoctorMobileBatchLabel(item, batches);
-              const showStockOut =
-                !doctorViewIsOcs && (mobileBagTab === "stock_out" || mobileBagTab === "all");
 
               return (
                 <div
@@ -1414,28 +1346,6 @@ function MobileDoctorBagLayout({
                   <p className="mt-1 text-sm font-medium text-gray-500">
                     Batch: {batchLabel} • Qty: {quantity} {unit}
                   </p>
-                  {showStockOut && quantity > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => onStockOutItem(item)}
-                      className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-orange-100 px-4 py-2.5 text-sm font-semibold text-orange-800 transition active:brightness-95"
-                    >
-                      <Minus className="size-4" />
-                      Stock Out
-                    </button>
-                  ) : null}
-                  {!doctorViewIsOcs &&
-                  mobileBagTab === "all" &&
-                  quantity <= Number(item.minimum_quantity || 0) ? (
-                    <button
-                      type="button"
-                      onClick={() => onRestockItem(item)}
-                      className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-4 py-2.5 text-sm font-bold text-[#1f7f7b]"
-                    >
-                      <Truck className="size-4" />
-                      Restock Request
-                    </button>
-                  ) : null}
                 </div>
               );
             })}
@@ -1468,19 +1378,11 @@ function MobileDoctorBagLayout({
           </div>
         ) : (
           <EmptyState
-            title={
-              doctorViewIsOcs
-                ? "No items in this category"
-                : mobileBagTab === "stock_out"
-                  ? "No stock to remove"
-                  : "No stock items found"
-            }
+            title={doctorViewIsOcs ? "No items in this category" : "No stock items found"}
             description={
               doctorViewIsOcs
                 ? "Try another category or search term."
-                : mobileBagTab === "stock_out"
-                  ? "Items with available quantity will appear here for stock out."
-                  : "Search or restock from OCS Master Stock to fill your medical bag."
+                : "Search or restock from OCS Master Stock to fill your medical bag."
             }
           />
         )}
@@ -1520,8 +1422,6 @@ export default function InventoryPage() {
   const [batchMap, setBatchMap] = useState({});
   const [consumptionPeriod, setConsumptionPeriod] = useState("month");
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
-  const [mobileBagTab, setMobileBagTab] = useState("all");
-
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
   const isAdmin = user.role === "admin";
@@ -1716,20 +1616,9 @@ export default function InventoryPage() {
     rows = rows.filter(
       (item) => !needle || String(item.item_name || "").toLowerCase().includes(needle),
     );
-    if (!doctorViewIsOcs && mobileBagTab === "stock_out") {
-      rows = rows.filter((item) => Number(item.quantity || 0) > 0);
-    }
     const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
     return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
-  }, [
-    showMobileDoctorBag,
-    doctorViewIsOcs,
-    data?.my_stock,
-    data?.ocs_stock,
-    search,
-    selectedView,
-    mobileBagTab,
-  ]);
+  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView]);
 
   const mobileBagPagedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -1749,13 +1638,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode, mobileBagTab, doctorContext]);
-
-  useEffect(() => {
-    if (doctorViewIsOcs && mobileBagTab !== "all") {
-      setMobileBagTab("all");
-    }
-  }, [doctorViewIsOcs, mobileBagTab]);
+  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode, doctorContext]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1779,7 +1662,7 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    if (loading || !data || !showMobileDoctorBag || mobileBagTab === "restock_request") {
+    if (loading || !data || !showMobileDoctorBag || doctorViewIsOcs) {
       return;
     }
     mobileBagPagedItems.forEach((item) => {
@@ -1788,7 +1671,7 @@ export default function InventoryPage() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, data, showMobileDoctorBag, mobileBagTab, mobileBagPagedItems]);
+  }, [loading, data, showMobileDoctorBag, doctorViewIsOcs, mobileBagPagedItems]);
 
   function openDoctorRestockForItem(nextItem) {
     const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
@@ -2153,23 +2036,12 @@ export default function InventoryPage() {
           selectedView={selectedView}
           onSelectedViewChange={setSelectedView}
           doctorViewIsOcs={doctorViewIsOcs}
-          mobileBagTab={mobileBagTab}
-          setMobileBagTab={setMobileBagTab}
           mobileBagPagedItems={mobileBagPagedItems}
           mobileBagTotalPages={mobileBagTotalPages}
           currentPage={currentPage}
           setCurrentPage={setCurrentPage}
           batchMap={batchMap}
-          doctorRestockCandidates={doctorRestockCandidates}
           onOpenRestockInventory={() => setDoctorRestockOpen(true)}
-          onRestockItem={openDoctorRestockForItem}
-          onStockOutItem={(item) => setStockOut({ item })}
-          findMyStockItemByName={(name) =>
-            (data?.my_stock || []).find(
-              (item) =>
-                String(item.item_name || "").toLowerCase() === String(name || "").toLowerCase(),
-            )
-          }
         />
       ) : (
         <div className={cx(pageContainerClass, "space-y-6")}>
