@@ -200,9 +200,45 @@ function PatientFormModal({
     onClose();
   }
 
+  const currentStep = isMobile ? wizardStep : desktopWizardStep;
+  const onFinalWizardStep = currentStep >= WIZARD_STEPS.length - 1;
+
+  function goToWizardStep(stepIndex, event) {
+    event?.preventDefault?.();
+    const nextStep = Math.max(0, Math.min(WIZARD_STEPS.length - 1, stepIndex));
+    if (isMobile) {
+      setWizardStep(nextStep);
+    } else {
+      setDesktopWizardStep(nextStep);
+    }
+  }
+
+  function goToNextWizardStep(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    goToWizardStep(currentStep + 1);
+  }
+
+  function goToPreviousWizardStep(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    goToWizardStep(currentStep - 1);
+  }
+
+  function handleFormKeyDown(event) {
+    if (event.key !== "Enter" || event.target.tagName === "TEXTAREA") {
+      return;
+    }
+
+    if (!onFinalWizardStep) {
+      event.preventDefault();
+      goToNextWizardStep(event);
+    }
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
-    if (!isMobile && desktopWizardStep < 2) {
+    if (!onFinalWizardStep) {
       return;
     }
     clearDraft();
@@ -246,7 +282,12 @@ function PatientFormModal({
         {/* Step progress indicator */}
         <div className="flex items-center justify-between border-b border-slate-100 px-4 pb-3 pt-4">
           {WIZARD_STEPS.map((step, i) => (
-            <div key={step.label} className="flex flex-col items-center gap-1">
+            <button
+              key={step.label}
+              type="button"
+              onClick={(event) => goToWizardStep(i, event)}
+              className="flex flex-col items-center gap-1 rounded-lg px-1 py-0.5 transition hover:bg-slate-50"
+            >
               <div
                 className={cx(
                   "flex size-9 items-center justify-center rounded-full text-sm font-bold transition",
@@ -267,7 +308,7 @@ function PatientFormModal({
               >
                 {i + 1}. {step.label}
               </span>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -275,6 +316,7 @@ function PatientFormModal({
           id="mobile-patient-form"
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={handleSubmit}
+          onKeyDown={handleFormKeyDown}
         >
           <div className="flex-1 overflow-y-auto px-4 py-5">
             {wizardStep === 0 && (
@@ -579,7 +621,7 @@ function PatientFormModal({
                 {wizardStep > 0 && (
                   <button
                     type="button"
-                    onClick={() => setWizardStep((s) => s - 1)}
+                    onClick={goToPreviousWizardStep}
                     className="min-h-12 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                   >
                     Back
@@ -588,7 +630,7 @@ function PatientFormModal({
                 {wizardStep < 2 ? (
                   <button
                     type="button"
-                    onClick={() => setWizardStep((s) => s + 1)}
+                    onClick={goToNextWizardStep}
                     className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
                   >
                     Next
@@ -625,7 +667,7 @@ function PatientFormModal({
       size="xl"
       innerScroll={false}
     >
-      <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+      <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
         <div className="shrink-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -651,16 +693,21 @@ function PatientFormModal({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/90 pb-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Step {desktopWizardStep + 1} of 3
-            </span>
-            <span className="text-sm font-semibold text-slate-800">
-              {desktopWizardStep === 0
-                ? "Patient info"
-                : desktopWizardStep === 1
-                  ? "Clinical history"
-                  : "Next of kin"}
-            </span>
+            {WIZARD_STEPS.map((step, i) => (
+              <button
+                key={step.label}
+                type="button"
+                onClick={(event) => goToWizardStep(i, event)}
+                className={cx(
+                  "rounded-full px-3 py-1.5 text-sm font-semibold transition",
+                  i === desktopWizardStep
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                )}
+              >
+                {step.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -971,7 +1018,7 @@ function PatientFormModal({
           {desktopWizardStep > 0 ? (
             <button
               type="button"
-              onClick={() => setDesktopWizardStep((s) => Math.max(0, s - 1))}
+              onClick={goToPreviousWizardStep}
               className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
             >
               Back
@@ -980,7 +1027,7 @@ function PatientFormModal({
           {desktopWizardStep < 2 ? (
             <button
               type="button"
-              onClick={() => setDesktopWizardStep((s) => Math.min(2, s + 1))}
+              onClick={goToNextWizardStep}
               className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700"
             >
               {desktopWizardStep === 0 ? "Next: Clinical history" : "Next: Next of kin"}
