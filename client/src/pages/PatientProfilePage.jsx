@@ -29,6 +29,7 @@ import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -37,9 +38,13 @@ import { api } from "../lib/api.js";
 import {
   canEditConsultationNote,
   canManageConsultationNotes,
+  isOperatorConsultationViewOnly,
 } from "../lib/consultationAccess.js";
 import { canBillPatientForUser } from "../lib/access.js";
-import { canDeleteLabReportAttachment } from "../lib/labReportAccess.js";
+import {
+  canDeleteLabReportAttachment,
+  canManageLabReportsForUser,
+} from "../lib/labReportAccess.js";
 import {
   formatAgeFromDateOfBirth,
   formatCurrency,
@@ -683,9 +688,12 @@ function PatientProfilePage() {
   const [consultationNoteViewer, setConsultationNoteViewer] = useState(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [fabOpen, setFabOpen] = useState(false);
-  const canManageLabReports =
-    user.role === "admin" || user.role === "doctor" || user.role === "lab_tech";
+  const [patientEditorOpen, setPatientEditorOpen] = useState(false);
+  const [isSavingPatient, setIsSavingPatient] = useState(false);
+  const canManageLabReports = canManageLabReportsForUser(user);
   const canManageConsultations = canManageConsultationNotes(user);
+  const isOperatorViewOnlyConsultations = isOperatorConsultationViewOnly(user);
+  const canEditPatientProfile = ["admin", "doctor", "operator"].includes(user.role);
 
   const showPatientBillingUi = useMemo(
     () => Boolean(data && canBillPatientForUser(user, data.patient)),
@@ -886,6 +894,25 @@ function PatientProfilePage() {
 
     setData(response);
     setDoctors(doctorOptions);
+  }
+
+  async function handleSavePatient(payload) {
+    if (!data?.patient?.id) {
+      return;
+    }
+
+    setIsSavingPatient(true);
+
+    try {
+      await api.put(`/patients/${data.patient.id}`, payload);
+      toast.success("Patient record updated.");
+      setPatientEditorOpen(false);
+      await reloadPatientProfile();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSavingPatient(false);
+    }
   }
 
   function canEditConsultation(consultation) {
@@ -1146,15 +1173,37 @@ function PatientProfilePage() {
         }
         actions={
           isMobile ? (
-            <Link
-              to="/patients"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
-            >
-              <ArrowLeft className="size-4" />
-              Back to patients
-            </Link>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {canEditPatientProfile ? (
+                <button
+                  type="button"
+                  onClick={() => setPatientEditorOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+                >
+                  <SquarePen className="size-4" />
+                  Edit profile
+                </button>
+              ) : null}
+              <Link
+                to="/patients"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+              >
+                <ArrowLeft className="size-4" />
+                Back
+              </Link>
+            </div>
           ) : (
             <div className="flex flex-row flex-wrap items-center justify-end gap-3">
+              {canEditPatientProfile ? (
+                <button
+                  type="button"
+                  onClick={() => setPatientEditorOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+                >
+                  <SquarePen className="size-4" />
+                  Edit patient
+                </button>
+              ) : null}
               {canManageConsultations ? (
                 <button
                   type="button"
@@ -1527,10 +1576,14 @@ function PatientProfilePage() {
                                       <SquarePen className="size-4" />
                                       Edit
                                     </button>
-                                  ) : canManageConsultations && !isEditing ? (
+                                  ) : !isEditing ? (
                                     <span
-                                      className="inline-flex items-center gap-1 px-1 text-xs text-slate-500"
-                                      title="You can only edit notes you authored"
+                                      className="inline-flex items-center gap-1 px-1 text-xs font-medium text-slate-500"
+                                      title={
+                                        isOperatorViewOnlyConsultations
+                                          ? "Operators can view consultation notes but cannot modify them"
+                                          : "You can only edit notes you authored"
+                                      }
                                     >
                                       <LockKeyhole className="size-3 shrink-0 text-slate-400" aria-hidden />
                                       View only
@@ -2023,26 +2076,28 @@ function PatientProfilePage() {
                                   >
                                     Open
                                   </button>
-                                  {canEditRow ? (
-                                    !isEditing ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleConsultationEditStart(consultation)}
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                                      >
-                                        <SquarePen className="size-4" />
-                                        {user.role === "admin" ? "Edit consultation" : "Edit note"}
-                                      </button>
-                                    ) : null
-                                  ) : (
+                                  {canEditRow && !isEditing ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConsultationEditStart(consultation)}
+                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                    >
+                                      <SquarePen className="size-4" />
+                                      {user.role === "admin" ? "Edit consultation" : "Edit note"}
+                                    </button>
+                                  ) : !isEditing ? (
                                     <span
                                       className="pointer-events-none inline-flex select-none items-center gap-1.5 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium normal-case tracking-normal text-slate-500"
-                                      title="You can only edit notes you authored"
+                                      title={
+                                        isOperatorViewOnlyConsultations
+                                          ? "Operators can view consultation notes but cannot modify them"
+                                          : "You can only edit notes you authored"
+                                      }
                                     >
                                       <LockKeyhole className="size-3.5 shrink-0 text-slate-400" aria-hidden />
                                       View only
                                     </span>
-                                  )}
+                                  ) : null}
                                   {canEditRow ? (
                                     <button
                                       type="button"
@@ -2349,6 +2404,18 @@ function PatientProfilePage() {
         </>
       )}
 
+      <PatientFormModal
+        canEditPatientIdentifier={user.role === "admin"}
+        canSelectAssignedDoctor={user.role === "admin"}
+        doctors={doctors}
+        isSaving={isSavingPatient}
+        mode="edit"
+        open={patientEditorOpen}
+        patient={data.patient}
+        onClose={() => setPatientEditorOpen(false)}
+        onSubmit={handleSavePatient}
+      />
+
       <LabReportModal
         open={Boolean(reportEditor)}
         report={reportEditor}
@@ -2393,13 +2460,15 @@ function PatientProfilePage() {
               >
                 Close
               </button>
-              <Link
-                to={`/consultations/${consultationNoteViewer.id}`}
-                onClick={() => setConsultationNoteViewer(null)}
-                className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
-              >
-                Open full consultation record
-              </Link>
+              {canManageConsultations ? (
+                <Link
+                  to={`/consultations/${consultationNoteViewer.id}`}
+                  onClick={() => setConsultationNoteViewer(null)}
+                  className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+                >
+                  Open full consultation record
+                </Link>
+              ) : null}
             </div>
           </div>
         </Modal>

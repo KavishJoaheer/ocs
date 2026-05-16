@@ -1013,15 +1013,6 @@ router.put("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (
-    req.auth.role === "operator" &&
-    !hasActiveOperatorEditAccess(patientId, Number(req.auth.id))
-  ) {
-    return res.status(403).json({
-      error: "An active admin approval is required before this operator can edit the patient.",
-    });
-  }
-
   const payload = normalizePatientPayload(req.body);
   const validationError = validatePatientPayload(payload);
 

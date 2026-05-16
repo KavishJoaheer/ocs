@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { getDefaultPathForRole } from "../lib/access.js";
+import toast from "react-hot-toast";
+import { getDefaultPathForRole, isFinancialBillingPath } from "../lib/access.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import LoadingState from "./LoadingState.jsx";
 
@@ -16,6 +17,10 @@ function ProtectedRoute({ roles }) {
   }
 
   if (roles?.length && !roles.includes(user.role)) {
+    if (user.role === "operator" && isFinancialBillingPath(location.pathname)) {
+      toast.error("Unauthorized: Financial access restricted to Admins and Billing staff.");
+    }
+
     return <Navigate to={getDefaultPathForRole(user.role)} replace />;
   }
 

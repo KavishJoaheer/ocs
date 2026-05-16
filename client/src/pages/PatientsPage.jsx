@@ -93,12 +93,8 @@ function PatientsPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [desktopTableMenu]);
 
-  function canEditPatient(patient) {
-    if (user.role === "admin" || user.role === "doctor") {
-      return true;
-    }
-
-    return user.role === "operator" && Boolean(patient.operator_edit_allowed);
+  function canEditPatient() {
+    return ["admin", "doctor", "operator"].includes(user.role);
   }
 
   async function loadDoctors() {
@@ -736,7 +732,7 @@ function PatientsPage() {
             className="fixed z-[50] min-w-[11rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
             style={{ top: desktopTableMenu.top, left: desktopTableMenu.left }}
           >
-            {canEditPatient(desktopTableMenu.patient) ? (
+            {canEditPatient() ? (
               <button
                 type="button"
                 role="menuitem"
@@ -803,7 +799,7 @@ function PatientsPage() {
               {displayText(patientCardMenu.patient_identifier)}
             </p>
             <div className="mt-4 grid gap-2">
-              {canEditPatient(patientCardMenu) ? (
+              {canEditPatient() ? (
                 <button
                   type="button"
                   onClick={() => {

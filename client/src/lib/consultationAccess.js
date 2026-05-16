@@ -3,6 +3,10 @@ export function canManageConsultationNotes(user) {
   return user?.role === "admin" || user?.role === "doctor";
 }
 
+export function isOperatorConsultationViewOnly(user) {
+  return user?.role === "operator";
+}
+
 export function canEditConsultationNote(user, consultation) {
   if (!user || !consultation) {
     return false;

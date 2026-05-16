@@ -59,6 +59,16 @@ export function getRoleLabel(role) {
   return ROLE_CONFIG[role]?.label || "User";
 }
 
+export const FINANCIAL_BILLING_ROLES = ["admin", "doctor", "accountant"];
+
+export function isFinancialBillingPath(pathname = "") {
+  return pathname === "/billing" || pathname.startsWith("/billing/");
+}
+
+export function canUseFinancialBilling(user) {
+  return FINANCIAL_BILLING_ROLES.includes(user?.role);
+}
+
 export function canAccessPath(role, path) {
   if (!role) {
     return false;
