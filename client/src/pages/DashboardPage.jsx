@@ -1016,102 +1016,61 @@ function countDoctorScheduledVisitsToday(dashboard) {
   return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled").length;
 }
 
-function DoctorExecutiveSummaryRow({ dashboard }) {
-  const visitsToday = countDoctorScheduledVisitsToday(dashboard);
-  const longTermCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
-  const visitWord = visitsToday === 1 ? "Visit" : "Visits";
-  const patientWord = longTermCount === 1 ? "Patient" : "Patients";
-
+function DoctorMetricCard({ to, label, value, subtext, accent = "teal", highlightBorder = false }) {
   return (
-    <div className="mb-6 grid w-full grid-cols-1 gap-6 md:grid-cols-2">
-      <Link
-        to="/doctor/scheduled-visits"
-        className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-teal-100"
-      >
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Scheduled Visits</span>
-        <div className="mt-2 text-3xl font-black text-gray-900">
-          {visitsToday}{" "}
-          <span className="text-xs font-medium text-gray-400">
-            {visitWord} Remaining Today
-          </span>
-        </div>
-      </Link>
-
-      <Link
-        to="/patients?tab=under_review"
-        className="rounded-2xl border border-gray-100 border-l-4 border-l-amber-500 bg-white p-6 shadow-sm transition-all hover:border-amber-200"
-      >
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Long Term Review</span>
-        <div className="mt-2 text-3xl font-black text-gray-900">
-          {longTermCount}{" "}
-          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
-            {patientWord} Under Active Monitoring
-          </span>
-        </div>
-      </Link>
-    </div>
+    <Link
+      to={to}
+      className={cx(
+        "group relative cursor-pointer rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-teal-100",
+        highlightBorder && "border-l-4 border-l-amber-500 hover:border-amber-200",
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{label}</span>
+        <MetricNavAnchor accent={accent} />
+      </div>
+      <div className="mt-2 text-3xl font-black text-gray-900">
+        {value}{" "}
+        <span className="text-xs font-medium text-gray-400">{subtext}</span>
+      </div>
+    </Link>
   );
 }
 
-const DOCTOR_ASSIGNED_PATIENTS_PREVIEW_LIMIT = 10;
-
-function DoctorAssignedPatientsPanel({ dashboard }) {
-  const patients = dashboard?.doctorWorkspace?.assignedPatients || [];
-  const previewPatients = patients.slice(0, DOCTOR_ASSIGNED_PATIENTS_PREVIEW_LIMIT);
+function DoctorMetricsRow({ dashboard }) {
+  const visitsToday = countDoctorScheduledVisitsToday(dashboard);
+  const longTermCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
+  const assignedCount = Number(
+    dashboard?.doctorWorkspace?.summary?.activeAssignedPatientsCount ??
+      dashboard?.doctorWorkspace?.assignedPatients?.filter((patient) => patient.status === "active")
+        .length ??
+      0,
+  );
 
   return (
-    <div className="flex h-full min-h-[360px] flex-col rounded-2xl border border-gray-100 bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 md:px-6">
-        <h3 className="text-lg font-semibold tracking-tight text-slate-950">My Assigned Patients</h3>
-        <Link
-          to="/patients"
-          className="shrink-0 text-xs font-semibold text-teal-700 transition hover:text-teal-800"
-        >
-          View Full Directory ➔
-        </Link>
-      </div>
-
-      {previewPatients.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-5 py-10 md:px-6">
-          <p className="text-sm text-slate-500">No patients are assigned to you yet.</p>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-hidden">
-          <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] gap-3 border-b border-gray-100 bg-gray-50/80 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 md:grid md:px-6">
-            <span>Patient name &amp; OCS ID</span>
-            <span>Location (district)</span>
-            <span className="text-right">Status</span>
-          </div>
-          <ul className="divide-y divide-gray-100">
-            {previewPatients.map((patient) => (
-              <li key={patient.id}>
-                <Link
-                  to={`/patients/${patient.id}`}
-                  className="grid grid-cols-1 gap-2 px-5 py-3 transition hover:bg-teal-50/40 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] md:items-center md:gap-3 md:px-6 md:py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">{patient.full_name}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      {patient.patient_identifier || "No OCS ID"}
-                    </p>
-                  </div>
-                  <p className="truncate text-sm text-slate-600 md:text-xs">
-                    {patient.location || "—"}
-                  </p>
-                  <div className="md:text-right">
-                    <StatusBadge value={patient.status} />
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          {patients.length > previewPatients.length ? (
-            <p className="border-t border-gray-100 px-5 py-2.5 text-xs text-slate-500 md:px-6">
-              Showing {previewPatients.length} of {patients.length} assigned patients.
-            </p>
-          ) : null}
-        </div>
-      )}
+    <div className="mb-8 grid w-full grid-cols-1 gap-6 md:grid-cols-3">
+      <DoctorMetricCard
+        to="/appointments"
+        label="Scheduled Visits"
+        value={visitsToday}
+        subtext="Visits remaining today"
+        accent="teal"
+      />
+      <DoctorMetricCard
+        to="/patients?filter=my_assigned"
+        label="Assigned Patients"
+        value={assignedCount}
+        subtext="Total active care roster"
+        accent="teal"
+      />
+      <DoctorMetricCard
+        to="/patients?tab=under_review"
+        label="Long Term Review"
+        value={longTermCount}
+        subtext="Patients under active monitoring"
+        accent="amber"
+        highlightBorder
+      />
     </div>
   );
 }
@@ -1239,53 +1198,39 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
           </div>
         ) : null}
 
-        <DoctorExecutiveSummaryRow dashboard={dashboard} />
+        <DoctorMetricsRow dashboard={dashboard} />
 
-        <div className="mt-4 grid w-full grid-cols-1 gap-6 lg:mt-2 lg:grid-cols-3 lg:items-stretch">
-          <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
-            <DoctorAssignedPatientsPanel dashboard={dashboard} />
+        <div className="mt-6 w-full rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm md:rounded-[34px] md:p-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Shifts</p>
+          <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">My shifts</p>
 
+          <div className="mt-4 grid w-full grid-cols-1 gap-4 md:grid-cols-2">
             <DoctorDashboardTile
-              dark
               flat
-              eyebrow="Health care manager"
-              icon={BellRing}
+              icon={CalendarClock}
               size="hero"
-              subtitle={
-                hcmLatestTitle
-                  ? truncate(hcmLatestTitle, 120)
-                  : "No HCM announcements yet. Open news for updates."
-              }
-              title="Updates from HCM"
-              to="/hcm-news"
+              title="Current week roster"
+              onClick={onOpenRosterPdf}
+            />
+            <DoctorDashboardTile
+              flat
+              icon={ClipboardList}
+              size="hero"
+              title={`${monthLabel} roster`}
+              onClick={onOpenRosterPdf}
             />
           </div>
+        </div>
 
-          <aside className="flex min-w-0 flex-col lg:col-span-1">
-            <div className="flex h-full flex-col rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm md:rounded-[34px] md:p-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Shifts</p>
-              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">My shifts</p>
-
-              <div className="mt-4 flex flex-1 flex-col justify-center space-y-4">
-                <DoctorDashboardTile
-                  flat
-                  eyebrow="Weekly schedule"
-                  icon={CalendarClock}
-                  size="hero"
-                  title="Current week roster"
-                  onClick={onOpenRosterPdf}
-                />
-                <DoctorDashboardTile
-                  flat
-                  eyebrow="Monthly view"
-                  icon={ClipboardList}
-                  size="compact"
-                  title={`${monthLabel} roster`}
-                  onClick={onOpenRosterPdf}
-                />
-              </div>
-            </div>
-          </aside>
+        <div className="mt-6">
+          <DoctorDashboardTile
+            dark
+            flat
+            icon={BellRing}
+            size="hero"
+            title="Updates from HCM"
+            to="/hcm-news"
+          />
         </div>
       </div>
     </section>

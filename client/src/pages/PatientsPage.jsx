@@ -144,6 +144,7 @@ function PatientsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const subscriberFilterActive = searchParams.get("filter") === "subscribed";
+  const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = user.role === "admin";
@@ -222,6 +223,13 @@ function PatientsPage() {
         url += "&subscribed=1";
       }
 
+      if (myAssignedFilterActive && user.role === "doctor" && user.doctor_id) {
+        url += `&doctorId=${user.doctor_id}`;
+        if (statusFilter === "all") {
+          url += "&status=active";
+        }
+      }
+
       const data = await api.get(url);
       setPatientsData(data);
     } catch (error) {
@@ -263,8 +271,14 @@ function PatientsPage() {
       setViewMode("active");
     }
 
+    if (searchParams.get("filter") === "my_assigned" && user.role === "doctor" && user.doctor_id) {
+      setDoctorIdFilter(String(user.doctor_id));
+      setStatusFilter("active");
+      setViewMode("active");
+    }
+
     setPage(1);
-  }, [searchParams]);
+  }, [searchParams, user.doctor_id, user.role]);
 
   useEffect(() => {
     loadDoctors();
@@ -279,7 +293,18 @@ function PatientsPage() {
     }
 
     loadPatients();
-  }, [canDeletePatients, deferredSearch, page, statusFilter, doctorIdFilter, viewMode, subscriberFilterActive]);
+  }, [
+    canDeletePatients,
+    deferredSearch,
+    page,
+    statusFilter,
+    doctorIdFilter,
+    viewMode,
+    subscriberFilterActive,
+    myAssignedFilterActive,
+    user.doctor_id,
+    user.role,
+  ]);
 
   const patients = patientsData?.items || [];
   const pagination = patientsData?.pagination;
@@ -339,6 +364,15 @@ function PatientsPage() {
     setPage(1);
   }
 
+  function clearMyAssignedFilter() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("filter");
+    setSearchParams(nextParams, { replace: true });
+    setDoctorIdFilter("");
+    setStatusFilter("all");
+    setPage(1);
+  }
+
   async function handleRestorePatient(patientId) {
     setRestoringPatientId(patientId);
 
@@ -388,6 +422,20 @@ function PatientsPage() {
         onClick={clearSubscriberFilter}
         className="inline-flex size-6 items-center justify-center rounded-full text-teal-700 transition hover:bg-teal-100"
         aria-label="Clear subscriber filter"
+      >
+        <X className="size-3.5" />
+      </button>
+    </span>
+  ) : null;
+
+  const myAssignedFilterBadge = myAssignedFilterActive ? (
+    <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-800">
+      <span>Active filter: My assigned patients</span>
+      <button
+        type="button"
+        onClick={clearMyAssignedFilter}
+        className="inline-flex size-6 items-center justify-center rounded-full text-sky-700 transition hover:bg-sky-100"
+        aria-label="Clear my assigned filter"
       >
         <X className="size-3.5" />
       </button>
@@ -525,6 +573,7 @@ function PatientsPage() {
                   {statusFilters}
                 </div>
                 {subscriberFilterBadge}
+                {myAssignedFilterBadge}
 
                 {user.role === "operator" ? (
                   <div className="rounded-[24px] border border-amber-100 bg-amber-50/75 px-4 py-3 text-sm text-amber-800">
@@ -537,6 +586,7 @@ function PatientsPage() {
               <div className="mb-3 space-y-3">
                 {statusFilters}
                 {subscriberFilterBadge}
+                {myAssignedFilterBadge}
                 {user.role === "operator" ? (
                   <div className="rounded-[20px] border border-amber-100 bg-amber-50/75 px-3 py-2.5 text-sm text-amber-800">
                     Operators can add new patients anytime. Existing patient records stay
