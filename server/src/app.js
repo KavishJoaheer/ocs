@@ -5,6 +5,7 @@ const cors = require("cors");
 const { initializeDatabase } = require("./db");
 const authRouter = require("./routes/auth");
 const dashboardRouter = require("./routes/dashboard");
+const operatorRouter = require("./routes/operator");
 const hcmNewsRouter = require("./routes/hcmNews");
 const patientsRouter = require("./routes/patients");
 const doctorsRouter = require("./routes/doctors");
@@ -65,6 +66,7 @@ function createApp() {
     authorizeRoles("admin", "doctor", "operator", "lab_tech", "accountant"),
     dashboardRouter,
   );
+  app.use("/api/v1/operator", requireAuth, authorizeRoles("operator"), operatorRouter);
   app.use(
     "/api/hcm-news",
     requireAuth,

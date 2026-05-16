@@ -30,6 +30,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
 import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -869,9 +870,9 @@ function DoctorScheduledVisitsWidget({ today, visits, listPath }) {
   );
 }
 
-function OperatorScheduledVisitsMetricCard({ summary, listPath }) {
-  const pending = Number(summary?.pendingDispatchCount ?? 0);
-  const today = Number(summary?.scheduledTodayCount ?? 0);
+function OperatorScheduledVisitsMetricCard({ metrics, listPath }) {
+  const pending = Number(metrics?.scheduled_visits?.pending_dispatch ?? 0);
+  const today = Number(metrics?.scheduled_visits?.total_scheduled ?? 0);
   const workloadLine = `${pending} pending dispatch · ${today} scheduled today`;
 
   return (
@@ -1089,11 +1090,10 @@ function DoctorPersonalOperationUpdates({ dashboard }) {
   );
 }
 
-function OperatorPersonalOperationUpdates({ workspace }) {
-  const summary = workspace?.summary || {};
-  const pendingBills = Number(summary.pendingPaymentsCount ?? 0);
-  const longTerm = Number(summary.longTermReviewCount ?? 0);
-  const activeSubs = Number(summary.activeSubscriptionPatientsCount ?? 0);
+function OperatorPersonalOperationUpdates({ metrics }) {
+  const pendingBills = Number(metrics?.pending_payment?.unpaid_bills_count ?? 0);
+  const longTerm = Number(metrics?.long_term_review?.active_followup_count ?? 0);
+  const activeSubs = Number(metrics?.health_plans?.active_subscribers_count ?? 0);
 
   return (
     <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
@@ -1110,7 +1110,7 @@ function OperatorPersonalOperationUpdates({ workspace }) {
         <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <OperatorScheduledVisitsMetricCard summary={summary} listPath="/operator/scheduled-visits" />
+          <OperatorScheduledVisitsMetricCard metrics={metrics} listPath="/operator/scheduled-visits" />
           <PersonalOperationOverviewCard
             accent
             icon={CreditCard}
@@ -1231,7 +1231,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
   );
 }
 
-function OperatorDashboardView({ user, dashboard, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
+function OperatorDashboardView({ user, dashboard, operatorMetrics, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -1293,7 +1293,7 @@ function OperatorDashboardView({ user, dashboard, onStatusChange, isSavingStatus
               />
             </div>
 
-            <OperatorPersonalOperationUpdates workspace={dashboard?.operatorWorkspace} />
+            <OperatorPersonalOperationUpdates metrics={operatorMetrics} />
           </div>
         </div>
       </div>
@@ -1542,6 +1542,8 @@ function AdminDashboardView({
 function DashboardPage() {
   const { user, updateUser } = useAuth();
   const isMobile = useIsMobile();
+  const isOperator = user.role === "operator";
+  const { metrics: operatorMetrics } = useOperatorDashboardMetrics(isOperator);
   const [dashboard, setDashboard] = useState(null);
   const [doctorHcmHeadline, setDoctorHcmHeadline] = useState(null);
   const [rosterMeta, setRosterMeta] = useState(null);
@@ -1700,6 +1702,7 @@ function DashboardPage() {
     return (
       <OperatorDashboardView
         dashboard={dashboard}
+        operatorMetrics={operatorMetrics}
         isSavingStatus={isSavingStatus}
         onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
