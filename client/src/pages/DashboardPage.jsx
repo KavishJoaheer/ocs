@@ -1122,7 +1122,7 @@ function OperatorPersonalOperationUpdates({ metrics }) {
             icon={Stethoscope}
             metricLine={`${longTerm} patient${longTerm === 1 ? "" : "s"} in active follow-up`}
             title="Long term review"
-            to="/operator/long-term-review"
+            to="/patients?tab=under_review"
           />
           <OperatorHealthPlansMetricCard activeCount={activeSubs} listPath="/patients" />
         </div>

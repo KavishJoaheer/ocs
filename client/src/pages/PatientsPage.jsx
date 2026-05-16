@@ -109,7 +109,9 @@ function PatientsPage() {
   const canOpenBilling = user.role === "admin" || user.role === "doctor";
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const deferredSearch = useDeferredValue(search);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(() =>
+    searchParams.get("tab") === "under_review" ? "under_review" : "all",
+  );
   const [doctorIdFilter, setDoctorIdFilter] = useState("");
   const [viewMode, setViewMode] = useState("active");
   const [page, setPage] = useState(1);
@@ -196,6 +198,12 @@ function PatientsPage() {
   useEffect(() => {
     const next = searchParams.get("search") || "";
     setSearch((prev) => (prev === next ? prev : next));
+
+    if (searchParams.get("tab") === "under_review") {
+      setStatusFilter("under_review");
+      setViewMode("active");
+    }
+
     setPage(1);
   }, [searchParams]);
 
