@@ -52,7 +52,11 @@ import {
   formatPaymentMethod,
 } from "../lib/format.js";
 import { isPatientSubscribed } from "../lib/patientSubscription.js";
-import { isPatientUnderReview } from "../lib/patientReview.js";
+import {
+  defaultReviewDueDateInputValue,
+  formatScheduledReviewDate,
+  isPatientUnderReview,
+} from "../lib/patientReview.js";
 import { cx } from "../lib/utils.js";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
@@ -69,9 +73,10 @@ function HealthPlanBadge({ className }) {
   );
 }
 
-function LongTermReviewAlertBanner({ note }) {
+function LongTermReviewAlertBanner({ note, dueDate }) {
   const trimmed = String(note || "").trim();
-  if (!trimmed) {
+  const scheduledLabel = formatScheduledReviewDate(dueDate);
+  if (!trimmed && !scheduledLabel) {
     return null;
   }
 
@@ -83,16 +88,36 @@ function LongTermReviewAlertBanner({ note }) {
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
         Long term review — operator desk flag
       </p>
-      <p className="mt-1 text-sm font-medium leading-relaxed text-amber-950">{trimmed}</p>
+      {scheduledLabel ? (
+        <p className="mt-1 text-xs font-semibold text-amber-800">Target date: {scheduledLabel}</p>
+      ) : null}
+      {trimmed ? (
+        <p className="mt-1 text-sm font-medium leading-relaxed text-amber-950">{trimmed}</p>
+      ) : null}
     </div>
   );
 }
 
+function ScheduledReviewIndicator({ dueDate }) {
+  const label = formatScheduledReviewDate(dueDate);
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <span className="mt-1.5 inline-block rounded border border-amber-100 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+      Scheduled Review: {label}
+    </span>
+  );
+}
+
 function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
+  const [dueDate, setDueDate] = useState(defaultReviewDueDateInputValue);
   const [note, setNote] = useState("");
 
   useEffect(() => {
     if (open) {
+      setDueDate(defaultReviewDueDateInputValue());
       setNote("");
     }
   }, [open]);
@@ -102,7 +127,7 @@ function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
       open={open}
       onClose={onClose}
       title="Flag for long term review"
-      description="Enter reason for continuous follow-up tracking..."
+      description="Set the target review date and reason for continuous follow-up tracking."
       size="md"
     >
       <form
@@ -110,15 +135,29 @@ function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
         onSubmit={(event) => {
           event.preventDefault();
           const trimmed = note.trim();
+          if (!dueDate) {
+            toast.error("Select a target review date.");
+            return;
+          }
           if (!trimmed) {
             toast.error("Enter a reason for continuous follow-up tracking.");
             return;
           }
-          onSubmit(trimmed);
+          onSubmit({ review_due_date: dueDate, review_reason_note: trimmed });
         }}
       >
         <label className="block space-y-2">
-          <span className="sr-only">Review reason</span>
+          <span className="text-sm font-semibold text-slate-700">Target review date</span>
+          <input
+            required
+            type="date"
+            value={dueDate}
+            onChange={(event) => setDueDate(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-amber-400 focus:bg-white"
+          />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Reason note</span>
           <textarea
             required
             rows={4}
@@ -159,7 +198,7 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
         type="button"
         disabled={disabled || isSaving}
         onClick={onUnflag}
-        className="inline-flex items-center gap-2 rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         👤 Under Active Review
       </button>
@@ -171,7 +210,7 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
       type="button"
       disabled={disabled || isSaving}
       onClick={onRequestFlag}
-      className="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
     >
       🔍 Flag for Long Term Review
     </button>
@@ -1028,7 +1067,7 @@ function PatientProfilePage() {
     }
   }
 
-  async function saveLongTermReviewFlag(isUnderReview, reviewReasonNote = "") {
+  async function saveLongTermReviewFlag(isUnderReview, { reviewReasonNote = "", reviewDueDate = "" } = {}) {
     if (!data?.patient?.id) {
       return;
     }
@@ -1039,6 +1078,7 @@ function PatientProfilePage() {
       const updatedPatient = await api.patch(`/patients/${data.patient.id}/long-term-review`, {
         is_under_review: isUnderReview,
         review_reason_note: reviewReasonNote,
+        review_due_date: isUnderReview ? reviewDueDate : "",
       });
       setData((current) =>
         current
@@ -1066,8 +1106,11 @@ function PatientProfilePage() {
     await saveLongTermReviewFlag(false);
   }
 
-  async function handleConfirmLongTermReviewFlag(reviewReasonNote) {
-    await saveLongTermReviewFlag(true, reviewReasonNote);
+  async function handleConfirmLongTermReviewFlag(payload) {
+    await saveLongTermReviewFlag(true, {
+      reviewReasonNote: payload.review_reason_note,
+      reviewDueDate: payload.review_due_date,
+    });
   }
 
   function canEditConsultation(consultation) {
@@ -1477,6 +1520,9 @@ function PatientProfilePage() {
                       <span className="min-w-0 text-xs text-slate-600">{assignedDoctor}</span>
                     ) : null}
                   </div>
+                  {isPatientUnderReview(data.patient) ? (
+                    <ScheduledReviewIndicator dueDate={data.patient.review_due_date} />
+                  ) : null}
                   {data.patient.status === "active" &&
                   hasMeaningfulPatientField(data.patient.ongoing_treatment) ? (
                     <p className="text-xs leading-snug text-slate-600">
@@ -1553,7 +1599,10 @@ function PatientProfilePage() {
 
               {mobileClinicalBlocks.length || isPatientUnderReview(data.patient) ? (
                 <SectionCard title="Clinical history">
-                  <LongTermReviewAlertBanner note={data.patient.review_reason_note} />
+                  <LongTermReviewAlertBanner
+                    note={data.patient.review_reason_note}
+                    dueDate={data.patient.review_due_date}
+                  />
                   <div className="space-y-2">
                     {mobileClinicalBlocks.map((block) => {
                       const Icon = block.icon;
@@ -2055,6 +2104,9 @@ function PatientProfilePage() {
                 <StatusBadge value={data.patient.status} />
                 <span className="min-w-0 text-xs leading-snug text-slate-600">{statusDetail}</span>
               </div>
+              {isPatientUnderReview(data.patient) ? (
+                <ScheduledReviewIndicator dueDate={data.patient.review_due_date} />
+              ) : null}
               <div className="mt-2 border-t border-slate-100 pt-2">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Locations and affiliations
@@ -2079,7 +2131,10 @@ function PatientProfilePage() {
             </SectionCard>
 
             <SectionCard className="xl:col-span-7" title="Clinical history">
-              <LongTermReviewAlertBanner note={data.patient.review_reason_note} />
+              <LongTermReviewAlertBanner
+                note={data.patient.review_reason_note}
+                dueDate={data.patient.review_due_date}
+              />
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
                 <ClinicalGridItem label="Past surgical history" value={data.patient.past_surgical_history} />

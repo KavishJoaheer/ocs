@@ -726,6 +726,10 @@ function ensurePatientColumns() {
       name: "review_reason_note",
       sql: "ALTER TABLE patients ADD COLUMN review_reason_note TEXT",
     },
+    {
+      name: "review_due_date",
+      sql: "ALTER TABLE patients ADD COLUMN review_due_date TEXT",
+    },
   ];
 
   requiredColumns.forEach((column) => {

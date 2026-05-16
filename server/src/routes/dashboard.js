@@ -818,6 +818,7 @@ function getOperatorWorkspacePayload() {
         p.ongoing_treatment,
         p.particularity,
         p.review_reason_note,
+        p.review_due_date,
         p.created_at,
         d.full_name AS assigned_doctor_name,
         d.specialization AS assigned_doctor_specialization,
@@ -838,10 +839,17 @@ function getOperatorWorkspacePayload() {
         p.ongoing_treatment,
         p.particularity,
         p.review_reason_note,
+        p.review_due_date,
         p.created_at,
         d.full_name,
         d.specialization
-      ORDER BY last_consultation_date DESC, p.full_name ASC
+      ORDER BY
+        CASE
+          WHEN p.review_due_date IS NULL OR trim(p.review_due_date) = '' THEN 1
+          ELSE 0
+        END ASC,
+        p.review_due_date ASC,
+        p.full_name ASC
     `)
     .all();
 

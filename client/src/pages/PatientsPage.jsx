@@ -27,6 +27,7 @@ import {
 } from "../lib/format.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import { isPatientSubscribed } from "../lib/patientSubscription.js";
+import { formatReviewDueShort, isPatientUnderReview } from "../lib/patientReview.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
@@ -157,7 +158,9 @@ function PatientsPage() {
     try {
       let url = `/patients?search=${encodeURIComponent(deferredSearch)}&page=${page}&limit=15`;
 
-      if (statusFilter !== "all") {
+      if (statusFilter === "under_review") {
+        url += "&underReview=1";
+      } else if (statusFilter !== "all") {
         url += `&status=${statusFilter}`;
       }
 
@@ -306,26 +309,33 @@ function PatientsPage() {
   const statusFilters = (
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
-        {["all", "active", "discharged"].map((status) => (
+        {[
+          { id: "all", label: "All" },
+          { id: "active", label: "Active" },
+          { id: "discharged", label: "Discharged" },
+          { id: "under_review", label: "Under Review" },
+        ].map((status) => (
           <button
-            key={status}
+            key={status.id}
             type="button"
             onClick={() => {
-              setStatusFilter(status);
+              setStatusFilter(status.id);
               setPage(1);
             }}
             className={cx(
-              "rounded-xl px-4 py-2 text-sm font-semibold capitalize transition",
-              statusFilter === status
-                ? status === "active"
+              "rounded-xl px-4 py-2 text-sm font-semibold transition",
+              statusFilter === status.id
+                ? status.id === "active"
                   ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                  : status === "discharged"
+                  : status.id === "discharged"
                     ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
-                    : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+                    : status.id === "under_review"
+                      ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
+                      : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
                 : "text-slate-600 hover:bg-slate-50",
             )}
           >
-            {status}
+            {status.label}
           </button>
         ))}
       </div>
@@ -476,6 +486,11 @@ function PatientsPage() {
                               {displayText(patient.assigned_doctor_name, "Not assigned")}
                             </span>
                           </div>
+                          {isPatientUnderReview(patient) && formatReviewDueShort(patient.review_due_date) ? (
+                            <p className="mt-1.5 text-xs font-medium text-amber-700">
+                              ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
+                            </p>
+                          ) : null}
 
                           {user.role === "operator" && patient.operator_edit_allowed ? (
                             <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
@@ -644,6 +659,12 @@ function PatientsPage() {
                                             "Allergy history not recorded",
                                           )}
                                     </p>
+                                    {isPatientUnderReview(patient) &&
+                                    formatReviewDueShort(patient.review_due_date) ? (
+                                      <p className="text-xs font-medium text-amber-700">
+                                        ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
+                                      </p>
+                                    ) : null}
                                     {user.role === "operator" && patient.operator_edit_allowed ? (
                                       <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
                                         Edit enabled

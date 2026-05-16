@@ -125,6 +125,7 @@ function formatPatientRecord(patient) {
     is_subscribed: parseBooleanField(patient.is_subscribed),
     is_under_review: parseBooleanField(patient.is_under_review),
     review_reason_note: reviewNote || null,
+    review_due_date: String(patient.review_due_date ?? "").trim() || null,
   };
 }
 
@@ -370,7 +371,17 @@ function getPatientSnapshot(patient) {
     is_subscribed: parseBooleanField(patient.is_subscribed),
     is_under_review: parseBooleanField(patient.is_under_review),
     review_reason_note: String(patient.review_reason_note ?? "").trim(),
+    review_due_date: String(patient.review_due_date ?? "").trim(),
   };
+}
+
+function normalizeReviewDueDate(value) {
+  const normalized = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return "";
+  }
+  const parsed = new Date(`${normalized}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? "" : normalized;
 }
 
 function getChangedFields(previousSnapshot, updatedSnapshot) {
@@ -688,13 +699,26 @@ router.get("/", (req, res) => {
   const search = String(req.query.search ?? "").trim();
   const searchTerm = `%${search}%`;
   const status = String(req.query.status ?? "").trim();
+  const underReview =
+    String(req.query.underReview ?? "").trim() === "1" ||
+    String(req.query.underReview ?? "").trim().toLowerCase() === "true";
   const requestedDoctorId = Number(req.query.doctorId);
   const doctorId =
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0 ? requestedDoctorId : null;
   const { page, limit, offset } = toPagination(req.query.page, req.query.limit, 8);
   const operatorUserId = req.auth?.role === "operator" ? Number(req.auth.id) : null;
 
-  const filters = { search, searchTerm, status, doctorId, operatorUserId };
+  const filters = { search, searchTerm, status, doctorId, operatorUserId, underReview: underReview ? 1 : 0 };
+  const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
+  const listOrderSql = underReview
+    ? `ORDER BY
+        CASE
+          WHEN p.review_due_date IS NULL OR trim(p.review_due_date) = '' THEN 1
+          ELSE 0
+        END ASC,
+        p.review_due_date ASC,
+        p.full_name ASC`
+    : "ORDER BY p.created_at DESC, p.full_name ASC";
 
   const total = db
     .prepare(`
@@ -722,6 +746,7 @@ router.get("/", (req, res) => {
         )
         AND (@status = '' OR p.status = @status)
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
+        ${reviewFilterSql}
     `)
     .get(filters).count;
 
@@ -767,8 +792,9 @@ router.get("/", (req, res) => {
         )
         AND (@status = '' OR p.status = @status)
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
+        ${reviewFilterSql}
       GROUP BY p.id, d.full_name, d.specialization
-      ORDER BY p.created_at DESC, p.full_name ASC
+      ${listOrderSql}
       LIMIT @limit OFFSET @offset
     `)
     .all({ ...filters, limit, offset });
@@ -927,18 +953,29 @@ router.patch("/:id/long-term-review", (req, res) => {
 
   const isUnderReview = parseBooleanField(req.body.is_under_review);
   const reviewReasonNote = isUnderReview ? String(req.body.review_reason_note ?? "").trim() : "";
+  const reviewDueDate = isUnderReview ? normalizeReviewDueDate(req.body.review_due_date) : "";
 
   if (isUnderReview && !reviewReasonNote) {
     return res.status(400).json({ error: "Enter a reason for continuous follow-up tracking." });
+  }
+
+  if (isUnderReview && !reviewDueDate) {
+    return res.status(400).json({ error: "Target review date is required." });
   }
 
   db.prepare(`
     UPDATE patients
     SET
       is_under_review = ?,
-      review_reason_note = ?
+      review_reason_note = ?,
+      review_due_date = ?
     WHERE id = ?
-  `).run(isUnderReview ? 1 : 0, reviewReasonNote || null, patientId);
+  `).run(
+    isUnderReview ? 1 : 0,
+    reviewReasonNote || null,
+    reviewDueDate || null,
+    patientId,
+  );
 
   res.json(
     formatPatientRecord({

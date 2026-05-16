@@ -202,6 +202,11 @@ function LongTermReviewList({ patients }) {
               <p className="mt-2 text-sm text-slate-500">
                 Assigned doctor: {patient.assigned_doctor_name || "Not assigned"}
               </p>
+              {patient.review_due_date ? (
+                <p className="mt-2 text-xs font-semibold text-amber-700">
+                  ⏱️ Due: {formatDate(patient.review_due_date)}
+                </p>
+              ) : null}
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {truncate(patient.review_reason_note || patient.ongoing_treatment || patient.particularity, 160) ||
                   "No long-term review note saved yet."}
