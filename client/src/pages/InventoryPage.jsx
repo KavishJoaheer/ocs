@@ -947,8 +947,47 @@ function buildLiveActivityExportRow(movement) {
   };
 }
 
-function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, periodLabel }) {
-  if (!rows.length) {
+function buildCompareReconciliationExportRows(compareRows = []) {
+  return compareRows.map((row) => ({
+    Doctor: row.doctor_name || "",
+    "Total Restocked (Rs)": Number(row.total_restocked || 0),
+    "Consumed: Sales (Rs)": Number(row.consumed_sales || 0),
+    "Consumed: Wasted (Rs)": Number(row.consumed_wasted || 0),
+    "Consumed: Expired (Rs)": Number(row.consumed_expired || 0),
+    "Remaining in Bag (Rs)": Number(row.remaining_in_bag || 0),
+  }));
+}
+
+function downloadCompareReconciliationExcel({ compareRows, periodLabel, startDate, endDate }) {
+  if (!compareRows?.length) {
+    toast.error("No reconciliation rows available for export.");
+    return;
+  }
+
+  const fromToken = sanitizeInventoryExportToken(startDate, "start");
+  const toToken = sanitizeInventoryExportToken(endDate, "end");
+  const fileName = `OCS_Bag_Reconciliation_${fromToken}_${toToken}.xlsx`;
+
+  const workbook = XLSX.utils.book_new();
+  const reconSheet = XLSX.utils.json_to_sheet(buildCompareReconciliationExportRows(compareRows));
+  XLSX.utils.book_append_sheet(workbook, reconSheet, excelSafeSheetTitle("Reconciliation"));
+
+  const metaSheet = XLSX.utils.json_to_sheet([
+    { Field: "Report", Value: "OCS Bag Reconciliation Matrix" },
+    { Field: "Period label", Value: periodLabel },
+    { Field: "Start date", Value: startDate },
+    { Field: "End date", Value: endDate },
+    { Field: "Doctor rows", Value: String(compareRows.length) },
+    { Field: "Generated at", Value: dayjs().format("YYYY-MM-DD HH:mm") },
+  ]);
+  XLSX.utils.book_append_sheet(workbook, metaSheet, "Filters");
+
+  XLSX.writeFile(workbook, fileName);
+  toast.success("Reconciliation matrix exported.");
+}
+
+function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, periodLabel, compareRows = [] }) {
+  if (!rows.length && !compareRows?.length) {
     toast.error("No activity rows match the current filters.");
     return;
   }
@@ -958,10 +997,18 @@ function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, perio
   const toToken = sanitizeInventoryExportToken(endDate, "end");
   const fileName = `OCS_Inventory_History_${staffToken}_${fromToken}_${toToken}.xlsx`;
 
-  const sheetRows = rows.map(buildLiveActivityExportRow);
   const workbook = XLSX.utils.book_new();
-  const historySheet = XLSX.utils.json_to_sheet(sheetRows);
-  XLSX.utils.book_append_sheet(workbook, historySheet, excelSafeSheetTitle("History"));
+
+  if (rows.length) {
+    const sheetRows = rows.map(buildLiveActivityExportRow);
+    const historySheet = XLSX.utils.json_to_sheet(sheetRows);
+    XLSX.utils.book_append_sheet(workbook, historySheet, excelSafeSheetTitle("History"));
+  }
+
+  if (compareRows?.length) {
+    const reconSheet = XLSX.utils.json_to_sheet(buildCompareReconciliationExportRows(compareRows));
+    XLSX.utils.book_append_sheet(workbook, reconSheet, excelSafeSheetTitle("Reconciliation"));
+  }
 
   const metaSheet = XLSX.utils.json_to_sheet([
     { Field: "Report", Value: "OCS Inventory History" },
@@ -969,13 +1016,26 @@ function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, perio
     { Field: "Period label", Value: periodLabel },
     { Field: "Start date", Value: startDate },
     { Field: "End date", Value: endDate },
-    { Field: "Exported rows", Value: String(rows.length) },
+    { Field: "History rows", Value: String(rows.length) },
+    { Field: "Reconciliation rows", Value: String(compareRows?.length || 0) },
     { Field: "Generated at", Value: dayjs().format("YYYY-MM-DD HH:mm") },
   ]);
   XLSX.utils.book_append_sheet(workbook, metaSheet, "Filters");
 
   XLSX.writeFile(workbook, fileName);
   toast.success("Inventory history exported.");
+}
+
+function CompareRemainingCell({ value }) {
+  const amount = Number(value || 0);
+  if (amount < 0) {
+    return (
+      <span className="rounded bg-red-50 px-2 py-0.5 font-bold text-red-600">
+        {formatRupees(amount)}
+      </span>
+    );
+  }
+  return <span className="text-slate-800">{formatRupees(amount)}</span>;
 }
 
 function MovementActivityLine({ movement }) {
@@ -1061,6 +1121,7 @@ function LiveActivitySection({
   onPeriodAnchorDateChange,
   dateFrom = "",
   dateTo = "",
+  compareRows = [],
 }) {
   const doctorStaff = useMemo(
     () => staffOptions.filter((member) => String(member.role || "").toLowerCase() === "doctor"),
@@ -1148,6 +1209,7 @@ function LiveActivitySection({
                     startDate: dateFrom,
                     endDate: dateTo,
                     periodLabel,
+                    compareRows,
                   })
                 }
                 className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1]"
@@ -1396,6 +1458,7 @@ function MobileDoctorBagLayout({
   currentPage,
   setCurrentPage,
   batchMap,
+  doctorRestockCandidates = [],
   onOpenRestockInventory,
 }) {
   return (
@@ -1688,6 +1751,7 @@ export default function InventoryPage() {
         onPeriodAnchorDateChange: setAdminPeriodAnchor,
         dateFrom: adminPeriodRange.from,
         dateTo: adminPeriodRange.to,
+        compareRows: data?.compare_rows || [],
       }
     : {};
 
@@ -2681,30 +2745,59 @@ export default function InventoryPage() {
             title="Admin Compare Tool"
             subtitle={formatInventoryPeriodLabel(adminPeriodPreset, adminPeriodRange.from, adminPeriodRange.to)}
             actions={
-              <InventoryPeriodFilter
-                preset={adminPeriodPreset}
-                anchorDate={adminPeriodAnchor}
-                onPresetChange={setAdminPeriodPreset}
-                onAnchorDateChange={setAdminPeriodAnchor}
-                className="shrink-0"
-              />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <InventoryPeriodFilter
+                  preset={adminPeriodPreset}
+                  anchorDate={adminPeriodAnchor}
+                  onPresetChange={setAdminPeriodPreset}
+                  onAnchorDateChange={setAdminPeriodAnchor}
+                  className="shrink-0"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadCompareReconciliationExcel({
+                      compareRows: data?.compare_rows || [],
+                      periodLabel: formatInventoryPeriodLabel(
+                        adminPeriodPreset,
+                        adminPeriodRange.from,
+                        adminPeriodRange.to,
+                      ),
+                      startDate: adminPeriodRange.from,
+                      endDate: adminPeriodRange.to,
+                    })
+                  }
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
+                >
+                  <Download className="size-4 shrink-0 text-[#1f7f7b]" />
+                  📥 Download Compare Excel
+                </button>
+              </div>
             }
           >
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
+              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.15em]">
                 <tr>
                   <th className="px-3 py-2 text-left">Doctor</th>
-                  <th className="px-3 py-2 text-left">Patient Volume</th>
-                  <th className="px-3 py-2 text-left">Stock Consumption (Rs)</th>
+                  <th className="px-3 py-2 text-right">Total Restocked (Rs)</th>
+                  <th className="px-3 py-2 text-right">Consumed: Sales (Rs)</th>
+                  <th className="px-3 py-2 text-right">Consumed: Wasted (Rs)</th>
+                  <th className="px-3 py-2 text-right">Consumed: Expired (Rs)</th>
+                  <th className="px-3 py-2 text-right">Remaining in Bag (Rs)</th>
                 </tr>
               </thead>
               <tbody>
                 {(data.compare_rows || []).map((row) => (
                   <tr key={row.doctor_id} className="border-t border-slate-200/70 text-xs">
-                    <td className="px-3 py-2">{row.doctor_name}</td>
-                    <td className="px-3 py-2">{row.patient_volume}</td>
-                    <td className="px-3 py-2">{formatRupees(row.stock_consumption)}</td>
+                    <td className="px-3 py-2 font-medium text-slate-900">{row.doctor_name}</td>
+                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.total_restocked)}</td>
+                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.consumed_sales)}</td>
+                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.consumed_wasted)}</td>
+                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.consumed_expired)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <CompareRemainingCell value={row.remaining_in_bag} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
