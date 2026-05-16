@@ -24,6 +24,7 @@ import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
@@ -63,6 +64,26 @@ function excelSafeSheetTitle(title) {
     .trim()
     .slice(0, 31);
   return cleaned || "Stock";
+}
+
+const DOCTOR_MOBILE_BAG_TABS = [
+  { id: "all", label: "All Stock Items" },
+  { id: "stock_out", label: "Stock Out" },
+  { id: "restock_request", label: "Restock Request" },
+];
+
+function formatDoctorMobileBatchLabel(item, batches) {
+  const first = Array.isArray(batches) ? batches[0] : null;
+  if (first?.batch_number && first.batch_number !== "N/A") {
+    return first.batch_number;
+  }
+  if (first?.id) {
+    return `BATCH-${String(first.id).padStart(3, "0")}`;
+  }
+  if (item?.id) {
+    return `BATCH-${String(item.id).padStart(3, "0")}`;
+  }
+  return "—";
 }
 
 function SummaryCard({ title, value, tone = "teal" }) {
@@ -1068,6 +1089,184 @@ function RestockReceiptModal({ open, receipt, onClose, onPrint }) {
   );
 }
 
+function MobileDoctorBagLayout({
+  search,
+  setSearch,
+  mobileBagTab,
+  setMobileBagTab,
+  mobileBagPagedItems,
+  mobileBagTotalPages,
+  currentPage,
+  setCurrentPage,
+  batchMap,
+  doctorRestockCandidates,
+  onOpenRestockInventory,
+  onRestockItem,
+  onStockOutItem,
+  findMyStockItemByName,
+}) {
+  return (
+    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3">
+      <header className="flex items-start justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">My Stock</h1>
+        <button
+          type="button"
+          onClick={onOpenRestockInventory}
+          disabled={!doctorRestockCandidates.length}
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Truck className="size-4" />
+          Restock
+        </button>
+      </header>
+
+      <label className="relative block w-full">
+        <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search by item name"
+          className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#4FB8B3] focus:bg-white"
+        />
+      </label>
+
+      <div className="flex justify-between space-x-2">
+        {DOCTOR_MOBILE_BAG_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setMobileBagTab(tab.id)}
+            className={cx(
+              "min-h-11 flex-1 rounded-2xl px-2 py-2.5 text-center text-[11px] font-bold leading-tight transition",
+              mobileBagTab === tab.id
+                ? "bg-[#4FB8B3] text-white shadow-sm"
+                : "border border-slate-200 bg-white text-slate-600",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <SectionCard className="flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]">
+        {mobileBagTab === "restock_request" ? (
+          doctorRestockCandidates.length ? (
+            <div className="flex flex-col space-y-4 pb-8">
+              {doctorRestockCandidates.map((candidate) => {
+                const myItem = findMyStockItemByName(candidate.item_name);
+                const unit = myItem?.unit || "units";
+                return (
+                  <div
+                    key={`${candidate.ocs_item_id}-${candidate.item_name}`}
+                    className="rounded-[20px] border border-amber-200/80 bg-amber-50/50 px-4 py-3.5"
+                  >
+                    <p className="text-base font-bold text-gray-900">{candidate.item_name}</p>
+                    <p className="mt-1 text-sm font-medium text-gray-500">
+                      Par {candidate.par_level} • Bag {candidate.current_quantity} {unit} • Need{" "}
+                      {candidate.required_quantity}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!myItem}
+                      onClick={() => myItem && onRestockItem(myItem)}
+                      className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Truck className="size-4" />
+                      Restock Request
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              title="No restock requests"
+              description="Your bag stock is above the restock threshold for all tracked items."
+            />
+          )
+        ) : mobileBagPagedItems.length ? (
+          <div className="flex flex-col space-y-4 pb-8">
+            {mobileBagPagedItems.map((item) => {
+              const batches = batchMap[item.id] || [];
+              const quantity = Number(item.quantity || 0);
+              const unit = item.unit || "units";
+              const batchLabel = formatDoctorMobileBatchLabel(item, batches);
+              const showStockOut = mobileBagTab === "stock_out" || mobileBagTab === "all";
+
+              return (
+                <div
+                  key={`mobile-bag-${item.id}`}
+                  className="rounded-[20px] border border-slate-200/80 bg-white px-4 py-3.5 shadow-sm"
+                >
+                  <p className="text-base font-bold text-gray-900">{item.item_name}</p>
+                  <p className="mt-1 text-sm font-medium text-gray-500">
+                    Batch: {batchLabel} • Qty: {quantity} {unit}
+                  </p>
+                  {showStockOut && quantity > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => onStockOutItem(item)}
+                      className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-orange-100 px-4 py-2.5 text-sm font-semibold text-orange-800 transition active:brightness-95"
+                    >
+                      <Minus className="size-4" />
+                      Stock Out
+                    </button>
+                  ) : null}
+                  {mobileBagTab === "all" && quantity <= Number(item.minimum_quantity || 0) ? (
+                    <button
+                      type="button"
+                      onClick={() => onRestockItem(item)}
+                      className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-4 py-2.5 text-sm font-bold text-[#1f7f7b]"
+                    >
+                      <Truck className="size-4" />
+                      Restock Request
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            {mobileBagTotalPages > 1 ? (
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <p className="text-sm text-slate-500">
+                  Page {currentPage} of {mobileBagTotalPages}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={currentPage >= mobileBagTotalPages}
+                    onClick={() => setCurrentPage((prev) => Math.min(mobileBagTotalPages, prev + 1))}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyState
+            title={mobileBagTab === "stock_out" ? "No stock to remove" : "No stock items found"}
+            description={
+              mobileBagTab === "stock_out"
+                ? "Items with available quantity will appear here for stock out."
+                : "Search or restock from OCS Master Stock to fill your medical bag."
+            }
+          />
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
 export default function InventoryPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1113,6 +1312,9 @@ export default function InventoryPage() {
   const contextIsOcs = !selectedContextDoctorId;
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
+  const isMobile = useIsMobile();
+  const [mobileBagTab, setMobileBagTab] = useState("all");
+  const showMobileDoctorBag = isDoctor && isMobile && doctorViewIsMy;
   const items = isDoctor
     ? doctorViewIsOcs
       ? data?.ocs_stock || []
@@ -1299,6 +1501,26 @@ export default function InventoryPage() {
     return sortedItems.slice(start, start + pageSize);
   }, [sortedItems, currentPage]);
 
+  const mobileBagFilteredItems = useMemo(() => {
+    if (!showMobileDoctorBag) return [];
+    const needle = search.trim().toLowerCase();
+    let rows = (data?.my_stock || []).filter(
+      (item) => !needle || String(item.item_name || "").toLowerCase().includes(needle),
+    );
+    if (mobileBagTab === "stock_out") {
+      rows = rows.filter((item) => Number(item.quantity || 0) > 0);
+    }
+    const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
+    return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
+  }, [showMobileDoctorBag, data?.my_stock, search, mobileBagTab]);
+
+  const mobileBagPagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return mobileBagFilteredItems.slice(start, start + pageSize);
+  }, [mobileBagFilteredItems, currentPage, pageSize]);
+
+  const mobileBagTotalPages = Math.max(1, Math.ceil(mobileBagFilteredItems.length / pageSize));
+
   const filteredContextOptions = useMemo(() => {
     const needle = contextSearch.trim().toLowerCase();
     const ocsOption = [{ id: "", label: "OCS Stock" }];
@@ -1310,7 +1532,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode]);
+  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode, mobileBagTab]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1666,6 +1888,18 @@ export default function InventoryPage() {
     }
   }
 
+  useEffect(() => {
+    if (!showMobileDoctorBag || mobileBagTab === "restock_request") {
+      return;
+    }
+    mobileBagPagedItems.forEach((item) => {
+      if (!batchMap[item.id]) {
+        loadBatches(item.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMobileDoctorBag, mobileBagTab, mobileBagPagedItems]);
+
   async function removeItem() {
     if (!itemToDelete) return;
     try {
@@ -1679,7 +1913,31 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className={cx(pageContainerClass, "space-y-6")}>
+    <>
+      {showMobileDoctorBag ? (
+        <MobileDoctorBagLayout
+          search={search}
+          setSearch={setSearch}
+          mobileBagTab={mobileBagTab}
+          setMobileBagTab={setMobileBagTab}
+          mobileBagPagedItems={mobileBagPagedItems}
+          mobileBagTotalPages={mobileBagTotalPages}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          batchMap={batchMap}
+          doctorRestockCandidates={doctorRestockCandidates}
+          onOpenRestockInventory={() => setDoctorRestockOpen(true)}
+          onRestockItem={openDoctorRestockForItem}
+          onStockOutItem={(item) => setStockOut({ item })}
+          findMyStockItemByName={(name) =>
+            (data?.my_stock || []).find(
+              (item) =>
+                String(item.item_name || "").toLowerCase() === String(name || "").toLowerCase(),
+            )
+          }
+        />
+      ) : (
+        <div className={cx(pageContainerClass, "space-y-6")}>
       <PageHeader
         eyebrow="Logistics"
         title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
@@ -2190,6 +2448,9 @@ export default function InventoryPage() {
         </div>
       )}
 
+        </div>
+      )}
+
       <ItemModal
         open={Boolean(editor)}
         item={editor?.item}
@@ -2227,6 +2488,6 @@ export default function InventoryPage() {
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
       <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
       <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
-    </div>
+    </>
   );
 }
