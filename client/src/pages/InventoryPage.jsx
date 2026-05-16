@@ -14,6 +14,7 @@ import {
   Truck,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -680,62 +681,101 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
-function LiveActivitySection({ movements, onReprint }) {
-  const rows = movements.slice(0, 40);
+function formatMovementTimeShort(value) {
+  if (!value) return "—";
+  const d = dayjs(value);
+  if (!d.isValid()) {
+    const s = String(value);
+    return s.length >= 16 ? s.slice(11, 16) : s;
+  }
+  const today = dayjs().format("YYYY-MM-DD");
+  if (d.format("YYYY-MM-DD") === today) return d.format("HH:mm");
+  return d.format("MMM D · HH:mm");
+}
+
+function formatMovementVerb(actionType, meta) {
+  if (actionType === "stock_out" && meta?.stock_out_reason) {
+    return `stocked out (${meta.stock_out_reason})`;
+  }
+  const map = {
+    restock_in: "restocked",
+    restock_out: "dispatched",
+    restock: "restocked",
+    add: "added",
+    remove: "removed",
+    sell: "sold",
+    stock_out: "stocked out",
+    adjustment: "adjusted",
+    override: "adjusted",
+  };
+  if (map[actionType]) return map[actionType];
+  return String(actionType || "updated").replace(/_/g, " ");
+}
+
+function movementActionAccentClass(actionType) {
+  if (
+    actionType === "stock_out" ||
+    actionType === "remove" ||
+    actionType === "sell" ||
+    actionType === "restock_out"
+  ) {
+    return "font-semibold text-amber-700";
+  }
+  return "font-semibold text-emerald-700";
+}
+
+function LiveActivitySection({ movements, onReprint, maxRows = 55, scrollClassName = "max-h-80" }) {
+  const rows = movements.slice(0, maxRows);
   return (
     <SectionCard title="Live Activity">
-      <div className="overflow-x-auto rounded-2xl border border-slate-200">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
-            <tr>
-              <th className="px-3 py-2 text-left">When</th>
-              <th className="min-w-0 px-3 py-2 text-left">Action</th>
-              <th className="min-w-0 px-3 py-2 text-left">Item</th>
-              <th className="px-3 py-2 text-left">Qty</th>
-              <th className="min-w-0 px-3 py-2 text-left">Performed By</th>
-              <th className="px-2 py-2 text-left">Receipt</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className={cx("overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-3 py-3", scrollClassName)}>
+        {rows.length ? (
+          <div className="flex flex-col space-y-2">
             {rows.map((movement) => {
               const transactionId = movement.meta?.transaction_id || "";
               const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
-              const actionDisplay =
-                movement.action_type === "stock_out" && movement.meta?.stock_out_reason
-                  ? `Stock out (${movement.meta.stock_out_reason})`
-                  : movement.action_type;
+              const actor = movement.meta?.performed_by_name || "System";
+              const qty = Number(movement.quantity ?? 0);
+              const itemName = movement.item_name || "item";
+              const verb = formatMovementVerb(movement.action_type, movement.meta);
+              const unitLabel = qty === 1 ? "unit" : "units";
+              const timeShort = formatMovementTimeShort(movement.created_at);
+              const actionClass = movementActionAccentClass(movement.action_type);
+
               return (
-                <tr key={`mv-${movement.id}`} className="border-t border-slate-200/70 text-xs">
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-700">{movement.created_at}</td>
-                  <td className="max-w-[6.5rem] truncate px-3 py-2 font-medium text-slate-800" title={movement.action_type}>
-                    {actionDisplay}
-                  </td>
-                  <td className="max-w-[7rem] truncate px-3 py-2 text-slate-700" title={movement.item_name}>
-                    {movement.item_name}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">{movement.quantity}</td>
-                  <td className="max-w-[6rem] truncate px-3 py-2 text-slate-600" title={movement.meta?.performed_by_name || ""}>
-                    {movement.meta?.performed_by_name || "-"}
-                  </td>
-                  <td className="px-2 py-2">
-                    {canPrint && transactionId ? (
-                      <button
-                        type="button"
-                        onClick={() => onReprint(transactionId)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-1.5 py-1 text-slate-600 hover:bg-slate-50"
-                        title="Print receipt"
-                      >
-                        <Printer className="size-3.5 shrink-0" />
-                      </button>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                </tr>
+                <div
+                  key={`mv-${movement.id}`}
+                  className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-slate-100 pb-2 text-sm last:border-b-0 last:pb-0"
+                >
+                  <span className="shrink-0 text-xs text-gray-400">{timeShort}</span>
+                  <span className="shrink-0 text-xs text-gray-400" aria-hidden>
+                    •
+                  </span>
+                  <p className="min-w-0 flex-1 leading-snug text-slate-900">
+                    <span className="font-medium text-slate-900">{actor}</span>{" "}
+                    <span className={actionClass}>{verb}</span>{" "}
+                    <span className="tabular-nums text-slate-800">
+                      {qty} {unitLabel} of{" "}
+                    </span>
+                    <span className="font-semibold text-slate-950">{itemName}</span>
+                  </p>
+                  {canPrint && transactionId ? (
+                    <button
+                      type="button"
+                      onClick={() => onReprint(transactionId)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-1.5 py-0.5 text-slate-600 hover:bg-slate-50"
+                      title="Print receipt"
+                    >
+                      <Printer className="size-3.5 shrink-0" />
+                    </button>
+                  ) : null}
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        ) : (
+          <p className="py-4 text-center text-sm text-slate-500">No movement activity recorded yet.</p>
+        )}
       </div>
     </SectionCard>
   );
@@ -1541,23 +1581,25 @@ export default function InventoryPage() {
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
               {isAdmin ? (
-                <button
-                  type="button"
-                  onClick={downloadAdminStockExcel}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
-                >
-                  <Download className="size-4 text-[#1f7f7b]" />
-                  Download Excel
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={downloadAdminStockExcel}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
+                  >
+                    <Download className="size-4 text-[#1f7f7b]" />
+                    Download Excel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditor({ item: null })}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]"
+                  >
+                    <Plus className="size-4" />
+                    Add Item
+                  </button>
+                </>
               ) : null}
-              <button
-                type="button"
-                onClick={() => setEditor({ item: null })}
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]"
-              >
-                <Plus className="size-4" />
-                Add Item
-              </button>
             </div>
           )
         }
@@ -1676,7 +1718,7 @@ export default function InventoryPage() {
                     <col style={{ width: "22%" }} />
                     <col style={{ width: "22%" }} />
                   </colgroup>
-                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
                       <th className="px-3 py-2 text-center align-middle">Qty</th>
@@ -1985,7 +2027,7 @@ export default function InventoryPage() {
         </SectionCard>
         <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
         </div>
-      ) : canManageOcs ? (
+      ) : isAdmin ? (
         <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
           <SectionCard title="Admin Compare Tool">
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -2009,7 +2051,21 @@ export default function InventoryPage() {
             </table>
           </div>
         </SectionCard>
-        <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
+        <LiveActivitySection
+          movements={parsedMovements}
+          onReprint={reprintByTransactionId}
+          maxRows={55}
+          scrollClassName="max-h-[min(28rem,55vh)]"
+        />
+        </div>
+      ) : canManageOcs ? (
+        <div className="hidden md:block">
+          <LiveActivitySection
+            movements={parsedMovements}
+            onReprint={reprintByTransactionId}
+            maxRows={80}
+            scrollClassName="max-h-[min(36rem,60vh)]"
+          />
         </div>
       ) : (
         <div className="hidden md:block">
