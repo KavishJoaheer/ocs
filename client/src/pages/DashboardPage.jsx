@@ -60,7 +60,7 @@ function buildDoctorMobileCards(dashboard) {
       meta: null,
     },
     {
-      label: "Billing & Finance",
+      label: "Billing",
       icon: CreditCard,
       to: "/billing",
       meta: `${unpaidBills} Unpaid ${unpaidBills === 1 ? "Entry" : "Entries"}`,
@@ -77,7 +77,6 @@ function buildDoctorMobileCards(dashboard) {
 function DoctorMobileLauncher({ user, dashboard }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const cards = buildDoctorMobileCards(dashboard);
-  const clinicalCounts = resolveClinicalTwinCounts("doctor", { dashboard });
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
@@ -85,13 +84,6 @@ function DoctorMobileLauncher({ user, dashboard }) {
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
-
-      <ClinicalTwinMetricsCards
-        role="doctor"
-        longTermReviewCount={clinicalCounts.longTermReviewCount}
-        healthPlansCount={clinicalCounts.healthPlansCount}
-        className="pb-5"
-      />
 
       <nav className="navigation-card-list" aria-label="Doctor quick actions">
         {cards.map((card) => {
