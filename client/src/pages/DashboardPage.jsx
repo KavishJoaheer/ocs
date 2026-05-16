@@ -323,10 +323,13 @@ function DoctorDashboardTile({
   dark = false,
   size = "regular",
   flat = false,
+  spacious = false,
 }) {
   const sizeClasses =
     size === "hero"
-      ? "min-h-[124px] px-6 py-6 md:px-7 md:py-7"
+      ? spacious
+        ? "min-h-[132px] px-8 py-7 md:px-10 md:py-8"
+        : "min-h-[124px] px-6 py-6 md:px-7 md:py-7"
       : size === "compact"
         ? "min-h-[88px] px-5 py-4 md:px-6"
         : "min-h-[100px] px-5 py-5 md:px-6";
@@ -344,7 +347,7 @@ function DoctorDashboardTile({
   );
 
   const content = (
-    <div className="flex w-full items-center gap-4">
+    <div className={cx("flex w-full items-center gap-4 md:gap-6", spacious && "justify-between")}>
       {Icon ? (
         <div
           className={cx(
@@ -1002,23 +1005,22 @@ function countDoctorScheduledVisitsToday(dashboard) {
   return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled").length;
 }
 
-function DoctorMetricCard({ to, label, value, subtext, accent = "teal", highlightBorder = false }) {
+function DoctorMetricCard({ to, label, value, accent = "teal", highlightBorder = false, hoverAccent = "teal" }) {
   return (
     <Link
       to={to}
       className={cx(
-        "group relative cursor-pointer rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-teal-100",
-        highlightBorder && "border-l-4 border-l-amber-500 hover:border-amber-200",
+        "group relative cursor-pointer rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 ease-in-out",
+        hoverAccent === "amber" && "hover:bg-amber-50/20",
+        hoverAccent === "teal" && "hover:bg-teal-50/20",
+        highlightBorder && "border-l-4 border-l-amber-500",
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{label}</span>
+        <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</span>
         <MetricNavAnchor accent={accent} />
       </div>
-      <div className="mt-2 text-3xl font-black text-gray-900">
-        {value}{" "}
-        <span className="text-xs font-medium text-gray-400">{subtext}</span>
-      </div>
+      <p className="mb-1 text-4xl font-black text-gray-900 tabular-nums">{value}</p>
     </Link>
   );
 }
@@ -1039,23 +1041,23 @@ function DoctorMetricsRow({ dashboard }) {
         to="/appointments"
         label="Scheduled Visits"
         value={visitsToday}
-        subtext="Visits remaining today"
         accent="teal"
+        hoverAccent="teal"
       />
       <DoctorMetricCard
         to="/patients?filter=my_assigned"
         label="Assigned Patients"
         value={assignedCount}
-        subtext="Total active care roster"
         accent="teal"
+        hoverAccent="teal"
       />
       <DoctorMetricCard
         to="/patients?tab=under_review"
         label="Long Term Review"
         value={longTermCount}
-        subtext="Patients under active monitoring"
         accent="amber"
         highlightBorder
+        hoverAccent="amber"
       />
     </div>
   );
@@ -1190,18 +1192,13 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Shifts</p>
           <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">My shifts</p>
 
-          <div className="mt-4 grid w-full grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="mt-4 w-full">
             <DoctorDashboardTile
               flat
-              icon={CalendarClock}
-              size="hero"
-              title="Current week roster"
-              onClick={onOpenRosterPdf}
-            />
-            <DoctorDashboardTile
-              flat
+              spacious
               icon={ClipboardList}
               size="hero"
+              eyebrow="Monthly view"
               title={`${monthLabel} roster`}
               onClick={onOpenRosterPdf}
             />
