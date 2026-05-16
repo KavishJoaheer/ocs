@@ -724,115 +724,302 @@ function formatMovementTimestampEnterprise(value) {
   return d.format("DD MMM, HH:mm");
 }
 
-function formatMovementVerb(actionType, meta) {
-  if (actionType === "stock_out" && meta?.stock_out_reason) {
-    return `stocked out (${meta.stock_out_reason})`;
+function resolveMovementRoute(movement) {
+  const meta = movement.meta || {};
+  const source = String(meta.source_location || "").trim();
+  const destination = String(meta.destination_location || "").trim();
+  if (source && destination) {
+    return { source, destination };
   }
-  const map = {
-    restock: "restocked",
-    add: "added",
-    remove: "removed",
-    sell: "sold",
-    stock_out: "stocked out",
-    adjustment: "adjusted",
-    override: "adjusted",
+
+  const actionType = String(movement.action_type || "").toLowerCase();
+  const doctorName =
+    meta.received_by_name ||
+    meta.doctor_name ||
+    movement.target_doctor_name ||
+    movement.owner_doctor_name ||
+    "";
+  const bag = doctorName ? `${doctorName}'s Bag` : "Doctor's Bag";
+  const master = "Master Stock";
+
+  if (actionType === "restock_in" || actionType === "restock_out") {
+    return { source: master, destination: bag };
+  }
+  if (actionType === "sell") {
+    return { source: bag, destination: "Patient Account" };
+  }
+  if (actionType === "stock_out") {
+    const reason = String(meta.stock_out_reason || "").trim();
+    return { source: bag, destination: reason ? `Stock Out (${reason})` : "Stock Out" };
+  }
+  if (actionType === "stock_in" || actionType === "add") {
+    return { source: "Supplier / Intake", destination: master };
+  }
+  if (actionType === "remove") {
+    return { source: master, destination: String(meta.reason || movement.note || "Write-off") };
+  }
+  return { source: source || "—", destination: destination || "—" };
+}
+
+function movementActivityKind(actionType) {
+  const at = String(actionType || "").toLowerCase();
+  if (at === "restock_in" || at === "restock_out") return "allocation";
+  if (at === "sell") return "consumption";
+  if (["adjustment", "override", "correction", "remove", "stock_out"].includes(at)) return "correction";
+  return "generic";
+}
+
+function movementCorrectionDelta(movement) {
+  const prev = Number(movement.previous_quantity);
+  const next = Number(movement.next_quantity);
+  if (Number.isFinite(prev) && Number.isFinite(next)) {
+    return next - prev;
+  }
+  const movementType = String(movement.movement_type || "").toLowerCase();
+  const qty = Math.abs(Number(movement.quantity || 0));
+  if (movementType === "out") return -qty;
+  if (movementType === "in") return qty;
+  return qty;
+}
+
+function movementReasonNote(movement) {
+  const meta = movement.meta || {};
+  return (
+    String(meta.stock_out_note || "").trim() ||
+    String(meta.reason || "").trim() ||
+    String(movement.note || "").trim() ||
+    String(meta.stock_out_reason || "").trim() ||
+    "Inventory correction"
+  );
+}
+
+function buildLiveActivityExportRow(movement) {
+  const meta = movement.meta || {};
+  const route = resolveMovementRoute(movement);
+  const staff = meta.performed_by_name || "System";
+  const qty = Math.abs(Number(movement.quantity ?? 0));
+  const kind = movementActivityKind(movement.action_type);
+  const unitLabel = qty === 1 ? "unit" : "units";
+  let summary = "";
+
+  if (kind === "allocation") {
+    summary = `${staff} allocated ${qty} ${unitLabel} of ${movement.item_name || "item"} (${route.source} ➔ ${route.destination})`;
+  } else if (kind === "consumption") {
+    summary = `${staff} consumed ${qty} ${unitLabel} of ${movement.item_name || "item"} (${route.source} ➔ ${route.destination})`;
+  } else if (kind === "correction") {
+    const delta = movementCorrectionDelta(movement);
+    summary = `${staff} adjusted ${movement.item_name || "item"} quantity by ${delta} units (${movementReasonNote(movement)})`;
+  } else {
+    summary = `${staff} updated ${qty} ${unitLabel} of ${movement.item_name || "item"} (${route.source} ➔ ${route.destination})`;
+  }
+
+  return {
+    Timestamp: formatMovementTimestampEnterprise(movement.created_at),
+    "Staff name": staff,
+    "Action type": movement.action_type || "",
+    Quantity: qty,
+    "Item name": movement.item_name || "",
+    Source: route.source,
+    Destination: route.destination,
+    "Reason / notes": movementReasonNote(movement),
+    Summary: summary,
   };
-  if (map[actionType]) return map[actionType];
-  return String(actionType || "updated").replace(/_/g, " ");
 }
 
-function MovementActionBadge({ actionType }) {
-  if (actionType === "restock_in") {
-    return (
-      <span className="inline-flex shrink-0 items-center rounded border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
-        Inflow
-      </span>
-    );
+function downloadLiveActivityExcel({ rows, staffLabel, monthLabel }) {
+  if (!rows.length) {
+    toast.error("No activity rows match the current filters.");
+    return;
   }
-  if (actionType === "restock_out") {
-    return (
-      <span className="inline-flex shrink-0 items-center rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-semibold text-gray-700">
-        Outflow
-      </span>
-    );
-  }
-  if (actionType === "correction" || actionType === "adjustment" || actionType === "override") {
-    return (
-      <span className="inline-flex shrink-0 items-center rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        Correction
-      </span>
-    );
-  }
-  return null;
+
+  const stamp = dayjs().format("YYYY-MM-DD");
+  const staffToken = sanitizeInventoryExportToken(staffLabel.replace(/\s+/g, "_"), "All_Staff");
+  const fileName = `OCS_Inventory_History_${staffToken}_${stamp}.xlsx`;
+
+  const sheetRows = rows.map(buildLiveActivityExportRow);
+  const workbook = XLSX.utils.book_new();
+  const historySheet = XLSX.utils.json_to_sheet(sheetRows);
+  XLSX.utils.book_append_sheet(workbook, historySheet, excelSafeSheetTitle("History"));
+
+  const metaSheet = XLSX.utils.json_to_sheet([
+    { Field: "Report", Value: "OCS Inventory History" },
+    { Field: "Staff filter", Value: staffLabel },
+    { Field: "Period", Value: monthLabel },
+    { Field: "Exported rows", Value: String(rows.length) },
+    { Field: "Generated at", Value: dayjs().format("YYYY-MM-DD HH:mm") },
+  ]);
+  XLSX.utils.book_append_sheet(workbook, metaSheet, "Filters");
+
+  XLSX.writeFile(workbook, fileName);
+  toast.success("Inventory history exported.");
 }
 
-const BADGED_ACTION_TYPES = new Set(["restock_in", "restock_out", "correction", "adjustment", "override"]);
+function MovementActivityLine({ movement }) {
+  const meta = movement.meta || {};
+  const staff = meta.performed_by_name || "System";
+  const qty = Math.abs(Number(movement.quantity ?? 0));
+  const itemName = movement.item_name || "item";
+  const unitLabel = qty === 1 ? "unit" : "units";
+  const route = resolveMovementRoute(movement);
+  const kind = movementActivityKind(movement.action_type);
+  const timeLabel = formatMovementTimestampEnterprise(movement.created_at);
+
+  let sentence = null;
+  if (kind === "allocation") {
+    sentence = (
+      <>
+        <strong className="font-bold text-slate-950">{staff}</strong>
+        {" allocated "}
+        <strong className="font-bold text-slate-950">{qty}</strong>
+        {` ${unitLabel} of `}
+        <strong className="font-bold text-slate-950">{itemName}</strong>
+        {` (${route.source} ➔ ${route.destination})`}
+      </>
+    );
+  } else if (kind === "consumption") {
+    sentence = (
+      <>
+        <strong className="font-bold text-slate-950">{staff}</strong>
+        {" consumed "}
+        <strong className="font-bold text-slate-950">{qty}</strong>
+        {` ${unitLabel} of `}
+        <strong className="font-bold text-slate-950">{itemName}</strong>
+        {` (${route.source} ➔ ${route.destination})`}
+      </>
+    );
+  } else if (kind === "correction") {
+    const delta = movementCorrectionDelta(movement);
+    sentence = (
+      <>
+        <strong className="font-bold text-slate-950">{staff}</strong>
+        {" adjusted "}
+        <strong className="font-bold text-slate-950">{itemName}</strong>
+        {" quantity by "}
+        <strong className="font-bold text-slate-950">{delta}</strong>
+        {` units (${movementReasonNote(movement)})`}
+      </>
+    );
+  } else {
+    sentence = (
+      <>
+        <strong className="font-bold text-slate-950">{staff}</strong>
+        {" updated "}
+        <strong className="font-bold text-slate-950">{qty}</strong>
+        {` ${unitLabel} of `}
+        <strong className="font-bold text-slate-950">{itemName}</strong>
+        {` (${route.source} ➔ ${route.destination})`}
+      </>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 py-1.5 text-sm last:border-b-0">
+      <span className="shrink-0 text-xs text-gray-400">{timeLabel}</span>
+      <span className="shrink-0 text-xs text-gray-400" aria-hidden>
+        •
+      </span>
+      <p className="min-w-0 flex-1 leading-snug text-slate-800">{sentence}</p>
+    </div>
+  );
+}
 
 function LiveActivitySection({
   movements,
-  onReprint,
   maxRows = 55,
   scrollClassName = "max-h-80",
   showStaffFilters = false,
   staffOptions = [],
-  activityRoleFilter = "",
   activityStaffUserId = "",
-  onActivityRoleFilterChange,
   onActivityStaffUserIdChange,
-  staffFilterActive = false,
+  activityDateFrom = "",
+  activityDateTo = "",
 }) {
   const monthKey = dayjs().format("YYYY-MM");
-  const monthRows = useMemo(
-    () => movements.filter((m) => dayjs(m.created_at).format("YYYY-MM") === monthKey),
-    [movements, monthKey],
+  const monthLabel = dayjs(monthKey, "YYYY-MM").format("MMMM YYYY");
+
+  const doctorStaff = useMemo(
+    () => staffOptions.filter((member) => String(member.role || "").toLowerCase() === "doctor"),
+    [staffOptions],
   );
-  const rows = monthRows.slice(0, maxRows);
+  const operatorStaff = useMemo(
+    () => staffOptions.filter((member) => String(member.role || "").toLowerCase() === "operator"),
+    [staffOptions],
+  );
 
-  const staffSelectOptions = useMemo(() => {
-    if (!showStaffFilters) return [];
-    const role = activityRoleFilter;
-    return staffOptions.filter((member) => {
-      if (!role) return true;
-      return String(member.role || "").toLowerCase() === role;
+  const filteredRows = useMemo(() => {
+    const from = activityDateFrom ? dayjs(activityDateFrom) : dayjs(monthKey, "YYYY-MM").startOf("month");
+    const to = activityDateTo ? dayjs(activityDateTo) : dayjs(monthKey, "YYYY-MM").endOf("month");
+    return movements.filter((movement) => {
+      const at = dayjs(movement.created_at);
+      if (!at.isValid()) return false;
+      if (from.isValid() && at.isBefore(from, "day")) return false;
+      if (to.isValid() && at.isAfter(to, "day")) return false;
+      if (activityStaffUserId) {
+        return Number(movement.meta?.performed_by_user_id) === Number(activityStaffUserId);
+      }
+      return true;
     });
-  }, [showStaffFilters, staffOptions, activityRoleFilter]);
+  }, [movements, monthKey, activityStaffUserId, activityDateFrom, activityDateTo]);
 
-  const emptyFilteredUser =
-    staffFilterActive && rows.length === 0 && (activityStaffUserId || activityRoleFilter);
-  return (
-    <SectionCard title="Live Activity">
-      {showStaffFilters ? (
-        <div className="mb-4 mt-2 flex flex-row flex-wrap items-center gap-3">
-          <label className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:min-w-[10rem]">
-            <span className="sr-only">Filter by role</span>
-            <select
-              value={activityRoleFilter}
-              onChange={(event) => onActivityRoleFilterChange?.(event.target.value)}
-              className={cx(ACTIVITY_FILTER_SELECT_CLASS, "flex-1 sm:w-40")}
-            >
-              <option value="">All Accounts</option>
-              <option value="doctor">Doctors</option>
-              <option value="operator">Operators</option>
-            </select>
-          </label>
-          <label className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:min-w-[12rem]">
-            <span className="sr-only">Filter by staff member</span>
-            <select
-              value={activityStaffUserId}
-              onChange={(event) => onActivityStaffUserIdChange?.(event.target.value)}
-              className={cx(ACTIVITY_FILTER_SELECT_CLASS, "flex-1 sm:w-52")}
-            >
-              <option value="">All staff</option>
-              {staffSelectOptions.map((member) => (
+  const rows = filteredRows.slice(0, maxRows);
+
+  const selectedStaffLabel = useMemo(() => {
+    if (!activityStaffUserId) return "All Staff";
+    const match = staffOptions.find((member) => String(member.id) === String(activityStaffUserId));
+    return match?.full_name || "Selected Staff";
+  }, [activityStaffUserId, staffOptions]);
+
+  const headerActions = showStaffFilters ? (
+    <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-end sm:justify-end">
+      <label className="flex min-w-0 flex-col gap-1 sm:min-w-[14rem]">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter by Staff</span>
+        <select
+          value={activityStaffUserId}
+          onChange={(event) => onActivityStaffUserIdChange?.(event.target.value)}
+          className={cx(ACTIVITY_FILTER_SELECT_CLASS, "w-full min-h-10 py-2 text-sm")}
+        >
+          <option value="">All Staff / Users</option>
+          {doctorStaff.length ? (
+            <optgroup label="Doctors">
+              {doctorStaff.map((member) => (
                 <option key={member.id} value={String(member.id)}>
                   {member.full_name}
                 </option>
               ))}
-            </select>
-          </label>
-        </div>
-      ) : null}
+            </optgroup>
+          ) : null}
+          {operatorStaff.length ? (
+            <optgroup label="Operators">
+              {operatorStaff.map((member) => (
+                <option key={member.id} value={String(member.id)}>
+                  {member.full_name}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+        </select>
+      </label>
+      <button
+        type="button"
+        onClick={() =>
+          downloadLiveActivityExcel({
+            rows: filteredRows,
+            staffLabel: selectedStaffLabel,
+            monthLabel,
+          })
+        }
+        className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1]"
+      >
+        <Download className="size-4 shrink-0" />
+        📥 Download History Excel
+      </button>
+    </div>
+  ) : null;
 
+  const emptyFilteredUser = showStaffFilters && rows.length === 0 && activityStaffUserId;
+
+  return (
+    <SectionCard title="Live Activity" actions={headerActions}>
       <div className={cx("overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-2 py-2", scrollClassName)}>
         {emptyFilteredUser ? (
           <p className="py-8 text-center text-sm text-slate-500">
@@ -840,49 +1027,9 @@ function LiveActivitySection({
           </p>
         ) : rows.length ? (
           <div className="flex flex-col space-y-1">
-            {rows.map((movement) => {
-              const transactionId = movement.meta?.transaction_id || "";
-              const canPrint = movement.action_type === "restock_in" || movement.action_type === "restock_out";
-              const actor = movement.meta?.performed_by_name || "System";
-              const qty = Number(movement.quantity ?? 0);
-              const itemName = movement.item_name || "item";
-              const verb = formatMovementVerb(movement.action_type, movement.meta);
-              const unitLabel = qty === 1 ? "unit" : "units";
-              const timeLabel = formatMovementTimestampEnterprise(movement.created_at);
-
-              return (
-                <div
-                  key={`mv-${movement.id}`}
-                  className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 py-1.5 text-sm last:border-b-0"
-                >
-                  <span className="shrink-0 text-xs text-gray-400">{timeLabel}</span>
-                  <span className="shrink-0 text-xs text-gray-400" aria-hidden>
-                    •
-                  </span>
-                  <p className="min-w-0 flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-snug text-slate-900">
-                    <span className="font-medium text-slate-900">{actor}</span>
-                    <MovementActionBadge actionType={movement.action_type} />
-                    {!BADGED_ACTION_TYPES.has(movement.action_type) ? (
-                      <span className="text-xs font-semibold text-slate-600">{verb}</span>
-                    ) : null}
-                    <span className="tabular-nums text-slate-800">
-                      {qty} {unitLabel} of{" "}
-                    </span>
-                    <span className="font-semibold text-slate-950">{itemName}</span>
-                  </p>
-                  {canPrint && transactionId ? (
-                    <button
-                      type="button"
-                      onClick={() => onReprint(transactionId)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-1.5 py-0.5 text-slate-600 hover:bg-slate-50"
-                      title="Print receipt"
-                    >
-                      <Printer className="size-3.5 shrink-0" />
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
+            {rows.map((movement) => (
+              <MovementActivityLine key={`mv-${movement.id}`} movement={movement} />
+            ))}
           </div>
         ) : (
           <p className="py-6 text-center text-sm text-slate-500">No movement activity recorded yet.</p>
@@ -1372,7 +1519,6 @@ export default function InventoryPage() {
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
   const [consumptionPeriod, setConsumptionPeriod] = useState("month");
-  const [activityRoleFilter, setActivityRoleFilter] = useState("");
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
   const [mobileBagTab, setMobileBagTab] = useState("all");
 
@@ -1466,8 +1612,6 @@ export default function InventoryPage() {
       const query = new URLSearchParams();
       if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
       if (isDoctor) query.set("context", nextDoctorContext);
-      if (isAdmin && activityRoleFilter) query.set("activityRole", activityRoleFilter);
-      if (isAdmin && activityStaffUserId) query.set("activityUserId", activityStaffUserId);
       const payload = await api.get(`/inventory${query.toString() ? `?${query.toString()}` : ""}`);
       setData(payload);
     } catch (error) {
@@ -1478,20 +1622,12 @@ export default function InventoryPage() {
     }
   }
 
-  function handleActivityRoleFilterChange(value) {
-    setActivityRoleFilter(value);
-    setActivityStaffUserId("");
-  }
-
   const liveActivityStaffFilterProps = isAdmin
     ? {
         showStaffFilters: true,
         staffOptions: data?.activity_staff || [],
-        activityRoleFilter,
         activityStaffUserId,
-        onActivityRoleFilterChange: handleActivityRoleFilterChange,
         onActivityStaffUserIdChange: setActivityStaffUserId,
-        staffFilterActive: true,
       }
     : {};
 
@@ -1499,12 +1635,6 @@ export default function InventoryPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContextDoctorId, doctorContext]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    load(selectedContextDoctorId, doctorContext, { silent: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activityRoleFilter, activityStaffUserId]);
 
   // Default "View By" folder after inventory payload loads.
   useEffect(() => {
@@ -2504,7 +2634,7 @@ export default function InventoryPage() {
             </table>
           </div>
         </SectionCard>
-        <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
+        <LiveActivitySection movements={parsedMovements} />
         </div>
       ) : isAdmin ? (
         <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
@@ -2532,7 +2662,6 @@ export default function InventoryPage() {
         </SectionCard>
         <LiveActivitySection
           movements={parsedMovements}
-          onReprint={reprintByTransactionId}
           maxRows={55}
           scrollClassName="max-h-[min(28rem,55vh)]"
           {...liveActivityStaffFilterProps}
@@ -2542,14 +2671,13 @@ export default function InventoryPage() {
         <div className="hidden md:block">
           <LiveActivitySection
             movements={parsedMovements}
-            onReprint={reprintByTransactionId}
             maxRows={80}
             scrollClassName="max-h-[min(36rem,60vh)]"
           />
         </div>
       ) : (
         <div className="hidden md:block">
-          <LiveActivitySection movements={parsedMovements} onReprint={reprintByTransactionId} />
+          <LiveActivitySection movements={parsedMovements} />
         </div>
       )}
 

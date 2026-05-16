@@ -390,6 +390,55 @@ function consumeBatches(itemId, quantity, { disallowExpired = false } = {}) {
   return { ok: remaining <= 0, allocations };
 }
 
+function doctorBagLabel(name) {
+  const label = String(name || "").trim();
+  return label ? `${label}'s Bag` : "Doctor's Bag";
+}
+
+function buildMovementLocationMeta(actionType, meta = {}, context = {}) {
+  const existingSource = String(meta.source_location || "").trim();
+  const existingDest = String(meta.destination_location || "").trim();
+  if (existingSource && existingDest) {
+    return { source_location: existingSource, destination_location: existingDest };
+  }
+
+  const at = String(actionType || "").toLowerCase();
+  const master = "Master Stock";
+  const doctorName =
+    meta.received_by_name ||
+    meta.doctor_name ||
+    context.targetDoctorName ||
+    context.ownerDoctorName ||
+    "";
+
+  if (at === "restock_in" || at === "restock_out") {
+    return { source_location: master, destination_location: doctorBagLabel(doctorName) };
+  }
+  if (at === "sell") {
+    return {
+      source_location: doctorBagLabel(meta.doctor_name || context.ownerDoctorName),
+      destination_location: "Patient Account",
+    };
+  }
+  if (at === "stock_out") {
+    const reason = String(meta.stock_out_reason || "").trim();
+    return {
+      source_location: doctorBagLabel(meta.doctor_name || context.ownerDoctorName),
+      destination_location: reason ? `Stock Out (${reason})` : "Stock Out",
+    };
+  }
+  if (at === "stock_in" || at === "add") {
+    return { source_location: "Supplier / Intake", destination_location: master };
+  }
+  if (at === "remove") {
+    return { source_location: master, destination_location: String(meta.reason || "Write-off") };
+  }
+  return {
+    source_location: existingSource || "—",
+    destination_location: existingDest || "—",
+  };
+}
+
 function recordMovement({
   itemId,
   movementType,
@@ -403,6 +452,25 @@ function recordMovement({
   referenceId = null,
   metaJson = "{}",
 }) {
+  const meta = safeParseJson(metaJson, {});
+  const movementItem = db
+    .prepare("SELECT item_name, owner_doctor_id FROM inventory WHERE id = ?")
+    .get(itemId);
+  const locationContext = {};
+  if (referenceType === "doctor" && referenceId) {
+    const doctor = db.prepare("SELECT full_name FROM doctors WHERE id = ?").get(referenceId);
+    locationContext.targetDoctorName = doctor?.full_name || "";
+  }
+  if (movementItem?.owner_doctor_id) {
+    const ownerDoctor = db
+      .prepare("SELECT full_name FROM doctors WHERE id = ?")
+      .get(movementItem.owner_doctor_id);
+    locationContext.ownerDoctorName = ownerDoctor?.full_name || "";
+  }
+  const locations = buildMovementLocationMeta(actionType, meta, locationContext);
+  const enrichedMeta = { ...meta, ...locations };
+  const finalMetaJson = JSON.stringify(enrichedMeta);
+
   db.prepare(`
     INSERT INTO inventory_movements (
       item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
@@ -420,32 +488,18 @@ function recordMovement({
     actionType,
     referenceType,
     referenceId,
-    metaJson,
+    finalMetaJson,
   );
 
   const inserted = db.prepare("SELECT last_insert_rowid() AS id").get();
   const movementId = Number(inserted?.id || 0);
-  const meta = safeParseJson(metaJson, {});
-  const movementItem = db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(itemId);
-  const actorName = String(meta.performed_by_name || "");
-  const actorRole = String(meta.performed_by_role || "");
-  const sourceText =
-    actionType === "restock_out"
-      ? "OCS Master"
-      : actionType === "restock_in"
-        ? String(meta.issued_by_name || "OCS Master")
-        : actionType === "sell"
-          ? String(meta.doctor_name || "Doctor")
-          : "";
-  const destinationText =
-    actionType === "restock_out"
-      ? String(meta.received_by_name || "")
-      : actionType === "restock_in"
-        ? String(meta.received_by_name || "")
-        : actionType === "sell"
-          ? "Patient Bill"
-          : "";
-  const transferAllocations = Array.isArray(meta.transfer_allocations) ? meta.transfer_allocations : [];
+  const actorName = String(enrichedMeta.performed_by_name || "");
+  const actorRole = String(enrichedMeta.performed_by_role || "");
+  const sourceText = enrichedMeta.source_location || "";
+  const destinationText = enrichedMeta.destination_location || "";
+  const transferAllocations = Array.isArray(enrichedMeta.transfer_allocations)
+    ? enrichedMeta.transfer_allocations
+    : [];
   const batchId =
     transferAllocations.length > 0
       ? transferAllocations.map((allocation, index) => `B${movementId}-${index + 1}`).join(", ")
@@ -469,7 +523,7 @@ function recordMovement({
     sourceText,
     destinationText,
     batchId,
-    metaJson,
+    finalMetaJson,
   );
 }
 
@@ -588,13 +642,27 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
         })
       : rows;
 
-  return filtered.map((row) => ({
-    ...row,
-    visible_target_doctor_name:
-      role === "operator" && row.action_type === "restock_out"
-        ? "Doctor (hidden)"
-        : row.target_doctor_name,
-  }));
+  return filtered.map((row) => {
+    let meta = {};
+    try {
+      meta = JSON.parse(row.meta_json || "{}");
+    } catch {
+      meta = {};
+    }
+    const locations = buildMovementLocationMeta(row.action_type, meta, {
+      targetDoctorName: row.target_doctor_name,
+      ownerDoctorName: row.owner_doctor_name,
+    });
+    const enrichedMeta = { ...meta, ...locations };
+    return {
+      ...row,
+      meta_json: JSON.stringify(enrichedMeta),
+      visible_target_doctor_name:
+        role === "operator" && row.action_type === "restock_out"
+          ? "Doctor (hidden)"
+          : row.target_doctor_name,
+    };
+  });
 }
 
 function getCompareRows() {
