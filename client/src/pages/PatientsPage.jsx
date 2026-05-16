@@ -353,7 +353,14 @@ function PatientsPage() {
   }
 
   return (
-    <div className={cx(pageContainerClass, isMobile ? "space-y-3" : "space-y-4")}>
+    <div
+      className={cx(
+        pageContainerClass,
+        isMobile
+          ? "mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3"
+          : "space-y-4",
+      )}
+    >
       {isMobile ? (
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
@@ -398,7 +405,11 @@ function PatientsPage() {
               ? `${deletedPatients.length} archived in the last 30 days`
               : `${pagination?.total || 0} total records`
         }
-        className={isMobile ? "rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]" : undefined}
+        className={
+          isMobile
+            ? "flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]"
+            : undefined
+        }
         actions={
           refreshing ? (
             <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -439,7 +450,7 @@ function PatientsPage() {
               <>
                 {isMobile ? (
                   /* ── Mobile: card list ── */
-                  <div className="space-y-4">
+                  <div className="flex flex-col space-y-4 pb-8">
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
@@ -487,6 +498,34 @@ function PatientsPage() {
                         </button>
                       </div>
                     ))}
+
+                    {pagination ? (
+                      <div className="mt-5 flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-slate-500">
+                          Page {pagination.page} of {pagination.totalPages}
+                        </p>
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            disabled={pagination.page <= 1}
+                            onClick={() => setPage((current) => Math.max(1, current - 1))}
+                            className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Previous
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pagination.page >= pagination.totalPages}
+                            onClick={() =>
+                              setPage((current) => Math.min(pagination.totalPages, current + 1))
+                            }
+                            className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   /* ── Desktop: original table ── */
@@ -655,6 +694,7 @@ function PatientsPage() {
                   </div>
                 )}
 
+                {!isMobile ? (
                 <div className="mt-5 flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-slate-500">
                     Page {pagination.page} of {pagination.totalPages}
@@ -680,6 +720,7 @@ function PatientsPage() {
                     </button>
                   </div>
                 </div>
+                ) : null}
               </>
             ) : (
               <EmptyState
@@ -692,7 +733,7 @@ function PatientsPage() {
         ) : deletedPatients.length ? (
           isMobile ? (
             /* ── Mobile: deleted patient cards ── */
-            <div className="space-y-3">
+            <div className="flex flex-col space-y-3 pb-8">
               {deletedPatients.map((patient) => (
                 <div
                   key={patient.id}
