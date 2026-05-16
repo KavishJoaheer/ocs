@@ -8,14 +8,12 @@ import {
   ClipboardList,
   CreditCard,
   DollarSign,
-  HeartPulse,
   MapPinned,
   Package,
   PhoneCall,
   Search,
   ShieldCheck,
   Stethoscope,
-  TrendingUp,
   Upload,
   UserPlus,
   UserRound,
@@ -23,6 +21,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
+import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import OperationStatusSelector from "../components/OperationStatusSelector.jsx";
@@ -31,6 +30,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
+import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -77,13 +77,21 @@ function buildDoctorMobileCards(dashboard) {
 function DoctorMobileLauncher({ user, dashboard }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const cards = buildDoctorMobileCards(dashboard);
+  const clinicalCounts = resolveClinicalTwinCounts("doctor", { dashboard });
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
-      <header className="shrink-0 pb-5">
+      <header className="shrink-0 pb-4">
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
+
+      <ClinicalTwinMetricsCards
+        role="doctor"
+        longTermReviewCount={clinicalCounts.longTermReviewCount}
+        healthPlansCount={clinicalCounts.healthPlansCount}
+        className="pb-5"
+      />
 
       <nav className="navigation-card-list" aria-label="Doctor quick actions">
         {cards.map((card) => {
@@ -112,13 +120,18 @@ function DoctorMobileLauncher({ user, dashboard }) {
   );
 }
 
-function MobileLauncher({ user, dashboard }) {
+function MobileLauncher({ user, dashboard, operatorMetrics }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const isDoctor = user.role === "doctor";
 
   if (isDoctor) {
     return <DoctorMobileLauncher user={user} dashboard={dashboard} />;
   }
+
+  const showClinicalTwin = ["admin", "operator"].includes(user.role);
+  const clinicalCounts = showClinicalTwin
+    ? resolveClinicalTwinCounts(user.role, { dashboard, operatorMetrics })
+    : null;
 
   const greeting = `Hello, ${firstName}`;
 
@@ -181,6 +194,15 @@ function MobileLauncher({ user, dashboard }) {
         {greeting}
       </h1>
       <p className="mt-1 text-sm text-[#51717b]">What would you like to do?</p>
+
+      {clinicalCounts ? (
+        <ClinicalTwinMetricsCards
+          role={user.role}
+          longTermReviewCount={clinicalCounts.longTermReviewCount}
+          healthPlansCount={clinicalCounts.healthPlansCount}
+          className="mt-5"
+        />
+      ) : null}
 
       <div className="mt-6 flex flex-1 flex-col gap-3.5 overflow-y-auto">
         {cards.map((card) => {
@@ -897,69 +919,6 @@ function OperatorScheduledVisitsMetricCard({ metrics, listPath }) {
   );
 }
 
-function AdminClinicalTrackingCards({ dashboard }) {
-  const longTermReviewCount = Number(dashboard?.summary?.longTermReviewCount ?? 0);
-  const activeSubscriptionPatientsCount = Number(dashboard?.summary?.activeSubscriptionPatientsCount ?? 0);
-
-  return (
-    <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-      <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/90 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Long term review</p>
-        <p className="mt-4 text-5xl font-semibold tabular-nums tracking-tight text-slate-950">
-          {longTermReviewCount}
-        </p>
-        <p className="mt-2 text-sm font-medium text-slate-600">Patients in active clinical follow-up</p>
-      </div>
-
-      <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(255,255,255,0.96))] p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Health plans (subscriptions)
-          </p>
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#4FB8B3]/35 bg-[#4FB8B3]/12 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#1f7f7b]">
-            <TrendingUp className="size-3" aria-hidden />
-            Active
-          </span>
-        </div>
-        <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-slate-950">
-          {activeSubscriptionPatientsCount}
-        </p>
-        <p className="mt-2 text-sm font-medium text-slate-600">
-          Active subscription patients across Mauritius
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function OperatorHealthPlansMetricCard({ activeCount, listPath }) {
-  return (
-    <Link
-      to={listPath}
-      className="group relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-[30px] border border-gray-200 bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))] px-5 py-5 transition hover:border-[#2d8f98]/40 md:px-6 md:py-5"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white text-[#2d8f98]">
-            <HeartPulse className="size-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Subscription management</p>
-            <p className="mt-1.5 text-base font-medium leading-snug tracking-tight text-slate-950">Health Plans</p>
-          </div>
-        </div>
-        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
-          <ArrowUpRight className="size-4" />
-        </span>
-      </div>
-      <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-1">
-        <p className="text-4xl font-semibold tabular-nums tracking-tight text-slate-950">{activeCount}</p>
-        <p className="max-w-[12rem] pb-1 text-sm font-medium leading-snug text-slate-600">Active subscription patients</p>
-      </div>
-    </Link>
-  );
-}
-
 function DoctorAssignedPatientsMetricCard({ activeCount, listPath }) {
   return (
     <Link
@@ -1092,8 +1051,7 @@ function DoctorPersonalOperationUpdates({ dashboard }) {
 
 function OperatorPersonalOperationUpdates({ metrics }) {
   const pendingBills = Number(metrics?.pending_payment?.unpaid_bills_count ?? 0);
-  const longTerm = Number(metrics?.long_term_review?.active_followup_count ?? 0);
-  const activeSubs = Number(metrics?.health_plans?.active_subscribers_count ?? 0);
+  const clinicalCounts = resolveClinicalTwinCounts("operator", { operatorMetrics: metrics });
 
   return (
     <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
@@ -1109,6 +1067,13 @@ function OperatorPersonalOperationUpdates({ metrics }) {
 
         <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
 
+        <ClinicalTwinMetricsCards
+          role="operator"
+          longTermReviewCount={clinicalCounts.longTermReviewCount}
+          healthPlansCount={clinicalCounts.healthPlansCount}
+          className="mt-4"
+        />
+
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <OperatorScheduledVisitsMetricCard metrics={metrics} listPath="/operator/scheduled-visits" />
           <PersonalOperationOverviewCard
@@ -1118,13 +1083,6 @@ function OperatorPersonalOperationUpdates({ metrics }) {
             title="Pending payment"
             to="/operator/pending-payment"
           />
-          <PersonalOperationOverviewCard
-            icon={Stethoscope}
-            metricLine={`${longTerm} patient${longTerm === 1 ? "" : "s"} in active follow-up`}
-            title="Long term review"
-            to="/patients?tab=under_review"
-          />
-          <OperatorHealthPlansMetricCard activeCount={activeSubs} listPath="/patients?filter=subscribed" />
         </div>
       </div>
     </div>
@@ -1175,6 +1133,13 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
             </div>
           </div>
         ) : null}
+
+        <ClinicalTwinMetricsCards
+          role="doctor"
+          longTermReviewCount={resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount}
+          healthPlansCount={resolveClinicalTwinCounts("doctor", { dashboard }).healthPlansCount}
+          className="mt-4 md:mt-5"
+        />
 
         <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1534,7 +1499,11 @@ function AdminDashboardView({
         </div>
       </section>
 
-      <AdminClinicalTrackingCards dashboard={dashboard} />
+      <ClinicalTwinMetricsCards
+        role="admin"
+        longTermReviewCount={resolveClinicalTwinCounts("admin", { dashboard }).longTermReviewCount}
+        healthPlansCount={resolveClinicalTwinCounts("admin", { dashboard }).healthPlansCount}
+      />
     </div>
   );
 }
@@ -1681,7 +1650,7 @@ function DashboardPage() {
   }
 
   if (isMobile) {
-    return <MobileLauncher user={user} dashboard={dashboard} />;
+    return <MobileLauncher user={user} dashboard={dashboard} operatorMetrics={operatorMetrics} />;
   }
 
   if (user.role === "doctor") {

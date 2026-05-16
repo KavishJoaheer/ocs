@@ -8,7 +8,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -22,6 +22,8 @@ import {
   formatDateTime,
   truncate,
 } from "../lib/format.js";
+import { isPatientSubscribed } from "../lib/patientSubscription.js";
+import { isPatientUnderReview } from "../lib/patientReview.js";
 
 const workspaceMeta = {
   "current-week-roster": {
@@ -361,10 +363,13 @@ function UpdatesFeed({ updates }) {
 }
 
 function DoctorWorkspacePage({ workspaceKey }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const meta = workspaceMeta[workspaceKey];
+  const underReviewFilter = searchParams.get("tab") === "under_review";
+  const subscribedFilter = searchParams.get("filter") === "subscribed";
 
   useEffect(() => {
     let ignore = false;
@@ -746,6 +751,14 @@ function DoctorWorkspacePage({ workspaceKey }) {
   }
 
   if (workspaceKey === "assigned-patients") {
+    let assignedPatients = data.assignedPatients;
+
+    if (underReviewFilter) {
+      assignedPatients = assignedPatients.filter((patient) => isPatientUnderReview(patient));
+    } else if (subscribedFilter) {
+      assignedPatients = assignedPatients.filter((patient) => isPatientSubscribed(patient));
+    }
+
     metrics = [
       {
         icon: UsersRound,
@@ -788,10 +801,41 @@ function DoctorWorkspacePage({ workspaceKey }) {
             </Link>
           </>
         }
-        subtitle="Assigned patient records linked to this doctor account."
-        title="Assigned patient panel"
+        subtitle={
+          underReviewFilter
+            ? "Read-only view of your assigned patients flagged for long-term review."
+            : subscribedFilter
+              ? "Read-only view of your assigned patients on an active health plan."
+              : "Assigned patient records linked to this doctor account."
+        }
+        title={
+          underReviewFilter
+            ? "Assigned patients under review"
+            : subscribedFilter
+              ? "Assigned health plan subscribers"
+              : "Assigned patient panel"
+        }
       >
-        <AssignedPatientsList patients={data.assignedPatients} />
+        {underReviewFilter || subscribedFilter ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-800">
+              Active filter: {underReviewFilter ? "Under review" : "Subscribers"}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.delete("tab");
+                nextParams.delete("filter");
+                setSearchParams(nextParams, { replace: true });
+              }}
+              className="rounded-full border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-slate-50"
+            >
+              Clear filter
+            </button>
+          </div>
+        ) : null}
+        <AssignedPatientsList patients={assignedPatients} />
       </SectionCard>
     );
   }

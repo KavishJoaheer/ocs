@@ -573,6 +573,9 @@ function getDoctorWorkspacePayload(doctorId) {
         p.status,
         p.date_of_birth,
         p.created_at,
+        p.is_under_review,
+        p.is_subscribed,
+        p.review_due_date,
         MAX(c.consultation_date) AS last_consultation_date
       FROM patients p
       LEFT JOIN consultations c ON c.patient_id = p.id
@@ -587,10 +590,20 @@ function getDoctorWorkspacePayload(doctorId) {
         p.gender,
         p.status,
         p.date_of_birth,
-        p.created_at
+        p.created_at,
+        p.is_under_review,
+        p.is_subscribed,
+        p.review_due_date
       ORDER BY p.full_name ASC
     `)
     .all(doctorId);
+
+  const longTermReviewAssignedCount = assignedPatients.filter(
+    (patient) => Number(patient.is_under_review) === 1,
+  ).length;
+  const subscribedAssignedCount = assignedPatients.filter(
+    (patient) => Number(patient.is_subscribed) === 1,
+  ).length;
 
   const monthConsultations = db
     .prepare(`
@@ -720,6 +733,8 @@ function getDoctorWorkspacePayload(doctorId) {
       dischargedAssignedPatientsCount: assignedPatients.filter(
         (patient) => patient.status === "discharged",
       ).length,
+      longTermReviewAssignedCount,
+      subscribedAssignedCount,
     },
     currentWeekRoster,
     currentMonthRoster,
