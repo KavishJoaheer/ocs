@@ -81,7 +81,7 @@ function DoctorMobileLauncher({ user, dashboard }) {
   const cards = buildDoctorMobileCards(dashboard);
 
   return (
-    <motion.div className="mx-auto flex w-full max-w-md min-w-0 flex-col px-1">
+    <div className="mx-auto flex w-full max-w-md min-w-0 flex-col px-1">
       <header className="mb-5">
         <h1 className="text-xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-1.5 text-sm text-slate-600">{buildDoctorMobileSubtitle(dashboard)}</p>
@@ -110,7 +110,7 @@ function DoctorMobileLauncher({ user, dashboard }) {
           );
         })}
       </nav>
-    </motion.div>
+    </div>
   );
 }
 
