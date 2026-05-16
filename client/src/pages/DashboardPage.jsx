@@ -1447,24 +1447,26 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
 
 
 
-function AdminExecutiveCard({ title, to, accent, anchorAccent = "teal", children }) {
+function AdminExecutiveCard({ title, to, accent, anchorAccent = "teal", hoverAccent, children }) {
   return (
     <div
       className={cx(
-        "rounded-2xl border border-gray-100 bg-white p-6 shadow-sm",
+        "group flex h-full min-h-[168px] flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-200 ease-in-out",
         accent === "amber" && "border-l-4 border-l-amber-500",
         accent === "teal" && "border-l-4 border-l-teal-500",
+        hoverAccent === "amber" && "hover:bg-amber-50/20",
+        hoverAccent === "teal" && "hover:bg-teal-50/20",
       )}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{title}</span>
         {to ? (
-          <Link to={to} className="group shrink-0" aria-label={`Open ${title}`}>
+          <Link to={to} className="shrink-0" aria-label={`Open ${title}`}>
             <MetricNavAnchor accent={anchorAccent} />
           </Link>
         ) : null}
       </div>
-      {children}
+      <div className="flex min-h-0 flex-1 flex-col pt-4">{children}</div>
     </div>
   );
 }
@@ -1475,16 +1477,16 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
   const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 p-6 md:grid-cols-2">
+    <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-stretch gap-6 p-6 md:grid-cols-2">
       <AdminExecutiveCard title="Practice Statistics" to="/admin/finance" anchorAccent="teal">
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs font-medium text-gray-500">Total Patients</p>
-            <p className="mt-1 text-3xl font-black text-gray-900 tabular-nums">{totalPatients}</p>
+            <p className="mt-1 text-3xl font-black leading-none text-gray-900 tabular-nums">{totalPatients}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500">Total Revenue</p>
-            <p className="mt-1 text-2xl font-black text-gray-900 tabular-nums">{formatCurrency(totalRevenue)}</p>
+            <p className="mt-1 text-3xl font-black leading-none text-gray-900 tabular-nums">{formatCurrency(totalRevenue)}</p>
           </div>
         </div>
       </AdminExecutiveCard>
@@ -1494,8 +1496,9 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
         to="/patients?tab=under_review"
         accent="amber"
         anchorAccent="amber"
+        hoverAccent="amber"
       >
-        <p className="mt-4 text-3xl font-black text-gray-900 tabular-nums">{counts.longTermReviewCount}</p>
+        <p className="text-3xl font-black leading-none text-gray-900 tabular-nums">{counts.longTermReviewCount}</p>
         <p className="mt-1 text-xs font-medium text-gray-500">
           Patients under active surveillance tracking
         </p>
@@ -1506,22 +1509,25 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
         to="/patients?filter=subscribed"
         accent="teal"
         anchorAccent="teal"
+        hoverAccent="teal"
       >
-        <p className="mt-4 text-3xl font-black text-gray-900 tabular-nums">{counts.healthPlansCount}</p>
+        <p className="text-3xl font-black leading-none text-gray-900 tabular-nums">{counts.healthPlansCount}</p>
         <p className="mt-1 text-xs font-medium text-gray-500">
           Active premium subscriber base across Mauritius
         </p>
       </AdminExecutiveCard>
 
       <AdminExecutiveCard title="Roster Management" to="/admin/roster" anchorAccent="teal">
-        <button
-          type="button"
-          onClick={onOpenRosterPdf}
-          disabled={!rosterMeta?.has_roster}
-          className="mt-2 flex w-full items-center justify-center rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          📥 Download Current Roster PDF
-        </button>
+        <div className="flex h-full min-h-[100px] w-full flex-col items-center justify-center">
+          <button
+            type="button"
+            onClick={onOpenRosterPdf}
+            disabled={!rosterMeta?.has_roster}
+            className="w-full rounded-xl bg-gray-900 p-3.5 text-sm font-semibold text-white transition-all hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            📥 Download Current Roster PDF
+          </button>
+        </div>
       </AdminExecutiveCard>
     </div>
   );
