@@ -1011,6 +1011,83 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
   return <div className={classes}>{content}</div>;
 }
 
+function countDoctorScheduledVisitsToday(dashboard) {
+  const today = dashboard?.doctorWorkspace?.periods?.today || dashboard?.periods?.today || "";
+  const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
+
+  return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled").length;
+}
+
+function DoctorExecutiveSummaryRow({ dashboard }) {
+  const visitsToday = countDoctorScheduledVisitsToday(dashboard);
+  const longTermCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
+  const visitWord = visitsToday === 1 ? "Visit" : "Visits";
+  const patientWord = longTermCount === 1 ? "Patient" : "Patients";
+
+  return (
+    <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+      <Link
+        to="/doctor/scheduled-visits"
+        className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:border-teal-100"
+      >
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Scheduled Visits</span>
+        <div className="mt-2 text-3xl font-black text-gray-900">
+          {visitsToday}{" "}
+          <span className="text-xs font-medium text-gray-400">
+            {visitWord} Remaining Today
+          </span>
+        </div>
+      </Link>
+
+      <Link
+        to="/patients?tab=under_review"
+        className="rounded-2xl border border-gray-100 border-l-4 border-l-amber-500 bg-white p-6 shadow-sm transition-all hover:border-amber-200"
+      >
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Long Term Review</span>
+        <div className="mt-2 text-3xl font-black text-gray-900">
+          {longTermCount}{" "}
+          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
+            {patientWord} Under Active Monitoring
+          </span>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+function DoctorDesktopQuickActions() {
+  const links = [
+    { label: "Patient Directory", icon: UserRound, to: "/patients" },
+    { label: "Add a Patient", icon: UserPlus, to: "/patients/add" },
+    { label: "Inventory", icon: Package, to: "/inventory" },
+  ];
+
+  return (
+    <nav
+      className="rounded-2xl border border-gray-100 bg-white p-2 shadow-sm"
+      aria-label="Doctor quick actions"
+    >
+      <p className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-400">Quick actions</p>
+      <ul className="space-y-1">
+        {links.map((item) => {
+          const Icon = item.icon;
+          return (
+            <li key={item.label}>
+              <Link
+                to={item.to}
+                className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm font-semibold text-slate-800 transition-colors hover:bg-teal-50/50 hover:text-teal-700"
+              >
+                <Icon className="size-4 shrink-0 text-slate-500" strokeWidth={2.25} />
+                {item.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
 function DoctorPersonalOperationUpdates({ dashboard }) {
   const today = dashboard?.periods?.today || "";
   const visits = dashboard?.scheduledVisits || [];
@@ -1093,7 +1170,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
   const monthLabel = dayjs().format("MMMM");
 
   return (
-    <section className="relative mx-auto w-full min-w-0 max-w-[1180px] overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
+    <section className="relative mx-auto w-full min-w-0 max-w-6xl overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10">
@@ -1134,17 +1211,13 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
           </div>
         ) : null}
 
-        <ClinicalTwinMetricsCards
-          role="doctor"
-          longTermReviewCount={resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount}
-          healthPlansCount={resolveClinicalTwinCounts("doctor", { dashboard }).healthPlansCount}
-          className="mt-4 md:mt-5"
-        />
+        <div className="mt-4 grid gap-6 lg:mt-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] lg:items-start">
+          <div className="min-w-0 space-y-6">
+            <DoctorExecutiveSummaryRow dashboard={dashboard} />
 
-        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
-          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-4">
-              <div className="rounded-[24px] border border-gray-200 bg-white/90 p-4 md:rounded-[34px] md:p-6">
+            <div className="rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:rounded-[42px] md:p-5">
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-gray-200 bg-white/90 p-4 md:rounded-[34px] md:p-6">
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   Shifts
                 </p>
@@ -1186,10 +1259,13 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
                 title="Updates from HCM"
                 to="/hcm-news"
               />
+              </div>
             </div>
-
-            <DoctorPersonalOperationUpdates dashboard={dashboard} />
           </div>
+
+          <aside className="min-w-0 lg:sticky lg:top-6">
+            <DoctorDesktopQuickActions />
+          </aside>
         </div>
       </div>
     </section>
