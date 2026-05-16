@@ -21,8 +21,11 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
+import AdminInventoryReconciliationPanel from "../components/AdminInventoryReconciliationPanel.jsx";
+import AdminPendingPaymentsLedger from "../components/AdminPendingPaymentsLedger.jsx";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import EmptyState from "../components/EmptyState.jsx";
+import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import OperationStatusSelector from "../components/OperationStatusSelector.jsx";
 import SectionCard from "../components/SectionCard.jsx";
@@ -30,7 +33,10 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
-import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
+import {
+  getClinicalTwinMetricRoutes,
+  resolveClinicalTwinCounts,
+} from "../lib/clinicalTwinMetrics.js";
 import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -1508,6 +1514,44 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
   );
 }
 
+
+function AdminExecutiveSummaryRow({ dashboard }) {
+  const routes = getClinicalTwinMetricRoutes("admin");
+  const counts = resolveClinicalTwinCounts("admin", { dashboard });
+
+  return (
+    <div className="mb-8 grid w-full grid-cols-1 gap-6 md:grid-cols-2">
+      <Link
+        to={routes.longTermReview}
+        className="group relative cursor-pointer rounded-2xl border border-gray-100 border-l-4 border-l-amber-500 bg-white p-6 shadow-sm transition-all hover:border-amber-200"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Long Term Review</span>
+          <MetricNavAnchor accent="amber" />
+        </div>
+        <div className="mt-2 text-3xl font-black text-gray-900">
+          {counts.longTermReviewCount}{" "}
+          <span className="ml-1 text-xs font-medium text-gray-400">Patients Active</span>
+        </div>
+      </Link>
+
+      <Link
+        to={routes.healthPlans}
+        className="group relative cursor-pointer rounded-2xl border border-gray-100 border-l-4 border-l-teal-500 bg-white p-6 shadow-sm transition-all hover:border-teal-100"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Health Plans</span>
+          <MetricNavAnchor accent="teal" />
+        </div>
+        <div className="mt-2 text-3xl font-black text-gray-900">
+          {counts.healthPlansCount}{" "}
+          <span className="ml-1 text-xs font-medium text-gray-400">Active Subscribers</span>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
 function AdminDashboardView({
   dashboard,
   rosterMeta,
@@ -1518,7 +1562,7 @@ function AdminDashboardView({
 }) {
   return (
     <div className="space-y-6">
-      <section className="relative mx-auto w-full min-w-0 max-w-[1180px] overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
+      <section className="relative mx-auto w-full min-w-0 max-w-6xl overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
         <div className="relative z-10">
@@ -1530,36 +1574,26 @@ function AdminDashboardView({
           </div>
 
           <div className="mt-3 hidden md:block">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                OCS M&#201;DECINS
-              </p>
-              <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl">
-                Operations Dashboard
-              </h1>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">OCS M&#201;DECINS</p>
+            <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl">
+              Operations Dashboard
+            </h1>
+          </div>
+
+          <AdminExecutiveSummaryRow dashboard={dashboard} />
+
+          <div className="grid w-full grid-cols-1 gap-6 lg:grid-cols-3 lg:items-stretch">
+            <div className="lg:col-span-2">
+              <AdminInventoryReconciliationPanel />
+            </div>
+            <div className="lg:col-span-1">
+              <AdminPendingPaymentsLedger />
             </div>
           </div>
 
-          <div className="mt-4">
-            <DashboardSummaryCards dashboard={dashboard} />
-          </div>
-
-          <div className="mt-5 grid gap-6 xl:grid-cols-[1fr_1fr] xl:items-start">
-            <DoctorStatusPanel doctors={dashboard.doctorStatuses} />
-            <UpcomingAppointmentsPanel
-              dashboard={dashboard}
-              subtitle=""
-              titleClassName="text-lg md:text-xl"
-            />
-          </div>
-
           <div className="mt-6 rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-              Roster management
-            </p>
-            <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
-              Current roster PDF
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Roster management</p>
+            <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">Current roster PDF</p>
 
             <form className="mt-4 flex flex-col gap-3 md:flex-row md:items-center" onSubmit={handleUploadRoster}>
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-white">
@@ -1588,12 +1622,6 @@ function AdminDashboardView({
           </div>
         </div>
       </section>
-
-      <ClinicalTwinMetricsCards
-        role="admin"
-        longTermReviewCount={resolveClinicalTwinCounts("admin", { dashboard }).longTermReviewCount}
-        healthPlansCount={resolveClinicalTwinCounts("admin", { dashboard }).healthPlansCount}
-      />
     </div>
   );
 }
