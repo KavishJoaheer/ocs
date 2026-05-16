@@ -680,70 +680,114 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
   });
 }
 
+function movementPeriodSql(movementAlias = "m") {
+  return `(
+    (@useRange = 0 AND strftime('%Y-%m', ${movementAlias}.created_at) = strftime('%Y-%m', 'now'))
+    OR (@useRange = 1 AND date(${movementAlias}.created_at) >= date(@dateFrom) AND date(${movementAlias}.created_at) <= date(@dateTo))
+  )`;
+}
+
 function getCompareRows(dateFrom = "", dateTo = "") {
   const from = String(dateFrom || "").trim();
   const to = String(dateTo || "").trim();
   const useRange = Boolean(from && to);
+  const periodSql = movementPeriodSql("m");
+  const params = {
+    useRange: useRange ? 1 : 0,
+    dateFrom: from || null,
+    dateTo: to || null,
+  };
 
   return db
     .prepare(`
       SELECT
         d.id AS doctor_id,
         d.full_name AS doctor_name,
-        COUNT(DISTINCT c.patient_id) AS patient_volume,
-        COALESCE(
-          SUM(
-            CASE
-              WHEN m.action_type IN ('sell', 'remove', 'wastage', 'stock_out') THEN m.quantity * i.cost_price
-              ELSE 0
-            END
-          ),
-          0
-        ) AS stock_consumption
+        (
+          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
+          FROM inventory_movements m
+          JOIN inventory i ON i.id = m.item_id
+          WHERE i.stock_scope = 'doctor'
+            AND i.owner_doctor_id = d.id
+            AND m.action_type = 'restock_in'
+            AND ${periodSql}
+        ) AS total_restocked,
+        (
+          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
+          FROM inventory_movements m
+          JOIN inventory i ON i.id = m.item_id
+          WHERE i.stock_scope = 'doctor'
+            AND i.owner_doctor_id = d.id
+            AND m.action_type = 'sell'
+            AND ${periodSql}
+            AND EXISTS (
+              SELECT 1
+              FROM consultations c
+              JOIN billing b ON b.consultation_id = c.id
+              WHERE c.doctor_id = d.id
+                AND b.status IN ('paid', 'unpaid')
+                AND (
+                  c.id = CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER)
+                  OR (
+                    m.reference_type = 'appointment'
+                    AND c.appointment_id = m.reference_id
+                  )
+                )
+            )
+        ) AS consumed_sales,
+        (
+          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
+          FROM inventory_movements m
+          JOIN inventory i ON i.id = m.item_id
+          WHERE i.stock_scope = 'doctor'
+            AND i.owner_doctor_id = d.id
+            AND ${periodSql}
+            AND (
+              m.action_type = 'wastage'
+              OR (
+                m.action_type = 'stock_out'
+                AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'wasted'
+              )
+            )
+        ) AS consumed_wasted,
+        (
+          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
+          FROM inventory_movements m
+          JOIN inventory i ON i.id = m.item_id
+          WHERE i.stock_scope = 'doctor'
+            AND i.owner_doctor_id = d.id
+            AND ${periodSql}
+            AND (
+              m.action_type = 'expired'
+              OR (
+                m.action_type = 'stock_out'
+                AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'expired'
+              )
+            )
+        ) AS consumed_expired
       FROM doctors d
-      LEFT JOIN consultations c
-        ON c.doctor_id = d.id
-       AND (
-         (
-           @useRange = 0
-           AND strftime('%Y-%m', c.consultation_date) = strftime('%Y-%m', 'now')
-         )
-         OR (
-           @useRange = 1
-           AND date(c.consultation_date) >= date(@dateFrom)
-           AND date(c.consultation_date) <= date(@dateTo)
-         )
-       )
-      LEFT JOIN inventory i
-        ON i.stock_scope = 'doctor'
-       AND i.owner_doctor_id = d.id
-      LEFT JOIN inventory_movements m
-        ON m.item_id = i.id
-       AND (
-         (
-           @useRange = 0
-           AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
-         )
-         OR (
-           @useRange = 1
-           AND date(m.created_at) >= date(@dateFrom)
-           AND date(m.created_at) <= date(@dateTo)
-         )
-       )
       WHERE d.deleted_at IS NULL
-      GROUP BY d.id, d.full_name
       ORDER BY d.full_name ASC
     `)
-    .all({
-      useRange: useRange ? 1 : 0,
-      dateFrom: from || null,
-      dateTo: to || null,
-    })
-    .map((row) => ({
-      ...row,
-      patient_volume: Number(row.patient_volume || 0),
-      stock_consumption: roundCurrency(row.stock_consumption),
-    }));
+    .all(params)
+    .map((row) => {
+      const totalRestocked = roundCurrency(row.total_restocked);
+      const consumedSales = roundCurrency(row.consumed_sales);
+      const consumedWasted = roundCurrency(row.consumed_wasted);
+      const consumedExpired = roundCurrency(row.consumed_expired);
+      const remainingInBag = roundCurrency(
+        totalRestocked - consumedSales - consumedWasted - consumedExpired,
+      );
+      return {
+        doctor_id: row.doctor_id,
+        doctor_name: row.doctor_name,
+        total_restocked: totalRestocked,
+        consumed_sales: consumedSales,
+        consumed_wasted: consumedWasted,
+        consumed_expired: consumedExpired,
+        remaining_in_bag: remainingInBag,
+      };
+    });
 }
 
 function getDoctorConsumptionRecord(doctorId) {
@@ -1645,6 +1689,7 @@ router.post("/items/:id/actions", (req, res) => {
           performed_by_user_id: req.auth.id,
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
+          ...(actionType === "sell" ? { consultation_id: Number(req.body.consultation_id || 0) } : {}),
           ...(actionType === "stock_out"
             ? { stock_out_reason: stockOutReason, stock_out_note: note || "" }
             : {}),
