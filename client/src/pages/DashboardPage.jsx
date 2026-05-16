@@ -892,30 +892,22 @@ function DoctorScheduledVisitsWidget({ today, visits, listPath }) {
   );
 }
 
-function OperatorScheduledVisitsMetricCard({ metrics, listPath }) {
-  const pending = Number(metrics?.scheduled_visits?.pending_dispatch ?? 0);
-  const today = Number(metrics?.scheduled_visits?.total_scheduled ?? 0);
-  const workloadLine = `${pending} pending dispatch · ${today} scheduled today`;
-
+function OperatorScheduledVisitsMetricCard() {
   return (
-    <Link
-      to={listPath}
-      className="group relative flex min-h-[140px] flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white px-5 py-5 transition hover:border-[#2d8f98]/35 md:px-6 md:py-5"
+    <div
+      aria-disabled="true"
+      className="relative flex min-h-[140px] cursor-not-allowed flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white px-5 py-5 opacity-50 md:px-6 md:py-5"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+      <div className="flex items-start gap-3 border-b border-gray-100 pb-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50 text-[#2d8f98]">
             <CalendarClock className="size-5" />
           </div>
           <p className="text-base font-medium leading-snug tracking-tight text-slate-950">Scheduled visits</p>
         </div>
-        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
-          <ArrowUpRight className="size-4" />
-        </span>
       </div>
-      <p className="mt-4 text-base font-semibold leading-snug tracking-tight text-[#1e3d44]">{workloadLine}</p>
-      <p className="mt-2 text-xs font-medium text-slate-500">Across all doctors · live from appointments</p>
-    </Link>
+      <p className="mt-4 text-sm font-medium text-slate-500">Feature Inactive</p>
+    </div>
   );
 }
 
@@ -1152,7 +1144,7 @@ function OperatorPersonalOperationUpdates({ metrics }) {
         />
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <OperatorScheduledVisitsMetricCard metrics={metrics} listPath="/operator/scheduled-visits" />
+          <OperatorScheduledVisitsMetricCard />
           <PersonalOperationOverviewCard
             accent
             icon={CreditCard}
