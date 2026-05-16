@@ -27,6 +27,43 @@ import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
+function inventorySortModeLabel(mode) {
+  switch (mode) {
+    case "qty_asc":
+      return "Qty (Lowest)";
+    case "qty_desc":
+      return "Qty (Highest)";
+    case "expiry_asc":
+    default:
+      return "Expiry (Soonest)";
+  }
+}
+
+/** Safe segment for workbook / file names (no path separators). */
+function sanitizeInventoryExportToken(value, fallback = "X") {
+  const raw = String(value ?? "").trim();
+  const cleaned = raw
+    .replace(/[\\/:*?"<>|]+/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 64);
+  return cleaned || fallback;
+}
+
+function excelSafeSheetTitle(title) {
+  const cleaned = String(title)
+    .replace(/\\/g, "-")
+    .replace(/\//g, "-")
+    .replace(/\?/g, "-")
+    .replace(/\*/g, "-")
+    .replace(/:/g, "-")
+    .replace(/\[/g, "-")
+    .replace(/\]/g, "-")
+    .trim()
+    .slice(0, 31);
+  return cleaned || "Stock";
+}
+
 function SummaryCard({ title, value, tone = "teal" }) {
   const valueToneClass = tone === "amber" ? "text-amber-700" : "text-slate-950";
   return (
@@ -1137,13 +1174,34 @@ export default function InventoryPage() {
     setDoctorRestockOpen(true);
   }
 
-  function downloadOcsStockExcel() {
-    if (!isAdmin || !contextIsOcs) return;
+  function downloadAdminStockExcel() {
+    if (!isAdmin) return;
     if (!sortedItems.length) {
       toast.error("No stock rows match the current filters.");
       return;
     }
-    const rows = sortedItems.map((item) => ({
+
+    const activeFolder = folders.find((f) => String(f.id) === String(selectedView));
+    const categoryDisplay = activeFolder?.name || "All categories";
+    const categoryFileToken = sanitizeInventoryExportToken(categoryDisplay.replace(/\s+/g, "_"));
+
+    const selectedDoctor = doctorOptions.find((d) => String(d.id) === String(selectedContextDoctorId));
+    const scopeIsMaster = !selectedContextDoctorId;
+    const scopeFileToken = scopeIsMaster
+      ? "Master"
+      : `Dr_${sanitizeInventoryExportToken(String(selectedDoctor?.full_name || `id_${selectedContextDoctorId}`).replace(/\s+/g, "_"))}`;
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fileName = `OCS_Stock_Report_${scopeFileToken}_${categoryFileToken}_${stamp}.xlsx`;
+
+    const mainSheetLabel = scopeIsMaster
+      ? `OCS_${categoryDisplay}`
+      : `Dr ${String(selectedDoctor?.full_name || selectedContextDoctorId).slice(0, 18)} · ${categoryDisplay}`;
+    const mainSheetName = excelSafeSheetTitle(mainSheetLabel);
+
+    const stockRows = sortedItems.map((item) => ({
+      "Stock scope": scopeIsMaster ? "Master (OCS)" : "Doctor stock",
+      "Doctor ID": scopeIsMaster ? "" : String(selectedContextDoctorId),
       Category: item.folder_name || "",
       "Item name": item.item_name || "",
       Quantity: Number(item.quantity ?? 0),
@@ -1155,13 +1213,26 @@ export default function InventoryPage() {
       Attributes: item.attributes || "",
       "MOA notes": item.moa_notes || "",
     }));
+
+    const filterMetaRows = [
+      { Field: "Report", Value: "OCS Stock Report" },
+      { Field: "Scope", Value: scopeIsMaster ? "Master Stock (OCS)" : `Doctor: ${selectedDoctor?.full_name || selectedContextDoctorId}` },
+      { Field: "Doctor ID (export scope)", Value: scopeIsMaster ? "—" : String(selectedContextDoctorId) },
+      { Field: "Active category (folder)", Value: categoryDisplay },
+      { Field: "Search text", Value: search.trim() || "—" },
+      { Field: "Show low stock only", Value: showLowStockOnly ? "Yes" : "No" },
+      { Field: "Show near expiry only", Value: showNearExpiryOnly ? "Yes" : "No" },
+      { Field: "Sort order", Value: inventorySortModeLabel(sortMode) },
+      { Field: "Exported rows", Value: String(sortedItems.length) },
+    ];
+
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(workbook, worksheet, "OCS Stock");
-    const folderLabel = folders.find((f) => String(f.id) === String(selectedView))?.name || "category";
-    const safe = String(folderLabel).replace(/[\\/:*?"<>|]/g, "-");
-    const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `ocs_stock_${safe}_${stamp}.xlsx`);
+    const stockSheet = XLSX.utils.json_to_sheet(stockRows);
+    XLSX.utils.book_append_sheet(workbook, stockSheet, mainSheetName);
+    const filtersSheet = XLSX.utils.json_to_sheet(filterMetaRows);
+    XLSX.utils.book_append_sheet(workbook, filtersSheet, excelSafeSheetTitle("Export filters"));
+
+    XLSX.writeFile(workbook, fileName);
     toast.success("Excel file downloaded.");
   }
 
@@ -1469,10 +1540,10 @@ export default function InventoryPage() {
             </button>
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {isAdmin && contextIsOcs ? (
+              {isAdmin ? (
                 <button
                   type="button"
-                  onClick={downloadOcsStockExcel}
+                  onClick={downloadAdminStockExcel}
                   className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
                 >
                   <Download className="size-4 text-[#1f7f7b]" />
