@@ -66,6 +66,28 @@ textarea {
   max-width: 100%;
 }
 
+/* Doctor mobile home — fills viewport and centers action cards in thumb zone */
+.mobile-dashboard-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 85vh;
+  justify-content: space-between;
+  padding-bottom: 2rem;
+}
+
+.navigation-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  flex-grow: 1;
+  justify-content: center;
+}
+
+.navigation-card-item {
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+}
+
 /* Standard page width — horizontal padding lives on AppShell; pages use this for alignment only */
 .ocs-page {
   width: 100%;
