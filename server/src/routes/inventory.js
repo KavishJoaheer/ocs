@@ -602,6 +602,9 @@ function getActivityStaffList() {
 function getMovements(role, doctorId = null, activityFilters = {}) {
   const filterUserId = Number(activityFilters.userId || 0);
   const filterActorRole = String(activityFilters.actorRole || "").trim().toLowerCase();
+  const dateFrom = String(activityFilters.dateFrom || "").trim();
+  const dateTo = String(activityFilters.dateTo || "").trim();
+  const rowLimit = role === "admin" && (dateFrom || dateTo) ? 2000 : 200;
 
   const rows = db
     .prepare(`
@@ -616,24 +619,36 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
         ON m.reference_type = 'doctor'
        AND target.id = m.reference_id
       WHERE
-        (@role = 'doctor' AND i.stock_scope = 'doctor' AND i.owner_doctor_id = @doctorId)
-        OR (@role != 'doctor')
+        (
+          (@role = 'doctor' AND i.stock_scope = 'doctor' AND i.owner_doctor_id = @doctorId)
+          OR (@role != 'doctor')
+        )
+        AND (@dateFrom = '' OR date(m.created_at) >= date(@dateFrom))
+        AND (@dateTo = '' OR date(m.created_at) <= date(@dateTo))
+        AND (
+          @filterUserId = 0
+          OR m.recorded_by_user_id = @filterUserId
+        )
       ORDER BY m.created_at DESC, m.id DESC
-      LIMIT 200
+      LIMIT @rowLimit
     `)
-    .all({ role, doctorId });
+    .all({
+      role,
+      doctorId,
+      dateFrom,
+      dateTo,
+      filterUserId,
+      rowLimit,
+    });
 
   const filtered =
-    role === "admin" && (filterUserId || filterActorRole)
+    role === "admin" && filterActorRole
       ? rows.filter((row) => {
           let meta = {};
           try {
             meta = JSON.parse(row.meta_json || "{}");
           } catch {
             meta = {};
-          }
-          if (filterUserId && Number(meta.performed_by_user_id) !== filterUserId) {
-            return false;
           }
           if (filterActorRole && String(meta.performed_by_role || "").toLowerCase() !== filterActorRole) {
             return false;
@@ -665,7 +680,11 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
   });
 }
 
-function getCompareRows() {
+function getCompareRows(dateFrom = "", dateTo = "") {
+  const from = String(dateFrom || "").trim();
+  const to = String(dateTo || "").trim();
+  const useRange = Boolean(from && to);
+
   return db
     .prepare(`
       SELECT
@@ -684,18 +703,42 @@ function getCompareRows() {
       FROM doctors d
       LEFT JOIN consultations c
         ON c.doctor_id = d.id
-       AND strftime('%Y-%m', c.consultation_date) = strftime('%Y-%m', 'now')
+       AND (
+         (
+           @useRange = 0
+           AND strftime('%Y-%m', c.consultation_date) = strftime('%Y-%m', 'now')
+         )
+         OR (
+           @useRange = 1
+           AND date(c.consultation_date) >= date(@dateFrom)
+           AND date(c.consultation_date) <= date(@dateTo)
+         )
+       )
       LEFT JOIN inventory i
         ON i.stock_scope = 'doctor'
        AND i.owner_doctor_id = d.id
       LEFT JOIN inventory_movements m
         ON m.item_id = i.id
-       AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+       AND (
+         (
+           @useRange = 0
+           AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+         )
+         OR (
+           @useRange = 1
+           AND date(m.created_at) >= date(@dateFrom)
+           AND date(m.created_at) <= date(@dateTo)
+         )
+       )
       WHERE d.deleted_at IS NULL
       GROUP BY d.id, d.full_name
       ORDER BY d.full_name ASC
     `)
-    .all()
+    .all({
+      useRange: useRange ? 1 : 0,
+      dateFrom: from || null,
+      dateTo: to || null,
+    })
     .map((row) => ({
       ...row,
       patient_volume: Number(row.patient_volume || 0),
@@ -763,6 +806,9 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
       : ocsStock;
   const summaryDoctorId = doctorId && !doctorViewIsOcs ? doctorId : contextDoctorId || null;
 
+  const activityDateFrom = String(req.query.dateFrom || "").trim();
+  const activityDateTo = String(req.query.dateTo || "").trim();
+
   return {
     folders,
     ocs_stock: ocsStock,
@@ -775,10 +821,15 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     movements: getMovements(role, doctorId, {
       userId: req.query.activityUserId,
       actorRole: req.query.activityRole,
+      dateFrom: activityDateFrom,
+      dateTo: activityDateTo,
     }),
     activity_staff: role === "admin" ? getActivityStaffList() : [],
     staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
-    compare_rows: role === "admin" || role === "operator" ? getCompareRows() : [],
+    compare_rows:
+      role === "admin" || role === "operator"
+        ? getCompareRows(activityDateFrom, activityDateTo)
+        : [],
     my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],
   };
 }

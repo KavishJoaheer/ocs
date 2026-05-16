@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Calendar,
   ChevronDown,
   ChevronUp,
   Download,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
+import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -28,6 +30,127 @@ import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
+
+dayjs.extend(isoWeek);
+
+const INVENTORY_PERIOD_PRESETS = [
+  { id: "yearly", label: "Yearly" },
+  { id: "monthly", label: "Monthly" },
+  { id: "weekly", label: "Weekly" },
+];
+
+function inventoryTodayInputValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const local = new Date(now.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+function getInventoryDateRange(preset, anchorDateStr) {
+  const anchor = dayjs(anchorDateStr || inventoryTodayInputValue());
+  if (!anchor.isValid()) {
+    const today = inventoryTodayInputValue();
+    return { from: today, to: today };
+  }
+  switch (preset) {
+    case "yearly":
+      return {
+        from: anchor.startOf("year").format("YYYY-MM-DD"),
+        to: anchor.endOf("year").format("YYYY-MM-DD"),
+      };
+    case "monthly":
+      return {
+        from: anchor.startOf("month").format("YYYY-MM-DD"),
+        to: anchor.endOf("month").format("YYYY-MM-DD"),
+      };
+    case "weekly":
+      return {
+        from: anchor.startOf("isoWeek").format("YYYY-MM-DD"),
+        to: anchor.endOf("isoWeek").format("YYYY-MM-DD"),
+      };
+    case "specific":
+      return {
+        from: anchorDateStr,
+        to: anchorDateStr,
+      };
+    default:
+      return {
+        from: anchor.startOf("month").format("YYYY-MM-DD"),
+        to: anchor.endOf("month").format("YYYY-MM-DD"),
+      };
+  }
+}
+
+function formatInventoryPeriodLabel(preset, dateFrom, dateTo) {
+  const from = dayjs(dateFrom);
+  const to = dayjs(dateTo);
+  if (preset === "specific" && from.isValid()) {
+    return from.format("DD/MM/YYYY");
+  }
+  if (preset === "yearly" && from.isValid()) {
+    return from.format("YYYY");
+  }
+  if (preset === "monthly" && from.isValid()) {
+    return from.format("MMMM YYYY");
+  }
+  if (preset === "weekly" && from.isValid() && to.isValid()) {
+    return `${from.format("DD MMM")} – ${to.format("DD MMM YYYY")}`;
+  }
+  if (from.isValid() && to.isValid()) {
+    return `${from.format("DD/MM/YYYY")} – ${to.format("DD/MM/YYYY")}`;
+  }
+  return "Selected period";
+}
+
+function InventoryPeriodFilter({ preset, anchorDate, onPresetChange, onAnchorDateChange, className }) {
+  return (
+    <div
+      className={cx(
+        "inline-flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm",
+        className,
+      )}
+      role="group"
+      aria-label="Time period"
+    >
+      {INVENTORY_PERIOD_PRESETS.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onPresetChange(opt.id)}
+          className={cx(
+            "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+            preset === opt.id
+              ? "bg-[#2d8f98] text-white shadow-sm"
+              : "border border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+      <label
+        title="Custom date"
+        className={cx(
+          "flex cursor-pointer items-center gap-1 rounded-xl border bg-white px-2 py-1 transition",
+          preset === "specific"
+            ? "border-[#2d8f98] bg-[#ecf8f7] ring-1 ring-[#2d8f98]/30"
+            : "border-slate-200 hover:border-slate-300",
+        )}
+      >
+        <Calendar className="size-3.5 shrink-0 text-[#2d8f98]" />
+        <span className="sr-only">Custom date</span>
+        <input
+          type="date"
+          value={anchorDate}
+          onChange={(event) => {
+            onAnchorDateChange(event.target.value);
+            onPresetChange("specific");
+          }}
+          className="max-w-[10rem] cursor-pointer border-0 bg-transparent py-0.5 text-xs font-semibold text-slate-800 outline-none"
+        />
+      </label>
+    </div>
+  );
+}
 
 function inventorySortModeLabel(mode) {
   switch (mode) {
@@ -824,15 +947,16 @@ function buildLiveActivityExportRow(movement) {
   };
 }
 
-function downloadLiveActivityExcel({ rows, staffLabel, monthLabel }) {
+function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, periodLabel }) {
   if (!rows.length) {
     toast.error("No activity rows match the current filters.");
     return;
   }
 
-  const stamp = dayjs().format("YYYY-MM-DD");
   const staffToken = sanitizeInventoryExportToken(staffLabel.replace(/\s+/g, "_"), "All_Staff");
-  const fileName = `OCS_Inventory_History_${staffToken}_${stamp}.xlsx`;
+  const fromToken = sanitizeInventoryExportToken(startDate, "start");
+  const toToken = sanitizeInventoryExportToken(endDate, "end");
+  const fileName = `OCS_Inventory_History_${staffToken}_${fromToken}_${toToken}.xlsx`;
 
   const sheetRows = rows.map(buildLiveActivityExportRow);
   const workbook = XLSX.utils.book_new();
@@ -842,7 +966,9 @@ function downloadLiveActivityExcel({ rows, staffLabel, monthLabel }) {
   const metaSheet = XLSX.utils.json_to_sheet([
     { Field: "Report", Value: "OCS Inventory History" },
     { Field: "Staff filter", Value: staffLabel },
-    { Field: "Period", Value: monthLabel },
+    { Field: "Period label", Value: periodLabel },
+    { Field: "Start date", Value: startDate },
+    { Field: "End date", Value: endDate },
     { Field: "Exported rows", Value: String(rows.length) },
     { Field: "Generated at", Value: dayjs().format("YYYY-MM-DD HH:mm") },
   ]);
@@ -929,12 +1055,13 @@ function LiveActivitySection({
   staffOptions = [],
   activityStaffUserId = "",
   onActivityStaffUserIdChange,
-  activityDateFrom = "",
-  activityDateTo = "",
+  periodPreset = "monthly",
+  periodAnchorDate = "",
+  onPeriodPresetChange,
+  onPeriodAnchorDateChange,
+  dateFrom = "",
+  dateTo = "",
 }) {
-  const monthKey = dayjs().format("YYYY-MM");
-  const monthLabel = dayjs(monthKey, "YYYY-MM").format("MMMM YYYY");
-
   const doctorStaff = useMemo(
     () => staffOptions.filter((member) => String(member.role || "").toLowerCase() === "doctor"),
     [staffOptions],
@@ -944,20 +1071,20 @@ function LiveActivitySection({
     [staffOptions],
   );
 
+  const periodLabel = useMemo(
+    () => formatInventoryPeriodLabel(periodPreset, dateFrom, dateTo),
+    [periodPreset, dateFrom, dateTo],
+  );
+
   const filteredRows = useMemo(() => {
-    const from = activityDateFrom ? dayjs(activityDateFrom) : dayjs(monthKey, "YYYY-MM").startOf("month");
-    const to = activityDateTo ? dayjs(activityDateTo) : dayjs(monthKey, "YYYY-MM").endOf("month");
+    if (!activityStaffUserId) return movements;
     return movements.filter((movement) => {
-      const at = dayjs(movement.created_at);
-      if (!at.isValid()) return false;
-      if (from.isValid() && at.isBefore(from, "day")) return false;
-      if (to.isValid() && at.isAfter(to, "day")) return false;
-      if (activityStaffUserId) {
-        return Number(movement.meta?.performed_by_user_id) === Number(activityStaffUserId);
-      }
-      return true;
+      const metaUserId = Number(movement.meta?.performed_by_user_id || 0);
+      const recordedUserId = Number(movement.recorded_by_user_id || 0);
+      const targetId = Number(activityStaffUserId);
+      return metaUserId === targetId || recordedUserId === targetId;
     });
-  }, [movements, monthKey, activityStaffUserId, activityDateFrom, activityDateTo]);
+  }, [movements, activityStaffUserId]);
 
   const rows = filteredRows.slice(0, maxRows);
 
@@ -967,58 +1094,73 @@ function LiveActivitySection({
     return match?.full_name || "Selected Staff";
   }, [activityStaffUserId, staffOptions]);
 
-  const headerActions = showStaffFilters ? (
-    <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-end sm:justify-end">
-      <label className="flex min-w-0 flex-col gap-1 sm:min-w-[14rem]">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter by Staff</span>
-        <select
-          value={activityStaffUserId}
-          onChange={(event) => onActivityStaffUserIdChange?.(event.target.value)}
-          className={cx(ACTIVITY_FILTER_SELECT_CLASS, "w-full min-h-10 py-2 text-sm")}
-        >
-          <option value="">All Staff / Users</option>
-          {doctorStaff.length ? (
-            <optgroup label="Doctors">
-              {doctorStaff.map((member) => (
-                <option key={member.id} value={String(member.id)}>
-                  {member.full_name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          {operatorStaff.length ? (
-            <optgroup label="Operators">
-              {operatorStaff.map((member) => (
-                <option key={member.id} value={String(member.id)}>
-                  {member.full_name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-        </select>
-      </label>
-      <button
-        type="button"
-        onClick={() =>
-          downloadLiveActivityExcel({
-            rows: filteredRows,
-            staffLabel: selectedStaffLabel,
-            monthLabel,
-          })
-        }
-        className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1]"
-      >
-        <Download className="size-4 shrink-0" />
-        📥 Download History Excel
-      </button>
-    </div>
-  ) : null;
-
   const emptyFilteredUser = showStaffFilters && rows.length === 0 && activityStaffUserId;
 
   return (
-    <SectionCard title="Live Activity" actions={headerActions}>
-      <div className={cx("overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-2 py-2", scrollClassName)}>
+    <SectionCard>
+      <div className="flex flex-col space-y-3 border-b border-gray-100 pb-4">
+        <h3 className="text-base font-bold text-gray-900">Live Activity</h3>
+        {showStaffFilters ? (
+          <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:space-x-3">
+            <InventoryPeriodFilter
+              preset={periodPreset}
+              anchorDate={periodAnchorDate}
+              onPresetChange={onPeriodPresetChange}
+              onAnchorDateChange={onPeriodAnchorDateChange}
+            />
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:space-x-3">
+              <label className="flex min-w-0 flex-col gap-1 sm:min-w-[14rem]">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Filter by Staff
+                </span>
+                <select
+                  value={activityStaffUserId}
+                  onChange={(event) => onActivityStaffUserIdChange?.(event.target.value)}
+                  className={cx(ACTIVITY_FILTER_SELECT_CLASS, "w-full min-h-10 py-2 text-sm")}
+                >
+                  <option value="">All Staff / Users</option>
+                  {doctorStaff.length ? (
+                    <optgroup label="Doctors">
+                      {doctorStaff.map((member) => (
+                        <option key={member.id} value={String(member.id)}>
+                          {member.full_name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {operatorStaff.length ? (
+                    <optgroup label="Operators">
+                      {operatorStaff.map((member) => (
+                        <option key={member.id} value={String(member.id)}>
+                          {member.full_name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  downloadLiveActivityExcel({
+                    rows: filteredRows,
+                    staffLabel: selectedStaffLabel,
+                    startDate: dateFrom,
+                    endDate: dateTo,
+                    periodLabel,
+                  })
+                }
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1]"
+              >
+                <Download className="size-4 shrink-0" />
+                📥 Download History Excel
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className={cx("mt-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white/80 px-2 py-2", scrollClassName)}>
         {emptyFilteredUser ? (
           <p className="py-8 text-center text-sm text-slate-500">
             No logged stock movements found for this user.
@@ -1036,6 +1178,7 @@ function LiveActivitySection({
     </SectionCard>
   );
 }
+
 
 function InventoryOcsMasterActions({
   item,
@@ -1422,6 +1565,8 @@ export default function InventoryPage() {
   const [batchMap, setBatchMap] = useState({});
   const [consumptionPeriod, setConsumptionPeriod] = useState("month");
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
+  const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
+  const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const isDoctor = user.role === "doctor";
   const canManageOcs = user.role === "admin" || user.role === "operator";
   const isAdmin = user.role === "admin";
@@ -1436,6 +1581,10 @@ export default function InventoryPage() {
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
   const showMobileDoctorBag = isDoctor && isMobile;
+  const adminPeriodRange = useMemo(
+    () => getInventoryDateRange(adminPeriodPreset, adminPeriodAnchor),
+    [adminPeriodPreset, adminPeriodAnchor],
+  );
   const items = isDoctor
     ? doctorViewIsOcs
       ? data?.ocs_stock || []
@@ -1528,6 +1677,12 @@ export default function InventoryPage() {
         staffOptions: data?.activity_staff || [],
         activityStaffUserId,
         onActivityStaffUserIdChange: setActivityStaffUserId,
+        periodPreset: adminPeriodPreset,
+        periodAnchorDate: adminPeriodAnchor,
+        onPeriodPresetChange: setAdminPeriodPreset,
+        onPeriodAnchorDateChange: setAdminPeriodAnchor,
+        dateFrom: adminPeriodRange.from,
+        dateTo: adminPeriodRange.to,
       }
     : {};
 
@@ -1535,6 +1690,12 @@ export default function InventoryPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContextDoctorId, doctorContext]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    load(selectedContextDoctorId, doctorContext, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminPeriodPreset, adminPeriodAnchor, activityStaffUserId]);
 
   // Default "View By" folder after inventory payload loads.
   useEffect(() => {
@@ -2041,6 +2202,7 @@ export default function InventoryPage() {
           currentPage={currentPage}
           setCurrentPage={setCurrentPage}
           batchMap={batchMap}
+          doctorRestockCandidates={doctorRestockCandidates}
           onOpenRestockInventory={() => setDoctorRestockOpen(true)}
         />
       ) : (
