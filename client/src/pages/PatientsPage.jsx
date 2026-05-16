@@ -53,6 +53,50 @@ function PatientCareNumber({ patient, className }) {
   );
 }
 
+function PatientHealthPlanInlineBadge() {
+  return (
+    <span
+      className="ml-2 inline-flex shrink-0 items-center rounded bg-teal-50 px-1.5 py-0.5 text-xs font-semibold text-teal-700"
+      title="Health plan subscriber"
+    >
+      ★
+    </span>
+  );
+}
+
+function formatMobilePatientGender(gender) {
+  if (gender === "M") return "Male";
+  if (gender === "F") return "Female";
+  const normalized = String(gender || "").trim();
+  return normalized || null;
+}
+
+function formatMobilePatientAgeYears(dateOfBirth) {
+  const formatted = formatAgeFromDateOfBirth(dateOfBirth);
+  const match = /^(\d+)\s+years old$/.exec(formatted);
+  return match ? `${match[1]} yrs` : null;
+}
+
+function formatMobilePatientMetaLine(patient) {
+  const parts = [];
+
+  if (patient.patient_identifier) {
+    parts.push(patient.patient_identifier);
+  }
+
+  const ageLabel = patient.date_of_birth ? formatMobilePatientAgeYears(patient.date_of_birth) : null;
+  if (ageLabel) {
+    parts.push(ageLabel);
+  }
+
+  const genderLabel = formatMobilePatientGender(patient.gender);
+  if (genderLabel) {
+    parts.push(genderLabel);
+  }
+
+  return parts.length ? parts.join(" • ") : "Patient details unavailable";
+}
+
 function PatientsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -232,16 +276,95 @@ function PatientsPage() {
     }
   }
 
+  const searchField = (
+    <label className="relative block w-full max-w-xl">
+      <Search
+        className={cx(
+          "pointer-events-none absolute left-4 -translate-y-1/2 text-slate-400",
+          isMobile ? "top-1/2 size-5" : "top-1/2 size-4",
+        )}
+      />
+      <input
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setPage(1);
+        }}
+        placeholder={
+          isMobile
+            ? "Search by name or OCS ID..."
+            : "Search by OCS care number, patient ID, name, assigned doctor, location, or next of kin"
+        }
+        className={cx(
+          "w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-sky-400 focus:bg-white",
+          isMobile ? "h-12" : "py-3",
+        )}
+      />
+    </label>
+  );
+
+  const statusFilters = (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
+        {["all", "active", "discharged"].map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => {
+              setStatusFilter(status);
+              setPage(1);
+            }}
+            className={cx(
+              "rounded-xl px-4 py-2 text-sm font-semibold capitalize transition",
+              statusFilter === status
+                ? status === "active"
+                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                  : status === "discharged"
+                    ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
+                    : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+                : "text-slate-600 hover:bg-slate-50",
+            )}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+
+      <select
+        value={doctorIdFilter}
+        onChange={(event) => {
+          setDoctorIdFilter(event.target.value);
+          setPage(1);
+        }}
+        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+      >
+        <option value="">All assigned doctors</option>
+        {doctors.map((doctor) => (
+          <option key={doctor.id} value={doctor.id}>
+            {doctor.full_name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
   if (loading) {
     return <LoadingState label="Loading patients" />;
   }
 
   return (
-    <div className={cx(pageContainerClass, "space-y-4")}>
-      <PageHeader
-        title="Patients"
-        actions={headerActions}
-      />
+    <div className={cx(pageContainerClass, isMobile ? "space-y-3" : "space-y-4")}>
+      {isMobile ? (
+        <header className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">Patient Directory</h1>
+            {headerActions}
+          </div>
+          {viewMode === "active" ? searchField : null}
+        </header>
+      ) : (
+        <PageHeader title="Patients" actions={headerActions} />
+      )}
 
       {canDeletePatients ? (
         <div className="flex flex-wrap gap-3 rounded-[24px] border border-slate-200/80 bg-white/80 p-2.5 shadow-[0_20px_60px_rgba(34,72,91,0.08)]">
@@ -267,12 +390,15 @@ function PatientsPage() {
       ) : null}
 
       <SectionCard
-        title={viewMode === "deleted" ? "Recently deleted" : null}
+        title={!isMobile && viewMode === "deleted" ? "Recently deleted" : null}
         subtitle={
-          viewMode === "deleted"
-            ? `${deletedPatients.length} archived in the last 30 days`
-            : `${pagination?.total || 0} total records`
+          isMobile
+            ? null
+            : viewMode === "deleted"
+              ? `${deletedPatients.length} archived in the last 30 days`
+              : `${pagination?.total || 0} total records`
         }
+        className={isMobile ? "rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]" : undefined}
         actions={
           refreshing ? (
             <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -283,78 +409,37 @@ function PatientsPage() {
       >
         {viewMode === "active" ? (
           <>
-            <div className="mb-4 flex flex-col gap-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <label className="relative w-full max-w-xl">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={search}
-                    onChange={(event) => {
-                      setSearch(event.target.value);
-                      setPage(1);
-                    }}
-                    placeholder="Search by OCS care number, patient ID, name, assigned doctor, location, or next of kin"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 outline-none transition focus:border-sky-400 focus:bg-white"
-                  />
-                </label>
+            {!isMobile ? (
+              <div className="mb-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  {searchField}
+                  {statusFilters}
+                </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
-                    {["all", "active", "discharged"].map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => {
-                          setStatusFilter(status);
-                          setPage(1);
-                        }}
-                        className={cx(
-                          "rounded-xl px-4 py-2 text-sm font-semibold capitalize transition",
-                          statusFilter === status
-                            ? status === "active"
-                              ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                              : status === "discharged"
-                                ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
-                                : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-                            : "text-slate-600 hover:bg-slate-50",
-                        )}
-                      >
-                        {status}
-                      </button>
-                    ))}
+                {user.role === "operator" ? (
+                  <div className="rounded-[24px] border border-amber-100 bg-amber-50/75 px-4 py-3 text-sm text-amber-800">
+                    Operators can add new patients anytime. Existing patient records stay
+                    edit-locked unless an active admin approval is in place.
                   </div>
-
-                  <select
-                    value={doctorIdFilter}
-                    onChange={(event) => {
-                      setDoctorIdFilter(event.target.value);
-                      setPage(1);
-                    }}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
-                  >
-                    <option value="">All assigned doctors</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>
-                        {doctor.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                ) : null}
               </div>
-
-              {user.role === "operator" ? (
-                <div className="rounded-[24px] border border-amber-100 bg-amber-50/75 px-4 py-3 text-sm text-amber-800">
-                  Operators can add new patients anytime. Existing patient records stay
-                  edit-locked unless an active admin approval is in place.
-                </div>
-              ) : null}
-            </div>
+            ) : (
+              <div className="mb-3 space-y-3">
+                {statusFilters}
+                {user.role === "operator" ? (
+                  <div className="rounded-[20px] border border-amber-100 bg-amber-50/75 px-3 py-2.5 text-sm text-amber-800">
+                    Operators can add new patients anytime. Existing patient records stay
+                    edit-locked unless an active admin approval is in place.
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             {patients.length ? (
               <>
                 {isMobile ? (
                   /* ── Mobile: card list ── */
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
@@ -362,24 +447,19 @@ function PatientsPage() {
                       >
                         <Link
                           to={`/patients/${patient.id}`}
-                          className="block min-h-[4.5rem] p-4 pr-14"
+                          className="block min-h-[5rem] p-4 pr-14"
                         >
-                          <p className="break-words font-semibold text-slate-950">{patient.full_name}</p>
-                          <p className="mt-1 break-words text-sm text-slate-500">
-                            OCS care number:{" "}
-                            <PatientCareNumber patient={patient} />
+                          <p className="flex flex-wrap items-center gap-y-1 break-words">
+                            <span className="text-base font-bold text-gray-900">
+                              {patient.full_name}
+                            </span>
+                            {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
                           </p>
-                          <p className="break-words text-sm text-slate-500">
-                            Patient ID: {displayText(patient.patient_id_number)}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {patient.gender}
-                            {patient.date_of_birth
-                              ? ` \u00B7 ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
-                              : ""}
+                          <p className="mt-1.5 break-words text-sm font-medium text-gray-500">
+                            {formatMobilePatientMetaLine(patient)}
                           </p>
 
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             <StatusBadge value={patient.status} />
                             <span className="text-sm text-slate-600">
                               {displayText(patient.assigned_doctor_name, "Not assigned")}
