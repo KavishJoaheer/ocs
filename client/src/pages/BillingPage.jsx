@@ -892,13 +892,14 @@ function CreateBillingModal({
   }, [patients, patientSearchQuery]);
 
   const doctorHasNoAssignedPatients = authUser?.role === "doctor" && patients.length === 0;
+  const patientLocked = Boolean(preselectedPatientId);
 
   useEffect(() => {
-    if (!open || !patientId || !patients.length) return;
+    if (!open || !patientId || !patients.length || patientLocked) return;
     if (!patients.some((p) => String(p.id) === String(patientId))) {
       setPatientId("");
     }
-  }, [open, patients, patientId]);
+  }, [open, patients, patientId, patientLocked]);
 
   const inventoryCategories = useMemo(() => {
     const folders = new Set();
@@ -1222,7 +1223,7 @@ function CreateBillingModal({
           className={cx(
             "min-w-0 w-full max-w-full",
             isMobile
-              ? "flex-1 space-y-4 overflow-x-hidden overflow-y-auto pb-4"
+              ? "flex-1 space-y-4 overflow-x-hidden overflow-y-auto pb-28"
               : "contents",
           )}
         >
@@ -1236,9 +1237,13 @@ function CreateBillingModal({
             ) : (
               <select
                 required
+                disabled={patientLocked}
                 value={patientId}
                 onChange={(event) => setPatientId(event.target.value)}
-                className={BILLING_FIELD}
+                className={cx(
+                  BILLING_FIELD,
+                  patientLocked && "cursor-not-allowed bg-slate-100",
+                )}
               >
                 <option value="">Select patient</option>
                 {patients.map((patient) => (
@@ -1281,6 +1286,16 @@ function CreateBillingModal({
             {doctorHasNoAssignedPatients ? (
               <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
                 No patients currently assigned to you.
+              </div>
+            ) : patientLocked ? (
+              <div
+                className={cx(
+                  BILLING_FIELD,
+                  "mt-2 flex min-h-12 cursor-not-allowed items-center bg-slate-100 px-4 text-sm font-semibold text-slate-800",
+                )}
+                aria-readonly="true"
+              >
+                {selectedPatientLabel || "Loading patient…"}
               </div>
             ) : (
               <button
@@ -1746,6 +1761,7 @@ function BillingPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const patientIdFilter = searchParams.get("patientId") || "";
+  const openCreateInvoice = searchParams.get("create") === "1";
   const [statusFilter, setStatusFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [bills, setBills] = useState([]);
@@ -1853,6 +1869,32 @@ function BillingPage() {
     loadReferenceData();
   }, [user?.id, user?.doctor_id, user?.role]);
 
+  useEffect(() => {
+    if (!openCreateInvoice || !patientIdFilter || !canCreateBills) {
+      return;
+    }
+
+    if (user?.role === "doctor" || user?.role === "admin") {
+      if (!patientOptions.length) {
+        return;
+      }
+    }
+
+    setCreatorOpen(true);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("create");
+    setSearchParams(nextParams, { replace: true });
+  }, [
+    openCreateInvoice,
+    patientIdFilter,
+    canCreateBills,
+    patientOptions.length,
+    user?.role,
+    searchParams,
+    setSearchParams,
+  ]);
+
   /** Admin: `/billing/patient-summary` is requested with the same date range as the list (see `loadData`), so these totals match the period and stay correct when the table status filter narrows `bills`. */
   const billingDashboardTotals = useMemo(
     () =>
@@ -1940,7 +1982,14 @@ function BillingPage() {
   }
 
   return (
-    <div className={cx(pageContainerClass, "space-y-6", isMobile && canCreateBills && "pb-28")}>
+    <div
+      className={cx(
+        pageContainerClass,
+        "space-y-6",
+        isMobile && "mx-auto max-w-md",
+        isMobile && canCreateBills && "pb-28",
+      )}
+    >
       <PageHeader
         eyebrow="Revenue"
         title="Billing"
@@ -2235,7 +2284,8 @@ function BillingPage() {
           type="button"
           aria-label="Create new invoice"
           onClick={() => setCreatorOpen(true)}
-          className="fixed bottom-24 right-6 z-[45] grid size-14 place-items-center rounded-full bg-[#4FB8B3] text-white shadow-lg shadow-teal-900/25 md:hidden"
+          className="fixed right-6 z-[45] grid size-14 place-items-center rounded-full bg-[#4FB8B3] text-white shadow-lg shadow-teal-900/25 md:hidden"
+          style={{ bottom: "max(1.5rem, var(--sab))" }}
         >
           <Plus className="size-7 stroke-[2.5]" />
         </button>

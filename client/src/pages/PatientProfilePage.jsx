@@ -2356,7 +2356,7 @@ function PatientProfilePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      navigate(`/billing?patientId=${id}`);
+                      navigate(`/billing?patientId=${id}&create=1`);
                       setFabOpen(false);
                     }}
                     className="flex items-center gap-3"
