@@ -18,3 +18,8 @@ export function formatReviewDueShort(value) {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format("DD MMM") : "";
 }
+
+export function formatReviewTimelineDate(value) {
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format("MMM D, YYYY") : "";
+}

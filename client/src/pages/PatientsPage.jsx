@@ -28,7 +28,11 @@ import {
 } from "../lib/format.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import { isPatientSubscribed } from "../lib/patientSubscription.js";
-import { formatReviewDueShort, isPatientUnderReview } from "../lib/patientReview.js";
+import {
+  formatReviewDueShort,
+  formatReviewTimelineDate,
+  isPatientUnderReview,
+} from "../lib/patientReview.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
@@ -99,6 +103,42 @@ function formatMobilePatientMetaLine(patient) {
   return parts.length ? parts.join(" • ") : "Patient details unavailable";
 }
 
+function formatUnderReviewAgeLocationLine(patient) {
+  const parts = [];
+
+  if (patient.date_of_birth) {
+    const ageLabel = formatMobilePatientAgeYears(patient.date_of_birth);
+    if (ageLabel) {
+      parts.push(ageLabel);
+    }
+  }
+
+  if (patient.gender === "M" || patient.gender === "F") {
+    parts.push(patient.gender);
+  } else if (patient.gender) {
+    parts.push(String(patient.gender).trim());
+  }
+
+  const location = String(patient.location || "").trim();
+  if (location) {
+    parts.push(location);
+  }
+
+  return parts.length ? parts.join(" • ") : "Details unavailable";
+}
+
+function formatAssignedClinicianLine(patient) {
+  if (!patient.assigned_doctor_name) {
+    return "Not assigned";
+  }
+
+  if (patient.assigned_doctor_specialization) {
+    return `${patient.assigned_doctor_name} (${patient.assigned_doctor_specialization})`;
+  }
+
+  return patient.assigned_doctor_name;
+}
+
 function PatientsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -112,8 +152,14 @@ function PatientsPage() {
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState(() =>
-    searchParams.get("tab") === "under_review" ? "under_review" : "all",
+    searchParams.get("tab") === "under_review" || searchParams.get("filter") === "under_review"
+      ? "under_review"
+      : "all",
   );
+  const isUnderReviewView =
+    statusFilter === "under_review" ||
+    searchParams.get("tab") === "under_review" ||
+    searchParams.get("filter") === "under_review";
   const [doctorIdFilter, setDoctorIdFilter] = useState("");
   const [viewMode, setViewMode] = useState("active");
   const [page, setPage] = useState(1);
@@ -205,7 +251,10 @@ function PatientsPage() {
     const next = searchParams.get("search") || "";
     setSearch((prev) => (prev === next ? prev : next));
 
-    if (searchParams.get("tab") === "under_review") {
+    if (
+      searchParams.get("tab") === "under_review" ||
+      searchParams.get("filter") === "under_review"
+    ) {
       setStatusFilter("under_review");
       setViewMode("active");
     }
@@ -589,19 +638,36 @@ function PatientsPage() {
                     <div className="overflow-x-auto">
                       <table className="min-w-full table-fixed bg-white text-left">
                         <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                          <tr>
-                            <th className="w-[19%] px-4 py-2.5">Patient</th>
-                            <th className="w-[20%] px-4 py-2.5">Patient details</th>
-                            <th className="w-[16%] px-4 py-2.5">Next of kin</th>
-                            <th className="w-[22%] px-4 py-2.5">Clinical</th>
-                            <th className="w-[10%] px-4 py-2.5">Created</th>
-                            <th className="w-12 px-2 py-2.5 text-right">
-                              <span className="sr-only">Row actions</span>
-                            </th>
-                          </tr>
+                          {isUnderReviewView ? (
+                            <tr>
+                              <th className="w-[20%] px-4 py-2.5">Patient</th>
+                              <th className="w-[18%] px-4 py-2.5">Age / location</th>
+                              <th className="w-[18%] px-4 py-2.5">Assigned clinician</th>
+                              <th className="w-[16%] px-4 py-2.5">Review timeline</th>
+                              <th className="w-[22%] px-4 py-2.5">Review notes</th>
+                              <th className="w-12 px-2 py-2.5 text-right">
+                                <span className="sr-only">Row actions</span>
+                              </th>
+                            </tr>
+                          ) : (
+                            <tr>
+                              <th className="w-[19%] px-4 py-2.5">Patient</th>
+                              <th className="w-[20%] px-4 py-2.5">Patient details</th>
+                              <th className="w-[16%] px-4 py-2.5">Next of kin</th>
+                              <th className="w-[22%] px-4 py-2.5">Clinical</th>
+                              <th className="w-[10%] px-4 py-2.5">Created</th>
+                              <th className="w-12 px-2 py-2.5 text-right">
+                                <span className="sr-only">Row actions</span>
+                              </th>
+                            </tr>
+                          )}
                         </thead>
                         <tbody>
-                          {patients.map((patient) => (
+                          {patients.map((patient) => {
+                            const reviewNote = String(patient.review_reason_note || "").trim();
+                            const dueLabel = formatReviewTimelineDate(patient.review_due_date);
+
+                            return (
                             <tr
                               key={patient.id}
                               onClick={() => navigate(`/patients/${patient.id}`)}
@@ -616,6 +682,55 @@ function PatientsPage() {
                               aria-label={`Open patient profile for ${patient.full_name}`}
                               className="cursor-pointer border-t border-slate-200/70 outline-none transition hover:bg-slate-50/80 focus-visible:bg-slate-50/80 focus-visible:ring-2 focus-visible:ring-sky-400/40"
                             >
+                              {isUnderReviewView ? (
+                                <>
+                                  <td className="px-4 py-2 align-top">
+                                    <div className="min-w-0 space-y-0.5">
+                                      <p className="flex flex-wrap items-center gap-y-1">
+                                        <span className="truncate font-semibold leading-tight text-slate-950">
+                                          {patient.full_name}
+                                        </span>
+                                        {isPatientSubscribed(patient) ? (
+                                          <PatientHealthPlanInlineBadge />
+                                        ) : null}
+                                      </p>
+                                      <p className="truncate text-xs text-slate-500">
+                                        <PatientCareNumber patient={patient} className="truncate" />
+                                      </p>
+                                    </div>
+                                  </td>
+
+                                  <td className="px-4 py-2 align-top">
+                                    <p className="truncate text-sm font-medium leading-snug text-slate-700">
+                                      {formatUnderReviewAgeLocationLine(patient)}
+                                    </p>
+                                  </td>
+
+                                  <td className="px-4 py-2 align-top">
+                                    <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800">
+                                      {formatAssignedClinicianLine(patient)}
+                                    </p>
+                                  </td>
+
+                                  <td className="px-4 py-2 align-top">
+                                    {dueLabel ? (
+                                      <p className="text-sm font-bold text-amber-700">⏱ Due: {dueLabel}</p>
+                                    ) : (
+                                      <p className="text-sm font-bold text-slate-500">⏱ Due date not set</p>
+                                    )}
+                                  </td>
+
+                                  <td className="max-w-0 px-4 py-2 align-top">
+                                    <div
+                                      className="max-w-xs truncate text-xs font-medium text-gray-600 cursor-help"
+                                      title={reviewNote || undefined}
+                                    >
+                                      {reviewNote || "No review note recorded"}
+                                    </div>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
                               <td className="px-4 py-2 align-top">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <div className="shrink-0 rounded-xl bg-sky-50 p-2 text-sky-700">
@@ -718,6 +833,8 @@ function PatientsPage() {
                               <td className="px-4 py-2 align-top text-xs leading-snug text-slate-500">
                                 {formatDate(patient.created_at)}
                               </td>
+                                </>
+                              )}
 
                               <td className="px-2 py-2 align-top">
                                 <div className="flex justify-end">
@@ -749,7 +866,8 @@ function PatientsPage() {
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                          );
+                          })}
                         </tbody>
                       </table>
                     </div>
