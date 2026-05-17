@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import {
   Activity,
+  ArrowRight,
   ArrowUpRight,
   BellRing,
   CalendarClock,
@@ -1158,6 +1159,54 @@ function OperatorPersonalOperationUpdates({ metrics }) {
   );
 }
 
+function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, hcmLatestTitle }) {
+  const hasHcmUpdate = Boolean(String(hcmLatestTitle || "").trim());
+
+  return (
+    <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="flex aspect-square flex-col justify-between rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Shifts</span>
+          <ArrowRight className="size-4 text-gray-400" strokeWidth={2.5} aria-hidden="true" />
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center">
+          <span className="mb-1 text-base font-bold text-gray-800">{monthLabel} Roster</span>
+          <span className="mb-4 text-xs text-gray-400">Monthly schedule view active</span>
+          <button
+            type="button"
+            onClick={onOpenRosterPdf}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+          >
+            Open Calendar ➔
+          </button>
+        </div>
+      </div>
+
+      <Link
+        to="/hcm-news"
+        className="flex aspect-square flex-col justify-between rounded-3xl border border-gray-100 bg-white p-6 shadow-sm transition-colors hover:border-gray-200 hover:bg-slate-50/50"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">HCM News & Updates</span>
+          <ArrowRight className="size-4 text-gray-400" strokeWidth={2.5} aria-hidden="true" />
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+          <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+            <BellRing className="size-6" strokeWidth={2} aria-hidden="true" />
+          </div>
+          {hasHcmUpdate ? (
+            <span className="text-sm font-semibold text-gray-800">{hcmLatestTitle}</span>
+          ) : (
+            <span className="text-sm font-medium text-gray-500">
+              No new clinical notices from Health Care Manager today.
+            </span>
+          )}
+        </div>
+      </Link>
+    </div>
+  );
+}
+
 function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
   const monthLabel = dayjs().format("MMMM");
 
@@ -1205,33 +1254,11 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
 
         <DoctorMetricsRow dashboard={dashboard} />
 
-        <div className="w-full rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm md:rounded-[34px] md:p-6">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Shifts</p>
-          <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">My shifts</p>
-
-          <div className="mt-4 w-full">
-            <DoctorDashboardTile
-              flat
-              spacious
-              icon={ClipboardList}
-              size="hero"
-              eyebrow="Monthly view"
-              title={`${monthLabel} roster`}
-              onClick={onOpenRosterPdf}
-            />
-          </div>
-        </div>
-
-        <div>
-          <DoctorDashboardTile
-            dark
-            flat
-            icon={BellRing}
-            size="hero"
-            title="Updates from HCM"
-            to="/hcm-news"
-          />
-        </div>
+        <DoctorDashboardTwinPanels
+          monthLabel={monthLabel}
+          onOpenRosterPdf={onOpenRosterPdf}
+          hcmLatestTitle={hcmLatestTitle}
+        />
       </div>
     </section>
   );
