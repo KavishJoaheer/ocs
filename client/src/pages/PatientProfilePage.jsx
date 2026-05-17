@@ -260,12 +260,12 @@ function profileLine(value, emptyLabel = "Not recorded") {
 function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
   const { text, isEmpty } = profileLine(value, emptyLabel);
   return (
-    <div className="min-w-0 border-b border-slate-100 pb-1.5 md:border-0 md:pb-0">
-      <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</dt>
+    <div className="min-w-0">
+      <dt className="text-xs font-bold uppercase tracking-widest text-slate-500">{label}</dt>
       <dd
         className={cx(
-          "mt-0.5 break-words text-xs leading-snug",
-          isEmpty ? "text-slate-400" : emphasize ? "font-semibold text-slate-900" : "text-slate-700",
+          "mt-1 break-words text-sm leading-snug",
+          isEmpty ? "text-slate-400" : emphasize ? "font-bold text-slate-900" : "font-medium text-slate-700",
         )}
       >
         {text}
@@ -277,11 +277,11 @@ function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
 function ClinicalGridItem({ label, value }) {
   const { text, isEmpty } = profileLine(value);
   return (
-    <div className="min-w-0 rounded-lg border border-slate-200/60 bg-slate-50/40 px-2 py-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+    <div className="min-w-0 border-b border-gray-100 pb-3">
+      <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</p>
       <p
         className={cx(
-          "mt-0.5 line-clamp-2 break-words text-xs leading-snug",
+          "mt-1 line-clamp-3 break-words text-sm leading-snug",
           isEmpty ? "text-slate-400" : "text-slate-700",
         )}
       >
@@ -289,6 +289,20 @@ function ClinicalGridItem({ label, value }) {
       </p>
     </div>
   );
+}
+
+function getBillingHistoryRowClass(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+
+  if (normalized === "paid") {
+    return "bg-emerald-50/30 transition-colors hover:bg-emerald-50/60";
+  }
+
+  if (normalized === "unpaid") {
+    return "bg-rose-50/40 transition-colors hover:bg-rose-50/70";
+  }
+
+  return "";
 }
 
 const CONSULTATION_ROWS_LIMIT = 5;
@@ -1502,7 +1516,7 @@ function PatientProfilePage() {
                 />
               </div>
 
-              <SectionCard title="Patient details">
+              <SectionCard title="Patient details" variant="demographic">
                 <div className="space-y-3">
                   {mobileDemographicsPrimary ? (
                     <p className="break-words text-sm font-semibold leading-snug text-slate-900">
@@ -1559,7 +1573,7 @@ function PatientProfilePage() {
               </SectionCard>
 
               {mobileNokHasAny ? (
-                <SectionCard title="Next of kin">
+                <SectionCard title="Next of kin" variant="demographic">
                   <dl className="space-y-2 text-sm">
                     {hasMeaningfulPatientField(data.patient.next_of_kin_name) ? (
                       <div>
@@ -1607,17 +1621,16 @@ function PatientProfilePage() {
                     {mobileClinicalBlocks.map((block) => {
                       const Icon = block.icon;
                       return (
-                        <div
-                          key={block.key}
-                          className="rounded-[18px] border border-slate-200/80 bg-slate-50/70 px-3 py-2.5"
-                        >
+                        <div key={block.key} className="border-b border-gray-100 pb-3">
                           <div className="flex items-start gap-2.5">
                             <div className={cx("shrink-0 rounded-lg p-2", block.iconBg)}>
                               <Icon className="size-4" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-xs font-semibold text-slate-950">{block.label}</p>
-                              <p className="mt-0.5 line-clamp-3 break-words text-sm leading-snug text-slate-700">
+                              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                                {block.label}
+                              </p>
+                              <p className="mt-1 line-clamp-3 break-words text-sm leading-snug text-slate-700">
                                 {block.value}
                               </p>
                             </div>
@@ -1680,7 +1693,7 @@ function PatientProfilePage() {
                           <span className="shrink-0 text-sm font-semibold text-slate-900">
                             {formatDate(consultation.consultation_date)}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-right text-sm text-slate-600">
+                          <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-slate-900">
                             {consultation.doctor_name}
                           </span>
                           {isExpanded ? (
@@ -1995,7 +2008,10 @@ function PatientProfilePage() {
                   {data.bills.map((bill) => (
                     <div
                       key={bill.id}
-                      className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4"
+                      className={cx(
+                        "rounded-[24px] border border-slate-200/80 p-4",
+                        getBillingHistoryRowClass(bill.payment_status || bill.status),
+                      )}
                     >
                       <div className="flex flex-col gap-3">
                         <div>
@@ -2080,8 +2096,8 @@ function PatientProfilePage() {
           </div>
 
           <div className="grid gap-3 xl:grid-cols-12">
-            <SectionCard className="xl:col-span-7" title="Patient details">
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            <SectionCard className="xl:col-span-7" title="Patient details" variant="demographic">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                 <ProfileDlItem label="OCS care number" value={data.patient.patient_identifier} emphasize />
                 <ProfileDlItem label="Patient ID" value={data.patient.patient_id_number} emphasize />
                 <ProfileDlItem label="First name" value={data.patient.first_name} emphasize />
@@ -2121,8 +2137,8 @@ function PatientProfilePage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-5" title="Next of kin">
-              <dl className="grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-2">
+            <SectionCard className="xl:col-span-5" title="Next of kin" variant="demographic">
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                 <ProfileDlItem label="Name" value={data.patient.next_of_kin_name} emphasize />
                 <ProfileDlItem label="Relationship" value={data.patient.next_of_kin_relationship} />
                 <ProfileDlItem label="Phone" value={data.patient.next_of_kin_contact_number} />
@@ -2135,7 +2151,7 @@ function PatientProfilePage() {
                 note={data.patient.review_reason_note}
                 dueDate={data.patient.review_due_date}
               />
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
                 <ClinicalGridItem label="Past surgical history" value={data.patient.past_surgical_history} />
                 <ClinicalGridItem label="Drug history" value={data.patient.drug_history} />
@@ -2177,18 +2193,18 @@ function PatientProfilePage() {
                 <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_22px_50px_-38px_rgba(15,23,42,0.35)]">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
-                      <thead className="bg-slate-50/90">
+                      <thead className="bg-gray-50/80">
                         <tr>
-                          <th className="w-[11%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[11%] px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                             Date
                           </th>
-                          <th className="w-[17%] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[17%] px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                             Doctor
                           </th>
-                          <th className="min-w-0 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="min-w-0 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                             Consultation note
                           </th>
-                          <th className="w-[28%] px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <th className="w-[28%] px-4 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-gray-400">
                             Action
                           </th>
                         </tr>
@@ -2205,10 +2221,10 @@ function PatientProfilePage() {
                                 {formatDate(consultation.consultation_date)}
                               </td>
                               <td className="px-4 py-2.5 text-sm text-slate-600">
-                                <p className="font-semibold text-slate-900">
+                                <p className="text-sm font-bold text-slate-900">
                                   {consultation.doctor_name}
                                 </p>
-                                <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                                <p className="mt-1 text-xs font-medium uppercase tracking-wider text-slate-500">
                                   {consultation.specialization || "General practice"}
                                 </p>
                               </td>
@@ -2503,7 +2519,7 @@ function PatientProfilePage() {
               {data.bills.length ? (
                 <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
                   <table className="min-w-full table-fixed text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <thead className="border-b border-slate-200 bg-gray-50/80 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                       <tr>
                         <th className="w-[26%] px-3 py-2">Bill / recorded</th>
                         <th className="w-[22%] px-3 py-2">Consultation</th>
@@ -2514,7 +2530,13 @@ function PatientProfilePage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {data.bills.map((bill) => (
-                        <tr key={bill.id} className="align-middle">
+                        <tr
+                          key={bill.id}
+                          className={cx(
+                            "align-middle",
+                            getBillingHistoryRowClass(bill.payment_status || bill.status),
+                          )}
+                        >
                           <td className="px-3 py-1.5 align-middle">
                             <p className="truncate font-semibold text-slate-900">Bill #{bill.id}</p>
                             <p className="truncate text-xs text-slate-500">
