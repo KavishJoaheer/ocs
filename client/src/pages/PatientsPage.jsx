@@ -306,7 +306,19 @@ function PatientsPage() {
     user.role,
   ]);
 
-  const patients = patientsData?.items || [];
+  const patients = useMemo(() => {
+    const items = patientsData?.items || [];
+
+    if (!myAssignedFilterActive || user.role !== "doctor" || !user.doctor_id) {
+      return items;
+    }
+
+    return items.filter(
+      (patient) =>
+        Number(patient.assigned_doctor_id) === Number(user.doctor_id) &&
+        patient.status === "active",
+    );
+  }, [patientsData?.items, myAssignedFilterActive, user.doctor_id, user.role]);
   const pagination = patientsData?.pagination;
 
   const headerActions = useMemo(() => {
@@ -429,13 +441,13 @@ function PatientsPage() {
   ) : null;
 
   const myAssignedFilterBadge = myAssignedFilterActive ? (
-    <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-800">
-      <span>Active filter: My assigned patients</span>
+    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">
+      <span>Filter Active: My Care Roster</span>
       <button
         type="button"
         onClick={clearMyAssignedFilter}
-        className="inline-flex size-6 items-center justify-center rounded-full text-sky-700 transition hover:bg-sky-100"
-        aria-label="Clear my assigned filter"
+        className="inline-flex size-6 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-800"
+        aria-label="Clear my care roster filter"
       >
         <X className="size-3.5" />
       </button>
@@ -444,39 +456,46 @@ function PatientsPage() {
 
   const statusFilters = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
-        {[
-          { id: "all", label: "All" },
-          { id: "active", label: "Active" },
-          { id: "discharged", label: "Discharged" },
-          { id: "under_review", label: "Under Review" },
-        ].map((status) => (
-          <button
-            key={status.id}
-            type="button"
-            onClick={() => {
-              setStatusFilter(status.id);
-              setPage(1);
-            }}
-            className={cx(
-              "rounded-xl px-4 py-2 text-sm font-semibold transition",
-              statusFilter === status.id
-                ? status.id === "active"
-                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                  : status.id === "discharged"
-                    ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
-                    : status.id === "under_review"
-                      ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
-                      : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-                : "text-slate-600 hover:bg-slate-50",
-            )}
-          >
-            {status.label}
-          </button>
-        ))}
-      </div>
+      {!myAssignedFilterActive ? (
+        <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
+          {[
+            { id: "all", label: "All" },
+            { id: "active", label: "Active" },
+            { id: "discharged", label: "Discharged" },
+            { id: "under_review", label: "Under Review" },
+          ].map((status) => (
+            <button
+              key={status.id}
+              type="button"
+              onClick={() => {
+                setStatusFilter(status.id);
+                setPage(1);
+              }}
+              className={cx(
+                "rounded-xl px-4 py-2 text-sm font-semibold transition",
+                statusFilter === status.id
+                  ? status.id === "active"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                    : status.id === "discharged"
+                      ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
+                      : status.id === "under_review"
+                        ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
+                        : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+                  : "text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              {status.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <span className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
+          Active assigned cases only
+        </span>
+      )}
 
-      <select
+      {!myAssignedFilterActive ? (
+        <select
         value={doctorIdFilter}
         onChange={(event) => {
           setDoctorIdFilter(event.target.value);
@@ -491,6 +510,7 @@ function PatientsPage() {
           </option>
         ))}
       </select>
+      ) : null}
     </div>
   );
 

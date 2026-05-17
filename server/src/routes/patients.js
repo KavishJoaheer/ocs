@@ -706,16 +706,24 @@ router.get("/", (req, res) => {
     String(req.query.subscribed ?? "").trim() === "1" ||
     String(req.query.subscribed ?? "").trim().toLowerCase() === "true" ||
     String(req.query.filter ?? "").trim() === "subscribed";
+  const myAssignedFilter = String(req.query.filter ?? "").trim() === "my_assigned";
   const requestedDoctorId = Number(req.query.doctorId);
-  const doctorId =
+  let doctorId =
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0 ? requestedDoctorId : null;
+
+  if (req.auth?.role === "doctor" && req.auth?.doctor_id && myAssignedFilter) {
+    doctorId = Number(req.auth.doctor_id);
+  }
+
+  const effectiveStatus =
+    myAssignedFilter && req.auth?.role === "doctor" && !status ? "active" : status;
   const { page, limit, offset } = toPagination(req.query.page, req.query.limit, 8);
   const operatorUserId = req.auth?.role === "operator" ? Number(req.auth.id) : null;
 
   const filters = {
     search,
     searchTerm,
-    status,
+    status: effectiveStatus,
     doctorId,
     operatorUserId,
     underReview: underReview ? 1 : 0,
