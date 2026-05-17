@@ -217,7 +217,23 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
   );
 }
 
-function HighlightStat({ icon: Icon, label, value }) {
+function HighlightStat({ icon: Icon, label, value, compact = false }) {
+  if (compact) {
+    return (
+      <div className="min-w-0 rounded-xl border border-white/80 bg-white/90 px-2 py-2 shadow-sm">
+        <div className="flex flex-col items-center gap-1 text-center">
+          <div className="rounded-lg bg-sky-50 p-1.5 text-sky-700">
+            <Icon className="size-4" />
+          </div>
+          <p className="w-full truncate text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+            {label}
+          </p>
+          <p className="text-lg font-bold leading-none text-slate-950 tabular-nums">{value}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-full min-w-0 rounded-[22px] border border-white/80 bg-white/85 px-4 py-3.5">
       <div className="flex min-w-0 items-center gap-3">
@@ -234,6 +250,44 @@ function HighlightStat({ icon: Icon, label, value }) {
     </div>
   );
 }
+
+function MobileBillingStatusBar({ status }) {
+  const normalized = String(status || "").trim().toLowerCase();
+
+  if (normalized === "paid") {
+    return (
+      <span className="inline-flex rounded-lg bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+        Paid
+      </span>
+    );
+  }
+
+  if (normalized === "unpaid") {
+    return (
+      <span className="inline-flex rounded-lg bg-rose-100 px-3 py-1 text-xs font-bold text-rose-800">
+        Unpaid
+      </span>
+    );
+  }
+
+  return <StatusBadge value={status} />;
+}
+
+function getMobileBillingCanvasClass(bills) {
+  if (!bills?.length) {
+    return "space-y-4";
+  }
+
+  const hasUnpaid = bills.some(
+    (bill) => String(bill.payment_status || bill.status).trim().toLowerCase() === "unpaid",
+  );
+
+  return cx(
+    "space-y-4 rounded-2xl border p-4",
+    hasUnpaid ? "border-rose-100/80 bg-rose-50/30" : "border-emerald-100/50 bg-emerald-50/20",
+  );
+}
+
 
 function ProfileField({ label, value, emphasize = false }) {
   return (
@@ -1375,45 +1429,16 @@ function PatientProfilePage() {
         </div>
       )}
 
-      <PageHeader
-        eyebrow="Patient profile"
-        title={
-          <>
-            {data.patient.full_name}
-            {isPatientSubscribed(data.patient) ? <HealthPlanBadge /> : null}
-          </>
-        }
-        actions={
-          isMobile ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {canFlagLongTermReview ? (
-                <LongTermReviewFlagButton
-                  patient={data.patient}
-                  disabled={isSavingLongTermReview}
-                  isSaving={isSavingLongTermReview}
-                  onRequestFlag={() => setLongTermReviewModalOpen(true)}
-                  onUnflag={handleUnflagLongTermReview}
-                />
-              ) : null}
-              {canEditPatientProfile ? (
-                <button
-                  type="button"
-                  onClick={() => setPatientEditorOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
-                >
-                  <SquarePen className="size-4" />
-                  Edit profile
-                </button>
-              ) : null}
-              <Link
-                to="/patients"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
-              >
-                <ArrowLeft className="size-4" />
-                Back
-              </Link>
-            </div>
-          ) : (
+      <div className="hidden md:block">
+        <PageHeader
+          eyebrow="Patient profile"
+          title={
+            <>
+              {data.patient.full_name}
+              {isPatientSubscribed(data.patient) ? <HealthPlanBadge /> : null}
+            </>
+          }
+          actions={(
             <div className="flex flex-row flex-wrap items-center justify-end gap-3">
               {canFlagLongTermReview ? (
                 <LongTermReviewFlagButton
@@ -1470,8 +1495,9 @@ function PatientProfilePage() {
               </Link>
             </div>
           )
-        }
-      />
+          }
+        />
+      </div>
 
       {isMobile ? (
         <>
@@ -1495,21 +1521,46 @@ function PatientProfilePage() {
               ))}
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canFlagLongTermReview ? (
+              <LongTermReviewFlagButton
+                patient={data.patient}
+                disabled={isSavingLongTermReview}
+                isSaving={isSavingLongTermReview}
+                onRequestFlag={() => setLongTermReviewModalOpen(true)}
+                onUnflag={handleUnflagLongTermReview}
+              />
+            ) : null}
+            {canEditPatientProfile ? (
+              <button
+                type="button"
+                onClick={() => setPatientEditorOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+              >
+                <SquarePen className="size-4" />
+                Edit profile
+              </button>
+            ) : null}
+          </div>
+
 
           {activeTab === "summary" && (
-            <div className="space-y-4">
+            <div className="space-y-4 rounded-2xl border border-slate-100/50 bg-slate-50/60 p-4">
               <div className="grid min-w-0 grid-cols-3 gap-2">
                 <HighlightStat
+                  compact
                   icon={CalendarClock}
                   label="Appointments"
                   value={data.appointments.length}
                 />
                 <HighlightStat
+                  compact
                   icon={FileText}
                   label="Consultations"
                   value={data.consultations.length}
                 />
                 <HighlightStat
+                  compact
                   icon={FlaskConical}
                   label="Lab Reports"
                   value={data.labReports.length}
@@ -1991,7 +2042,7 @@ function PatientProfilePage() {
           )}
 
           {activeTab === "billing" && (
-            <div className="space-y-4">
+            <div className={getMobileBillingCanvasClass(data.bills)}>
               {showPatientBillingUi && (
                 <Link
                   to={`/billing?patientId=${id}`}
@@ -2023,7 +2074,7 @@ function PatientProfilePage() {
                             {formatDate(bill.consultation_date)}
                           </p>
                         </div>
-                        <StatusBadge value={bill.status} />
+                        <MobileBillingStatusBar status={bill.payment_status || bill.status} />
                       </div>
                       <div className="mt-3 space-y-3">
                         <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
