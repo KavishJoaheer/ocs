@@ -1005,22 +1005,43 @@ function countDoctorScheduledVisitsToday(dashboard) {
   return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled").length;
 }
 
-function DoctorMetricCard({ to, label, value, accent = "teal", highlightBorder = false, hoverAccent = "teal" }) {
+const doctorMetricVariants = {
+  scheduled: {
+    card: "border-transparent bg-teal-600 text-white shadow-sm hover:bg-teal-700",
+    label: "text-teal-100",
+    value: "text-white",
+    anchorTheme: "doctor-primary",
+  },
+  assigned: {
+    card: "border border-slate-100/80 bg-slate-50 hover:bg-slate-100",
+    label: "text-slate-400",
+    value: "text-slate-900",
+    anchorTheme: "doctor-slate",
+  },
+  longTerm: {
+    card: "border border-amber-100 bg-amber-50 hover:bg-amber-100/80",
+    label: "text-amber-700",
+    value: "text-amber-900",
+    anchorTheme: "doctor-amber",
+  },
+};
+
+function DoctorMetricCard({ to, label, value, variant }) {
+  const styles = doctorMetricVariants[variant];
+
   return (
     <Link
       to={to}
       className={cx(
-        "group relative cursor-pointer rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 ease-in-out",
-        hoverAccent === "amber" && "hover:bg-amber-50/20",
-        hoverAccent === "teal" && "hover:bg-teal-50/20",
-        highlightBorder && "border-l-4 border-l-amber-500",
+        "group relative flex cursor-pointer flex-col rounded-2xl p-6 transition-all duration-300 ease-in-out",
+        styles.card,
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</span>
-        <MetricNavAnchor accent={accent} />
+        <span className={cx("text-xs font-bold uppercase tracking-widest", styles.label)}>{label}</span>
+        <MetricNavAnchor theme={styles.anchorTheme} />
       </div>
-      <p className="mb-1 text-4xl font-black text-gray-900 tabular-nums">{value}</p>
+      <p className={cx("mt-4 text-4xl font-black tabular-nums", styles.value)}>{value}</p>
     </Link>
   );
 }
@@ -1036,28 +1057,24 @@ function DoctorMetricsRow({ dashboard }) {
   );
 
   return (
-    <div className="mb-8 grid w-full grid-cols-1 gap-6 md:grid-cols-3">
+    <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
       <DoctorMetricCard
         to="/appointments"
         label="Scheduled Visits"
         value={visitsToday}
-        accent="teal"
-        hoverAccent="teal"
+        variant="scheduled"
       />
       <DoctorMetricCard
         to="/patients?filter=my_assigned"
         label="Assigned Patients"
         value={assignedCount}
-        accent="teal"
-        hoverAccent="teal"
+        variant="assigned"
       />
       <DoctorMetricCard
         to="/patients?tab=under_review"
         label="Long Term Review"
         value={longTermCount}
-        accent="amber"
-        highlightBorder
-        hoverAccent="amber"
+        variant="longTerm"
       />
     </div>
   );
@@ -1148,7 +1165,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
     <section className="relative mx-auto w-full min-w-0 max-w-6xl overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
-      <div className="relative z-10">
+      <div className="relative z-10 space-y-6">
         <OperationsDashboardDesktopHeader
           beforeStatus={<DoctorPatientQuickSearch />}
           roleBadge="Doctor workspace"
@@ -1165,7 +1182,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
         />
 
         {lowStockAlert?.triggered ? (
-          <div className="mt-4 rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4">
+          <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Low stock alert</p>
@@ -1188,7 +1205,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
 
         <DoctorMetricsRow dashboard={dashboard} />
 
-        <div className="mt-6 w-full rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm md:rounded-[34px] md:p-6">
+        <div className="w-full rounded-[24px] border border-gray-200 bg-white p-4 shadow-sm md:rounded-[34px] md:p-6">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Shifts</p>
           <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">My shifts</p>
 
@@ -1205,7 +1222,7 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
           </div>
         </div>
 
-        <div className="mt-6">
+        <div>
           <DoctorDashboardTile
             dark
             flat
