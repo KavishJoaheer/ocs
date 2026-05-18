@@ -15,6 +15,7 @@ const consultationsRouter = require("./routes/consultations");
 const billingRouter = require("./routes/billing");
 const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
+const pushRouter = require("./routes/push");
 const { authorizeByMethod, authorizeRoles, requireAuth } = require("./lib/auth");
 
 let initialized = false;
@@ -60,6 +61,7 @@ function createApp() {
   });
 
   app.use("/api/auth", authRouter);
+  app.use("/api/push", pushRouter);
   app.use(
     "/api/dashboard",
     requireAuth,

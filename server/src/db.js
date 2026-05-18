@@ -776,6 +776,10 @@ function ensureUserColumns() {
     db.exec("ALTER TABLE users ADD COLUMN deleted_at TEXT");
   }
 
+  if (!columns.includes("push_subscription_token")) {
+    db.exec("ALTER TABLE users ADD COLUMN push_subscription_token TEXT");
+  }
+
   db.prepare(`
     UPDATE users
     SET

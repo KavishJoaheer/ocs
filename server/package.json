@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "generate-vapid": "node -e \"const webpush=require('web-push'); const keys=webpush.generateVAPIDKeys(); console.log('VAPID_PUBLIC_KEY='+keys.publicKey); console.log('VAPID_PRIVATE_KEY='+keys.privateKey);\""
   },
   "keywords": [],
   "author": "",
@@ -16,7 +17,8 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "multer": "^2.1.1",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

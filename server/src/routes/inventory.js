@@ -1,4 +1,5 @@
 const express = require("express");
+const { maybeNotifyDoctorLowStock } = require("../lib/push");
 const { db, ensureBillingForConsultation } = require("../db");
 const { calculateBillingTotal, getTodayLocal, normalizeBillingItems, toNumber } = require("../lib/utils");
 
@@ -525,6 +526,10 @@ function recordMovement({
     batchId,
     finalMetaJson,
   );
+
+  void maybeNotifyDoctorLowStock(itemId).catch((error) => {
+    console.warn("[push] low stock notification failed:", error?.message || error);
+  });
 }
 
 function summarize(items, doctorId = null) {

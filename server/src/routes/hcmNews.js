@@ -1,4 +1,5 @@
 const express = require("express");
+const { broadcastHcmNewsToDoctors } = require("../lib/push");
 const { db } = require("../db");
 
 const router = express.Router();
@@ -227,6 +228,10 @@ router.post("/", (req, res) => {
     )
     VALUES (?, ?, ?, ?)
   `).run(payload.title, payload.body, req.auth.id, req.auth.id);
+
+  void broadcastHcmNewsToDoctors({ title: payload.title }).catch((error) => {
+    console.warn("[push] HCM broadcast failed:", error?.message || error);
+  });
 
   res.status(201).json(buildPayload(req.auth));
 });
