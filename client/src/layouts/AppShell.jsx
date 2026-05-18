@@ -1,8 +1,11 @@
+import { useEffect } from "react";
 import dayjs from "dayjs";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav.jsx";
+import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { syncPushSubscriptionIfGranted } from "../lib/pushNotifications.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 const pageMeta = {
@@ -155,6 +158,14 @@ function AppShell() {
       ? dashboardMetaByRole[user.role] || pageMeta["/"]
       : pageMeta[location.pathname] || pageMeta["/"];
 
+  useEffect(() => {
+    if (!user?.role) {
+      return;
+    }
+
+    void syncPushSubscriptionIfGranted();
+  }, [user?.id, user?.role]);
+
   return (
     <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
       <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
@@ -200,6 +211,9 @@ function AppShell() {
               paddingRight: `max(1.25rem, var(--sar))`,
             }}
           >
+            {user?.role ? (
+              <PushNotificationBanner role={user.role} className="mb-4 max-w-3xl" />
+            ) : null}
             <Outlet />
             {!hideBottomNav && (
               <div

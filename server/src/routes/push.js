@@ -8,6 +8,7 @@ const {
 } = require("../lib/push");
 
 const router = express.Router();
+const PUSH_SUBSCRIBER_ROLES = ["admin", "doctor", "operator", "lab_tech", "accountant"];
 
 router.get("/vapid-public-key", (_req, res) => {
   const configured = isPushConfigured();
@@ -19,7 +20,7 @@ router.get("/vapid-public-key", (_req, res) => {
   });
 });
 
-router.post("/subscribe", requireAuth, authorizeRoles("doctor"), (req, res) => {
+router.post("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES), (req, res) => {
   const subscription = req.body?.subscription;
 
   if (!subscription?.endpoint) {
@@ -34,7 +35,7 @@ router.post("/subscribe", requireAuth, authorizeRoles("doctor"), (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete("/subscribe", requireAuth, authorizeRoles("doctor"), (req, res) => {
+router.delete("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES), (req, res) => {
   clearUserPushSubscription(req.auth.id);
   res.json({ ok: true });
 });

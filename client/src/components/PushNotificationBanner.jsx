@@ -4,15 +4,17 @@ import toast from "react-hot-toast";
 import {
   dismissPushBanner,
   fetchPushConfiguration,
+  getPushBannerCopy,
   getPushPermissionState,
   isPushBannerDismissed,
   isPushSupported,
   subscribeToPushNotifications,
 } from "../lib/pushNotifications.js";
 
-function PushNotificationBanner({ className = "" }) {
+function PushNotificationBanner({ role, className = "" }) {
   const [visible, setVisible] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
+  const copy = getPushBannerCopy(role);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,10 +53,10 @@ function PushNotificationBanner({ className = "" }) {
 
     try {
       await subscribeToPushNotifications();
-      toast.success("Push notifications enabled.");
+      toast.success("Notifications enabled.");
       setVisible(false);
     } catch (error) {
-      const message = error?.message || "Could not enable push notifications.";
+      const message = error?.message || "Could not enable notifications.";
       if (!message.toLowerCase().includes("not available")) {
         toast.error(message);
       }
@@ -81,10 +83,8 @@ function PushNotificationBanner({ className = "" }) {
           <BellRing className="size-5" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#3b4733]">Enable mobile alerts</p>
-          <p className="mt-1 text-xs leading-relaxed text-[#67755d]">
-            Get low stock and HCM updates on your device, even when OCS is in the background.
-          </p>
+          <p className="text-sm font-semibold text-[#3b4733]">{copy.title}</p>
+          <p className="mt-1 text-xs leading-relaxed text-[#67755d]">{copy.description}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"

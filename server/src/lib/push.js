@@ -192,17 +192,33 @@ function getDoctorPushSubscription(doctorId) {
 }
 
 function getDoctorPushSubscriptions() {
-  return db
+  return getTeamPushSubscriptions({ roles: ["doctor"] });
+}
+
+function getTeamPushSubscriptions({ roles = null, excludeRoles = [] } = {}) {
+  const rows = db
     .prepare(`
-      SELECT push_subscription_token
+      SELECT push_subscription_token, role
       FROM users
-      WHERE role = 'doctor'
-        AND is_active = 1
+      WHERE is_active = 1
         AND deleted_at IS NULL
         AND push_subscription_token IS NOT NULL
         AND TRIM(push_subscription_token) != ''
     `)
-    .all()
+    .all();
+
+  return rows
+    .filter((row) => {
+      if (excludeRoles.includes(row.role)) {
+        return false;
+      }
+
+      if (roles && !roles.includes(row.role)) {
+        return false;
+      }
+
+      return true;
+    })
     .map((row) => row.push_subscription_token)
     .filter(Boolean);
 }
@@ -248,7 +264,7 @@ async function maybeNotifyDoctorLowStock(itemId) {
 }
 
 async function broadcastHcmNewsToDoctors(newsArticle) {
-  const subscriptions = getDoctorPushSubscriptions();
+  const subscriptions = getTeamPushSubscriptions({ excludeRoles: ["admin"] });
   if (!subscriptions.length) {
     return;
   }

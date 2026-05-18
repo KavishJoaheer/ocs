@@ -34,7 +34,6 @@ import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetric
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { api } from "../lib/api.js";
 import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
-import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import { cx } from "../lib/utils.js";
 
 function buildDoctorMobileDateLabel() {
@@ -82,7 +81,6 @@ function DoctorMobileLauncher({ user, dashboard }) {
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
-      <PushNotificationBanner className="mb-4" />
       <header className="shrink-0 pb-4">
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
@@ -1217,8 +1215,6 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
 
       <div className="relative z-10 space-y-6">
-        <PushNotificationBanner className="mb-1" />
-
         <OperationsDashboardDesktopHeader
           beforeStatus={<DoctorPatientQuickSearch />}
           roleBadge="Doctor workspace"

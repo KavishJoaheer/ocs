@@ -67,6 +67,63 @@ export async function getPushPermissionState() {
   return Notification.permission;
 }
 
+export function getPushBannerCopy(role) {
+  if (role === "doctor") {
+    return {
+      title: "Enable alerts",
+      description:
+        "Get low stock and HCM updates on this device, even when OCS is in the background.",
+    };
+  }
+
+  if (role === "admin") {
+    return {
+      title: "Enable alerts",
+      description:
+        "Receive desktop and mobile notifications when important operational updates are published.",
+    };
+  }
+
+  return {
+    title: "Enable alerts",
+    description:
+      "Get HCM news and operational updates on this device, even when OCS is in the background.",
+  };
+}
+
+export async function syncPushSubscriptionIfGranted() {
+  if (!isPushSupported()) {
+    return null;
+  }
+
+  if (Notification.permission !== "granted") {
+    return null;
+  }
+
+  const { configured, publicKey } = await fetchPushConfiguration();
+  if (!configured || !publicKey) {
+    return null;
+  }
+
+  try {
+    const registration = await registerServiceWorker();
+    await navigator.serviceWorker.ready;
+
+    const existing = await registration.pushManager.getSubscription();
+    const subscription =
+      existing ||
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      }));
+
+    await api.post("/push/subscribe", { subscription: subscription.toJSON() });
+    return subscription;
+  } catch {
+    return null;
+  }
+}
+
 export async function subscribeToPushNotifications() {
   if (!isPushSupported()) {
     throw new Error("Push notifications are not supported on this device.");
