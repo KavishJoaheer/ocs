@@ -16,7 +16,7 @@ function SectionCard({
       className={cx(
         "max-w-full min-w-0",
         variant === "demographic"
-          ? "rounded-2xl border border-slate-100 bg-slate-50/60 p-6 shadow-sm"
+          ? "rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-6 shadow-sm"
           : "rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(242,251,250,0.9))] p-5 shadow-[0_30px_80px_rgba(34,72,91,0.09)] backdrop-blur",
         className,
       )}

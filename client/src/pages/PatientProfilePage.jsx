@@ -38,7 +38,6 @@ import { api } from "../lib/api.js";
 import {
   canEditConsultationNote,
   canManageConsultationNotes,
-  isOperatorConsultationViewOnly,
 } from "../lib/consultationAccess.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import {
@@ -82,17 +81,17 @@ function LongTermReviewAlertBanner({ note, dueDate }) {
 
   return (
     <div
-      className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm"
+      className="mb-4 rounded-2xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] px-4 py-3 text-[#6e2f14] shadow-sm"
       role="status"
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#ba5a32]">
         Long term review — operator desk flag
       </p>
       {scheduledLabel ? (
-        <p className="mt-1 text-xs font-semibold text-amber-800">Target date: {scheduledLabel}</p>
+        <p className="mt-1 text-xs font-semibold text-[#6e2f14]">Target date: {scheduledLabel}</p>
       ) : null}
       {trimmed ? (
-        <p className="mt-1 text-sm font-medium leading-relaxed text-amber-950">{trimmed}</p>
+        <p className="mt-1 text-sm font-medium leading-relaxed text-[#6e2f14]">{trimmed}</p>
       ) : null}
     </div>
   );
@@ -315,7 +314,7 @@ function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
   const { text, isEmpty } = profileLine(value, emptyLabel);
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-bold uppercase tracking-widest text-slate-500">{label}</dt>
+      <dt className="text-xs font-semibold text-[#67755d]">{label}</dt>
       <dd
         className={cx(
           "mt-1 break-words text-sm leading-snug",
@@ -909,10 +908,9 @@ function PatientProfilePage() {
   const [isSavingPatient, setIsSavingPatient] = useState(false);
   const [longTermReviewModalOpen, setLongTermReviewModalOpen] = useState(false);
   const [isSavingLongTermReview, setIsSavingLongTermReview] = useState(false);
+  const canModifyClinicalData = user.role === "doctor" || user.role === "admin";
   const canManageLabReports = canManageLabReportsForUser(user);
   const canManageConsultations = canManageConsultationNotes(user);
-  const isOperatorViewOnlyConsultations = isOperatorConsultationViewOnly(user);
-  const canEditPatientProfile = ["admin", "doctor", "operator"].includes(user.role);
   const canFlagLongTermReview = ["admin", "operator"].includes(user.role);
 
   const showPatientBillingUi = useMemo(
@@ -1449,7 +1447,7 @@ function PatientProfilePage() {
                   onUnflag={handleUnflagLongTermReview}
                 />
               ) : null}
-              {canEditPatientProfile ? (
+              {canModifyClinicalData ? (
                 <button
                   type="button"
                   onClick={() => setPatientEditorOpen(true)}
@@ -1531,7 +1529,7 @@ function PatientProfilePage() {
                 onUnflag={handleUnflagLongTermReview}
               />
             ) : null}
-            {canEditPatientProfile ? (
+            {canModifyClinicalData ? (
               <button
                 type="button"
                 onClick={() => setPatientEditorOpen(true)}
@@ -1628,7 +1626,7 @@ function PatientProfilePage() {
                   <dl className="space-y-2 text-sm">
                     {hasMeaningfulPatientField(data.patient.next_of_kin_name) ? (
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        <dt className="text-xs font-semibold text-[#67755d]">
                           Name
                         </dt>
                         <dd className="font-medium text-slate-900">{data.patient.next_of_kin_name}</dd>
@@ -1636,7 +1634,7 @@ function PatientProfilePage() {
                     ) : null}
                     {hasMeaningfulPatientField(data.patient.next_of_kin_relationship) ? (
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        <dt className="text-xs font-semibold text-[#67755d]">
                           Relationship
                         </dt>
                         <dd className="text-slate-700">{data.patient.next_of_kin_relationship}</dd>
@@ -1644,7 +1642,7 @@ function PatientProfilePage() {
                     ) : null}
                     {hasMeaningfulPatientField(data.patient.next_of_kin_contact_number) ? (
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        <dt className="text-xs font-semibold text-[#67755d]">
                           Contact
                         </dt>
                         <dd className="text-slate-700">{data.patient.next_of_kin_contact_number}</dd>
@@ -1652,7 +1650,7 @@ function PatientProfilePage() {
                     ) : null}
                     {hasMeaningfulPatientField(data.patient.next_of_kin_email) ? (
                       <div>
-                        <dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        <dt className="text-xs font-semibold text-[#67755d]">
                           Email
                         </dt>
                         <dd className="text-slate-700">{data.patient.next_of_kin_email}</dd>
@@ -1853,7 +1851,7 @@ function PatientProfilePage() {
                                   >
                                     Open
                                   </button>
-                                  {canEditRow && !isEditing ? (
+                                  {canModifyClinicalData && canEditRow && !isEditing ? (
                                     <button
                                       type="button"
                                       onClick={() => handleConsultationEditStart(consultation)}
@@ -1863,20 +1861,16 @@ function PatientProfilePage() {
                                       <SquarePen className="size-4" />
                                       Edit
                                     </button>
-                                  ) : !isEditing ? (
+                                  ) : canModifyClinicalData && !canEditRow && !isEditing ? (
                                     <span
                                       className="inline-flex items-center gap-1 px-1 text-xs font-medium text-slate-500"
-                                      title={
-                                        isOperatorViewOnlyConsultations
-                                          ? "Operators can view consultation notes but cannot modify them"
-                                          : "You can only edit notes you authored"
-                                      }
+                                      title="You can only edit notes you authored"
                                     >
                                       <LockKeyhole className="size-3 shrink-0 text-slate-400" aria-hidden />
                                       View only
                                     </span>
                                   ) : null}
-                                  {canEditRow ? (
+                                  {canModifyClinicalData && canEditRow ? (
                                     <button
                                       type="button"
                                       onClick={() => setConsultationToDelete(consultation)}
@@ -2244,18 +2238,18 @@ function PatientProfilePage() {
                 <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_22px_50px_-38px_rgba(15,23,42,0.35)]">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
-                      <thead className="bg-gray-50/80">
+                      <thead className="bg-[#fcf3ee]/80">
                         <tr>
-                          <th className="w-[11%] px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                          <th className="w-[11%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
                             Date
                           </th>
-                          <th className="w-[17%] px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                          <th className="w-[17%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
                             Doctor
                           </th>
-                          <th className="min-w-0 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                          <th className="min-w-0 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
                             Consultation note
                           </th>
-                          <th className="w-[28%] px-4 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                          <th className="w-[28%] px-4 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
                             Action
                           </th>
                         </tr>
@@ -2373,7 +2367,7 @@ function PatientProfilePage() {
                                   >
                                     Open
                                   </button>
-                                  {canEditRow && !isEditing ? (
+                                  {canModifyClinicalData && canEditRow && !isEditing ? (
                                     <button
                                       type="button"
                                       onClick={() => handleConsultationEditStart(consultation)}
@@ -2382,20 +2376,16 @@ function PatientProfilePage() {
                                       <SquarePen className="size-4" />
                                       {user.role === "admin" ? "Edit consultation" : "Edit note"}
                                     </button>
-                                  ) : !isEditing ? (
+                                  ) : canModifyClinicalData && !canEditRow && !isEditing ? (
                                     <span
                                       className="pointer-events-none inline-flex select-none items-center gap-1.5 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium normal-case tracking-normal text-slate-500"
-                                      title={
-                                        isOperatorViewOnlyConsultations
-                                          ? "Operators can view consultation notes but cannot modify them"
-                                          : "You can only edit notes you authored"
-                                      }
+                                      title="You can only edit notes you authored"
                                     >
                                       <LockKeyhole className="size-3.5 shrink-0 text-slate-400" aria-hidden />
                                       View only
                                     </span>
                                   ) : null}
-                                  {canEditRow ? (
+                                  {canModifyClinicalData && canEditRow ? (
                                     <button
                                       type="button"
                                       onClick={() => setConsultationToDelete(consultation)}
