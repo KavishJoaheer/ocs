@@ -59,11 +59,12 @@ import {
 import { cx } from "../lib/utils.js";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
-function HealthPlanBadge({ className }) {
+function HealthPlanBadge({ className, compact = false }) {
   return (
     <span
       className={cx(
-        "ml-3 inline-flex items-center rounded-full bg-teal-600 px-2.5 py-1 text-xs font-bold tracking-wide text-white shadow-sm",
+        "inline-flex w-fit items-center rounded-full border border-[#e6ebd9]/70 bg-[#404a42] font-bold uppercase tracking-widest text-[#f4f6f0] shadow-sm",
+        compact ? "px-2 py-0.5 text-[10px]" : "ml-3 px-2.5 py-1 text-xs tracking-wide",
         className,
       )}
     >
@@ -1428,15 +1429,22 @@ function PatientProfilePage() {
           className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
           style={{ paddingTop: "var(--sat)" }}
         >
-          <div className="flex min-w-0 items-center justify-between gap-3 pt-3">
-            <div className="min-w-0">
-              <p className="flex min-w-0 flex-wrap items-center gap-y-1 truncate text-base font-bold text-slate-950">
-                <span className="truncate">{data.patient.full_name}</span>
-                {isPatientSubscribed(data.patient) ? (
-                  <HealthPlanBadge className="ml-0 shrink-0 sm:ml-2" />
-                ) : null}
-              </p>
-              <p className="text-xs text-slate-500">
+          <div className="flex min-w-0 items-start justify-between gap-3 pt-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-base font-bold leading-snug text-slate-950">
+                {data.patient.full_name}
+              </h1>
+              {isPatientSubscribed(data.patient) ? (
+                <div className="mt-1.5">
+                  <HealthPlanBadge className="ml-0" compact />
+                </div>
+              ) : null}
+              <p
+                className={cx(
+                  "text-xs text-slate-500",
+                  isPatientSubscribed(data.patient) ? "mt-1" : "mt-0.5",
+                )}
+              >
                 {data.patient.patient_identifier || "No OCS care number"}
               </p>
             </div>
@@ -1455,10 +1463,12 @@ function PatientProfilePage() {
         <PageHeader
           eyebrow="Patient profile"
           title={
-            <>
-              {data.patient.full_name}
-              {isPatientSubscribed(data.patient) ? <HealthPlanBadge /> : null}
-            </>
+            <div className="flex flex-col items-start gap-2">
+              <span>{data.patient.full_name}</span>
+              {isPatientSubscribed(data.patient) ? (
+                <HealthPlanBadge className="ml-0" />
+              ) : null}
+            </div>
           }
           actions={(
             <div className="flex flex-row flex-wrap items-center justify-end gap-3">
@@ -1543,7 +1553,7 @@ function PatientProfilePage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {canFlagLongTermReview ? (
               <LongTermReviewFlagButton
                 patient={data.patient}
