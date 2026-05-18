@@ -41,19 +41,12 @@ function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
 }
 
-function buildDoctorMobileCards(dashboard, { hcmHeadline = null, hcmUnreadCount = 0 } = {}) {
+function buildDoctorMobileCards(dashboard) {
   const summary = dashboard?.doctorWorkspace?.summary || {};
   const activePatients = Number(summary.activeAssignedPatientsCount ?? 0);
   const unpaidBills = Number(summary.pendingPaymentsCount ?? 0);
   const lowStock = dashboard?.doctor_low_stock_alert;
   const lowCount = Number(lowStock?.total_items || 0);
-
-  const hcmMeta =
-    hcmUnreadCount > 0
-      ? `${hcmUnreadCount} unread update${hcmUnreadCount === 1 ? "" : "s"}`
-      : hcmHeadline
-        ? hcmHeadline
-        : "View management notices";
 
   return [
     {
@@ -67,12 +60,6 @@ function buildDoctorMobileCards(dashboard, { hcmHeadline = null, hcmUnreadCount 
       icon: UserPlus,
       to: "/patients/add",
       meta: null,
-    },
-    {
-      label: "HCM Updates",
-      icon: BellRing,
-      to: "/hcm-news",
-      meta: hcmMeta,
     },
     {
       label: "Billing",
@@ -89,10 +76,9 @@ function buildDoctorMobileCards(dashboard, { hcmHeadline = null, hcmUnreadCount 
   ];
 }
 
-function DoctorMobileLauncher({ user, dashboard, latestHcmPost, hcmHeadline }) {
-  const { hcmUnreadCount } = useAuth();
+function DoctorMobileLauncher({ user, dashboard, latestHcmPost }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
-  const cards = buildDoctorMobileCards(dashboard, { hcmHeadline, hcmUnreadCount });
+  const cards = buildDoctorMobileCards(dashboard);
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
@@ -132,7 +118,7 @@ function DoctorMobileLauncher({ user, dashboard, latestHcmPost, hcmHeadline }) {
   );
 }
 
-function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null, hcmHeadline = null }) {
+function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const isDoctor = user.role === "doctor";
 
@@ -142,7 +128,6 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
         user={user}
         dashboard={dashboard}
         latestHcmPost={latestHcmPost}
-        hcmHeadline={hcmHeadline}
       />
     );
   }
@@ -1753,7 +1738,6 @@ function DashboardPage() {
         dashboard={dashboard}
         operatorMetrics={operatorMetrics}
         latestHcmPost={latestHcmPost}
-        hcmHeadline={doctorHcmHeadline}
       />
     );
   }
