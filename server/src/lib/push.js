@@ -195,6 +195,74 @@ function getDoctorPushSubscriptions() {
   return getTeamPushSubscriptions({ roles: ["doctor"] });
 }
 
+const PUSH_SUBSCRIBER_ROLES = ["admin", "doctor", "operator", "lab_tech", "accountant"];
+
+function listPushSubscriptionStatus() {
+  const placeholders = PUSH_SUBSCRIBER_ROLES.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`
+      SELECT
+        u.id,
+        u.full_name,
+        u.username,
+        u.role,
+        d.full_name AS doctor_profile_name,
+        CASE
+          WHEN u.push_subscription_token IS NOT NULL AND TRIM(u.push_subscription_token) != ''
+          THEN 1
+          ELSE 0
+        END AS push_enabled
+      FROM users u
+      LEFT JOIN doctors d ON d.id = u.doctor_id
+      WHERE u.is_active = 1
+        AND u.deleted_at IS NULL
+        AND u.role IN (${placeholders})
+      ORDER BY
+        CASE u.role
+          WHEN 'doctor' THEN 1
+          WHEN 'operator' THEN 2
+          WHEN 'accountant' THEN 3
+          WHEN 'lab_tech' THEN 4
+          WHEN 'admin' THEN 5
+          ELSE 6
+        END,
+        u.full_name COLLATE NOCASE
+    `)
+    .all(...PUSH_SUBSCRIBER_ROLES);
+
+  const subscribers = rows.map((row) => ({
+    user_id: Number(row.id),
+    full_name: row.full_name,
+    username: row.username,
+    role: row.role,
+    doctor_profile_name: row.doctor_profile_name || null,
+    push_enabled: Boolean(row.push_enabled),
+  }));
+
+  const summary = {
+    total: subscribers.length,
+    enabled: subscribers.filter((entry) => entry.push_enabled).length,
+    by_role: {},
+  };
+
+  for (const entry of subscribers) {
+    if (!summary.by_role[entry.role]) {
+      summary.by_role[entry.role] = { total: 0, enabled: 0 };
+    }
+
+    summary.by_role[entry.role].total += 1;
+    if (entry.push_enabled) {
+      summary.by_role[entry.role].enabled += 1;
+    }
+  }
+
+  return {
+    configured: isPushConfigured(),
+    summary,
+    subscribers,
+  };
+}
+
 function getTeamPushSubscriptions({ roles = null, excludeRoles = [] } = {}) {
   const rows = db
     .prepare(`
@@ -289,6 +357,7 @@ module.exports = {
   clearUserPushSubscription,
   getVapidPublicKey,
   isPushConfigured,
+  listPushSubscriptionStatus,
   maybeNotifyDoctorLowStock,
   saveUserPushSubscription,
   sendNotification,

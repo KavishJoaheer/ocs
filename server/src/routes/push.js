@@ -4,6 +4,7 @@ const {
   clearUserPushSubscription,
   getVapidPublicKey,
   isPushConfigured,
+  listPushSubscriptionStatus,
   saveUserPushSubscription,
 } = require("../lib/push");
 
@@ -18,6 +19,10 @@ router.get("/vapid-public-key", (_req, res) => {
     configured,
     publicKey,
   });
+});
+
+router.get("/subscriber-status", requireAuth, authorizeRoles("admin"), (_req, res) => {
+  res.json(listPushSubscriptionStatus());
 });
 
 router.post("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES), (req, res) => {

@@ -6,7 +6,9 @@ import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PushSubscriberStatusCard from "../components/PushSubscriberStatusCard.jsx";
 import SectionCard from "../components/SectionCard.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
 
@@ -193,6 +195,7 @@ function TeamMemberFormModal({ open, role, member, onClose, onSubmit, isSaving }
 }
 
 function TeamOperationsPage() {
+  const { user } = useAuth();
   const [activeRole, setActiveRole] = useState("doctor");
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -334,6 +337,8 @@ function TeamOperationsPage() {
           ) : null
         }
       />
+
+      {user.role === "admin" ? <PushSubscriberStatusCard /> : null}
 
       <div className="flex flex-wrap gap-3 rounded-[28px] border border-slate-200/80 bg-white/80 p-3 shadow-[0_20px_60px_rgba(34,72,91,0.08)]">
         {[...roleTabs, deletedTab].map((tab) => (
