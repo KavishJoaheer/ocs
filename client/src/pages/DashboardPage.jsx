@@ -1014,16 +1014,16 @@ const doctorMetricVariants = {
     anchorTheme: "doctor-primary",
   },
   assigned: {
-    card: "border border-slate-100/80 bg-slate-50 hover:bg-slate-100",
-    label: "text-slate-400",
-    value: "text-slate-900",
-    anchorTheme: "doctor-slate",
+    card: "border border-[#e6ebd9] bg-[#f4f6f0] hover:bg-[#ebefe2]",
+    label: "text-[#8fa382]",
+    value: "text-[#3b4733]",
+    anchorTheme: "doctor-olive",
   },
   longTerm: {
-    card: "border border-amber-100 bg-amber-50 hover:bg-amber-100/80",
-    label: "text-amber-700",
-    value: "text-amber-900",
-    anchorTheme: "doctor-amber",
+    card: "border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] hover:bg-[#f7e6db]",
+    label: "text-[#ba5a32]",
+    value: "text-[#6e2f14]",
+    anchorTheme: "doctor-terracotta",
   },
 };
 

@@ -6,13 +6,13 @@ const doctorThemeStyles = {
     wrapper: "border-white/25 bg-white/10 group-hover:border-white/40",
     icon: "text-teal-200 group-hover:text-white",
   },
-  "doctor-slate": {
-    wrapper: "border-slate-200 bg-white group-hover:border-slate-300",
-    icon: "text-slate-400 group-hover:text-slate-600",
+  "doctor-olive": {
+    wrapper: "border-[#e6ebd9] bg-white/80 group-hover:border-[#d0d9c4]",
+    icon: "text-[#8fa382] group-hover:text-[#6f8264]",
   },
-  "doctor-amber": {
-    wrapper: "border-amber-200 bg-white group-hover:border-amber-300",
-    icon: "text-amber-600 group-hover:text-amber-700",
+  "doctor-terracotta": {
+    wrapper: "border-[#f5e3d7] bg-white/80 group-hover:border-[#e8cfc0]",
+    icon: "text-[#ba5a32] group-hover:text-[#9c4628]",
   },
 };
 
