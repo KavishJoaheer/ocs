@@ -146,7 +146,7 @@ function Sidebar() {
     return new Set(paths);
   }, [user.role]);
 
-  const desktopOnlyPaths = new Set(["/hcm-news", "/appointments", "/live-report"]);
+  const desktopOnlyPaths = new Set(["/appointments", "/live-report"]);
 
   const drawerNavItems = useMemo(
     () => visibleNavItems.filter((item) => !bottomPaths.has(item.to) && !desktopOnlyPaths.has(item.to)),
@@ -238,7 +238,7 @@ function Sidebar() {
             </div>
           </div>
 
-          <PushNotificationToggle />
+          <PushNotificationToggle alwaysShow />
 
           {drawerNavItems.length > 0 ? (
             <div className="mt-5 px-4">

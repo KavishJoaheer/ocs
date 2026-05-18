@@ -9,17 +9,22 @@ import {
   unsubscribeFromPushNotifications,
 } from "../lib/pushNotifications.js";
 
-function PushNotificationToggle({ className = "" }) {
+function PushNotificationToggle({ className = "", alwaysShow = false }) {
   const [enabled, setEnabled] = useState(false);
   const [available, setAvailable] = useState(false);
+  const [permission, setPermission] = useState("unsupported");
   const [isUpdating, setIsUpdating] = useState(false);
 
   const refreshState = useCallback(async () => {
     if (!isPushSupported()) {
       setAvailable(false);
       setEnabled(false);
+      setPermission("unsupported");
       return;
     }
+
+    const nextPermission = await getPushPermissionState();
+    setPermission(nextPermission);
 
     const { configured } = await fetchPushConfiguration();
     if (!configured) {
@@ -29,8 +34,8 @@ function PushNotificationToggle({ className = "" }) {
     }
 
     setAvailable(true);
-    const permission = await getPushPermissionState();
-    if (permission !== "granted") {
+
+    if (nextPermission !== "granted") {
       setEnabled(false);
       return;
     }
@@ -42,12 +47,30 @@ function PushNotificationToggle({ className = "" }) {
     void refreshState();
   }, [refreshState]);
 
-  if (!available) {
+  if (!alwaysShow && !available) {
     return null;
   }
 
+  const helperText = (() => {
+    if (!isPushSupported()) {
+      return "On iPhone, add OCS to your Home Screen, then open the app to enable alerts.";
+    }
+
+    if (!available) {
+      return "Push alerts are not configured on this server yet.";
+    }
+
+    if (permission === "denied") {
+      return "Notifications are blocked. Enable them in your device Settings for OCS.";
+    }
+
+    return "Low stock and HCM management updates";
+  })();
+
+  const toggleDisabled = isUpdating || !available || permission === "denied";
+
   async function handleToggle() {
-    if (isUpdating) {
+    if (toggleDisabled) {
       return;
     }
 
@@ -75,21 +98,23 @@ function PushNotificationToggle({ className = "" }) {
     <div
       className={`mx-5 mt-6 flex items-center justify-between border-t border-gray-100 px-2 pt-4 ${className}`.trim()}
     >
-      <div className="flex flex-col">
+      <div className="flex flex-col pr-3">
         <span className="text-xs font-bold tracking-wide text-gray-700">Push Notifications</span>
-        <span className="text-[10px] text-gray-400">Low stock &amp; clinical alerts</span>
+        <span className="mt-0.5 text-[10px] leading-snug text-gray-400">{helperText}</span>
       </div>
-      <label className="relative inline-flex cursor-pointer items-center">
+      <label
+        className={`relative inline-flex shrink-0 items-center ${toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+      >
         <input
           type="checkbox"
           className="peer sr-only"
           checked={enabled}
-          disabled={isUpdating}
+          disabled={toggleDisabled}
           onChange={handleToggle}
           aria-label="Toggle push notifications"
         />
         <div
-          className="peer relative h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:size-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-teal-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-teal-500 peer-disabled:opacity-60"
+          className="peer relative h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:size-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-teal-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-teal-500"
           aria-hidden
         />
       </label>
