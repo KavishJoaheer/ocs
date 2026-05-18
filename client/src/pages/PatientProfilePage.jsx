@@ -81,7 +81,7 @@ function LongTermReviewAlertBanner({ note, dueDate }) {
 
   return (
     <div
-      className="mb-4 rounded-2xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] px-4 py-3 text-[#6e2f14] shadow-sm"
+      className="mb-4 rounded-xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-4 text-[#6e2f14] shadow-sm"
       role="status"
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-[#ba5a32]">
@@ -255,7 +255,7 @@ function MobileBillingStatusBar({ status }) {
 
   if (normalized === "paid") {
     return (
-      <span className="inline-flex rounded-lg bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+      <span className="inline-flex rounded-lg border border-[#e6ebd9]/80 bg-[#e6ebd9]/40 px-3 py-1 text-xs font-bold text-[#3b4733]">
         Paid
       </span>
     );
@@ -283,8 +283,27 @@ function getMobileBillingCanvasClass(bills) {
 
   return cx(
     "space-y-4 rounded-2xl border p-4",
-    hasUnpaid ? "border-rose-100/80 bg-rose-50/30" : "border-emerald-100/50 bg-emerald-50/20",
+    hasUnpaid
+      ? "border-rose-100/80 bg-rose-50/30"
+      : "border-[#e6ebd9]/80 bg-[#e6ebd9]/40 text-[#3b4733]",
   );
+}
+
+function getMobileBillingCardClass(bill) {
+  const normalized = String(bill.payment_status || bill.status).trim().toLowerCase();
+
+  if (normalized === "paid") {
+    return "rounded-[24px] border border-[#e6ebd9]/80 bg-[#e6ebd9]/40 p-4 text-[#3b4733]";
+  }
+
+  if (normalized === "unpaid") {
+    return cx(
+      "rounded-[24px] border border-slate-200/80 p-4",
+      getBillingHistoryRowClass(normalized),
+    );
+  }
+
+  return "rounded-[24px] border border-slate-200/80 bg-white p-4";
 }
 
 
@@ -918,6 +937,11 @@ function PatientProfilePage() {
     [data, user],
   );
 
+  const showMobileFab =
+    (canModifyClinicalData &&
+      (canManageConsultations || showPatientBillingUi || canManageLabReports)) ||
+    (user.role === "lab_tech" && canManageLabReports);
+
   const mobileProfileTabs = useMemo(
     () => MOBILE_TABS.filter((tab) => tab.key !== "billing" || showPatientBillingUi),
     [showPatientBillingUi],
@@ -1543,7 +1567,7 @@ function PatientProfilePage() {
 
 
           {activeTab === "summary" && (
-            <div className="space-y-4 rounded-2xl border border-slate-100/50 bg-slate-50/60 p-4">
+            <div className="space-y-4 rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-4">
               <div className="grid min-w-0 grid-cols-3 gap-2">
                 <HighlightStat
                   compact
@@ -1703,7 +1727,7 @@ function PatientProfilePage() {
 
           {activeTab === "notes" && (
             <div className="space-y-4">
-              {canManageConsultations && (
+              {canModifyClinicalData && (
                 <button
                   type="button"
                   onClick={() => setConsultationComposerOpen(true)}
@@ -1910,7 +1934,7 @@ function PatientProfilePage() {
                   title="No consultations recorded"
                   description="Consultation notes will appear here as soon as a doctor completes a visit and saves the note."
                   action={
-                    canManageConsultations ? (
+                    canModifyClinicalData ? (
                       <button
                         type="button"
                         onClick={() => setConsultationComposerOpen(true)}
@@ -1929,7 +1953,7 @@ function PatientProfilePage() {
 
           {activeTab === "reports" && (
             <div className="space-y-4">
-              {canManageLabReports && (
+              {(canModifyClinicalData || user.role === "lab_tech") && canManageLabReports && (
                 <button
                   type="button"
                   onClick={() => setReportEditor({ id: null })}
@@ -1958,7 +1982,7 @@ function PatientProfilePage() {
                           </p>
                         </div>
 
-                        {canManageLabReports ? (
+                        {(canModifyClinicalData || user.role === "lab_tech") && canManageLabReports ? (
                           <button
                             type="button"
                             onClick={() => setReportEditor(report)}
@@ -2053,10 +2077,7 @@ function PatientProfilePage() {
                   {data.bills.map((bill) => (
                     <div
                       key={bill.id}
-                      className={cx(
-                        "rounded-[24px] border border-slate-200/80 p-4",
-                        getBillingHistoryRowClass(bill.payment_status || bill.status),
-                      )}
+                      className={getMobileBillingCardClass(bill)}
                     >
                       <div className="flex flex-col gap-3">
                         <div>
@@ -2617,7 +2638,7 @@ function PatientProfilePage() {
         </>
       )}
 
-      {isMobile && (canManageConsultations || showPatientBillingUi || canManageLabReports) && (
+      {isMobile && showMobileFab && (
         <>
           {fabOpen && (
             <div
@@ -2628,7 +2649,7 @@ function PatientProfilePage() {
           <div className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3">
             {fabOpen && (
               <>
-                {canManageLabReports && (
+                {canManageLabReports && (canModifyClinicalData || user.role === "lab_tech") && (
                   <button
                     type="button"
                     onClick={() => {
@@ -2645,7 +2666,7 @@ function PatientProfilePage() {
                     </span>
                   </button>
                 )}
-                {showPatientBillingUi && (
+                {canModifyClinicalData && showPatientBillingUi && (
                   <button
                     type="button"
                     onClick={() => {
@@ -2662,7 +2683,7 @@ function PatientProfilePage() {
                     </span>
                   </button>
                 )}
-                {canManageConsultations && (
+                {canModifyClinicalData && canManageConsultations && (
                   <button
                     type="button"
                     onClick={() => {
