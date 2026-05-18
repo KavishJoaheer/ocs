@@ -76,11 +76,11 @@ export function getPushBannerCopy(role) {
     };
   }
 
-  if (role === "admin") {
+  if (role === "admin" || role === "operator") {
     return {
       title: "Enable alerts",
       description:
-        "Receive desktop and mobile notifications when important operational updates are published.",
+        "Get low stock reminders for OCS inventory on this device, with alerts every 6 hours until items are restocked.",
     };
   }
 

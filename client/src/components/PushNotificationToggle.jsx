@@ -68,6 +68,10 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
       return "Get mobile alerts when your kit items fall below 50% par level.";
     }
 
+    if (role === "admin" || role === "operator") {
+      return "Get alerts when OCS stock items are at or below par level (reminder every 6 hours).";
+    }
+
     return "Low stock and HCM management updates";
   })();
 

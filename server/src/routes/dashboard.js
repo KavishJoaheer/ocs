@@ -3,7 +3,7 @@ const path = require("path");
 const express = require("express");
 const multer = require("multer");
 const { db, rosterDir } = require("../db");
-const { notifyDoctorLowStockSummary } = require("../lib/push");
+const { notifyDoctorLowStockSummary, notifyOcsLowStockSubscribers } = require("../lib/push");
 const { serializeUser } = require("../lib/auth");
 const {
   getTodayLocal,
@@ -1096,6 +1096,12 @@ router.get("/", (_req, res) => {
     });
   }
 
+  if (["admin", "operator"].includes(req.auth.role)) {
+    void notifyOcsLowStockSubscribers({ userIds: [Number(req.auth.id)] }).catch((error) => {
+      console.warn("[push] OCS low stock dashboard notification failed:", error?.message || error);
+    });
+  }
+
   res.json({
     summary: {
       totalPatients,
@@ -1166,6 +1172,10 @@ router.get("/operator-workspace", (req, res) => {
   if (req.auth.role !== "operator") {
     return res.status(403).json({ error: "Only operator accounts can open this workspace." });
   }
+
+  void notifyOcsLowStockSubscribers({ userIds: [Number(req.auth.id)] }).catch((error) => {
+    console.warn("[push] OCS low stock operator workspace notification failed:", error?.message || error);
+  });
 
   res.json(getOperatorWorkspacePayload());
 });

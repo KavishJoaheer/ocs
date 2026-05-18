@@ -1,5 +1,5 @@
 const express = require("express");
-const { maybeNotifyDoctorLowStock } = require("../lib/push");
+const { maybeNotifyLowStock, notifyOcsLowStockSubscribers } = require("../lib/push");
 const { db, ensureBillingForConsultation } = require("../db");
 const { calculateBillingTotal, getTodayLocal, normalizeBillingItems, toNumber } = require("../lib/utils");
 
@@ -527,7 +527,7 @@ function recordMovement({
     finalMetaJson,
   );
 
-  void maybeNotifyDoctorLowStock(itemId, userId).catch((error) => {
+  void maybeNotifyLowStock(itemId, userId).catch((error) => {
     console.warn("[push] low stock notification failed:", error?.message || error);
   });
 }
@@ -1107,7 +1107,15 @@ function computeActivityAnalytics(consolidated, rawRows) {
 router.get("/", (req, res) => {
   const selectedDoctorId = Number(req.query.doctorId || 0) || null;
   const doctorContext = String(req.query.context || "my").trim().toLowerCase() === "ocs" ? "ocs" : "my";
-  res.json(getPayload(req, selectedDoctorId, doctorContext));
+  const payload = getPayload(req, selectedDoctorId, doctorContext);
+
+  if (["admin", "operator"].includes(req.auth.role) && payload.low_stock_items?.length > 0) {
+    void notifyOcsLowStockSubscribers({ userIds: [Number(req.auth.id)] }).catch((error) => {
+      console.warn("[push] OCS low stock inventory notification failed:", error?.message || error);
+    });
+  }
+
+  res.json(payload);
 });
 
 router.get("/receipts/:transactionId", (req, res) => {
@@ -1268,7 +1276,7 @@ router.post("/items", (req, res) => {
       userId: req.auth.id,
     });
   } else if (isDoctor && doctorId) {
-    void maybeNotifyDoctorLowStock(createdItemId, req.auth.id).catch((error) => {
+    void maybeNotifyLowStock(createdItemId, req.auth.id).catch((error) => {
       console.warn("[push] low stock notification failed:", error?.message || error);
     });
   }
@@ -1344,7 +1352,7 @@ router.put("/items/:id", (req, res) => {
       userId: req.auth.id,
     });
   } else if (isDoctor && doctorId) {
-    void maybeNotifyDoctorLowStock(itemId, req.auth.id).catch((error) => {
+    void maybeNotifyLowStock(itemId, req.auth.id).catch((error) => {
       console.warn("[push] low stock notification failed:", error?.message || error);
     });
   }

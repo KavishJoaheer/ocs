@@ -173,8 +173,10 @@ function clearUserPushSubscription(userId) {
   `).run(userId);
 }
 
-const LOW_STOCK_NOTIFICATION_KEY = "low_stock";
+const LOW_STOCK_DOCTOR_NOTIFICATION_KEY = "low_stock";
+const LOW_STOCK_OCS_NOTIFICATION_KEY = "low_stock_ocs";
 const LOW_STOCK_REMINDER_MS = 6 * 60 * 60 * 1000;
+const OCS_LOW_STOCK_ROLES = ["admin", "operator"];
 
 function ensurePushNotificationStateTable() {
   db.exec(`
@@ -273,7 +275,43 @@ function getDoctorLowStockItemIds(doctorId) {
     .map((row) => row.itemId);
 }
 
-function shouldSendLowStockReminder(userId, payloadHash) {
+function getOcsLowStockItemIds() {
+  const rows = db
+    .prepare(`
+      SELECT id, quantity, minimum_quantity
+      FROM inventory
+      WHERE stock_scope = 'ocs'
+        AND minimum_quantity > 0
+    `)
+    .all();
+
+  return rows
+    .filter((row) => {
+      const parLevel = Number(row.minimum_quantity || 0);
+      const quantity = Number(row.quantity || 0);
+      return parLevel > 0 && quantity <= parLevel;
+    })
+    .map((row) => Number(row.id));
+}
+
+function getAdminOperatorSubscriberUserIds() {
+  const placeholders = OCS_LOW_STOCK_ROLES.map(() => "?").join(", ");
+
+  return db
+    .prepare(`
+      SELECT id
+      FROM users
+      WHERE role IN (${placeholders})
+        AND is_active = 1
+        AND deleted_at IS NULL
+        AND push_subscription_token IS NOT NULL
+        AND TRIM(push_subscription_token) != ''
+    `)
+    .all(...OCS_LOW_STOCK_ROLES)
+    .map((row) => Number(row.id));
+}
+
+function shouldSendLowStockReminder(userId, payloadHash, notificationKey) {
   ensurePushNotificationStateTable();
 
   const existing = db
@@ -283,7 +321,7 @@ function shouldSendLowStockReminder(userId, payloadHash) {
       WHERE user_id = ?
         AND notification_key = ?
     `)
-    .get(userId, LOW_STOCK_NOTIFICATION_KEY);
+    .get(userId, notificationKey);
 
   if (!existing) {
     return true;
@@ -301,7 +339,7 @@ function shouldSendLowStockReminder(userId, payloadHash) {
   return Date.now() - lastSentMs >= LOW_STOCK_REMINDER_MS;
 }
 
-function recordLowStockNotification(userId, payloadHash) {
+function recordLowStockNotification(userId, payloadHash, notificationKey) {
   ensurePushNotificationStateTable();
 
   db.prepare(`
@@ -310,7 +348,7 @@ function recordLowStockNotification(userId, payloadHash) {
     ON CONFLICT(user_id, notification_key) DO UPDATE SET
       payload_hash = excluded.payload_hash,
       last_sent_at = CURRENT_TIMESTAMP
-  `).run(userId, LOW_STOCK_NOTIFICATION_KEY, payloadHash);
+  `).run(userId, notificationKey, payloadHash);
 }
 
 async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
@@ -330,7 +368,7 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
   }
 
   const payloadHash = lowStockItemIds.sort((left, right) => left - right).join(",");
-  if (!shouldSendLowStockReminder(resolvedUserId, payloadHash)) {
+  if (!shouldSendLowStockReminder(resolvedUserId, payloadHash, LOW_STOCK_DOCTOR_NOTIFICATION_KEY)) {
     return { ok: false, skipped: true, reason: "cooldown_active" };
   }
 
@@ -355,10 +393,67 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
 
   const result = await sendNotification(subscription, payload);
   if (result.ok) {
-    recordLowStockNotification(resolvedUserId, payloadHash);
+    recordLowStockNotification(resolvedUserId, payloadHash, LOW_STOCK_DOCTOR_NOTIFICATION_KEY);
   }
 
   return result;
+}
+
+async function notifyOcsLowStockSubscribers({ userIds = null } = {}) {
+  const lowStockItemIds = getOcsLowStockItemIds();
+  if (!lowStockItemIds.length) {
+    return { ok: false, skipped: true, reason: "no_low_stock_items" };
+  }
+
+  const targetUserIds = Array.isArray(userIds) && userIds.length
+    ? [...new Set(userIds.map((value) => Number(value)).filter(Boolean))]
+    : getAdminOperatorSubscriberUserIds();
+
+  if (!targetUserIds.length) {
+    return { ok: false, skipped: true, reason: "no_subscribers" };
+  }
+
+  const payloadHash = lowStockItemIds.sort((left, right) => left - right).join(",");
+  const count = lowStockItemIds.length;
+  const payload = {
+    title: "⚠️ Low Stock Alert",
+    body:
+      count === 1
+        ? "1 OCS stock item is at or below par level. Tap to review inventory."
+        : `${count} OCS stock items are at or below par level. Tap to review inventory.`,
+    url: "/inventory",
+    icon: "/favicon.svg",
+  };
+
+  const results = await Promise.allSettled(
+    targetUserIds.map(async (targetUserId) => {
+      if (!shouldSendLowStockReminder(targetUserId, payloadHash, LOW_STOCK_OCS_NOTIFICATION_KEY)) {
+        return { ok: false, skipped: true, reason: "cooldown_active", userId: targetUserId };
+      }
+
+      const subscription = getUserPushSubscription(targetUserId);
+      if (!subscription) {
+        return { ok: false, skipped: true, reason: "no_subscription", userId: targetUserId };
+      }
+
+      const result = await sendNotification(subscription, payload);
+      if (result.ok) {
+        recordLowStockNotification(targetUserId, payloadHash, LOW_STOCK_OCS_NOTIFICATION_KEY);
+      }
+
+      return { ...result, userId: targetUserId };
+    }),
+  );
+
+  const delivered = results.filter(
+    (entry) => entry.status === "fulfilled" && entry.value?.ok,
+  ).length;
+
+  return {
+    ok: delivered > 0,
+    delivered,
+    attempted: targetUserIds.length,
+  };
 }
 
 function getDoctorPushSubscriptions() {
@@ -461,7 +556,7 @@ function getTeamPushSubscriptions({ roles = null, excludeRoles = [] } = {}) {
     .filter(Boolean);
 }
 
-async function maybeNotifyDoctorLowStock(itemId, actingUserId = null) {
+async function maybeNotifyLowStock(itemId, actingUserId = null) {
   const item = db
     .prepare(`
       SELECT
@@ -474,21 +569,37 @@ async function maybeNotifyDoctorLowStock(itemId, actingUserId = null) {
     `)
     .get(itemId);
 
-  if (!item || item.stock_scope !== "doctor" || !item.owner_doctor_id) {
-    return { ok: false, skipped: true, reason: "not_doctor_item" };
+  if (!item) {
+    return { ok: false, skipped: true, reason: "item_not_found" };
   }
 
   const parLevel = Number(item.par_level || 0);
   const currentQuantity = Number(item.current_quantity || 0);
 
-  if (parLevel <= 0 || currentQuantity > parLevel * 0.5) {
-    return { ok: false, skipped: true, reason: "not_low_stock" };
+  if (item.stock_scope === "doctor" && item.owner_doctor_id) {
+    if (parLevel <= 0 || currentQuantity > parLevel * 0.5) {
+      return { ok: false, skipped: true, reason: "not_low_stock" };
+    }
+
+    return notifyDoctorLowStockSummary({
+      doctorId: Number(item.owner_doctor_id),
+      userId: actingUserId ? Number(actingUserId) : null,
+    });
   }
 
-  return notifyDoctorLowStockSummary({
-    doctorId: Number(item.owner_doctor_id),
-    userId: actingUserId ? Number(actingUserId) : null,
-  });
+  if (item.stock_scope === "ocs") {
+    if (parLevel <= 0 || currentQuantity > parLevel) {
+      return { ok: false, skipped: true, reason: "not_low_stock" };
+    }
+
+    return notifyOcsLowStockSubscribers();
+  }
+
+  return { ok: false, skipped: true, reason: "unsupported_scope" };
+}
+
+async function maybeNotifyDoctorLowStock(itemId, actingUserId = null) {
+  return maybeNotifyLowStock(itemId, actingUserId);
 }
 
 async function broadcastHcmNewsToDoctors(newsArticle) {
@@ -519,7 +630,9 @@ module.exports = {
   isPushConfigured,
   listPushSubscriptionStatus,
   maybeNotifyDoctorLowStock,
+  maybeNotifyLowStock,
   notifyDoctorLowStockSummary,
+  notifyOcsLowStockSubscribers,
   saveUserPushSubscription,
   sendNotification,
 };
