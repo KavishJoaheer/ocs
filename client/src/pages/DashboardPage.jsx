@@ -118,13 +118,17 @@ function DoctorMobileLauncher({ user, dashboard, latestHcmPost }) {
   );
 }
 
-function MobileLauncher({ user, dashboard, operatorMetrics }) {
+function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const isDoctor = user.role === "doctor";
 
   if (isDoctor) {
     return (
-      <DoctorMobileLauncher user={user} dashboard={dashboard} latestHcmPost={latestHcmPost} />
+      <DoctorMobileLauncher
+        user={user}
+        dashboard={dashboard}
+        latestHcmPost={latestHcmPost}
+      />
     );
   }
 
@@ -1728,7 +1732,14 @@ function DashboardPage() {
   }
 
   if (isMobile) {
-    return <MobileLauncher user={user} dashboard={dashboard} operatorMetrics={operatorMetrics} />;
+    return (
+      <MobileLauncher
+        user={user}
+        dashboard={dashboard}
+        operatorMetrics={operatorMetrics}
+        latestHcmPost={latestHcmPost}
+      />
+    );
   }
 
   if (user.role === "doctor") {

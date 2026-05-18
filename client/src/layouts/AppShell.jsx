@@ -121,10 +121,11 @@ function AppShell() {
   const isPatientsDirectory = location.pathname === "/patients";
   const isInventory = location.pathname === "/inventory";
   const hideBottomNav = isMobile;
+  const userRole = user?.role;
   const alwaysHideTopHeader =
-    (isDashboard && (user.role === "doctor" || user.role === "operator")) ||
-    (isMobile && isPatientsDirectory && user.role === "doctor") ||
-    (isMobile && isInventory && user.role === "doctor");
+    (isDashboard && (userRole === "doctor" || userRole === "operator")) ||
+    (isMobile && isPatientsDirectory && userRole === "doctor") ||
+    (isMobile && isInventory && userRole === "doctor");
 
   const dashboardMetaByRole = {
     doctor: {
@@ -155,7 +156,7 @@ function AppShell() {
         helper: "",
       }
     : isDashboard
-      ? dashboardMetaByRole[user.role] || pageMeta["/"]
+      ? dashboardMetaByRole[userRole] || pageMeta["/"]
       : pageMeta[location.pathname] || pageMeta["/"];
 
   useEffect(() => {
