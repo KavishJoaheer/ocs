@@ -33,6 +33,24 @@ export function dismissPushBanner() {
   window.localStorage.setItem(PUSH_DISMISS_KEY, "1");
 }
 
+export async function fetchPushConfiguration() {
+  if (!isPushSupported()) {
+    return { configured: false, publicKey: null };
+  }
+
+  try {
+    const payload = await api.get("/push/vapid-public-key");
+    const publicKey = payload?.publicKey || null;
+
+    return {
+      configured: Boolean(payload?.configured && publicKey),
+      publicKey,
+    };
+  } catch {
+    return { configured: false, publicKey: null };
+  }
+}
+
 export async function registerServiceWorker() {
   if (!isPushSupported()) {
     return null;
@@ -54,17 +72,19 @@ export async function subscribeToPushNotifications() {
     throw new Error("Push notifications are not supported on this device.");
   }
 
+  const { configured, publicKey } = await fetchPushConfiguration();
+  if (!configured || !publicKey) {
+    throw new Error("Push notifications are not available on this server yet.");
+  }
+
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     throw new Error("Notification permission was not granted.");
   }
 
-  const { publicKey } = await api.get("/push/vapid-public-key");
-  if (!publicKey) {
-    throw new Error("Push notifications are not configured on the server.");
-  }
-
   const registration = await registerServiceWorker();
+  await navigator.serviceWorker.ready;
+
   const existing = await registration.pushManager.getSubscription();
 
   const subscription =
@@ -92,5 +112,9 @@ export async function unsubscribeFromPushNotifications() {
     await subscription.unsubscribe();
   }
 
-  await api.delete("/push/subscribe");
+  try {
+    await api.delete("/push/subscribe");
+  } catch {
+    // Best-effort cleanup when server session is unavailable.
+  }
 }

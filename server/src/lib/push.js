@@ -1,21 +1,88 @@
+const fs = require("fs");
+const path = require("path");
 const webpush = require("web-push");
 const { db } = require("../db");
 
 let pushConfigured = false;
+let cachedVapidKeys = null;
+
+function resolveDataDir() {
+  const explicitDbPath = process.env.DB_PATH;
+  const volumeMountPath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  const isVercelRuntime = Boolean(process.env.VERCEL);
+  const dbPath =
+    explicitDbPath ||
+    path.join(
+      volumeMountPath || (isVercelRuntime ? path.join("/tmp") : path.join(__dirname, "..", "data")),
+      "clinic.db",
+    );
+
+  return path.dirname(dbPath);
+}
+
+function getVapidStorePath() {
+  return path.join(resolveDataDir(), "vapid.json");
+}
+
+function loadVapidKeys() {
+  if (cachedVapidKeys) {
+    return cachedVapidKeys;
+  }
+
+  const envPublic = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+  const envPrivate = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+
+  if (envPublic && envPrivate) {
+    cachedVapidKeys = { publicKey: envPublic, privateKey: envPrivate };
+    return cachedVapidKeys;
+  }
+
+  const vapidPath = getVapidStorePath();
+
+  try {
+    if (fs.existsSync(vapidPath)) {
+      const stored = JSON.parse(fs.readFileSync(vapidPath, "utf8"));
+      if (stored?.publicKey && stored?.privateKey) {
+        cachedVapidKeys = {
+          publicKey: String(stored.publicKey),
+          privateKey: String(stored.privateKey),
+        };
+        return cachedVapidKeys;
+      }
+    }
+  } catch (error) {
+    console.warn("[push] Could not read stored VAPID keys:", error?.message || error);
+  }
+
+  if (process.env.VERCEL) {
+    return null;
+  }
+
+  try {
+    const generated = webpush.generateVAPIDKeys();
+    fs.mkdirSync(path.dirname(vapidPath), { recursive: true });
+    fs.writeFileSync(vapidPath, JSON.stringify(generated, null, 2), "utf8");
+    cachedVapidKeys = generated;
+    console.log(`[push] Generated VAPID keys at ${vapidPath}`);
+    return cachedVapidKeys;
+  } catch (error) {
+    console.warn("[push] Could not persist generated VAPID keys:", error?.message || error);
+    return null;
+  }
+}
 
 function configureWebPush() {
-  const publicKey = process.env.VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const keys = loadVapidKeys();
 
-  if (!publicKey || !privateKey) {
+  if (!keys?.publicKey || !keys?.privateKey) {
     pushConfigured = false;
     return false;
   }
 
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || "mailto:support@ocs.local",
-    publicKey,
-    privateKey,
+    keys.publicKey,
+    keys.privateKey,
   );
   pushConfigured = true;
   return true;
@@ -30,7 +97,7 @@ function isPushConfigured() {
 }
 
 function getVapidPublicKey() {
-  return process.env.VAPID_PUBLIC_KEY || "";
+  return loadVapidKeys()?.publicKey || "";
 }
 
 function parseSubscription(raw) {

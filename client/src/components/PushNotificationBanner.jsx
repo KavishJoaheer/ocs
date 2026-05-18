@@ -3,6 +3,7 @@ import { BellRing, X } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   dismissPushBanner,
+  fetchPushConfiguration,
   getPushPermissionState,
   isPushBannerDismissed,
   isPushSupported,
@@ -24,9 +25,13 @@ function PushNotificationBanner({ className = "" }) {
         return;
       }
 
-      const permission = await getPushPermissionState();
+      const [{ configured }, permission] = await Promise.all([
+        fetchPushConfiguration(),
+        getPushPermissionState(),
+      ]);
+
       if (!cancelled) {
-        setVisible(permission === "default");
+        setVisible(configured && permission === "default");
       }
     }
 
@@ -49,7 +54,12 @@ function PushNotificationBanner({ className = "" }) {
       toast.success("Push notifications enabled.");
       setVisible(false);
     } catch (error) {
-      toast.error(error.message || "Could not enable push notifications.");
+      const message = error?.message || "Could not enable push notifications.";
+      if (!message.toLowerCase().includes("not available")) {
+        toast.error(message);
+      }
+      setVisible(false);
+      dismissPushBanner();
     } finally {
       setIsEnabling(false);
     }

@@ -10,17 +10,11 @@ const {
 const router = express.Router();
 
 router.get("/vapid-public-key", (_req, res) => {
-  const publicKey = getVapidPublicKey();
-
-  if (!publicKey) {
-    return res.status(503).json({
-      error: "Web push is not configured on this server.",
-      configured: false,
-    });
-  }
+  const configured = isPushConfigured();
+  const publicKey = configured ? getVapidPublicKey() : null;
 
   res.json({
-    configured: isPushConfigured(),
+    configured,
     publicKey,
   });
 });
