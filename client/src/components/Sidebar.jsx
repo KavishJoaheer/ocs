@@ -238,7 +238,7 @@ function Sidebar() {
             </div>
           </div>
 
-          <PushNotificationToggle alwaysShow />
+          <PushNotificationToggle alwaysShow role={user.role} />
 
           {drawerNavItems.length > 0 ? (
             <div className="mt-5 px-4">

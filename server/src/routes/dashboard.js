@@ -3,6 +3,7 @@ const path = require("path");
 const express = require("express");
 const multer = require("multer");
 const { db, rosterDir } = require("../db");
+const { notifyDoctorLowStockSummary } = require("../lib/push");
 const { serializeUser } = require("../lib/auth");
 const {
   getTodayLocal,
@@ -1085,6 +1086,15 @@ router.get("/", (_req, res) => {
     req.auth.role === "doctor" && req.auth.doctor_id
       ? getDoctorLowStockAlert(Number(req.auth.doctor_id))
       : { triggered: false, total_items: 0, items: [] };
+
+  if (doctorLowStockAlert.triggered && req.auth.doctor_id) {
+    void notifyDoctorLowStockSummary({
+      doctorId: Number(req.auth.doctor_id),
+      userId: Number(req.auth.id),
+    }).catch((error) => {
+      console.warn("[push] low stock dashboard notification failed:", error?.message || error);
+    });
+  }
 
   res.json({
     summary: {

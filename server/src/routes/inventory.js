@@ -527,7 +527,7 @@ function recordMovement({
     finalMetaJson,
   );
 
-  void maybeNotifyDoctorLowStock(itemId).catch((error) => {
+  void maybeNotifyDoctorLowStock(itemId, userId).catch((error) => {
     console.warn("[push] low stock notification failed:", error?.message || error);
   });
 }
@@ -1253,10 +1253,12 @@ router.post("/items", (req, res) => {
     `)
     .run(itemName, folderId, stockScope, doctorId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate);
 
+  const createdItemId = Number(result.lastInsertRowid);
+
   if (quantity > 0) {
-    createBatch(Number(result.lastInsertRowid), quantity, expiryDate, costPrice);
+    createBatch(createdItemId, quantity, expiryDate, costPrice);
     recordMovement({
-      itemId: Number(result.lastInsertRowid),
+      itemId: createdItemId,
       movementType: "in",
       quantity,
       previousQuantity: 0,
@@ -1264,6 +1266,10 @@ router.post("/items", (req, res) => {
       actionType: "add",
       note: "Initial stock entry",
       userId: req.auth.id,
+    });
+  } else if (isDoctor && doctorId) {
+    void maybeNotifyDoctorLowStock(createdItemId, req.auth.id).catch((error) => {
+      console.warn("[push] low stock notification failed:", error?.message || error);
     });
   }
 
@@ -1336,6 +1342,10 @@ router.put("/items/:id", (req, res) => {
       actionType: "correction",
       note: adjustmentNote || `Quantity adjusted from ${previousQuantity} to ${quantity}`,
       userId: req.auth.id,
+    });
+  } else if (isDoctor && doctorId) {
+    void maybeNotifyDoctorLowStock(itemId, req.auth.id).catch((error) => {
+      console.warn("[push] low stock notification failed:", error?.message || error);
     });
   }
 

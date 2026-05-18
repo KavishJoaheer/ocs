@@ -9,7 +9,7 @@ import {
   unsubscribeFromPushNotifications,
 } from "../lib/pushNotifications.js";
 
-function PushNotificationToggle({ className = "", alwaysShow = false }) {
+function PushNotificationToggle({ className = "", alwaysShow = false, role = null }) {
   const [enabled, setEnabled] = useState(false);
   const [available, setAvailable] = useState(false);
   const [permission, setPermission] = useState("unsupported");
@@ -62,6 +62,10 @@ function PushNotificationToggle({ className = "", alwaysShow = false }) {
 
     if (permission === "denied") {
       return "Notifications are blocked. Enable them in your device Settings for OCS.";
+    }
+
+    if (role === "doctor") {
+      return "Get mobile alerts when your kit items fall below 50% par level.";
     }
 
     return "Low stock and HCM management updates";
