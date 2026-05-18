@@ -16,6 +16,7 @@ import {
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
+import PushNotificationToggle from "./PushNotificationToggle.jsx";
 import { bottomNavItems } from "./BottomNav.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
@@ -236,6 +237,8 @@ function Sidebar() {
               </div>
             </div>
           </div>
+
+          <PushNotificationToggle />
 
           {drawerNavItems.length > 0 ? (
             <div className="mt-5 px-4">

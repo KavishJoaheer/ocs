@@ -266,3 +266,44 @@ table {
 .focus\:border-sky-400:focus {
   border-color: rgba(45, 143, 152, 0.68);
 }
+
+@keyframes hcm-banner-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hcm-banner-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 12rem;
+    margin-bottom: 1rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-width: 0;
+  }
+}
+
+.hcm-banner-fade-in {
+  animation: hcm-banner-fade-in 0.35s ease-out forwards;
+}
+
+.hcm-banner-slide-out {
+  animation: hcm-banner-slide-out 0.28s ease-in forwards;
+}

@@ -91,6 +91,28 @@ export function getPushBannerCopy(role) {
   };
 }
 
+export async function isPushNotificationsEnabled() {
+  if (!isPushSupported()) {
+    return false;
+  }
+
+  if (Notification.permission !== "granted") {
+    return false;
+  }
+
+  const { configured } = await fetchPushConfiguration();
+  if (!configured) {
+    return false;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
+    return Boolean(await registration?.pushManager.getSubscription());
+  } catch {
+    return false;
+  }
+}
+
 export async function syncPushSubscriptionIfGranted() {
   if (!isPushSupported()) {
     return null;

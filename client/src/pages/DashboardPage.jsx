@@ -22,6 +22,7 @@ import {
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
+import HcmBulletinBanner, { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -75,7 +76,7 @@ function buildDoctorMobileCards(dashboard) {
   ];
 }
 
-function DoctorMobileLauncher({ user, dashboard }) {
+function DoctorMobileLauncher({ user, dashboard, latestHcmPost }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const cards = buildDoctorMobileCards(dashboard);
 
@@ -85,6 +86,10 @@ function DoctorMobileLauncher({ user, dashboard }) {
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
+
+      {isHcmPostWithinBulletinWindow(latestHcmPost) ? (
+        <HcmBulletinBanner post={latestHcmPost} />
+      ) : null}
 
       <nav className="navigation-card-list" aria-label="Doctor quick actions">
         {cards.map((card) => {
@@ -118,7 +123,9 @@ function MobileLauncher({ user, dashboard, operatorMetrics }) {
   const isDoctor = user.role === "doctor";
 
   if (isDoctor) {
-    return <DoctorMobileLauncher user={user} dashboard={dashboard} />;
+    return (
+      <DoctorMobileLauncher user={user} dashboard={dashboard} latestHcmPost={latestHcmPost} />
+    );
   }
 
   const showClinicalTwin = ["admin", "operator"].includes(user.role);
@@ -1604,6 +1611,7 @@ function DashboardPage() {
   const { metrics: operatorMetrics } = useOperatorDashboardMetrics(isOperator);
   const [dashboard, setDashboard] = useState(null);
   const [doctorHcmHeadline, setDoctorHcmHeadline] = useState(null);
+  const [latestHcmPost, setLatestHcmPost] = useState(null);
   const [rosterMeta, setRosterMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
@@ -1635,12 +1643,16 @@ function DashboardPage() {
         }
 
         let headline = null;
+        let bulletinPost = null;
         if (user.role === "doctor") {
           try {
             const hcm = await api.get("/hcm-news");
-            headline = String(hcm.posts?.[0]?.title || "").trim() || null;
+            const newestPost = hcm.posts?.[0] || null;
+            headline = String(newestPost?.title || "").trim() || null;
+            bulletinPost = isHcmPostWithinBulletinWindow(newestPost) ? newestPost : null;
           } catch {
             headline = null;
+            bulletinPost = null;
           }
         }
 
@@ -1648,6 +1660,7 @@ function DashboardPage() {
           setDashboard(merged);
           setRosterMeta(rosterData);
           setDoctorHcmHeadline(headline);
+          setLatestHcmPost(bulletinPost);
         }
       } catch (error) {
         if (!ignore) {
