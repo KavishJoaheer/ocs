@@ -51,12 +51,22 @@ export async function fetchPushConfiguration() {
   }
 }
 
-export async function registerServiceWorker() {
+export async function getPushServiceWorkerRegistration() {
   if (!isPushSupported()) {
     return null;
   }
 
-  return navigator.serviceWorker.register(SW_PATH);
+  const existing = await navigator.serviceWorker.getRegistration();
+  if (existing) {
+    return existing;
+  }
+
+  await navigator.serviceWorker.register(SW_PATH);
+  return navigator.serviceWorker.ready;
+}
+
+export async function registerServiceWorker() {
+  return getPushServiceWorkerRegistration();
 }
 
 export async function getPushPermissionState() {
@@ -106,7 +116,7 @@ export async function isPushNotificationsEnabled() {
   }
 
   try {
-    const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
+    const registration = await getPushServiceWorkerRegistration();
     return Boolean(await registration?.pushManager.getSubscription());
   } catch {
     return false;
@@ -128,8 +138,10 @@ export async function syncPushSubscriptionIfGranted() {
   }
 
   try {
-    const registration = await registerServiceWorker();
-    await navigator.serviceWorker.ready;
+    const registration = await getPushServiceWorkerRegistration();
+    if (!registration) {
+      return null;
+    }
 
     const existing = await registration.pushManager.getSubscription();
     const subscription =
@@ -161,8 +173,10 @@ export async function subscribeToPushNotifications() {
     throw new Error("Notification permission was not granted.");
   }
 
-  const registration = await registerServiceWorker();
-  await navigator.serviceWorker.ready;
+  const registration = await getPushServiceWorkerRegistration();
+  if (!registration) {
+    throw new Error("Could not register the notification service on this device.");
+  }
 
   const existing = await registration.pushManager.getSubscription();
 
@@ -184,7 +198,7 @@ export async function unsubscribeFromPushNotifications() {
     return;
   }
 
-  const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
+  const registration = await getPushServiceWorkerRegistration();
   const subscription = await registration?.pushManager.getSubscription();
 
   if (subscription) {

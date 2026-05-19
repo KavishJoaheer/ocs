@@ -12,12 +12,17 @@ self.addEventListener("push", (event) => {
     // Keep default payload when push body is not JSON.
   }
 
+  const targetUrl = data.url || "/";
+  const tag = data.tag || "ocs-alert";
+
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: data.icon || "/favicon.svg",
       badge: "/favicon.svg",
-      data: { url: data.url || "/" },
+      tag,
+      renotify: true,
+      data: { url: targetUrl },
     }),
   );
 });
@@ -25,7 +30,8 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = event.notification?.data?.url || "/";
+  const relativeUrl = event.notification?.data?.url || "/";
+  const targetUrl = new URL(relativeUrl, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {

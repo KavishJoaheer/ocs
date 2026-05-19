@@ -22,6 +22,7 @@ import {
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
+import DoctorLowStockBanner from "../components/DoctorLowStockBanner.jsx";
 import HcmBulletinBanner, { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
@@ -76,7 +77,7 @@ function buildDoctorMobileCards(dashboard) {
   ];
 }
 
-function DoctorMobileLauncher({ user, dashboard, latestHcmPost }) {
+function DoctorMobileLauncher({ user, dashboard, latestHcmPost, lowStockAlert }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const cards = buildDoctorMobileCards(dashboard);
 
@@ -86,6 +87,8 @@ function DoctorMobileLauncher({ user, dashboard, latestHcmPost }) {
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
+
+      <DoctorLowStockBanner alert={lowStockAlert} />
 
       {isHcmPostWithinBulletinWindow(latestHcmPost) ? (
         <HcmBulletinBanner post={latestHcmPost} />
@@ -128,6 +131,7 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
         user={user}
         dashboard={dashboard}
         latestHcmPost={latestHcmPost}
+        lowStockAlert={dashboard.doctor_low_stock_alert}
       />
     );
   }

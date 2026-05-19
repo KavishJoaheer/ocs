@@ -1,5 +1,9 @@
 const express = require("express");
-const { maybeNotifyLowStock, notifyOcsLowStockSubscribers } = require("../lib/push");
+const {
+  maybeNotifyLowStock,
+  notifyDoctorLowStockSummary,
+  notifyOcsLowStockSubscribers,
+} = require("../lib/push");
 const { db, ensureBillingForConsultation } = require("../db");
 const { calculateBillingTotal, getTodayLocal, normalizeBillingItems, toNumber } = require("../lib/utils");
 
@@ -1112,6 +1116,19 @@ router.get("/", (req, res) => {
   if (["admin", "operator"].includes(req.auth.role) && payload.low_stock_items?.length > 0) {
     void notifyOcsLowStockSubscribers({ userIds: [Number(req.auth.id)] }).catch((error) => {
       console.warn("[push] OCS low stock inventory notification failed:", error?.message || error);
+    });
+  }
+
+  if (
+    req.auth.role === "doctor" &&
+    req.auth.doctor_id &&
+    doctorContext === "my"
+  ) {
+    void notifyDoctorLowStockSummary({
+      doctorId: Number(req.auth.doctor_id),
+      userId: Number(req.auth.id),
+    }).catch((error) => {
+      console.warn("[push] doctor low stock inventory notification failed:", error?.message || error);
     });
   }
 

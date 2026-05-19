@@ -47,6 +47,17 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     void refreshState();
   }, [refreshState]);
 
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void refreshState();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [refreshState]);
+
   if (!alwaysShow && !available) {
     return null;
   }

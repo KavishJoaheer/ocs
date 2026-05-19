@@ -389,6 +389,7 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
         : `${count} kit items are below 50% par level. Tap to restock now.`,
     url: "/inventory?context=my&restock=alert",
     icon: "/favicon.svg",
+    tag: "doctor-low-stock",
   };
 
   const result = await sendNotification(subscription, payload);
