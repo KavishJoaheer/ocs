@@ -10,6 +10,7 @@ import {
   PieChart,
   RotateCw,
   ShieldCheck,
+  Star,
   UsersRound,
   X,
 } from "lucide-react";
@@ -35,6 +36,12 @@ const navItems = [
     label: "Patient",
     icon: UsersRound,
     roles: ["admin", "doctor", "operator", "lab_tech"],
+  },
+  {
+    to: "/patients?filter=subscribed",
+    label: "Health plans",
+    icon: Star,
+    roles: ["admin"],
   },
   {
     to: "/hcm-news",

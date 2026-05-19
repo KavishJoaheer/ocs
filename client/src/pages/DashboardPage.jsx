@@ -221,6 +221,7 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
           role={user.role}
           longTermReviewCount={clinicalCounts.longTermReviewCount}
           healthPlansCount={clinicalCounts.healthPlansCount}
+          showHealthPlans={user.role !== "admin"}
           className="mt-5"
         />
       ) : null}
