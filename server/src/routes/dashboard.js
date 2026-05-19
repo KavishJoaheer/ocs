@@ -432,6 +432,38 @@ function getDoctorStatuses() {
     .all();
 }
 
+function getOcsLowStockAlert() {
+  try {
+    const rows = db
+      .prepare(`
+        SELECT
+          id,
+          item_name,
+          quantity AS current_quantity,
+          minimum_quantity AS par_level
+        FROM inventory
+        WHERE stock_scope = 'ocs'
+          AND minimum_quantity > 0
+      `)
+      .all()
+      .map((row) => ({
+        item_id: Number(row.id),
+        item_name: row.item_name,
+        par_level: Number(row.par_level || 0),
+        current_quantity: Number(row.current_quantity || 0),
+      }))
+      .filter((row) => row.par_level > 0 && row.current_quantity <= row.par_level);
+
+    return {
+      triggered: rows.length > 0,
+      total_items: rows.length,
+      items: rows,
+    };
+  } catch (_error) {
+    return { triggered: false, total_items: 0, items: [] };
+  }
+}
+
 function getDoctorLowStockAlert(doctorId) {
   try {
     const rows = db
@@ -1087,6 +1119,10 @@ router.get("/", (_req, res) => {
       ? getDoctorLowStockAlert(Number(req.auth.doctor_id))
       : { triggered: false, total_items: 0, items: [] };
 
+  const ocsLowStockAlert = ["admin", "operator"].includes(req.auth.role)
+    ? getOcsLowStockAlert()
+    : { triggered: false, total_items: 0, items: [] };
+
   if (doctorLowStockAlert.triggered && req.auth.doctor_id) {
     void notifyDoctorLowStockSummary({
       doctorId: Number(req.auth.doctor_id),
@@ -1115,6 +1151,7 @@ router.get("/", (_req, res) => {
     recentActivity,
     doctorStatuses,
     doctor_low_stock_alert: doctorLowStockAlert,
+    ocs_low_stock_alert: ocsLowStockAlert,
   });
 });
 

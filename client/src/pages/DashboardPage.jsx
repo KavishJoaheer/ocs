@@ -22,7 +22,7 @@ import {
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
-import DoctorLowStockBanner from "../components/DoctorLowStockBanner.jsx";
+import LowStockBanner from "../components/LowStockBanner.jsx";
 import HcmBulletinBanner, { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
@@ -88,7 +88,7 @@ function DoctorMobileLauncher({ user, dashboard, latestHcmPost, lowStockAlert })
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
 
-      <DoctorLowStockBanner alert={lowStockAlert} />
+      <LowStockBanner alert={lowStockAlert} variant="doctor" />
 
       {isHcmPostWithinBulletinWindow(latestHcmPost) ? (
         <HcmBulletinBanner post={latestHcmPost} />
@@ -180,11 +180,18 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
   }
 
   if (["admin", "doctor", "operator"].includes(user.role)) {
+    const ocsLowStock = dashboard?.ocs_low_stock_alert;
+    const ocsLowCount = Number(ocsLowStock?.total_items || 0);
+    const isWarehouseRole = user.role === "admin" || user.role === "operator";
+
     cards.push({
       label: "Inventory",
       icon: Package,
       to: "/inventory",
-      description: "Check supplies and restock your medical kit.",
+      description:
+        isWarehouseRole && ocsLowStock?.triggered
+          ? `${ocsLowCount} item${ocsLowCount === 1 ? "" : "s"} at or below par level`
+          : "Check supplies and restock your medical kit.",
     });
   }
 
@@ -202,6 +209,12 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
         {greeting}
       </h1>
       <p className="mt-1 text-sm text-[#51717b]">What would you like to do?</p>
+
+      {["admin", "operator"].includes(user.role) ? (
+        <div className="mt-4">
+          <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
+        </div>
+      ) : null}
 
       {clinicalCounts ? (
         <ClinicalTwinMetricsCards
