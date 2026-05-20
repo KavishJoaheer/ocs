@@ -7,8 +7,10 @@ const {
 const { db, ensureBillingForConsultation } = require("../db");
 const { calculateBillingTotal, getTodayLocal, normalizeBillingItems, toNumber } = require("../lib/utils");
 
+const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
+
 const router = express.Router();
-const REQUIRED_FOLDERS = ["Consumable", "IM Drugs", "IV Drugs", "Wound Dressing", "Pediatric Drugs"];
+const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
 const NEAR_EXPIRY_DAYS = 90;
 
 let infrastructureReady = false;
@@ -298,14 +300,7 @@ function getFolders() {
       FROM inventory_folders
       WHERE owner_doctor_id IS NULL
         AND name IN (${REQUIRED_FOLDERS.map(() => "?").join(", ")})
-      ORDER BY CASE name
-        WHEN 'Consumable' THEN 1
-        WHEN 'IM Drugs' THEN 2
-        WHEN 'IV Drugs' THEN 3
-        WHEN 'Wound Dressing' THEN 4
-        WHEN 'Pediatric Drugs' THEN 5
-        ELSE 999
-      END, name ASC
+      ORDER BY ${inventoryFolderOrderSql("name")}, name ASC
     `)
     .all(...REQUIRED_FOLDERS);
 }

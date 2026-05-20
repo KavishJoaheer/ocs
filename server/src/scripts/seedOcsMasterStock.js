@@ -12,8 +12,9 @@
 
 const { db, initializeDatabase } = require("../db");
 const { ocsMasterStockData } = require("../config/ocsMasterStockData");
+const { REQUIRED_INVENTORY_FOLDERS } = require("../config/inventoryFolders");
 
-const REQUIRED_FOLDERS = ["Consumable", "IM Drugs", "IV Drugs", "Wound Dressing", "Pediatric Drugs"];
+const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
 const STOCK_SCOPE = "ocs";
 
 function roundCurrency(value) {
