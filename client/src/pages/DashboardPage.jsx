@@ -1206,21 +1206,31 @@ function OperatorPersonalOperationUpdates({ metrics }) {
 
 function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, hcmLatestTitle }) {
   const hasHcmUpdate = Boolean(String(hcmLatestTitle || "").trim());
+  const rosterUpdateLabel = `Next roster update on ${dayjs().endOf("month").format("MMMM D")}`;
 
   return (
-    <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2">
-      <div className="flex aspect-square flex-col justify-between rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Shifts</span>
-          <ArrowRight className="size-4 text-gray-400" strokeWidth={2.5} aria-hidden="true" />
+    <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
+      <div className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
+        <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Active Shifts</span>
+          <span className="rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-600">
+            {monthLabel} Roster
+          </span>
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center">
-          <span className="mb-1 text-base font-bold text-gray-800">{monthLabel} Roster</span>
-          <span className="mb-4 text-xs text-gray-400">Monthly schedule view active</span>
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
+              <CalendarClock className="size-5" strokeWidth={2} aria-hidden="true" />
+            </div>
+            <div className="flex min-w-0 flex-col">
+              <span className="text-sm font-semibold text-gray-800">Monthly schedule view active</span>
+              <span className="text-xs text-gray-400">{rosterUpdateLabel}</span>
+            </div>
+          </div>
           <button
             type="button"
             onClick={onOpenRosterPdf}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+            className="whitespace-nowrap rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-600"
           >
             Open Calendar ➔
           </button>
@@ -1229,21 +1239,32 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, hcmLatestTitle
 
       <Link
         to="/hcm-news"
-        className="flex aspect-square flex-col justify-between rounded-3xl border border-gray-100 bg-white p-6 shadow-sm transition-colors hover:border-gray-200 hover:bg-slate-50/50"
+        className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-colors hover:border-gray-200 hover:bg-slate-50/50 lg:col-span-2"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-gray-50 pb-3">
           <span className="text-xs font-bold uppercase tracking-widest text-gray-400">HCM News & Updates</span>
-          <ArrowRight className="size-4 text-gray-400" strokeWidth={2.5} aria-hidden="true" />
+          <span
+            className={cx(
+              "size-2 shrink-0 rounded-full",
+              hasHcmUpdate ? "bg-teal-500" : "bg-gray-300",
+            )}
+            aria-hidden="true"
+          />
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-          <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">
-            <BellRing className="size-6" strokeWidth={2} aria-hidden="true" />
+        <div className="mt-4 flex items-center gap-3">
+          <div
+            className={cx(
+              "flex size-10 shrink-0 items-center justify-center rounded-full text-sm",
+              hasHcmUpdate ? "bg-teal-50 text-teal-600" : "bg-gray-50 text-gray-400",
+            )}
+          >
+            <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
           </div>
           {hasHcmUpdate ? (
-            <span className="text-sm font-semibold text-gray-800">{hcmLatestTitle}</span>
+            <span className="min-w-0 text-xs font-semibold leading-normal text-gray-800">{hcmLatestTitle}</span>
           ) : (
-            <span className="text-sm font-medium text-gray-500">
-              No new clinical notices from Health Care Manager today.
+            <span className="text-xs font-medium leading-normal text-gray-400">
+              No new clinical notices or manager bulletins posted today.
             </span>
           )}
         </div>
