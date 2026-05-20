@@ -1,0 +1,51 @@
+# Build and run the full OCS stack locally or on a NAS (SQLite + billing + inventory).
+# Usage:
+#   cp .env.example .env   # edit APP_PORT, optional CLIENT_ORIGINS / VAPID
+#   docker compose -f docker-compose.local.yml up -d --build
+#   open http://localhost:8080/api/health
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ocs-clinicflow:local
+    container_name: clinicflow-app
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DB_PATH: /data/clinic.db
+      USE_POSTGRES: "false"
+      CLIENT_ORIGINS: ${CLIENT_ORIGINS:-}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@ocs.local}
+      SEED_OCS_MASTER_STOCK: ${SEED_OCS_MASTER_STOCK:-false}
+      SEED_DOCTOR_STOCK_FROM_OCS: ${SEED_DOCTOR_STOCK_FROM_OCS:-false}
+      TZ: ${TZ:-Indian/Mauritius}
+    ports:
+      - "${APP_PORT:-8080}:3001"
+    volumes:
+      - clinicflow-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then(async (res)=>{if(!res.ok)process.exit(1);const b=await res.json();process.exit(b.mode==='sqlite'&&b.features?.inventory?0:1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+volumes:
+  clinicflow-data:
+    name: clinicflow-data-local
