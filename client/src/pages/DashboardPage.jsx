@@ -354,6 +354,7 @@ function DoctorDashboardTile({
   size = "regular",
   flat = false,
   spacious = false,
+  locked = false,
 }) {
   const sizeClasses =
     size === "hero"
@@ -367,13 +368,16 @@ function DoctorDashboardTile({
   const classes = cx(
     "group flex w-full rounded-[30px] border transition duration-200",
     sizeClasses,
+    locked && "cursor-not-allowed opacity-50",
     flat
       ? dark
         ? "border-white/25 bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white hover:border-white/35"
         : "border-gray-200 bg-white text-slate-950 hover:border-gray-300"
       : dark
         ? "border-[rgba(45,143,152,0.34)] bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white shadow-[0_22px_50px_rgba(45,143,152,0.28)] hover:-translate-y-0.5 hover:shadow-[0_28px_60px_rgba(45,143,152,0.32)]"
-        : "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-[rgba(45,143,152,0.26)] hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
+        : locked
+          ? "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)]"
+          : "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-[rgba(45,143,152,0.26)] hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
   );
 
   const content = (
@@ -411,7 +415,9 @@ function DoctorDashboardTile({
         >
           {title}
         </p>
-        {subtitle ? (
+        {locked ? (
+          <p className="mt-2 text-sm font-medium text-slate-500">Feature Inactive</p>
+        ) : subtitle ? (
           <p
             className={cx(
               "mt-2 break-words text-sm leading-6",
@@ -423,6 +429,7 @@ function DoctorDashboardTile({
         ) : null}
       </div>
 
+      {!locked ? (
         <div
           className={cx(
             "hidden rounded-full px-3 py-1 text-xs font-semibold md:inline-flex md:items-center md:gap-1.5",
@@ -432,11 +439,20 @@ function DoctorDashboardTile({
               : "bg-[rgba(45,143,152,0.08)] text-[#2d8f98]",
           )}
         >
-        Open
-        <ArrowUpRight className="size-3.5 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-      </div>
+          Open
+          <ArrowUpRight className="size-3.5 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </div>
+      ) : null}
     </div>
   );
+
+  if (locked) {
+    return (
+      <div aria-disabled="true" className={classes}>
+        {content}
+      </div>
+    );
+  }
 
   if (to) {
     return (
@@ -1331,9 +1347,9 @@ function OperatorDashboardView({ user, dashboard, operatorMetrics, onStatusChang
                   <DoctorDashboardTile
                     eyebrow="Weekly schedule"
                     icon={CalendarClock}
+                    locked
                     size="hero"
-                    title="Current week roster"
-                    onClick={onOpenRosterPdf}
+                    title="SOS Planning"
                   />
                   <DoctorDashboardTile
                     eyebrow="Monthly view"

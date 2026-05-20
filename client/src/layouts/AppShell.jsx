@@ -62,8 +62,8 @@ const pageMeta = {
     helper: "Review all patients currently assigned to this doctor account.",
   },
   "/operator/current-week-roster": {
-    label: "Current week roster",
-    helper: "Review the shared doctor roster for the current week from the operator desk.",
+    label: "SOS Planning",
+    helper: "Emergency SOS shift planning (inactive for operators).",
   },
   "/operator/april-roster": {
     label: "Current month roster",

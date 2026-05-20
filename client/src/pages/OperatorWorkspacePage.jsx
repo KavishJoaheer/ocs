@@ -20,10 +20,9 @@ import { cx } from "../lib/utils.js";
 
 const workspaceMeta = {
   "current-week-roster": {
-    eyebrow: "Operator roster",
-    title: () => "Current week roster",
-    description:
-      "Use the operator roster board to review every doctor visit scheduled for the current week.",
+    eyebrow: "Coordination",
+    title: () => "SOS Planning",
+    description: "Emergency SOS shift planning for the doctor team (inactive).",
     icon: CalendarClock,
   },
   "april-roster": {
@@ -268,40 +267,16 @@ function OperatorWorkspacePage({ workspaceKey }) {
   let content = null;
 
   if (workspaceKey === "current-week-roster") {
-    metrics = [
-      {
-        icon: CalendarClock,
-        label: "Week visits",
-        value: data.summary.currentWeekRosterCount,
-        description: `${formatDate(data.periods.weekStart)} to ${formatDate(data.periods.weekEnd)}`,
-        accent: "bg-gradient-to-br from-sky-500 to-blue-600",
-      },
-      {
-        icon: ClipboardList,
-        label: "Scheduled",
-        value: data.currentWeekRoster.filter((appointment) => appointment.status === "scheduled").length,
-        description: "Visits still active on the shared doctor calendar this week.",
-        accent: "bg-gradient-to-br from-cyan-500 to-sky-600",
-      },
-      {
-        icon: UsersRound,
-        label: "Doctors involved",
-        value: new Set(data.currentWeekRoster.map((appointment) => appointment.doctor_id)).size,
-        description: "Doctors currently represented in the live weekly roster.",
-        accent: "bg-gradient-to-br from-emerald-500 to-teal-600",
-      },
-    ];
-
+    metrics = [];
     content = (
       <SectionCard
         actions={sharedActions}
-        subtitle="The shared doctor visit board for the current week."
-        title="Current week roster"
+        subtitle="This workspace is reserved for SOS shift planning."
+        title="SOS Planning"
       >
-        <AppointmentQueueList
-          appointments={data.currentWeekRoster}
-          emptyDescription="No visits are currently scheduled across the doctor team this week."
-          emptyTitle="No visits in the current week"
+        <EmptyState
+          title="Feature inactive"
+          description="SOS Planning is not available for operators yet. Use the May roster or return to the dashboard."
         />
       </SectionCard>
     );
