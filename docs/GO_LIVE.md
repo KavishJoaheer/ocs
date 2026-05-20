@@ -92,6 +92,14 @@ SUCCESS: Live master stock records seeded accurately.
 
 Then open **Inventory** in the app and confirm folders (including Oral Drugs, Investigation) show the master list.
 
+**Append Consumable manifest rows** (spreadsheet extension — upsert by item name, safe to re-run):
+
+```bash
+docker exec clinicflow-app node src/scripts/seedOcsConsumablesExtension.js
+```
+
+Source matrix: `server/src/config/ocsConsumablesExtension.js`. Updates the shared OCS `inventory` table used by Admin dashboard metrics, Operator stock grid, and Doctor low-stock alerts (no app restart required).
+
 **Optional — remove sandbox patients that were soft-deleted:**
 
 ```bash

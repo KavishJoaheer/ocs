@@ -15,6 +15,7 @@
 
 const { db, initializeDatabase } = require("../db");
 const { seedOcsMasterStockSync } = require("./seedOcsMasterStock");
+const { seedOcsConsumablesExtensionSync } = require("./seedOcsConsumablesExtension");
 const { purgeTestInventoryItems } = require("./purgeOcsTestInventory");
 
 const PURGE_ENV_FLAG = "ALLOW_DB_PURGE";
@@ -112,12 +113,17 @@ function purgeAndReseedOcsWarehouseSync() {
   const testSummary = purgeTestInventoryItems();
 
   const seedSummary = seedOcsMasterStockSync({ skipInit: true, insertOnly: false });
+  const consumablesSummary = seedOcsConsumablesExtensionSync({
+    skipInit: true,
+    syncDoctorBags: false,
+  });
 
   return {
     logSummary,
     ocsSummary,
     testSummary,
     seedSummary,
+    consumablesSummary,
   };
 }
 
@@ -144,6 +150,9 @@ if (require.main === module) {
     console.log(`  Inserted: ${result.seedSummary.inserted}`);
     console.log(`  Updated:  ${result.seedSummary.updated}`);
     console.log(`  Catalog rows: ${result.seedSummary.inserted + result.seedSummary.updated + result.seedSummary.skipped}`);
+    console.log(
+      `  Consumables extension: ${result.consumablesSummary.consumables.inserted} inserted, ${result.consumablesSummary.consumables.updated} updated`,
+    );
 
     if (result.seedSummary.errors.length) {
       console.error("Seed completed with errors:");

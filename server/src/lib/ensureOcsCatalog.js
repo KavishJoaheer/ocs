@@ -1,12 +1,16 @@
 const { ocsMasterStockData } = require("../config/ocsMasterStockData");
-const { seedOcsMasterStockSync } = require("../scripts/seedOcsMasterStock");
+const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
+const { upsertOcsMasterStockDataset } = require("./ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("../scripts/syncDoctorStockFromOcs");
 const { db } = require("../db");
+
+/** Full OCS master catalog: base matrix + consumables spreadsheet extension. */
+const OCS_CATALOG_ROWS = [...ocsMasterStockData, ...ocsConsumablesExtension];
 
 let catalogEnsureComplete = false;
 
 function countMissingOcsCatalogItems() {
-  return ocsMasterStockData.filter((entry) => {
+  return OCS_CATALOG_ROWS.filter((entry) => {
     const existing = db
       .prepare(`
         SELECT id
@@ -65,7 +69,10 @@ function ensureOcsCatalogSync({ force = false } = {}) {
     return { ocs: null, doctors: null, skipped: true };
   }
 
-  const ocsSummary = seedOcsMasterStockSync({ skipInit: true, insertOnly: true });
+  const ocsSummary = upsertOcsMasterStockDataset(OCS_CATALOG_ROWS, {
+    skipInit: true,
+    insertOnly: true,
+  });
   const doctorSummary = syncDoctorStockFromOcsSync({
     skipInit: true,
     insertOnly: true,
@@ -79,4 +86,5 @@ function ensureOcsCatalogSync({ force = false } = {}) {
 module.exports = {
   ensureOcsCatalogSync,
   countMissingOcsCatalogItems,
+  OCS_CATALOG_ROWS,
 };
