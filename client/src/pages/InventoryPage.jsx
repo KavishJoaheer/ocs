@@ -3581,7 +3581,14 @@ export default function InventoryPage() {
         onClose={() => setRemoveStock(null)}
         onSubmit={saveRemoveStock}
       />
-      <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
+      <ConfirmDialog
+        open={Boolean(itemToDelete)}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={removeItem}
+        title="Delete stock item?"
+        description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history. OCS master items will not be auto-re-added from the catalog.`}
+        confirmLabel="Delete item"
+      />
     </>
   );
 }

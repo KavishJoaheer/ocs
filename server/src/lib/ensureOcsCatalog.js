@@ -1,5 +1,6 @@
 const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
 const { upsertOcsMasterStockDataset } = require("./ocsMasterStockUpsert");
+const { filterCatalogRowsNotExcluded, isOcsCatalogExcluded } = require("./ocsCatalogExclusions");
 const { db } = require("../db");
 
 /** Explicit seed scripts only — Consumable manifest (no IM/IV/etc auto-restore). */
@@ -10,8 +11,13 @@ const OCS_CATALOG_ROWS = [...ocsConsumablesExtension];
 
 let catalogEnsureComplete = false;
 
+function getActiveCatalogRows() {
+  return filterCatalogRowsNotExcluded(OCS_CATALOG_ROWS);
+}
+
 function countMissingOcsCatalogItems() {
-  return OCS_CATALOG_ROWS.filter((entry) => {
+  return getActiveCatalogRows().filter((entry) => {
+    if (isOcsCatalogExcluded(entry.name)) return false;
     const existing = db
       .prepare(`
         SELECT id
@@ -37,7 +43,7 @@ function ensureOcsCatalogSync({ force = false } = {}) {
     return { ocs: null, doctors: null, skipped: true };
   }
 
-  const ocsSummary = upsertOcsMasterStockDataset(OCS_CATALOG_ROWS, {
+  const ocsSummary = upsertOcsMasterStockDataset(getActiveCatalogRows(), {
     skipInit: true,
     insertOnly: true,
   });
@@ -51,6 +57,7 @@ function ensureOcsCatalogSync({ force = false } = {}) {
 module.exports = {
   ensureOcsCatalogSync,
   countMissingOcsCatalogItems,
+  getActiveCatalogRows,
   OCS_CATALOG_ROWS,
   OCS_FULL_CATALOG_ROWS,
 };

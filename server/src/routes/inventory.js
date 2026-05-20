@@ -1,5 +1,9 @@
 const express = require("express");
 const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
+const {
+  ensureOcsCatalogExclusionsTable,
+  recordOcsCatalogExclusion,
+} = require("../lib/ocsCatalogExclusions");
 const { maybeNotifyLowStock } = require("../lib/push");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
@@ -137,6 +141,8 @@ function ensureInfrastructure() {
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
   `);
+
+  ensureOcsCatalogExclusionsTable();
 
   try {
     const catalogResult = ensureOcsCatalogSync();
@@ -2359,10 +2365,16 @@ router.delete("/items/:id", (req, res) => {
   const item = isDoctor ? findItem(itemId, "doctor", doctorId) : db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId);
   if (!item) return res.status(404).json({ error: "Stock item not found." });
 
+  const isOcsMaster =
+    String(item.stock_scope || "") === "ocs" && (item.owner_doctor_id == null || item.owner_doctor_id === "");
+
   db.transaction(() => {
     db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
     db.prepare("DELETE FROM inventory_movements WHERE item_id = ?").run(itemId);
     db.prepare("DELETE FROM inventory WHERE id = ?").run(itemId);
+    if (isOcsMaster && item.item_name) {
+      recordOcsCatalogExclusion(item.item_name, req.auth?.id || null);
+    }
   })();
   res.status(204).send();
 });
