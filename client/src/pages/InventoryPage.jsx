@@ -33,7 +33,11 @@ import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
-import { buildInventoryListQuery, getDisplayFolders } from "../lib/inventoryFolders.js";
+import {
+  buildInventoryListQuery,
+  getDefaultFolderSelection,
+  getDisplayFolders,
+} from "../lib/inventoryFolders.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
