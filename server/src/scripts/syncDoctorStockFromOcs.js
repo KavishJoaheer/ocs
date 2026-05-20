@@ -63,7 +63,7 @@ function findDoctorItemByName(doctorId, itemName) {
     .get(doctorId, itemName);
 }
 
-function upsertDoctorItemFromOcs(doctorId, source) {
+function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) {
   const itemName = String(source.item_name || "").trim();
   const quantity = Number(source.quantity || 0);
   const minimumQuantity = Number(source.minimum_quantity || 0);
@@ -71,6 +71,9 @@ function upsertDoctorItemFromOcs(doctorId, source) {
   const existing = findDoctorItemByName(doctorId, itemName);
 
   if (existing) {
+    if (insertOnly) {
+      return "skipped";
+    }
     db.prepare(`
       UPDATE inventory
       SET
@@ -161,7 +164,7 @@ function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
   return removed;
 }
 
-function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true } = {}) {
+function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, insertOnly = false } = {}) {
   if (!skipInit) {
     initializeDatabase();
   }
@@ -187,6 +190,7 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true } = {
     doctors: doctors.length,
     inserted: 0,
     updated: 0,
+    skipped: 0,
     pruned: 0,
     ocsItems: ocsItems.length,
     errors: [],
@@ -196,9 +200,10 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true } = {
     doctors.forEach((doctor) => {
       try {
         ocsItems.forEach((source) => {
-          const action = upsertDoctorItemFromOcs(Number(doctor.id), source);
+          const action = upsertDoctorItemFromOcs(Number(doctor.id), source, { insertOnly });
           if (action === "inserted") summary.inserted += 1;
-          else summary.updated += 1;
+          else if (action === "updated") summary.updated += 1;
+          else summary.skipped += 1;
         });
 
         if (pruneExtras) {

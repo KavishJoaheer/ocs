@@ -121,7 +121,7 @@ function syncBatches(itemId, quantity, expiryDate) {
   }
 }
 
-function upsertOcsMasterStockRow(row, folderId) {
+function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
   const itemName = String(row.name || "").trim();
   const quantity = Number(row.current_quantity ?? 0);
   const minimumQuantity = Number(row.par_level ?? 0);
@@ -140,6 +140,15 @@ function upsertOcsMasterStockRow(row, folderId) {
   const existing = findOcsItemByName(itemName);
 
   if (existing) {
+    if (insertOnly) {
+      db.prepare(`
+        UPDATE inventory
+        SET folder_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(folderId, existing.id);
+      return { action: "skipped", id: existing.id, itemName };
+    }
+
     db.prepare(`
       UPDATE inventory
       SET
@@ -170,7 +179,7 @@ function upsertOcsMasterStockRow(row, folderId) {
   return { action: "inserted", id: itemId, itemName };
 }
 
-function seedOcsMasterStockSync({ skipInit = false } = {}) {
+function seedOcsMasterStockSync({ skipInit = false, insertOnly = false } = {}) {
   if (!skipInit) {
     initializeDatabase();
   }
@@ -197,14 +206,15 @@ function seedOcsMasterStockSync({ skipInit = false } = {}) {
   }
 
   const run = db.transaction((rows) => {
-    const summary = { inserted: 0, updated: 0, errors: [] };
+    const summary = { inserted: 0, updated: 0, skipped: 0, errors: [] };
 
     rows.forEach((row) => {
       try {
         const folderId = folderIds.get(row.category);
-        const result = upsertOcsMasterStockRow(row, folderId);
+        const result = upsertOcsMasterStockRow(row, folderId, { insertOnly });
         if (result.action === "inserted") summary.inserted += 1;
-        else summary.updated += 1;
+        else if (result.action === "updated") summary.updated += 1;
+        else summary.skipped += 1;
       } catch (error) {
         summary.errors.push({ name: row.name, message: error.message });
       }

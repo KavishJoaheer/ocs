@@ -1,4 +1,5 @@
 const express = require("express");
+const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
 const { maybeNotifyLowStock } = require("../lib/push");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
@@ -136,6 +137,20 @@ function ensureInfrastructure() {
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
   `);
+
+  try {
+    const catalogResult = ensureOcsCatalogSync();
+    if (!catalogResult.skipped && catalogResult.ocs?.inserted > 0) {
+      console.log(`[catalog] Added ${catalogResult.ocs.inserted} missing OCS catalog item(s).`);
+    }
+    if (!catalogResult.skipped && catalogResult.doctors?.inserted > 0) {
+      console.log(
+        `[catalog] Added ${catalogResult.doctors.inserted} missing doctor bag catalog row(s).`,
+      );
+    }
+  } catch (error) {
+    console.warn("[catalog] OCS catalog ensure failed:", error.message);
+  }
 
   infrastructureReady = true;
 }

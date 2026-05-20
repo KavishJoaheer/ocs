@@ -1,5 +1,6 @@
 const { createApp } = require("./app");
 const { initializeDatabase } = require("./db");
+const { ensureOcsCatalogSync } = require("./lib/ensureOcsCatalog");
 const { seedOcsMasterStockSync } = require("./scripts/seedOcsMasterStock");
 const { purgeOcsTestInventoryItems } = require("./scripts/purgeOcsTestInventory");
 const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs");
@@ -8,6 +9,22 @@ const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
 
 initializeDatabase();
+
+try {
+  const catalogResult = ensureOcsCatalogSync();
+  if (!catalogResult.skipped) {
+    if (catalogResult.ocs?.inserted > 0) {
+      console.log(`[catalog] Added ${catalogResult.ocs.inserted} missing OCS catalog item(s).`);
+    }
+    if (catalogResult.doctors?.inserted > 0) {
+      console.log(
+        `[catalog] Added ${catalogResult.doctors.inserted} missing doctor bag catalog row(s).`,
+      );
+    }
+  }
+} catch (error) {
+  console.warn("[catalog] OCS catalog ensure failed:", error.message);
+}
 
 const shouldSeedOcsStock = String(process.env.SEED_OCS_MASTER_STOCK ?? "false").toLowerCase() !== "false";
 if (shouldSeedOcsStock) {
