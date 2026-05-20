@@ -24,10 +24,12 @@ if (shouldSeedOcsStock) {
 try {
   const purgeResult = purgeOcsTestInventoryItems();
   if (purgeResult.removed > 0) {
-    console.log(`[seed] Removed ${purgeResult.removed} OCS test placeholder item(s).`);
+    console.log(
+      `[seed] Removed ${purgeResult.removed} test inventory item(s) (${purgeResult.ocsRemoved} OCS, ${purgeResult.doctorRemoved} doctor bag).`,
+    );
   }
 } catch (error) {
-  console.warn("[seed] OCS test inventory purge failed:", error.message);
+  console.warn("[seed] Test inventory purge failed:", error.message);
 }
 
 const app = createApp();

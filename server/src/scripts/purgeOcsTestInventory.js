@@ -1,5 +1,6 @@
 /**
- * Remove placeholder OCS master stock rows created during testing.
+ * Remove placeholder inventory rows created during testing.
+ * Applies to OCS master stock and every doctor medical bag.
  * Matches names like "TEST", "TEST 10", "TEST 11" (case-insensitive).
  */
 
@@ -7,23 +8,22 @@ const { db } = require("../db");
 
 const TEST_ITEM_PATTERN = /^test(\s+\S+)?$/i;
 
-function isOcsTestItemName(name) {
+function isTestInventoryItemName(name) {
   return TEST_ITEM_PATTERN.test(String(name || "").trim());
 }
 
-function purgeOcsTestInventoryItems() {
+function purgeTestInventoryItems() {
   const candidates = db
     .prepare(`
-      SELECT id, item_name
+      SELECT id, item_name, stock_scope, owner_doctor_id
       FROM inventory
-      WHERE stock_scope = 'ocs'
-        AND owner_doctor_id IS NULL
+      WHERE stock_scope IN ('ocs', 'doctor')
     `)
     .all();
 
-  const toDelete = candidates.filter((row) => isOcsTestItemName(row.item_name));
+  const toDelete = candidates.filter((row) => isTestInventoryItemName(row.item_name));
   if (!toDelete.length) {
-    return { removed: 0, names: [] };
+    return { removed: 0, ocsRemoved: 0, doctorRemoved: 0, names: [] };
   }
 
   const deleteBatches = db.prepare("DELETE FROM inventory_batches WHERE item_id = ?");
@@ -46,20 +46,36 @@ function purgeOcsTestInventoryItems() {
 
   run(toDelete);
 
+  const ocsRemoved = toDelete.filter((row) => row.stock_scope === "ocs").length;
+  const doctorRemoved = toDelete.filter((row) => row.stock_scope === "doctor").length;
+
   return {
     removed: toDelete.length,
+    ocsRemoved,
+    doctorRemoved,
     names: toDelete.map((row) => row.item_name),
   };
+}
+
+function purgeOcsTestInventoryItems() {
+  return purgeTestInventoryItems();
 }
 
 if (require.main === module) {
   const { initializeDatabase } = require("../db");
   initializeDatabase();
-  const result = purgeOcsTestInventoryItems();
-  console.log(`Removed ${result.removed} OCS test item(s).`);
+  const result = purgeTestInventoryItems();
+  console.log(`Removed ${result.removed} test inventory item(s).`);
+  console.log(`  OCS master stock: ${result.ocsRemoved}`);
+  console.log(`  Doctor bags:      ${result.doctorRemoved}`);
   if (result.names.length) {
     result.names.forEach((name) => console.log(`  - ${name}`));
   }
 }
 
-module.exports = { purgeOcsTestInventoryItems, isOcsTestItemName };
+module.exports = {
+  purgeTestInventoryItems,
+  purgeOcsTestInventoryItems,
+  isTestInventoryItemName,
+  isOcsTestItemName: isTestInventoryItemName,
+};
