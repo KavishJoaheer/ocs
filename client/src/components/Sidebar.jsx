@@ -36,12 +36,20 @@ const navItems = [
     label: "Patient",
     icon: UsersRound,
     roles: ["admin", "doctor", "operator", "lab_tech"],
+    isActiveWhen: (location) => {
+      if (location.pathname !== "/patients") return false;
+      return new URLSearchParams(location.search).get("filter") !== "subscribed";
+    },
   },
   {
     to: "/patients?filter=subscribed",
     label: "Health plans",
     icon: Star,
     roles: ["admin"],
+    isActiveWhen: (location) => {
+      if (location.pathname !== "/patients") return false;
+      return new URLSearchParams(location.search).get("filter") === "subscribed";
+    },
   },
   {
     to: "/hcm-news",
@@ -95,13 +103,17 @@ const navItems = [
 
 function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
   const Icon = item.icon;
+  const location = useLocation();
 
   return (
     <NavLink
       end={item.end}
       to={item.to}
-      className={({ isActive }) =>
-        cx(
+      className={({ isActive: routerActive }) => {
+        const isActive =
+          typeof item.isActiveWhen === "function" ? item.isActiveWhen(location) : routerActive;
+
+        return cx(
           "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
           drawer && "min-h-12",
           mobile
@@ -115,8 +127,8 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
               : drawer
                 ? "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"
                 : "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"),
-        )
-      }
+        );
+      }}
     >
       <Icon className={cx("size-4", mobile ? "text-current" : "text-[#66d7d0]")} />
       <span>{item.label}</span>
