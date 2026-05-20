@@ -2,7 +2,7 @@
 /**
  * Upsert Consumable extension rows into OCS master warehouse stock.
  *
- * Source: server/src/config/ocsConsumablesExtension.js (master manifest extract)
+ * Source: server/src/config/ocsConsumablesExtension.js (manifest + PDF catalog)
  *
  * - Existing item_name (case-insensitive, stock_scope = ocs): update qty, par, folder, batches
  * - New names: insert into shared inventory table (admin / operator / doctor views)

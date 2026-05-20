@@ -1,15 +1,13 @@
 /**
- * Consumable extension rows from the master warehouse manifest (spreadsheet extract).
- * Upserted by seedOcsConsumablesExtension.js and ensureOcsCatalog on startup.
+ * Consumable rows for OCS master warehouse upsert.
+ * Merged: spreadsheet manifest + PDF catalog (OCS Stock - consumable.pdf).
  *
- * Field mapping matches ocsMasterStockData.js / SQLite inventory:
- *   name            -> item_name
- *   category        -> inventory_folders.name ("Consumable")
- *   current_quantity -> quantity (+ inventory_batches)
- *   par_level       -> minimum_quantity
- *   nearest_expiry  -> expiry_date
+ * Upserted by seedOcsConsumablesExtension.js and ensureOcsCatalog on startup.
  */
-const ocsConsumablesExtension = [
+const { ocsConsumablesPdfCatalog } = require("./ocsConsumablesPdfCatalog");
+
+/** Original manifest extract (explicit qty / par). */
+const ocsConsumablesManifest = [
   { name: "Syringe 2cc (Box of 100)", category: "Consumable", current_quantity: 100, par_level: 50, nearest_expiry: null },
   { name: "Syringe 5cc (Box of 100)", category: "Consumable", current_quantity: 100, par_level: 50, nearest_expiry: null },
   { name: "Syringe 10cc (Box of 100)", category: "Consumable", current_quantity: 50, par_level: 25, nearest_expiry: null },
@@ -27,4 +25,29 @@ const ocsConsumablesExtension = [
   { name: "Venflon G24 Yellow (Pack of 50)", category: "Consumable", current_quantity: 50, par_level: 20, nearest_expiry: null },
 ];
 
-module.exports = { ocsConsumablesExtension };
+function mergeConsumablesCatalog(manifestRows, pdfRows) {
+  const seen = new Set();
+  const merged = [];
+
+  [...manifestRows, ...pdfRows].forEach((row) => {
+    const key = String(row.name || "")
+      .trim()
+      .toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(row);
+  });
+
+  return merged;
+}
+
+const ocsConsumablesExtension = mergeConsumablesCatalog(
+  ocsConsumablesManifest,
+  ocsConsumablesPdfCatalog,
+);
+
+module.exports = {
+  ocsConsumablesExtension,
+  ocsConsumablesManifest,
+  ocsConsumablesPdfCatalog,
+};
