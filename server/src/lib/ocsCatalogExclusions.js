@@ -45,10 +45,24 @@ function filterCatalogRowsNotExcluded(rows = []) {
   return rows.filter((row) => !isOcsCatalogExcluded(row.name));
 }
 
+/** Block startup/catalog ensure from re-inserting bundled Consumable seed SKUs. */
+function excludeOcsConsumablesCatalogSeed() {
+  const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
+  const { ocsMasterStockData } = require("../config/ocsMasterStockData");
+  const names = new Set();
+  [...ocsConsumablesExtension, ...ocsMasterStockData].forEach((row) => {
+    const label = String(row.name || "").trim();
+    if (label) names.add(label);
+  });
+  names.forEach((name) => recordOcsCatalogExclusion(name));
+  return names.size;
+}
+
 module.exports = {
   ensureOcsCatalogExclusionsTable,
   normalizeCatalogItemName,
   isOcsCatalogExcluded,
   recordOcsCatalogExclusion,
   filterCatalogRowsNotExcluded,
+  excludeOcsConsumablesCatalogSeed,
 };

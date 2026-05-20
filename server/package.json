@@ -15,6 +15,7 @@
     "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
     "purge:ocs-categories": "node src/scripts/purgeOcsInventoryCategories.js",
     "purge:ocs-non-consumable": "node src/scripts/purgeOcsNonConsumableAll.js",
+    "purge:ocs-consumable": "node src/scripts/purgeOcsConsumableStock.js",
     "purge:doctor-bag-categories": "node src/scripts/purgeDoctorBagCategories.js",
     "audit:inventory-categories": "node src/scripts/auditInventoryCategories.js",
     "dedupe:ocs-master": "node -e \"require('./src/db').initializeDatabase(); const r=require('./src/lib/dedupeOcsMasterInventory').prepareOcsMasterInventoryIntegrity(); console.log(r);\"",

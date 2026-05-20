@@ -13,6 +13,7 @@
  */
 
 const { db, initializeDatabase } = require("../db");
+const { recordOcsCatalogExclusion } = require("../lib/ocsCatalogExclusions");
 
 const PURGE_FOLDER_NAMES = [
   "IM Drugs",
@@ -70,6 +71,11 @@ function deleteInventoryRows(rows) {
         }
       }
       deleteItem.run(itemId);
+      const isOcsMaster =
+        row.stock_scope === "ocs" && (row.owner_doctor_id == null || row.owner_doctor_id === "");
+      if (isOcsMaster && row.item_name) {
+        recordOcsCatalogExclusion(row.item_name);
+      }
     });
   });
 
