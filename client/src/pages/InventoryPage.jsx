@@ -33,7 +33,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
-import { getDisplayFolders } from "../lib/inventoryFolders.js";
+import { buildInventoryListQuery, getDisplayFolders } from "../lib/inventoryFolders.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2158,6 +2158,25 @@ export default function InventoryPage() {
       ? data?.selected_doctor_stock || []
       : data?.ocs_stock || [];
   const displayFolders = useMemo(() => getDisplayFolders(folders, items), [folders, items]);
+  const inventoryListQuery = useMemo(
+    () =>
+      buildInventoryListQuery({
+        contextDoctorId: selectedContextDoctorId,
+        doctorContext,
+        includeDoctorContext: isDoctor,
+        includeAdminFilters: isAdmin,
+        adminPeriodRange,
+        activityStaffUserId,
+      }),
+    [
+      selectedContextDoctorId,
+      doctorContext,
+      isDoctor,
+      isAdmin,
+      adminPeriodRange,
+      activityStaffUserId,
+    ],
+  );
   const summary = data?.summary || {};
   const pageSize = 50;
   const inventoryTableScrollClass = isOperator
@@ -2230,15 +2249,16 @@ export default function InventoryPage() {
   ) {
     if (!silent) setLoading(true);
     try {
-      const query = new URLSearchParams();
-      if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
-      if (isDoctor) query.set("context", nextDoctorContext);
-      if (isAdmin) {
-        query.set("dateFrom", adminPeriodRange.from);
-        query.set("dateTo", adminPeriodRange.to);
-        if (activityStaffUserId) query.set("activityUserId", activityStaffUserId);
-      }
-      const payload = await api.get(`/inventory${query.toString() ? `?${query.toString()}` : ""}`);
+      const payload = await api.get(
+        `/inventory${buildInventoryListQuery({
+          contextDoctorId,
+          doctorContext: nextDoctorContext,
+          includeDoctorContext: isDoctor,
+          includeAdminFilters: isAdmin,
+          adminPeriodRange,
+          activityStaffUserId,
+        })}`,
+      );
       setData(payload);
     } catch (error) {
       toast.error(error.message);
@@ -2515,7 +2535,9 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = editor?.item ? await api.put(`/inventory/items/${editor.item.id}`, payload) : await api.post("/inventory/items", payload);
+      const next = editor?.item
+        ? await api.put(`/inventory/items/${editor.item.id}${inventoryListQuery}`, payload)
+        : await api.post(`/inventory/items${inventoryListQuery}`, payload);
       setData(next);
       setEditor(null);
       setOperatorAddOpen(false);
@@ -2536,7 +2558,7 @@ export default function InventoryPage() {
     if (!movement?.item) return;
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${movement.item.id}/actions`, payload);
+      const next = await api.post(`/inventory/items/${movement.item.id}/actions${inventoryListQuery}`, payload);
       setData(next);
       setMovement(null);
       toast.success("Stock action saved.");
@@ -2550,7 +2572,7 @@ export default function InventoryPage() {
   async function saveRestock(payload) {
     setIsSaving(true);
     try {
-      const next = await api.post("/inventory/restock", payload);
+      const next = await api.post(`/inventory/restock${inventoryListQuery}`, payload);
       setData(next);
       setRestock(null);
       toast.success("Doctor restock completed.");
@@ -2581,7 +2603,7 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = await api.post("/inventory/restock/my-inventory", {
+      const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
         items: requests.map((item) => ({
           ocs_item_id: Number(item.ocs_item_id),
           quantity: Number(item.required_quantity || item.quantity),
@@ -2695,7 +2717,7 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${addStock.item.id}/ocs-actions`, {
+      const next = await api.post(`/inventory/items/${addStock.item.id}/ocs-actions${inventoryListQuery}`, {
         action_type: "stock_in",
         quantity,
         expiry_date: payload.expiry_date || "",
@@ -2724,7 +2746,7 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      await api.post(endpoint, {
+      await api.post(`${endpoint}${inventoryListQuery}`, {
         action_type: "remove",
         quantity,
         reason: payload.reason,
@@ -2746,7 +2768,7 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${stockOut.item.id}/actions`, {
+      const next = await api.post(`/inventory/items/${stockOut.item.id}/actions${inventoryListQuery}`, {
         action_type: "stock_out",
         quantity,
         reason: payload.reason,
@@ -2775,7 +2797,7 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${payload.item.id}/actions`, {
+      const next = await api.post(`/inventory/items/${payload.item.id}/actions${inventoryListQuery}`, {
         action_type: "stock_out",
         quantity: qty,
         reason: payload.reason,
@@ -2804,7 +2826,7 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = await api.post("/inventory/restock/my-inventory", {
+      const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
         items: [{ ocs_item_id: Number(item.id), quantity: qty }],
       });
       setData(next);
@@ -3189,7 +3211,7 @@ export default function InventoryPage() {
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                                 onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                                showDeleteItem={isAdmin}
+                                showDeleteItem={canManageOcs && contextIsOcs}
                                 onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                               />
                               </div>
@@ -3335,7 +3357,7 @@ export default function InventoryPage() {
                           onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                           onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                           onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                          showDeleteItem={isAdmin}
+                          showDeleteItem={canManageOcs && contextIsOcs}
                           onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                           touchWrap
                         />
@@ -3358,7 +3380,7 @@ export default function InventoryPage() {
                           onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                           onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                           onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                          showDeleteItem={isAdmin}
+                          showDeleteItem={canManageOcs && contextIsOcs}
                           onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                           touchWrap
                           omitRestock

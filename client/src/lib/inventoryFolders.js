@@ -23,3 +23,24 @@ export function getDisplayFolders(folders = [], items = []) {
 
   return folders.slice(0, 1);
 }
+
+/** Query string for GET /inventory and mutation responses that return full workspace payload. */
+export function buildInventoryListQuery({
+  contextDoctorId = "",
+  doctorContext = "my",
+  includeDoctorContext = false,
+  includeAdminFilters = false,
+  adminPeriodRange = null,
+  activityStaffUserId = "",
+} = {}) {
+  const query = new URLSearchParams();
+  if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
+  if (includeDoctorContext) query.set("context", doctorContext);
+  if (includeAdminFilters && adminPeriodRange) {
+    query.set("dateFrom", adminPeriodRange.from);
+    query.set("dateTo", adminPeriodRange.to);
+    if (activityStaffUserId) query.set("activityUserId", String(activityStaffUserId));
+  }
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
