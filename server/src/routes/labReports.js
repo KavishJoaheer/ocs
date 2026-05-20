@@ -213,7 +213,7 @@ function ensureDoctorPatientAccess(patient, auth) {
     return true;
   }
 
-  return auth.doctor_id && Number(patient.assigned_doctor_id) === Number(auth.doctor_id);
+  return Boolean(auth?.doctor_id);
 }
 
 function saveAttachments({ reportId, patientId, consultationId, files, uploadedByUserId }) {

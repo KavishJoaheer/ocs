@@ -81,7 +81,7 @@ export function canAccessPath(role, path) {
   return ROUTE_ACCESS[path]?.includes(role) ?? false;
 }
 
-/** Admin: always. Doctor: only when this patient is assigned to their doctor record. */
+/** Admin and accountant: always. Doctors: any patient (same directory access as the Patients page). */
 export function canBillPatientForUser(user, patient) {
   if (!user?.role || !patient) {
     return false;
@@ -89,8 +89,8 @@ export function canBillPatientForUser(user, patient) {
   if (user.role === "admin" || user.role === "accountant") {
     return true;
   }
-  if (user.role !== "doctor") {
-    return false;
+  if (user.role === "doctor") {
+    return Boolean(user.doctor_id);
   }
-  return Number(user.doctor_id) === Number(patient.assigned_doctor_id);
+  return false;
 }

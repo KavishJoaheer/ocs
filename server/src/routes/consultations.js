@@ -151,9 +151,10 @@ router.get("/available-appointments", (_req, res) => {
 });
 
 router.get("/", (req, res) => {
+  const requestedDoctorId = Number(req.query.doctorId);
   const doctorScoped =
-    req.auth?.role === "doctor" && req.auth.doctor_id
-      ? Number(req.auth.doctor_id)
+    Number.isInteger(requestedDoctorId) && requestedDoctorId > 0
+      ? requestedDoctorId
       : null;
 
   const consultations = db

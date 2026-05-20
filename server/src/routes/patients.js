@@ -452,9 +452,7 @@ function ensureDoctorPatientAccess(patient, auth) {
     return true;
   }
 
-  return (
-    auth.doctor_id && Number(patient.assigned_doctor_id) === Number(auth.doctor_id)
-  );
+  return Boolean(auth?.doctor_id);
 }
 
 function hasActiveOperatorEditAccess(patientId, operatorUserId) {
@@ -676,23 +674,6 @@ router.get("/options", (req, res) => {
     return res.status(401).json({ error: "Authentication is required." });
   }
 
-  if (auth.role === "doctor") {
-    const doctorId = auth.doctor_id ? Number(auth.doctor_id) : null;
-    if (!doctorId) {
-      return res.json([]);
-    }
-    const patients = db
-      .prepare(`
-        SELECT id, patient_identifier, patient_id_number, full_name
-        FROM patients
-        WHERE deleted_at IS NULL
-          AND assigned_doctor_id = ?
-        ORDER BY full_name ASC
-      `)
-      .all(doctorId);
-    return res.json(patients);
-  }
-
   const patients = db
     .prepare(`
       SELECT id, patient_identifier, patient_id_number, full_name
@@ -720,16 +701,6 @@ router.get("/", (req, res) => {
   const requestedDoctorId = Number(req.query.doctorId);
   let doctorId =
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0 ? requestedDoctorId : null;
-
-  if (req.auth?.role === "doctor" && req.auth?.doctor_id) {
-    const ownDoctorId = Number(req.auth.doctor_id);
-    if (doctorId && doctorId !== ownDoctorId) {
-      return res.status(403).json({
-        error: "You can only view patients assigned to your practice.",
-      });
-    }
-    doctorId = ownDoctorId;
-  }
 
   const effectiveStatus =
     myAssignedFilter && req.auth?.role === "doctor" && !status ? "active" : status;
@@ -910,14 +881,9 @@ router.get("/:id", (req, res) => {
 
   if (!ensureDoctorPatientAccess(patient, req.auth)) {
     return res.status(403).json({
-      error: "You can only open patient charts assigned to your practice.",
+      error: "Your doctor account is not linked to a doctor profile.",
     });
   }
-
-  const doctorScopeId =
-    req.auth?.role === "doctor" && req.auth?.doctor_id
-      ? Number(req.auth.doctor_id)
-      : null;
 
   const appointments = db
     .prepare(`
@@ -930,10 +896,9 @@ router.get("/:id", (req, res) => {
       JOIN doctors d ON d.id = a.doctor_id
       LEFT JOIN consultations c ON c.appointment_id = a.id
       WHERE a.patient_id = @patientId
-        AND (@doctorScopeId IS NULL OR a.doctor_id = @doctorScopeId)
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `)
-    .all({ patientId, doctorScopeId });
+    .all({ patientId });
 
   const consultations = db
     .prepare(`
@@ -947,10 +912,9 @@ router.get("/:id", (req, res) => {
       JOIN doctors d ON d.id = c.doctor_id
       JOIN appointments a ON a.id = c.appointment_id
       WHERE c.patient_id = @patientId
-        AND (@doctorScopeId IS NULL OR c.doctor_id = @doctorScopeId)
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
-    .all({ patientId, doctorScopeId });
+    .all({ patientId });
 
   const bills = db
     .prepare(`
@@ -962,10 +926,9 @@ router.get("/:id", (req, res) => {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
       WHERE b.patient_id = @patientId
-        AND (@doctorScopeId IS NULL OR c.doctor_id = @doctorScopeId)
       ORDER BY b.created_at DESC
     `)
-    .all({ patientId, doctorScopeId })
+    .all({ patientId })
     .map(parseBillingRow);
 
   const labReports = getLabReportsByPatientId(patientId);
@@ -1171,7 +1134,7 @@ router.put("/:id", (req, res) => {
     }
   } else if (!ensureDoctorPatientAccess(existing, req.auth)) {
     return res.status(403).json({
-      error: "You can only update patient charts assigned to your practice.",
+      error: "Your doctor account is not linked to a doctor profile.",
     });
   }
 
@@ -1356,7 +1319,7 @@ router.post("/:id/consultations", (req, res) => {
 
   if (!ensureDoctorPatientAccess(patient, req.auth)) {
     return res.status(403).json({
-      error: "You can only add consultation notes for patients assigned to your practice.",
+      error: "Your doctor account is not linked to a doctor profile.",
     });
   }
 
