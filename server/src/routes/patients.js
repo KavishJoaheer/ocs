@@ -929,7 +929,7 @@ router.get("/:id", (req, res) => {
       FROM appointments a
       JOIN doctors d ON d.id = a.doctor_id
       LEFT JOIN consultations c ON c.appointment_id = a.id
-      WHERE a.patient_id = ?
+      WHERE a.patient_id = @patientId
         AND (@doctorScopeId IS NULL OR a.doctor_id = @doctorScopeId)
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `)
@@ -946,7 +946,7 @@ router.get("/:id", (req, res) => {
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       JOIN appointments a ON a.id = c.appointment_id
-      WHERE c.patient_id = ?
+      WHERE c.patient_id = @patientId
         AND (@doctorScopeId IS NULL OR c.doctor_id = @doctorScopeId)
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
@@ -961,7 +961,7 @@ router.get("/:id", (req, res) => {
       FROM billing b
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
-      WHERE b.patient_id = ?
+      WHERE b.patient_id = @patientId
         AND (@doctorScopeId IS NULL OR c.doctor_id = @doctorScopeId)
       ORDER BY b.created_at DESC
     `)
