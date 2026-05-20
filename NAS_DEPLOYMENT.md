@@ -162,6 +162,25 @@ After deploy, verify: `http://<NAS_IP>:8080/api/health` should show `"mode":"sql
 
 For daily operations, keep both seed flags `false` so container restarts do not reset live stock quantities.
 
+### Go-live OCS warehouse reset (one time)
+
+Before first real stock intake, wipe sandbox warehouse rows and test activity logs, then load the final master catalog from `server/src/config/ocsMasterStockData.js`.
+
+**Requires** `ALLOW_DB_PURGE=true` or the script exits without changes.
+
+```bash
+docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeAndReseedOcsWarehouse.js
+```
+
+This removes all OCS master stock (`stock_scope = 'ocs'`), clears `inventory_activity_history`, `inventory_movements`, `inventory_audit_logs`, and staging rows, deletes `TEST` / `TEST 10` style placeholder items from doctor bags, then upserts the master spreadsheet.
+
+Expected output includes:
+
+```text
+SUCCESS: Sandbox data purged completely.
+SUCCESS: Live master stock records seeded accurately.
+```
+
 6. If UGOS instead supports an `.env` file, use [.env.example](.env.example) as your template.
 7. Deploy the project.
 8. Wait until both `clinicflow-app` and `clinicflow-watchtower` show as running.

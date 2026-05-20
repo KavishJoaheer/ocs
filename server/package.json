@@ -10,6 +10,7 @@
     "seed:ocs-stock": "node src/scripts/seedOcsMasterStock.js",
     "purge:ocs-test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:test-items": "node src/scripts/purgeOcsTestInventory.js",
+    "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
     "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js"
   },
   "keywords": [],
