@@ -1384,7 +1384,7 @@ function InventoryOcsMasterActions({
     : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
 
   return (
-    <div className={cx("flex w-full min-w-0 items-center gap-1.5", touchWrap ? "flex-wrap justify-end" : "justify-center")}>
+    <div className={cx("flex w-full min-w-0 items-center gap-1.5", touchWrap ? "flex-wrap justify-end" : "ml-auto w-fit justify-end")}>
       <button
         type="button"
         title="Receive stock"
@@ -1498,24 +1498,27 @@ function InventoryActionButtons({
 
   const btn = touchWrap
     ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold"
-    : "inline-flex items-center gap-1 whitespace-nowrap rounded-xl px-2.5 py-1 text-xs font-semibold";
+    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
   const restockBtn = touchWrap
     ? "inline-flex min-h-10 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-xl bg-[#4FB8B3] px-4 py-2 text-xs font-bold text-white shadow-sm"
-    : "inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 py-1 text-xs font-semibold text-white";
+    : "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3aa6a1]";
   const stockOutBtn = touchWrap
     ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl bg-orange-100 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-200"
-    : "inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-200";
+    : "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-3 text-xs font-semibold text-orange-700 transition hover:bg-orange-200";
+  const adjustBtn = touchWrap
+    ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold"
+    : "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 text-xs font-semibold";
 
   return (
-    <div className={cx("flex items-center gap-1.5", touchWrap ? "max-w-full flex-wrap justify-end" : "w-full justify-center")}>
+    <div className={cx("flex items-center gap-1.5", touchWrap ? "max-w-full flex-wrap justify-end" : "ml-auto w-fit justify-end")}>
       {!(isDoctor && doctorViewIsOcs) ? (
-        <button type="button" onClick={() => onEdit(item)} className={`${btn} border border-slate-200 text-slate-700`}>
+        <button type="button" onClick={() => onEdit(item)} className={`${btn} ${touchWrap ? "border border-slate-200 text-slate-700" : ""}`}>
           <Pencil className="size-3.5 shrink-0" />
         </button>
       ) : null}
 
       {isDoctor && !omitRestock ? (
-        <button type="button" onClick={() => onRestockMyInventory(item)} className={`${restockBtn}`}>
+        <button type="button" onClick={() => onRestockMyInventory(item)} className={restockBtn}>
           <Truck className="size-3.5 shrink-0" />
           Restock
         </button>
@@ -1529,7 +1532,7 @@ function InventoryActionButtons({
       ) : null}
 
       {canManageOcs && !contextIsOcs ? (
-        <button type="button" onClick={() => onAdjustReclaim(item)} className={`${btn} border border-amber-200 text-amber-700`}>
+        <button type="button" onClick={() => onAdjustReclaim(item)} className={`${adjustBtn} border border-amber-200 text-amber-700`}>
           <MinusCircle className="size-3.5 shrink-0" />
           Adjust
         </button>
@@ -2125,6 +2128,9 @@ export default function InventoryPage() {
   const inventoryTableScrollClass = isOperator
     ? "max-h-[min(calc(100svh-16rem),960px)]"
     : "max-h-[560px]";
+  const doctorDesktopBagTable = isDoctor && doctorViewIsMy;
+  const inventoryActionsColWidth = doctorDesktopBagTable ? "30%" : "18%";
+  const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : "48rem";
   const doctorConsumptionRows = data?.my_consumption_rows || [];
   const movements = data?.movements || [];
 
@@ -3039,13 +3045,13 @@ export default function InventoryPage() {
           <>
             <div className="hidden rounded-3xl border border-slate-200/80 bg-white md:block">
               <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
-                <table className="min-w-[48rem] w-full table-fixed text-left text-sm">
+                <table className="w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
                   <colgroup>
-                    <col style={{ width: "34%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "28%" : "34%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "11%" : "10%" }} />
                     <col style={{ width: "10%" }} />
-                    <col style={{ width: "10%" }} />
-                    <col style={{ width: "26%" }} />
-                    <col style={{ width: "20%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "21%" : "26%" }} />
+                    <col style={{ width: inventoryActionsColWidth }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
                     <tr>
@@ -3053,9 +3059,7 @@ export default function InventoryPage() {
                       <th className="px-3 py-2 text-center align-middle">Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Min Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Nearest Expiry</th>
-                      <th className="sticky right-0 z-20 bg-slate-50 px-2 py-2 text-center align-middle shadow-[-6px_0_12px_rgba(15,23,42,0.06)]">
-                        Actions
-                      </th>
+                      <th className="px-3 py-2 text-right align-middle">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3082,11 +3086,11 @@ export default function InventoryPage() {
                               </div>
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <div className="inline-flex items-center justify-center gap-2">
-                                <span>{item.quantity}</span>
-                                {isDoctor && doctorViewIsMy ? (
+                              {doctorDesktopBagTable ? (
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="font-medium tabular-nums text-slate-900">{item.quantity}</span>
                                   <span
-                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                                       trafficTone === "critical"
                                         ? "bg-rose-100 text-rose-700"
                                         : trafficTone === "warning"
@@ -3096,18 +3100,33 @@ export default function InventoryPage() {
                                   >
                                     {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
                                   </span>
-                                ) : null}
-                              </div>
+                                </div>
+                              ) : (
+                                <div className="inline-flex items-center justify-center gap-2">
+                                  <span>{item.quantity}</span>
+                                  {isDoctor && doctorViewIsMy ? (
+                                    <span
+                                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                                        trafficTone === "critical"
+                                          ? "bg-rose-100 text-rose-700"
+                                          : trafficTone === "warning"
+                                            ? "bg-amber-100 text-amber-700"
+                                            : "bg-teal-100 text-teal-700"
+                                      }`}
+                                    >
+                                      {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              )}
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">{item.minimum_quantity}</td>
                             <td className="px-3 py-1.5 align-middle text-center">{item.expiry_date || "Not set"}</td>
                             <td
-                              className={cx(
-                                "sticky right-0 z-10 overflow-visible px-2 py-1.5 align-middle text-center shadow-[-6px_0_12px_rgba(15,23,42,0.06)]",
-                                isLow ? "bg-red-50 group-hover:bg-red-50" : "bg-white group-hover:bg-slate-50/70",
-                              )}
+                              className="px-3 py-2 align-middle"
                               onClick={(event) => event.stopPropagation()}
                             >
+                              <div className="flex justify-end">
                               <InventoryActionButtons
                                 item={item}
                                 canManageOcs={canManageOcs}
@@ -3123,6 +3142,7 @@ export default function InventoryPage() {
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                                 onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
                               />
+                              </div>
                             </td>
                           </tr>
                           {expanded ? (
