@@ -1884,6 +1884,9 @@ export default function InventoryPage() {
       : data?.ocs_stock || [];
   const summary = data?.summary || {};
   const pageSize = 50;
+  const inventoryTableScrollClass = isOperator
+    ? "max-h-[min(calc(100svh-16rem),960px)]"
+    : "max-h-[560px]";
   const doctorConsumptionRows = data?.my_consumption_rows || [];
   const movements = data?.movements || [];
 
@@ -2603,7 +2606,7 @@ export default function InventoryPage() {
           />
         </>
       ) : (
-        <div className={cx(pageContainerClass, isOperator ? "space-y-4" : "space-y-6")}>
+        <div className={cx(pageContainerClass, isOperator ? "space-y-4 pb-1" : "space-y-6")}>
       <PageHeader
         className={isOperator ? "mb-0" : undefined}
         eyebrow="Logistics"
@@ -2675,6 +2678,7 @@ export default function InventoryPage() {
       )}
 
       <SectionCard
+        className={isOperator ? "pb-3" : undefined}
         title={
           isDoctor
             ? "My Stock Items"
@@ -2771,7 +2775,7 @@ export default function InventoryPage() {
         {pagedItems.length ? (
           <>
             <div className="hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-white md:block">
-              <div className="max-h-[560px] overflow-auto overflow-x-auto">
+              <div className={cx("overflow-auto overflow-x-auto", inventoryTableScrollClass)}>
                 <table className="min-w-full table-fixed text-left text-sm">
                   <colgroup>
                     <col style={{ width: "32%" }} />
@@ -3039,7 +3043,7 @@ export default function InventoryPage() {
           <EmptyState title="No stock items found" description="Add stock to one of the required folders to begin tracking." />
         )}
 
-        <div className="mt-3 flex items-center justify-between">
+        <div className={cx("flex items-center justify-between", isOperator ? "mt-2" : "mt-3")}>
           <p className="text-xs text-slate-500">
             Page {currentPage} of {totalPages} - {sortedItems.length} filtered item(s)
           </p>
@@ -3161,19 +3165,11 @@ export default function InventoryPage() {
           {...liveActivityStaffFilterProps}
         />
         </div>
-      ) : canManageOcs ? (
-        <div className="hidden md:block">
-          <LiveActivitySection
-            movements={parsedMovements}
-            maxRows={80}
-            scrollClassName="max-h-[min(36rem,60vh)]"
-          />
-        </div>
-      ) : (
+      ) : !isOperator ? (
         <div className="hidden md:block">
           <LiveActivitySection movements={parsedMovements} />
         </div>
-      )}
+      ) : null}
 
         </div>
       )}
