@@ -1,6 +1,7 @@
 const { createApp } = require("./app");
 const { initializeDatabase } = require("./db");
 const { seedOcsMasterStockSync } = require("./scripts/seedOcsMasterStock");
+const { purgeOcsTestInventoryItems } = require("./scripts/purgeOcsTestInventory");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -18,6 +19,15 @@ if (shouldSeedOcsStock) {
   } catch (error) {
     console.warn("[seed] OCS master stock sync failed:", error.message);
   }
+}
+
+try {
+  const purgeResult = purgeOcsTestInventoryItems();
+  if (purgeResult.removed > 0) {
+    console.log(`[seed] Removed ${purgeResult.removed} OCS test placeholder item(s).`);
+  }
+} catch (error) {
+  console.warn("[seed] OCS test inventory purge failed:", error.message);
 }
 
 const app = createApp();
