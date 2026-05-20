@@ -92,6 +92,14 @@ SUCCESS: Live master stock records seeded accurately.
 
 Then open **Inventory** in the app and confirm folders (including Oral Drugs, Investigation) show the master list.
 
+**Optional — remove sandbox patients that were soft-deleted:**
+
+```bash
+docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeSoftDeletedPatients.js
+```
+
+The admin **Patients** screen no longer shows a “Recently deleted” tab; soft-deleted rows are hidden from the directory only.
+
 ---
 
 ## 5. Security & accounts

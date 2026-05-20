@@ -5,7 +5,6 @@ import {
   IdCard,
   MoreVertical,
   Plus,
-  RotateCcw,
   Search,
   SquarePen,
   Trash2,
@@ -163,10 +162,8 @@ function PatientsPage() {
     searchParams.get("tab") === "under_review" ||
     searchParams.get("filter") === "under_review";
   const [doctorIdFilter, setDoctorIdFilter] = useState("");
-  const [viewMode, setViewMode] = useState("active");
   const [page, setPage] = useState(1);
   const [patientsData, setPatientsData] = useState(null);
-  const [deletedPatients, setDeletedPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -175,8 +172,6 @@ function PatientsPage() {
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [patientCardMenu, setPatientCardMenu] = useState(null);
   const [desktopTableMenu, setDesktopTableMenu] = useState(null);
-  const [restoringPatientId, setRestoringPatientId] = useState(null);
-
   useEffect(() => {
     if (!desktopTableMenu) return undefined;
 
@@ -247,21 +242,6 @@ function PatientsPage() {
     }
   }
 
-  async function loadDeletedPatients() {
-    const target = deletedPatients.length ? setRefreshing : setLoading;
-    target(true);
-
-    try {
-      const data = await api.get("/patients/deleted/recent");
-      setDeletedPatients(data);
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
   useEffect(() => {
     const next = searchParams.get("search") || "";
     setSearch((prev) => (prev === next ? prev : next));
@@ -271,17 +251,11 @@ function PatientsPage() {
       searchParams.get("filter") === "under_review"
     ) {
       setStatusFilter("under_review");
-      setViewMode("active");
-    }
-
-    if (searchParams.get("filter") === "subscribed") {
-      setViewMode("active");
     }
 
     if (searchParams.get("filter") === "my_assigned" && user.role === "doctor" && user.doctor_id) {
       setDoctorIdFilter(String(user.doctor_id));
       setStatusFilter("active");
-      setViewMode("active");
     }
 
     setPage(1);
@@ -292,21 +266,12 @@ function PatientsPage() {
   }, []);
 
   useEffect(() => {
-    if (viewMode === "deleted") {
-      if (canDeletePatients) {
-        loadDeletedPatients();
-      }
-      return;
-    }
-
     loadPatients();
   }, [
-    canDeletePatients,
     deferredSearch,
     page,
     statusFilter,
     doctorIdFilter,
-    viewMode,
     subscriberFilterActive,
     myAssignedFilterActive,
     user.doctor_id,
@@ -329,7 +294,7 @@ function PatientsPage() {
   const pagination = patientsData?.pagination;
 
   const headerActions = useMemo(() => {
-    if (!canCreatePatients || viewMode !== "active") {
+    if (!canCreatePatients) {
       return null;
     }
 
@@ -342,7 +307,7 @@ function PatientsPage() {
         Add patient
       </Link>
     );
-  }, [canCreatePatients, viewMode]);
+  }, [canCreatePatients]);
 
   async function handleSave(payload) {
     setIsSaving(true);
@@ -366,11 +331,9 @@ function PatientsPage() {
 
     try {
       await api.delete(`/patients/${patientToDelete.id}`);
-      toast.success("Patient moved to recently deleted.");
+      toast.success("Patient removed from the directory.");
       setPatientToDelete(null);
-      if (viewMode === "active") {
-        await loadPatients();
-      }
+      await loadPatients();
     } catch (error) {
       toast.error(error.message);
     }
@@ -390,20 +353,6 @@ function PatientsPage() {
     setDoctorIdFilter("");
     setStatusFilter("all");
     setPage(1);
-  }
-
-  async function handleRestorePatient(patientId) {
-    setRestoringPatientId(patientId);
-
-    try {
-      await api.post(`/patients/${patientId}/restore`);
-      toast.success("Patient restored.");
-      await loadDeletedPatients();
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setRestoringPatientId(null);
-    }
   }
 
   const searchField = (
@@ -540,44 +489,14 @@ function PatientsPage() {
             <h1 className="text-xl font-bold tracking-tight text-gray-900">Patient Directory</h1>
             {headerActions}
           </div>
-          {viewMode === "active" ? searchField : null}
+          {searchField}
         </header>
       ) : (
         <PageHeader title="Patients" actions={headerActions} />
       )}
 
-      {canDeletePatients ? (
-        <div className="flex flex-wrap gap-3 rounded-[24px] border border-slate-200/80 bg-white/80 p-2.5 shadow-[0_20px_60px_rgba(34,72,91,0.08)]">
-          {[
-            { id: "active", label: "Patient directory" },
-            { id: "deleted", label: "Recently deleted" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setViewMode(tab.id)}
-              className={cx(
-                "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
-                viewMode === tab.id
-                  ? "bg-sky-600 text-white shadow-lg shadow-sky-200"
-                  : "bg-slate-50 text-slate-600 hover:bg-slate-100",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       <SectionCard
-        title={!isMobile && viewMode === "deleted" ? "Recently deleted" : null}
-        subtitle={
-          isMobile
-            ? null
-            : viewMode === "deleted"
-              ? `${deletedPatients.length} archived in the last 30 days`
-              : `${pagination?.total || 0} total records`
-        }
+        subtitle={isMobile ? null : `${pagination?.total || 0} total records`}
         className={
           isMobile
             ? "flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]"
@@ -591,8 +510,7 @@ function PatientsPage() {
           ) : null
         }
       >
-        {viewMode === "active" ? (
-          <>
+        <>
             {!isMobile ? (
               <div className="mb-4 flex flex-col gap-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -986,115 +904,7 @@ function PatientsPage() {
                 action={canCreatePatients ? headerActions : null}
               />
             )}
-          </>
-        ) : deletedPatients.length ? (
-          isMobile ? (
-            /* ── Mobile: deleted patient cards ── */
-            <div className="flex flex-col space-y-3 pb-8">
-              {deletedPatients.map((patient) => (
-                <div
-                  key={patient.id}
-                  className="rounded-[24px] border border-slate-200/80 bg-white p-4"
-                >
-                  <p className="font-semibold text-slate-950">{patient.full_name}</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    OCS care number: <PatientCareNumber patient={patient} />
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    Patient ID: {displayText(patient.patient_id_number)}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {displayText(patient.assigned_doctor_name, "Not assigned")}
-                  </p>
-                  <div className="mt-1 text-sm text-slate-500">
-                    <span>{patient.appointment_count} appt</span>
-                    <span className="mx-1">&middot;</span>
-                    <span>{patient.consultation_count} consult</span>
-                    <span className="mx-1">&middot;</span>
-                    <span>{patient.bill_count} bills</span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Deleted {formatDate(patient.deleted_at)}
-                  </p>
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      onClick={() => handleRestorePatient(patient.id)}
-                      disabled={restoringPatientId === patient.id}
-                      className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <RotateCcw className="size-4" />
-                      {restoringPatientId === patient.id ? "Restoring..." : "Restore"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            /* ── Desktop: original deleted table ── */
-            <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-fixed bg-white text-left">
-                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    <tr>
-                      <th className="w-[30%] px-4 py-2.5">Patient</th>
-                      <th className="w-[22%] px-4 py-2.5">Assigned doctor</th>
-                      <th className="w-[26%] px-4 py-2.5">Clinical records</th>
-                      <th className="w-[12%] px-4 py-2.5">Deleted</th>
-                      <th className="w-[10%] px-4 py-2.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deletedPatients.map((patient) => (
-                      <tr key={patient.id} className="border-t border-slate-200/70">
-                        <td className="px-4 py-2 align-top">
-                          <p className="truncate font-semibold leading-tight text-slate-950">
-                            {patient.full_name}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-slate-500">
-                            OCS: <PatientCareNumber patient={patient} />
-                          </p>
-                          <p className="truncate text-xs text-slate-500">
-                            ID: {displayText(patient.patient_id_number)}
-                          </p>
-                        </td>
-                        <td className="px-4 py-2 align-top text-xs leading-snug text-slate-600">
-                          {displayText(patient.assigned_doctor_name, "Not assigned")}
-                        </td>
-                        <td className="px-4 py-2 align-top text-xs leading-snug text-slate-600">
-                          <p className="truncate">{patient.appointment_count} appointments</p>
-                          <p className="truncate">{patient.consultation_count} consultations</p>
-                          <p className="truncate">{patient.bill_count} bills</p>
-                        </td>
-                        <td className="px-4 py-2 align-top text-xs text-slate-500">
-                          {formatDate(patient.deleted_at)}
-                        </td>
-                        <td className="px-4 py-2 align-top">
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => handleRestorePatient(patient.id)}
-                              disabled={restoringPatientId === patient.id}
-                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <RotateCcw className="size-3.5" />
-                              {restoringPatientId === patient.id ? "Restoring..." : "Restore"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
-        ) : (
-          <EmptyState
-            title="No recently deleted patients"
-            description="Deleted patients from the last 30 days will appear here."
-          />
-        )}
+        </>
       </SectionCard>
 
       {desktopTableMenu ? (
@@ -1244,10 +1054,10 @@ function PatientsPage() {
         title="Delete patient?"
         description={
           patientToDelete
-            ? `${patientToDelete.full_name} will move to Recently deleted for 30 days. Appointments, consultation notes, and billing history stay attached.`
+            ? `${patientToDelete.full_name} will be removed from the patient directory. Clinical history stays in the database but the record will no longer appear in searches.`
             : ""
         }
-        confirmLabel="Move to recently deleted"
+        confirmLabel="Remove patient"
       />
     </div>
   );
