@@ -1384,7 +1384,7 @@ function InventoryOcsMasterActions({
     : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
 
   return (
-    <div className={cx("flex w-full min-w-0 items-center justify-end gap-2", touchWrap && "flex-wrap")}>
+    <div className={cx("flex w-full min-w-0 items-center gap-1.5", touchWrap ? "flex-wrap justify-end" : "justify-center")}>
       <button
         type="button"
         title="Receive stock"
@@ -1507,7 +1507,7 @@ function InventoryActionButtons({
     : "inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-200";
 
   return (
-    <div className={cx("flex items-center gap-2", touchWrap ? "max-w-full flex-wrap justify-end" : "flex-nowrap")}>
+    <div className={cx("flex items-center gap-1.5", touchWrap ? "max-w-full flex-wrap justify-end" : "w-full justify-center")}>
       {!(isDoctor && doctorViewIsOcs) ? (
         <button type="button" onClick={() => onEdit(item)} className={`${btn} border border-slate-200 text-slate-700`}>
           <Pencil className="size-3.5 shrink-0" />
@@ -3039,13 +3039,13 @@ export default function InventoryPage() {
           <>
             <div className="hidden rounded-3xl border border-slate-200/80 bg-white md:block">
               <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
-                <table className="min-w-[52rem] w-full table-fixed text-left text-sm">
+                <table className="min-w-[48rem] w-full table-fixed text-left text-sm">
                   <colgroup>
-                    <col style={{ width: "30%" }} />
-                    <col style={{ width: "11%" }} />
-                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "34%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "26%" }} />
                     <col style={{ width: "20%" }} />
-                    <col style={{ width: "28%" }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
                     <tr>
@@ -3053,7 +3053,7 @@ export default function InventoryPage() {
                       <th className="px-3 py-2 text-center align-middle">Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Min Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Nearest Expiry</th>
-                      <th className="sticky right-0 z-20 bg-slate-50 px-3 py-2 text-left align-middle shadow-[-6px_0_12px_rgba(15,23,42,0.06)]">
+                      <th className="sticky right-0 z-20 bg-slate-50 px-2 py-2 text-center align-middle shadow-[-6px_0_12px_rgba(15,23,42,0.06)]">
                         Actions
                       </th>
                     </tr>
@@ -3103,7 +3103,7 @@ export default function InventoryPage() {
                             <td className="px-3 py-1.5 align-middle text-center">{item.expiry_date || "Not set"}</td>
                             <td
                               className={cx(
-                                "sticky right-0 z-10 overflow-visible px-3 py-1.5 align-middle text-left shadow-[-6px_0_12px_rgba(15,23,42,0.06)]",
+                                "sticky right-0 z-10 overflow-visible px-2 py-1.5 align-middle text-center shadow-[-6px_0_12px_rgba(15,23,42,0.06)]",
                                 isLow ? "bg-red-50 group-hover:bg-red-50" : "bg-white group-hover:bg-slate-50/70",
                               )}
                               onClick={(event) => event.stopPropagation()}
