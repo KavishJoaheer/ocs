@@ -147,17 +147,27 @@ function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
     return { action: "updated", id: existing.id, itemName };
   }
 
-  const result = db
-    .prepare(`
-      INSERT INTO inventory (
-        item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-        cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-      )
-      VALUES (?, ?, ?, NULL, ?, ?, 'unit', 0, 0, '', '', '', ?, CURRENT_TIMESTAMP)
-    `)
-    .run(itemName, folderId, STOCK_SCOPE, quantity, minimumQuantity, expiryDate);
-
-  const itemId = Number(result.lastInsertRowid);
+  let itemId;
+  try {
+    const result = db
+      .prepare(`
+        INSERT INTO inventory (
+          item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
+          cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+        )
+        VALUES (?, ?, ?, NULL, ?, ?, 'unit', 0, 0, '', '', '', ?, CURRENT_TIMESTAMP)
+      `)
+      .run(itemName, folderId, STOCK_SCOPE, quantity, minimumQuantity, expiryDate);
+    itemId = Number(result.lastInsertRowid);
+  } catch (error) {
+    if (String(error?.message || "").includes("UNIQUE constraint failed")) {
+      const retry = findOcsItemByName(itemName);
+      if (retry) {
+        return { action: insertOnly ? "skipped" : "updated", id: retry.id, itemName };
+      }
+    }
+    throw error;
+  }
   syncBatches(itemId, quantity, expiryDate);
   return { action: "inserted", id: itemId, itemName };
 }

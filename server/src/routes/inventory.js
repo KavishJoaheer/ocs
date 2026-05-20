@@ -4,6 +4,7 @@ const {
   ensureOcsCatalogExclusionsTable,
   recordOcsCatalogExclusion,
 } = require("../lib/ocsCatalogExclusions");
+const { prepareOcsMasterInventoryIntegrity, assertOcsMasterItemNameAvailable } = require("../lib/dedupeOcsMasterInventory");
 const { maybeNotifyLowStock } = require("../lib/push");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
@@ -143,6 +144,17 @@ function ensureInfrastructure() {
   `);
 
   ensureOcsCatalogExclusionsTable();
+
+  try {
+    const integrity = prepareOcsMasterInventoryIntegrity();
+    if (integrity.removedRows > 0) {
+      console.log(
+        `[inventory] Merged ${integrity.mergedGroups} duplicate OCS SKU group(s); removed ${integrity.removedRows} row(s).`,
+      );
+    }
+  } catch (error) {
+    console.warn("[inventory] OCS master dedupe/unique index failed:", error.message);
+  }
 
   try {
     const catalogResult = ensureOcsCatalogSync();
@@ -1351,6 +1363,14 @@ router.post("/items", (req, res) => {
   if (!folder) return res.status(404).json({ error: "Folder not found." });
 
   const stockScope = isDoctor ? "doctor" : "ocs";
+  if (!isDoctor) {
+    try {
+      assertOcsMasterItemNameAvailable(itemName);
+    } catch (error) {
+      return res.status(409).json({ error: error.message });
+    }
+  }
+
   const result = db
     .prepare(`
       INSERT INTO inventory (
@@ -1422,6 +1442,14 @@ router.put("/items/:id", (req, res) => {
   if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ error: "Quantity must be zero or more." });
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });
+
+  if (!isDoctor) {
+    try {
+      assertOcsMasterItemNameAvailable(itemName, itemId);
+    } catch (error) {
+      return res.status(409).json({ error: error.message });
+    }
+  }
 
   const previousQuantity = Number(existing.quantity || 0);
   const delta = quantity - previousQuantity;
