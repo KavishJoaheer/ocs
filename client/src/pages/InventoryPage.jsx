@@ -16,6 +16,7 @@ import {
   Search,
   Trash2,
   Truck,
+  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
@@ -280,6 +281,21 @@ function OperatorInventoryLogisticsGrid({
       </button>
     </div>
   );
+}
+
+function operatorItemFormState(folderId) {
+  return {
+    item_name: "",
+    quantity: "0",
+    minimum_quantity: "0",
+    expiry_date: "",
+    folder_id: folderId ? String(folderId) : "",
+    unit: "unit",
+    cost_price: "0",
+    selling_price: "0",
+    attributes: "",
+    moa_notes: "",
+  };
 }
 
 function itemFormState(item) {
@@ -1507,6 +1523,164 @@ const MOBILE_STOCK_OUT_OPTIONS = [
   { id: "expired", reason: "Expired", emoji: "⏳", label: "Expired (Discarded)" },
 ];
 
+function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeCategory, isSaving, onSubmit }) {
+  const [form, setForm] = useState(() => operatorItemFormState(activeFolderId));
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    setForm(operatorItemFormState(activeFolderId));
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, activeFolderId, onClose]);
+
+  if (!open) return null;
+
+  const fieldClass =
+    "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-teal-500 focus:bg-white";
+
+  return (
+    <div className="fixed inset-0 z-[70] flex justify-end">
+      <button
+        type="button"
+        aria-label="Close add item panel"
+        className="absolute inset-0 bg-[rgba(34,72,91,0.35)] backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <aside
+        className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-slate-200/80 bg-white shadow-[-12px_0_40px_rgba(15,23,42,0.12)]"
+        style={{ paddingTop: "max(0px, var(--sat))" }}
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-950">Add New Item</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {activeCategory ? `Pre-selected: ${activeCategory}.` : "Category matches your active filter."} Adjust if needed.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit({
+              ...form,
+              folder_id: Number(form.folder_id || 0),
+              quantity: Number(form.quantity || 0),
+              minimum_quantity: Number(form.minimum_quantity || 0),
+              cost_price: Number(form.cost_price || 0),
+              selling_price: Number(form.selling_price || 0),
+            });
+          }}
+        >
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Item Name</span>
+              <input
+                required
+                name="item_name"
+                value={form.item_name}
+                onChange={(event) => setForm((prev) => ({ ...prev, item_name: event.target.value }))}
+                className={fieldClass}
+                placeholder="e.g. Paracetamol 500mg"
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Quantity</span>
+                <input
+                  required
+                  min="0"
+                  type="number"
+                  name="quantity"
+                  value={form.quantity}
+                  onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))}
+                  className={fieldClass}
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Min Quantity</span>
+                <input
+                  required
+                  min="0"
+                  type="number"
+                  name="minimum_quantity"
+                  value={form.minimum_quantity}
+                  onChange={(event) => setForm((prev) => ({ ...prev, minimum_quantity: event.target.value }))}
+                  className={fieldClass}
+                />
+              </label>
+            </div>
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Expiry Date</span>
+              <input
+                type="date"
+                name="expiry_date"
+                value={form.expiry_date}
+                onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))}
+                className={fieldClass}
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Category</span>
+              <select
+                required
+                name="folder_id"
+                value={form.folder_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, folder_id: event.target.value }))}
+                className={fieldClass}
+              >
+                <option value="">Select category</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex shrink-0 gap-3 border-t border-slate-100 px-5 py-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="min-h-11 flex-1 rounded-2xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="min-h-11 flex-1 rounded-2xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-60"
+            >
+              {isSaving ? "Saving..." : "Save Item"}
+            </button>
+          </div>
+        </form>
+      </aside>
+    </div>
+  );
+}
+
 function MobileBottomSheet({ open, onClose, title, subtitle, children }) {
   if (!open) return null;
 
@@ -1828,6 +2002,8 @@ export default function InventoryPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedView, setSelectedView] = useState("");
+  const [activeCategory, setActiveCategory] = useState("Consumable");
+  const [operatorAddOpen, setOperatorAddOpen] = useState(false);
   const [selectedContextDoctorId, setSelectedContextDoctorId] = useState("");
   const [doctorContext, setDoctorContext] = useState("my");
   const [contextSearch, setContextSearch] = useState("OCS Stock");
@@ -2004,6 +2180,12 @@ export default function InventoryPage() {
       setSelectedView(String(data.folders[0].id));
     }
   }, [data, selectedView]);
+
+  useEffect(() => {
+    if (!folders.length || !selectedView) return;
+    const folder = folders.find((f) => String(f.id) === String(selectedView));
+    if (folder?.name) setActiveCategory(folder.name);
+  }, [folders, selectedView]);
 
   useEffect(() => {
     if (!selectedContextDoctorId) {
@@ -2231,6 +2413,12 @@ export default function InventoryPage() {
       const next = editor?.item ? await api.put(`/inventory/items/${editor.item.id}`, payload) : await api.post("/inventory/items", payload);
       setData(next);
       setEditor(null);
+      setOperatorAddOpen(false);
+      if (!editor?.item && payload.folder_id) {
+        setSelectedView(String(payload.folder_id));
+        const folder = (next?.folders || folders).find((f) => String(f.id) === String(payload.folder_id));
+        if (folder?.name) setActiveCategory(folder.name);
+      }
       toast.success(editor?.item ? "Stock item updated." : "Stock item added.");
     } catch (error) {
       toast.error(error.message);
@@ -2735,13 +2923,26 @@ export default function InventoryPage() {
                 className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
               />
             </label>
+            {isOperator && contextIsOcs ? (
+              <button
+                type="button"
+                onClick={() => setOperatorAddOpen(true)}
+                className="bg-teal-600 text-white text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-teal-700 transition-colors shadow-sm flex items-center gap-1.5 ml-auto shrink-0"
+              >
+                <Plus className="size-3.5" />
+                Add New Item
+              </button>
+            ) : null}
           </div>
-          <div className="-mx-1 flex flex-wrap gap-2">
+          <div className="-mx-1 flex flex-wrap items-center gap-2">
             {folders.map((folder) => (
               <button
                 key={folder.id}
                 type="button"
-                onClick={() => setSelectedView(String(folder.id))}
+                onClick={() => {
+                  setSelectedView(String(folder.id));
+                  setActiveCategory(folder.name);
+                }}
                 className={`shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold sm:text-sm ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
               >
                 {folder.name}
@@ -3174,6 +3375,15 @@ export default function InventoryPage() {
         </div>
       )}
 
+      <OperatorAddItemDrawer
+        open={operatorAddOpen}
+        folders={folders}
+        activeFolderId={selectedView}
+        activeCategory={activeCategory}
+        isSaving={isSaving}
+        onClose={() => setOperatorAddOpen(false)}
+        onSubmit={saveItem}
+      />
       <ItemModal
         open={Boolean(editor)}
         item={editor?.item}
