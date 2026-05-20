@@ -1,15 +1,9 @@
-const { ocsMasterStockData } = require("../config/ocsMasterStockData");
 const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
-const { ocsIMDrugsExtension } = require("../config/ocsIMDrugsExtension");
 const { upsertOcsMasterStockDataset } = require("./ocsMasterStockUpsert");
 const { db } = require("../db");
 
-/** Full catalog for explicit seed scripts (seed:ocs-stock, warehouse purge/reseed). */
-const OCS_FULL_CATALOG_ROWS = [
-  ...ocsMasterStockData,
-  ...ocsConsumablesExtension,
-  ...ocsIMDrugsExtension,
-];
+/** Explicit seed scripts only — Consumable manifest (no IM/IV/etc auto-restore). */
+const OCS_FULL_CATALOG_ROWS = [...ocsConsumablesExtension];
 
 /** Startup ensure: Consumable SKUs only (other categories stay empty after category purge). */
 const OCS_CATALOG_ROWS = [...ocsConsumablesExtension];

@@ -100,13 +100,19 @@ docker exec clinicflow-app node src/scripts/seedOcsConsumablesExtension.js
 
 Source matrix: `server/src/config/ocsConsumablesExtension.js`. Updates the shared OCS `inventory` table used by Admin dashboard metrics, Operator stock grid, and Doctor low-stock alerts (no app restart required).
 
-**Remove all items in selected OCS categories** (keeps Consumable; also clears matching doctor-bag SKUs):
+**Remove all non-Consumable OCS master + doctor bag rows** (keeps Consumable master stock):
 
 ```bash
-docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeOcsInventoryCategories.js
+docker exec clinicflow-app node src/scripts/auditInventoryCategories.js
+
+docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeOcsNonConsumableAll.js
+
+docker exec clinicflow-app node src/scripts/auditInventoryCategories.js
 ```
 
 Removes: IM Drugs, IV Drugs, Wound Dressing, Oral Drugs, Pediatric Drugs, Investigation.
+
+**Important:** `SEED_OCS_MASTER_STOCK` must be `false` on the NAS. If it is `true`, older deployments re-inserted the full catalog on every container restart. After this deploy, master seed data is Consumable-only.
 
 **Audit inventory counts** (read-only):
 

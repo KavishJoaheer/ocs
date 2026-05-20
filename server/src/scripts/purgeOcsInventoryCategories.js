@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Remove all OCS master stock and matching doctor-bag rows in selected inventory folders.
+ * Remove OCS master stock and doctor-bag rows in non-Consumable inventory folders.
  * Consumable folder is NOT affected.
  *
  * Targets: IM Drugs, IV Drugs, Wound Dressing, Oral Drugs, Pediatric Drugs, Investigation
@@ -39,61 +39,15 @@ function tableExists(tableName) {
   return Boolean(row);
 }
 
-function purgeOcsInventoryCategoriesSync({ folderNames = PURGE_FOLDER_NAMES } = {}) {
-  assertPurgeAllowed();
-  initializeDatabase();
-
-  const folders = db
-    .prepare(`
-      SELECT id, name
-      FROM inventory_folders
-      WHERE owner_doctor_id IS NULL
-        AND name IN (${folderNames.map(() => "?").join(", ")})
-    `)
-    .all(...folderNames);
-
-  const folderIds = folders.map((row) => Number(row.id));
-  if (!folderIds.length) {
-    return {
-      folderNames,
-      foldersFound: [],
-      ocsRemoved: 0,
-      doctorBagRemoved: 0,
-      names: [],
-    };
-  }
-
-  const placeholders = folderIds.map(() => "?").join(", ");
-  const targets = db
-    .prepare(`
-      SELECT id, item_name, stock_scope, owner_doctor_id
-      FROM inventory
-      WHERE folder_id IN (${placeholders})
-        AND (
-          (stock_scope = 'ocs' AND owner_doctor_id IS NULL)
-          OR stock_scope = 'doctor'
-        )
-    `)
-    .all(...folderIds);
-
-  if (!targets.length) {
-    return {
-      folderNames,
-      foldersFound: folders.map((f) => f.name),
-      ocsRemoved: 0,
-      doctorBagRemoved: 0,
-      names: [],
-    };
-  }
-
+function deleteInventoryRows(rows) {
   const deleteBatches = db.prepare("DELETE FROM inventory_batches WHERE item_id = ?");
   const deleteMovements = db.prepare("DELETE FROM inventory_movements WHERE item_id = ?");
   const deleteStocktakes = db.prepare("DELETE FROM inventory_stocktakes WHERE item_id = ?");
   const deleteAudit = db.prepare("DELETE FROM inventory_audit_logs WHERE item_id = ?");
   const deleteItem = db.prepare("DELETE FROM inventory WHERE id = ?");
 
-  const run = db.transaction((rows) => {
-    rows.forEach((row) => {
+  const run = db.transaction((targets) => {
+    targets.forEach((row) => {
       const itemId = Number(row.id);
       if (tableExists("inventory_batches")) {
         deleteBatches.run(itemId);
@@ -119,7 +73,43 @@ function purgeOcsInventoryCategoriesSync({ folderNames = PURGE_FOLDER_NAMES } = 
     });
   });
 
-  run(targets);
+  run(rows);
+}
+
+function purgeOcsInventoryCategoriesSync({ folderNames = PURGE_FOLDER_NAMES } = {}) {
+  assertPurgeAllowed();
+  initializeDatabase();
+
+  const folderPlaceholders = folderNames.map(() => "?").join(", ");
+
+  const targets = db
+    .prepare(`
+      SELECT
+        i.id,
+        i.item_name,
+        i.stock_scope,
+        i.owner_doctor_id,
+        f.name AS folder_name
+      FROM inventory i
+      JOIN inventory_folders f ON f.id = i.folder_id
+      WHERE f.name IN (${folderPlaceholders})
+        AND (
+          (i.stock_scope = 'ocs' AND i.owner_doctor_id IS NULL)
+          OR (i.stock_scope = 'doctor' AND i.owner_doctor_id IS NOT NULL)
+        )
+    `)
+    .all(...folderNames);
+
+  if (!targets.length) {
+    return {
+      folderNames,
+      ocsRemoved: 0,
+      doctorBagRemoved: 0,
+      names: [],
+    };
+  }
+
+  deleteInventoryRows(targets);
 
   const ocsRemoved = targets.filter(
     (row) => row.stock_scope === "ocs" && !row.owner_doctor_id,
@@ -128,7 +118,6 @@ function purgeOcsInventoryCategoriesSync({ folderNames = PURGE_FOLDER_NAMES } = 
 
   return {
     folderNames,
-    foldersFound: folders.map((f) => f.name),
     ocsRemoved,
     doctorBagRemoved,
     names: targets.map((row) => row.item_name),
@@ -138,16 +127,19 @@ function purgeOcsInventoryCategoriesSync({ folderNames = PURGE_FOLDER_NAMES } = 
 if (require.main === module) {
   try {
     const result = purgeOcsInventoryCategoriesSync();
-    console.log("OCS inventory category purge complete.");
-    console.log(`  Folders: ${result.foldersFound.join(", ") || "(none found)"}`);
+    console.log("OCS non-Consumable category purge complete.");
+    console.log(`  Categories: ${result.folderNames.join(", ")}`);
     console.log(`  OCS master rows removed:  ${result.ocsRemoved}`);
     console.log(`  Doctor bag rows removed: ${result.doctorBagRemoved}`);
     console.log("  Consumable folder was not changed.");
     const uniqueNames = [...new Set(result.names)];
     if (uniqueNames.length) {
       console.log(`  Unique SKUs removed: ${uniqueNames.length}`);
-      uniqueNames.forEach((name) => console.log(`    - ${name}`));
+    } else {
+      console.log("  No rows found (already clear).");
     }
+    console.log("");
+    console.log("Ensure NAS .env has SEED_OCS_MASTER_STOCK=false so items are not re-added on restart.");
   } catch (error) {
     console.error("Purge failed:", error.message);
     process.exitCode = 1;
