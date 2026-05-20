@@ -1333,10 +1333,12 @@ function InventoryOcsMasterActions({
   item,
   touchWrap = false,
   omitRestock = false,
+  showDeleteItem = false,
   onStockIn,
   onEdit,
   onRestockDoctor,
   onRemove,
+  onDeleteItem,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
@@ -1460,6 +1462,19 @@ function InventoryOcsMasterActions({
                   <Trash2 className="size-3.5 shrink-0" />
                   Remove stock
                 </button>
+                {showDeleteItem && onDeleteItem ? (
+                  <button
+                    type="button"
+                    className={`${menuItem} text-rose-700 hover:bg-rose-50`}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onDeleteItem(item);
+                    }}
+                  >
+                    <Trash2 className="size-3.5 shrink-0" />
+                    Delete item
+                  </button>
+                ) : null}
               </div>,
               document.body,
             )
@@ -1476,6 +1491,7 @@ function InventoryActionButtons({
   isDoctor,
   doctorViewIsMy,
   doctorViewIsOcs,
+  showDeleteItem = false,
   onStockIn,
   onEdit,
   onRestockDoctor,
@@ -1483,6 +1499,7 @@ function InventoryActionButtons({
   onStockOut,
   onAdjustReclaim,
   onRemove,
+  onDeleteItem,
   touchWrap = false,
   omitRestock = false,
 }) {
@@ -1492,10 +1509,12 @@ function InventoryActionButtons({
         item={item}
         touchWrap={touchWrap}
         omitRestock={omitRestock}
+        showDeleteItem={showDeleteItem}
         onStockIn={onStockIn}
         onEdit={onEdit}
         onRestockDoctor={onRestockDoctor}
         onRemove={onRemove}
+        onDeleteItem={onDeleteItem}
       />
     );
   }
@@ -2701,13 +2720,13 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      const next = await api.post(endpoint, {
+      await api.post(endpoint, {
         action_type: "remove",
         quantity,
         reason: payload.reason,
       });
-      setData(next);
       setRemoveStock(null);
+      await load(selectedContextDoctorId, doctorContext, { silent: true });
       toast.success(isDoctorBag ? "Doctor bag stock adjusted." : "Stock removed.");
     } catch (error) {
       toast.error(error.message);
@@ -2812,7 +2831,7 @@ export default function InventoryPage() {
     try {
       await api.delete(`/inventory/items/${itemToDelete.id}`);
       setItemToDelete(null);
-      await load();
+      await load(selectedContextDoctorId, doctorContext, { silent: true });
       toast.success("Stock item deleted.");
     } catch (error) {
       toast.error(error.message);
@@ -3166,6 +3185,8 @@ export default function InventoryPage() {
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                                 onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                                showDeleteItem={isAdmin}
+                                onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                               />
                               </div>
                             </td>
@@ -3310,6 +3331,8 @@ export default function InventoryPage() {
                           onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                           onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                           onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                          showDeleteItem={isAdmin}
+                          onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                           touchWrap
                         />
                       )}
@@ -3331,6 +3354,8 @@ export default function InventoryPage() {
                           onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                           onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                           onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                          showDeleteItem={isAdmin}
+                          onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                           touchWrap
                           omitRestock
                         />

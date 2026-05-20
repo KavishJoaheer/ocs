@@ -445,6 +445,44 @@ function consumeBatches(itemId, quantity, { disallowExpired = false } = {}) {
   return { ok: remaining <= 0, allocations };
 }
 
+function getBatchQuantityTotal(itemId) {
+  const row = db
+    .prepare(`
+      SELECT COALESCE(SUM(quantity_remaining), 0) AS total
+      FROM inventory_batches
+      WHERE item_id = ?
+        AND quantity_remaining > 0
+    `)
+    .get(itemId);
+  return Number(row?.total || 0);
+}
+
+/** Deduct stock using FEFO batches; heals missing batch rows when ledger quantity allows. */
+function consumeStock(itemId, quantity, options = {}) {
+  const amount = Number(quantity || 0);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { ok: false, allocations: [] };
+  }
+
+  let batchTotal = getBatchQuantityTotal(itemId);
+  if (batchTotal < amount) {
+    const item = db
+      .prepare("SELECT quantity, cost_price, expiry_date FROM inventory WHERE id = ?")
+      .get(itemId);
+    if (Number(item?.quantity || 0) >= amount) {
+      const shortfall = amount - batchTotal;
+      createBatch(
+        itemId,
+        shortfall,
+        item?.expiry_date || null,
+        toNumber(item?.cost_price, 0),
+      );
+    }
+  }
+
+  return consumeBatches(itemId, amount, options);
+}
+
 function doctorBagLabel(name) {
   const label = String(name || "").trim();
   return label ? `${label}'s Bag` : "Doctor's Bag";
@@ -1385,7 +1423,7 @@ router.put("/items/:id", (req, res) => {
   try {
     db.transaction(() => {
       if (delta < 0) {
-        const consumed = consumeBatches(itemId, Math.abs(delta));
+        const consumed = consumeStock(itemId, Math.abs(delta));
         if (!consumed.ok) throw new Error("Insufficient batch stock for quantity reduction.");
       } else if (delta > 0) {
         createBatch(itemId, delta, expiryDate, costPrice);
@@ -1496,7 +1534,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
 
   try {
     db.transaction(() => {
-      const consumed = consumeBatches(itemId, quantity);
+      const consumed = consumeStock(itemId, quantity);
       if (!consumed.ok) {
         throw new Error("Insufficient batch stock.");
       }
@@ -1575,7 +1613,7 @@ router.post("/items/:id/bag-actions", (req, res) => {
 
   try {
     db.transaction(() => {
-      const consumed = consumeBatches(itemId, quantity);
+      const consumed = consumeStock(itemId, quantity);
       if (!consumed.ok) {
         throw new Error("Insufficient batch stock.");
       }
@@ -1644,7 +1682,7 @@ router.post("/bulk/remove", (req, res) => {
         const previousQuantity = Number(item.quantity || 0);
         if (previousQuantity <= 0) return;
 
-        const consumed = consumeBatches(itemId, previousQuantity);
+        const consumed = consumeStock(itemId, previousQuantity);
         if (!consumed.ok) throw new Error(`Insufficient batch stock for item ${itemId}`);
 
         db.prepare("UPDATE inventory SET quantity = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(itemId);
@@ -1790,7 +1828,7 @@ router.post("/items/:id/actions", (req, res) => {
           createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price);
         }
       } else {
-        const consumed = consumeBatches(itemId, quantity);
+        const consumed = consumeStock(itemId, quantity);
         if (!consumed.ok) {
           throw new Error("Insufficient stock.");
         }
@@ -2313,8 +2351,8 @@ router.delete("/items/:id", (req, res) => {
   ensureInfrastructure();
   const isDoctor = req.auth.role === "doctor";
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
-  if (!isDoctor && req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only admin or owning doctor can delete items." });
+  if (!isDoctor && !["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin, operator, or owning doctor can delete items." });
   }
 
   const itemId = Number(req.params.id);
