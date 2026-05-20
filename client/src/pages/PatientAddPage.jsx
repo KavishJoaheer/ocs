@@ -65,7 +65,7 @@ function PatientAddPage() {
   return (
     <PatientFormModal
       canEditPatientIdentifier={user.role === "admin"}
-      canSelectAssignedDoctor={user.role === "admin" || user.role === "operator"}
+      canSelectAssignedDoctor={user.role === "admin"}
       doctors={doctors}
       isSaving={isSaving}
       layout={isMobile ? "page" : "modal"}

@@ -116,7 +116,19 @@ async function apiRequest(path, options = {}) {
   }
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        response.ok
+          ? "Server returned an invalid response."
+          : "Server returned an unreadable error response.",
+      );
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {
