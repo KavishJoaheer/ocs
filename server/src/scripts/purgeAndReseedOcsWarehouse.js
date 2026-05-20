@@ -16,6 +16,7 @@
 const { db, initializeDatabase } = require("../db");
 const { seedOcsMasterStockSync } = require("./seedOcsMasterStock");
 const { seedOcsConsumablesExtensionSync } = require("./seedOcsConsumablesExtension");
+const { seedOcsIMDrugsExtensionSync } = require("./seedOcsIMDrugsExtension");
 const { purgeTestInventoryItems } = require("./purgeOcsTestInventory");
 
 const PURGE_ENV_FLAG = "ALLOW_DB_PURGE";
@@ -117,6 +118,10 @@ function purgeAndReseedOcsWarehouseSync() {
     skipInit: true,
     syncDoctorBags: false,
   });
+  const imDrugsSummary = seedOcsIMDrugsExtensionSync({
+    skipInit: true,
+    syncDoctorBags: false,
+  });
 
   return {
     logSummary,
@@ -124,6 +129,7 @@ function purgeAndReseedOcsWarehouseSync() {
     testSummary,
     seedSummary,
     consumablesSummary,
+    imDrugsSummary,
   };
 }
 
@@ -152,6 +158,9 @@ if (require.main === module) {
     console.log(`  Catalog rows: ${result.seedSummary.inserted + result.seedSummary.updated + result.seedSummary.skipped}`);
     console.log(
       `  Consumables extension: ${result.consumablesSummary.consumables.inserted} inserted, ${result.consumablesSummary.consumables.updated} updated`,
+    );
+    console.log(
+      `  IM Drugs extension: ${result.imDrugsSummary.imDrugs.inserted} inserted, ${result.imDrugsSummary.imDrugs.updated} updated`,
     );
 
     if (result.seedSummary.errors.length) {

@@ -1,11 +1,16 @@
 const { ocsMasterStockData } = require("../config/ocsMasterStockData");
 const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
+const { ocsIMDrugsExtension } = require("../config/ocsIMDrugsExtension");
 const { upsertOcsMasterStockDataset } = require("./ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("../scripts/syncDoctorStockFromOcs");
 const { db } = require("../db");
 
-/** Full OCS master catalog: base matrix + consumables spreadsheet extension. */
-const OCS_CATALOG_ROWS = [...ocsMasterStockData, ...ocsConsumablesExtension];
+/** Full OCS master catalog: base matrix + spreadsheet extensions. */
+const OCS_CATALOG_ROWS = [
+  ...ocsMasterStockData,
+  ...ocsConsumablesExtension,
+  ...ocsIMDrugsExtension,
+];
 
 let catalogEnsureComplete = false;
 

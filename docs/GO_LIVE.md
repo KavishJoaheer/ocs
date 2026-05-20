@@ -100,6 +100,14 @@ docker exec clinicflow-app node src/scripts/seedOcsConsumablesExtension.js
 
 Source matrix: `server/src/config/ocsConsumablesExtension.js`. Updates the shared OCS `inventory` table used by Admin dashboard metrics, Operator stock grid, and Doctor low-stock alerts (no app restart required).
 
+**Append IM Drugs manifest rows** (upsert by item name, safe to re-run):
+
+```bash
+docker exec clinicflow-app node src/scripts/seedOcsIMDrugsExtension.js
+```
+
+Source matrix: `server/src/config/ocsIMDrugsExtension.js`. Same shared `inventory` table — near-expiry dates flow to Doctor mobile alerts after refresh.
+
 **Optional — remove sandbox patients that were soft-deleted:**
 
 ```bash

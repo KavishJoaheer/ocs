@@ -9,6 +9,7 @@
     "generate-vapid": "node -e \"const webpush=require('web-push'); const keys=webpush.generateVAPIDKeys(); console.log('VAPID_PUBLIC_KEY='+keys.publicKey); console.log('VAPID_PRIVATE_KEY='+keys.privateKey);\"",
     "seed:ocs-stock": "node src/scripts/seedOcsMasterStock.js",
     "seed:ocs-consumables": "node src/scripts/seedOcsConsumablesExtension.js",
+    "seed:ocs-im-drugs": "node src/scripts/seedOcsIMDrugsExtension.js",
     "purge:ocs-test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
