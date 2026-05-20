@@ -1,8 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Calendar,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
+  Clock,
   Download,
   Minus,
   MinusCircle,
@@ -222,6 +225,59 @@ function SummaryCard({ title, value, tone = "teal" }) {
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+function OperatorInventoryLogisticsGrid({
+  lowStockCount,
+  nearExpiryCount,
+  showLowStockOnly,
+  showNearExpiryOnly,
+  onToggleLowStock,
+  onToggleNearExpiry,
+}) {
+  return (
+    <div className="mb-6 grid w-full grid-cols-1 gap-6 md:grid-cols-2">
+      <button
+        type="button"
+        onClick={onToggleLowStock}
+        className={cx(
+          "flex w-full items-center justify-between rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-6 text-left shadow-sm transition hover:shadow-md",
+          showLowStockOnly && "ring-2 ring-[#8fa382]/40",
+        )}
+      >
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-[#8fa382]">Low Stock Alerts</p>
+          <p className="mt-1.5 text-3xl font-black tabular-nums text-[#3b4733]">{lowStockCount}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="rounded-2xl bg-[#e6ebd9] p-3 text-[#5a7353]">
+            <AlertTriangle className="size-6" strokeWidth={2.25} aria-hidden />
+          </div>
+          <ChevronRight className="size-5 text-[#8fa382]" aria-hidden />
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={onToggleNearExpiry}
+        className={cx(
+          "flex w-full items-center justify-between rounded-2xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-6 text-left shadow-sm transition hover:shadow-md",
+          showNearExpiryOnly && "ring-2 ring-[#d9744b]/35",
+        )}
+      >
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-[#ba5a32]">Near Expiry Items</p>
+          <p className="mt-1.5 text-3xl font-black tabular-nums text-[#6e2f14]">{nearExpiryCount}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="rounded-2xl bg-[#f5e3d7] p-3 text-[#ba5a32]">
+            <Clock className="size-6" strokeWidth={2.25} aria-hidden />
+          </div>
+          <ChevronRight className="size-5 text-[#ba5a32]" aria-hidden />
+        </div>
+      </button>
     </div>
   );
 }
@@ -1801,7 +1857,8 @@ export default function InventoryPage() {
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const isDoctor = user.role === "doctor";
-  const canManageOcs = user.role === "admin" || user.role === "operator";
+  const isOperator = user.role === "operator";
+  const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
   const folders = data?.folders || [];
   const doctors = data?.doctors || [];
@@ -2546,8 +2603,9 @@ export default function InventoryPage() {
           />
         </>
       ) : (
-        <div className={cx(pageContainerClass, "space-y-6")}>
+        <div className={cx(pageContainerClass, isOperator ? "space-y-4" : "space-y-6")}>
       <PageHeader
+        className={isOperator ? "mb-0" : undefined}
         eyebrow="Logistics"
         title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
         actions={
@@ -2588,12 +2646,33 @@ export default function InventoryPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} />
-        <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} />
-        <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} />
-        <SummaryCard title="Low / Near Expiry" value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`} tone="amber" />
-      </div>
+      {isOperator ? (
+        <OperatorInventoryLogisticsGrid
+          lowStockCount={Number(summary.low_stock_count || 0)}
+          nearExpiryCount={Number(summary.near_expiry_count || 0)}
+          showLowStockOnly={showLowStockOnly}
+          showNearExpiryOnly={showNearExpiryOnly}
+          onToggleLowStock={() => {
+            setShowLowStockOnly((prev) => !prev);
+            setShowNearExpiryOnly(false);
+          }}
+          onToggleNearExpiry={() => {
+            setShowNearExpiryOnly((prev) => !prev);
+            setShowLowStockOnly(false);
+          }}
+        />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+          <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} />
+          <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} />
+          <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} />
+          <SummaryCard
+            title="Low / Near Expiry"
+            value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`}
+            tone="amber"
+          />
+        </div>
+      )}
 
       <SectionCard
         title={

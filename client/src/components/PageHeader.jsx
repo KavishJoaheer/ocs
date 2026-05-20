@@ -1,6 +1,8 @@
-function PageHeader({ eyebrow, title, description, actions }) {
+function PageHeader({ eyebrow, title, description, actions, className = "" }) {
   return (
-    <div className="flex w-full min-w-0 max-w-full flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div
+      className={`flex w-full min-w-0 max-w-full flex-col gap-3 md:flex-row md:items-end md:justify-between ${className}`.trim()}
+    >
       <div className="min-w-0">
         {eyebrow ? (
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
