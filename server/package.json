@@ -9,7 +9,8 @@
     "generate-vapid": "node -e \"const webpush=require('web-push'); const keys=webpush.generateVAPIDKeys(); console.log('VAPID_PUBLIC_KEY='+keys.publicKey); console.log('VAPID_PRIVATE_KEY='+keys.privateKey);\"",
     "seed:ocs-stock": "node src/scripts/seedOcsMasterStock.js",
     "purge:ocs-test-items": "node src/scripts/purgeOcsTestInventory.js",
-    "purge:test-items": "node src/scripts/purgeOcsTestInventory.js"
+    "purge:test-items": "node src/scripts/purgeOcsTestInventory.js",
+    "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js"
   },
   "keywords": [],
   "author": "",

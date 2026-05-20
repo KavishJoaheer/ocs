@@ -2,6 +2,7 @@ const { createApp } = require("./app");
 const { initializeDatabase } = require("./db");
 const { seedOcsMasterStockSync } = require("./scripts/seedOcsMasterStock");
 const { purgeOcsTestInventoryItems } = require("./scripts/purgeOcsTestInventory");
+const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -30,6 +31,21 @@ try {
   }
 } catch (error) {
   console.warn("[seed] Test inventory purge failed:", error.message);
+}
+
+const shouldSyncDoctorStock = String(process.env.SEED_DOCTOR_STOCK_FROM_OCS ?? "true").toLowerCase() !== "false";
+if (shouldSyncDoctorStock) {
+  try {
+    const doctorSummary = syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });
+    console.log(
+      `[seed] Doctor bags synced from OCS (${doctorSummary.doctors} doctors, ${doctorSummary.inserted} new, ${doctorSummary.updated} updated, ${doctorSummary.pruned} pruned).`,
+    );
+    if (doctorSummary.errors.length) {
+      console.warn(`[seed] Doctor stock sync completed with ${doctorSummary.errors.length} doctor error(s).`);
+    }
+  } catch (error) {
+    console.warn("[seed] Doctor stock sync from OCS failed:", error.message);
+  }
 }
 
 const app = createApp();

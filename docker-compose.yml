@@ -9,6 +9,7 @@ services:
       PORT: 3001
       DB_PATH: /data/clinic.db
       SEED_OCS_MASTER_STOCK: ${SEED_OCS_MASTER_STOCK:-true}
+      SEED_DOCTOR_STOCK_FROM_OCS: ${SEED_DOCTOR_STOCK_FROM_OCS:-true}
       TZ: ${TZ:-Indian/Mauritius}
     ports:
       - "${APP_PORT:-8080}:3001"
