@@ -2,7 +2,6 @@ const { ocsMasterStockData } = require("../config/ocsMasterStockData");
 const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
 const { ocsIMDrugsExtension } = require("../config/ocsIMDrugsExtension");
 const { upsertOcsMasterStockDataset } = require("./ocsMasterStockUpsert");
-const { syncDoctorStockFromOcsSync } = require("../scripts/syncDoctorStockFromOcs");
 const { db } = require("../db");
 
 /** Full catalog for explicit seed scripts (seed:ocs-stock, warehouse purge/reseed). */
@@ -33,46 +32,13 @@ function countMissingOcsCatalogItems() {
   }).length;
 }
 
-function countMissingDoctorCatalogRows() {
-  const doctors = db
-    .prepare("SELECT id FROM doctors WHERE deleted_at IS NULL")
-    .all();
-  const ocsItems = db
-    .prepare(`
-      SELECT item_name
-      FROM inventory
-      WHERE stock_scope = 'ocs'
-        AND owner_doctor_id IS NULL
-    `)
-    .all();
-
-  let missing = 0;
-  doctors.forEach((doctor) => {
-    ocsItems.forEach((item) => {
-      const existing = db
-        .prepare(`
-          SELECT id
-          FROM inventory
-          WHERE stock_scope = 'doctor'
-            AND owner_doctor_id = ?
-            AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-          LIMIT 1
-        `)
-        .get(doctor.id, item.item_name);
-      if (!existing) missing += 1;
-    });
-  });
-  return missing;
-}
-
 function ensureOcsCatalogSync({ force = false } = {}) {
   if (catalogEnsureComplete && !force) {
     return { ocs: null, doctors: null, skipped: true };
   }
 
   const missingOcs = countMissingOcsCatalogItems();
-  const missingDoctorRows = countMissingDoctorCatalogRows();
-  if (!force && missingOcs === 0 && missingDoctorRows === 0) {
+  if (!force && missingOcs === 0) {
     catalogEnsureComplete = true;
     return { ocs: null, doctors: null, skipped: true };
   }
@@ -81,14 +47,11 @@ function ensureOcsCatalogSync({ force = false } = {}) {
     skipInit: true,
     insertOnly: true,
   });
-  const doctorSummary = syncDoctorStockFromOcsSync({
-    skipInit: true,
-    insertOnly: true,
-    pruneExtras: false,
-  });
 
+  // Doctor bag rows are NOT auto-created here (purges would be undone on the next
+  // inventory page load). Use seed:doctor-stock or SEED_DOCTOR_STOCK_FROM_OCS=true.
   catalogEnsureComplete = true;
-  return { ocs: ocsSummary, doctors: doctorSummary, skipped: false };
+  return { ocs: ocsSummary, doctors: null, skipped: false };
 }
 
 module.exports = {

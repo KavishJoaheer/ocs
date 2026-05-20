@@ -108,6 +108,12 @@ docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeOcsInven
 
 Removes: IM Drugs, IV Drugs, Wound Dressing, Oral Drugs, Pediatric Drugs, Investigation.
 
+**Audit inventory counts** (read-only):
+
+```bash
+docker exec clinicflow-app node src/scripts/auditInventoryCategories.js
+```
+
 **Remove all doctor bag rows in every category** (keeps OCS master stock; includes Consumable):
 
 ```bash

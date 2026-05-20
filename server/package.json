@@ -15,6 +15,7 @@
     "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
     "purge:ocs-categories": "node src/scripts/purgeOcsInventoryCategories.js",
     "purge:doctor-bag-categories": "node src/scripts/purgeDoctorBagCategories.js",
+    "audit:inventory-categories": "node src/scripts/auditInventoryCategories.js",
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
     "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",

@@ -16,7 +16,7 @@ const { ocsIMDrugsExtension } = require("../config/ocsIMDrugsExtension");
 const { upsertOcsMasterStockDataset } = require("../lib/ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("./syncDoctorStockFromOcs");
 
-function seedOcsIMDrugsExtensionSync({ skipInit = false, syncDoctorBags = true } = {}) {
+function seedOcsIMDrugsExtensionSync({ skipInit = false, syncDoctorBags = false } = {}) {
   const summary = upsertOcsMasterStockDataset(ocsIMDrugsExtension, {
     skipInit,
     insertOnly: false,

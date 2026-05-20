@@ -16,7 +16,7 @@ const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension")
 const { upsertOcsMasterStockDataset } = require("../lib/ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("./syncDoctorStockFromOcs");
 
-function seedOcsConsumablesExtensionSync({ skipInit = false, syncDoctorBags = true } = {}) {
+function seedOcsConsumablesExtensionSync({ skipInit = false, syncDoctorBags = false } = {}) {
   const summary = upsertOcsMasterStockDataset(ocsConsumablesExtension, {
     skipInit,
     insertOnly: false,
