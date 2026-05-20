@@ -52,6 +52,35 @@ const ocsMasterStockData = [
   { name: "Augmentin Kids Syrup 156mg/5ml", category: "Pediatric Drugs", current_quantity: 12, par_level: 6, nearest_expiry: "2026-11-04" },
   { name: "Motilium Suspension 100ml", category: "Pediatric Drugs", current_quantity: 10, par_level: 5, nearest_expiry: "2027-06-30" },
   { name: "Spasfon Expan Pediatric Drops", category: "Pediatric Drugs", current_quantity: 8, par_level: 4, nearest_expiry: "2027-09-12" },
+
+  // CATEGORY 6: ORAL DRUGS
+  { name: "Dulopro sachet of 6 Nebules", category: "Oral Drugs", current_quantity: 0, par_level: 3, nearest_expiry: null },
+  { name: "Pulmicort 0.5mg (pack of 5)", category: "Oral Drugs", current_quantity: 0, par_level: 3, nearest_expiry: null },
+  { name: "Azithromycin 500mg x3", category: "Oral Drugs", current_quantity: 0, par_level: 3, nearest_expiry: null },
+  { name: "Monuril 3g", category: "Oral Drugs", current_quantity: 1, par_level: 2, nearest_expiry: null },
+  { name: "Nifedipine", category: "Oral Drugs", current_quantity: 0, par_level: 15, nearest_expiry: null },
+  { name: "Norflex tab", category: "Oral Drugs", current_quantity: 0, par_level: 15, nearest_expiry: null },
+  { name: "Nugene -O", category: "Oral Drugs", current_quantity: 4, par_level: 15, nearest_expiry: null },
+  { name: "Tab Phenergan", category: "Oral Drugs", current_quantity: 48, par_level: 15, nearest_expiry: null },
+  { name: "Tab Valium 10mg", category: "Oral Drugs", current_quantity: 0, par_level: 5, nearest_expiry: null },
+  { name: "Algic-P", category: "Oral Drugs", current_quantity: 0, par_level: 15, nearest_expiry: null },
+  { name: "Solpadeine", category: "Oral Drugs", current_quantity: 20, par_level: 20, nearest_expiry: null },
+  { name: "SmectSa", category: "Oral Drugs", current_quantity: 0, par_level: 1, nearest_expiry: null },
+  { name: "Flagly 500mg", category: "Oral Drugs", current_quantity: 15, par_level: 0, nearest_expiry: null },
+
+  // CATEGORY 7: INVESTIGATION
+  { name: "Covid Test", category: "Investigation", current_quantity: 12, par_level: 10, nearest_expiry: null },
+  { name: "ECG Roll (L)", category: "Investigation", current_quantity: 6, par_level: 3, nearest_expiry: null },
+  { name: "ECG Rolls (S)", category: "Investigation", current_quantity: 11, par_level: 3, nearest_expiry: null },
+  { name: "Echo Gel", category: "Investigation", current_quantity: 0, par_level: 3, nearest_expiry: null },
+  { name: "Influenza Rapid Test", category: "Investigation", current_quantity: 0, par_level: 0, nearest_expiry: null },
+  { name: "Lancet (Box of 50)", category: "Investigation", current_quantity: 1, par_level: 5, nearest_expiry: null },
+  { name: "Lancet (Box of 100)", category: "Investigation", current_quantity: 8, par_level: 5, nearest_expiry: null },
+  { name: "On Call Extra Strips (Box of 50)", category: "Investigation", current_quantity: 0, par_level: 0, nearest_expiry: null },
+  { name: "On call Plus Strips (Box of 50)", category: "Investigation", current_quantity: 0, par_level: 0, nearest_expiry: null },
+  { name: "Pregnancy Test", category: "Investigation", current_quantity: 2, par_level: 5, nearest_expiry: null },
+  { name: "Sinocare strip (Box of 50)", category: "Investigation", current_quantity: 4, par_level: 5, nearest_expiry: null },
+  { name: "Urine dip stick", category: "Investigation", current_quantity: 0, par_level: 0, nearest_expiry: null },
 ];
 
 module.exports = { ocsMasterStockData };
