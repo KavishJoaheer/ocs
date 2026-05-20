@@ -5,12 +5,15 @@ const { upsertOcsMasterStockDataset } = require("./ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("../scripts/syncDoctorStockFromOcs");
 const { db } = require("../db");
 
-/** Full OCS master catalog: base matrix + spreadsheet extensions. */
-const OCS_CATALOG_ROWS = [
+/** Full catalog for explicit seed scripts (seed:ocs-stock, warehouse purge/reseed). */
+const OCS_FULL_CATALOG_ROWS = [
   ...ocsMasterStockData,
   ...ocsConsumablesExtension,
   ...ocsIMDrugsExtension,
 ];
+
+/** Startup ensure: Consumable SKUs only (other categories stay empty after category purge). */
+const OCS_CATALOG_ROWS = [...ocsConsumablesExtension];
 
 let catalogEnsureComplete = false;
 
@@ -92,4 +95,5 @@ module.exports = {
   ensureOcsCatalogSync,
   countMissingOcsCatalogItems,
   OCS_CATALOG_ROWS,
+  OCS_FULL_CATALOG_ROWS,
 };

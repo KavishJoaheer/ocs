@@ -100,6 +100,14 @@ docker exec clinicflow-app node src/scripts/seedOcsConsumablesExtension.js
 
 Source matrix: `server/src/config/ocsConsumablesExtension.js`. Updates the shared OCS `inventory` table used by Admin dashboard metrics, Operator stock grid, and Doctor low-stock alerts (no app restart required).
 
+**Remove all items in selected OCS categories** (keeps Consumable; also clears matching doctor-bag SKUs):
+
+```bash
+docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeOcsInventoryCategories.js
+```
+
+Removes: IM Drugs, IV Drugs, Wound Dressing, Oral Drugs, Pediatric Drugs, Investigation.
+
 **Append IM Drugs manifest rows** (upsert by item name, safe to re-run):
 
 ```bash
