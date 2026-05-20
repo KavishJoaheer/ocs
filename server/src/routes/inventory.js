@@ -235,7 +235,37 @@ function buildReceiptByTransaction(transactionId) {
   };
 }
 
+function normalizeInventoryFolders() {
+  const updateInventoryFolder = db.prepare("UPDATE inventory SET folder_id = ? WHERE folder_id = ?");
+  const updateStagingFolder = db.prepare("UPDATE inventory_staging SET folder_id = ? WHERE folder_id = ?");
+  const deleteFolder = db.prepare("DELETE FROM inventory_folders WHERE id = ?");
+
+  REQUIRED_FOLDERS.forEach((name) => {
+    const matches = db
+      .prepare(`
+        SELECT id, parent_id
+        FROM inventory_folders
+        WHERE owner_doctor_id IS NULL
+          AND name = ?
+        ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, id ASC
+      `)
+      .all(name);
+
+    if (!matches.length) return;
+
+    const canonicalId = Number(matches[0].id);
+    matches.slice(1).forEach((row) => {
+      const duplicateId = Number(row.id);
+      updateInventoryFolder.run(canonicalId, duplicateId);
+      updateStagingFolder.run(canonicalId, duplicateId);
+      deleteFolder.run(duplicateId);
+    });
+  });
+}
+
 function ensureFolders() {
+  normalizeInventoryFolders();
+
   const insertFolder = db.prepare(`
     INSERT INTO inventory_folders (name, parent_id, owner_doctor_id, updated_at)
     VALUES (?, NULL, NULL, CURRENT_TIMESTAMP)
@@ -244,6 +274,8 @@ function ensureFolders() {
     const existing = db.prepare("SELECT id FROM inventory_folders WHERE owner_doctor_id IS NULL AND name = ?").get(name);
     if (!existing) insertFolder.run(name);
   });
+
+  normalizeInventoryFolders();
 }
 
 function getFolders() {

@@ -378,7 +378,7 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
             >
               <option value="">Select folder</option>
               {folders.map((folder) => (
-                <option key={folder.id} value={folder.id}>{folder.name}</option>
+                <option key={folder.id} value={String(folder.id)}>{folder.name}</option>
               ))}
             </select>
           </label>
@@ -1349,6 +1349,10 @@ function InventoryOcsMasterActions({
   const menuItem =
     "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50";
 
+  const editBtn = touchWrap
+    ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
+    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+
   return (
     <div className={cx("flex w-full min-w-0 items-center justify-end gap-2", touchWrap && "flex-wrap")}>
       <button
@@ -1359,6 +1363,15 @@ function InventoryOcsMasterActions({
         onClick={() => onStockIn(item)}
       >
         <Plus className="size-4 shrink-0" />
+      </button>
+      <button
+        type="button"
+        title="Edit item"
+        aria-label="Edit item"
+        className={editBtn}
+        onClick={() => onEdit(item)}
+      >
+        <Pencil className="size-4 shrink-0" />
       </button>
       <div className="relative shrink-0" ref={menuRef}>
         <button
@@ -1372,18 +1385,7 @@ function InventoryOcsMasterActions({
           <MoreVertical className="size-4 shrink-0" />
         </button>
         {menuOpen ? (
-          <div className="absolute right-0 z-30 mt-1 min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-            <button
-              type="button"
-              className={menuItem}
-              onClick={() => {
-                setMenuOpen(false);
-                onEdit(item);
-              }}
-            >
-              <Pencil className="size-3.5 shrink-0 text-slate-500" />
-              Edit
-            </button>
+          <div className="absolute right-0 z-50 mt-1 min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
             {!omitRestock ? (
               <button
                 type="button"
@@ -1651,7 +1653,7 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
               >
                 <option value="">Select category</option>
                 {folders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
+                  <option key={folder.id} value={String(folder.id)}>
                     {folder.name}
                   </option>
                 ))}
@@ -2975,8 +2977,8 @@ export default function InventoryPage() {
 
         {pagedItems.length ? (
           <>
-            <div className="hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-white md:block">
-              <div className={cx("overflow-auto overflow-x-auto", inventoryTableScrollClass)}>
+            <div className="hidden rounded-3xl border border-slate-200/80 bg-white md:block">
+              <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
                 <table className="min-w-full table-fixed text-left text-sm">
                   <colgroup>
                     <col style={{ width: "32%" }} />
@@ -3034,7 +3036,7 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">{item.minimum_quantity}</td>
                             <td className="px-3 py-1.5 align-middle text-center">{item.expiry_date || "Not set"}</td>
-                            <td className="px-3 py-1.5 align-middle text-left" onClick={(event) => event.stopPropagation()}>
+                            <td className="relative overflow-visible px-3 py-1.5 align-middle text-left" onClick={(event) => event.stopPropagation()}>
                               <InventoryActionButtons
                                 item={item}
                                 canManageOcs={canManageOcs}
@@ -3108,7 +3110,7 @@ export default function InventoryPage() {
                   isLow ||
                   trafficTone === "critical" ||
                   (isDoctor && doctorViewIsMy && trafficTone === "warning");
-                const showProminentRestock = isDoctor || (canManageOcs && contextIsOcs);
+                const showProminentRestock = isDoctor;
 
                 return (
                   <div
