@@ -15,10 +15,7 @@
 
 const { db, initializeDatabase } = require("../db");
 const { seedOcsMasterStockSync } = require("./seedOcsMasterStock");
-const {
-  isTestInventoryItemName,
-  purgeTestInventoryItems,
-} = require("./purgeOcsTestInventory");
+const { purgeTestInventoryItems } = require("./purgeOcsTestInventory");
 
 const PURGE_ENV_FLAG = "ALLOW_DB_PURGE";
 
