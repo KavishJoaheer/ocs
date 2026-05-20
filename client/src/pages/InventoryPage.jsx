@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Calendar,
@@ -298,10 +299,19 @@ function operatorItemFormState(folderId) {
   };
 }
 
-function itemFormState(item) {
+function resolveItemFolderId(item, folders = []) {
+  if (!item) return "";
+  const direct = folders.find((folder) => String(folder.id) === String(item.folder_id));
+  if (direct) return String(direct.id);
+  const byName = folders.find((folder) => folder.name === item.folder_name);
+  if (byName) return String(byName.id);
+  return item.folder_id ? String(item.folder_id) : "";
+}
+
+function itemFormState(item, folders = []) {
   return {
     item_name: item?.item_name ?? "",
-    folder_id: item?.folder_id ? String(item.folder_id) : "",
+    folder_id: resolveItemFolderId(item, folders),
     attributes: item?.attributes ?? "",
     moa_notes: item?.moa_notes ?? "",
     quantity: String(item?.quantity ?? 0),
@@ -315,11 +325,11 @@ function itemFormState(item) {
 }
 
 function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, onClose, onSubmit }) {
-  const [form, setForm] = useState(itemFormState(item));
+  const [form, setForm] = useState(() => itemFormState(item, folders));
 
   useEffect(() => {
-    if (open) setForm(itemFormState(item));
-  }, [item, open]);
+    if (open) setForm(itemFormState(item, folders));
+  }, [item, open, folders]);
 
   const masterReadOnly = lockMasterFields;
   const fieldClass = (locked) =>
@@ -1325,18 +1335,38 @@ function InventoryOcsMasterActions({
   onRemove,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const menuRef = useRef(null);
+  const menuPanelRef = useRef(null);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
     function handleMouseDown(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false);
-      }
+      const target = event.target;
+      if (menuRef.current?.contains(target) || menuPanelRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    }
+    function handleEscape(event) {
+      if (event.key === "Escape") setMenuOpen(false);
     }
     document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [menuOpen]);
+
+  function openMenu() {
+    const anchor = menuRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setMenuPosition({
+      top: rect.bottom + 6,
+      left: Math.max(8, rect.right - 200),
+    });
+    setMenuOpen(true);
+  }
 
   const receiveBtn = touchWrap
     ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b]"
@@ -1380,38 +1410,56 @@ function InventoryOcsMasterActions({
           aria-label="More actions"
           aria-expanded={menuOpen}
           className={moreBtn}
-          onClick={() => setMenuOpen((prev) => !prev)}
+          onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
         >
           <MoreVertical className="size-4 shrink-0" />
         </button>
-        {menuOpen ? (
-          <div className="absolute right-0 z-50 mt-1 min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-            {!omitRestock ? (
-              <button
-                type="button"
-                className={menuItem}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onRestockDoctor(item);
-                }}
+        {menuOpen && menuPosition && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={menuPanelRef}
+                className="fixed z-[100] min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left }}
               >
-                <Truck className="size-3.5 shrink-0 text-slate-500" />
-                Restock / Transfer
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={`${menuItem} text-rose-700 hover:bg-rose-50`}
-              onClick={() => {
-                setMenuOpen(false);
-                onRemove(item);
-              }}
-            >
-              <Trash2 className="size-3.5 shrink-0" />
-              Remove stock
-            </button>
-          </div>
-        ) : null}
+                <button
+                  type="button"
+                  className={menuItem}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onEdit(item);
+                  }}
+                >
+                  <Pencil className="size-3.5 shrink-0 text-slate-500" />
+                  Edit item
+                </button>
+                {!omitRestock ? (
+                  <button
+                    type="button"
+                    className={menuItem}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onRestockDoctor(item);
+                    }}
+                  >
+                    <Truck className="size-3.5 shrink-0 text-slate-500" />
+                    Restock / Transfer
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={`${menuItem} text-rose-700 hover:bg-rose-50`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRemove(item);
+                  }}
+                >
+                  <Trash2 className="size-3.5 shrink-0" />
+                  Remove stock
+                </button>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     </div>
   );
@@ -2039,6 +2087,18 @@ export default function InventoryPage() {
   const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
   const folders = data?.folders || [];
+  const openItemEditor = useCallback(
+    (nextItem) => {
+      const folderId = resolveItemFolderId(nextItem, folders);
+      setEditor({
+        item: {
+          ...nextItem,
+          folder_id: folderId ? Number(folderId) : Number(nextItem.folder_id || 0),
+        },
+      });
+    },
+    [folders],
+  );
   const doctors = data?.doctors || [];
   const doctorOptions = useMemo(
     () => [...doctors].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
@@ -2979,13 +3039,13 @@ export default function InventoryPage() {
           <>
             <div className="hidden rounded-3xl border border-slate-200/80 bg-white md:block">
               <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
-                <table className="min-w-full table-fixed text-left text-sm">
+                <table className="min-w-[52rem] w-full table-fixed text-left text-sm">
                   <colgroup>
-                    <col style={{ width: "32%" }} />
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "22%" }} />
-                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "30%" }} />
+                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "20%" }} />
+                    <col style={{ width: "28%" }} />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
                     <tr>
@@ -2993,7 +3053,9 @@ export default function InventoryPage() {
                       <th className="px-3 py-2 text-center align-middle">Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Min Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Nearest Expiry</th>
-                      <th className="px-3 py-2 text-left align-middle">Actions</th>
+                      <th className="sticky right-0 z-20 bg-slate-50 px-3 py-2 text-left align-middle shadow-[-6px_0_12px_rgba(15,23,42,0.06)]">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3007,7 +3069,10 @@ export default function InventoryPage() {
                       const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
                       return (
                         <Fragment key={item.id}>
-                          <tr className={`border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`} onClick={() => toggleExpanded(item.id)}>
+                          <tr
+                            className={`group border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`}
+                            onClick={() => toggleExpanded(item.id)}
+                          >
                             <td className="px-3 py-1.5 align-middle text-left">
                               <div className="flex items-center gap-2">
                                 <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
@@ -3036,7 +3101,13 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">{item.minimum_quantity}</td>
                             <td className="px-3 py-1.5 align-middle text-center">{item.expiry_date || "Not set"}</td>
-                            <td className="relative overflow-visible px-3 py-1.5 align-middle text-left" onClick={(event) => event.stopPropagation()}>
+                            <td
+                              className={cx(
+                                "sticky right-0 z-10 overflow-visible px-3 py-1.5 align-middle text-left shadow-[-6px_0_12px_rgba(15,23,42,0.06)]",
+                                isLow ? "bg-red-50 group-hover:bg-red-50" : "bg-white group-hover:bg-slate-50/70",
+                              )}
+                              onClick={(event) => event.stopPropagation()}
+                            >
                               <InventoryActionButtons
                                 item={item}
                                 canManageOcs={canManageOcs}
@@ -3045,7 +3116,7 @@ export default function InventoryPage() {
                                 doctorViewIsMy={doctorViewIsMy}
                                 doctorViewIsOcs={doctorViewIsOcs}
                                 onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                                onEdit={(nextItem) => setEditor({ item: nextItem })}
+                                onEdit={openItemEditor}
                                 onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
                                 onRestockMyInventory={openDoctorRestockForItem}
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
@@ -3188,7 +3259,7 @@ export default function InventoryPage() {
                           doctorViewIsMy={doctorViewIsMy}
                           doctorViewIsOcs={doctorViewIsOcs}
                           onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                          onEdit={(nextItem) => setEditor({ item: nextItem })}
+                          onEdit={openItemEditor}
                           onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
                           onRestockMyInventory={openDoctorRestockForItem}
                           onStockOut={(nextItem) => setStockOut({ item: nextItem })}
@@ -3209,7 +3280,7 @@ export default function InventoryPage() {
                           doctorViewIsMy={doctorViewIsMy}
                           doctorViewIsOcs={doctorViewIsOcs}
                           onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                          onEdit={(nextItem) => setEditor({ item: nextItem })}
+                          onEdit={openItemEditor}
                           onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
                           onRestockMyInventory={openDoctorRestockForItem}
                           onStockOut={(nextItem) => setStockOut({ item: nextItem })}

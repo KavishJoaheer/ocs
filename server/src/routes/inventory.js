@@ -260,6 +260,18 @@ function normalizeInventoryFolders() {
       updateStagingFolder.run(canonicalId, duplicateId);
       deleteFolder.run(duplicateId);
     });
+
+    db.prepare(`
+      UPDATE inventory
+      SET folder_id = ?
+      WHERE folder_id IN (
+        SELECT id
+        FROM inventory_folders
+        WHERE owner_doctor_id IS NULL
+          AND name = ?
+          AND id != ?
+      )
+    `).run(canonicalId, name, canonicalId);
   });
 }
 
