@@ -100,6 +100,14 @@ docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeSoftDele
 
 The admin **Patients** screen no longer shows a “Recently deleted” tab; soft-deleted rows are hidden from the directory only.
 
+**Optional — permanently remove soft-deleted team accounts (doctors, operators, accountants):**
+
+```bash
+docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeSoftDeletedTeamAccounts.js
+```
+
+Doctors who still have assigned patients are skipped (reported in the script output). The admin **Team operations** screen no longer shows a “Recently deleted” tab; delete still soft-hides accounts in the database until you run this purge.
+
 ---
 
 ## 5. Security & accounts

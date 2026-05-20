@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, KeyRound, Plus, Power, RotateCcw, SquarePen, Trash2 } from "lucide-react";
+import { CheckCircle2, KeyRound, Plus, Power, SquarePen, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -17,31 +17,24 @@ const roleTabs = [
     role: "doctor",
     label: "Doctor tab",
     title: "Doctor accounts",
-    description: "Create, edit, enable, disable, or move doctor logins to recently deleted while keeping clinic history intact.",
+    description: "Create, edit, enable, disable, or remove doctor logins while keeping clinic history intact.",
   },
   {
     role: "operator",
     label: "Operator tab",
     title: "Operator accounts",
-    description: "Create, edit, enable, disable, or move operator logins to recently deleted for patient intake and coordination.",
+    description: "Create, edit, enable, disable, or remove operator logins for patient intake and coordination.",
   },
   {
     role: "accountant",
     label: "Accountant tab",
     title: "Accountant accounts",
-    description: "Create, edit, enable, disable, or move accountant logins to recently deleted for billing and finance workflows.",
+    description: "Create, edit, enable, disable, or remove accountant logins for billing and finance workflows.",
   },
 ];
 
-const deletedTab = {
-  role: "deleted",
-  label: "Recently deleted",
-  title: "Recently deleted",
-  description: "Deleted team accounts remain here for 30 days so admin can restore them when needed.",
-};
-
 function getRoleTab(role) {
-  return role === "deleted" ? deletedTab : roleTabs.find((tab) => tab.role === role) || roleTabs[0];
+  return roleTabs.find((tab) => tab.role === role) || roleTabs[0];
 }
 
 function getEmptyMember(role) {
@@ -202,7 +195,6 @@ function TeamOperationsPage() {
   const [editor, setEditor] = useState(null);
   const [memberAction, setMemberAction] = useState(null);
   const [memberToDelete, setMemberToDelete] = useState(null);
-  const [isRestoringId, setIsRestoringId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const activeTab = getRoleTab(activeRole);
@@ -214,10 +206,7 @@ function TeamOperationsPage() {
       setLoading(true);
 
       try {
-        const data =
-          activeRole === "deleted"
-            ? await api.get("/team-operations/deleted/recent")
-            : await api.get(`/team-operations/${activeRole}`);
+        const data = await api.get(`/team-operations/${activeRole}`);
         if (!ignore) {
           setMembers(data);
         }
@@ -240,10 +229,7 @@ function TeamOperationsPage() {
   }, [activeRole]);
 
   async function reloadMembers() {
-    const data =
-      activeRole === "deleted"
-        ? await api.get("/team-operations/deleted/recent")
-        : await api.get(`/team-operations/${activeRole}`);
+    const data = await api.get(`/team-operations/${activeRole}`);
     setMembers(data);
   }
 
@@ -300,20 +286,6 @@ function TeamOperationsPage() {
     }
   }
 
-  async function handleRestore(member) {
-    setIsRestoringId(member.id);
-
-    try {
-      await api.post(`/team-operations/${member.role}/${member.id}/restore`);
-      toast.success(`${member.full_name} restored.`);
-      await reloadMembers();
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsRestoringId(null);
-    }
-  }
-
   if (loading) {
     return <LoadingState label={`Loading ${activeTab.title.toLowerCase()}`} />;
   }
@@ -323,25 +295,23 @@ function TeamOperationsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Team operations"
-        description="Create, edit, enable, disable, delete, and restore doctor, operator, and accountant accounts from one admin workspace."
+        description="Create, edit, enable, disable, and remove doctor, operator, and accountant accounts from one admin workspace."
         actions={
-          activeRole !== "deleted" ? (
-            <button
-              type="button"
-              onClick={() => setEditor({ member: null })}
-              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
-            >
-              <Plus className="size-4" />
-              Add account
-            </button>
-          ) : null
+          <button
+            type="button"
+            onClick={() => setEditor({ member: null })}
+            className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+          >
+            <Plus className="size-4" />
+            Add account
+          </button>
         }
       />
 
       {user.role === "admin" ? <PushSubscriberStatusCard /> : null}
 
       <div className="flex flex-wrap gap-3 rounded-[28px] border border-slate-200/80 bg-white/80 p-3 shadow-[0_20px_60px_rgba(34,72,91,0.08)]">
-        {[...roleTabs, deletedTab].map((tab) => (
+        {roleTabs.map((tab) => (
           <button
             key={tab.role}
             type="button"
@@ -366,7 +336,7 @@ function TeamOperationsPage() {
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   <tr>
                     <th className="px-5 py-4">Name</th>
-                    <th className="px-5 py-4">{activeRole === "deleted" ? "Role" : "Username"}</th>
+                    <th className="px-5 py-4">Username</th>
                     <th className="px-5 py-4">Details</th>
                     <th className="px-5 py-4 text-right">Actions</th>
                   </tr>
@@ -377,18 +347,10 @@ function TeamOperationsPage() {
                       <td className="px-5 py-4">
                         <p className="font-semibold text-slate-950">{member.full_name}</p>
                         <p className="mt-1 text-sm text-slate-500">
-                          {activeRole === "deleted"
-                            ? `Deleted ${new Date(member.deleted_at).toLocaleString()}`
-                            : member.is_active
-                              ? "Active account"
-                              : "Disabled account"}
+                          {member.is_active ? "Active account" : "Disabled account"}
                         </p>
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {activeRole === "deleted"
-                          ? member.role.charAt(0).toUpperCase() + member.role.slice(1).replace("_", " ")
-                          : `@${member.username}`}
-                      </td>
+                      <td className="px-5 py-4 text-sm text-slate-600">@{member.username}</td>
                       <td className="px-5 py-4 text-sm text-slate-500">
                         {member.role === "doctor" ? (
                           <div className="space-y-1">
@@ -400,74 +362,54 @@ function TeamOperationsPage() {
                             </p>
                           </div>
                         ) : (
-                          <p>
-                            {activeRole === "deleted"
-                              ? `Username: @${member.username}`
-                              : member.is_active
-                                ? "Login enabled"
-                                : "Login disabled"}
-                          </p>
+                          <p>{member.is_active ? "Login enabled" : "Login disabled"}</p>
                         )}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-2">
-                          {activeRole === "deleted" ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRestore(member)}
-                              disabled={isRestoringId === member.id}
-                              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <RotateCcw className="size-4" />
-                              {isRestoringId === member.id ? "Restoring..." : "Restore"}
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setEditor({ member })}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
-                              >
-                                <SquarePen className="size-4" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setMemberAction({
-                                    member,
-                                    nextIsActive: !member.is_active,
-                                  })
-                                }
-                                className={cx(
-                                  "inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold transition",
-                                  member.is_active
-                                    ? "border border-amber-200 text-amber-700 hover:bg-amber-50"
-                                    : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50",
-                                )}
-                              >
-                                {member.is_active ? (
-                                  <>
-                                    <Power className="size-4" />
-                                    Disable
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="size-4" />
-                                    Enable
-                                  </>
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setMemberToDelete(member)}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
-                              >
-                                <Trash2 className="size-4" />
-                                Delete
-                              </button>
-                            </>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setEditor({ member })}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                          >
+                            <SquarePen className="size-4" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMemberAction({
+                                member,
+                                nextIsActive: !member.is_active,
+                              })
+                            }
+                            className={cx(
+                              "inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                              member.is_active
+                                ? "border border-amber-200 text-amber-700 hover:bg-amber-50"
+                                : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50",
+                            )}
+                          >
+                            {member.is_active ? (
+                              <>
+                                <Power className="size-4" />
+                                Disable
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="size-4" />
+                                Enable
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMemberToDelete(member)}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                          >
+                            <Trash2 className="size-4" />
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -479,11 +421,7 @@ function TeamOperationsPage() {
         ) : (
           <EmptyState
             title={`No ${activeTab.title.toLowerCase()} yet`}
-            description={
-              activeRole === "deleted"
-                ? "Deleted team members from the last 30 days will appear here."
-                : "Add the first account from the admin toolbar above."
-            }
+            description="Add the first account from the admin toolbar above."
           />
         )}
       </SectionCard>
@@ -519,10 +457,10 @@ function TeamOperationsPage() {
         title={`Delete ${activeTab.title.replace("accounts", "account")}?`}
         description={
           memberToDelete
-            ? `${memberToDelete.full_name} will move to Recently deleted for 30 days. Historical clinic records stay attached.`
+            ? `${memberToDelete.full_name} will be removed from the team directory. Historical clinic records stay attached.`
             : ""
         }
-        confirmLabel="Move to recently deleted"
+        confirmLabel="Remove account"
       />
     </div>
   );

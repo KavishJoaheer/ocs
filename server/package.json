@@ -13,6 +13,7 @@
     "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
+    "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",
     "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js"
   },
   "keywords": [],
