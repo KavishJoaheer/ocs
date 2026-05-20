@@ -228,7 +228,9 @@ function applyInventoryTransactions({
       .get(Number(line.inventory_item_id), Number(consultation.doctor_id));
 
     if (!stockItem) {
-      throw new Error(`Inventory item not found for doctor: ${line.description || "line item"}.`);
+      throw new Error(
+        `Inventory item not found for doctor (${line.description || "line item"}). It may have been removed from the medical bag — update or remove this billing line.`,
+      );
     }
 
     const qty = Number(line.quantity || 0);

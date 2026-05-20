@@ -90,7 +90,7 @@ SUCCESS: Sandbox data purged completely.
 SUCCESS: Live master stock records seeded accurately.
 ```
 
-Then open **Inventory** in the app and confirm folders (including Oral Drugs, Investigation) show the master list.
+Then open **Inventory** in the app and confirm **Consumable** shows the master list. Other category pills stay available but may be empty until you seed those categories.
 
 **Append Consumable manifest rows** (spreadsheet extension — upsert by item name, safe to re-run):
 
@@ -240,7 +240,7 @@ docker run --rm -v clinicflow-data:/data -v $(pwd):/backup alpine \
 | Symptom | Likely cause | Fix |
 |---------|----------------|-----|
 | Patient profile: “Too few parameter values” | Old image before SQL fix | `docker compose pull && docker compose up -d` |
-| Inventory empty after deploy | Purge not run or wrong category filter | Run purge script; open **Oral Drugs** / **Investigation** pills |
+| Inventory empty after deploy | Purge not run or viewing an empty category pill | Run purge script; open **Consumable** (only category with OCS stock after purge) |
 | Stock quantities reset overnight | `SEED_OCS_MASTER_STOCK=true` | Set to `false`, redeploy |
 | Operator cannot edit patient | No active grant | Admin grants operator edit access on patient |
 | Push not working | VAPID not configured | Set `VAPID_*` in `.env` or add to Home Screen (iOS) |

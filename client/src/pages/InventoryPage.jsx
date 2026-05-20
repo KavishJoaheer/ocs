@@ -33,6 +33,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
+import { getDisplayFolders } from "../lib/inventoryFolders.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2156,6 +2157,7 @@ export default function InventoryPage() {
     : selectedContextDoctorId
       ? data?.selected_doctor_stock || []
       : data?.ocs_stock || [];
+  const displayFolders = useMemo(() => getDisplayFolders(folders, items), [folders, items]);
   const summary = data?.summary || {};
   const pageSize = 50;
   const inventoryTableScrollClass = isOperator
@@ -2273,14 +2275,16 @@ export default function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPeriodPreset, adminPeriodAnchor, activityStaffUserId]);
 
-  // Default "View By" folder after inventory payload loads.
+  // Default category pill to first folder with stock in the active view (usually Consumable).
   useEffect(() => {
-    if (!data?.folders?.length) return;
-    const valid = data.folders.some((f) => String(f.id) === String(selectedView));
+    if (!displayFolders.length) return;
+    const valid = displayFolders.some((f) => String(f.id) === String(selectedView));
     if (!selectedView || !valid) {
-      setSelectedView(String(data.folders[0].id));
+      const next = displayFolders[0];
+      setSelectedView(String(next.id));
+      if (next.name) setActiveCategory(next.name);
     }
-  }, [data, selectedView]);
+  }, [displayFolders, selectedView]);
 
   useEffect(() => {
     if (!folders.length || !selectedView) return;
@@ -2847,7 +2851,7 @@ export default function InventoryPage() {
             setSearch={setSearch}
             doctorContext={doctorContext}
             onDoctorContextChange={setDoctorContext}
-            folders={folders}
+            folders={displayFolders}
             selectedView={selectedView}
             onSelectedViewChange={setSelectedView}
             doctorViewIsOcs={doctorViewIsOcs}
@@ -3047,7 +3051,7 @@ export default function InventoryPage() {
             ) : null}
           </div>
           <div className="-mx-1 flex flex-wrap items-center gap-2">
-            {folders.map((folder) => (
+            {displayFolders.map((folder) => (
               <button
                 key={folder.id}
                 type="button"
@@ -3384,7 +3388,14 @@ export default function InventoryPage() {
             </div>
           </>
         ) : (
-          <EmptyState title="No stock items found" description="Add stock to one of the required folders to begin tracking." />
+          <EmptyState
+            title="No stock items found"
+            description={
+              canManageOcs && contextIsOcs
+                ? "Add stock in Consumable or pick another category when adding a new item."
+                : "Try another category, search term, or restock from OCS Master Stock."
+            }
+          />
         )}
 
         <div className={cx("flex items-center justify-between", isOperator ? "mt-2" : "mt-3")}>

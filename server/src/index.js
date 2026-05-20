@@ -4,6 +4,7 @@ const { ensureOcsCatalogSync } = require("./lib/ensureOcsCatalog");
 const { seedOcsMasterStockSync } = require("./scripts/seedOcsMasterStock");
 const { purgeOcsTestInventoryItems } = require("./scripts/purgeOcsTestInventory");
 const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs");
+const { isEnvTrue } = require("./lib/envFlags");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -26,8 +27,7 @@ try {
   console.warn("[catalog] OCS catalog ensure failed:", error.message);
 }
 
-const shouldSeedOcsStock = String(process.env.SEED_OCS_MASTER_STOCK ?? "false").toLowerCase() !== "false";
-if (shouldSeedOcsStock) {
+if (isEnvTrue("SEED_OCS_MASTER_STOCK")) {
   try {
     const summary = seedOcsMasterStockSync({ skipInit: true });
     console.log(`[seed] OCS master stock synced (${summary.inserted} new, ${summary.updated} updated)`);
@@ -50,8 +50,7 @@ try {
   console.warn("[seed] Test inventory purge failed:", error.message);
 }
 
-const shouldSyncDoctorStock = String(process.env.SEED_DOCTOR_STOCK_FROM_OCS ?? "false").toLowerCase() !== "false";
-if (shouldSyncDoctorStock) {
+if (isEnvTrue("SEED_DOCTOR_STOCK_FROM_OCS")) {
   try {
     const doctorSummary = syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });
     console.log(

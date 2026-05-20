@@ -1,6 +1,6 @@
 /**
  * IM Drugs extension rows from the master warehouse manifest (spreadsheet extract).
- * Upserted by seedOcsIMDrugsExtension.js and ensureOcsCatalog on startup.
+ * Upserted only via seedOcsIMDrugsExtension.js (not loaded on app startup).
  *
  * Field mapping matches ocsMasterStockData.js / SQLite inventory:
  *   name            -> item_name (upsert match token)
