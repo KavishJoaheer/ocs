@@ -92,7 +92,7 @@ function createApp() {
       GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
       POST: ["admin", "doctor"],
       PUT: ["admin", "doctor", "operator"],
-      PATCH: ["admin"],
+      PATCH: ["admin", "operator"],
       DELETE: ["admin"],
     }),
     patientsRouter,

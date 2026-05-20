@@ -42,19 +42,27 @@ function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
 }
 
-function buildDoctorMobileCards(dashboard) {
+function buildDoctorMobileCards(dashboard, { hcmLatestTitle } = {}) {
   const summary = dashboard?.doctorWorkspace?.summary || {};
   const activePatients = Number(summary.activeAssignedPatientsCount ?? 0);
   const unpaidBills = Number(summary.pendingPaymentsCount ?? 0);
+  const longTermCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
   const lowStock = dashboard?.doctor_low_stock_alert;
   const lowCount = Number(lowStock?.total_items || 0);
+  const hcmHeadline = String(hcmLatestTitle || "").trim();
 
   return [
+    {
+      label: "My assigned patients",
+      icon: UsersRound,
+      to: "/patients?filter=my_assigned",
+      meta: `${activePatients} active`,
+    },
     {
       label: "Patient Directory",
       icon: UserRound,
       to: "/patients",
-      meta: `${activePatients} Assigned Patient${activePatients === 1 ? "" : "s"}`,
+      meta: "Search all records",
     },
     {
       label: "Add a Patient",
@@ -74,12 +82,37 @@ function buildDoctorMobileCards(dashboard) {
       to: "/inventory",
       meta: lowStock?.triggered ? `${lowCount} Item${lowCount === 1 ? "" : "s"} Low` : "Healthy",
     },
+    {
+      label: "Long term review",
+      icon: Activity,
+      to: "/patients?tab=under_review",
+      meta: `${longTermCount} patient${longTermCount === 1 ? "" : "s"}`,
+    },
+    {
+      label: "HCM news",
+      icon: BellRing,
+      to: "/hcm-news",
+      meta: hcmHeadline || "Clinical updates",
+    },
+    {
+      label: "Monthly roster",
+      icon: CalendarClock,
+      action: "roster",
+      meta: `${dayjs().format("MMMM")} schedule`,
+    },
   ];
 }
 
-function DoctorMobileLauncher({ user, dashboard, latestHcmPost, lowStockAlert }) {
+function DoctorMobileLauncher({
+  user,
+  dashboard,
+  latestHcmPost,
+  lowStockAlert,
+  hcmLatestTitle,
+  onOpenRosterPdf,
+}) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
-  const cards = buildDoctorMobileCards(dashboard);
+  const cards = buildDoctorMobileCards(dashboard, { hcmLatestTitle });
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
@@ -97,12 +130,33 @@ function DoctorMobileLauncher({ user, dashboard, latestHcmPost, lowStockAlert })
       <nav className="navigation-card-list" aria-label="Doctor quick actions">
         {cards.map((card) => {
           const Icon = card.icon;
+          const className =
+            "navigation-card-item group flex w-full items-center gap-5 rounded-3xl border border-[rgba(65,200,198,0.18)] bg-white px-5 text-left shadow-[0_10px_28px_rgba(34,72,91,0.08)] transition active:scale-[0.99] active:bg-slate-50/80";
+
+          if (card.action === "roster") {
+            return (
+              <button
+                key={card.label}
+                type="button"
+                onClick={onOpenRosterPdf}
+                className={className}
+              >
+                <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
+                  <Icon className="size-7" strokeWidth={2} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-lg font-bold leading-snug text-gray-900">{card.label}</p>
+                  {card.meta ? (
+                    <p className="mt-1 text-base font-medium text-teal-600">{card.meta}</p>
+                  ) : null}
+                </div>
+                <ArrowUpRight className="size-6 shrink-0 text-teal-500" strokeWidth={2} />
+              </button>
+            );
+          }
+
           return (
-            <Link
-              key={card.label}
-              to={card.to}
-              className="navigation-card-item group flex items-center gap-5 rounded-3xl border border-[rgba(65,200,198,0.18)] bg-white px-5 shadow-[0_10px_28px_rgba(34,72,91,0.08)] transition active:scale-[0.99] active:bg-slate-50/80"
-            >
+            <Link key={card.label} to={card.to} className={className}>
               <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
                 <Icon className="size-7" strokeWidth={2} />
               </div>
@@ -121,7 +175,14 @@ function DoctorMobileLauncher({ user, dashboard, latestHcmPost, lowStockAlert })
   );
 }
 
-function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null }) {
+function MobileLauncher({
+  user,
+  dashboard,
+  operatorMetrics,
+  latestHcmPost = null,
+  hcmLatestTitle = null,
+  onOpenRosterPdf,
+}) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const isDoctor = user.role === "doctor";
 
@@ -132,6 +193,8 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
         dashboard={dashboard}
         latestHcmPost={latestHcmPost}
         lowStockAlert={dashboard.doctor_low_stock_alert}
+        hcmLatestTitle={hcmLatestTitle}
+        onOpenRosterPdf={onOpenRosterPdf}
       />
     );
   }
@@ -1802,6 +1865,8 @@ function DashboardPage() {
         dashboard={dashboard}
         operatorMetrics={operatorMetrics}
         latestHcmPost={latestHcmPost}
+        hcmLatestTitle={doctorHcmHeadline}
+        onOpenRosterPdf={handleOpenRosterPdf}
       />
     );
   }

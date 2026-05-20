@@ -993,8 +993,10 @@ router.get("/:id", (req, res) => {
 });
 
 router.patch("/:id/long-term-review", (req, res) => {
-  if (req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only admin accounts can update long term review flags." });
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can update long term review flags.",
+    });
   }
 
   const patientId = Number(req.params.id);

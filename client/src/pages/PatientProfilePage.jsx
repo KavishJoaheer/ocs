@@ -933,12 +933,26 @@ function PatientProfilePage() {
   const canManageConsultations = canManageConsultationNotes(user);
   const canFlagLongTermReview = ["admin", "operator"].includes(user.role);
 
+  const canEditPatientProfile = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+    if (user.role === "admin" || user.role === "doctor") {
+      return true;
+    }
+    if (user.role === "operator") {
+      return Boolean(data.operator_can_edit);
+    }
+    return false;
+  }, [data, user.role]);
+
   const showPatientBillingUi = useMemo(
     () => Boolean(data && canBillPatientForUser(user, data.patient)),
     [data, user],
   );
 
   const showMobileFab =
+    canEditPatientProfile ||
     (canModifyClinicalData &&
       (canManageConsultations || showPatientBillingUi || canManageLabReports)) ||
     (user.role === "accountant" && showPatientBillingUi) ||
@@ -1482,7 +1496,7 @@ function PatientProfilePage() {
                   onUnflag={handleUnflagLongTermReview}
                 />
               ) : null}
-              {canModifyClinicalData ? (
+              {canEditPatientProfile ? (
                 <button
                   type="button"
                   onClick={() => setPatientEditorOpen(true)}
@@ -1564,7 +1578,7 @@ function PatientProfilePage() {
                 onUnflag={handleUnflagLongTermReview}
               />
             ) : null}
-            {canModifyClinicalData ? (
+            {canEditPatientProfile ? (
               <button
                 type="button"
                 onClick={() => setPatientEditorOpen(true)}
@@ -2712,6 +2726,23 @@ function PatientProfilePage() {
                     </span>
                   </button>
                 )}
+                {canEditPatientProfile && user.role === "operator" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPatientEditorOpen(true);
+                      setFabOpen(false);
+                    }}
+                    className="flex items-center gap-3"
+                  >
+                    <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
+                      Edit profile
+                    </span>
+                    <span className="flex size-11 items-center justify-center rounded-full bg-[#2d8f98] text-white shadow-lg">
+                      <SquarePen className="size-5" />
+                    </span>
+                  </button>
+                ) : null}
               </>
             )}
             <button
