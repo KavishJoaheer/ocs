@@ -23,7 +23,7 @@ import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -611,7 +611,7 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
-function RemoveStockModal({ open, item, isSaving, onClose, onSubmit }) {
+function RemoveStockModal({ open, item, isSaving, isDoctorBag, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Expired");
 
@@ -622,7 +622,7 @@ function RemoveStockModal({ open, item, isSaving, onClose, onSubmit }) {
   }, [open]);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Remove Stock${item ? ` - ${item.item_name}` : ""}`} description="Write off inventory using FEFO batch deduction.">
+    <Modal open={open} onClose={onClose} title={`Remove Stock${item ? ` - ${item.item_name}` : ""}`} description={isDoctorBag ? "Write off quantity from the doctor medical bag." : "Write off inventory using FEFO batch deduction."}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -651,6 +651,7 @@ function RemoveStockModal({ open, item, isSaving, onClose, onSubmit }) {
             <option value="Expired">Expired</option>
             <option value="Discontinued">Discontinued</option>
             <option value="Damaged">Damaged</option>
+            {isDoctorBag ? <option value="Wasted">Wasted</option> : null}
           </select>
         </label>
 
@@ -813,24 +814,24 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
-const STOCK_OUT_REASONS = ["Sold", "Wasted", "Expired"];
+const STOCK_OUT_REASONS = ["Wasted", "Expired"];
 
 function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
-  const [reason, setReason] = useState("Sold");
+  const [reason, setReason] = useState("Wasted");
   const [note, setNote] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setQuantity("1");
-    setReason("Sold");
+    setReason("Wasted");
     setNote("");
   }, [open, item]);
 
   const available = Number(item?.quantity || 0);
 
   return (
-    <Modal open={open} onClose={onClose} title="Stock Out" description="Remove quantity from your medical bag and record why it left your stock." size="lg">
+    <Modal open={open} onClose={onClose} title="Stock Out" description="Record wastage or expiry from your medical bag. Patient sales must be added on the Billing page." size="lg">
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -840,6 +841,9 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
           onSubmit({ quantity: qty, reason, note: note.trim() });
         }}
       >
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+          To bill a patient for an item, open the consultation on the <strong>Billing</strong> page — stock and revenue are recorded together there.
+        </div>
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
           <p className="mt-1 text-xs text-slate-600">Available in your stock: {available}</p>
@@ -1571,7 +1575,6 @@ function RestockReceiptModal({ open, receipt, onClose, onPrint }) {
 }
 
 const MOBILE_STOCK_OUT_OPTIONS = [
-  { id: "sale", reason: "Sold", emoji: "🩺", label: "Billed to Patient (Sale)" },
   { id: "wastage", reason: "Wasted", emoji: "🗑️", label: "Damaged / Broken (Wasted)" },
   { id: "expired", reason: "Expired", emoji: "⏳", label: "Expired (Discarded)" },
 ];
@@ -1762,7 +1765,7 @@ function MobileBottomSheet({ open, onClose, title, subtitle, children }) {
   );
 }
 
-function MobileStockOutBottomSheet({ open, item, onClose, onSelectReason }) {
+function MobileStockOutBottomSheet({ open, item, onClose, onSelectReason, onBillPatient }) {
   return (
     <MobileBottomSheet
       open={open}
@@ -1771,6 +1774,16 @@ function MobileStockOutBottomSheet({ open, item, onClose, onSelectReason }) {
       subtitle="How is this item leaving your bag?"
     >
       <div className="mt-4 grid gap-2">
+        <button
+          type="button"
+          onClick={onBillPatient}
+          className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3.5 text-left text-sm font-semibold text-teal-900 transition active:bg-teal-100"
+        >
+          <span className="text-lg" aria-hidden>
+            🩺
+          </span>
+          <span>Bill to Patient (use Billing page)</span>
+        </button>
         {MOBILE_STOCK_OUT_OPTIONS.map((option) => (
           <button
             key={option.id}
@@ -2049,6 +2062,7 @@ function MobileDoctorBagLayout({
 
 export default function InventoryPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2679,16 +2693,22 @@ export default function InventoryPage() {
     const quantity = Number(payload?.quantity || 0);
     if (!Number.isInteger(quantity) || quantity <= 0) return;
 
+    const item = removeStock.item;
+    const isDoctorBag = item.stock_scope === "doctor" || Boolean(item.owner_doctor_id);
+    const endpoint = isDoctorBag
+      ? `/inventory/items/${item.id}/bag-actions`
+      : `/inventory/items/${item.id}/ocs-actions`;
+
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${removeStock.item.id}/ocs-actions`, {
+      const next = await api.post(endpoint, {
         action_type: "remove",
         quantity,
         reason: payload.reason,
       });
       setData(next);
       setRemoveStock(null);
-      toast.success("Stock removed.");
+      toast.success(isDoctorBag ? "Doctor bag stock adjusted." : "Stock removed.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -2826,6 +2846,11 @@ export default function InventoryPage() {
             open={Boolean(mobileStockOutItem)}
             item={mobileStockOutItem?.item}
             onClose={() => setMobileStockOutItem(null)}
+            onBillPatient={() => {
+              setMobileStockOutItem(null);
+              toast("Open the patient consultation on Billing to record a sale.", { icon: "🩺" });
+              navigate("/billing");
+            }}
             onSelectReason={(option) => {
               const currentItem = mobileStockOutItem?.item;
               setMobileStockOutItem(null);
@@ -3512,7 +3537,14 @@ export default function InventoryPage() {
         onPrint={() => printReceipt(activeReceipt)}
       />
       <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
-      <RemoveStockModal open={Boolean(removeStock)} item={removeStock?.item} isSaving={isSaving} onClose={() => setRemoveStock(null)} onSubmit={saveRemoveStock} />
+      <RemoveStockModal
+        open={Boolean(removeStock)}
+        item={removeStock?.item}
+        isDoctorBag={removeStock?.item?.stock_scope === "doctor" || Boolean(removeStock?.item?.owner_doctor_id)}
+        isSaving={isSaving}
+        onClose={() => setRemoveStock(null)}
+        onSubmit={saveRemoveStock}
+      />
       <ConfirmDialog open={Boolean(itemToDelete)} onClose={() => setItemToDelete(null)} onConfirm={removeItem} title="Delete stock item?" description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history.`} confirmLabel="Delete item" />
     </>
   );

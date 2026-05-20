@@ -1,4 +1,5 @@
 const express = require("express");
+const { reverseInventoryForConsultation } = require("../lib/inventoryReversal");
 const { db, ensureBillingForConsultation } = require("../db");
 const { parseBillingRow, toNumber } = require("../lib/utils");
 
@@ -340,6 +341,7 @@ router.delete("/:id", (req, res) => {
   }
 
   db.transaction(() => {
+    reverseInventoryForConsultation(consultationId, req.auth || {});
     db.prepare("DELETE FROM billing WHERE consultation_id = ?").run(consultationId);
     db.prepare("DELETE FROM consultations WHERE id = ?").run(consultationId);
   })();

@@ -1,11 +1,7 @@
 const express = require("express");
-const {
-  maybeNotifyLowStock,
-  notifyDoctorLowStockSummary,
-  notifyOcsLowStockSubscribers,
-} = require("../lib/push");
-const { db, ensureBillingForConsultation } = require("../db");
-const { calculateBillingTotal, getTodayLocal, normalizeBillingItems, toNumber } = require("../lib/utils");
+const { maybeNotifyLowStock } = require("../lib/push");
+const { db } = require("../db");
+const { getTodayLocal, toNumber } = require("../lib/utils");
 
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
@@ -1152,25 +1148,6 @@ router.get("/", (req, res) => {
   const doctorContext = String(req.query.context || "my").trim().toLowerCase() === "ocs" ? "ocs" : "my";
   const payload = getPayload(req, selectedDoctorId, doctorContext);
 
-  if (["admin", "operator"].includes(req.auth.role) && payload.low_stock_items?.length > 0) {
-    void notifyOcsLowStockSubscribers({ userIds: [Number(req.auth.id)] }).catch((error) => {
-      console.warn("[push] OCS low stock inventory notification failed:", error?.message || error);
-    });
-  }
-
-  if (
-    req.auth.role === "doctor" &&
-    req.auth.doctor_id &&
-    doctorContext === "my"
-  ) {
-    void notifyDoctorLowStockSummary({
-      doctorId: Number(req.auth.doctor_id),
-      userId: Number(req.auth.id),
-    }).catch((error) => {
-      console.warn("[push] doctor low stock inventory notification failed:", error?.message || error);
-    });
-  }
-
   res.json(payload);
 });
 
@@ -1191,16 +1168,24 @@ router.get("/activity-history", (req, res) => {
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
   const { whereSql, params } = buildActivityHistoryFilter(req.query);
+  const doctorScopeSql =
+    req.auth.role === "doctor" && req.auth.doctor_id
+      ? " AND EXISTS (SELECT 1 FROM inventory inv WHERE inv.id = m.item_id AND inv.stock_scope = 'doctor' AND inv.owner_doctor_id = @doctorBagId)"
+      : "";
+  const scopedParams = {
+    ...params,
+    doctorBagId: req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) : null,
+  };
   const rawRows = db
     .prepare(`
       SELECT h.*, m.item_id AS movement_item_id, i.cost_price, i.selling_price
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
-      WHERE ${whereSql}
+      WHERE ${whereSql}${doctorScopeSql}
       ORDER BY h.timestamp DESC, h.id DESC
     `)
-    .all(params);
+    .all(scopedParams);
   const consolidated = buildConsolidatedActivity(rawRows);
   const paginated = paginateConsolidated(consolidated, { page, limit });
   const analytics = computeActivityAnalytics(consolidated, rawRows);
@@ -1381,33 +1366,42 @@ router.put("/items/:id", (req, res) => {
 
   const previousQuantity = Number(existing.quantity || 0);
   const delta = quantity - previousQuantity;
-  if (delta < 0) {
-    const consumed = consumeBatches(itemId, Math.abs(delta));
-    if (!consumed.ok) return res.status(400).json({ error: "Insufficient batch stock for quantity reduction." });
-  } else if (delta > 0) {
-    createBatch(itemId, delta, expiryDate, costPrice);
+
+  try {
+    db.transaction(() => {
+      if (delta < 0) {
+        const consumed = consumeBatches(itemId, Math.abs(delta));
+        if (!consumed.ok) throw new Error("Insufficient batch stock for quantity reduction.");
+      } else if (delta > 0) {
+        createBatch(itemId, delta, expiryDate, costPrice);
+      }
+
+      db.prepare(`
+        UPDATE inventory
+        SET
+          item_name = ?, folder_id = ?, quantity = ?, minimum_quantity = ?, unit = ?,
+          cost_price = ?, selling_price = ?, attributes = ?, moa_notes = ?, expiry_date = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
+
+      if (delta !== 0) {
+        recordMovement({
+          itemId,
+          movementType: delta > 0 ? "in" : "out",
+          quantity: Math.abs(delta),
+          previousQuantity,
+          nextQuantity: quantity,
+          actionType: "correction",
+          note: adjustmentNote || `Quantity adjusted from ${previousQuantity} to ${quantity}`,
+          userId: req.auth.id,
+        });
+      }
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Unable to update stock item." });
   }
 
-  db.prepare(`
-    UPDATE inventory
-    SET
-      item_name = ?, folder_id = ?, quantity = ?, minimum_quantity = ?, unit = ?,
-      cost_price = ?, selling_price = ?, attributes = ?, moa_notes = ?, expiry_date = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
-
-  if (delta !== 0) {
-    recordMovement({
-      itemId,
-      movementType: "adjustment",
-      quantity: Math.abs(delta),
-      previousQuantity,
-      nextQuantity: quantity,
-      actionType: "correction",
-      note: adjustmentNote || `Quantity adjusted from ${previousQuantity} to ${quantity}`,
-      userId: req.auth.id,
-    });
-  } else if (isDoctor && doctorId) {
+  if (delta === 0 && isDoctor && doctorId) {
     void maybeNotifyLowStock(itemId, req.auth.id).catch((error) => {
       console.warn("[push] low stock notification failed:", error?.message || error);
     });
@@ -1522,6 +1516,77 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     })();
   } catch (error) {
     return res.status(400).json({ error: error?.message || "Unable to remove stock." });
+  }
+
+  return res.status(201).json(getPayload(req));
+});
+
+router.post("/items/:id/bag-actions", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin/operator can adjust doctor bag stock." });
+  }
+
+  const itemId = Number(req.params.id);
+  const item = db
+    .prepare(`
+      SELECT *
+      FROM inventory
+      WHERE id = ?
+        AND stock_scope = 'doctor'
+        AND owner_doctor_id IS NOT NULL
+    `)
+    .get(itemId);
+  if (!item) return res.status(404).json({ error: "Doctor bag item not found." });
+
+  const actionType = String(req.body.action_type || "").trim().toLowerCase();
+  const quantity = Number(req.body.quantity || 0);
+  if (actionType !== "remove") {
+    return res.status(400).json({ error: "Action must be remove." });
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: "Quantity must be greater than zero." });
+  }
+
+  const reason = String(req.body.reason || "").trim();
+  if (!["Expired", "Discontinued", "Damaged", "Wasted"].includes(reason)) {
+    return res.status(400).json({ error: "Reason must be Expired, Discontinued, Damaged, or Wasted." });
+  }
+
+  const previousQuantity = Number(item.quantity || 0);
+  if (previousQuantity < quantity) {
+    return res.status(400).json({ error: "Cannot remove more stock than available." });
+  }
+
+  try {
+    db.transaction(() => {
+      const consumed = consumeBatches(itemId, quantity);
+      if (!consumed.ok) {
+        throw new Error("Insufficient batch stock.");
+      }
+      const nextQuantity = previousQuantity - quantity;
+      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
+      recordMovement({
+        itemId,
+        movementType: "out",
+        quantity,
+        previousQuantity,
+        nextQuantity,
+        actionType: reason === "Wasted" ? "wastage" : "remove",
+        note: `Doctor bag write-off (${reason})`,
+        userId: req.auth.id,
+        metaJson: JSON.stringify({
+          reason,
+          stock_out_reason: reason === "Wasted" ? "Wasted" : undefined,
+          performed_by_user_id: req.auth.id,
+          performed_by_role: req.auth.role,
+          performed_by_name: req.auth.full_name || req.auth.username || "",
+          owner_doctor_id: item.owner_doctor_id,
+        }),
+      });
+    })();
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "Unable to adjust doctor bag stock." });
   }
 
   return res.status(201).json(getPayload(req));
@@ -1678,19 +1743,21 @@ router.post("/items/:id/actions", (req, res) => {
   const actionType = String(req.body.action_type || "").trim().toLowerCase();
   const quantity = Number(req.body.quantity || 0);
   const note = String(req.body.note || "").trim();
-  if (!["add", "remove", "sell", "stock_out"].includes(actionType)) {
-    return res.status(400).json({ error: "Action must be add, remove, sell, or stock_out." });
+  if (!["add", "remove", "stock_out"].includes(actionType)) {
+    return res.status(400).json({ error: "Action must be add, remove, or stock_out." });
   }
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return res.status(400).json({ error: "Quantity must be greater than zero." });
   }
 
-  const STOCK_OUT_REASONS = new Set(["Sold", "Wasted", "Expired"]);
+  const STOCK_OUT_REASONS = new Set(["Wasted", "Expired"]);
   let stockOutReason = null;
   if (actionType === "stock_out") {
     stockOutReason = String(req.body.reason || "").trim();
     if (!STOCK_OUT_REASONS.has(stockOutReason)) {
-      return res.status(400).json({ error: "Reason must be Sold, Wasted, or Expired." });
+      return res.status(400).json({
+        error: "Patient sales must be recorded through Billing. Stock out reasons are Wasted or Expired only.",
+      });
     }
   }
 
@@ -1698,14 +1765,6 @@ router.post("/items/:id/actions", (req, res) => {
   const previousQuantity = Number(item.quantity || 0);
   const nextQuantity = movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
   if (nextQuantity < 0) return res.status(400).json({ error: "Cannot remove more stock than available." });
-
-  if (actionType === "sell") {
-    const patientId = Number(req.body.patient_id || 0);
-    const consultationId = Number(req.body.consultation_id || 0);
-    if (!patientId || !consultationId) {
-      return res.status(400).json({ error: "Sell requires patient_id and consultation_id." });
-    }
-  }
 
   try {
     db.transaction(() => {
@@ -1716,11 +1775,9 @@ router.post("/items/:id/actions", (req, res) => {
           createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price);
         }
       } else {
-        const consumed = consumeBatches(itemId, quantity, { disallowExpired: actionType === "sell" });
+        const consumed = consumeBatches(itemId, quantity);
         if (!consumed.ok) {
-          throw new Error(
-            actionType === "sell" ? "Cannot sell expired or unavailable stock." : "Insufficient stock.",
-          );
+          throw new Error("Insufficient stock.");
         }
       }
 
@@ -1733,24 +1790,7 @@ router.post("/items/:id/actions", (req, res) => {
             ]
               .filter(Boolean)
               .join(" — ")
-          : note || (actionType === "sell" ? "Sold and synced to billing." : actionType === "remove" ? "Removed from stock." : "Added to stock.");
-
-      if (actionType === "sell") {
-        const patientId = Number(req.body.patient_id || 0);
-        const consultationId = Number(req.body.consultation_id || 0);
-        const billId = ensureBillingForConsultation(consultationId, patientId);
-        const bill = db.prepare("SELECT * FROM billing WHERE id = ?").get(billId);
-        const items = normalizeBillingItems(bill.items);
-        items.push({
-          description: `${item.item_name} x${quantity}`,
-          amount: roundCurrency(quantity * toNumber(item.selling_price, 0)),
-        });
-        db.prepare("UPDATE billing SET items = ?, total_amount = ? WHERE id = ?").run(
-          JSON.stringify(items),
-          calculateBillingTotal(items),
-          billId,
-        );
-      }
+          : note || (actionType === "remove" ? "Removed from stock." : "Added to stock.");
 
       db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
       recordMovement({
@@ -1762,13 +1802,12 @@ router.post("/items/:id/actions", (req, res) => {
         actionType: movementActionType,
         note: movementNote,
         userId: req.auth.id,
-        referenceType: actionType === "sell" ? "patient" : null,
-        referenceId: actionType === "sell" ? Number(req.body.patient_id || 0) : null,
+        referenceType: null,
+        referenceId: null,
         metaJson: JSON.stringify({
           performed_by_user_id: req.auth.id,
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
-          ...(actionType === "sell" ? { consultation_id: Number(req.body.consultation_id || 0) } : {}),
           ...(actionType === "stock_out"
             ? { stock_out_reason: stockOutReason, stock_out_note: note || "" }
             : {}),

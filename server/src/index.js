@@ -9,7 +9,7 @@ const PORT = Number(process.env.PORT) || 3001;
 
 initializeDatabase();
 
-const shouldSeedOcsStock = String(process.env.SEED_OCS_MASTER_STOCK ?? "true").toLowerCase() !== "false";
+const shouldSeedOcsStock = String(process.env.SEED_OCS_MASTER_STOCK ?? "false").toLowerCase() !== "false";
 if (shouldSeedOcsStock) {
   try {
     const summary = seedOcsMasterStockSync({ skipInit: true });
@@ -33,7 +33,7 @@ try {
   console.warn("[seed] Test inventory purge failed:", error.message);
 }
 
-const shouldSyncDoctorStock = String(process.env.SEED_DOCTOR_STOCK_FROM_OCS ?? "true").toLowerCase() !== "false";
+const shouldSyncDoctorStock = String(process.env.SEED_DOCTOR_STOCK_FROM_OCS ?? "false").toLowerCase() !== "false";
 if (shouldSyncDoctorStock) {
   try {
     const doctorSummary = syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });

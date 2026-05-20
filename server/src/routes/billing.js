@@ -9,10 +9,13 @@ const {
 
 const router = express.Router();
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
-const BILLING_ALLOWED_ROLES = new Set(["admin", "doctor", "accountant"]);
+const BILLING_READ_ROLES = new Set(["admin", "doctor", "accountant", "operator"]);
+const BILLING_WRITE_ROLES = new Set(["admin", "doctor", "accountant"]);
 
 router.use((req, res, next) => {
-  if (!BILLING_ALLOWED_ROLES.has(String(req.auth?.role || "").trim().toLowerCase())) {
+  const role = String(req.auth?.role || "").trim().toLowerCase();
+  const allowed = req.method === "GET" ? BILLING_READ_ROLES : BILLING_WRITE_ROLES;
+  if (!allowed.has(role)) {
     return res.status(403).json({ error: "You do not have permission to access billing." });
   }
   return next();
@@ -232,17 +235,17 @@ function applyInventoryTransactions({
     }
 
     const available = Number(stockItem.quantity || 0);
-    if (available < qty && !line.emergency_override) {
+    const allowOverride = Boolean(line.emergency_override);
+    if (available < qty && !allowOverride) {
       throw new Error(`Insufficient stock for ${stockItem.item_name}. Enable emergency override if clinically required.`);
-    }
-
-    const toConsume = Math.min(Math.max(available, 0), qty);
-    if (toConsume > 0) {
-      consumeDoctorBatches(stockItem.id, toConsume);
     }
 
     const previousQuantity = available;
     const nextQuantity = previousQuantity - qty;
+    const batchQty = allowOverride && available < qty ? Math.max(available, 0) : qty;
+    if (batchQty > 0) {
+      consumeDoctorBatches(stockItem.id, batchQty);
+    }
     db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
       nextQuantity,
       stockItem.id,
@@ -272,6 +275,7 @@ function applyInventoryTransactions({
       meta: {
         item_name: stockItem.item_name,
         emergency_override: Boolean(line.emergency_override),
+        batch_shortfall: allowOverride && available < qty ? qty - Math.max(available, 0) : 0,
         performed_by_user_id: actor?.id || userId || null,
         performed_by_role: actor?.role || "",
         performed_by_name: actor?.full_name || actor?.username || "",

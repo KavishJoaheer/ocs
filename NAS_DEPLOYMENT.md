@@ -146,7 +146,11 @@ APP_IMAGE_NAME=clinicflow
 APP_PORT=8080
 TZ=Indian/Mauritius
 WATCHTOWER_POLL_INTERVAL=300
+SEED_OCS_MASTER_STOCK=false
+SEED_DOCTOR_STOCK_FROM_OCS=false
 ```
+
+For daily operations, keep both seed flags `false` so container restarts do not reset live stock quantities.
 
 6. If UGOS instead supports an `.env` file, use [.env.example](.env.example) as your template.
 7. Deploy the project.
