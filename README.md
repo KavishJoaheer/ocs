@@ -100,6 +100,7 @@ From the repo root:
 Production clinic operations should run the **full Express app** with a **persistent SQLite** database in Docker:
 
 - Guide: [docs/NAS_SQLITE_PRODUCTION.md](docs/NAS_SQLITE_PRODUCTION.md)
+- **Go-live checklist:** [docs/GO_LIVE.md](docs/GO_LIVE.md)
 - NAS / UGOS steps: [NAS_DEPLOYMENT.md](NAS_DEPLOYMENT.md)
 - Docker Hub publish: [docs/PHASE1_DOCKER_HUB.md](docs/PHASE1_DOCKER_HUB.md)
 

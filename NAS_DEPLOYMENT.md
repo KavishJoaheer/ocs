@@ -1,7 +1,8 @@
 # UGOS Docker Project Deployment Guide
 
 > **Production stack:** Docker + **SQLite** (`USE_POSTGRES=false`, `DB_PATH=/data/clinic.db`).  
-> This is required for **billing and inventory** to work together. See [docs/NAS_SQLITE_PRODUCTION.md](docs/NAS_SQLITE_PRODUCTION.md).
+> This is required for **billing and inventory** to work together. See [docs/NAS_SQLITE_PRODUCTION.md](docs/NAS_SQLITE_PRODUCTION.md).  
+> **Go-live checklist:** [docs/GO_LIVE.md](docs/GO_LIVE.md)
 
 This project is prepared for a registry-first deployment flow that works well with UGREEN NAS systems running UGOS and the Docker Project GUI.
 
