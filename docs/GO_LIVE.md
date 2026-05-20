@@ -132,7 +132,7 @@ docker exec -e ALLOW_DB_PURGE=true clinicflow-app node src/scripts/purgeDoctorBa
 docker exec clinicflow-app node src/scripts/seedOcsIMDrugsExtension.js
 ```
 
-Source matrix: `server/src/config/ocsIMDrugsExtension.js`. Same shared `inventory` table — near-expiry dates flow to Doctor mobile alerts after refresh.
+Source matrix: `server/src/config/ocsIMDrugsExtension.js` (from `IM DRUGS.pdf` + legacy manifest). Same shared `inventory` table — refresh inventory after seed.
 
 **Optional — remove sandbox patients that were soft-deleted:**
 
