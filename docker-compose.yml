@@ -8,6 +8,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3001
       DB_PATH: /data/clinic.db
+      SEED_OCS_MASTER_STOCK: ${SEED_OCS_MASTER_STOCK:-true}
       TZ: ${TZ:-Indian/Mauritius}
     ports:
       - "${APP_PORT:-8080}:3001"

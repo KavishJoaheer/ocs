@@ -169,8 +169,10 @@ function upsertOcsMasterStockRow(row, folderId) {
   return { action: "inserted", id: itemId, itemName };
 }
 
-async function seedOcsMasterStock() {
-  initializeDatabase();
+function seedOcsMasterStockSync({ skipInit = false } = {}) {
+  if (!skipInit) {
+    initializeDatabase();
+  }
   ensureInventoryFolders();
 
   const folderIds = new Map(
@@ -210,8 +212,10 @@ async function seedOcsMasterStock() {
     return summary;
   });
 
-  const summary = run(ocsMasterStockData);
+  return run(ocsMasterStockData);
+}
 
+function printSeedSummary(summary) {
   console.log("OCS master stock seed complete.");
   console.log(`  Inserted: ${summary.inserted}`);
   console.log(`  Updated:  ${summary.updated}`);
@@ -220,11 +224,18 @@ async function seedOcsMasterStock() {
   if (summary.errors.length) {
     console.error("  Errors:");
     summary.errors.forEach((entry) => console.error(`    - ${entry.name}: ${entry.message}`));
+  }
+}
+
+if (require.main === module) {
+  try {
+    const summary = seedOcsMasterStockSync();
+    printSeedSummary(summary);
+    if (summary.errors.length) process.exitCode = 1;
+  } catch (error) {
+    console.error("OCS master stock seed failed:", error.message);
     process.exitCode = 1;
   }
 }
 
-seedOcsMasterStock().catch((error) => {
-  console.error("OCS master stock seed failed:", error.message);
-  process.exitCode = 1;
-});
+module.exports = { seedOcsMasterStockSync };
