@@ -135,8 +135,12 @@ async function sendNotification(subscriptionRaw, payload) {
     return { ok: true };
   } catch (error) {
     const statusCode = Number(error?.statusCode || 0);
-    if (statusCode === 404 || statusCode === 410) {
-      clearPushSubscriptionByEndpoint(subscription.endpoint);
+    if (statusCode === 404 || statusCode === 410 || statusCode === 401 || statusCode === 403) {
+      try {
+        clearPushSubscriptionByEndpoint(subscription.endpoint);
+      } catch (clearError) {
+        console.warn("[push] could not clear stale subscription:", clearError?.message || clearError);
+      }
     }
 
     console.warn("[push] delivery failed:", error?.message || error);

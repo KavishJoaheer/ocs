@@ -146,10 +146,11 @@ function PatientsPage() {
   const subscriberFilterActive = searchParams.get("filter") === "subscribed";
   const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
   const isMobile = useIsMobile();
-  const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
+  const canCreatePatients = ["admin", "doctor"].includes(user.role);
   const canDeletePatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
-  const canOpenBilling = user.role === "admin" || user.role === "doctor";
+  const canOpenBilling =
+    user.role === "admin" || user.role === "doctor" || user.role === "accountant";
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState(() =>
@@ -189,8 +190,14 @@ function PatientsPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [desktopTableMenu]);
 
-  function canEditPatient() {
-    return ["admin", "doctor", "operator"].includes(user.role);
+  function canEditPatient(patient) {
+    if (user.role === "admin" || user.role === "doctor") {
+      return true;
+    }
+    if (user.role === "operator") {
+      return Boolean(patient?.operator_edit_allowed);
+    }
+    return false;
   }
 
   async function loadDoctors() {
@@ -1103,7 +1110,7 @@ function PatientsPage() {
             className="fixed z-[50] min-w-[11rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
             style={{ top: desktopTableMenu.top, left: desktopTableMenu.left }}
           >
-            {canEditPatient() ? (
+            {canEditPatient(desktopTableMenu.patient) ? (
               <button
                 type="button"
                 role="menuitem"
@@ -1170,7 +1177,7 @@ function PatientsPage() {
               {displayText(patientCardMenu.patient_identifier)}
             </p>
             <div className="mt-4 grid gap-2">
-              {canEditPatient() ? (
+              {canEditPatient(patientCardMenu) ? (
                 <button
                   type="button"
                   onClick={() => {

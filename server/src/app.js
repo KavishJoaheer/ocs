@@ -57,7 +57,17 @@ function createApp() {
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, mode: "sqlite" });
+    res.json({
+      ok: true,
+      mode: "sqlite",
+      database: process.env.DB_PATH || "server/data/clinic.db",
+      features: {
+        billing: true,
+        inventory: true,
+        consultations: true,
+        push: true,
+      },
+    });
   });
 
   app.use("/api/auth", authRouter);
@@ -79,10 +89,10 @@ function createApp() {
     "/api/patients",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "operator", "lab_tech"],
-      POST: ["admin", "doctor", "operator"],
+      GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+      POST: ["admin", "doctor"],
       PUT: ["admin", "doctor", "operator"],
-      PATCH: ["admin", "operator"],
+      PATCH: ["admin"],
       DELETE: ["admin"],
     }),
     patientsRouter,
@@ -120,7 +130,7 @@ function createApp() {
     "/api/consultations",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "lab_tech"],
+      GET: ["admin", "doctor", "lab_tech", "accountant"],
       POST: ["admin", "doctor"],
       PUT: ["admin", "doctor"],
       DELETE: ["admin"],
@@ -142,7 +152,7 @@ function createApp() {
     "/api/lab-reports",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "operator", "lab_tech"],
+      GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
       POST: ["admin", "doctor", "lab_tech"],
       PUT: ["admin", "doctor", "lab_tech"],
       DELETE: ["admin"],

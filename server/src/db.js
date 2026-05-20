@@ -34,6 +34,7 @@ const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
+db.pragma("busy_timeout = 5000");
 
 const seededPatients = [
   {
@@ -1756,6 +1757,28 @@ function seedDatabase() {
   seed();
 }
 
+function getDefaultConsultationFeeAmount() {
+  const row =
+    db
+      .prepare(`
+        SELECT default_amount
+        FROM consultation_fee_types
+        WHERE type_name = 'Day Consultation'
+        LIMIT 1
+      `)
+      .get() ||
+    db
+      .prepare(`
+        SELECT default_amount
+        FROM consultation_fee_types
+        ORDER BY id ASC
+        LIMIT 1
+      `)
+      .get();
+
+  return Number(row?.default_amount ?? 1500);
+}
+
 function ensureBillingForConsultation(consultationId, patientId) {
   const existingBill = db
     .prepare("SELECT id FROM billing WHERE consultation_id = ?")
@@ -1765,10 +1788,11 @@ function ensureBillingForConsultation(consultationId, patientId) {
     return existingBill.id;
   }
 
+  const feeAmount = getDefaultConsultationFeeAmount();
   const items = normalizeBillingItems([
     {
-      description: "Consultation Fee",
-      amount: 0,
+      description: "Day Consultation",
+      amount: feeAmount,
     },
   ]);
 

@@ -8,7 +8,14 @@
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server",
     "build": "npm run build --prefix client",
-    "start": "npm run start --prefix server"
+    "start": "npm run start --prefix server",
+    "docker:build": "docker compose -f docker-compose.local.yml build",
+    "docker:up": "docker compose -f docker-compose.local.yml up -d --build",
+    "docker:down": "docker compose -f docker-compose.local.yml down",
+    "docker:logs": "docker compose -f docker-compose.local.yml logs -f app",
+    "docker:health": "node scripts/docker-health-check.mjs",
+    "deploy:nas": "bash scripts/nas-deploy.sh",
+    "deploy:nas:hub": "bash scripts/nas-deploy.sh hub"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

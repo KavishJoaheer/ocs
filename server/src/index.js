@@ -68,5 +68,7 @@ if (shouldSyncDoctorStock) {
 const app = createApp();
 
 app.listen(PORT, HOST, () => {
-  console.log(`Clinic management API running on http://${HOST}:${PORT}`);
+  const dbPath = process.env.DB_PATH || "server/data/clinic.db";
+  console.log(`OCS API (SQLite, full billing + inventory) on http://${HOST}:${PORT}`);
+  console.log(`[db] ${dbPath}`);
 });

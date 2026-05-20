@@ -1772,7 +1772,10 @@ function BillingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
-  const canCreateBills = user?.role === "admin" || user?.role === "doctor";
+  const canCreateBills =
+    user?.role === "admin" || user?.role === "doctor" || user?.role === "accountant";
+  const canMarkPaid =
+    user?.role === "admin" || user?.role === "doctor" || user?.role === "accountant";
   const isMobile = useIsMobile();
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",
@@ -1837,7 +1840,7 @@ function BillingPage() {
     if (!user) {
       return;
     }
-    if (!(user.role === "admin" || user.role === "doctor")) {
+    if (!(user.role === "admin" || user.role === "doctor" || user.role === "accountant")) {
       return;
     }
 
@@ -1874,7 +1877,7 @@ function BillingPage() {
       return;
     }
 
-    if (user?.role === "doctor" || user?.role === "admin") {
+    if (["doctor", "admin", "accountant"].includes(user?.role)) {
       if (!patientOptions.length) {
         return;
       }
@@ -1971,6 +1974,23 @@ function BillingPage() {
     }
   }
 
+  async function handleQuickMarkPaid(bill, paymentMethod = "cash") {
+    setIsSaving(true);
+
+    try {
+      await api.patch(`/billing/${bill.id}/pay`, {
+        payment_method: paymentMethod,
+        payment_date: billingPageTodayInputValue(),
+      });
+      toast.success("Payment recorded.");
+      await loadData();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function clearPatientFilter() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("patientId");
@@ -2018,7 +2038,7 @@ function BillingPage() {
       />
 
       {user?.role !== "doctor" ? (
-        <div className="hidden gap-4 md:grid md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <BillingStat icon={DollarSign} label="Total billed" value={formatRupees(billingDashboardTotals.totalBilled)} />
           <BillingStat icon={CreditCard} label="Collected" value={formatRupees(billingDashboardTotals.collected)} />
           <BillingStat icon={ReceiptText} label="Outstanding" value={formatRupees(billingDashboardTotals.outstanding)} />
@@ -2170,7 +2190,17 @@ function BillingPage() {
                             {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
                           </td>
                           <td className="px-5 py-3">
-                            <div className="flex flex-row items-center justify-end gap-2">
+                            <div className="flex flex-row flex-wrap items-center justify-end gap-2">
+                              {bill.status === "unpaid" && canMarkPaid ? (
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() => handleQuickMarkPaid(bill)}
+                                  className="inline-flex items-center gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+                                >
+                                  Mark paid
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => handleShareBillPdf(bill)}
@@ -2220,14 +2250,27 @@ function BillingPage() {
                       <p className="text-xl font-bold text-[#1f7f7b]">{formatCurrency(bill.total_amount)}</p>
                       <StatusBadge value={bill.status} />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setEditor({ bill })}
-                      className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-800"
-                    >
-                      <SquarePen className="size-4" />
-                      Edit invoice
-                    </button>
+                    <div className="mt-4 flex flex-col gap-2">
+                      {bill.status === "unpaid" && canMarkPaid ? (
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() => handleQuickMarkPaid(bill)}
+                          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+                        >
+                          <CreditCard className="size-4" />
+                          Mark paid (cash)
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setEditor({ bill })}
+                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-800"
+                      >
+                        <SquarePen className="size-4" />
+                        Edit invoice
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2241,7 +2284,7 @@ function BillingPage() {
         </SectionCard>
 
         <SectionCard
-          className={cx("min-w-0 w-full", isMobile ? "hidden" : undefined)}
+          className="min-w-0 w-full"
           title="Pending payments from unpaid patients"
         >
           {pendingPayments.length ? (

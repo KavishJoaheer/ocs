@@ -63,10 +63,33 @@ async function ensurePostgresBillingForConsultation(client, consultationId, pati
     return Number(existing.rows[0].id);
   }
 
+  const feeRow = await client.query(
+    `
+      SELECT default_amount
+      FROM consultation_fee_types
+      WHERE type_name = 'Day Consultation'
+      LIMIT 1
+    `,
+  );
+  const fallbackFeeRow =
+    feeRow.rowCount === 0
+      ? await client.query(
+          `
+            SELECT default_amount
+            FROM consultation_fee_types
+            ORDER BY id ASC
+            LIMIT 1
+          `,
+        )
+      : feeRow;
+  const feeAmount = Number(
+    (feeRow.rowCount ? feeRow : fallbackFeeRow).rows[0]?.default_amount ?? 1500,
+  );
+
   const items = normalizeBillingItems([
     {
-      description: "Consultation Fee",
-      amount: 0,
+      description: "Day Consultation",
+      amount: feeAmount,
     },
   ]);
 
@@ -331,13 +354,20 @@ async function initializePostgresDatabase() {
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS consultation_fee_types (
+          id SERIAL PRIMARY KEY,
+          type_name TEXT NOT NULL UNIQUE,
+          default_amount DOUBLE PRECISION NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS billing (
           id SERIAL PRIMARY KEY,
-          consultation_id INTEGER NOT NULL UNIQUE REFERENCES consultations(id) ON DELETE RESTRICT,
+          consultation_id INTEGER NOT NULL REFERENCES consultations(id) ON DELETE RESTRICT,
           patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
           items JSONB NOT NULL,
           total_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),
+          payment_method TEXT,
           payment_date DATE,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -354,6 +384,23 @@ async function initializePostgresDatabase() {
       `);
 
       await seedDatabase();
+
+      await pool.query(`
+        ALTER TABLE billing ADD COLUMN IF NOT EXISTS payment_method TEXT;
+      `);
+
+      await pool.query(`
+        ALTER TABLE billing DROP CONSTRAINT IF EXISTS billing_consultation_id_key;
+      `);
+
+      await pool.query(`
+        INSERT INTO consultation_fee_types (type_name, default_amount)
+        VALUES
+          ('Day Consultation', 1500),
+          ('Night Consultation', 2000),
+          ('Review Consultation', 1000)
+        ON CONFLICT (type_name) DO NOTHING
+      `);
     })();
   }
 

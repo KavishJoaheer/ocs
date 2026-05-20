@@ -5,7 +5,10 @@ import BottomNav from "../components/BottomNav.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
-import { syncPushSubscriptionIfGranted } from "../lib/pushNotifications.js";
+import {
+  listenForPushSubscriptionChanges,
+  syncPushSubscriptionIfGranted,
+} from "../lib/pushNotifications.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 const pageMeta = {
@@ -161,10 +164,13 @@ function AppShell() {
 
   useEffect(() => {
     if (!user?.role) {
-      return;
+      return undefined;
     }
 
     void syncPushSubscriptionIfGranted();
+    return listenForPushSubscriptionChanges(() => {
+      void syncPushSubscriptionIfGranted();
+    });
   }, [user?.id, user?.role]);
 
   return (

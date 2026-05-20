@@ -1,5 +1,8 @@
 # UGOS Docker Project Deployment Guide
 
+> **Production stack:** Docker + **SQLite** (`USE_POSTGRES=false`, `DB_PATH=/data/clinic.db`).  
+> This is required for **billing and inventory** to work together. See [docs/NAS_SQLITE_PRODUCTION.md](docs/NAS_SQLITE_PRODUCTION.md).
+
 This project is prepared for a registry-first deployment flow that works well with UGREEN NAS systems running UGOS and the Docker Project GUI.
 
 ## Deployment Architecture
@@ -21,13 +24,15 @@ This is a Node.js production container, not a frontend-only static image.
 
 - The React frontend is built during the Docker image build.
 - The Express server serves both the API and the built frontend.
-- SQLite is stored in a persistent Docker volume at `/data/clinic.db`.
+- SQLite is stored in a persistent Docker volume at `/data/clinic.db` (billing, inventory, patients, push keys).
+- The API runs in **full SQLite mode** — do not set `DATABASE_URL` or `USE_POSTGRES=true` on this container.
 
 ## Files To Use
 
 - [Dockerfile](Dockerfile)
 - [.dockerignore](.dockerignore)
-- [docker-compose.yml](docker-compose.yml)
+- [docker-compose.yml](docker-compose.yml) — production pull from Docker Hub
+- [docker-compose.local.yml](docker-compose.local.yml) — build from source on NAS or PC
 - [docker-compose.cloudflare.yml](docker-compose.cloudflare.yml) (Quick Tunnel)
 - [docker-compose.cloudflare.named.yml](docker-compose.cloudflare.named.yml) (Named Tunnel / custom domain)
 - [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml)
@@ -148,7 +153,12 @@ TZ=Indian/Mauritius
 WATCHTOWER_POLL_INTERVAL=300
 SEED_OCS_MASTER_STOCK=false
 SEED_DOCTOR_STOCK_FROM_OCS=false
+USE_POSTGRES=false
+# Optional if UI is on another domain (e.g. Vercel):
+# CLIENT_ORIGINS=https://your-app.vercel.app
 ```
+
+After deploy, verify: `http://<NAS_IP>:8080/api/health` should show `"mode":"sqlite"` and `"inventory":true`.
 
 For daily operations, keep both seed flags `false` so container restarts do not reset live stock quantities.
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import LoadingState from "../components/LoadingState.jsx";
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
@@ -10,6 +10,10 @@ import { api } from "../lib/api.js";
 function PatientAddPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  if (user.role === "operator") {
+    return <Navigate to="/patients" replace />;
+  }
   const isMobile = useIsMobile();
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);

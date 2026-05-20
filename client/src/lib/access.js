@@ -86,7 +86,7 @@ export function canBillPatientForUser(user, patient) {
   if (!user?.role || !patient) {
     return false;
   }
-  if (user.role === "admin") {
+  if (user.role === "admin" || user.role === "accountant") {
     return true;
   }
   if (user.role !== "doctor") {

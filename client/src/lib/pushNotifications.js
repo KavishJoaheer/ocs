@@ -69,6 +69,21 @@ export async function registerServiceWorker() {
   return getPushServiceWorkerRegistration();
 }
 
+export function listenForPushSubscriptionChanges(onChange) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return () => {};
+  }
+
+  function handleMessage(event) {
+    if (event?.data?.type === "ocs:push-subscription-change") {
+      onChange?.();
+    }
+  }
+
+  navigator.serviceWorker.addEventListener("message", handleMessage);
+  return () => navigator.serviceWorker.removeEventListener("message", handleMessage);
+}
+
 export async function getPushPermissionState() {
   if (!isPushSupported()) {
     return "unsupported";

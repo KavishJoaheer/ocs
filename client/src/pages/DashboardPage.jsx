@@ -154,7 +154,7 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
     });
   }
 
-  if (["admin", "doctor", "operator"].includes(user.role)) {
+  if (["admin", "doctor"].includes(user.role)) {
     cards.push({
       label: "Add a Patient",
       icon: UserPlus,
@@ -199,7 +199,7 @@ function MobileLauncher({ user, dashboard, operatorMetrics, latestHcmPost = null
     cards.push(
       { label: "Lab Queue", icon: ClipboardList, to: "/lab", description: "Open the active lab workspace and blood test queue." },
       { label: "Patient Directory", icon: UsersRound, to: "/patients", description: "Search and open existing patient records." },
-      { label: "Inventory", icon: Package, to: "/inventory", description: "Check supplies and internal stock visibility." },
+      { label: "Consultations", icon: Stethoscope, to: "/consultations", description: "Review consultation notes linked to lab work." },
     );
   }
 
@@ -646,12 +646,21 @@ function DashboardSupportSections({ dashboard, upcomingTitle = "Upcoming appoint
 }
 
 function DashboardSummaryCards({ dashboard }) {
+  const showRevenue = dashboard.summary.totalRevenue != null;
+
   return (
-    <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div
+      className={cx(
+        "grid min-w-0 gap-4 md:grid-cols-2",
+        showRevenue ? "xl:grid-cols-4" : "xl:grid-cols-3",
+      )}
+    >
       <SummaryCard label="Total patients" value={dashboard.summary.totalPatients} />
       <SummaryCard label="Today's appointments" value={dashboard.summary.todaysAppointments} />
       <SummaryCard label="Pending bills" value={dashboard.summary.pendingBills} />
-      <SummaryCard label="Total revenue" value={formatCurrency(dashboard.summary.totalRevenue)} />
+      {showRevenue ? (
+        <SummaryCard label="Total revenue" value={formatCurrency(dashboard.summary.totalRevenue)} />
+      ) : null}
     </div>
   );
 }

@@ -95,27 +95,38 @@ From the repo root:
 
 ## Deployment Notes
 
-- Publish Docker image to Docker Hub (Phase 1): [docs/PHASE1_DOCKER_HUB.md](docs/PHASE1_DOCKER_HUB.md)
-- UGREEN NAS / Docker Compose deployment guide: [NAS_DEPLOYMENT.md](NAS_DEPLOYMENT.md) (includes Cloudflare Quick and Named tunnel compose files)
+### Recommended: Docker + SQLite (full billing & inventory)
 
-### Frontend
+Production clinic operations should run the **full Express app** with a **persistent SQLite** database in Docker:
 
-- Production frontend is deployed on Vercel
-- Vercel config lives in [vercel.json](/C:/Users/kavis/OneDrive/Desktop/varun/vercel.json)
+- Guide: [docs/NAS_SQLITE_PRODUCTION.md](docs/NAS_SQLITE_PRODUCTION.md)
+- NAS / UGOS steps: [NAS_DEPLOYMENT.md](NAS_DEPLOYMENT.md)
+- Docker Hub publish: [docs/PHASE1_DOCKER_HUB.md](docs/PHASE1_DOCKER_HUB.md)
 
-### Backend
+```bash
+cp .env.example .env
+npm run deploy:nas         # build & run (requires Docker running)
+npm run docker:health      # verify sqlite + inventory
+```
 
-- Local backend development still uses SQLite through [server/src/app.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/app.js)
-- Vercel-hosted backend entrypoint lives in [api/index.js](/C:/Users/kavis/OneDrive/Desktop/varun/api/index.js)
-- [vercel.json](/C:/Users/kavis/OneDrive/Desktop/varun/vercel.json) rewrites `/api/*` requests into that single Vercel Function to stay within the Hobby plan limits
-- Vercel backend behavior:
-  - If `DATABASE_URL`, `POSTGRES_URL`, or `POSTGRES_PRISMA_URL` is set, the API uses PostgreSQL through [server/src/pg.js](/C:/Users/kavis/OneDrive/Desktop/varun/server/src/pg.js)
-  - Otherwise it falls back to a temporary SQLite file on Vercel for demo use only
-- Docker deployment is still available through [Dockerfile](/C:/Users/kavis/OneDrive/Desktop/varun/Dockerfile)
-- The server respects `PORT`
-- Optional CORS control:
-  - `CLIENT_ORIGIN=https://your-frontend-domain`
-  - or `CLIENT_ORIGINS=https://site-one.com,https://site-two.com`
+One-page checklist: [DEPLOY.md](DEPLOY.md)
+
+Data is stored in volume `clinicflow-data` at `/data/clinic.db` (plus attachments under `/data/`).
+
+### Optional: Vercel frontend only
+
+Host the React UI on Vercel and point it at your NAS API with `VITE_API_BASE=https://your-host/api`. Use [vercel.static.json](vercel.static.json) (no serverless API). Set `CLIENT_ORIGINS` on the Docker container for CORS.
+
+### Not recommended for production clinic ops
+
+- Vercel serverless API + Postgres (`USE_POSTGRES=true`) — billing only, no inventory sync
+- Vercel serverless without Postgres — ephemeral SQLite in `/tmp`
+
+### Environment
+
+- `PORT`, `HOST`, `DB_PATH` (Docker sets `DB_PATH=/data/clinic.db`)
+- `CLIENT_ORIGIN` or `CLIENT_ORIGINS` for CORS when UI and API are on different hosts
+- `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` for push notifications (or auto-generated in `/data/vapid.json`)
 
 ## API Notes
 

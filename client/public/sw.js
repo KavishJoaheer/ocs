@@ -27,6 +27,16 @@ self.addEventListener("push", (event) => {
   );
 });
 
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      windowClients.forEach((client) => {
+        client.postMessage({ type: "ocs:push-subscription-change" });
+      });
+    }),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 

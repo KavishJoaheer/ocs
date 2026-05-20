@@ -447,6 +447,16 @@ function getPatientRevisions(patientId) {
     }));
 }
 
+function ensureDoctorPatientAccess(patient, auth) {
+  if (!patient || auth?.role !== "doctor") {
+    return true;
+  }
+
+  return (
+    auth.doctor_id && Number(patient.assigned_doctor_id) === Number(auth.doctor_id)
+  );
+}
+
 function hasActiveOperatorEditAccess(patientId, operatorUserId) {
   if (!patientId || !operatorUserId) {
     return false;
@@ -711,8 +721,14 @@ router.get("/", (req, res) => {
   let doctorId =
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0 ? requestedDoctorId : null;
 
-  if (req.auth?.role === "doctor" && req.auth?.doctor_id && myAssignedFilter) {
-    doctorId = Number(req.auth.doctor_id);
+  if (req.auth?.role === "doctor" && req.auth?.doctor_id) {
+    const ownDoctorId = Number(req.auth.doctor_id);
+    if (doctorId && doctorId !== ownDoctorId) {
+      return res.status(403).json({
+        error: "You can only view patients assigned to your practice.",
+      });
+    }
+    doctorId = ownDoctorId;
   }
 
   const effectiveStatus =
@@ -892,6 +908,17 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
+  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+    return res.status(403).json({
+      error: "You can only open patient charts assigned to your practice.",
+    });
+  }
+
+  const doctorScopeId =
+    req.auth?.role === "doctor" && req.auth?.doctor_id
+      ? Number(req.auth.doctor_id)
+      : null;
+
   const appointments = db
     .prepare(`
       SELECT
@@ -903,9 +930,10 @@ router.get("/:id", (req, res) => {
       JOIN doctors d ON d.id = a.doctor_id
       LEFT JOIN consultations c ON c.appointment_id = a.id
       WHERE a.patient_id = ?
+        AND (@doctorScopeId IS NULL OR a.doctor_id = @doctorScopeId)
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `)
-    .all(patientId);
+    .all({ patientId, doctorScopeId });
 
   const consultations = db
     .prepare(`
@@ -919,9 +947,10 @@ router.get("/:id", (req, res) => {
       JOIN doctors d ON d.id = c.doctor_id
       JOIN appointments a ON a.id = c.appointment_id
       WHERE c.patient_id = ?
+        AND (@doctorScopeId IS NULL OR c.doctor_id = @doctorScopeId)
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
-    .all(patientId);
+    .all({ patientId, doctorScopeId });
 
   const bills = db
     .prepare(`
@@ -933,9 +962,10 @@ router.get("/:id", (req, res) => {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
       WHERE b.patient_id = ?
+        AND (@doctorScopeId IS NULL OR c.doctor_id = @doctorScopeId)
       ORDER BY b.created_at DESC
     `)
-    .all(patientId)
+    .all({ patientId, doctorScopeId })
     .map(parseBillingRow);
 
   const labReports = getLabReportsByPatientId(patientId);
@@ -963,8 +993,8 @@ router.get("/:id", (req, res) => {
 });
 
 router.patch("/:id/long-term-review", (req, res) => {
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin and operator accounts can update long term review flags." });
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({ error: "Only admin accounts can update long term review flags." });
   }
 
   const patientId = Number(req.params.id);
@@ -1009,6 +1039,10 @@ router.patch("/:id/long-term-review", (req, res) => {
 });
 
 router.post("/", (req, res) => {
+  if (req.auth.role === "operator") {
+    return res.status(403).json({ error: "Operators cannot create patient records." });
+  }
+
   const payload = normalizePatientPayload(req.body);
   const validationError = validatePatientPayload(payload, {
     isCreate: true,
@@ -1125,6 +1159,18 @@ router.put("/:id", (req, res) => {
 
   if (!existing) {
     return res.status(404).json({ error: "Patient not found." });
+  }
+
+  if (req.auth.role === "operator") {
+    if (!hasActiveOperatorEditAccess(patientId, Number(req.auth.id))) {
+      return res.status(403).json({
+        error: "Operator edit access has expired or was not granted for this patient.",
+      });
+    }
+  } else if (!ensureDoctorPatientAccess(existing, req.auth)) {
+    return res.status(403).json({
+      error: "You can only update patient charts assigned to your practice.",
+    });
   }
 
   const payload = normalizePatientPayload(req.body);
@@ -1304,6 +1350,12 @@ router.post("/:id/consultations", (req, res) => {
 
   if (!patient) {
     return res.status(404).json({ error: "Patient not found." });
+  }
+
+  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+    return res.status(403).json({
+      error: "You can only add consultation notes for patients assigned to your practice.",
+    });
   }
 
   const consultationDate = String(req.body.consultation_date ?? "").trim();

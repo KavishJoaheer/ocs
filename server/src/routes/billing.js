@@ -112,6 +112,7 @@ function calculateAppointmentLossRevenue(items) {
 }
 
 function consumeDoctorBatches(itemId, quantity) {
+  const today = getTodayLocal();
   const rows = db
     .prepare(`
       SELECT id, quantity_remaining, expiry_date
@@ -120,7 +121,8 @@ function consumeDoctorBatches(itemId, quantity) {
         AND quantity_remaining > 0
       ORDER BY CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date ASC, id ASC
     `)
-    .all(itemId);
+    .all(itemId)
+    .filter((row) => !row.expiry_date || String(row.expiry_date) >= today);
 
   let remaining = quantity;
   for (const row of rows) {

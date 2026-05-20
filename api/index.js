@@ -4,7 +4,10 @@ const { hasPostgresConfig } = require("../server/src/pg");
 const { createApp } = require("../server/src/app");
 const { createPostgresApp } = require("../server/src/vercel-postgres-app");
 
-const app = hasPostgresConfig ? createPostgresApp() : createApp();
+// Production clinic ops (billing + inventory) use Docker/NAS with SQLite (createApp).
+// Postgres on Vercel is opt-in only: set USE_POSTGRES=true and DATABASE_URL.
+const usePostgres = process.env.USE_POSTGRES === "true" && hasPostgresConfig;
+const app = usePostgres ? createPostgresApp() : createApp();
 
 module.exports = (req, res) => {
   const requestUrl = new URL(req.url, "http://localhost");

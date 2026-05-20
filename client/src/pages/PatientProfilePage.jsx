@@ -941,6 +941,7 @@ function PatientProfilePage() {
   const showMobileFab =
     (canModifyClinicalData &&
       (canManageConsultations || showPatientBillingUi || canManageLabReports)) ||
+    (user.role === "accountant" && showPatientBillingUi) ||
     (user.role === "lab_tech" && canManageLabReports);
 
   const mobileProfileTabs = useMemo(
@@ -2676,7 +2677,8 @@ function PatientProfilePage() {
                     </span>
                   </button>
                 )}
-                {canModifyClinicalData && showPatientBillingUi && (
+                {showPatientBillingUi &&
+                  (canModifyClinicalData || user.role === "accountant") && (
                   <button
                     type="button"
                     onClick={() => {

@@ -981,6 +981,7 @@ function createPostgresApp() {
             b.items,
             b.total_amount,
             b.status,
+            b.payment_method,
             b.payment_date::text AS payment_date,
             b.created_at::text AS created_at,
             p.full_name AS patient_name,
@@ -1000,6 +1001,147 @@ function createPostgresApp() {
     res.json(bills);
   });
 
+  const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
+
+  function normalizePaymentMethod(value) {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return normalized || null;
+  }
+
+  app.get("/api/billing/inventory-options/by-consultation/:consultationId", async (_req, res) => {
+    res.json([]);
+  });
+
+  app.get("/api/billing/consultation-fees", async (_req, res) => {
+    const rows = (
+      await query(`
+        SELECT type_name, default_amount
+        FROM consultation_fee_types
+        ORDER BY id ASC
+      `)
+    ).rows;
+
+    const fees = rows.reduce((acc, row) => {
+      acc[row.type_name] = Number(Number(row.default_amount || 0).toFixed(2));
+      return acc;
+    }, {});
+
+    res.json(fees);
+  });
+
+  app.post("/api/billing", async (req, res) => {
+    const consultationId = Number(req.body.consultation_id);
+    const patientId = Number(req.body.patient_id);
+
+    if (!Number.isInteger(consultationId) || consultationId <= 0) {
+      return res.status(400).json({ error: "Select a valid consultation." });
+    }
+
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      return res.status(400).json({ error: "Select a valid patient." });
+    }
+
+    const consultation = (
+      await query(
+        `
+          SELECT c.id, c.patient_id
+          FROM consultations c
+          WHERE c.id = $1
+        `,
+        [consultationId],
+      )
+    ).rows[0];
+
+    if (!consultation) {
+      return res.status(400).json({ error: "Select a valid consultation." });
+    }
+
+    if (Number(consultation.patient_id) !== patientId) {
+      return res.status(400).json({
+        error: "The selected consultation does not belong to the selected patient.",
+      });
+    }
+
+    const items = normalizeBillingItems(req.body.items);
+    if (!items.length) {
+      return res.status(400).json({ error: "At least one billing line item is required." });
+    }
+
+    const status = String(req.body.status ?? "unpaid")
+      .trim()
+      .toLowerCase();
+    if (!["paid", "unpaid"].includes(status)) {
+      return res.status(400).json({ error: "Billing status is invalid." });
+    }
+
+    const paymentMethod = status === "paid" ? normalizePaymentMethod(req.body.payment_method) : null;
+    if (status === "paid" && !PAYMENT_METHODS.has(paymentMethod)) {
+      return res.status(400).json({
+        error: "Select a valid payment method: cash, juice, card, or IB.",
+      });
+    }
+
+    const paymentDate =
+      status === "paid"
+        ? String(req.body.payment_date ?? getTodayLocal()).trim() || getTodayLocal()
+        : null;
+
+    const created = (
+      await query(
+        `
+          INSERT INTO billing (
+            consultation_id,
+            patient_id,
+            items,
+            total_amount,
+            status,
+            payment_method,
+            payment_date
+          )
+          VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)
+          RETURNING id
+        `,
+        [
+          consultationId,
+          patientId,
+          JSON.stringify(items),
+          calculateBillingTotal(items),
+          status,
+          paymentMethod,
+          paymentDate,
+        ],
+      )
+    ).rows[0];
+
+    const bill = (
+      await query(
+        `
+          SELECT
+            b.id,
+            b.consultation_id,
+            b.patient_id,
+            b.items,
+            b.total_amount,
+            b.status,
+            b.payment_method,
+            b.payment_date::text AS payment_date,
+            b.created_at::text AS created_at,
+            p.full_name AS patient_name,
+            c.consultation_date::text AS consultation_date,
+            d.full_name AS doctor_name
+          FROM billing b
+          JOIN patients p ON p.id = b.patient_id
+          JOIN consultations c ON c.id = b.consultation_id
+          JOIN doctors d ON d.id = c.doctor_id
+          WHERE b.id = $1
+        `,
+        [created.id],
+      )
+    ).rows[0];
+
+    res.status(201).json(parseBillingRow(bill));
+  });
+
   app.get("/api/billing/:id", async (req, res) => {
     const billId = Number(req.params.id);
     const result = await query(
@@ -1011,6 +1153,7 @@ function createPostgresApp() {
           b.items,
           b.total_amount,
           b.status,
+          b.payment_method,
           b.payment_date::text AS payment_date,
           b.created_at::text AS created_at,
           p.full_name AS patient_name,
@@ -1044,6 +1187,17 @@ function createPostgresApp() {
       return res.status(400).json({ error: "Billing status is invalid." });
     }
 
+    const paymentMethod =
+      status === "paid"
+        ? normalizePaymentMethod(req.body.payment_method ?? existing.rows[0].payment_method)
+        : null;
+
+    if (status === "paid" && !PAYMENT_METHODS.has(paymentMethod)) {
+      return res.status(400).json({
+        error: "Select a valid payment method: cash, juice, card, or IB.",
+      });
+    }
+
     const paymentDate =
       status === "paid"
         ? String(req.body.payment_date ?? existing.rows[0].payment_date ?? getTodayLocal()).trim()
@@ -1053,8 +1207,8 @@ function createPostgresApp() {
       await query(
         `
           UPDATE billing
-          SET items = $1::jsonb, total_amount = $2, status = $3, payment_date = $4
-          WHERE id = $5
+          SET items = $1::jsonb, total_amount = $2, status = $3, payment_method = $4, payment_date = $5
+          WHERE id = $6
           RETURNING
             id,
             consultation_id,
@@ -1062,6 +1216,7 @@ function createPostgresApp() {
             items,
             total_amount,
             status,
+            payment_method,
             payment_date::text AS payment_date,
             created_at::text AS created_at
         `,
@@ -1069,13 +1224,40 @@ function createPostgresApp() {
           JSON.stringify(items),
           calculateBillingTotal(items),
           status,
+          paymentMethod,
           paymentDate || null,
           billId,
         ],
       )
     ).rows[0];
 
-    res.json(parseBillingRow(updated));
+    const bill = (
+      await query(
+        `
+          SELECT
+            b.id,
+            b.consultation_id,
+            b.patient_id,
+            b.items,
+            b.total_amount,
+            b.status,
+            b.payment_method,
+            b.payment_date::text AS payment_date,
+            b.created_at::text AS created_at,
+            p.full_name AS patient_name,
+            c.consultation_date::text AS consultation_date,
+            d.full_name AS doctor_name
+          FROM billing b
+          JOIN patients p ON p.id = b.patient_id
+          JOIN consultations c ON c.id = b.consultation_id
+          JOIN doctors d ON d.id = c.doctor_id
+          WHERE b.id = $1
+        `,
+        [billId],
+      )
+    ).rows[0];
+
+    res.json(parseBillingRow(bill));
   });
 
   app.patch("/api/billing/:id/pay", async (req, res) => {
@@ -1083,27 +1265,54 @@ function createPostgresApp() {
     const existing = await query("SELECT * FROM billing WHERE id = $1", [billId]);
     if (!existing.rowCount) return res.status(404).json({ error: "Bill not found." });
 
-    const updated = (
+    const paymentMethod = normalizePaymentMethod(
+      req.body.payment_method ?? existing.rows[0].payment_method ?? "cash",
+    );
+
+    if (!PAYMENT_METHODS.has(paymentMethod)) {
+      return res.status(400).json({
+        error: "Select a valid payment method: cash, juice, card, or IB.",
+      });
+    }
+
+    const paymentDate = String(req.body.payment_date ?? getTodayLocal()).trim();
+
+    await query(
+      `
+        UPDATE billing
+        SET status = 'paid', payment_method = $1, payment_date = $2
+        WHERE id = $3
+      `,
+      [paymentMethod, paymentDate, billId],
+    );
+
+    const bill = (
       await query(
         `
-          UPDATE billing
-          SET status = 'paid', payment_date = $1
-          WHERE id = $2
-          RETURNING
-            id,
-            consultation_id,
-            patient_id,
-            items,
-            total_amount,
-            status,
-            payment_date::text AS payment_date,
-            created_at::text AS created_at
+          SELECT
+            b.id,
+            b.consultation_id,
+            b.patient_id,
+            b.items,
+            b.total_amount,
+            b.status,
+            b.payment_method,
+            b.payment_date::text AS payment_date,
+            b.created_at::text AS created_at,
+            p.full_name AS patient_name,
+            c.consultation_date::text AS consultation_date,
+            d.full_name AS doctor_name
+          FROM billing b
+          JOIN patients p ON p.id = b.patient_id
+          JOIN consultations c ON c.id = b.consultation_id
+          JOIN doctors d ON d.id = c.doctor_id
+          WHERE b.id = $1
         `,
-        [getTodayLocal(), billId],
+        [billId],
       )
     ).rows[0];
 
-    res.json(parseBillingRow(updated));
+    res.json(parseBillingRow(bill));
   });
 
   app.use((req, res) => {

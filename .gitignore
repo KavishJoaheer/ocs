@@ -7,5 +7,9 @@ server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
 server/data/vapid.json
+server/ocs.db
+server/ocs.db-shm
+server/ocs.db-wal
+server/src/data/vapid.json
 data/vapid.json
 dist

@@ -319,17 +319,19 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
     }));
 }
 
-function getPaidRevenueTotal(startDate, endDate) {
+function getPaidRevenueTotal(startDate, endDate, doctorId = null) {
   const row = db
     .prepare(`
       SELECT COALESCE(SUM(b.total_amount), 0) AS total
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
+      JOIN consultations c ON c.id = b.consultation_id
       WHERE b.status = 'paid'
         AND p.deleted_at IS NULL
         AND substr(COALESCE(NULLIF(b.payment_date, ''), b.created_at), 1, 10) BETWEEN ? AND ?
+        AND (? IS NULL OR c.doctor_id = ?)
     `)
-    .get(startDate, endDate);
+    .get(startDate, endDate, doctorId, doctorId);
 
   return toNumber(row?.total, 0);
 }
@@ -1002,6 +1004,11 @@ function getActiveSubscriptionPatientsCount() {
 
 router.get("/", (_req, res) => {
   const req = _req;
+  const includeGlobalFinancials = ["admin", "accountant"].includes(req.auth.role);
+  const activityDoctorId =
+    req.auth.role === "doctor" && req.auth.doctor_id
+      ? Number(req.auth.doctor_id)
+      : null;
   const today = getTodayLocal();
   const nextWeek = offsetLocalDate(7);
 
@@ -1076,6 +1083,7 @@ router.get("/", (_req, res) => {
         JOIN patients p ON p.id = a.patient_id
         JOIN doctors d ON d.id = a.doctor_id
         WHERE p.deleted_at IS NULL
+          AND (@activityDoctorId IS NULL OR d.id = @activityDoctorId)
 
         UNION ALL
 
@@ -1092,6 +1100,7 @@ router.get("/", (_req, res) => {
         JOIN patients p ON p.id = c.patient_id
         JOIN doctors d ON d.id = c.doctor_id
         WHERE p.deleted_at IS NULL
+          AND (@activityDoctorId IS NULL OR c.doctor_id = @activityDoctorId)
 
         UNION ALL
 
@@ -1100,18 +1109,21 @@ router.get("/", (_req, res) => {
           b.created_at AS activity_at,
           CASE WHEN b.status = 'paid' THEN 'Payment recorded' ELSE 'Bill generated' END AS title,
           p.full_name AS patient_name,
-          NULL AS doctor_name,
+          d.full_name AS doctor_name,
           COALESCE(b.payment_date, b.created_at) AS reference_date,
           NULL AS reference_time,
           'Amount: Rs ' || printf('%.2f', b.total_amount) AS detail
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
+        JOIN consultations c ON c.id = b.consultation_id
+        JOIN doctors d ON d.id = c.doctor_id
         WHERE p.deleted_at IS NULL
+          AND (@activityDoctorId IS NULL OR c.doctor_id = @activityDoctorId)
       )
       ORDER BY activity_at DESC
       LIMIT 8
     `)
-    .all();
+    .all({ activityDoctorId });
 
   const doctorStatuses = getDoctorStatuses();
   const doctorLowStockAlert =
@@ -1138,15 +1150,20 @@ router.get("/", (_req, res) => {
     });
   }
 
+  const summary = {
+    totalPatients,
+    todaysAppointments,
+    pendingBills,
+    longTermReviewCount: getLongTermReviewCount(),
+    activeSubscriptionPatientsCount: getActiveSubscriptionPatientsCount(),
+  };
+
+  if (includeGlobalFinancials) {
+    summary.totalRevenue = toNumber(revenueRow.total, 0);
+  }
+
   res.json({
-    summary: {
-      totalPatients,
-      todaysAppointments,
-      pendingBills,
-      totalRevenue: toNumber(revenueRow.total, 0),
-      longTermReviewCount: getLongTermReviewCount(),
-      activeSubscriptionPatientsCount: getActiveSubscriptionPatientsCount(),
-    },
+    summary,
     upcomingAppointments,
     recentActivity,
     doctorStatuses,
@@ -1297,10 +1314,26 @@ router.get("/live-report", (req, res) => {
   };
 
   const revenueSummary = {
-    daily: getPaidRevenueTotal(revenueRanges.daily.start, revenueRanges.daily.end),
-    weekly: getPaidRevenueTotal(revenueRanges.weekly.start, revenueRanges.weekly.end),
-    monthly: getPaidRevenueTotal(revenueRanges.monthly.start, revenueRanges.monthly.end),
-    annual: getPaidRevenueTotal(revenueRanges.annual.start, revenueRanges.annual.end),
+    daily: getPaidRevenueTotal(
+      revenueRanges.daily.start,
+      revenueRanges.daily.end,
+      selectedDoctorId,
+    ),
+    weekly: getPaidRevenueTotal(
+      revenueRanges.weekly.start,
+      revenueRanges.weekly.end,
+      selectedDoctorId,
+    ),
+    monthly: getPaidRevenueTotal(
+      revenueRanges.monthly.start,
+      revenueRanges.monthly.end,
+      selectedDoctorId,
+    ),
+    annual: getPaidRevenueTotal(
+      revenueRanges.annual.start,
+      revenueRanges.annual.end,
+      selectedDoctorId,
+    ),
   };
 
   const revenueRows = db
@@ -1339,12 +1372,33 @@ router.get("/live-report", (req, res) => {
   const ocsCommission = totalRevenue * 0.6;
   const transportBenefits = uniquePatients * 300;
   const doctorNetRevenue = doctorCommission + transportBenefits;
-  const paymentMethodBreakdown = ["cash", "juice", "ib"].map((method) => ({
+  const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
     method,
     amount: revenueRows
       .filter((row) => row.status === "paid" && row.payment_method === method)
       .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
   }));
+  const revenueStatement =
+    req.auth.role === "doctor"
+      ? {
+          totalRevenue,
+          doctorCommission,
+          transportBenefits,
+          doctorNetRevenue,
+          paidRevenue,
+          unpaidRevenue,
+          paymentMethodBreakdown,
+        }
+      : {
+          totalRevenue,
+          ocsCommission,
+          doctorCommission,
+          transportBenefits,
+          doctorNetRevenue,
+          paidRevenue,
+          unpaidRevenue,
+          paymentMethodBreakdown,
+        };
 
   res.json({
     doctors,
@@ -1380,16 +1434,7 @@ router.get("/live-report", (req, res) => {
       period: doctorRange.period,
       rangeLabel: doctorRange.label,
     },
-    revenueStatement: {
-      totalRevenue,
-      ocsCommission,
-      doctorCommission,
-      transportBenefits,
-      doctorNetRevenue,
-      paidRevenue,
-      unpaidRevenue,
-      paymentMethodBreakdown,
-    },
+    revenueStatement,
     revenueReport: {
       anchorDate: revenueAnchorDate,
       ranges: revenueRanges,

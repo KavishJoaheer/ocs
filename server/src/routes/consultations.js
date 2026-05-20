@@ -209,6 +209,16 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Consultation not found." });
   }
 
+  if (
+    req.auth?.role === "doctor" &&
+    req.auth.doctor_id &&
+    Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
+  ) {
+    return res.status(403).json({
+      error: "You can only view consultations linked to your own practice.",
+    });
+  }
+
   res.json(consultation);
 });
 
