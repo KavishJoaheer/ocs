@@ -2076,6 +2076,7 @@ router.post("/restock/my-inventory", (req, res) => {
     .map((entry) => ({
       ocs_item_id: Number(entry?.ocs_item_id || 0),
       quantity: Number(entry?.quantity || 0),
+      expiry_date: entry?.expiry_date ? String(entry.expiry_date).trim() : null,
     }))
     .filter((entry) => entry.ocs_item_id && Number.isInteger(entry.quantity) && entry.quantity > 0);
 
@@ -2179,7 +2180,15 @@ router.post("/restock/my-inventory", (req, res) => {
           targetItemId = Number(created.lastInsertRowid);
         }
 
-        allocateRestockBatchesToPositive(targetItemId, consumed.allocations, targetPrev);
+        if (request.expiry_date) {
+          createBatch(targetItemId, request.quantity, request.expiry_date, source.cost_price);
+          db.prepare("UPDATE inventory SET expiry_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
+            request.expiry_date,
+            targetItemId,
+          );
+        } else {
+          allocateRestockBatchesToPositive(targetItemId, consumed.allocations, targetPrev);
+        }
         recordMovement({
           itemId: targetItemId,
           movementType: "in",
@@ -2187,7 +2196,9 @@ router.post("/restock/my-inventory", (req, res) => {
           previousQuantity: targetPrev,
           nextQuantity: targetNext,
           actionType: "restock_in",
-          note: "Restocked from OCS stock",
+          note: request.expiry_date
+            ? `Restocked from OCS stock (exp ${request.expiry_date})`
+            : "Restocked from OCS stock",
           userId: req.auth.id,
           referenceType: "doctor",
           referenceId: doctorId,
@@ -2199,6 +2210,7 @@ router.post("/restock/my-inventory", (req, res) => {
             receipt_reference: receiptReference,
             issued_by_name: req.auth.full_name || req.auth.username || "",
             received_by_name: doctor.full_name,
+            ...(request.expiry_date ? { batch_expiry_date: request.expiry_date } : {}),
           }),
         });
         recordAudit({
@@ -2217,6 +2229,7 @@ router.post("/restock/my-inventory", (req, res) => {
             transaction_id: transactionId,
             receipt_reference: receiptReference,
             restocked_at: new Date().toISOString(),
+            ...(request.expiry_date ? { batch_expiry_date: request.expiry_date } : {}),
           }),
         });
       }

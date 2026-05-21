@@ -2103,6 +2103,189 @@ function MobileQuickQuantitySheet({
   );
 }
 
+const MOBILE_DEDUCT_REASONS = [
+  { id: "Sale", label: "Sale" },
+  { id: "Damage", label: "Damage" },
+  { id: "Expired", label: "Expired" },
+];
+
+function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose, onSubmit }) {
+  const [quantity, setQuantity] = useState("1");
+  const [expiryDate, setExpiryDate] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setQuantity("1");
+    setExpiryDate("");
+  }, [open, item?.id, item?.ocs_item_id]);
+
+  if (!open || !item) return null;
+
+  const max = Math.max(0, Number(ocsAvailable || 0));
+  const qty = Number(quantity || 0);
+
+  return (
+    <MobileBottomSheet
+      open={open}
+      onClose={onClose}
+      title={`Restock Kit: ${item.item_name || "Item"}`}
+      subtitle={`Depot available: ${max}`}
+    >
+      <form
+        className="mt-4 space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!Number.isInteger(qty) || qty <= 0) return;
+          if (qty > max) {
+            toast.error("Quantity exceeds OCS master stock.");
+            return;
+          }
+          if (!expiryDate) {
+            toast.error("Select a batch expiry date.");
+            return;
+          }
+          onSubmit({ quantity: qty, expiry_date: expiryDate });
+        }}
+      >
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Quantity to Pull</span>
+          <input
+            required
+            min="1"
+            max={max || undefined}
+            type="number"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
+          />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Batch Expiry Date</span>
+          <input
+            required
+            type="date"
+            value={expiryDate}
+            onChange={(event) => setExpiryDate(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
+          />
+        </label>
+        <div className="grid gap-2 pt-1">
+          <button
+            type="submit"
+            disabled={isSaving || max < 1 || qty < 1 || qty > max || !expiryDate}
+            className="min-h-12 w-full rounded-2xl bg-teal-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {isSaving ? "Restocking..." : "Pull from Master Stock"}
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onClose}
+            className="min-h-11 w-full rounded-2xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </MobileBottomSheet>
+  );
+}
+
+function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
+  const [quantity, setQuantity] = useState("1");
+  const [reason, setReason] = useState("Damage");
+
+  useEffect(() => {
+    if (!open) return;
+    setQuantity("1");
+    setReason("Damage");
+  }, [open, item?.id]);
+
+  if (!open || !item) return null;
+
+  const max = Math.max(0, Number(item.quantity || 0));
+  const qty = Number(quantity || 0);
+
+  return (
+    <MobileBottomSheet
+      open={open}
+      onClose={onClose}
+      title={`Log Item Removal: ${item.item_name || "Item"}`}
+      subtitle={`In your bag: ${max}`}
+    >
+      <form
+        className="mt-4 space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!Number.isInteger(qty) || qty <= 0) return;
+          if (qty > max) {
+            toast.error("Quantity exceeds available stock.");
+            return;
+          }
+          onSubmit({ quantity: qty, reason });
+        }}
+      >
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Quantity Removed</span>
+          <input
+            required
+            min="1"
+            max={max || undefined}
+            type="number"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
+          />
+        </label>
+        <div className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Select reason</span>
+          <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+            {MOBILE_DEDUCT_REASONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setReason(option.id)}
+                className={cx(
+                  "min-h-10 flex-1 rounded-xl px-2 text-sm font-bold transition",
+                  reason === option.id
+                    ? option.id === "Sale"
+                      ? "bg-teal-600 text-white shadow-sm"
+                      : option.id === "Damage"
+                        ? "bg-rose-100 text-rose-700"
+                        : "bg-amber-100 text-amber-800"
+                    : "text-slate-600",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-2 pt-1">
+          <button
+            type="submit"
+            disabled={isSaving || max < 1 || qty < 1 || qty > max}
+            className={cx(
+              "min-h-12 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50",
+              reason === "Sale" ? "bg-teal-600" : "bg-rose-600",
+            )}
+          >
+            {isSaving ? "Saving..." : reason === "Sale" ? "Continue to Billing" : "Confirm Removal"}
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onClose}
+            className="min-h-11 w-full rounded-2xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </MobileBottomSheet>
+  );
+}
+
 function MobileDoctorBagLayout({
   search,
   setSearch,
@@ -2119,8 +2302,8 @@ function MobileDoctorBagLayout({
   batchMap,
   doctorRestockCandidates = [],
   onOpenRestockInventory,
-  onStockOutUse,
-  onStockInAdd,
+  onOpenDeduct,
+  onOpenRestock,
 }) {
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3">
@@ -2191,9 +2374,13 @@ function MobileDoctorBagLayout({
 
       {doctorViewIsOcs ? (
         <p className="rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs font-medium leading-relaxed text-sky-900">
-          Tap Add to Bag to move items from the central depot into your medical bag.
+          Tap + to pull stock from the depot into your medical bag (set quantity and expiry).
         </p>
-      ) : null}
+      ) : (
+        <p className="rounded-2xl border border-slate-100 bg-slate-50/90 px-3 py-2 text-xs font-medium leading-relaxed text-slate-700">
+          Tap − to log removal (sale, damage, or expired). Tap + to restock from OCS master.
+        </p>
+      )}
 
       <SectionCard className="flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]">
         {mobileBagPagedItems.length ? (
@@ -2219,21 +2406,36 @@ function MobileDoctorBagLayout({
                   {doctorViewIsOcs ? (
                     <button
                       type="button"
-                      disabled={!onStockInAdd || ocsAvailable < 1}
-                      onClick={() => onStockInAdd?.(item)}
-                      className="shrink-0 rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!onOpenRestock || ocsAvailable < 1}
+                      onClick={() => onOpenRestock?.(item)}
+                      className="flex min-w-[76px] items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-0.5"
                     >
-                      📥 Add to Bag
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold text-teal-600 transition-colors hover:bg-teal-50">
+                        +
+                      </span>
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={!onStockOutUse || quantity < 1}
-                      onClick={() => onStockOutUse?.(item)}
-                      className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      — Use
-                    </button>
+                    <div className="flex min-w-[76px] items-center justify-between overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-0.5">
+                      <button
+                        type="button"
+                        disabled={!onOpenDeduct || quantity < 1}
+                        onClick={() => onOpenDeduct?.(item)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg font-bold text-gray-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Deduct from bag"
+                      >
+                        −
+                      </button>
+                      <div className="h-4 w-px bg-gray-200" aria-hidden />
+                      <button
+                        type="button"
+                        disabled={!onOpenRestock}
+                        onClick={() => onOpenRestock?.(item)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg font-bold text-teal-600 transition-colors hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Restock from master"
+                      >
+                        +
+                      </button>
+                    </div>
                   )}
                 </div>
               );
@@ -2305,9 +2507,8 @@ export default function InventoryPage() {
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
   const [stockOut, setStockOut] = useState(null);
-  const [mobileStockOutItem, setMobileStockOutItem] = useState(null);
-  const [mobileStockOutConfirm, setMobileStockOutConfirm] = useState(null);
-  const [mobileStockInItem, setMobileStockInItem] = useState(null);
+  const [mobileDeductItem, setMobileDeductItem] = useState(null);
+  const [mobileRestockTarget, setMobileRestockTarget] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
@@ -2986,28 +3187,63 @@ export default function InventoryPage() {
     }
   }
 
-  async function saveMobileStockOut(quantity) {
-    const payload = mobileStockOutConfirm;
-    if (!payload?.item) return;
+  function resolveOcsSourceForBagItem(bagItem) {
+    if (!bagItem) return null;
+    if (bagItem.stock_scope === "ocs" || doctorViewIsOcs) {
+      return {
+        ocs_item_id: Number(bagItem.id),
+        item_name: bagItem.item_name,
+        ocs_available: Number(bagItem.quantity || 0),
+      };
+    }
+    const source = ocsByFolderAndName.get(
+      `${bagItem.folder_id}::${String(bagItem.item_name || "").toLowerCase()}`,
+    );
+    if (!source?.id) return null;
+    return {
+      ocs_item_id: Number(source.id),
+      item_name: bagItem.item_name,
+      ocs_available: Number(source.quantity || 0),
+    };
+  }
+
+  function openMobileDoctorRestock(item) {
+    const resolved = resolveOcsSourceForBagItem(item);
+    if (!resolved?.ocs_item_id) {
+      toast.error("Item not available in OCS Master Stock.");
+      return;
+    }
+    setMobileRestockTarget(resolved);
+  }
+
+  async function saveMobileDoctorRestock({ quantity, expiry_date }) {
+    const target = mobileRestockTarget;
+    if (!target?.ocs_item_id) return;
     const qty = Number(quantity || 0);
     if (!Number.isInteger(qty) || qty <= 0) return;
-    const available = Number(payload.item.quantity || 0);
-    if (qty > available) {
-      toast.error("Quantity exceeds available stock.");
+    if (qty > Number(target.ocs_available || 0)) {
+      toast.error(`Requested quantity exceeds OCS stock for ${target.item_name || "this item"}.`);
       return;
     }
 
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${payload.item.id}/actions${inventoryListQuery}`, {
-        action_type: "stock_out",
-        quantity: qty,
-        reason: payload.reason,
-        note: "",
+      const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
+        items: [
+          {
+            ocs_item_id: Number(target.ocs_item_id),
+            quantity: qty,
+            expiry_date,
+          },
+        ],
       });
       setData(next);
-      setMobileStockOutConfirm(null);
-      toast.success("Stock out recorded.");
+      setMobileRestockTarget(null);
+      toast.success("Restocked from OCS master into your bag.");
+      if (next?.restock_receipt) {
+        setActiveReceipt(next.restock_receipt);
+        setReceiptModalOpen(true);
+      }
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -3015,29 +3251,39 @@ export default function InventoryPage() {
     }
   }
 
-  async function saveMobileStockIn(quantity) {
-    const item = mobileStockInItem;
+  async function saveMobileDoctorDeduct({ quantity, reason }) {
+    const item = mobileDeductItem;
     if (!item?.id) return;
     const qty = Number(quantity || 0);
     if (!Number.isInteger(qty) || qty <= 0) return;
     const available = Number(item.quantity || 0);
     if (qty > available) {
-      toast.error(`Requested quantity exceeds OCS stock for ${item.item_name || "this item"}.`);
+      toast.error("Quantity exceeds available stock.");
       return;
     }
 
+    if (reason === "Sale") {
+      setMobileDeductItem(null);
+      toast("Open Billing to add this item to the patient invoice.", { icon: "🩺" });
+      navigate("/billing");
+      return;
+    }
+
+    const stockOutReason = reason === "Expired" ? "Expired" : "Wasted";
+
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
-        items: [{ ocs_item_id: Number(item.id), quantity: qty }],
+      const next = await api.post(`/inventory/items/${item.id}/actions${inventoryListQuery}`, {
+        action_type: "stock_out",
+        quantity: qty,
+        reason: stockOutReason,
+        note: reason === "Damage" ? "Damage" : "",
       });
       setData(next);
-      setMobileStockInItem(null);
-      toast.success("Added to your medical bag.");
-      if (next?.restock_receipt) {
-        setActiveReceipt(next.restock_receipt);
-        setReceiptModalOpen(true);
-      }
+      setMobileDeductItem(null);
+      toast.success(
+        reason === "Expired" ? "Expired stock logged to operational loss." : "Damaged stock logged to operational loss.",
+      );
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -3086,51 +3332,23 @@ export default function InventoryPage() {
             batchMap={batchMap}
             doctorRestockCandidates={doctorRestockCandidates}
             onOpenRestockInventory={() => setDoctorRestockOpen(true)}
-            onStockOutUse={(item) => setMobileStockOutItem({ item })}
-            onStockInAdd={(item) => setMobileStockInItem(item)}
+            onOpenDeduct={(item) => setMobileDeductItem(item)}
+            onOpenRestock={openMobileDoctorRestock}
           />
-          <MobileStockOutBottomSheet
-            open={Boolean(mobileStockOutItem)}
-            item={mobileStockOutItem?.item}
-            onClose={() => setMobileStockOutItem(null)}
-            onBillPatient={() => {
-              setMobileStockOutItem(null);
-              toast("Open the patient consultation on Billing to record a sale.", { icon: "🩺" });
-              navigate("/billing");
-            }}
-            onSelectReason={(option) => {
-              const currentItem = mobileStockOutItem?.item;
-              setMobileStockOutItem(null);
-              setMobileStockOutConfirm({
-                item: currentItem,
-                reason: option.reason,
-                optionLabel: option.label,
-              });
-            }}
-          />
-          <MobileQuickQuantitySheet
-            open={Boolean(mobileStockOutConfirm)}
-            item={mobileStockOutConfirm?.item}
-            title={mobileStockOutConfirm?.optionLabel || "Stock out"}
-            subtitle={`Available in your bag: ${Number(mobileStockOutConfirm?.item?.quantity || 0)}`}
-            maxQuantity={Number(mobileStockOutConfirm?.item?.quantity || 0)}
-            confirmLabel="Confirm Stock Out"
-            confirmClassName="bg-orange-600"
+          <MobileDoctorDeductSheet
+            open={Boolean(mobileDeductItem)}
+            item={mobileDeductItem}
             isSaving={isSaving}
-            onClose={() => setMobileStockOutConfirm(null)}
-            onConfirm={saveMobileStockOut}
+            onClose={() => setMobileDeductItem(null)}
+            onSubmit={saveMobileDoctorDeduct}
           />
-          <MobileQuickQuantitySheet
-            open={Boolean(mobileStockInItem)}
-            item={mobileStockInItem}
-            title={mobileStockInItem ? `Add to Bag — ${mobileStockInItem.item_name}` : "Add to Bag"}
-            subtitle={`Depot available: ${Number(mobileStockInItem?.quantity || 0)}`}
-            maxQuantity={Number(mobileStockInItem?.quantity || 0)}
-            confirmLabel="Add to My Bag"
-            confirmClassName="bg-teal-600"
+          <MobileDoctorRestockSheet
+            open={Boolean(mobileRestockTarget)}
+            item={mobileRestockTarget}
+            ocsAvailable={mobileRestockTarget?.ocs_available}
             isSaving={isSaving}
-            onClose={() => setMobileStockInItem(null)}
-            onConfirm={saveMobileStockIn}
+            onClose={() => setMobileRestockTarget(null)}
+            onSubmit={saveMobileDoctorRestock}
           />
         </>
       ) : (
