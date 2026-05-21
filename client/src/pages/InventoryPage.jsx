@@ -2401,7 +2401,13 @@ function MobileDoctorBagLayout({
           <div className="flex flex-col pb-8">
             {mobileBagPagedItems.map((item) => {
               const quantity = Number(item.quantity || 0);
+              const current_quantity = quantity;
+              const par_level = Number(item.minimum_quantity || 0);
               const ocsAvailable = Number(item.quantity || 0);
+              const isLowStock = current_quantity <= par_level;
+              const qtyColorClass = isLowStock
+                ? "text-rose-600 bg-rose-50 border-rose-100/60"
+                : "text-emerald-700 bg-emerald-50 border-emerald-100/50";
               const terracottaPill =
                 "flex h-10 min-w-[92px] items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm";
               const terracottaBtn =
@@ -2415,6 +2421,17 @@ function MobileDoctorBagLayout({
                 >
                   <div className="min-w-0 flex-1 pr-4">
                     <p className="truncate text-base font-bold leading-snug text-gray-900">{item.item_name}</p>
+                    <div className="mt-1 flex items-center">
+                      <span
+                        className={cx(
+                          "rounded-md border px-2 py-0.5 text-[11px] font-bold tracking-wide",
+                          qtyColorClass,
+                        )}
+                      >
+                        QTY: {current_quantity}{" "}
+                        <span className="font-medium opacity-60">/ Min: {par_level}</span>
+                      </span>
+                    </div>
                   </div>
                   {doctorViewIsOcs ? (
                     <div className={terracottaPill}>
