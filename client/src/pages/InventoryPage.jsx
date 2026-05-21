@@ -200,24 +200,6 @@ const DOCTOR_MOBILE_STOCK_SCOPES = [
   { id: "ocs", label: "OCS Stock" },
 ];
 
-function formatDoctorMobileBatchLabel(item, batches) {
-  const first = Array.isArray(batches) ? batches[0] : null;
-  if (first?.batch_number && first.batch_number !== "N/A") {
-    return first.batch_number;
-  }
-  if (first?.id) {
-    return `BATCH-${String(first.id).padStart(3, "0")}`;
-  }
-  if (item?.expiry_date) {
-    const expiry = dayjs(item.expiry_date);
-    return expiry.isValid() ? expiry.format("DD MMM YYYY") : String(item.expiry_date);
-  }
-  if (item?.id) {
-    return `BATCH-${String(item.id).padStart(3, "0")}`;
-  }
-  return "—";
-}
-
 function SummaryCard({ title, value, tone = "teal" }) {
   const valueToneClass = tone === "amber" ? "text-amber-700" : "text-slate-950";
   return (
@@ -2332,7 +2314,6 @@ function MobileDoctorBagLayout({
   mobileBagTotalPages,
   currentPage,
   setCurrentPage,
-  batchMap,
   doctorRestockCandidates = [],
   onOpenRestockInventory,
   onOpenDeduct,
@@ -2419,51 +2400,51 @@ function MobileDoctorBagLayout({
         {mobileBagPagedItems.length ? (
           <div className="flex flex-col pb-8">
             {mobileBagPagedItems.map((item) => {
-              const batches = doctorViewIsOcs ? [] : batchMap[item.id] || [];
               const quantity = Number(item.quantity || 0);
-              const unit = item.unit || "units";
-              const batchLabel = formatDoctorMobileBatchLabel(item, batches);
               const ocsAvailable = Number(item.quantity || 0);
+              const terracottaPill =
+                "flex h-10 min-w-[92px] items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm";
+              const terracottaBtn =
+                "flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40";
+              const terracottaDivider = "h-5 w-px bg-[#f5e3d7]";
 
               return (
                 <div
                   key={`mobile-bag-${item.id}`}
-                  className="mb-3 flex flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"
+                  className="flex flex-row items-center justify-between border-b border-gray-100 bg-white py-3.5"
                 >
-                  <div className="min-w-0 flex-1 pr-3">
-                    <p className="truncate text-base font-bold text-gray-900">{item.item_name}</p>
-                    <p className="mt-1 text-sm font-medium text-gray-500">
-                      Batch: {batchLabel} • Qty: {quantity} {unit}
-                    </p>
+                  <div className="min-w-0 flex-1 pr-4">
+                    <p className="truncate text-base font-bold leading-snug text-gray-900">{item.item_name}</p>
                   </div>
                   {doctorViewIsOcs ? (
-                    <button
-                      type="button"
-                      disabled={!onOpenRestock || ocsAvailable < 1}
-                      onClick={() => onOpenRestock?.(item)}
-                      className="flex min-w-[76px] items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-0.5"
-                    >
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold text-teal-600 transition-colors hover:bg-teal-50">
+                    <div className={terracottaPill}>
+                      <button
+                        type="button"
+                        disabled={!onOpenRestock || ocsAvailable < 1}
+                        onClick={() => onOpenRestock?.(item)}
+                        className={cx(terracottaBtn, "mx-auto")}
+                        aria-label="Restock from master"
+                      >
                         +
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   ) : (
-                    <div className="flex min-w-[76px] items-center justify-between overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-0.5">
+                    <div className={terracottaPill}>
                       <button
                         type="button"
                         disabled={!onOpenDeduct || quantity < 1}
                         onClick={() => onOpenDeduct?.(item)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg font-bold text-gray-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className={terracottaBtn}
                         aria-label="Deduct from bag"
                       >
                         −
                       </button>
-                      <div className="h-4 w-px bg-gray-200" aria-hidden />
+                      <div className={terracottaDivider} aria-hidden />
                       <button
                         type="button"
                         disabled={!onOpenRestock}
                         onClick={() => onOpenRestock?.(item)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg font-bold text-teal-600 transition-colors hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className={terracottaBtn}
                         aria-label="Restock from master"
                       >
                         +
@@ -2863,18 +2844,6 @@ export default function InventoryPage() {
       toast.error(error.message);
     }
   }
-
-  useEffect(() => {
-    if (loading || !data || !showMobileDoctorBag || doctorViewIsOcs) {
-      return;
-    }
-    mobileBagPagedItems.forEach((item) => {
-      if (!batchMap[item.id]) {
-        loadBatches(item.id);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, data, showMobileDoctorBag, doctorViewIsOcs, mobileBagPagedItems]);
 
   function openDoctorRestockForItem(nextItem) {
     const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
@@ -3372,7 +3341,6 @@ export default function InventoryPage() {
             mobileBagTotalPages={mobileBagTotalPages}
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
-            batchMap={batchMap}
             doctorRestockCandidates={doctorRestockCandidates}
             onOpenRestockInventory={() => setDoctorRestockOpen(true)}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
