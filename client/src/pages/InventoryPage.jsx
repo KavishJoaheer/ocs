@@ -2287,6 +2287,12 @@ function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
               </button>
             ))}
           </div>
+          {reason === "Sale" ? (
+            <p className="mt-1 block text-[10px] leading-tight text-gray-400">
+              Selecting Sale logs this product usage for corporate inventory tracking. Remember to add this item
+              manually inside the Billing tab when calculating the patient&apos;s final consultation charges.
+            </p>
+          ) : null}
         </div>
         <div className="grid gap-2 pt-1">
           <button
@@ -2297,7 +2303,7 @@ function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
               reason === "Sale" ? "bg-teal-600" : "bg-rose-600",
             )}
           >
-            {isSaving ? "Saving..." : reason === "Sale" ? "Continue to Billing" : "Confirm Removal"}
+            {isSaving ? "Saving..." : reason === "Sale" ? "Record Sale for Admin Audit" : "Confirm Removal"}
           </button>
           <button
             type="button"
@@ -3295,14 +3301,14 @@ export default function InventoryPage() {
       return;
     }
 
-    if (reason === "Sale") {
-      setMobileDeductItem(null);
-      toast("Open Billing to add this item to the patient invoice.", { icon: "🩺" });
-      navigate("/billing");
-      return;
-    }
-
-    const stockOutReason = reason === "Expired" ? "Expired" : "Wasted";
+    const stockOutReason =
+      reason === "Sale" ? "Sale" : reason === "Expired" ? "Expired" : "Wasted";
+    const note =
+      reason === "Sale"
+        ? "Pending Manual Entry"
+        : reason === "Damage"
+          ? "Damage"
+          : "";
 
     setIsSaving(true);
     try {
@@ -3310,13 +3316,17 @@ export default function InventoryPage() {
         action_type: "stock_out",
         quantity: qty,
         reason: stockOutReason,
-        note: reason === "Damage" ? "Damage" : "",
+        note,
       });
       setData(next);
       setMobileDeductItem(null);
-      toast.success(
-        reason === "Expired" ? "Expired stock logged to operational loss." : "Damaged stock logged to operational loss.",
-      );
+      if (reason === "Sale") {
+        toast.success("Sale transaction recorded successfully for Admin audit.");
+      } else if (reason === "Expired") {
+        toast.success("Expired stock logged to operational loss.");
+      } else {
+        toast.success("Damaged stock logged to operational loss.");
+      }
     } catch (error) {
       toast.error(error.message);
     } finally {

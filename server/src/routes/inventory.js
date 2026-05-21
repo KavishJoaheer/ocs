@@ -1910,7 +1910,23 @@ router.post("/items/:id/actions", (req, res) => {
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
           ...(actionType === "stock_out"
-            ? { stock_out_reason: stockOutReason, stock_out_note: note || "" }
+            ? {
+                stock_out_reason: stockOutReason,
+                stock_out_note: note || "",
+                item_name: item.item_name,
+                doctor_id: doctorId,
+                admin_audit_action:
+                  stockOutReason === "Sale"
+                    ? "Sale"
+                    : stockOutReason === "Expired"
+                      ? "Expired"
+                      : note === "Damage"
+                        ? "Damage"
+                        : stockOutReason,
+                ...(stockOutReason === "Sale"
+                  ? { billing_status: "Pending Manual Entry" }
+                  : {}),
+              }
             : {}),
         }),
       });
