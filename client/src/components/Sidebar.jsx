@@ -133,18 +133,19 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
           typeof item.isActiveWhen === "function" ? item.isActiveWhen(location) : routerActive;
 
         return cx(
-          "group flex items-center gap-3 transition-all",
-          drawer ? "min-h-12 rounded-r-xl px-4 py-3 text-[15px] font-bold tracking-wide text-gray-700" : "rounded-2xl px-4 py-3 text-sm font-semibold",
+          "group flex items-center transition-all",
+          drawer
+            ? "gap-3.5 px-4 py-3 text-[15px] font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            : "gap-3 rounded-2xl px-4 py-3 text-sm font-semibold",
           mobile
             ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
-            : drawer
-              ? "hover:bg-[#557373]/10 hover:text-gray-900"
-              : "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
+            : !drawer && "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
+          drawer && !isActive && "rounded-xl",
           isActive &&
             (mobile
               ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
               : drawer
-                ? "border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32]"
+                ? "rounded-r-xl border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32] shadow-sm"
                 : "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"),
         );
       }}
@@ -152,7 +153,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
       <Icon
         className={cx(
           "size-4 shrink-0",
-          drawer ? "text-current opacity-75" : mobile ? "text-current" : "text-[#66d7d0]",
+          drawer ? "text-current" : mobile ? "text-current" : "text-[#66d7d0]",
         )}
       />
       <span>{item.label}</span>
@@ -251,35 +252,33 @@ function Sidebar() {
         />
         <div
           className={cx(
-            "absolute inset-y-0 left-0 flex h-full w-[280px] flex-col overflow-y-auto border-r border-[#557373]/20 bg-[#557373]/12 p-4 shadow-[5px_0_25px_rgba(0,0,0,0.12)] backdrop-blur-lg transition-transform duration-300",
+            "fixed inset-y-0 left-0 z-50 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-gray-100 bg-white p-5 shadow-[8px_0_30px_rgba(0,0,0,0.08)] transition-transform duration-300 ease-in-out",
             drawerOpen ? "translate-x-0" : "-translate-x-full",
           )}
-          style={{ paddingTop: `max(1rem, var(--sat))`, paddingBottom: `max(1rem, var(--sab))` }}
+          style={{ paddingTop: `max(1.25rem, var(--sat))`, paddingBottom: `max(1.25rem, var(--sab))` }}
         >
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             <div className="mb-4 flex items-center justify-between">
               <BrandMark maxWidth={150} size={36} />
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                className="grid min-h-12 min-w-10 place-items-center rounded-xl text-gray-500 transition hover:bg-[#557373]/10 hover:text-gray-800 active:scale-95"
+                className="grid min-h-12 min-w-10 place-items-center rounded-xl text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 active:scale-95"
                 aria-label="Close menu"
               >
                 <X className="size-5" strokeWidth={2.25} />
               </button>
             </div>
 
-            <div className="mb-6 rounded-2xl border border-gray-100 bg-white/90 p-4 shadow-sm">
+            <div className="mb-6 rounded-2xl border border-gray-100/80 bg-gray-50 p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl border border-gray-100 bg-slate-50 p-2 text-[#557373]">
+                <div className="rounded-2xl border border-gray-100 bg-white p-2 text-gray-600">
                   <ShieldCheck className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.22em] text-gray-500">
-                    {getRoleLabel(user.role)}
-                  </p>
                   <p className="text-base font-bold text-gray-900">{user.full_name}</p>
-                  <p className="truncate text-xs font-medium text-gray-600">
+                  <p className="mt-0.5 text-xs font-semibold text-gray-500">{getRoleLabel(user.role)}</p>
+                  <p className="truncate text-xs text-gray-500">
                     {user.email || `@${user.username}`}
                   </p>
                 </div>
@@ -289,7 +288,7 @@ function Sidebar() {
             <PushNotificationToggle alwaysShow role={user.role} />
 
             {drawerNavItems.length > 0 ? (
-              <div className="mt-2 flex-1">
+              <div className="mt-2 min-h-0 flex-1">
                 <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-gray-500">
                   More
                 </p>
@@ -308,16 +307,14 @@ function Sidebar() {
             ) : null}
           </div>
 
-          <div className="mt-auto pt-4">
-            <button
-              type="button"
-              onClick={() => logout()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-center text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100 hover:text-rose-800"
-            >
-              <LogOut className="size-4 shrink-0" />
-              Sign out
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-center text-sm font-semibold text-white transition-all hover:bg-rose-600 active:scale-[0.98]"
+          >
+            <LogOut className="size-4 shrink-0" />
+            Sign out
+          </button>
         </div>
       </div>
 
