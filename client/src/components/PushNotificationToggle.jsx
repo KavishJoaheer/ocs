@@ -9,7 +9,8 @@ import {
   unsubscribeFromPushNotifications,
 } from "../lib/pushNotifications.js";
 
-function PushNotificationToggle({ className = "", alwaysShow = false, role = null }) {
+function PushNotificationToggle({ className = "", alwaysShow = false, role = null, variant = "light" }) {
+  const onDark = variant === "onDark";
   const [enabled, setEnabled] = useState(false);
   const [available, setAvailable] = useState(false);
   const [permission, setPermission] = useState("unsupported");
@@ -115,11 +116,29 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
 
   return (
     <div
-      className={`mx-5 mt-6 flex items-center justify-between border-t border-gray-100 px-2 pt-4 ${className}`.trim()}
+      className={[
+        "mx-5 mt-6 flex items-center justify-between border-t px-2 pt-4",
+        onDark ? "border-white/10" : "border-gray-100",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <div className="flex flex-col pr-3">
-        <span className="text-xs font-bold tracking-wide text-gray-700">Push Notifications</span>
-        <span className="mt-0.5 text-[10px] leading-snug text-gray-400">{helperText}</span>
+        <span
+          className={onDark ? "text-xs font-bold tracking-wide text-white" : "text-xs font-bold tracking-wide text-gray-700"}
+        >
+          Push Notifications
+        </span>
+        <span
+          className={
+            onDark
+              ? "mt-0.5 text-[10px] leading-snug text-[#d1dede]"
+              : "mt-0.5 text-[10px] leading-snug text-gray-400"
+          }
+        >
+          {helperText}
+        </span>
       </div>
       <label
         className={`relative inline-flex shrink-0 items-center ${toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}

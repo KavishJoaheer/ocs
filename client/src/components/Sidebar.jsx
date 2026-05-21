@@ -113,7 +113,7 @@ const navItems = [
   },
 ];
 
-function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
+function SidebarLink({ item, mobile = false, drawer = false, drawerDeepTeal = false, badgeCount = 0 }) {
   const Icon = item.icon;
   const location = useLocation();
 
@@ -124,6 +124,14 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
       className={({ isActive: routerActive }) => {
         const isActive =
           typeof item.isActiveWhen === "function" ? item.isActiveWhen(location) : routerActive;
+
+        if (drawerDeepTeal) {
+          return cx(
+            "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold tracking-wide transition-all duration-200",
+            "text-white/90 hover:bg-white/5 hover:text-white",
+            isActive && "bg-white/15 font-bold text-white shadow-sm",
+          );
+        }
 
         return cx(
           "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
@@ -142,15 +150,22 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
         );
       }}
     >
-      <Icon className={cx("size-4", mobile ? "text-current" : "text-[#66d7d0]")} />
+      <Icon
+        className={cx(
+          "size-4 shrink-0",
+          drawerDeepTeal ? "text-white/80" : mobile ? "text-current" : "text-[#66d7d0]",
+        )}
+      />
       <span>{item.label}</span>
       {badgeCount > 0 ? (
         <span
           className={cx(
             "ml-auto inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold",
-            mobile
-              ? "bg-white/90 text-[#2d8f98]"
-              : "bg-rose-500 text-white",
+            drawerDeepTeal
+              ? "bg-rose-500 text-white"
+              : mobile
+                ? "bg-white/90 text-[#2d8f98]"
+                : "bg-rose-500 text-white",
           )}
         >
           {badgeCount > 9 ? "9+" : badgeCount}
@@ -241,65 +256,70 @@ function Sidebar() {
         />
         <div
           className={cx(
-            "absolute inset-y-0 left-0 flex w-[280px] flex-col overflow-y-auto bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] shadow-2xl transition-transform duration-300",
+            "absolute inset-y-0 left-0 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-[#445d5d]/40 bg-[#557373] text-white shadow-[5px_0_25px_rgba(0,0,0,0.15)] transition-transform duration-300",
             drawerOpen ? "translate-x-0" : "-translate-x-full",
           )}
           style={{ paddingTop: `max(1rem, var(--sat))`, paddingBottom: `max(1rem, var(--sab))` }}
         >
-          <div className="flex items-center justify-between px-5 py-3">
-            <BrandMark maxWidth={150} size={36} />
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(false)}
-              className="grid min-h-12 min-w-10 place-items-center rounded-xl text-slate-500 transition active:bg-slate-100"
-              aria-label="Close menu"
-            >
-              <X className="size-5" />
-            </button>
-          </div>
+          <div className="flex flex-1 flex-col">
+            <div className="flex items-center justify-between px-5 py-3">
+              <BrandMark maxWidth={150} size={36} />
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(false)}
+                className="grid min-h-12 min-w-10 place-items-center rounded-xl text-white/80 transition hover:bg-white/10 hover:text-white active:scale-95"
+                aria-label="Close menu"
+              >
+                <X className="size-5" strokeWidth={2.25} />
+              </button>
+            </div>
 
-          <div className="mx-5 mt-3 rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-white/85 p-2 text-[#2d8f98]">
-                <ShieldCheck className="size-4" />
+            <div className="mx-5 mb-6 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-2 text-white">
+                  <ShieldCheck className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d1dede]">
+                    {getRoleLabel(user.role)}
+                  </p>
+                  <p className="text-base font-bold tracking-wide text-white">{user.full_name}</p>
+                  <p className="truncate text-xs text-[#d1dede]">
+                    {user.email || `@${user.username}`}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  {getRoleLabel(user.role)}
+            </div>
+
+            <PushNotificationToggle alwaysShow role={user.role} variant="onDark" />
+
+            {drawerNavItems.length > 0 ? (
+              <div className="mt-2 px-3">
+                <p className="px-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#d1dede]">
+                  More
                 </p>
-                <p className="text-sm font-semibold text-slate-900">{user.full_name}</p>
-                <p className="text-xs text-[#5b7f8a]">@{user.username}</p>
+                <nav className="mt-2 space-y-1">
+                  {drawerNavItems.map((item) => (
+                    <SidebarLink
+                      key={item.to}
+                      item={item}
+                      drawer
+                      drawerDeepTeal
+                      badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
+                    />
+                  ))}
+                </nav>
               </div>
-            </div>
+            ) : null}
           </div>
 
-          <PushNotificationToggle alwaysShow role={user.role} />
-
-          {drawerNavItems.length > 0 ? (
-            <div className="mt-5 px-4">
-              <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
-                More
-              </p>
-              <nav className="mt-3 space-y-1.5">
-                {drawerNavItems.map((item) => (
-                  <SidebarLink
-                    key={item.to}
-                    item={item}
-                    drawer
-                    badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
-                  />
-                ))}
-              </nav>
-            </div>
-          ) : null}
-
-          <div className="mt-auto px-5 pb-4 pt-6">
+          <div className="mt-auto px-5 pb-4 pt-4">
             <button
               type="button"
               onClick={() => logout()}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 px-4 py-3 text-sm font-semibold text-[#2d8f98] transition hover:bg-white"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-rose-500/20 hover:text-rose-200"
             >
-              <LogOut className="size-4" />
+              <LogOut className="size-4 shrink-0" />
               Sign out
             </button>
           </div>
