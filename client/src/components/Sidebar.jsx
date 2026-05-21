@@ -133,18 +133,18 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
           typeof item.isActiveWhen === "function" ? item.isActiveWhen(location) : routerActive;
 
         return cx(
-          "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
-          drawer && "min-h-12",
+          "group flex items-center gap-3 transition-all",
+          drawer ? "min-h-12 rounded-r-xl px-4 py-3 text-[15px] font-bold tracking-wide text-gray-700" : "rounded-2xl px-4 py-3 text-sm font-semibold",
           mobile
             ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
             : drawer
-              ? "text-gray-600 hover:bg-[#557373]/10 hover:text-gray-900"
+              ? "hover:bg-[#557373]/10 hover:text-gray-900"
               : "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
           isActive &&
             (mobile
               ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
               : drawer
-                ? "bg-[#557373]/15 font-bold text-gray-900 shadow-sm"
+                ? "border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32]"
                 : "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"),
         );
       }}
@@ -152,7 +152,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
       <Icon
         className={cx(
           "size-4 shrink-0",
-          drawer ? "text-gray-500 group-hover:text-gray-800" : mobile ? "text-current" : "text-[#66d7d0]",
+          drawer ? "text-current opacity-75" : mobile ? "text-current" : "text-[#66d7d0]",
         )}
       />
       <span>{item.label}</span>
@@ -251,17 +251,13 @@ function Sidebar() {
         />
         <div
           className={cx(
-            "absolute inset-y-0 left-0 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-[#557373]/25 bg-white shadow-[5px_0_25px_rgba(0,0,0,0.12)] transition-transform duration-300",
+            "absolute inset-y-0 left-0 flex h-full w-[280px] flex-col overflow-y-auto border-r border-[#557373]/20 bg-[#557373]/12 p-4 shadow-[5px_0_25px_rgba(0,0,0,0.12)] backdrop-blur-lg transition-transform duration-300",
             drawerOpen ? "translate-x-0" : "-translate-x-full",
           )}
           style={{ paddingTop: `max(1rem, var(--sat))`, paddingBottom: `max(1rem, var(--sab))` }}
         >
-          <div
-            className="pointer-events-none absolute inset-0 bg-[#557373]/15"
-            aria-hidden="true"
-          />
-          <div className="relative z-10 flex flex-1 flex-col">
-            <div className="flex items-center justify-between px-5 py-3">
+          <div className="flex flex-1 flex-col">
+            <div className="mb-4 flex items-center justify-between">
               <BrandMark maxWidth={150} size={36} />
               <button
                 type="button"
@@ -273,13 +269,13 @@ function Sidebar() {
               </button>
             </div>
 
-            <div className="mx-5 mb-6 rounded-2xl border border-[#557373]/20 bg-[#557373]/10 p-4">
+            <div className="mb-6 rounded-2xl border border-gray-100 bg-white/90 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl border border-[#557373]/20 bg-white p-2 text-[#557373]">
+                <div className="rounded-2xl border border-gray-100 bg-slate-50 p-2 text-[#557373]">
                   <ShieldCheck className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.22em] text-gray-600">
+                  <p className="text-xs font-medium uppercase tracking-[0.22em] text-gray-500">
                     {getRoleLabel(user.role)}
                   </p>
                   <p className="text-base font-bold text-gray-900">{user.full_name}</p>
@@ -293,8 +289,8 @@ function Sidebar() {
             <PushNotificationToggle alwaysShow role={user.role} />
 
             {drawerNavItems.length > 0 ? (
-              <div className="mt-2 px-3">
-                <p className="px-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-gray-500">
+              <div className="mt-2 flex-1">
+                <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-gray-500">
                   More
                 </p>
                 <nav className="mt-2 space-y-1">
@@ -312,7 +308,7 @@ function Sidebar() {
             ) : null}
           </div>
 
-          <div className="relative z-10 mt-auto px-5 pb-4 pt-4">
+          <div className="mt-auto pt-4">
             <button
               type="button"
               onClick={() => logout()}

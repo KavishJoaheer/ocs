@@ -74,17 +74,9 @@ textarea {
   padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
 }
 
-.navigation-card-list {
-  display: flex;
+.doctor-mobile-action-grid {
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 1rem;
   min-height: 0;
-}
-
-.navigation-card-item {
-  flex: 1 1 0;
-  min-height: 4.75rem;
 }
 
 /* Standard page width — horizontal padding lives on AppShell; pages use this for alignment only */

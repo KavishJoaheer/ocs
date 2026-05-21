@@ -42,30 +42,52 @@ function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
 }
 
-function buildDoctorMobileCards(dashboard) {
-  const lowStock = dashboard?.doctor_low_stock_alert;
-  const lowCount = Number(lowStock?.total_items || 0);
+function resolveNextDispatchSector(dashboard) {
+  const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
+  const nextVisit = visits.find(
+    (visit) => String(visit.status || "").toLowerCase() === "scheduled",
+  );
+  const sector = String(nextVisit?.location || "").trim();
+  return sector ? sector.toUpperCase() : "NO DISPATCH SCHEDULED";
+}
 
-  return [
-    {
-      label: "Patient Directory",
-      icon: UserRound,
-      to: "/patients",
-      meta: "Search all records",
-    },
-    {
-      label: "Add Patient",
-      icon: UserPlus,
-      to: "/patients/add",
-      meta: null,
-    },
-    {
-      label: "Inventory",
-      icon: Package,
-      to: "/inventory",
-      meta: lowStock?.triggered ? `${lowCount} Item${lowCount === 1 ? "" : "s"} Low` : "Healthy",
-    },
-  ];
+function DoctorMobileDispatchStrip({ dashboard }) {
+  const sector = resolveNextDispatchSector(dashboard);
+
+  return (
+    <Link
+      to="/doctor/scheduled-visits"
+      className="mb-4 flex w-full cursor-pointer items-center justify-between rounded-2xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-3.5 transition active:scale-[0.99] active:bg-[#f7e6db]"
+    >
+      <p className="min-w-0 pr-3 text-xs font-bold uppercase tracking-wide text-[#6e2f14]">
+        📍 Next home visit dispatch: {sector}
+      </p>
+      <ArrowRight className="size-4 shrink-0 text-[#ba5a32]" strokeWidth={2.5} aria-hidden />
+    </Link>
+  );
+}
+
+function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false }) {
+  return (
+    <Link
+      to={to}
+      className="group relative flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/95 p-4 text-left shadow-[0_8px_22px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+    >
+      {showLowStockLed ? (
+        <span
+          className="absolute right-3 top-3 size-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
+          aria-label="Low stock alert"
+        />
+      ) : null}
+      <div className="flex size-10 items-center justify-center rounded-xl border border-[#4FB8B3]/20 bg-[#ecf8f7] text-[#2d8f98]">
+        <Icon className="size-5" strokeWidth={2.25} />
+      </div>
+      <div className="mt-3 min-w-0">
+        <p className="text-[15px] font-bold leading-snug tracking-tight text-gray-900">{label}</p>
+      </div>
+      <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-teal-500/80" strokeWidth={2} />
+    </Link>
+  );
 }
 
 function DoctorMobileLauncher({
@@ -73,68 +95,46 @@ function DoctorMobileLauncher({
   dashboard,
   latestHcmPost,
   lowStockAlert,
-  hcmLatestTitle,
-  onOpenRosterPdf,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
-  const cards = buildDoctorMobileCards(dashboard);
+  const inventoryLow = Boolean(lowStockAlert?.triggered);
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
-      <header className="shrink-0 pb-4">
+      <header className="shrink-0 pb-2">
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
 
-      <LowStockBanner alert={lowStockAlert} variant="doctor" />
+      <DoctorMobileDispatchStrip dashboard={dashboard} />
 
       {isHcmPostWithinBulletinWindow(latestHcmPost) ? (
-        <HcmBulletinBanner post={latestHcmPost} />
+        <div className="mb-4">
+          <HcmBulletinBanner post={latestHcmPost} />
+        </div>
       ) : null}
 
-      <nav className="navigation-card-list" aria-label="Doctor quick actions">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          const className =
-            "navigation-card-item group flex w-full items-center gap-5 rounded-3xl border border-[rgba(65,200,198,0.18)] bg-white px-5 text-left shadow-[0_10px_28px_rgba(34,72,91,0.08)] transition active:scale-[0.99] active:bg-slate-50/80";
+      <nav className="doctor-mobile-action-grid" aria-label="Doctor quick actions">
+        <div className="grid grid-cols-2 gap-4">
+          <DoctorMobileSplitCard to="/patients" label="Patient Directory" icon={UserRound} />
+          <DoctorMobileSplitCard
+            to="/inventory"
+            label="Inventory"
+            icon={Package}
+            showLowStockLed={inventoryLow}
+          />
+        </div>
 
-          if (card.action === "roster") {
-            return (
-              <button
-                key={card.label}
-                type="button"
-                onClick={onOpenRosterPdf}
-                className={className}
-              >
-                <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
-                  <Icon className="size-7" strokeWidth={2} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-lg font-bold leading-snug text-gray-900">{card.label}</p>
-                  {card.meta ? (
-                    <p className="mt-1 text-base font-medium text-teal-600">{card.meta}</p>
-                  ) : null}
-                </div>
-                <ArrowUpRight className="size-6 shrink-0 text-teal-500" strokeWidth={2} />
-              </button>
-            );
-          }
-
-          return (
-            <Link key={card.label} to={card.to} className={className}>
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#4FB8B3]/25 bg-[#ecf8f7] text-[#2d8f98]">
-                <Icon className="size-7" strokeWidth={2} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-lg font-bold leading-snug text-gray-900">{card.label}</p>
-                {card.meta ? (
-                  <p className="mt-1 text-base font-medium text-teal-600">{card.meta}</p>
-                ) : null}
-              </div>
-              <ArrowUpRight className="size-6 shrink-0 text-teal-500" strokeWidth={2} />
-            </Link>
-          );
-        })}
+        <Link
+          to="/patients/add"
+          className="group mt-4 flex w-full items-center gap-4 rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/95 px-4 py-3.5 text-left shadow-[0_8px_22px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+        >
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/20 bg-[#ecf8f7] text-[#2d8f98]">
+            <UserPlus className="size-5" strokeWidth={2.25} />
+          </div>
+          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-gray-900">Add Patient</p>
+          <ArrowUpRight className="size-4 shrink-0 text-teal-500/80" strokeWidth={2} />
+        </Link>
       </nav>
     </div>
   );
@@ -158,8 +158,6 @@ function MobileLauncher({
         dashboard={dashboard}
         latestHcmPost={latestHcmPost}
         lowStockAlert={dashboard.doctor_low_stock_alert}
-        hcmLatestTitle={hcmLatestTitle}
-        onOpenRosterPdf={onOpenRosterPdf}
       />
     );
   }
