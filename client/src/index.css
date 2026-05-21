@@ -296,6 +296,22 @@ table {
   animation: hcm-banner-fade-in 0.35s ease-out forwards;
 }
 
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
 .hcm-banner-slide-out {
   animation: hcm-banner-slide-out 0.28s ease-in forwards;
 }

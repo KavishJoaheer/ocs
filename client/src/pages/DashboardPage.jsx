@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import {
   Activity,
-  ArrowRight,
   ArrowUpRight,
   BellRing,
   CalendarClock,
@@ -23,7 +22,7 @@ import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import LowStockBanner from "../components/LowStockBanner.jsx";
-import DoctorInventoryAlertsFeed from "../components/DoctorInventoryAlertsFeed.jsx";
+import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.jsx";
 import { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
 import EmptyState from "../components/EmptyState.jsx";
@@ -42,31 +41,6 @@ import { cx } from "../lib/utils.js";
 
 function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
-}
-
-function resolveNextDispatchSector(dashboard) {
-  const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
-  const nextVisit = visits.find(
-    (visit) => String(visit.status || "").toLowerCase() === "scheduled",
-  );
-  const sector = String(nextVisit?.location || "").trim();
-  return sector ? sector.toUpperCase() : "NO DISPATCH SCHEDULED";
-}
-
-function DoctorMobileDispatchStrip({ dashboard }) {
-  const sector = resolveNextDispatchSector(dashboard);
-
-  return (
-    <Link
-      to="/doctor/scheduled-visits"
-      className="mb-4 flex w-full cursor-pointer items-center justify-between rounded-2xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-3.5 transition active:scale-[0.99] active:bg-[#f7e6db]"
-    >
-      <p className="min-w-0 pr-3 text-xs font-bold uppercase tracking-wide text-[#6e2f14]">
-        📍 Next home visit dispatch: {sector}
-      </p>
-      <ArrowRight className="size-4 shrink-0 text-[#ba5a32]" strokeWidth={2.5} aria-hidden />
-    </Link>
-  );
 }
 
 function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false }) {
@@ -92,9 +66,10 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
   );
 }
 
-function DoctorMobileLauncher({ user, dashboard }) {
+function DoctorMobileLauncher({ user }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
-  const { hasLowStockAlert, loading, notifications, alertCount } = useDoctorBagInventory();
+  const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
+  const showLowStockStrip = !loading && lowStockCount > 0;
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
@@ -103,13 +78,7 @@ function DoctorMobileLauncher({ user, dashboard }) {
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
 
-      <DoctorMobileDispatchStrip dashboard={dashboard} />
-
-      <DoctorInventoryAlertsFeed
-        alertCount={alertCount}
-        loading={loading}
-        notifications={notifications}
-      />
+      {showLowStockStrip ? <DoctorMobileLowStockStrip lowStockCount={lowStockCount} /> : null}
 
       <nav className="doctor-mobile-action-grid" aria-label="Doctor quick actions">
         <div className="grid grid-cols-2 gap-4">
@@ -150,7 +119,7 @@ function MobileLauncher({
 
   if (isDoctor) {
     return (
-      <DoctorMobileLauncher user={user} dashboard={dashboard} />
+      <DoctorMobileLauncher user={user} />
     );
   }
 
