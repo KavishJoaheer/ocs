@@ -3,6 +3,7 @@
  * One-shot OCS stock baseline for production:
  * 1. Purge Consumable OCS + bag rows (with catalog exclusions)
  * 2. Seed IM Drugs from IM DRUGS.pdf catalog
+ * 3. Mirror OCS catalog into every doctor bag (catalog rows, qty from OCS)
  *
  * Requires ALLOW_DB_PURGE=true
  *
@@ -12,6 +13,7 @@
 
 const { purgeOcsConsumableStockSync } = require("./purgeOcsConsumableStock");
 const { seedOcsIMDrugsExtensionSync } = require("./seedOcsIMDrugsExtension");
+const { syncDoctorStockFromOcsSync } = require("./syncDoctorStockFromOcs");
 const { db, initializeDatabase } = require("../db");
 const { REQUIRED_INVENTORY_FOLDERS } = require("../config/inventoryFolders");
 
@@ -47,8 +49,18 @@ if (require.main === module) {
     const seed = seedOcsIMDrugsExtensionSync({ skipInit: true });
     console.log(`  Inserted ${seed.imDrugs.inserted}, updated ${seed.imDrugs.updated}.`);
 
+    console.log("\nStep 3: Sync doctor bags from OCS catalog...");
+    const bagSync = syncDoctorStockFromOcsSync({
+      skipInit: true,
+      insertOnly: true,
+      pruneExtras: true,
+    });
+    console.log(
+      `  Doctors: ${bagSync.doctors}, bag rows added: ${bagSync.inserted}, pruned: ${bagSync.pruned}`,
+    );
+
     audit();
-    console.log("\nDone. Hard-refresh Inventory → OCS Stock. Open IM Drugs tab.");
+    console.log("\nDone. Doctors: Inventory → My Stock → IM Drugs. Admins: OCS Stock → IM Drugs.");
   } catch (error) {
     console.error("Setup failed:", error.message);
     process.exitCode = 1;

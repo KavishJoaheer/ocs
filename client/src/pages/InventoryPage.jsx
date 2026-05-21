@@ -2161,8 +2161,7 @@ export default function InventoryPage() {
     : selectedContextDoctorId
       ? data?.selected_doctor_stock || []
       : data?.ocs_stock || [];
-  const showAllCategoryPills =
-    (canManageOcs && contextIsOcs) || (isDoctor && doctorViewIsOcs);
+  const showAllCategoryPills = isDoctor || (canManageOcs && contextIsOcs);
   const displayFolders = useMemo(
     () => getDisplayFolders(folders, items, { showAllCategories: showAllCategoryPills }),
     [folders, items, showAllCategoryPills],
@@ -3425,7 +3424,9 @@ export default function InventoryPage() {
             description={
               canManageOcs && contextIsOcs
                 ? "Add stock in Consumable or pick another category when adding a new item."
-                : "Try another category, search term, or restock from OCS Master Stock."
+                : isDoctor && doctorViewIsMy
+                  ? "Open OCS Master Stock to add items to your bag, or pick another category."
+                  : "Try another category, search term, or restock from OCS Master Stock."
             }
           />
         )}
