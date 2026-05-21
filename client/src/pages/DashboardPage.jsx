@@ -23,7 +23,9 @@ import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import LowStockBanner from "../components/LowStockBanner.jsx";
-import HcmBulletinBanner, { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
+import DoctorInventoryAlertsFeed from "../components/DoctorInventoryAlertsFeed.jsx";
+import { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
+import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -90,14 +92,9 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
   );
 }
 
-function DoctorMobileLauncher({
-  user,
-  dashboard,
-  latestHcmPost,
-  lowStockAlert,
-}) {
+function DoctorMobileLauncher({ user, dashboard }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
-  const inventoryLow = Boolean(lowStockAlert?.triggered);
+  const { hasLowStockAlert, loading, notifications, alertCount } = useDoctorBagInventory();
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
@@ -108,11 +105,11 @@ function DoctorMobileLauncher({
 
       <DoctorMobileDispatchStrip dashboard={dashboard} />
 
-      {isHcmPostWithinBulletinWindow(latestHcmPost) ? (
-        <div className="mb-4">
-          <HcmBulletinBanner post={latestHcmPost} />
-        </div>
-      ) : null}
+      <DoctorInventoryAlertsFeed
+        alertCount={alertCount}
+        loading={loading}
+        notifications={notifications}
+      />
 
       <nav className="doctor-mobile-action-grid" aria-label="Doctor quick actions">
         <div className="grid grid-cols-2 gap-4">
@@ -121,7 +118,7 @@ function DoctorMobileLauncher({
             to="/inventory"
             label="Inventory"
             icon={Package}
-            showLowStockLed={inventoryLow}
+            showLowStockLed={hasLowStockAlert}
           />
         </div>
 
@@ -153,12 +150,7 @@ function MobileLauncher({
 
   if (isDoctor) {
     return (
-      <DoctorMobileLauncher
-        user={user}
-        dashboard={dashboard}
-        latestHcmPost={latestHcmPost}
-        lowStockAlert={dashboard.doctor_low_stock_alert}
-      />
+      <DoctorMobileLauncher user={user} dashboard={dashboard} />
     );
   }
 

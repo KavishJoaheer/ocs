@@ -34,6 +34,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { buildInventoryListQuery, getDefaultFolderSelection } from "../lib/inventoryFolders.js";
+import { notifyDoctorBagInventoryUpdated } from "../lib/inventorySync.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2569,6 +2570,15 @@ export default function InventoryPage() {
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const isDoctor = user.role === "doctor";
+  const commitInventoryData = useCallback(
+    (next) => {
+      commitInventoryData(next);
+      if (isDoctor) {
+        notifyDoctorBagInventoryUpdated();
+      }
+    },
+    [isDoctor],
+  );
   const isOperator = user.role === "operator";
   const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
@@ -2709,7 +2719,7 @@ export default function InventoryPage() {
           activityStaffUserId,
         })}`,
       );
-      setData(payload);
+      commitInventoryData(payload);
     } catch (error) {
       toast.error(error.message);
       if (!silent) setData(null);
@@ -2977,7 +2987,7 @@ export default function InventoryPage() {
       const next = editor?.item
         ? await api.put(`/inventory/items/${editor.item.id}${inventoryListQuery}`, payload)
         : await api.post(`/inventory/items${inventoryListQuery}`, payload);
-      setData(next);
+      commitInventoryData(next);
       setEditor(null);
       setOperatorAddOpen(false);
       if (!editor?.item && payload.folder_id) {
@@ -2998,7 +3008,7 @@ export default function InventoryPage() {
     setIsSaving(true);
     try {
       const next = await api.post(`/inventory/items/${movement.item.id}/actions${inventoryListQuery}`, payload);
-      setData(next);
+      commitInventoryData(next);
       setMovement(null);
       toast.success("Stock action saved.");
     } catch (error) {
@@ -3012,7 +3022,7 @@ export default function InventoryPage() {
     setIsSaving(true);
     try {
       const next = await api.post(`/inventory/restock${inventoryListQuery}`, payload);
-      setData(next);
+      commitInventoryData(next);
       setRestock(null);
       toast.success("Doctor restock completed.");
       if (next?.restock_receipt) {
@@ -3048,7 +3058,7 @@ export default function InventoryPage() {
           quantity: Number(item.required_quantity || item.quantity),
         })),
       });
-      setData(next);
+      commitInventoryData(next);
       setDoctorRestockOpen(false);
       setDoctorRestockItem(null);
       toast.success("My inventory restocked successfully.");
@@ -3162,7 +3172,7 @@ export default function InventoryPage() {
         expiry_date: payload.expiry_date || "",
         cost_price: Number(payload.cost_price || 0),
       });
-      setData(next);
+      commitInventoryData(next);
       setAddStock(null);
       toast.success("Stock In recorded.");
     } catch (error) {
@@ -3213,7 +3223,7 @@ export default function InventoryPage() {
         reason: payload.reason,
         note: payload.note || "",
       });
-      setData(next);
+      commitInventoryData(next);
       setStockOut(null);
       toast.success(
         payload.reason === "Sale"
@@ -3279,7 +3289,7 @@ export default function InventoryPage() {
           },
         ],
       });
-      setData(next);
+      commitInventoryData(next);
       setMobileRestockTarget(null);
       toast.success("Restocked from OCS master into your bag.");
       if (next?.restock_receipt) {
@@ -3321,7 +3331,7 @@ export default function InventoryPage() {
         reason: stockOutReason,
         note,
       });
-      setData(next);
+      commitInventoryData(next);
       setMobileDeductItem(null);
       if (reason === "Sale") {
         toast.success("Sale transaction recorded successfully for Admin audit.");
