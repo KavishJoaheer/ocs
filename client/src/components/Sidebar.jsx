@@ -191,28 +191,32 @@ function Sidebar() {
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
-        className="sticky top-0 z-30 flex w-full min-w-0 items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white/92 px-4 py-2.5 backdrop-blur-lg md:hidden"
-        style={{ paddingTop: `max(0.625rem, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
+        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white/92 px-4 backdrop-blur-lg md:hidden"
+        style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="grid min-h-12 min-w-10 place-items-center rounded-xl text-[#2d8f98] transition active:bg-[rgba(65,200,198,0.1)]"
+          className="rounded-xl p-2 text-[#2d8f98] transition hover:bg-gray-50 active:bg-gray-50"
           aria-label="Open menu"
         >
-          <Menu className="size-5" />
+          <Menu className="h-6 w-6" strokeWidth={2.25} />
         </button>
-        <BrandMark maxWidth={140} size={34} />
+        <BrandMark
+          maxWidth={160}
+          size={36}
+          logoClassName="max-h-9 w-auto object-contain"
+        />
         {location.pathname !== "/" ? (
           <Link
             to="/"
-            className="grid min-h-12 min-w-10 place-items-center rounded-xl text-[#2d8f98] transition active:bg-[rgba(65,200,198,0.1)]"
+            className="rounded-xl p-2 text-[#2d8f98] transition hover:bg-gray-50 active:bg-gray-50"
             aria-label="Home"
           >
-            <Home className="size-5" />
+            <Home className="h-7 w-7" strokeWidth={2.25} />
           </Link>
         ) : (
-          <div className="min-w-10" />
+          <div className="h-11 w-11 shrink-0" aria-hidden="true" />
         )}
       </div>
 
