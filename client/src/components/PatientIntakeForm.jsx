@@ -25,6 +25,55 @@ const MOBILE_TEXTAREA = cx(
   "h-auto min-h-[5.5rem] resize-y leading-relaxed",
 );
 
+const DRAFT_TEXT_FIELDS = [
+  "first_name",
+  "last_name",
+  "patient_identifier",
+  "patient_id_number",
+  "date_of_birth",
+  "patient_contact_number",
+  "address",
+  "past_medical_history",
+  "past_surgical_history",
+  "drug_history",
+  "drug_allergy_history",
+  "particularity",
+  "next_of_kin_name",
+  "next_of_kin_relationship",
+  "next_of_kin_contact_number",
+  "next_of_kin_email",
+  "ongoing_treatment",
+];
+
+function isPatientDraftMeaningful(form) {
+  if (!form || typeof form !== "object") {
+    return false;
+  }
+
+  if (DRAFT_TEXT_FIELDS.some((field) => String(form[field] || "").trim())) {
+    return true;
+  }
+
+  if (Array.isArray(form.location_tags) && form.location_tags.length > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+function readPatientDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return isPatientDraftMeaningful(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 const emptyPatient = {
   first_name: "",
   last_name: "",
@@ -132,24 +181,30 @@ function PatientFormModal({
   const [desktopWizardStep, setDesktopWizardStep] = useState(0);
   const firstNameRef = useRef(null);
   const stepFirstInputRef = useRef(null);
+  const draftRestoreToastShownRef = useRef(false);
   const isPageLayout = layout === "page";
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      draftRestoreToastShownRef.current = false;
+      return;
+    }
+
     setWizardStep(0);
     setDesktopWizardStep(0);
+    draftRestoreToastShownRef.current = false;
 
     if (mode !== "edit") {
-      try {
-        const raw = localStorage.getItem(DRAFT_KEY);
-        if (raw) {
-          setForm(JSON.parse(raw));
-          toast("Draft restored", { icon: "\u{1F4CB}" });
-          return;
+      const savedDraft = readPatientDraft();
+      if (savedDraft) {
+        setForm(savedDraft);
+        if (!draftRestoreToastShownRef.current) {
+          draftRestoreToastShownRef.current = true;
+          toast("Draft restored", { id: "patient-draft-restored", icon: "\u{1F4CB}" });
         }
-      } catch {
-        /* corrupted draft — ignore */
+        return;
       }
+      clearDraft();
     }
 
     setForm(toPatientFormState(patient));
@@ -157,11 +212,17 @@ function PatientFormModal({
 
   useEffect(() => {
     if (!open || mode === "edit") return;
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
-    } catch {
-      /* storage full — ignore */
+
+    if (isPatientDraftMeaningful(form)) {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+      } catch {
+        /* storage full — ignore */
+      }
+      return;
     }
+
+    clearDraft();
   }, [form, open, mode]);
 
   useEffect(() => {
