@@ -17,7 +17,7 @@ export function getFolderIdsWithStock(items = []) {
  * @param {{ showAllCategories?: boolean }} options
  *   showAllCategories: true on OCS warehouse view — always show IM/IV/etc. pills even when empty
  */
-export function getDisplayFolders(folders = [], items = [], { showAllCategories = false } = {}) {
+export function getDisplayFolders(folders = [], items = [], { showAllCategories = true } = {}) {
   if (!folders.length) return [];
   if (showAllCategories) return folders;
 

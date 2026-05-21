@@ -2161,7 +2161,12 @@ export default function InventoryPage() {
     : selectedContextDoctorId
       ? data?.selected_doctor_stock || []
       : data?.ocs_stock || [];
-  const displayFolders = useMemo(() => getDisplayFolders(folders, items), [folders, items]);
+  const showAllCategoryPills =
+    (canManageOcs && contextIsOcs) || (isDoctor && doctorViewIsOcs);
+  const displayFolders = useMemo(
+    () => getDisplayFolders(folders, items, { showAllCategories: showAllCategoryPills }),
+    [folders, items, showAllCategoryPills],
+  );
   const inventoryListQuery = useMemo(
     () =>
       buildInventoryListQuery({
@@ -2299,16 +2304,17 @@ export default function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPeriodPreset, adminPeriodAnchor, activityStaffUserId]);
 
-  // Default category pill to first folder with stock in the active view (usually Consumable).
+  // Default category: first folder with stock, else Consumable (pills may list all categories on OCS view).
   useEffect(() => {
-    if (!displayFolders.length) return;
-    const valid = displayFolders.some((f) => String(f.id) === String(selectedView));
+    if (!folders.length) return;
+    const valid = folders.some((f) => String(f.id) === String(selectedView));
     if (!selectedView || !valid) {
-      const next = displayFolders[0];
+      const next = getDefaultFolderSelection(folders, items);
+      if (!next) return;
       setSelectedView(String(next.id));
       if (next.name) setActiveCategory(next.name);
     }
-  }, [displayFolders, selectedView]);
+  }, [folders, items, selectedView]);
 
   useEffect(() => {
     if (!folders.length || !selectedView) return;

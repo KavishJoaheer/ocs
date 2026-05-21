@@ -6,8 +6,8 @@ const { db } = require("../db");
 /** Explicit seed scripts only — Consumable manifest (no IM/IV/etc auto-restore). */
 const OCS_FULL_CATALOG_ROWS = [...ocsConsumablesExtension];
 
-/** Startup ensure: Consumable SKUs only (other categories stay empty after category purge). */
-const OCS_CATALOG_ROWS = [...ocsConsumablesExtension];
+/** Startup ensure: disabled — use seed:ocs-consumables or seed:ocs-im-drugs explicitly. */
+const OCS_CATALOG_ROWS = [];
 
 let catalogEnsureComplete = false;
 

@@ -15,10 +15,16 @@ const { excludeOcsConsumablesCatalogSeed } = require("../lib/ocsCatalogExclusion
 
 const CONSUMABLE_FOLDER = "Consumable";
 
+function purgeOcsConsumableStockSync() {
+  const result = purgeOcsInventoryCategoriesSync({ folderNames: [CONSUMABLE_FOLDER] });
+  const seedExcluded = excludeOcsConsumablesCatalogSeed();
+  return { ...result, seedExcluded };
+}
+
 if (require.main === module) {
   try {
-    const result = purgeOcsInventoryCategoriesSync({ folderNames: [CONSUMABLE_FOLDER] });
-    const seedExcluded = excludeOcsConsumablesCatalogSeed();
+    const result = purgeOcsConsumableStockSync();
+    const seedExcluded = result.seedExcluded;
 
     console.log("OCS Consumable stock purge complete.");
     console.log(`  OCS master rows removed:  ${result.ocsRemoved}`);
@@ -39,4 +45,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { purgeOcsInventoryCategoriesSync, CONSUMABLE_FOLDER };
+module.exports = { purgeOcsConsumableStockSync, CONSUMABLE_FOLDER };
