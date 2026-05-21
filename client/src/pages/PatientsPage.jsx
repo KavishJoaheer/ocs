@@ -24,6 +24,7 @@ import { api } from "../lib/api.js";
 import {
   formatAgeFromDateOfBirth,
   formatDate,
+  statusLabel,
 } from "../lib/format.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import { isPatientSubscribed } from "../lib/patientSubscription.js";
@@ -58,13 +59,36 @@ function PatientCareNumber({ patient, className }) {
   );
 }
 
-function PatientHealthPlanInlineBadge() {
+function PatientHealthPlanInlineBadge({ onDark = false } = {}) {
   return (
     <span
-      className="ml-2 inline-flex shrink-0 items-center rounded bg-teal-50 px-1.5 py-0.5 text-xs font-semibold text-teal-700"
+      className={cx(
+        "ml-2 inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-semibold",
+        onDark
+          ? "border border-white/10 bg-white/15 text-[#e6f0f0]"
+          : "bg-teal-50 text-teal-700",
+      )}
       title="Health plan subscriber"
     >
       ★
+    </span>
+  );
+}
+
+function MobilePatientStatusPill({ value }) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const isUnderReview = normalized === "under_review";
+
+  return (
+    <span
+      className={cx(
+        "inline-flex rounded-lg border px-2 py-0.5 text-[11px] font-bold capitalize",
+        isUnderReview
+          ? "border-amber-200/25 bg-amber-400/15 text-amber-100"
+          : "border-white/10 bg-white/15 text-[#e6f0f0]",
+      )}
+    >
+      {statusLabel(value)}
     </span>
   );
 }
@@ -545,57 +569,65 @@ function PatientsPage() {
               <>
                 {isMobile ? (
                   /* ── Mobile: card list ── */
-                  <div className="flex flex-col space-y-4 pb-8">
+                  <div className="flex flex-col pb-8">
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
-                        className="relative min-w-0 max-w-full overflow-hidden rounded-[24px] border border-slate-200/80 bg-white"
+                        className="mb-4 flex min-w-0 max-w-full flex-col gap-3 overflow-hidden rounded-2xl border border-[#445d5d] bg-[#557373] p-4 shadow-md transition-all active:scale-[0.99]"
                       >
-                        <Link
-                          to={`/patients/${patient.id}`}
-                          className="block min-h-[5rem] p-4 pr-14"
-                        >
-                          <p className="flex flex-wrap items-center gap-y-1 break-words">
-                            <span className="text-base font-bold text-gray-900">
-                              {patient.full_name}
-                            </span>
-                            {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
-                          </p>
-                          <p className="mt-1.5 break-words text-sm font-medium text-gray-500">
-                            {formatMobilePatientMetaLine(patient)}
-                          </p>
-
-                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <StatusBadge value={patient.status} />
-                            <span className="text-sm text-slate-600">
-                              {displayText(patient.assigned_doctor_name, "Not assigned")}
-                            </span>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="grid size-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/10 text-white"
+                            aria-hidden
+                          >
+                            <UserRound className="size-5" strokeWidth={2} />
                           </div>
-                          {isPatientUnderReview(patient) && formatReviewDueShort(patient.review_due_date) ? (
-                            <p className="mt-1.5 text-xs font-medium text-amber-700">
-                              ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
+
+                          <Link to={`/patients/${patient.id}`} className="min-w-0 flex-1">
+                            <p className="flex flex-wrap items-center gap-y-1 break-words">
+                              <span className="text-base font-bold tracking-wide text-white">
+                                {patient.full_name}
+                              </span>
+                              {isPatientSubscribed(patient) ? (
+                                <PatientHealthPlanInlineBadge onDark />
+                              ) : null}
                             </p>
-                          ) : null}
+                            <p className="mt-1 break-words text-xs font-medium text-[#d1dede]">
+                              {formatMobilePatientMetaLine(patient)}
+                            </p>
 
-                          {user.role === "operator" && patient.operator_edit_allowed ? (
-                            <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                              Edit enabled
-                            </span>
-                          ) : null}
-                        </Link>
+                            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                              <MobilePatientStatusPill value={patient.status} />
+                              <span className="text-xs font-medium text-[#d1dede]">
+                                {displayText(patient.assigned_doctor_name, "Not assigned")}
+                              </span>
+                            </div>
+                            {isPatientUnderReview(patient) && formatReviewDueShort(patient.review_due_date) ? (
+                              <p className="mt-1.5 text-xs font-medium text-amber-100/90">
+                                ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
+                              </p>
+                            ) : null}
 
-                        <button
-                          type="button"
-                          aria-label="Patient actions"
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setPatientCardMenu(patient);
-                          }}
-                          className="absolute right-2 top-2 z-10 grid size-11 shrink-0 place-items-center rounded-2xl border border-slate-200/80 bg-white/90 text-slate-600 shadow-sm transition active:bg-slate-100"
-                        >
-                          <MoreVertical className="size-5" />
-                        </button>
+                            {user.role === "operator" && patient.operator_edit_allowed ? (
+                              <span className="mt-2 inline-flex rounded-lg border border-white/10 bg-white/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#e6f0f0]">
+                                Edit enabled
+                              </span>
+                            ) : null}
+                          </Link>
+
+                          <button
+                            type="button"
+                            aria-label="Patient actions"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setPatientCardMenu(patient);
+                            }}
+                            className="grid size-11 shrink-0 place-items-center rounded-xl text-white/80 transition hover:bg-white/10 hover:text-white active:scale-95"
+                          >
+                            <MoreVertical className="size-5" strokeWidth={2.25} />
+                          </button>
+                        </div>
                       </div>
                     ))}
 
