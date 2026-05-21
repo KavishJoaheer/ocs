@@ -42,22 +42,11 @@ function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
 }
 
-function buildDoctorMobileCards(dashboard, { hcmLatestTitle } = {}) {
-  const summary = dashboard?.doctorWorkspace?.summary || {};
-  const activePatients = Number(summary.activeAssignedPatientsCount ?? 0);
-  const unpaidBills = Number(summary.pendingPaymentsCount ?? 0);
-  const longTermCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
+function buildDoctorMobileCards(dashboard) {
   const lowStock = dashboard?.doctor_low_stock_alert;
   const lowCount = Number(lowStock?.total_items || 0);
-  const hcmHeadline = String(hcmLatestTitle || "").trim();
 
   return [
-    {
-      label: "My assigned patients",
-      icon: UsersRound,
-      to: "/patients?filter=my_assigned",
-      meta: `${activePatients} active`,
-    },
     {
       label: "Patient Directory",
       icon: UserRound,
@@ -65,40 +54,16 @@ function buildDoctorMobileCards(dashboard, { hcmLatestTitle } = {}) {
       meta: "Search all records",
     },
     {
-      label: "Add a Patient",
+      label: "Add Patient",
       icon: UserPlus,
       to: "/patients/add",
       meta: null,
-    },
-    {
-      label: "Billing",
-      icon: CreditCard,
-      to: "/billing",
-      meta: `${unpaidBills} Unpaid ${unpaidBills === 1 ? "Entry" : "Entries"}`,
     },
     {
       label: "Inventory",
       icon: Package,
       to: "/inventory",
       meta: lowStock?.triggered ? `${lowCount} Item${lowCount === 1 ? "" : "s"} Low` : "Healthy",
-    },
-    {
-      label: "Long term review",
-      icon: Activity,
-      to: "/patients?tab=under_review",
-      meta: `${longTermCount} patient${longTermCount === 1 ? "" : "s"}`,
-    },
-    {
-      label: "HCM news",
-      icon: BellRing,
-      to: "/hcm-news",
-      meta: hcmHeadline || "Clinical updates",
-    },
-    {
-      label: "Monthly roster",
-      icon: CalendarClock,
-      action: "roster",
-      meta: `${dayjs().format("MMMM")} schedule`,
     },
   ];
 }
@@ -112,7 +77,7 @@ function DoctorMobileLauncher({
   onOpenRosterPdf,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
-  const cards = buildDoctorMobileCards(dashboard, { hcmLatestTitle });
+  const cards = buildDoctorMobileCards(dashboard);
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">

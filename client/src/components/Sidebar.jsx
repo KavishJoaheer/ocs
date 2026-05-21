@@ -1,4 +1,5 @@
 import {
+  Activity,
   BellRing,
   CalendarDays,
   CreditCard,
@@ -49,6 +50,17 @@ const navItems = [
     isActiveWhen: (location) => {
       if (location.pathname !== "/patients") return false;
       return new URLSearchParams(location.search).get("filter") === "subscribed";
+    },
+  },
+  {
+    to: "/patients?tab=under_review",
+    label: "Long term review",
+    icon: Activity,
+    roles: ["doctor"],
+    isActiveWhen: (location) => {
+      if (location.pathname !== "/patients") return false;
+      const params = new URLSearchParams(location.search);
+      return params.get("tab") === "under_review" || params.get("filter") === "under_review";
     },
   },
   {
