@@ -12,7 +12,7 @@ export function getClinicalTwinMetricRoutes(role) {
       };
     case "doctor":
       return {
-        longTermReview: "/doctor/assigned-patients?tab=under_review",
+        longTermReview: "/doctor/long-term-review",
         healthPlans: "/doctor/assigned-patients?filter=subscribed",
       };
     default:

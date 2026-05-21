@@ -274,7 +274,7 @@ function PatientsPage() {
       const tab = searchParams.get("tab");
       const filter = searchParams.get("filter");
       if (tab === "under_review" || filter === "under_review") {
-        navigate("/doctor/assigned-patients?tab=under_review", { replace: true });
+        navigate("/doctor/long-term-review", { replace: true });
         return;
       }
     }

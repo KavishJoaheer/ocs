@@ -58,15 +58,11 @@ const navItems = [
     },
   },
   {
-    to: "/doctor/assigned-patients?tab=under_review",
+    to: "/doctor/long-term-review",
     label: "Long term review",
     icon: Activity,
     roles: ["doctor"],
-    isActiveWhen: (location) => {
-      if (location.pathname !== "/doctor/assigned-patients") return false;
-      const params = new URLSearchParams(location.search);
-      return params.get("tab") === "under_review" || params.get("filter") === "under_review";
-    },
+    isActiveWhen: (location) => location.pathname === "/doctor/long-term-review",
   },
   {
     to: "/hcm-news",
@@ -118,14 +114,20 @@ const navItems = [
   },
 ];
 
-function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
+function resolveNavTarget(to) {
+  const [pathname, search = ""] = String(to || "").split("?");
+  return search ? { pathname, search: `?${search}` } : pathname;
+}
+
+function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onNavigate }) {
   const Icon = item.icon;
   const location = useLocation();
 
   return (
     <NavLink
       end={item.end}
-      to={item.to}
+      to={resolveNavTarget(item.to)}
+      onClick={() => onNavigate?.()}
       className={({ isActive: routerActive }) => {
         const isActive =
           typeof item.isActiveWhen === "function" ? item.isActiveWhen(location) : routerActive;
@@ -194,7 +196,7 @@ function Sidebar() {
 
   useEffect(() => {
     setDrawerOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (drawerOpen) {
@@ -301,6 +303,7 @@ function Sidebar() {
                       key={item.to}
                       item={item}
                       drawer
+                      onNavigate={() => setDrawerOpen(false)}
                       badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
                     />
                   ))}

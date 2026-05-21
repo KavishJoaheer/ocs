@@ -34,6 +34,7 @@ export const ROUTE_ACCESS = {
   "/doctor/pending-payment": ["doctor"],
   "/doctor/patients-seen-april": ["doctor"],
   "/doctor/assigned-patients": ["doctor"],
+  "/doctor/long-term-review": ["doctor"],
   "/operator/current-week-roster": ["operator"],
   "/operator/april-roster": ["operator"],
   "/operator/scheduled-visits": ["operator"],

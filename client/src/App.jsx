@@ -83,6 +83,10 @@ function App() {
               path="/doctor/assigned-patients"
               element={<DoctorWorkspacePage workspaceKey="assigned-patients" />}
             />
+            <Route
+              path="/doctor/long-term-review"
+              element={<DoctorWorkspacePage workspaceKey="long-term-review" />}
+            />
           </Route>
 
           <Route element={<ProtectedRoute roles={["operator"]} />}>

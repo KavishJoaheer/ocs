@@ -64,6 +64,10 @@ const pageMeta = {
     label: "Assigned patients",
     helper: "Review all patients currently assigned to this doctor account.",
   },
+  "/doctor/long-term-review": {
+    label: "Long term review",
+    helper: "Review assigned patients flagged for long-term follow-up.",
+  },
   "/operator/current-week-roster": {
     label: "SOS Planning",
     helper: "Emergency SOS shift planning (inactive for operators).",

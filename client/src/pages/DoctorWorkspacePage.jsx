@@ -8,7 +8,8 @@ import {
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -73,6 +74,13 @@ const workspaceMeta = {
     title: () => "Assigned patients",
     description:
       "Open the patient panel for everyone currently assigned to you and jump straight into their ongoing care records.",
+    icon: UsersRound,
+  },
+  "long-term-review": {
+    eyebrow: "Doctor patients",
+    title: () => "Long term review",
+    description:
+      "Review assigned patients flagged for long-term follow-up and open their care records.",
     icon: UsersRound,
   },
 };
@@ -366,13 +374,27 @@ function UpdatesFeed({ updates }) {
 }
 
 function DoctorWorkspacePage({ workspaceKey }) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isMobile = useIsMobile();
 
   const meta = workspaceMeta[workspaceKey];
-  const underReviewFilter = searchParams.get("tab") === "under_review";
-  const subscribedFilter = searchParams.get("filter") === "subscribed";
+  const isLongTermReviewWorkspace = workspaceKey === "long-term-review";
+  const underReviewFilter =
+    isLongTermReviewWorkspace || searchParams.get("tab") === "under_review";
+  const subscribedFilter =
+    !isLongTermReviewWorkspace && searchParams.get("filter") === "subscribed";
+
+  useEffect(() => {
+    if (
+      workspaceKey === "assigned-patients" &&
+      searchParams.get("tab") === "under_review"
+    ) {
+      navigate("/doctor/long-term-review", { replace: true });
+    }
+  }, [navigate, searchParams, workspaceKey]);
 
   useEffect(() => {
     let ignore = false;
@@ -753,7 +775,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
     );
   }
 
-  if (workspaceKey === "assigned-patients") {
+  if (workspaceKey === "assigned-patients" || workspaceKey === "long-term-review") {
     let assignedPatients = data.assignedPatients;
 
     if (underReviewFilter) {
@@ -786,76 +808,97 @@ function DoctorWorkspacePage({ workspaceKey }) {
       },
     ];
 
-    content = (
-      <SectionCard
-        actions={
-          <>
-            <Link
-              className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-              to="/"
-            >
-              Back to dashboard
-            </Link>
-            <Link
-              className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
-              to="/patients"
-            >
-              Open patients
-            </Link>
-          </>
-        }
-        subtitle={
+    const assignedPatientsList = (
+      <AssignedPatientsList
+        patients={assignedPatients}
+        emptyTitle={
           underReviewFilter
-            ? "Read-only view of your assigned patients flagged for long-term review."
+            ? "No long term review patients"
             : subscribedFilter
-              ? "Read-only view of your assigned patients on an active health plan."
-              : "Assigned patient records linked to this doctor account."
+              ? "No health plan subscribers"
+              : undefined
         }
-        title={
+        emptyDescription={
           underReviewFilter
-            ? "Assigned patients under review"
+            ? "Assigned patients flagged for long-term review will appear here."
             : subscribedFilter
-              ? "Assigned health plan subscribers"
-              : "Assigned patient panel"
+              ? "Assigned patients on an active health plan will appear here."
+              : undefined
         }
-      >
-        {underReviewFilter || subscribedFilter ? (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-800">
-              Active filter: {underReviewFilter ? "Under review" : "Subscribers"}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                const nextParams = new URLSearchParams(searchParams);
-                nextParams.delete("tab");
-                nextParams.delete("filter");
-                setSearchParams(nextParams, { replace: true });
-              }}
-              className="rounded-full border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-slate-50"
-            >
-              Clear filter
-            </button>
-          </div>
-        ) : null}
-        <AssignedPatientsList
-          patients={assignedPatients}
-          emptyTitle={
-            underReviewFilter
-              ? "No long term review patients"
-              : subscribedFilter
-                ? "No health plan subscribers"
-                : undefined
+      />
+    );
+
+    content =
+      isMobile && isLongTermReviewWorkspace ? (
+        assignedPatientsList
+      ) : (
+        <SectionCard
+          actions={
+            <>
+              <Link
+                className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                to="/"
+              >
+                Back to dashboard
+              </Link>
+              <Link
+                className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+                to="/patients"
+              >
+                Open patients
+              </Link>
+            </>
           }
-          emptyDescription={
+          subtitle={
             underReviewFilter
-              ? "Assigned patients flagged for long-term review will appear here."
+              ? "Read-only view of your assigned patients flagged for long-term review."
               : subscribedFilter
-                ? "Assigned patients on an active health plan will appear here."
-                : undefined
+                ? "Read-only view of your assigned patients on an active health plan."
+                : "Assigned patient records linked to this doctor account."
           }
-        />
-      </SectionCard>
+          title={
+            underReviewFilter
+              ? "Assigned patients under review"
+              : subscribedFilter
+                ? "Assigned health plan subscribers"
+                : "Assigned patient panel"
+          }
+        >
+          {underReviewFilter || subscribedFilter ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-800">
+                Active filter: {underReviewFilter ? "Under review" : "Subscribers"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.delete("tab");
+                  nextParams.delete("filter");
+                  setSearchParams(nextParams, { replace: true });
+                }}
+                className="rounded-full border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-slate-50"
+              >
+                Clear filter
+              </button>
+            </div>
+          ) : null}
+          {assignedPatientsList}
+        </SectionCard>
+      );
+  }
+
+  if (isMobile && isLongTermReviewWorkspace) {
+    return (
+      <div className="mx-auto w-full max-w-md space-y-4 pb-8">
+        <header>
+          <h1 className="text-xl font-bold tracking-tight text-gray-900">Long term review</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Assigned patients flagged for long-term follow-up.
+          </p>
+        </header>
+        {content}
+      </div>
     );
   }
 
