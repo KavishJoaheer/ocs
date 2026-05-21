@@ -11,6 +11,7 @@
     "seed:ocs-consumables": "node src/scripts/seedOcsConsumablesExtension.js",
     "seed:ocs-im-drugs": "node src/scripts/seedOcsIMDrugsExtension.js",
     "seed:ocs-iv-drugs": "node src/scripts/seedOcsIVDrugsExtension.js",
+    "seed:ocs-investigations": "node src/scripts/seedOcsInvestigationsExtension.js",
     "purge:ocs-test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
