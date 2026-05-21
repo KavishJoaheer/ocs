@@ -2402,18 +2402,13 @@ function MobileDoctorBagLayout({
 
       <div className="flex min-h-0 flex-1 flex-col pb-8">
         {mobileBagPagedItems.length ? (
-          <div className="flex flex-col space-y-3">
+          <div className="overflow-hidden rounded-2xl bg-white">
             {mobileBagPagedItems.map((item) => {
-              const quantity = Number(item.quantity || 0);
-              const current_quantity = quantity;
+              const current_quantity = Number(item.quantity || 0);
               const par_level = Number(item.minimum_quantity || 0);
-              const ocsAvailable = Number(item.quantity || 0);
               const isLowStock = current_quantity <= par_level;
-              const qtyColorClass = isLowStock
-                ? "text-rose-600 bg-rose-50 border-rose-100/60"
-                : "text-emerald-700 bg-emerald-50 border-emerald-100/50";
               const terracottaPill =
-                "flex h-10 min-w-[92px] items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm";
+                "flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm";
               const terracottaBtn =
                 "flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40";
               const terracottaDivider = "h-5 w-px bg-[#f5e3d7]";
@@ -2421,22 +2416,37 @@ function MobileDoctorBagLayout({
               return (
                 <div
                   key={`mobile-bag-${item.id}`}
-                  className={cx(
-                    "flex flex-row items-center justify-between p-4 transition-all active:scale-[0.99]",
-                    mobileInventoryItemCardClass,
-                  )}
+                  className="flex items-center justify-between border-b border-gray-100/70 px-2 py-4 transition-colors last:border-0 active:bg-gray-50/50"
                 >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <p className="truncate text-base font-bold leading-snug text-gray-900">{item.item_name}</p>
-                    <div className="mt-1 flex items-center">
+                  <div className="flex max-w-[65%] min-w-0 flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
                       <span
                         className={cx(
-                          "rounded-md border px-2 py-0.5 text-[11px] font-bold tracking-wide",
-                          qtyColorClass,
+                          "inline-block size-2 shrink-0 rounded-full",
+                          isLowStock
+                            ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
+                            : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]",
+                        )}
+                        aria-hidden
+                      />
+                      <span className="truncate text-sm font-bold tracking-wide text-gray-800">
+                        {item.item_name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pl-4 text-xs font-medium text-gray-400">
+                      <span>{doctorViewIsOcs ? "Available:" : "In Bag:"}</span>
+                      <span
+                        className={cx(
+                          "font-bold",
+                          isLowStock ? "text-rose-600" : "text-emerald-700",
                         )}
                       >
-                        QTY: {current_quantity}{" "}
-                        <span className="font-medium opacity-60">/ Min: {par_level}</span>
+                        {current_quantity}
+                      </span>
+                      <span className="text-gray-300">|</span>
+                      <span>
+                        Min Par:{" "}
+                        <span className="font-semibold text-gray-600">{par_level}</span>
                       </span>
                     </div>
                   </div>
@@ -2444,7 +2454,7 @@ function MobileDoctorBagLayout({
                     <div className={terracottaPill}>
                       <button
                         type="button"
-                        disabled={!onOpenRestock || ocsAvailable < 1}
+                        disabled={!onOpenRestock || current_quantity < 1}
                         onClick={() => onOpenRestock?.(item)}
                         className={cx(terracottaBtn, "mx-auto")}
                         aria-label="Restock from master"
@@ -2456,7 +2466,7 @@ function MobileDoctorBagLayout({
                     <div className={terracottaPill}>
                       <button
                         type="button"
-                        disabled={!onOpenDeduct || quantity < 1}
+                        disabled={!onOpenDeduct || current_quantity < 1}
                         onClick={() => onOpenDeduct?.(item)}
                         className={terracottaBtn}
                         aria-label="Deduct from bag"
