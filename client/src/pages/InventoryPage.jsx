@@ -39,6 +39,10 @@ import { cx, pageContainerClass } from "../lib/utils.js";
 
 dayjs.extend(isoWeek);
 
+/** Matches mobile Patient Directory card tint (PatientsPage). */
+const mobileInventoryItemCardClass =
+  "rounded-2xl border border-[#557373]/25 bg-[#557373]/15 shadow-sm";
+
 const INVENTORY_PERIOD_PRESETS = [
   { id: "yearly", label: "Yearly" },
   { id: "monthly", label: "Monthly" },
@@ -2396,9 +2400,9 @@ function MobileDoctorBagLayout({
         </p>
       )}
 
-      <SectionCard className="flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]">
+      <div className="flex min-h-0 flex-1 flex-col pb-8">
         {mobileBagPagedItems.length ? (
-          <div className="flex flex-col pb-8">
+          <div className="flex flex-col space-y-3">
             {mobileBagPagedItems.map((item) => {
               const quantity = Number(item.quantity || 0);
               const current_quantity = quantity;
@@ -2417,7 +2421,10 @@ function MobileDoctorBagLayout({
               return (
                 <div
                   key={`mobile-bag-${item.id}`}
-                  className="flex flex-row items-center justify-between border-b border-gray-100 bg-white py-3.5"
+                  className={cx(
+                    "flex flex-row items-center justify-between p-4 transition-all active:scale-[0.99]",
+                    mobileInventoryItemCardClass,
+                  )}
                 >
                   <div className="min-w-0 flex-1 pr-4">
                     <p className="truncate text-base font-bold leading-snug text-gray-900">{item.item_name}</p>
@@ -2508,7 +2515,7 @@ function MobileDoctorBagLayout({
             }
           />
         )}
-      </SectionCard>
+      </div>
     </div>
   );
 }
@@ -3697,7 +3704,7 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            <div className="space-y-2 md:hidden">
+            <div className="space-y-3 md:hidden">
               {pagedItems.map((item) => {
                 const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
                 const expanded = Boolean(expandedRows[item.id]);
@@ -3725,7 +3732,7 @@ export default function InventoryPage() {
                 return (
                   <div
                     key={`m-${item.id}`}
-                    className={`rounded-xl border px-2.5 py-2 shadow-sm ${isLow ? "border-rose-200/80 bg-rose-50/40" : "border-slate-200/80 bg-white"}`}
+                    className={cx("p-4 transition-all active:scale-[0.99]", mobileInventoryItemCardClass)}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
