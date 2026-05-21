@@ -118,7 +118,7 @@ const navItems = [
   },
 ];
 
-function SidebarLink({ item, mobile = false, drawer = false, drawerDeepTeal = false, badgeCount = 0 }) {
+function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0 }) {
   const Icon = item.icon;
   const location = useLocation();
 
@@ -130,27 +130,19 @@ function SidebarLink({ item, mobile = false, drawer = false, drawerDeepTeal = fa
         const isActive =
           typeof item.isActiveWhen === "function" ? item.isActiveWhen(location) : routerActive;
 
-        if (drawerDeepTeal) {
-          return cx(
-            "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold tracking-wide transition-all duration-200",
-            "text-white/90 hover:bg-white/5 hover:text-white",
-            isActive && "bg-white/15 font-bold text-white shadow-sm",
-          );
-        }
-
         return cx(
           "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
           drawer && "min-h-12",
           mobile
             ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
             : drawer
-              ? "text-[#4e7b83] hover:bg-[rgba(65,200,198,0.08)] hover:text-[#22485b]"
+              ? "text-gray-600 hover:bg-[#557373]/10 hover:text-gray-900"
               : "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
           isActive &&
             (mobile
               ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
               : drawer
-                ? "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"
+                ? "bg-[#557373]/15 font-bold text-gray-900 shadow-sm"
                 : "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"),
         );
       }}
@@ -158,7 +150,7 @@ function SidebarLink({ item, mobile = false, drawer = false, drawerDeepTeal = fa
       <Icon
         className={cx(
           "size-4 shrink-0",
-          drawerDeepTeal ? "text-white/80" : mobile ? "text-current" : "text-[#66d7d0]",
+          drawer ? "text-gray-500 group-hover:text-gray-800" : mobile ? "text-current" : "text-[#66d7d0]",
         )}
       />
       <span>{item.label}</span>
@@ -166,11 +158,7 @@ function SidebarLink({ item, mobile = false, drawer = false, drawerDeepTeal = fa
         <span
           className={cx(
             "ml-auto inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold",
-            drawerDeepTeal
-              ? "bg-rose-500 text-white"
-              : mobile
-                ? "bg-white/90 text-[#2d8f98]"
-                : "bg-rose-500 text-white",
+            mobile ? "bg-white/90 text-[#2d8f98]" : "bg-rose-500 text-white",
           )}
         >
           {badgeCount > 9 ? "9+" : badgeCount}
@@ -261,46 +249,50 @@ function Sidebar() {
         />
         <div
           className={cx(
-            "absolute inset-y-0 left-0 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-[#445d5d]/40 bg-[#557373] text-white shadow-[5px_0_25px_rgba(0,0,0,0.15)] transition-transform duration-300",
+            "absolute inset-y-0 left-0 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-[#557373]/25 bg-white shadow-[5px_0_25px_rgba(0,0,0,0.12)] transition-transform duration-300",
             drawerOpen ? "translate-x-0" : "-translate-x-full",
           )}
           style={{ paddingTop: `max(1rem, var(--sat))`, paddingBottom: `max(1rem, var(--sab))` }}
         >
-          <div className="flex flex-1 flex-col">
+          <div
+            className="pointer-events-none absolute inset-0 bg-[#557373]/15"
+            aria-hidden="true"
+          />
+          <div className="relative z-10 flex flex-1 flex-col">
             <div className="flex items-center justify-between px-5 py-3">
               <BrandMark maxWidth={150} size={36} />
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                className="grid min-h-12 min-w-10 place-items-center rounded-xl text-white/80 transition hover:bg-white/10 hover:text-white active:scale-95"
+                className="grid min-h-12 min-w-10 place-items-center rounded-xl text-gray-500 transition hover:bg-[#557373]/10 hover:text-gray-800 active:scale-95"
                 aria-label="Close menu"
               >
                 <X className="size-5" strokeWidth={2.25} />
               </button>
             </div>
 
-            <div className="mx-5 mb-6 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-md">
+            <div className="mx-5 mb-6 rounded-2xl border border-[#557373]/20 bg-[#557373]/10 p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl border border-white/10 bg-white/10 p-2 text-white">
+                <div className="rounded-2xl border border-[#557373]/20 bg-white p-2 text-[#557373]">
                   <ShieldCheck className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d1dede]">
+                  <p className="text-xs font-medium uppercase tracking-[0.22em] text-gray-600">
                     {getRoleLabel(user.role)}
                   </p>
-                  <p className="text-base font-bold tracking-wide text-white">{user.full_name}</p>
-                  <p className="truncate text-xs text-[#d1dede]">
+                  <p className="text-base font-bold text-gray-900">{user.full_name}</p>
+                  <p className="truncate text-xs font-medium text-gray-600">
                     {user.email || `@${user.username}`}
                   </p>
                 </div>
               </div>
             </div>
 
-            <PushNotificationToggle alwaysShow role={user.role} variant="onDark" />
+            <PushNotificationToggle alwaysShow role={user.role} />
 
             {drawerNavItems.length > 0 ? (
               <div className="mt-2 px-3">
-                <p className="px-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#d1dede]">
+                <p className="px-4 text-[10px] font-semibold uppercase tracking-[0.3em] text-gray-500">
                   More
                 </p>
                 <nav className="mt-2 space-y-1">
@@ -309,7 +301,6 @@ function Sidebar() {
                       key={item.to}
                       item={item}
                       drawer
-                      drawerDeepTeal
                       badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
                     />
                   ))}
@@ -318,11 +309,11 @@ function Sidebar() {
             ) : null}
           </div>
 
-          <div className="mt-auto px-5 pb-4 pt-4">
+          <div className="relative z-10 mt-auto px-5 pb-4 pt-4">
             <button
               type="button"
               onClick={() => logout()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-rose-500/20 hover:text-rose-200"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-center text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100 hover:text-rose-800"
             >
               <LogOut className="size-4 shrink-0" />
               Sign out
