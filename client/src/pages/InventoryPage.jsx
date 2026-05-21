@@ -815,7 +815,7 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
-const STOCK_OUT_REASONS = ["Wasted", "Expired"];
+const STOCK_OUT_REASONS = ["Wasted", "Expired", "Sale"];
 
 function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
@@ -830,9 +830,20 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
   }, [open, item]);
 
   const available = Number(item?.quantity || 0);
+  const isSale = reason === "Sale";
 
   return (
-    <Modal open={open} onClose={onClose} title="Stock Out" description="Record wastage or expiry from your medical bag. Patient sales must be added on the Billing page." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Stock Out"
+      description={
+        isSale
+          ? "Record a direct sale from your medical bag. This is counted in the doctor sales report."
+          : "Record wastage or expiry from your medical bag. For billed patient sales, use the Billing page."
+      }
+      size="lg"
+    >
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -842,9 +853,15 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
           onSubmit({ quantity: qty, reason, note: note.trim() });
         }}
       >
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
-          To bill a patient for an item, open the consultation on the <strong>Billing</strong> page — stock and revenue are recorded together there.
-        </div>
+        {isSale ? (
+          <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-xs text-teal-900">
+            This sale is recorded in the <strong>doctor sales report</strong>. To link stock removal to a patient invoice, use the <strong>Billing</strong> page instead.
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+            To bill a patient for an item, open the consultation on the <strong>Billing</strong> page — stock and revenue are recorded together there.
+          </div>
+        )}
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
           <p className="mt-1 text-xs text-slate-600">Available in your stock: {available}</p>
@@ -883,7 +900,9 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
               value={note}
               onChange={(event) => setNote(event.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
-              placeholder="e.g. batch reference, disposal details"
+              placeholder={
+                isSale ? "e.g. patient name, payment reference" : "e.g. batch reference, disposal details"
+              }
             />
           </label>
 
@@ -958,7 +977,12 @@ function resolveMovementRoute(movement) {
   }
   if (actionType === "stock_out") {
     const reason = String(meta.stock_out_reason || "").trim();
-    return { source: bag, destination: reason ? `Stock Out (${reason})` : "Stock Out" };
+    const reasonLower = reason.toLowerCase();
+    return {
+      source: bag,
+      destination:
+        reasonLower === "sale" ? "Patient Account" : reason ? `Stock Out (${reason})` : "Stock Out",
+    };
   }
   if (actionType === "stock_in" || actionType === "add") {
     return { source: "Supplier / Intake", destination: master };
@@ -969,10 +993,13 @@ function resolveMovementRoute(movement) {
   return { source: source || "—", destination: destination || "—" };
 }
 
-function movementActivityKind(actionType) {
+function movementActivityKind(actionType, meta = {}) {
   const at = String(actionType || "").toLowerCase();
   if (at === "restock_in" || at === "restock_out") return "allocation";
   if (at === "sell") return "consumption";
+  if (at === "stock_out" && String(meta.stock_out_reason || "").trim().toLowerCase() === "sale") {
+    return "consumption";
+  }
   if (["adjustment", "override", "correction", "remove", "stock_out"].includes(at)) return "correction";
   return "generic";
 }
@@ -1006,7 +1033,7 @@ function buildLiveActivityExportRow(movement) {
   const route = resolveMovementRoute(movement);
   const staff = meta.performed_by_name || "System";
   const qty = Math.abs(Number(movement.quantity ?? 0));
-  const kind = movementActivityKind(movement.action_type);
+  const kind = movementActivityKind(movement.action_type, meta);
   const unitLabel = qty === 1 ? "unit" : "units";
   let summary = "";
 
@@ -1132,7 +1159,7 @@ function MovementActivityLine({ movement }) {
   const itemName = movement.item_name || "item";
   const unitLabel = qty === 1 ? "unit" : "units";
   const route = resolveMovementRoute(movement);
-  const kind = movementActivityKind(movement.action_type);
+  const kind = movementActivityKind(movement.action_type, meta);
   const timeLabel = formatMovementTimestampEnterprise(movement.created_at);
 
   let sentence = null;
@@ -3179,7 +3206,13 @@ export default function InventoryPage() {
       });
       setData(next);
       setStockOut(null);
-      toast.success("Stock out recorded.");
+      toast.success(
+        payload.reason === "Sale"
+          ? "Sale recorded in your sales report."
+          : payload.reason === "Expired"
+            ? "Expired stock logged."
+            : "Stock out recorded.",
+      );
     } catch (error) {
       toast.error(error.message);
     } finally {

@@ -533,9 +533,15 @@ function buildMovementLocationMeta(actionType, meta = {}, context = {}) {
   }
   if (at === "stock_out") {
     const reason = String(meta.stock_out_reason || "").trim();
+    const reasonLower = reason.toLowerCase();
     return {
       source_location: doctorBagLabel(meta.doctor_name || context.ownerDoctorName),
-      destination_location: reason ? `Stock Out (${reason})` : "Stock Out",
+      destination_location:
+        reasonLower === "sale"
+          ? "Patient Account"
+          : reason
+            ? `Stock Out (${reason})`
+            : "Stock Out",
     };
   }
   if (at === "stock_in" || at === "add") {
@@ -833,21 +839,29 @@ function getCompareRows(dateFrom = "", dateTo = "") {
           JOIN inventory i ON i.id = m.item_id
           WHERE i.stock_scope = 'doctor'
             AND i.owner_doctor_id = d.id
-            AND m.action_type = 'sell'
             AND ${periodSql}
-            AND EXISTS (
-              SELECT 1
-              FROM consultations c
-              JOIN billing b ON b.consultation_id = c.id
-              WHERE c.doctor_id = d.id
-                AND b.status IN ('paid', 'unpaid')
-                AND (
-                  c.id = CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER)
-                  OR (
-                    m.reference_type = 'appointment'
-                    AND c.appointment_id = m.reference_id
-                  )
+            AND (
+              (
+                m.action_type = 'sell'
+                AND EXISTS (
+                  SELECT 1
+                  FROM consultations c
+                  JOIN billing b ON b.consultation_id = c.id
+                  WHERE c.doctor_id = d.id
+                    AND b.status IN ('paid', 'unpaid')
+                    AND (
+                      c.id = CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER)
+                      OR (
+                        m.reference_type = 'appointment'
+                        AND c.appointment_id = m.reference_id
+                      )
+                    )
                 )
+              )
+              OR (
+                m.action_type = 'stock_out'
+                AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'sale'
+              )
             )
         ) AS consumed_sales,
         (
@@ -1837,13 +1851,13 @@ router.post("/items/:id/actions", (req, res) => {
     return res.status(400).json({ error: "Quantity must be greater than zero." });
   }
 
-  const STOCK_OUT_REASONS = new Set(["Wasted", "Expired"]);
+  const STOCK_OUT_REASONS = new Set(["Wasted", "Expired", "Sale"]);
   let stockOutReason = null;
   if (actionType === "stock_out") {
     stockOutReason = String(req.body.reason || "").trim();
     if (!STOCK_OUT_REASONS.has(stockOutReason)) {
       return res.status(400).json({
-        error: "Patient sales must be recorded through Billing. Stock out reasons are Wasted or Expired only.",
+        error: "Stock out reason must be Wasted, Expired, or Sale.",
       });
     }
   }
