@@ -2392,38 +2392,34 @@ function MobileDoctorBagLayout({
       ) : null}
 
       {doctorViewIsOcs ? (
-        <p className="rounded-2xl border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs font-medium leading-relaxed text-sky-900">
+        <p className="text-xs font-medium leading-relaxed text-gray-500">
           Tap + to pull stock from the depot into your medical bag (set quantity and expiry).
         </p>
       ) : (
-        <p className="rounded-2xl border border-slate-100 bg-slate-50/90 px-3 py-2 text-xs font-medium leading-relaxed text-slate-700">
+        <p className="text-xs font-medium leading-relaxed text-gray-500">
           Tap − to log removal (sale, damage, or expired). Tap + to restock from OCS master.
         </p>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col pb-8">
         {mobileBagPagedItems.length ? (
-          <div className="overflow-hidden rounded-2xl bg-white">
+          <div className="min-w-0">
             {mobileBagPagedItems.map((item) => {
               const current_quantity = Number(item.quantity || 0);
               const par_level = Number(item.minimum_quantity || 0);
-              const isLowStock = current_quantity <= par_level;
-              const terracottaPill =
-                "flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm";
-              const terracottaBtn =
-                "flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40";
-              const terracottaDivider = "h-5 w-px bg-[#f5e3d7]";
+              const isLowStock = par_level > 0 && current_quantity <= par_level;
+              const qtyTone = isLowStock ? "text-rose-600" : "text-emerald-700";
 
               return (
                 <div
                   key={`mobile-bag-${item.id}`}
                   className="flex items-center justify-between border-b border-gray-100/70 px-2 py-4 transition-colors last:border-0 active:bg-gray-50/50"
                 >
-                  <div className="flex max-w-[65%] min-w-0 flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
+                  <div className="flex max-w-[65%] min-w-0 flex-col gap-1">
+                    <div className="flex min-w-0 items-center gap-2">
                       <span
                         className={cx(
-                          "inline-block size-2 shrink-0 rounded-full",
+                          "inline-block h-2 w-2 shrink-0 rounded-full",
                           isLowStock
                             ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
                             : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]",
@@ -2434,52 +2430,46 @@ function MobileDoctorBagLayout({
                         {item.item_name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 pl-4 text-xs font-medium text-gray-400">
-                      <span>{doctorViewIsOcs ? "Available:" : "In Bag:"}</span>
-                      <span
-                        className={cx(
-                          "font-bold",
-                          isLowStock ? "text-rose-600" : "text-emerald-700",
-                        )}
-                      >
-                        {current_quantity}
-                      </span>
-                      <span className="text-gray-300">|</span>
+                    <div className="mt-0.5 flex items-center gap-2 text-xs font-semibold text-gray-400">
                       <span>
-                        Min Par:{" "}
-                        <span className="font-semibold text-gray-600">{par_level}</span>
+                        {doctorViewIsOcs ? "Available:" : "In Bag:"}{" "}
+                        <span className={cx("font-bold", qtyTone)}>{current_quantity}</span>
+                      </span>
+                      <span className="text-gray-200">|</span>
+                      <span>
+                        Min Par: <span className="font-bold text-gray-600">{par_level}</span>
                       </span>
                     </div>
                   </div>
                   {doctorViewIsOcs ? (
-                    <div className={terracottaPill}>
+                    <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
                       <button
                         type="button"
-                        disabled={!onOpenRestock || current_quantity < 1}
+                        disabled={!onOpenRestock}
                         onClick={() => onOpenRestock?.(item)}
-                        className={cx(terracottaBtn, "mx-auto")}
-                        aria-label="Restock from master"
+                        className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Add to bag from depot"
                       >
                         +
                       </button>
                     </div>
                   ) : (
-                    <div className={terracottaPill}>
+                    <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
                       <button
                         type="button"
                         disabled={!onOpenDeduct || current_quantity < 1}
                         onClick={() => onOpenDeduct?.(item)}
-                        className={terracottaBtn}
+                        className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label="Deduct from bag"
                       >
                         −
                       </button>
-                      <div className={terracottaDivider} aria-hidden />
+                      <div className="h-5 w-px bg-[#f5e3d7]" aria-hidden />
                       <button
                         type="button"
                         disabled={!onOpenRestock}
                         onClick={() => onOpenRestock?.(item)}
-                        className={terracottaBtn}
+                        className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label="Restock from master"
                       >
                         +
