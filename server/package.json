@@ -13,6 +13,7 @@
     "seed:ocs-iv-drugs": "node src/scripts/seedOcsIVDrugsExtension.js",
     "seed:ocs-investigations": "node src/scripts/seedOcsInvestigationsExtension.js",
     "seed:ocs-wound-dressing": "node src/scripts/seedOcsWoundDressingExtension.js",
+    "seed:ocs-pediatric-drugs": "node src/scripts/seedOcsPediatricDrugsExtension.js",
     "purge:ocs-test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:test-items": "node src/scripts/purgeOcsTestInventory.js",
     "purge:ocs-warehouse": "node src/scripts/purgeAndReseedOcsWarehouse.js",
