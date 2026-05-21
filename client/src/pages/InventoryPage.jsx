@@ -33,11 +33,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
-import {
-  buildInventoryListQuery,
-  getDefaultFolderSelection,
-  getDisplayFolders,
-} from "../lib/inventoryFolders.js";
+import { buildInventoryListQuery, getDefaultFolderSelection } from "../lib/inventoryFolders.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2161,11 +2157,8 @@ export default function InventoryPage() {
     : selectedContextDoctorId
       ? data?.selected_doctor_stock || []
       : data?.ocs_stock || [];
-  const showAllCategoryPills = isDoctor || (canManageOcs && contextIsOcs);
-  const displayFolders = useMemo(
-    () => getDisplayFolders(folders, items, { showAllCategories: showAllCategoryPills }),
-    [folders, items, showAllCategoryPills],
-  );
+  /** Always show all seven category pills; empty categories display an empty list. */
+  const categoryFolders = folders;
   const inventoryListQuery = useMemo(
     () =>
       buildInventoryListQuery({
@@ -2882,7 +2875,7 @@ export default function InventoryPage() {
             setSearch={setSearch}
             doctorContext={doctorContext}
             onDoctorContextChange={setDoctorContext}
-            folders={displayFolders}
+            folders={categoryFolders}
             selectedView={selectedView}
             onSelectedViewChange={setSelectedView}
             doctorViewIsOcs={doctorViewIsOcs}
@@ -3082,7 +3075,7 @@ export default function InventoryPage() {
             ) : null}
           </div>
           <div className="-mx-1 flex flex-wrap items-center gap-2">
-            {displayFolders.map((folder) => (
+            {categoryFolders.map((folder) => (
               <button
                 key={folder.id}
                 type="button"
