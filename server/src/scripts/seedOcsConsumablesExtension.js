@@ -10,13 +10,27 @@
  * Usage:
  *   node src/scripts/seedOcsConsumablesExtension.js
  *   docker exec clinicflow-app node src/scripts/seedOcsConsumablesExtension.js
+ *
+ * Env:
+ *   SYNC_DOCTOR_BAGS=true  (default) — mirror OCS Consumable rows into every doctor bag
  */
 
 const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
+const { clearOcsCatalogExclusionsForNames } = require("../lib/ocsCatalogExclusions");
 const { upsertOcsMasterStockDataset } = require("../lib/ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("./syncDoctorStockFromOcs");
 
-function seedOcsConsumablesExtensionSync({ skipInit = false, syncDoctorBags = false } = {}) {
+function seedOcsConsumablesExtensionSync({
+  skipInit = false,
+  syncDoctorBags = String(process.env.SYNC_DOCTOR_BAGS ?? "true").toLowerCase() !== "false",
+  clearExclusions = true,
+} = {}) {
+  if (clearExclusions) {
+    clearOcsCatalogExclusionsForNames(
+      ocsConsumablesExtension.map((row) => row.name),
+    );
+  }
+
   const summary = upsertOcsMasterStockDataset(ocsConsumablesExtension, {
     skipInit,
     insertOnly: false,
@@ -51,11 +65,10 @@ function printSummary(result) {
 
   if (doctorBags) {
     console.log(`  Doctor bag rows added: ${doctorBags.inserted}`);
+    console.log(`  Doctors synced: ${doctorBags.doctors}`);
   }
 
-  console.log(
-    "  Inventory API reads this table live — refresh Admin, Operator, and Doctor inventory screens.",
-  );
+  console.log("  Refresh Inventory → OCS Stock / My Stock → Consumable.");
 }
 
 if (require.main === module) {

@@ -1,5 +1,6 @@
 /**
- * Consumable catalog parsed from "OCS Stock - consumable.pdf" (Entry Name + Attribute).
+ * Consumable catalog parsed from CONSUMABLES.pdf / "OCS Stock - consumable.pdf"
+ * (Entry Name + Attribute).
  * Quantities default to 0 where not listed in the PDF; par_level inferred from pack/box size when present.
  */
 

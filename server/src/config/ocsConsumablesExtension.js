@@ -1,6 +1,6 @@
 /**
  * Consumable rows for OCS master warehouse upsert.
- * Merged: spreadsheet manifest + PDF catalog (OCS Stock - consumable.pdf).
+ * Merged: spreadsheet manifest + PDF catalog (CONSUMABLES.pdf).
  *
  * Upserted by seedOcsConsumablesExtension.js and ensureOcsCatalog on startup.
  */

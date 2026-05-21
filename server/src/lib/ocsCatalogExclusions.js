@@ -45,6 +45,25 @@ function filterCatalogRowsNotExcluded(rows = []) {
   return rows.filter((row) => !isOcsCatalogExcluded(row.name));
 }
 
+/** Remove catalog exclusions so explicit seed scripts can re-import SKUs. */
+function clearOcsCatalogExclusionsForNames(names = []) {
+  const keys = [
+    ...new Set(
+      names
+        .map((name) => normalizeCatalogItemName(name))
+        .filter(Boolean),
+    ),
+  ];
+  if (!keys.length) return 0;
+
+  ensureOcsCatalogExclusionsTable();
+  const placeholders = keys.map(() => "?").join(", ");
+  const result = db
+    .prepare(`DELETE FROM ocs_catalog_exclusions WHERE item_name_key IN (${placeholders})`)
+    .run(...keys);
+  return result.changes;
+}
+
 /** Block startup/catalog ensure from re-inserting bundled Consumable seed SKUs. */
 function excludeOcsConsumablesCatalogSeed() {
   const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
@@ -64,5 +83,6 @@ module.exports = {
   isOcsCatalogExcluded,
   recordOcsCatalogExclusion,
   filterCatalogRowsNotExcluded,
+  clearOcsCatalogExclusionsForNames,
   excludeOcsConsumablesCatalogSeed,
 };
