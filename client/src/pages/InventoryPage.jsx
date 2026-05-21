@@ -2325,7 +2325,7 @@ function MobileDoctorBagLayout({
   onOpenRestock,
 }) {
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3">
+    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3 bg-[#f8f9fa] px-4 py-3">
       <header className="flex items-start justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight text-gray-900">
           {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
@@ -2403,85 +2403,87 @@ function MobileDoctorBagLayout({
 
       <div className="flex min-h-0 flex-1 flex-col pb-8">
         {mobileBagPagedItems.length ? (
-          <div className="min-w-0">
-            {mobileBagPagedItems.map((item) => {
-              const current_quantity = Number(item.quantity || 0);
-              const par_level = Number(item.minimum_quantity || 0);
-              const isLowStock = par_level > 0 && current_quantity <= par_level;
-              const qtyTone = isLowStock ? "text-rose-600" : "text-emerald-700";
+          <>
+            <div className="mt-2 flex w-full flex-col gap-3.5">
+              {mobileBagPagedItems.map((item) => {
+                const current_quantity = Number(item.quantity || 0);
+                const par_level = Number(item.minimum_quantity || 0);
+                const isLowStock = par_level > 0 && current_quantity <= par_level;
+                const qtyTone = isLowStock ? "text-rose-600" : "text-emerald-700";
 
-              return (
-                <div
-                  key={`mobile-bag-${item.id}`}
-                  className="flex items-center justify-between border-b border-gray-100/70 px-2 py-4 transition-colors last:border-0 active:bg-gray-50/50"
-                >
-                  <div className="flex max-w-[65%] min-w-0 flex-col gap-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className={cx(
-                          "inline-block h-2 w-2 shrink-0 rounded-full",
-                          isLowStock
-                            ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
-                            : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]",
-                        )}
-                        aria-hidden
-                      />
-                      <span className="truncate text-sm font-bold tracking-wide text-gray-800">
-                        {item.item_name}
-                      </span>
+                return (
+                  <div
+                    key={`mobile-bag-${item.id}`}
+                    className="flex items-center justify-between rounded-2xl border border-gray-100/50 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all active:scale-[0.99]"
+                  >
+                    <div className="flex max-w-[65%] min-w-0 flex-col gap-1.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={cx(
+                            "inline-block h-2 w-2 shrink-0 rounded-full",
+                            isLowStock
+                              ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]"
+                              : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]",
+                          )}
+                          aria-hidden
+                        />
+                        <span className="truncate text-sm font-bold tracking-wide text-gray-800">
+                          {item.item_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pl-4 text-xs font-semibold text-gray-400">
+                        <span>
+                          {doctorViewIsOcs ? "Available:" : "In Bag:"}{" "}
+                          <span className={cx("font-bold", qtyTone)}>{current_quantity}</span>
+                        </span>
+                        <span className="text-gray-200">|</span>
+                        <span>
+                          Min Par: <span className="font-bold text-gray-600">{par_level}</span>
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs font-semibold text-gray-400">
-                      <span>
-                        {doctorViewIsOcs ? "Available:" : "In Bag:"}{" "}
-                        <span className={cx("font-bold", qtyTone)}>{current_quantity}</span>
-                      </span>
-                      <span className="text-gray-200">|</span>
-                      <span>
-                        Min Par: <span className="font-bold text-gray-600">{par_level}</span>
-                      </span>
-                    </div>
+                    {doctorViewIsOcs ? (
+                      <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
+                        <button
+                          type="button"
+                          disabled={!onOpenRestock}
+                          onClick={() => onOpenRestock?.(item)}
+                          className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Add to bag from depot"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
+                        <button
+                          type="button"
+                          disabled={!onOpenDeduct || current_quantity < 1}
+                          onClick={() => onOpenDeduct?.(item)}
+                          className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Deduct from bag"
+                        >
+                          −
+                        </button>
+                        <div className="h-5 w-px bg-[#f5e3d7]" aria-hidden />
+                        <button
+                          type="button"
+                          disabled={!onOpenRestock}
+                          onClick={() => onOpenRestock?.(item)}
+                          className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Restock from master"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {doctorViewIsOcs ? (
-                    <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
-                      <button
-                        type="button"
-                        disabled={!onOpenRestock}
-                        onClick={() => onOpenRestock?.(item)}
-                        className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                        aria-label="Add to bag from depot"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
-                      <button
-                        type="button"
-                        disabled={!onOpenDeduct || current_quantity < 1}
-                        onClick={() => onOpenDeduct?.(item)}
-                        className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                        aria-label="Deduct from bag"
-                      >
-                        −
-                      </button>
-                      <div className="h-5 w-px bg-[#f5e3d7]" aria-hidden />
-                      <button
-                        type="button"
-                        disabled={!onOpenRestock}
-                        onClick={() => onOpenRestock?.(item)}
-                        className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                        aria-label="Restock from master"
-                      >
-                        +
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
 
             {mobileBagTotalPages > 1 ? (
-              <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="flex items-center justify-between gap-3 pt-3">
                 <p className="text-sm text-slate-500">
                   Page {currentPage} of {mobileBagTotalPages}
                 </p>
@@ -2505,7 +2507,7 @@ function MobileDoctorBagLayout({
                 </div>
               </div>
             ) : null}
-          </div>
+          </>
         ) : (
           <EmptyState
             title={doctorViewIsOcs ? "No items in this category" : "No stock items found"}
