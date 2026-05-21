@@ -1330,17 +1330,10 @@ function LiveActivitySection({
 }
 
 
-function InventoryOcsMasterActions({
-  item,
-  touchWrap = false,
-  omitRestock = false,
-  showDeleteItem = false,
-  onStockIn,
-  onEdit,
-  onRestockDoctor,
-  onRemove,
-  onDeleteItem,
-}) {
+const INVENTORY_MOBILE_MENU_ITEM =
+  "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50";
+
+function InventoryMobileActionTray({ quickAddTitle, quickAddDisabled, onQuickAdd, menuItems = [] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const menuRef = useRef(null);
@@ -1375,23 +1368,167 @@ function InventoryOcsMasterActions({
     setMenuOpen(true);
   }
 
-  const receiveBtn = touchWrap
-    ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b]"
-    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20";
-
-  const moreBtn = touchWrap
-    ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
-    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
-
-  const menuItem =
-    "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50";
-
-  const editBtn = touchWrap
-    ? "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
-    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+  function closeMenu() {
+    setMenuOpen(false);
+  }
 
   return (
-    <div className={cx("flex w-full min-w-0 items-center gap-1.5", touchWrap ? "flex-wrap justify-end" : "ml-auto w-fit justify-end")}>
+    <div className="flex min-w-[70px] items-center justify-end gap-3">
+      <button
+        type="button"
+        title={quickAddTitle}
+        aria-label={quickAddTitle}
+        disabled={quickAddDisabled}
+        onClick={onQuickAdd}
+        className="flex h-8 w-8 items-center justify-center rounded-xl bg-teal-50 text-teal-600 transition-colors hover:bg-teal-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Plus className="h-4 w-4" strokeWidth={2.5} />
+      </button>
+      <div className="relative shrink-0" ref={menuRef}>
+        <button
+          type="button"
+          title="More actions"
+          aria-label="More actions"
+          aria-expanded={menuOpen}
+          onClick={() => (menuOpen ? closeMenu() : openMenu())}
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-gray-400 transition-colors hover:text-gray-600 active:scale-95"
+        >
+          <MoreVertical className="h-5 w-5" strokeWidth={2.5} />
+        </button>
+        {menuOpen && menuPosition && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={menuPanelRef}
+                className="fixed z-[100] min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left }}
+              >
+                {menuItems.map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    className={cx(
+                      INVENTORY_MOBILE_MENU_ITEM,
+                      entry.danger ? "text-rose-700 hover:bg-rose-50" : "",
+                    )}
+                    onClick={() => {
+                      closeMenu();
+                      entry.onClick();
+                    }}
+                  >
+                    {entry.icon ? <span className="shrink-0 text-slate-500">{entry.icon}</span> : null}
+                    {entry.label}
+                  </button>
+                ))}
+              </div>,
+              document.body,
+            )
+          : null}
+      </div>
+    </div>
+  );
+}
+
+function InventoryOcsMasterActions({
+  item,
+  touchWrap = false,
+  omitRestock = false,
+  showDeleteItem = false,
+  onStockIn,
+  onEdit,
+  onRestockDoctor,
+  onRemove,
+  onDeleteItem,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const menuRef = useRef(null);
+  const menuPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen || touchWrap) return undefined;
+    function handleMouseDown(event) {
+      const target = event.target;
+      if (menuRef.current?.contains(target) || menuPanelRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    }
+    function handleEscape(event) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [menuOpen, touchWrap]);
+
+  function openMenu() {
+    const anchor = menuRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setMenuPosition({
+      top: rect.bottom + 6,
+      left: Math.max(8, rect.right - 200),
+    });
+    setMenuOpen(true);
+  }
+
+  const receiveBtn =
+    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20";
+  const editBtn =
+    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+  const moreBtn =
+    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+
+  if (touchWrap) {
+    const menuItems = [
+      {
+        key: "edit",
+        label: "Edit item",
+        icon: <Pencil className="size-3.5" />,
+        onClick: () => onEdit(item),
+      },
+      ...(!omitRestock
+        ? [
+            {
+              key: "restock",
+              label: "Restock / Transfer",
+              icon: <Truck className="size-3.5" />,
+              onClick: () => onRestockDoctor(item),
+            },
+          ]
+        : []),
+      {
+        key: "remove",
+        label: "Remove stock",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        onClick: () => onRemove(item),
+      },
+      ...(showDeleteItem && onDeleteItem
+        ? [
+            {
+              key: "delete",
+              label: "Delete item",
+              icon: <Trash2 className="size-3.5" />,
+              danger: true,
+              onClick: () => onDeleteItem(item),
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <InventoryMobileActionTray
+        quickAddTitle="Receive stock"
+        onQuickAdd={() => onStockIn(item)}
+        menuItems={menuItems}
+      />
+    );
+  }
+
+  return (
+    <div className="ml-auto flex w-fit items-center justify-end gap-1.5">
       <button
         type="button"
         title="Receive stock"
@@ -1430,7 +1567,7 @@ function InventoryOcsMasterActions({
               >
                 <button
                   type="button"
-                  className={menuItem}
+                  className={INVENTORY_MOBILE_MENU_ITEM}
                   onClick={() => {
                     setMenuOpen(false);
                     onEdit(item);
@@ -1442,7 +1579,7 @@ function InventoryOcsMasterActions({
                 {!omitRestock ? (
                   <button
                     type="button"
-                    className={menuItem}
+                    className={INVENTORY_MOBILE_MENU_ITEM}
                     onClick={() => {
                       setMenuOpen(false);
                       onRestockDoctor(item);
@@ -1454,7 +1591,7 @@ function InventoryOcsMasterActions({
                 ) : null}
                 <button
                   type="button"
-                  className={`${menuItem} text-rose-700 hover:bg-rose-50`}
+                  className={`${INVENTORY_MOBILE_MENU_ITEM} text-rose-700 hover:bg-rose-50`}
                   onClick={() => {
                     setMenuOpen(false);
                     onRemove(item);
@@ -1466,7 +1603,7 @@ function InventoryOcsMasterActions({
                 {showDeleteItem && onDeleteItem ? (
                   <button
                     type="button"
-                    className={`${menuItem} text-rose-700 hover:bg-rose-50`}
+                    className={`${INVENTORY_MOBILE_MENU_ITEM} text-rose-700 hover:bg-rose-50`}
                     onClick={() => {
                       setMenuOpen(false);
                       onDeleteItem(item);
@@ -1520,23 +1657,86 @@ function InventoryActionButtons({
     );
   }
 
-  const btn = touchWrap
-    ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold"
-    : "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
-  const restockBtn = touchWrap
-    ? "inline-flex min-h-10 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-xl bg-[#4FB8B3] px-4 py-2 text-xs font-bold text-white shadow-sm"
-    : "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3aa6a1]";
-  const stockOutBtn = touchWrap
-    ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl bg-orange-100 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-200"
-    : "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-3 text-xs font-semibold text-orange-700 transition hover:bg-orange-200";
-  const adjustBtn = touchWrap
-    ? "inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold"
-    : "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 text-xs font-semibold";
+  if (touchWrap) {
+    const menuItems = [];
+
+    if (!(isDoctor && doctorViewIsOcs)) {
+      menuItems.push({
+        key: "edit",
+        label: "Edit item",
+        icon: <Pencil className="size-3.5" />,
+        onClick: () => onEdit(item),
+      });
+    }
+
+    if (isDoctor && !omitRestock) {
+      menuItems.push({
+        key: "restock",
+        label: "Restock",
+        icon: <Truck className="size-3.5" />,
+        onClick: () => onRestockMyInventory(item),
+      });
+    }
+
+    if (isDoctor && doctorViewIsMy && onStockOut) {
+      menuItems.push({
+        key: "stock-out",
+        label: "Stock Out",
+        icon: <Minus className="size-3.5" />,
+        onClick: () => onStockOut(item),
+      });
+    }
+
+    if (canManageOcs && !contextIsOcs) {
+      menuItems.push({
+        key: "adjust",
+        label: "Adjust",
+        icon: <MinusCircle className="size-3.5" />,
+        onClick: () => onAdjustReclaim(item),
+      });
+    }
+
+    if (onRemove) {
+      menuItems.push({
+        key: "remove",
+        label: "Remove stock",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        onClick: () => onRemove(item),
+      });
+    }
+
+    if (showDeleteItem && onDeleteItem) {
+      menuItems.push({
+        key: "delete",
+        label: "Delete item",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        onClick: () => onDeleteItem(item),
+      });
+    }
+
+    return (
+      <InventoryMobileActionTray
+        quickAddTitle="Quick add stock"
+        onQuickAdd={() => onStockIn(item)}
+        menuItems={menuItems}
+      />
+    );
+  }
+
+  const btn =
+    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+  const restockBtn =
+    "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3aa6a1]";
+  const stockOutBtn =
+    "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-3 text-xs font-semibold text-orange-700 transition hover:bg-orange-200";
+  const adjustBtn = "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 text-xs font-semibold";
 
   return (
-    <div className={cx("flex items-center gap-1.5", touchWrap ? "max-w-full flex-wrap justify-end" : "ml-auto w-fit justify-end")}>
+    <div className="ml-auto flex w-fit items-center justify-end gap-1.5">
       {!(isDoctor && doctorViewIsOcs) ? (
-        <button type="button" onClick={() => onEdit(item)} className={`${btn} ${touchWrap ? "border border-slate-200 text-slate-700" : ""}`}>
+        <button type="button" onClick={() => onEdit(item)} className={btn}>
           <Pencil className="size-3.5 shrink-0" />
         </button>
       ) : null}
@@ -3275,7 +3475,6 @@ export default function InventoryPage() {
                   isLow ||
                   trafficTone === "critical" ||
                   (isDoctor && doctorViewIsMy && trafficTone === "warning");
-                const showProminentRestock = isDoctor;
 
                 return (
                   <div
@@ -3310,85 +3509,25 @@ export default function InventoryPage() {
                       <p className="min-w-0 text-[11px] leading-tight text-slate-500">
                         <span className="font-semibold text-slate-600">Exp:</span> {item.expiry_date || "—"}
                       </p>
-                      {showProminentRestock ? (
-                        <div className="flex shrink-0 items-center gap-2">
-                          {isDoctor ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openDoctorRestockForItem(item)}
-                                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#4FB8B3] px-3.5 py-2 text-xs font-bold text-white shadow-sm active:brightness-95"
-                              >
-                                <Truck className="size-3.5" />
-                                Restock
-                              </button>
-                              {doctorViewIsMy ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setStockOut({ item })}
-                                  className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-orange-100 px-3.5 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-200 active:brightness-95"
-                                >
-                                  <Minus className="size-3.5" />
-                                  Stock Out
-                                </button>
-                              ) : null}
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setRestock({ item })}
-                              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-[#4FB8B3] px-3.5 py-2 text-xs font-bold text-white shadow-sm active:brightness-95"
-                            >
-                              <Truck className="size-3.5" />
-                              Restock
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <InventoryActionButtons
-                          item={item}
-                          canManageOcs={canManageOcs}
-                          contextIsOcs={contextIsOcs}
-                          isDoctor={isDoctor}
-                          doctorViewIsMy={doctorViewIsMy}
-                          doctorViewIsOcs={doctorViewIsOcs}
-                          onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                          onEdit={openItemEditor}
-                          onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
-                          onRestockMyInventory={openDoctorRestockForItem}
-                          onStockOut={(nextItem) => setStockOut({ item: nextItem })}
-                          onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                          onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                          showDeleteItem={canManageOcs && contextIsOcs}
-                          onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
-                          touchWrap
-                        />
-                      )}
+                      <InventoryActionButtons
+                        item={item}
+                        canManageOcs={canManageOcs}
+                        contextIsOcs={contextIsOcs}
+                        isDoctor={isDoctor}
+                        doctorViewIsMy={doctorViewIsMy}
+                        doctorViewIsOcs={doctorViewIsOcs}
+                        onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                        onEdit={openItemEditor}
+                        onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                        onRestockMyInventory={openDoctorRestockForItem}
+                        onStockOut={(nextItem) => setStockOut({ item: nextItem })}
+                        onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                        onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                        showDeleteItem={canManageOcs && contextIsOcs}
+                        onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
+                        touchWrap
+                      />
                     </div>
-
-                    {showProminentRestock ? (
-                      <div className="mt-1.5 flex flex-wrap justify-end gap-1.5 border-t border-slate-100 pt-1.5">
-                        <InventoryActionButtons
-                          item={item}
-                          canManageOcs={canManageOcs}
-                          contextIsOcs={contextIsOcs}
-                          isDoctor={isDoctor}
-                          doctorViewIsMy={doctorViewIsMy}
-                          doctorViewIsOcs={doctorViewIsOcs}
-                          onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                          onEdit={openItemEditor}
-                          onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
-                          onRestockMyInventory={openDoctorRestockForItem}
-                          onStockOut={(nextItem) => setStockOut({ item: nextItem })}
-                          onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                          onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                          showDeleteItem={canManageOcs && contextIsOcs}
-                          onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
-                          touchWrap
-                          omitRestock
-                        />
-                      </div>
-                    ) : null}
 
                     {expanded ? (
                       <div className="mt-1.5 space-y-2 border-t border-slate-100 pt-1.5">
