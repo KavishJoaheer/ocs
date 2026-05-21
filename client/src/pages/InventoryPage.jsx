@@ -2572,7 +2572,7 @@ export default function InventoryPage() {
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
     (next) => {
-      commitInventoryData(next);
+      setData(next);
       if (isDoctor) {
         notifyDoctorBagInventoryUpdated();
       }
