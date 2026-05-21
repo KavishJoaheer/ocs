@@ -39,7 +39,12 @@ const navItems = [
     roles: ["admin", "doctor", "operator", "lab_tech"],
     isActiveWhen: (location) => {
       if (location.pathname !== "/patients") return false;
-      return new URLSearchParams(location.search).get("filter") !== "subscribed";
+      const params = new URLSearchParams(location.search);
+      if (params.get("filter") === "subscribed") return false;
+      if (params.get("tab") === "under_review" || params.get("filter") === "under_review") {
+        return false;
+      }
+      return true;
     },
   },
   {
@@ -53,12 +58,12 @@ const navItems = [
     },
   },
   {
-    to: "/patients?tab=under_review",
+    to: "/doctor/assigned-patients?tab=under_review",
     label: "Long term review",
     icon: Activity,
     roles: ["doctor"],
     isActiveWhen: (location) => {
-      if (location.pathname !== "/patients") return false;
+      if (location.pathname !== "/doctor/assigned-patients") return false;
       const params = new URLSearchParams(location.search);
       return params.get("tab") === "under_review" || params.get("filter") === "under_review";
     },

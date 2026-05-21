@@ -270,6 +270,15 @@ function PatientsPage() {
   }
 
   useEffect(() => {
+    if (user.role === "doctor") {
+      const tab = searchParams.get("tab");
+      const filter = searchParams.get("filter");
+      if (tab === "under_review" || filter === "under_review") {
+        navigate("/doctor/assigned-patients?tab=under_review", { replace: true });
+        return;
+      }
+    }
+
     const next = searchParams.get("search") || "";
     setSearch((prev) => (prev === next ? prev : next));
 
@@ -286,7 +295,7 @@ function PatientsPage() {
     }
 
     setPage(1);
-  }, [searchParams, user.doctor_id, user.role]);
+  }, [navigate, searchParams, user.doctor_id, user.role]);
 
   useEffect(() => {
     loadDoctors();

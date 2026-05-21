@@ -260,12 +260,15 @@ function SeenPatientsList({ patients, monthLabel }) {
   );
 }
 
-function AssignedPatientsList({ patients }) {
+function AssignedPatientsList({ patients, emptyTitle, emptyDescription }) {
   if (!patients.length) {
     return (
       <EmptyState
-        title="No assigned patients"
-        description="Patients assigned to this doctor will appear here once they are added or reassigned."
+        title={emptyTitle || "No assigned patients"}
+        description={
+          emptyDescription ||
+          "Patients assigned to this doctor will appear here once they are added or reassigned."
+        }
       />
     );
   }
@@ -835,7 +838,23 @@ function DoctorWorkspacePage({ workspaceKey }) {
             </button>
           </div>
         ) : null}
-        <AssignedPatientsList patients={assignedPatients} />
+        <AssignedPatientsList
+          patients={assignedPatients}
+          emptyTitle={
+            underReviewFilter
+              ? "No long term review patients"
+              : subscribedFilter
+                ? "No health plan subscribers"
+                : undefined
+          }
+          emptyDescription={
+            underReviewFilter
+              ? "Assigned patients flagged for long-term review will appear here."
+              : subscribedFilter
+                ? "Assigned patients on an active health plan will appear here."
+                : undefined
+          }
+        />
       </SectionCard>
     );
   }

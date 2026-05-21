@@ -1154,7 +1154,7 @@ function DoctorMetricsRow({ dashboard }) {
         variant="assigned"
       />
       <DoctorMetricCard
-        to="/patients?tab=under_review"
+        to="/doctor/assigned-patients?tab=under_review"
         label="Long Term Review"
         value={longTermCount}
         variant="longTerm"
