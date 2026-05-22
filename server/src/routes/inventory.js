@@ -410,6 +410,41 @@ function findItem(itemId, stockScope, doctorId = null) {
     .get(itemId, stockScope, stockScope, doctorId, stockScope);
 }
 
+function getInventoryQueryContext(req) {
+  const selectedDoctorId = Number(req.query.doctorId || 0) || null;
+  const doctorContext = String(req.query.context || "my").trim().toLowerCase() === "ocs" ? "ocs" : "my";
+  return { selectedDoctorId, doctorContext };
+}
+
+function findItemForRequest(req, itemId) {
+  const role = req.auth.role;
+  const isDoctor = role === "doctor";
+
+  if (isDoctor) {
+    const doctorId = Number(req.auth.doctor_id || 0);
+    if (!doctorId) return null;
+    const { doctorContext } = getInventoryQueryContext(req);
+    const stockScope = doctorContext === "ocs" ? "ocs" : "doctor";
+    return findItem(itemId, stockScope, stockScope === "doctor" ? doctorId : null);
+  }
+
+  if (["admin", "operator"].includes(role)) {
+    const { selectedDoctorId } = getInventoryQueryContext(req);
+    if (selectedDoctorId) {
+      const doctorItem = findItem(itemId, "doctor", selectedDoctorId);
+      if (doctorItem) return doctorItem;
+    }
+    return findItem(itemId, "ocs", null);
+  }
+
+  return null;
+}
+
+function getPayloadFromRequest(req) {
+  const { selectedDoctorId, doctorContext } = getInventoryQueryContext(req);
+  return getPayload(req, selectedDoctorId, doctorContext);
+}
+
 function createBatch(itemId, quantity, expiryDate, unitCost) {
   db.prepare(`
     INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost)
@@ -1426,9 +1461,8 @@ router.put("/items/:id", (req, res) => {
     return res.status(403).json({ error: "You do not have permission to edit stock items." });
   }
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
-  const stockScope = isDoctor ? "doctor" : "ocs";
   const itemId = Number(req.params.id);
-  const existing = findItem(itemId, stockScope, doctorId);
+  const existing = findItemForRequest(req, itemId);
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
 
   const itemName = isDoctor
@@ -1508,7 +1542,7 @@ router.put("/items/:id", (req, res) => {
     });
   }
 
-  res.json(getPayload(req));
+  res.json(getPayloadFromRequest(req));
 });
 
 router.post("/items/:id/ocs-actions", (req, res) => {
@@ -1695,12 +1729,8 @@ router.post("/items/:id/bag-actions", (req, res) => {
 
 router.get("/items/:id/batches", (req, res) => {
   ensureInfrastructure();
-  const role = req.auth.role;
-  const isDoctor = role === "doctor";
-  const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
-  const stockScope = isDoctor ? "doctor" : "ocs";
   const itemId = Number(req.params.id);
-  const item = findItem(itemId, stockScope, doctorId);
+  const item = findItemForRequest(req, itemId);
   if (!item) return res.status(404).json({ error: "Stock item not found." });
 
   res.json({
