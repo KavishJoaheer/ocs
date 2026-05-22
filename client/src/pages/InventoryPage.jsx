@@ -2522,16 +2522,6 @@ function MobileDoctorBagLayout({
         </div>
       ) : null}
 
-      {doctorViewIsOcs ? (
-        <p className="text-xs font-medium leading-relaxed text-gray-500">
-          Tap + to pull stock from the depot into your medical bag (set quantity and expiry).
-        </p>
-      ) : (
-        <p className="text-xs font-medium leading-relaxed text-gray-500">
-          Tap − to log removal (sale, damage, or expired). Tap + to restock from OCS master.
-        </p>
-      )}
-
       <div className="flex min-h-0 flex-1 flex-col pb-8">
         {mobileBagPagedItems.length ? (
           <>
