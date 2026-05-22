@@ -40,10 +40,6 @@ import { cx, pageContainerClass } from "../lib/utils.js";
 
 dayjs.extend(isoWeek);
 
-/** Matches mobile Patient Directory card tint (PatientsPage). */
-const mobileInventoryItemCardClass =
-  "rounded-2xl border border-[#557373]/25 bg-[#557373]/15 shadow-sm";
-
 const INVENTORY_PERIOD_PRESETS = [
   { id: "yearly", label: "Yearly" },
   { id: "monthly", label: "Monthly" },
@@ -1775,6 +1771,18 @@ function InventoryActionButtons({
           Adjust
         </button>
       ) : null}
+
+      {showDeleteItem && onDeleteItem ? (
+        <button
+          type="button"
+          title="Delete item"
+          aria-label="Delete item"
+          onClick={() => onDeleteItem(item)}
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+        >
+          <Trash2 className="size-3.5 shrink-0" />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2306,6 +2314,96 @@ function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
   );
 }
 
+function MobileTerracottaActionPill({
+  onDeduct,
+  onRestock,
+  deductDisabled = false,
+  restockDisabled = false,
+  singlePlus = false,
+  deductLabel = "Deduct from bag",
+  restockLabel = "Restock from master",
+}) {
+  const btnClass =
+    "flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40";
+
+  if (singlePlus) {
+    return (
+      <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
+        <button
+          type="button"
+          disabled={restockDisabled}
+          onClick={onRestock}
+          className={btnClass}
+          aria-label={restockLabel}
+        >
+          +
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
+      <button
+        type="button"
+        disabled={deductDisabled}
+        onClick={onDeduct}
+        className={btnClass}
+        aria-label={deductLabel}
+      >
+        −
+      </button>
+      <div className="h-5 w-px bg-[#f5e3d7]" aria-hidden />
+      <button
+        type="button"
+        disabled={restockDisabled}
+        onClick={onRestock}
+        className={btnClass}
+        aria-label={restockLabel}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock, actions }) {
+  const currentQuantity = Number(item.quantity || 0);
+  const parLevel = Number(item.minimum_quantity || 0);
+  const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
+  const qtyTone = low ? "text-rose-600" : "text-emerald-700";
+
+  return (
+    <div className="flex min-h-[72px] items-center justify-between rounded-2xl border border-gray-100/50 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all active:scale-[0.99]">
+      <div className="flex max-w-[65%] min-w-0 items-center gap-3">
+        <span
+          className={cx(
+            "inline-block h-2 w-2 shrink-0 rounded-full",
+            low
+              ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]"
+              : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]",
+          )}
+          aria-hidden
+        />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-sm font-bold tracking-wide text-gray-800">{item.item_name}</span>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-400">
+            <span>
+              {quantityLabel}{" "}
+              <span className={cx("font-bold", qtyTone)}>{currentQuantity}</span>
+            </span>
+            <span className="text-gray-200">•</span>
+            <span>
+              Min: <span className="font-bold text-gray-600">{parLevel}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+      {actions}
+    </div>
+  );
+}
+
 function MobileDoctorBagLayout({
   search,
   setSearch,
@@ -2406,78 +2504,31 @@ function MobileDoctorBagLayout({
           <>
             <div className="mt-2 flex w-full flex-col gap-3.5">
               {mobileBagPagedItems.map((item) => {
-                const current_quantity = Number(item.quantity || 0);
-                const par_level = Number(item.minimum_quantity || 0);
-                const isLowStock = par_level > 0 && current_quantity <= par_level;
-                const qtyTone = isLowStock ? "text-rose-600" : "text-emerald-700";
+                const currentQuantity = Number(item.quantity || 0);
 
                 return (
-                  <div
+                  <MobileInventoryStockCard
                     key={`mobile-bag-${item.id}`}
-                    className="flex items-center justify-between rounded-2xl border border-gray-100/50 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all active:scale-[0.99]"
-                  >
-                    <div className="flex max-w-[65%] min-w-0 flex-col gap-1.5">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span
-                          className={cx(
-                            "inline-block h-2 w-2 shrink-0 rounded-full",
-                            isLowStock
-                              ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]"
-                              : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]",
-                          )}
-                          aria-hidden
+                    item={item}
+                    quantityLabel={doctorViewIsOcs ? "Available:" : "In Bag:"}
+                    actions={
+                      doctorViewIsOcs ? (
+                        <MobileTerracottaActionPill
+                          singlePlus
+                          restockDisabled={!onOpenRestock}
+                          onRestock={() => onOpenRestock?.(item)}
+                          restockLabel="Add to bag from depot"
                         />
-                        <span className="truncate text-sm font-bold tracking-wide text-gray-800">
-                          {item.item_name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 pl-4 text-xs font-semibold text-gray-400">
-                        <span>
-                          {doctorViewIsOcs ? "Available:" : "In Bag:"}{" "}
-                          <span className={cx("font-bold", qtyTone)}>{current_quantity}</span>
-                        </span>
-                        <span className="text-gray-200">|</span>
-                        <span>
-                          Min Par: <span className="font-bold text-gray-600">{par_level}</span>
-                        </span>
-                      </div>
-                    </div>
-                    {doctorViewIsOcs ? (
-                      <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
-                        <button
-                          type="button"
-                          disabled={!onOpenRestock}
-                          onClick={() => onOpenRestock?.(item)}
-                          className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                          aria-label="Add to bag from depot"
-                        >
-                          +
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
-                        <button
-                          type="button"
-                          disabled={!onOpenDeduct || current_quantity < 1}
-                          onClick={() => onOpenDeduct?.(item)}
-                          className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                          aria-label="Deduct from bag"
-                        >
-                          −
-                        </button>
-                        <div className="h-5 w-px bg-[#f5e3d7]" aria-hidden />
-                        <button
-                          type="button"
-                          disabled={!onOpenRestock}
-                          onClick={() => onOpenRestock?.(item)}
-                          className="flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-                          aria-label="Restock from master"
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                      ) : (
+                        <MobileTerracottaActionPill
+                          deductDisabled={!onOpenDeduct || currentQuantity < 1}
+                          restockDisabled={!onOpenRestock}
+                          onDeduct={() => onOpenDeduct?.(item)}
+                          onRestock={() => onOpenRestock?.(item)}
+                        />
+                      )
+                    }
+                  />
                 );
               })}
             </div>
@@ -2596,6 +2647,7 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
+  const showDeleteStockItem = (canManageOcs && contextIsOcs) || (isAdmin && !contextIsOcs && !isMobile);
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
     () => getInventoryDateRange(adminPeriodPreset, adminPeriodAnchor),
@@ -3678,7 +3730,7 @@ export default function InventoryPage() {
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                                 onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                                showDeleteItem={canManageOcs && contextIsOcs}
+                                showDeleteItem={showDeleteStockItem}
                                 onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
                               />
                               </div>
@@ -3716,103 +3768,34 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            <div className="space-y-3 md:hidden">
-              {pagedItems.map((item) => {
-                const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
-                const expanded = Boolean(expandedRows[item.id]);
-                const batches = batchMap[item.id] || [];
-                const parLevel = Number(item.minimum_quantity || 0);
-                const quantity = Number(item.quantity || 0);
-                const ratio = parLevel > 0 ? quantity / parLevel : 1;
-                const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
-                const stockLabel =
-                  isDoctor && doctorViewIsMy
-                    ? trafficTone === "critical"
-                      ? "CRITICAL"
-                      : trafficTone === "warning"
-                        ? "LOW"
-                        : "HEALTHY"
-                    : isLow
-                      ? "LOW"
-                      : "OK";
-                const badgeIsAlert =
-                  quantity <= 0 ||
-                  isLow ||
-                  trafficTone === "critical" ||
-                  (isDoctor && doctorViewIsMy && trafficTone === "warning");
-
-                return (
-                  <div
-                    key={`m-${item.id}`}
-                    className={cx("p-4 transition-all active:scale-[0.99]", mobileInventoryItemCardClass)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(item.id)}
-                            className="grid size-7 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500"
-                            aria-expanded={expanded}
-                          >
-                            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                          </button>
-                          <p className="truncate font-bold leading-snug text-slate-950">{item.item_name}</p>
-                        </div>
-                      </div>
-                      <span
-                        className={cx(
-                          "shrink-0 rounded-full px-2 py-0.5 text-center text-[10px] font-bold uppercase leading-tight tracking-wide",
-                          badgeIsAlert ? "bg-rose-100 text-rose-700" : "bg-[#4FB8B3]/20 text-[#1f7f7b]",
-                        )}
-                      >
-                        {quantity} {stockLabel}
-                      </span>
-                    </div>
-
-                    <div className="mt-1.5 flex min-h-10 items-center justify-between gap-2 border-t border-slate-100 pt-1.5">
-                      <p className="min-w-0 text-[11px] leading-tight text-slate-500">
-                        <span className="font-semibold text-slate-600">Exp:</span> {item.expiry_date || "—"}
-                      </p>
-                      <InventoryActionButtons
-                        item={item}
-                        canManageOcs={canManageOcs}
-                        contextIsOcs={contextIsOcs}
-                        isDoctor={isDoctor}
-                        doctorViewIsMy={doctorViewIsMy}
-                        doctorViewIsOcs={doctorViewIsOcs}
-                        onStockIn={(nextItem) => setAddStock({ item: nextItem })}
-                        onEdit={openItemEditor}
-                        onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
-                        onRestockMyInventory={openDoctorRestockForItem}
-                        onStockOut={(nextItem) => setStockOut({ item: nextItem })}
-                        onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                        onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
-                        showDeleteItem={canManageOcs && contextIsOcs}
-                        onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
-                        touchWrap
-                      />
-                    </div>
-
-                    {expanded ? (
-                      <div className="mt-1.5 space-y-2 border-t border-slate-100 pt-1.5">
-                        <p className="text-[11px] text-slate-600">
-                          Min {item.minimum_quantity} · {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}
-                        </p>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2 text-[11px] text-slate-700">
-                          {batches.length
-                            ? batches.map((batch) => (
-                                <p key={batch.id}>
-                                  #{batch.id} · Qty {batch.quantity_remaining} · Exp {batch.expiry_date || "—"}
-                                </p>
-                              ))
-                            : "Open row to load batches."}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+            <div className="mt-2 flex w-full flex-col gap-3.5 bg-[#f8f9fa] px-1 py-3 md:hidden">
+              {pagedItems.map((item) => (
+                <MobileInventoryStockCard
+                  key={`m-${item.id}`}
+                  item={item}
+                  quantityLabel={contextIsOcs ? "Available:" : "In Bag:"}
+                  actions={
+                    <InventoryActionButtons
+                      item={item}
+                      canManageOcs={canManageOcs}
+                      contextIsOcs={contextIsOcs}
+                      isDoctor={isDoctor}
+                      doctorViewIsMy={doctorViewIsMy}
+                      doctorViewIsOcs={doctorViewIsOcs}
+                      onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                      onEdit={openItemEditor}
+                      onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                      onRestockMyInventory={openDoctorRestockForItem}
+                      onStockOut={(nextItem) => setStockOut({ item: nextItem })}
+                      onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
+                      onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                      showDeleteItem={showDeleteStockItem}
+                      onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
+                      touchWrap
+                    />
+                  }
+                />
+              ))}
             </div>
           </>
         ) : (
@@ -4016,7 +3999,11 @@ export default function InventoryPage() {
         onClose={() => setItemToDelete(null)}
         onConfirm={removeItem}
         title="Delete stock item?"
-        description={`This will remove ${itemToDelete?.item_name || "this item"} and related movement history. OCS master items will not be auto-re-added from the catalog.`}
+        description={
+          itemToDelete?.stock_scope === "doctor" || itemToDelete?.owner_doctor_id
+            ? `This will remove ${itemToDelete?.item_name || "this item"} from this doctor's medical bag and delete related movement history.`
+            : `This will remove ${itemToDelete?.item_name || "this item"} and related movement history. OCS master items will not be auto-re-added from the catalog.`
+        }
         confirmLabel="Delete item"
       />
     </>
