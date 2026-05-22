@@ -1200,9 +1200,9 @@ function OperatorPersonalOperationUpdates({ metrics }) {
   );
 }
 
-function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, hcmLatestTitle }) {
-  const hasHcmUpdate = Boolean(String(hcmLatestTitle || "").trim());
+function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert }) {
   const rosterUpdateLabel = `Next roster update on ${dayjs().endOf("month").format("MMMM D")}`;
+  const lowStockCount = Number(lowStockAlert?.total_items || 0);
 
   return (
     <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
@@ -1233,38 +1233,37 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, hcmLatestTitle
         </div>
       </div>
 
-      <Link
-        to="/hcm-news"
-        className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-colors hover:border-gray-200 hover:bg-slate-50/50 lg:col-span-2"
-      >
-        <div className="flex items-center justify-between border-b border-gray-50 pb-3">
-          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">HCM News & Updates</span>
-          <span
-            className={cx(
-              "size-2 shrink-0 rounded-full",
-              hasHcmUpdate ? "bg-teal-500" : "bg-gray-300",
-            )}
-            aria-hidden="true"
-          />
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <div
-            className={cx(
-              "flex size-10 shrink-0 items-center justify-center rounded-full text-sm",
-              hasHcmUpdate ? "bg-teal-50 text-teal-600" : "bg-gray-50 text-gray-400",
-            )}
-          >
-            <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
-          </div>
-          {hasHcmUpdate ? (
-            <span className="min-w-0 text-xs font-semibold leading-normal text-gray-800">{hcmLatestTitle}</span>
-          ) : (
-            <span className="text-xs font-medium leading-normal text-gray-400">
-              No new clinical notices or manager bulletins posted today.
+      {lowStockAlert?.triggered ? (
+        <Link
+          to="/inventory?context=my&restock=alert"
+          className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-rose-200 bg-rose-50/60 p-6 shadow-sm transition-colors hover:border-rose-300 lg:col-span-2"
+        >
+          <div className="flex items-center justify-between border-b border-rose-200/60 pb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-rose-700">Inventory alerts</span>
+            <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+              {lowStockCount} below par
             </span>
-          )}
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+              <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
+            </div>
+            <span className="min-w-0 text-xs font-semibold leading-normal text-rose-900">
+              {lowStockCount} item{lowStockCount === 1 ? "" : "s"} under 50% par. Tap to restock.
+            </span>
+          </div>
+        </Link>
+      ) : (
+        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-2">
+          <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Inventory alerts</span>
+            <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+          </div>
+          <p className="mt-4 text-xs font-medium leading-normal text-gray-400">
+            All kit items at or above par level. No replenishment required.
+          </p>
         </div>
-      </Link>
+      )}
     </div>
   );
 }
@@ -1292,34 +1291,12 @@ function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, 
           title="Operations Dashboard"
         />
 
-        {lowStockAlert?.triggered ? (
-          <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Low stock alert</p>
-                <p className="mt-1 text-sm font-semibold text-rose-900">
-                  {lowStockAlert.total_items} item(s) below 50% par level in your kit.
-                </p>
-                <p className="mt-1 text-xs text-rose-700">
-                  Open Inventory with pre-filled quantities to recover each item to 100% par.
-                </p>
-              </div>
-              <Link
-                to="/inventory?context=my&restock=alert"
-                className="inline-flex items-center justify-center rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]"
-              >
-                Restock Now
-              </Link>
-            </div>
-          </div>
-        ) : null}
-
         <DoctorMetricsRow dashboard={dashboard} />
 
         <DoctorDashboardTwinPanels
           monthLabel={monthLabel}
           onOpenRosterPdf={onOpenRosterPdf}
-          hcmLatestTitle={hcmLatestTitle}
+          lowStockAlert={lowStockAlert}
         />
       </div>
     </section>

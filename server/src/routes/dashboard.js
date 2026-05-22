@@ -1235,7 +1235,7 @@ router.get("/operator-workspace", (req, res) => {
 });
 
 router.get("/live-report", (req, res) => {
-  if (!["admin", "doctor", "operator", "lab_tech"].includes(req.auth.role)) {
+  if (!["admin", "doctor", "accountant"].includes(req.auth.role)) {
     return res.status(403).json({ error: "Only authorized staff can open live reports." });
   }
 
@@ -1306,101 +1306,122 @@ router.get("/live-report", (req, res) => {
     ? doctors.find((doctor) => Number(doctor.id) === Number(selectedDoctorId))?.full_name || "Selected doctor"
     : "All doctors";
 
-  const revenueRanges = {
-    daily: getReportRange("daily", revenueAnchorDate),
-    weekly: getReportRange("weekly", revenueAnchorDate),
-    monthly: getReportRange("monthly", revenueAnchorDate),
-    annual: getReportRange("annual", revenueAnchorDate),
-  };
+  const includeFinancials = ["admin", "accountant", "doctor"].includes(req.auth.role);
 
-  const revenueSummary = {
-    daily: getPaidRevenueTotal(
-      revenueRanges.daily.start,
-      revenueRanges.daily.end,
-      selectedDoctorId,
-    ),
-    weekly: getPaidRevenueTotal(
-      revenueRanges.weekly.start,
-      revenueRanges.weekly.end,
-      selectedDoctorId,
-    ),
-    monthly: getPaidRevenueTotal(
-      revenueRanges.monthly.start,
-      revenueRanges.monthly.end,
-      selectedDoctorId,
-    ),
-    annual: getPaidRevenueTotal(
-      revenueRanges.annual.start,
-      revenueRanges.annual.end,
-      selectedDoctorId,
-    ),
-  };
+  let billingRevenueReport;
+  let revenueStatement;
+  let revenueReport;
 
-  const revenueRows = db
-    .prepare(`
-      SELECT
-        p.id AS patient_id,
-        p.full_name AS patient_name,
-        b.id AS bill_id,
-        c.consultation_date,
-        b.total_amount,
-        b.status,
-        COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
-      FROM billing b
-      JOIN consultations c ON c.id = b.consultation_id
-      JOIN patients p ON p.id = b.patient_id
-      WHERE p.deleted_at IS NULL
-        AND c.consultation_date BETWEEN @startDate AND @endDate
-        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
-      ORDER BY c.consultation_date DESC, b.id DESC
-    `)
-    .all({
-      startDate: doctorRange.start,
-      endDate: doctorRange.end,
-      doctorId: selectedDoctorId,
-    });
+  if (includeFinancials) {
+    const revenueRanges = {
+      daily: getReportRange("daily", revenueAnchorDate),
+      weekly: getReportRange("weekly", revenueAnchorDate),
+      monthly: getReportRange("monthly", revenueAnchorDate),
+      annual: getReportRange("annual", revenueAnchorDate),
+    };
 
-  const totalRevenue = revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
-  const uniquePatients = new Set(revenueRows.map((row) => row.patient_id)).size;
-  const paidRevenue = revenueRows
-    .filter((row) => row.status === "paid")
-    .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
-  const unpaidRevenue = revenueRows
-    .filter((row) => row.status !== "paid")
-    .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
-  const doctorCommission = totalRevenue * 0.4;
-  const ocsCommission = totalRevenue * 0.6;
-  const transportBenefits = uniquePatients * 300;
-  const doctorNetRevenue = doctorCommission + transportBenefits;
-  const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
-    method,
-    amount: revenueRows
-      .filter((row) => row.status === "paid" && row.payment_method === method)
-      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
-  }));
-  const revenueStatement =
-    req.auth.role === "doctor"
-      ? {
-          totalRevenue,
-          doctorCommission,
-          transportBenefits,
-          doctorNetRevenue,
-          paidRevenue,
-          unpaidRevenue,
-          paymentMethodBreakdown,
-        }
-      : {
-          totalRevenue,
-          ocsCommission,
-          doctorCommission,
-          transportBenefits,
-          doctorNetRevenue,
-          paidRevenue,
-          unpaidRevenue,
-          paymentMethodBreakdown,
-        };
+    const revenueSummary = {
+      daily: getPaidRevenueTotal(
+        revenueRanges.daily.start,
+        revenueRanges.daily.end,
+        selectedDoctorId,
+      ),
+      weekly: getPaidRevenueTotal(
+        revenueRanges.weekly.start,
+        revenueRanges.weekly.end,
+        selectedDoctorId,
+      ),
+      monthly: getPaidRevenueTotal(
+        revenueRanges.monthly.start,
+        revenueRanges.monthly.end,
+        selectedDoctorId,
+      ),
+      annual: getPaidRevenueTotal(
+        revenueRanges.annual.start,
+        revenueRanges.annual.end,
+        selectedDoctorId,
+      ),
+    };
 
-  res.json({
+    const revenueRows = db
+      .prepare(`
+        SELECT
+          p.id AS patient_id,
+          p.full_name AS patient_name,
+          b.id AS bill_id,
+          c.consultation_date,
+          b.total_amount,
+          b.status,
+          COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
+        FROM billing b
+        JOIN consultations c ON c.id = b.consultation_id
+        JOIN patients p ON p.id = b.patient_id
+        WHERE p.deleted_at IS NULL
+          AND c.consultation_date BETWEEN @startDate AND @endDate
+          AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+        ORDER BY c.consultation_date DESC, b.id DESC
+      `)
+      .all({
+        startDate: doctorRange.start,
+        endDate: doctorRange.end,
+        doctorId: selectedDoctorId,
+      });
+
+    const totalRevenue = revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
+    const uniquePatients = new Set(revenueRows.map((row) => row.patient_id)).size;
+    const paidRevenue = revenueRows
+      .filter((row) => row.status === "paid")
+      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
+    const unpaidRevenue = revenueRows
+      .filter((row) => row.status !== "paid")
+      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
+    const doctorCommission = totalRevenue * 0.4;
+    const ocsCommission = totalRevenue * 0.6;
+    const transportBenefits = uniquePatients * 300;
+    const doctorNetRevenue = doctorCommission + transportBenefits;
+    const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
+      method,
+      amount: revenueRows
+        .filter((row) => row.status === "paid" && row.payment_method === method)
+        .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
+    }));
+
+    billingRevenueReport = {
+      rows: revenueRows,
+      period: doctorRange.period,
+      rangeLabel: doctorRange.label,
+    };
+
+    revenueStatement =
+      req.auth.role === "doctor"
+        ? {
+            totalRevenue,
+            doctorCommission,
+            transportBenefits,
+            doctorNetRevenue,
+            paidRevenue,
+            unpaidRevenue,
+            paymentMethodBreakdown,
+          }
+        : {
+            totalRevenue,
+            ocsCommission,
+            doctorCommission,
+            transportBenefits,
+            doctorNetRevenue,
+            paidRevenue,
+            unpaidRevenue,
+            paymentMethodBreakdown,
+          };
+
+    revenueReport = {
+      anchorDate: revenueAnchorDate,
+      ranges: revenueRanges,
+      summary: revenueSummary,
+    };
+  }
+
+  const responseBody = {
     doctors,
     locationReport: {
       period: locationRange.period,
@@ -1429,18 +1450,15 @@ router.get("/live-report", (req, res) => {
       entityLabel: activeEntityLabel,
       rows: volumeRows,
     },
-    billingRevenueReport: {
-      rows: revenueRows,
-      period: doctorRange.period,
-      rangeLabel: doctorRange.label,
-    },
-    revenueStatement,
-    revenueReport: {
-      anchorDate: revenueAnchorDate,
-      ranges: revenueRanges,
-      summary: revenueSummary,
-    },
-  });
+  };
+
+  if (includeFinancials) {
+    responseBody.billingRevenueReport = billingRevenueReport;
+    responseBody.revenueStatement = revenueStatement;
+    responseBody.revenueReport = revenueReport;
+  }
+
+  res.json(responseBody);
 });
 
 router.put("/my-status", (req, res) => {

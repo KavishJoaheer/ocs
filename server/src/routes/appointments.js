@@ -21,7 +21,10 @@ function validateAppointmentPayload(body) {
 }
 
 router.get("/", (req, res) => {
-  const doctorId = String(req.query.doctorId ?? "").trim();
+  let doctorId = String(req.query.doctorId ?? "").trim();
+  if (req.auth?.role === "doctor" && req.auth.doctor_id) {
+    doctorId = String(req.auth.doctor_id);
+  }
   const status = String(req.query.status ?? "").trim();
   const dateFrom = String(req.query.dateFrom ?? "").trim();
   const dateTo = String(req.query.dateTo ?? "").trim();

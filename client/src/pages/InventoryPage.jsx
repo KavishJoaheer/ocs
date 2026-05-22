@@ -34,7 +34,11 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { buildInventoryListQuery, getDefaultFolderSelection } from "../lib/inventoryFolders.js";
-import { notifyDoctorBagInventoryUpdated } from "../lib/inventorySync.js";
+import {
+  notifyDoctorBagInventoryUpdated,
+  notifyOcsInventoryUpdated,
+  OCS_INVENTORY_EVENT,
+} from "../lib/inventorySync.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2642,8 +2646,11 @@ export default function InventoryPage() {
       if (isDoctor) {
         notifyDoctorBagInventoryUpdated();
       }
+      if (user.role === "admin" || user.role === "operator") {
+        notifyOcsInventoryUpdated();
+      }
     },
-    [isDoctor],
+    [isDoctor, user.role],
   );
   const isOperator = user.role === "operator";
   const canManageOcs = user.role === "admin" || isOperator;
@@ -2814,6 +2821,15 @@ export default function InventoryPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedContextDoctorId, doctorContext]);
+
+  useEffect(() => {
+    const handleOcsRefresh = () => {
+      void load(selectedContextDoctorId, doctorContext, { silent: true });
+    };
+    window.addEventListener(OCS_INVENTORY_EVENT, handleOcsRefresh);
+    return () => window.removeEventListener(OCS_INVENTORY_EVENT, handleOcsRefresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContextDoctorId, doctorContext]);
 
@@ -3717,11 +3733,19 @@ export default function InventoryPage() {
                             onClick={() => toggleExpanded(item.id)}
                           >
                             <td className="px-3 py-1.5 align-middle text-left">
-                              <div className="flex items-center gap-2">
-                                <button type="button" className="rounded-md border border-slate-200 p-1 text-slate-500">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-500"
+                                >
                                   {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                                 </button>
-                                <span className="font-semibold text-slate-900">{item.item_name}</span>
+                                <span
+                                  className="min-w-0 flex-1 truncate font-semibold text-slate-900"
+                                  title={item.item_name}
+                                >
+                                  {item.item_name}
+                                </span>
                               </div>
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">

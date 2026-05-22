@@ -741,6 +741,21 @@ function summarize(items, doctorId = null) {
   };
 }
 
+function stripFinancialSummaryFields(summary, role) {
+  if (!summary || role === "admin" || role === "accountant") {
+    return summary;
+  }
+
+  const {
+    total_monthly_sales_rs: _sales,
+    total_monthly_replenishments_rs: _replenishments,
+    total_amount_consumed_rs: _consumed,
+    ...operational
+  } = summary;
+
+  return operational;
+}
+
 function getActivityStaffList() {
   return db
     .prepare(`
@@ -1016,6 +1031,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
 
   const activityDateFrom = String(req.query.dateFrom || "").trim();
   const activityDateTo = String(req.query.dateTo || "").trim();
+  const rawSummary = summarize(activeItems, summaryDoctorId);
 
   return {
     folders,
@@ -1023,7 +1039,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     my_stock: myStock,
     selected_doctor_stock: selectedDoctorStock,
     doctors: role === "admin" || role === "operator" ? getDoctors() : [],
-    summary: summarize(activeItems, summaryDoctorId),
+    summary: stripFinancialSummaryFields(rawSummary, role),
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
     near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
     movements: getMovements(role, doctorId, {
@@ -1035,9 +1051,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     activity_staff: role === "admin" ? getActivityStaffList() : [],
     staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
     compare_rows:
-      role === "admin" || role === "operator"
-        ? getCompareRows(activityDateFrom, activityDateTo)
-        : [],
+      role === "admin" ? getCompareRows(activityDateFrom, activityDateTo) : [],
     my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],
   };
 }
@@ -1457,7 +1471,9 @@ router.put("/items/:id", (req, res) => {
   ensureInfrastructure();
   const role = req.auth.role;
   const isDoctor = role === "doctor";
-  if (!isDoctor && !["admin", "operator"].includes(role)) {
+  const isOperator = role === "operator";
+  const isAdmin = role === "admin";
+  if (!isDoctor && !isOperator && !isAdmin) {
     return res.status(403).json({ error: "You do not have permission to edit stock items." });
   }
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
@@ -1465,19 +1481,24 @@ router.put("/items/:id", (req, res) => {
   const existing = findItemForRequest(req, itemId);
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
 
-  const itemName = isDoctor
+  const isOcsMasterRow =
+    String(existing.stock_scope || "") === "ocs" &&
+    (existing.owner_doctor_id == null || existing.owner_doctor_id === "");
+  const masterFieldsLocked = isDoctor || (isOperator && isOcsMasterRow);
+
+  const itemName = masterFieldsLocked
     ? String(existing.item_name || "").trim()
     : String(req.body.item_name ?? existing.item_name).trim();
-  const folderId = isDoctor
+  const folderId = masterFieldsLocked
     ? Number(existing.folder_id || 0)
     : Number(req.body.folder_id || existing.folder_id || 0);
   const quantity = Number(req.body.quantity ?? existing.quantity);
   const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity);
   const unit = String(req.body.unit ?? existing.unit ?? "unit").trim();
-  const costPrice = isDoctor
+  const costPrice = masterFieldsLocked
     ? roundCurrency(existing.cost_price)
     : roundCurrency(req.body.cost_price ?? existing.cost_price);
-  const sellingPrice = isDoctor
+  const sellingPrice = masterFieldsLocked
     ? roundCurrency(existing.selling_price)
     : roundCurrency(req.body.selling_price ?? existing.selling_price);
   const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
@@ -1741,8 +1762,10 @@ router.get("/items/:id/batches", (req, res) => {
 
 router.post("/bulk/remove", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can run bulk remove." });
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({
+      error: "Bulk write-off on master inventory is restricted to administrators.",
+    });
   }
 
   const itemIds = Array.isArray(req.body.item_ids) ? req.body.item_ids.map((id) => Number(id)).filter(Boolean) : [];
@@ -1803,8 +1826,10 @@ router.post("/bulk/remove", (req, res) => {
 
 router.post("/bulk/edit", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can run bulk edit." });
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({
+      error: "Bulk schema edits on master inventory are restricted to administrators.",
+    });
   }
 
   const itemIds = Array.isArray(req.body.item_ids) ? req.body.item_ids.map((id) => Number(id)).filter(Boolean) : [];
@@ -2456,18 +2481,32 @@ router.post("/stocktake", (req, res) => {
 
 router.delete("/items/:id", (req, res) => {
   ensureInfrastructure();
-  const isDoctor = req.auth.role === "doctor";
+  const role = req.auth.role;
+  const isDoctor = role === "doctor";
+  const isAdmin = role === "admin";
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
-  if (!isDoctor && !["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin, operator, or owning doctor can delete items." });
+
+  if (!isAdmin && !isDoctor) {
+    return res.status(403).json({
+      error: "Only admin or the owning doctor can delete inventory items.",
+    });
   }
 
   const itemId = Number(req.params.id);
-  const item = isDoctor ? findItem(itemId, "doctor", doctorId) : db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId);
+  const item = isDoctor
+    ? findItem(itemId, "doctor", doctorId)
+    : db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId);
   if (!item) return res.status(404).json({ error: "Stock item not found." });
 
   const isOcsMaster =
-    String(item.stock_scope || "") === "ocs" && (item.owner_doctor_id == null || item.owner_doctor_id === "");
+    String(item.stock_scope || "") === "ocs" &&
+    (item.owner_doctor_id == null || item.owner_doctor_id === "");
+
+  if (isOcsMaster && !isAdmin) {
+    return res.status(403).json({
+      error: "Master inventory deletion is restricted to administrators.",
+    });
+  }
 
   db.transaction(() => {
     db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
