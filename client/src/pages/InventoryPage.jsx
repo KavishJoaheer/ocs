@@ -652,18 +652,19 @@ function RemoveStockModal({ open, item, isSaving, isDoctorBag, onClose, onSubmit
   );
 }
 
-function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
+function RestockModal({ open, doctors, item, presetDoctorId = null, presetDoctorName = "", isSaving, onClose, onSubmit }) {
   const [doctorId, setDoctorId] = useState("");
   const [doctorQuery, setDoctorQuery] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const doctorLocked = Boolean(presetDoctorId);
 
   useEffect(() => {
     if (open) {
-      setDoctorId("");
-      setDoctorQuery("");
+      setDoctorId(presetDoctorId ? String(presetDoctorId) : "");
+      setDoctorQuery(presetDoctorName || "");
       setQuantity("1");
     }
-  }, [open]);
+  }, [open, presetDoctorId, presetDoctorName]);
 
   const doctorOptions = useMemo(() => {
     const q = doctorQuery.trim().toLowerCase();
@@ -675,7 +676,16 @@ function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
   }, [doctors, doctorQuery]);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Restock doctor${item ? ` - ${item.item_name}` : ""}`} description="Transfer stock atomically from OCS Stock to selected doctor.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Restock doctor${item ? ` - ${item.item_name}` : ""}`}
+      description={
+        doctorLocked
+          ? `Transfer stock from OCS master into ${presetDoctorName || "this doctor"}'s medical bag.`
+          : "Transfer stock atomically from OCS Stock to selected doctor."
+      }
+    >
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -688,35 +698,42 @@ function RestockModal({ open, doctors, item, isSaving, onClose, onSubmit }) {
           });
         }}
       >
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Doctor (search)</span>
-          <input
-            required
-            value={doctorQuery}
-            onChange={(event) => setDoctorQuery(event.target.value)}
-            placeholder="Search doctor by name..."
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-          />
-
-          <div className="max-h-44 overflow-auto rounded-2xl border border-slate-200 bg-white">
-            {doctorOptions.length ? (
-              doctorOptions.map((doctor) => (
-                <button
-                  key={doctor.id}
-                  type="button"
-                  onClick={() => setDoctorId(String(doctor.id))}
-                  className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
-                    String(doctor.id) === String(doctorId) ? "bg-[rgba(79,184,179,0.12)]" : ""
-                  }`}
-                >
-                  {doctor.full_name}
-                </button>
-              ))
-            ) : (
-              <div className="px-4 py-3 text-sm text-slate-500">No matches</div>
-            )}
+        {doctorLocked ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Doctor</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{presetDoctorName || "Selected doctor"}</p>
           </div>
-        </label>
+        ) : (
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Doctor (search)</span>
+            <input
+              required
+              value={doctorQuery}
+              onChange={(event) => setDoctorQuery(event.target.value)}
+              placeholder="Search doctor by name..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+            />
+
+            <div className="max-h-44 overflow-auto rounded-2xl border border-slate-200 bg-white">
+              {doctorOptions.length ? (
+                doctorOptions.map((doctor) => (
+                  <button
+                    key={doctor.id}
+                    type="button"
+                    onClick={() => setDoctorId(String(doctor.id))}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
+                      String(doctor.id) === String(doctorId) ? "bg-[rgba(79,184,179,0.12)]" : ""
+                    }`}
+                  >
+                    {doctor.full_name}
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-3 text-sm text-slate-500">No matches</div>
+              )}
+            </div>
+          </label>
+        )}
 
         <label className="space-y-2">
           <span className="text-sm font-semibold text-slate-700">Quantity</span>
@@ -1706,6 +1723,15 @@ function InventoryActionButtons({
       });
     }
 
+    if (canManageOcs && !contextIsOcs && onRestockDoctor) {
+      menuItems.push({
+        key: "restock",
+        label: "Restock from OCS",
+        icon: <Truck className="size-3.5" />,
+        onClick: () => onRestockDoctor(item),
+      });
+    }
+
     if (onRemove) {
       menuItems.push({
         key: "remove",
@@ -1762,6 +1788,13 @@ function InventoryActionButtons({
         <button type="button" onClick={() => onStockOut(item)} className={stockOutBtn}>
           <Minus className="size-3.5 shrink-0" />
           Stock Out
+        </button>
+      ) : null}
+
+      {canManageOcs && !contextIsOcs && onRestockDoctor ? (
+        <button type="button" onClick={() => onRestockDoctor(item)} className={restockBtn}>
+          <Truck className="size-3.5 shrink-0" />
+          Restock
         </button>
       ) : null}
 
@@ -2687,7 +2720,8 @@ export default function InventoryPage() {
     ? "max-h-[min(calc(100svh-16rem),960px)]"
     : "max-h-[560px]";
   const doctorDesktopBagTable = isDoctor && doctorViewIsMy;
-  const inventoryActionsColWidth = doctorDesktopBagTable ? "30%" : "18%";
+  const staffDoctorBagTable = canManageOcs && !contextIsOcs;
+  const inventoryActionsColWidth = doctorDesktopBagTable || staffDoctorBagTable ? "30%" : "18%";
   const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : "48rem";
   const doctorConsumptionRows = data?.my_consumption_rows || [];
   const movements = data?.movements || [];
@@ -2945,6 +2979,32 @@ export default function InventoryPage() {
       ocs_available: Number(source.quantity || 0),
     });
     setDoctorRestockOpen(true);
+  }
+
+  function openStaffRestockForDoctorItem(nextItem) {
+    if (!selectedContextDoctorId) {
+      toast.error("Select a doctor from the stock context dropdown first.");
+      return;
+    }
+    const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
+    if (!source?.id) {
+      toast.error("Item not available in OCS Master Stock.");
+      return;
+    }
+    const doctor = doctorOptions.find((row) => String(row.id) === String(selectedContextDoctorId));
+    setRestock({
+      item: source,
+      doctorId: Number(selectedContextDoctorId),
+      doctorName: doctor?.full_name || contextSearch || "Selected doctor",
+    });
+  }
+
+  function handleRestockDoctor(nextItem) {
+    if (contextIsOcs) {
+      setRestock({ item: nextItem });
+      return;
+    }
+    openStaffRestockForDoctorItem(nextItem);
   }
 
   function downloadAdminStockExcel() {
@@ -3725,7 +3785,7 @@ export default function InventoryPage() {
                                 doctorViewIsOcs={doctorViewIsOcs}
                                 onStockIn={(nextItem) => setAddStock({ item: nextItem })}
                                 onEdit={openItemEditor}
-                                onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                                onRestockDoctor={canManageOcs ? handleRestockDoctor : undefined}
                                 onRestockMyInventory={openDoctorRestockForItem}
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
@@ -3784,7 +3844,7 @@ export default function InventoryPage() {
                       doctorViewIsOcs={doctorViewIsOcs}
                       onStockIn={(nextItem) => setAddStock({ item: nextItem })}
                       onEdit={openItemEditor}
-                      onRestockDoctor={(nextItem) => setRestock({ item: nextItem })}
+                      onRestockDoctor={canManageOcs ? handleRestockDoctor : undefined}
                       onRestockMyInventory={openDoctorRestockForItem}
                       onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                       onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
@@ -3961,7 +4021,16 @@ export default function InventoryPage() {
         onSubmit={saveItem}
       />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
-      <RestockModal open={Boolean(restock)} doctors={doctors} item={restock?.item} isSaving={isSaving} onClose={() => setRestock(null)} onSubmit={saveRestock} />
+      <RestockModal
+        open={Boolean(restock)}
+        doctors={doctors}
+        item={restock?.item}
+        presetDoctorId={restock?.doctorId}
+        presetDoctorName={restock?.doctorName}
+        isSaving={isSaving}
+        onClose={() => setRestock(null)}
+        onSubmit={saveRestock}
+      />
       <DoctorRestockModal
         open={doctorRestockOpen}
         item={doctorRestockItem}
