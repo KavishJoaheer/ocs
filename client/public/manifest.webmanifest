@@ -2,10 +2,16 @@
   "name": "OCS Médecins",
   "short_name": "OCS Médecins",
   "description": "OCS Médecins operations dashboard",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#2d8f98",
+  "categories": ["medical", "productivity", "business"],
   "icons": [
     {
       "src": "/icon-192.png",
