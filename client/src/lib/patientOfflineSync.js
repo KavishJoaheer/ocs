@@ -231,9 +231,11 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
     }
   };
 
-  // Online path: always hit the live roster so newly assigned patients show up
-  // immediately. Fall back to the cache only when the network is unavailable
-  // or the request fails.
+  // Online path: always hit the live roster so newly assigned patients show
+  // up immediately and de-assigned ones disappear. Only fall back to the
+  // local cache when the network is unavailable or the request fails — a
+  // successful empty response is authoritative and must NOT be masked by
+  // stale cached rows.
   if (!isBrowserOffline() && doctorId) {
     try {
       const params = new URLSearchParams({
@@ -243,15 +245,9 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
         limit: "100",
       });
       const live = await api.get(`/patients?${params.toString()}`);
-      const liveRows = (live?.items || [])
+      return (live?.items || [])
         .map(normalizeRow)
         .filter((row) => row.id && row.full_name);
-      if (liveRows.length) {
-        return liveRows;
-      }
-      // Empty live response — fall through to cached rows so the doctor still
-      // sees something to pick when the roster query is briefly empty.
-      return await readCacheRows();
     } catch (error) {
       if (!isNetworkFailure(error)) {
         console.warn("[patient-offline] picker live fetch failed:", error?.message || error);
