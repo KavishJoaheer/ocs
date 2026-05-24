@@ -946,6 +946,10 @@ function ensureInventoryColumns() {
       sql: "ALTER TABLE inventory ADD COLUMN expiry_date TEXT",
     },
     {
+      name: "row_version",
+      sql: "ALTER TABLE inventory ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1",
+    },
+    {
       name: "created_at",
       sql: "ALTER TABLE inventory ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
     },

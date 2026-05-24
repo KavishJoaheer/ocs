@@ -9,6 +9,10 @@ import {
   listenForPushSubscriptionChanges,
   syncPushSubscriptionIfGranted,
 } from "../lib/pushNotifications.js";
+import {
+  startInventoryRealtimeSync,
+  stopInventoryRealtimeSync,
+} from "../lib/inventoryRealtimeSync.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 const pageMeta = {
@@ -176,6 +180,16 @@ function AppShell() {
       void syncPushSubscriptionIfGranted();
     });
   }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!user?.role) {
+      stopInventoryRealtimeSync();
+      return undefined;
+    }
+
+    startInventoryRealtimeSync(user);
+    return () => stopInventoryRealtimeSync();
+  }, [user?.id, user?.role, user?.doctor_id]);
 
   return (
     <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">

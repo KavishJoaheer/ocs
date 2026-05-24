@@ -32,11 +32,12 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
-import { api } from "../lib/api.js";
+import { api, ApiError } from "../lib/api.js";
 import { buildInventoryListQuery, getDefaultFolderSelection } from "../lib/inventoryFolders.js";
 import {
   notifyDoctorBagInventoryUpdated,
   notifyOcsInventoryUpdated,
+  DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
 } from "../lib/inventorySync.js";
 import {
@@ -2834,11 +2835,15 @@ export default function InventoryPage() {
   }, [selectedContextDoctorId, doctorContext]);
 
   useEffect(() => {
-    const handleOcsRefresh = () => {
+    const handleInventoryRefresh = () => {
       void load(selectedContextDoctorId, doctorContext, { silent: true });
     };
-    window.addEventListener(OCS_INVENTORY_EVENT, handleOcsRefresh);
-    return () => window.removeEventListener(OCS_INVENTORY_EVENT, handleOcsRefresh);
+    window.addEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
+    window.addEventListener(DOCTOR_BAG_INVENTORY_EVENT, handleInventoryRefresh);
+    return () => {
+      window.removeEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
+      window.removeEventListener(DOCTOR_BAG_INVENTORY_EVENT, handleInventoryRefresh);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContextDoctorId, doctorContext]);
 
@@ -3527,6 +3532,7 @@ export default function InventoryPage() {
       quantity: qty,
       reason: stockOutReason,
       note,
+      expected_version: Number(item.row_version || 0),
     };
 
     setIsSaving(true);
@@ -3563,6 +3569,16 @@ export default function InventoryPage() {
         toast.success("Damaged stock logged to operational loss.");
       }
     } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        if (error.data?.inventory) {
+          commitInventoryData(error.data.inventory);
+        } else {
+          await load(selectedContextDoctorId, doctorContext, { silent: true });
+        }
+        toast.error("Stock changed on another device. Quantities refreshed.");
+        return;
+      }
+
       if (shouldQueueInventoryMutation(error)) {
         await queueInventoryMutation({
           kind: "inventory_deduct",

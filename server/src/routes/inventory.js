@@ -6,6 +6,13 @@ const {
 } = require("../lib/ocsCatalogExclusions");
 const { prepareOcsMasterInventoryIntegrity, assertOcsMasterItemNameAvailable } = require("../lib/dedupeOcsMasterInventory");
 const { maybeNotifyLowStock } = require("../lib/push");
+const {
+  InventoryVersionConflictError,
+  assertInventoryQuantityUpdate,
+  ensureInventoryRowVersionColumn,
+  updateInventoryQuantity,
+} = require("../lib/inventoryQuantity");
+const { handleInventoryStream, publishInventoryChange } = require("../lib/inventoryRealtime");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
 
@@ -14,6 +21,10 @@ const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../conf
 const router = express.Router();
 const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
 const NEAR_EXPIRY_DAYS = 90;
+
+router.get("/stream", (req, res) => {
+  handleInventoryStream(req, res);
+});
 
 let infrastructureReady = false;
 
@@ -49,6 +60,7 @@ function ensureColumn(table, column, sql) {
 function ensureInfrastructure() {
   if (infrastructureReady) return;
 
+  ensureInventoryRowVersionColumn();
   ensureColumn("inventory", "stock_scope", "ALTER TABLE inventory ADD COLUMN stock_scope TEXT NOT NULL DEFAULT 'ocs'");
   ensureColumn("inventory", "owner_doctor_id", "ALTER TABLE inventory ADD COLUMN owner_doctor_id INTEGER");
   ensureColumn("inventory", "attributes", "ALTER TABLE inventory ADD COLUMN attributes TEXT NOT NULL DEFAULT ''");
@@ -681,6 +693,8 @@ function recordMovement({
   void maybeNotifyLowStock(itemId, userId).catch((error) => {
     console.warn("[push] low stock notification failed:", error?.message || error);
   });
+
+  void publishInventoryChange({ itemId, changedByUserId: userId });
 }
 
 function summarize(items, doctorId = null) {
@@ -1536,7 +1550,9 @@ router.put("/items/:id", (req, res) => {
         UPDATE inventory
         SET
           item_name = ?, folder_id = ?, quantity = ?, minimum_quantity = ?, unit = ?,
-          cost_price = ?, selling_price = ?, attributes = ?, moa_notes = ?, expiry_date = ?, updated_at = CURRENT_TIMESTAMP
+          cost_price = ?, selling_price = ?, attributes = ?, moa_notes = ?, expiry_date = ?,
+          row_version = row_version + 1,
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
 
@@ -1561,6 +1577,10 @@ router.put("/items/:id", (req, res) => {
     void maybeNotifyLowStock(itemId, req.auth.id).catch((error) => {
       console.warn("[push] low stock notification failed:", error?.message || error);
     });
+  }
+
+  if (delta === 0) {
+    publishInventoryChange({ itemId, changedByUserId: req.auth.id });
   }
 
   res.json(getPayloadFromRequest(req));
@@ -1595,7 +1615,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
       createBatch(itemId, quantity, expiryDate, costPrice);
       db.prepare(`
         UPDATE inventory
-        SET quantity = ?, cost_price = ?, updated_at = CURRENT_TIMESTAMP
+        SET quantity = ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(nextQuantity, costPrice, itemId);
       recordMovement({
@@ -1642,7 +1662,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
         throw new Error("Insufficient batch stock.");
       }
       const nextQuantity = previousQuantity - quantity;
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
+      updateInventoryQuantity(itemId, nextQuantity);
       recordMovement({
         itemId,
         movementType: "out",
@@ -1721,7 +1741,7 @@ router.post("/items/:id/bag-actions", (req, res) => {
         throw new Error("Insufficient batch stock.");
       }
       const nextQuantity = previousQuantity - quantity;
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
+      updateInventoryQuantity(itemId, nextQuantity);
       recordMovement({
         itemId,
         movementType: "out",
@@ -1786,7 +1806,7 @@ router.post("/bulk/remove", (req, res) => {
         const consumed = consumeStock(itemId, previousQuantity);
         if (!consumed.ok) throw new Error(`Insufficient batch stock for item ${itemId}`);
 
-        db.prepare("UPDATE inventory SET quantity = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(itemId);
+        updateInventoryQuantity(itemId, 0);
         recordMovement({
           itemId,
           movementType: "out",
@@ -1948,7 +1968,11 @@ router.post("/items/:id/actions", (req, res) => {
               .join(" — ")
           : note || (actionType === "remove" ? "Removed from stock." : "Added to stock.");
 
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQuantity, itemId);
+      assertInventoryQuantityUpdate(
+        itemId,
+        nextQuantity,
+        Number(req.body.expected_version ?? item.row_version ?? 0),
+      );
       recordMovement({
         itemId,
         movementType,
@@ -1987,6 +2011,12 @@ router.post("/items/:id/actions", (req, res) => {
       });
     })();
   } catch (error) {
+    if (error instanceof InventoryVersionConflictError) {
+      return res.status(409).json({
+        error: error.message,
+        inventory: getPayload(req),
+      });
+    }
     return res.status(400).json({ error: error?.message || "Unable to process My Stock action." });
   }
 
@@ -2037,7 +2067,7 @@ router.post("/restock", (req, res) => {
 
       const sourcePrev = Number(source.quantity || 0);
       const sourceNext = sourcePrev - quantity;
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sourceNext, source.id);
+      updateInventoryQuantity(source.id, sourceNext);
       recordMovement({
         itemId: source.id,
         movementType: "out",
@@ -2069,7 +2099,7 @@ router.post("/restock", (req, res) => {
         targetItemId = targetExisting.id;
         targetPrev = Number(targetExisting.quantity || 0);
         targetNext = targetPrev + quantity;
-        db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(targetNext, targetItemId);
+        updateInventoryQuantity(targetItemId, targetNext);
       } else {
         const created = db
           .prepare(`
@@ -2195,7 +2225,7 @@ router.post("/restock/my-inventory", (req, res) => {
         }
 
         const sourceNext = sourceQty - request.quantity;
-        db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sourceNext, source.id);
+        updateInventoryQuantity(source.id, sourceNext);
         recordMovement({
           itemId: source.id,
           movementType: "out",
@@ -2239,7 +2269,7 @@ router.post("/restock/my-inventory", (req, res) => {
           targetItemId = Number(targetExisting.id);
           targetPrev = Number(targetExisting.quantity || 0);
           targetNext = targetPrev + request.quantity;
-          db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(targetNext, targetItemId);
+          updateInventoryQuantity(targetItemId, targetNext);
         } else {
           const created = db
             .prepare(`
@@ -2407,7 +2437,7 @@ router.post("/staging/:id/release", (req, res) => {
       itemId = existing.id;
       prevQty = Number(existing.quantity || 0);
       nextQty = prevQty + Number(row.quantity || 0);
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(nextQty, itemId);
+      updateInventoryQuantity(itemId, nextQty);
     } else {
       const inserted = db
         .prepare(`

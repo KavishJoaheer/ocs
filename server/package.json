@@ -27,6 +27,7 @@
     "dedupe:ocs-master": "node -e \"require('./src/db').initializeDatabase(); const r=require('./src/lib/dedupeOcsMasterInventory').prepareOcsMasterInventoryIntegrity(); console.log(r);\"",
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
     "audit:push-audience": "node src/scripts/validatePushAudienceRouting.js",
+    "audit:inventory-realtime": "node src/scripts/validateInventoryRealtimeRouting.js",
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
     "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",
     "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js"

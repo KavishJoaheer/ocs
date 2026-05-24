@@ -1,5 +1,14 @@
 import { NetworkError } from "./networkErrors.js";
 
+export class ApiError extends Error {
+  constructor(message, { status = 0, data = null } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const AUTH_TOKEN_KEY = "ocs_medecins_auth_token";
 
@@ -153,7 +162,10 @@ async function apiRequest(path, options = {}) {
       );
     }
 
-    throw new Error(data?.error || "Something went wrong.");
+    throw new ApiError(data?.error || "Something went wrong.", {
+      status: response.status,
+      data,
+    });
   }
 
   return data;

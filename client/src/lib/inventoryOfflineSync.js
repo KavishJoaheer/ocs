@@ -1,5 +1,5 @@
 import toast from "react-hot-toast";
-import { api } from "./api.js";
+import { api, ApiError } from "./api.js";
 import { isBrowserOffline, isNetworkFailure } from "./networkErrors.js";
 import {
   countOfflineMutations,
@@ -127,6 +127,15 @@ export async function flushOfflineQueue({ silent = false } = {}) {
       notifyDoctorBagInventoryUpdated();
       dispatchQueueEvent(OFFLINE_QUEUE_ITEM_SYNCED, { entry, result });
     } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        notifyDoctorBagInventoryUpdated();
+        if (!silent) {
+          const label = entry.meta?.itemName || "inventory update";
+          toast.error(`${label} conflicted with a newer server update. Refreshing latest stock.`);
+        }
+        break;
+      }
+
       if (isNetworkFailure(error)) {
         break;
       }

@@ -16,7 +16,7 @@ const billingRouter = require("./routes/billing");
 const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
-const { authorizeByMethod, authorizeRoles, requireAuth } = require("./lib/auth");
+const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
 
 let initialized = false;
 
@@ -66,6 +66,7 @@ function createApp() {
         inventory: true,
         consultations: true,
         push: true,
+        realtime: true,
       },
     });
   });
@@ -162,7 +163,7 @@ function createApp() {
 
   app.use(
     "/api/inventory",
-    requireAuth,
+    requireAuthFlexible,
     authorizeRoles("admin", "doctor", "operator"),
     inventoryRouter,
   );

@@ -79,6 +79,26 @@ function requireAuth(req, res, next) {
   return next();
 }
 
+function requireAuthFlexible(req, res, next) {
+  const token =
+    extractBearerToken(req.headers.authorization) || String(req.query.access_token || "").trim();
+
+  if (!token) {
+    return res.status(401).json({ error: "Authentication is required." });
+  }
+
+  const session = getSessionUserByToken(token);
+
+  if (!session) {
+    return res.status(401).json({ error: "Your session is invalid or has expired." });
+  }
+
+  req.auth = serializeUser(session);
+  req.authSessionId = Number(session.session_id);
+  req.authToken = token;
+  return next();
+}
+
 function authorizeRoles(...roles) {
   return (req, res, next) => {
     if (!req.auth) {
@@ -111,5 +131,6 @@ module.exports = {
   cleanupExpiredSessions,
   extractBearerToken,
   requireAuth,
+  requireAuthFlexible,
   serializeUser,
 };
