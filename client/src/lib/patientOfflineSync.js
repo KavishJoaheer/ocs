@@ -195,4 +195,45 @@ export async function getCachedPatientDirectory(userId) {
   return getPatientDirectoryCache(userId);
 }
 
+export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
+  const normalizeRow = (entry) => ({
+    id: Number(entry?.id || 0),
+    full_name: String(entry?.full_name || "").trim(),
+    patient_identifier: String(entry?.patient_identifier || entry?.patient_id || "").trim(),
+  });
+
+  try {
+    const cached = await getPatientDirectoryCache(userId);
+    if (cached?.items?.length) {
+      return cached.items
+        .map(mapOfflineRecordToPatient)
+        .map(normalizeRow)
+        .filter((row) => row.id && row.full_name);
+    }
+  } catch (error) {
+    console.warn("[patient-offline] picker cache read failed:", error?.message || error);
+  }
+
+  if (isBrowserOffline() || !doctorId) {
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      filter: "my_assigned",
+      doctorId: String(doctorId),
+      status: "active",
+      limit: "200",
+    });
+    const live = await api.get(`/patients?${params.toString()}`);
+    return (live?.items || []).map(normalizeRow).filter((row) => row.id && row.full_name);
+  } catch (error) {
+    if (isNetworkFailure(error)) {
+      return [];
+    }
+    console.warn("[patient-offline] picker live fetch failed:", error?.message || error);
+    return [];
+  }
+}
+
 export { clearPatientOfflineCache };

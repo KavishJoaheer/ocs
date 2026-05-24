@@ -49,6 +49,7 @@ import {
   queueInventoryMutation,
   shouldQueueInventoryMutation,
 } from "../lib/inventoryOfflineSync.js";
+import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2268,20 +2269,35 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
   );
 }
 
-function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
+function MobileDoctorDeductSheet({
+  open,
+  item,
+  isSaving,
+  assignedPatients = [],
+  onClose,
+  onSubmit,
+}) {
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Damage");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setQuantity("1");
     setReason("Damage");
+    setSelectedPatientId("");
   }, [open, item?.id]);
 
   if (!open || !item) return null;
 
   const max = Math.max(0, Number(item.quantity || 0));
   const qty = Number(quantity || 0);
+  const isSale = reason === "Sale";
+  const selectedPatient = isSale
+    ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
+    : null;
+  const saleRequiresPatient = isSale && !selectedPatient;
+  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient;
 
   return (
     <MobileBottomSheet
@@ -2299,7 +2315,18 @@ function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
             toast.error("Quantity exceeds available stock.");
             return;
           }
-          onSubmit({ quantity: qty, reason });
+          if (saleRequiresPatient) {
+            toast.error("Select an assigned patient before saving.");
+            return;
+          }
+          onSubmit({
+            quantity: qty,
+            reason,
+            patient_id: selectedPatient ? Number(selectedPatient.id) : null,
+            patient_label: selectedPatient
+              ? `${selectedPatient.full_name}${selectedPatient.patient_identifier ? ` (${selectedPatient.patient_identifier})` : ""}`
+              : "",
+          });
         }}
       >
         <label className="block space-y-2">
@@ -2337,23 +2364,63 @@ function MobileDoctorDeductSheet({ open, item, isSaving, onClose, onSubmit }) {
               </button>
             ))}
           </div>
-          {reason === "Sale" ? (
+          {isSale ? (
             <p className="mt-1 block text-[10px] leading-tight text-gray-400">
               Selecting Sale logs this product usage for corporate inventory tracking. Remember to add this item
               manually inside the Billing tab when calculating the patient&apos;s final consultation charges.
             </p>
           ) : null}
         </div>
+
+        {isSale ? (
+          <div className="animate-fade-in mt-4 flex flex-col gap-1.5">
+            <label
+              htmlFor="mobile-deduct-patient-select"
+              className="text-xs font-bold text-gray-700"
+            >
+              Assign to Patient *
+            </label>
+            <div className="relative">
+              <select
+                id="mobile-deduct-patient-select"
+                value={selectedPatientId}
+                onChange={(event) => setSelectedPatientId(event.target.value)}
+                className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm font-semibold text-gray-800 focus:border-[#557373] focus:outline-none"
+              >
+                <option value="" disabled>
+                  {assignedPatients.length
+                    ? "Select assigned patient..."
+                    : "No assigned patients available"}
+                </option>
+                {assignedPatients.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.full_name}
+                    {patient.patient_identifier ? ` (${patient.patient_identifier})` : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-gray-400">
+                <ChevronDown className="size-4" aria-hidden />
+              </div>
+            </div>
+            {!assignedPatients.length ? (
+              <p className="mt-1 text-[10px] leading-tight text-rose-500">
+                Connect to the clinic Wi-Fi to refresh your assigned patient list, then retry.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid gap-2 pt-1">
           <button
             type="submit"
-            disabled={isSaving || max < 1 || qty < 1 || qty > max}
+            disabled={submitDisabled}
             className={cx(
               "min-h-12 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50",
-              reason === "Sale" ? "bg-teal-600" : "bg-rose-600",
+              isSale ? "bg-teal-600" : "bg-rose-600",
             )}
           >
-            {isSaving ? "Saving..." : reason === "Sale" ? "Record Sale for Admin Audit" : "Confirm Removal"}
+            {isSaving ? "Saving..." : isSale ? "Confirm Allocation & Save" : "Confirm Removal"}
           </button>
           <button
             type="button"
@@ -2645,6 +2712,7 @@ export default function InventoryPage() {
   const [removeStock, setRemoveStock] = useState(null);
   const [stockOut, setStockOut] = useState(null);
   const [mobileDeductItem, setMobileDeductItem] = useState(null);
+  const [mobileAssignedPatients, setMobileAssignedPatients] = useState([]);
   const [mobileRestockTarget, setMobileRestockTarget] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
@@ -2855,6 +2923,27 @@ export default function InventoryPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContextDoctorId, doctorContext]);
+
+  useEffect(() => {
+    if (!showMobileDoctorBag || !mobileDeductItem || !user?.id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const list = await loadAssignedPatientPicker(user.id, {
+        doctorId: user.doctor_id,
+      });
+      if (!cancelled) {
+        setMobileAssignedPatients(list);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showMobileDoctorBag, mobileDeductItem, user?.id, user?.doctor_id]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -3515,7 +3604,7 @@ export default function InventoryPage() {
     }
   }
 
-  async function saveMobileDoctorDeduct({ quantity, reason }) {
+  async function saveMobileDoctorDeduct({ quantity, reason, patient_id = null, patient_label = "" }) {
     const item = mobileDeductItem;
     if (!item?.id) return;
     const qty = Number(quantity || 0);
@@ -3535,6 +3624,11 @@ export default function InventoryPage() {
           ? "Damage"
           : "";
 
+    if (stockOutReason === "Sale" && !patient_id) {
+      toast.error("Select an assigned patient before logging this Sale.");
+      return;
+    }
+
     const endpoint = `/inventory/items/${item.id}/actions${inventoryListQuery}`;
     const payload = {
       action_type: "stock_out",
@@ -3542,22 +3636,33 @@ export default function InventoryPage() {
       reason: stockOutReason,
       note,
       expected_version: Number(item.row_version || 0),
+      ...(stockOutReason === "Sale"
+        ? {
+            patient_id: Number(patient_id),
+            patient_label,
+          }
+        : {}),
     };
 
     setIsSaving(true);
     try {
+      const queueMeta = {
+        itemId: item.id,
+        itemName: item.item_name,
+        quantity: qty,
+        reason,
+        doctorId: user.doctor_id,
+        ...(stockOutReason === "Sale"
+          ? { patientId: Number(patient_id), patientLabel: patient_label }
+          : {}),
+      };
+
       if (shouldQueueInventoryMutation()) {
         await queueInventoryMutation({
           kind: "inventory_deduct",
           endpoint,
           payload,
-          meta: {
-            itemId: item.id,
-            itemName: item.item_name,
-            quantity: qty,
-            reason,
-            doctorId: user.doctor_id,
-          },
+          meta: queueMeta,
         });
         if (data) {
           commitInventoryData(applyOptimisticBagDeduct(data, item.id, qty));
@@ -3571,7 +3676,11 @@ export default function InventoryPage() {
       commitInventoryData(next);
       setMobileDeductItem(null);
       if (reason === "Sale") {
-        toast.success("Sale transaction recorded successfully for Admin audit.");
+        toast.success(
+          patient_label
+            ? `Sale allocated to ${patient_label} for Admin audit.`
+            : "Sale transaction recorded successfully for Admin audit.",
+        );
       } else if (reason === "Expired") {
         toast.success("Expired stock logged to operational loss.");
       } else {
@@ -3599,6 +3708,9 @@ export default function InventoryPage() {
             quantity: qty,
             reason,
             doctorId: user.doctor_id,
+            ...(stockOutReason === "Sale"
+              ? { patientId: Number(patient_id), patientLabel: patient_label }
+              : {}),
           },
         });
         if (data) {
@@ -3661,6 +3773,7 @@ export default function InventoryPage() {
             open={Boolean(mobileDeductItem)}
             item={mobileDeductItem}
             isSaving={isSaving}
+            assignedPatients={mobileAssignedPatients}
             onClose={() => setMobileDeductItem(null)}
             onSubmit={saveMobileDoctorDeduct}
           />

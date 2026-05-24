@@ -1938,6 +1938,38 @@ router.post("/items/:id/actions", (req, res) => {
     }
   }
 
+  let salePatient = null;
+  if (actionType === "stock_out" && stockOutReason === "Sale") {
+    const requestedPatientId = Number(req.body.patient_id || 0);
+    if (!requestedPatientId) {
+      return res.status(400).json({
+        error: "Select an assigned patient before logging a Sale deduction.",
+      });
+    }
+
+    const patientRow = db
+      .prepare(`
+        SELECT id, full_name, patient_identifier
+        FROM patients
+        WHERE id = ?
+          AND deleted_at IS NULL
+          AND assigned_doctor_id = ?
+      `)
+      .get(requestedPatientId, doctorId);
+
+    if (!patientRow?.id) {
+      return res.status(404).json({
+        error: "Selected patient is not on your assigned roster.",
+      });
+    }
+
+    salePatient = {
+      id: Number(patientRow.id),
+      full_name: String(patientRow.full_name || "").trim(),
+      patient_identifier: String(patientRow.patient_identifier || "").trim(),
+    };
+  }
+
   const movementType = actionType === "add" ? "in" : "out";
   const previousQuantity = Number(item.quantity || 0);
   const nextQuantity = movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
@@ -2004,7 +2036,12 @@ router.post("/items/:id/actions", (req, res) => {
                         ? "Damage"
                         : stockOutReason,
                 ...(stockOutReason === "Sale"
-                  ? { billing_status: "Pending Manual Entry" }
+                  ? {
+                      billing_status: "Pending Manual Entry",
+                      patient_id: salePatient?.id ?? null,
+                      patient_name: salePatient?.full_name || "",
+                      patient_identifier: salePatient?.patient_identifier || "",
+                    }
                   : {}),
               }
             : {}),
