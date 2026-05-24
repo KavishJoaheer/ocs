@@ -158,7 +158,7 @@ async function sendNotification(subscriptionRaw, payload) {
 
   try {
     await webpush.sendNotification(subscription, body, getPushDeliveryOptions(deliveryPayload));
-    return { ok: true };
+    return { ok: true, endpoint: subscription.endpoint };
   } catch (error) {
     const statusCode = Number(error?.statusCode || 0);
     if (statusCode === 404 || statusCode === 410 || statusCode === 401 || statusCode === 403) {
@@ -170,7 +170,7 @@ async function sendNotification(subscriptionRaw, payload) {
     }
 
     console.warn("[push] delivery failed:", error?.message || error);
-    return { ok: false, error: error?.message || "delivery_failed" };
+    return { ok: false, error: error?.message || "delivery_failed", endpoint: subscription.endpoint };
   }
 }
 
@@ -179,28 +179,44 @@ function clearPushSubscriptionByEndpoint(endpoint) {
     return;
   }
 
-  db.prepare(`
-    UPDATE users
-    SET push_subscription_token = NULL
-    WHERE push_subscription_token LIKE ?
-  `).run(`%${endpoint}%`);
+  db.prepare("DELETE FROM user_push_subscriptions WHERE endpoint = ?").run(endpoint);
 }
 
-function saveUserPushSubscription(userId, subscription) {
+function saveUserPushSubscription(userId, subscription, userAgent = null) {
+  const endpoint = subscription?.endpoint && String(subscription.endpoint).trim();
+  if (!endpoint) {
+    return { ok: false, reason: "missing_endpoint" };
+  }
+
   const serialized = JSON.stringify(subscription);
+
+  // Upsert on the endpoint: if the same browser re-subscribes (e.g. after
+  // pushsubscriptionchange) we replace the JSON without inserting a duplicate
+  // row; if a different user re-binds the same endpoint we reassign it.
   db.prepare(`
-    UPDATE users
-    SET push_subscription_token = ?
-    WHERE id = ?
-  `).run(serialized, userId);
+    INSERT INTO user_push_subscriptions
+      (user_id, endpoint, subscription_json, user_agent, last_seen_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      user_id = excluded.user_id,
+      subscription_json = excluded.subscription_json,
+      user_agent = COALESCE(excluded.user_agent, user_push_subscriptions.user_agent),
+      updated_at = CURRENT_TIMESTAMP,
+      last_seen_at = CURRENT_TIMESTAMP
+  `).run(userId, endpoint, serialized, userAgent ? String(userAgent).slice(0, 255) : null);
+
+  return { ok: true, endpoint };
 }
 
-function clearUserPushSubscription(userId) {
-  db.prepare(`
-    UPDATE users
-    SET push_subscription_token = NULL
-    WHERE id = ?
-  `).run(userId);
+function clearUserPushSubscription(userId, { endpoint = null } = {}) {
+  if (endpoint) {
+    db.prepare(
+      "DELETE FROM user_push_subscriptions WHERE user_id = ? AND endpoint = ?",
+    ).run(userId, endpoint);
+    return;
+  }
+
+  db.prepare("DELETE FROM user_push_subscriptions WHERE user_id = ?").run(userId);
 }
 
 const LOW_STOCK_DOCTOR_NOTIFICATION_KEY = "low_stock";
@@ -223,20 +239,39 @@ function ensurePushNotificationStateTable() {
   `);
 }
 
+function getUserPushSubscriptions(userId) {
+  return db
+    .prepare(`
+      SELECT s.subscription_json
+      FROM user_push_subscriptions s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.user_id = ?
+        AND u.is_active = 1
+        AND u.deleted_at IS NULL
+    `)
+    .all(userId)
+    .map((row) => row.subscription_json)
+    .filter(Boolean);
+}
+
 function getUserPushSubscription(userId) {
+  // Legacy single-subscription helper kept for callers that only care about
+  // "does this user have any active device?". Returns the most recently
+  // updated subscription JSON when there are several.
   const row = db
     .prepare(`
-      SELECT push_subscription_token
-      FROM users
-      WHERE id = ?
-        AND is_active = 1
-        AND deleted_at IS NULL
-        AND push_subscription_token IS NOT NULL
-        AND TRIM(push_subscription_token) != ''
+      SELECT s.subscription_json
+      FROM user_push_subscriptions s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.user_id = ?
+        AND u.is_active = 1
+        AND u.deleted_at IS NULL
+      ORDER BY datetime(s.updated_at) DESC
+      LIMIT 1
     `)
     .get(userId);
 
-  return row?.push_subscription_token || null;
+  return row?.subscription_json || null;
 }
 
 function getDoctorUserId(doctorId) {
@@ -334,13 +369,12 @@ function getAdminOperatorSubscriberUserIds() {
 function getSubscriberUserIdsByRole(role) {
   return db
     .prepare(`
-      SELECT id
-      FROM users
-      WHERE role = ?
-        AND is_active = 1
-        AND deleted_at IS NULL
-        AND push_subscription_token IS NOT NULL
-        AND TRIM(push_subscription_token) != ''
+      SELECT DISTINCT u.id
+      FROM users u
+      INNER JOIN user_push_subscriptions s ON s.user_id = u.id
+      WHERE u.role = ?
+        AND u.is_active = 1
+        AND u.deleted_at IS NULL
     `)
     .all(role)
     .map((row) => Number(row.id));
@@ -356,13 +390,12 @@ function getSubscriberUserIdsByRoles(roles = []) {
 
   return db
     .prepare(`
-      SELECT id
-      FROM users
-      WHERE role IN (${placeholders})
-        AND is_active = 1
-        AND deleted_at IS NULL
-        AND push_subscription_token IS NOT NULL
-        AND TRIM(push_subscription_token) != ''
+      SELECT DISTINCT u.id
+      FROM users u
+      INNER JOIN user_push_subscriptions s ON s.user_id = u.id
+      WHERE u.role IN (${placeholders})
+        AND u.is_active = 1
+        AND u.deleted_at IS NULL
     `)
     .all(...normalizedRoles)
     .map((row) => Number(row.id));
@@ -475,17 +508,30 @@ async function sendPushToUser(userId, payload, { notificationKey = null, payload
     return { ok: false, skipped: true, reason: "cooldown_active", userId: normalizedUserId };
   }
 
-  const subscription = getUserPushSubscription(normalizedUserId);
-  if (!subscription) {
+  // Fan out to every active device the user has registered. A delivery
+  // counts as successful if at least one endpoint accepts the push.
+  const subscriptions = getUserPushSubscriptions(normalizedUserId);
+  if (!subscriptions.length) {
     return { ok: false, skipped: true, reason: "no_subscription", userId: normalizedUserId };
   }
 
-  const result = await sendNotification(subscription, payload);
-  if (result.ok && notificationKey && payloadHash) {
+  const results = await Promise.allSettled(
+    subscriptions.map((subscription) => sendNotification(subscription, payload)),
+  );
+
+  const delivered = results.some(
+    (entry) => entry.status === "fulfilled" && entry.value?.ok,
+  );
+
+  if (delivered && notificationKey && payloadHash) {
     recordLowStockNotification(normalizedUserId, payloadHash, notificationKey);
   }
 
-  return { ...result, userId: normalizedUserId };
+  return {
+    ok: delivered,
+    userId: normalizedUserId,
+    endpoints: subscriptions.length,
+  };
 }
 
 async function sendPushToRole(role, payload, options = {}) {
@@ -639,14 +685,13 @@ function filterMasterWarehouseRecipientUserIds(userIds = null) {
 
   return db
     .prepare(`
-      SELECT id
-      FROM users
-      WHERE id IN (${placeholders})
-        AND role IN (${rolePlaceholders})
-        AND is_active = 1
-        AND deleted_at IS NULL
-        AND push_subscription_token IS NOT NULL
-        AND TRIM(push_subscription_token) != ''
+      SELECT DISTINCT u.id
+      FROM users u
+      INNER JOIN user_push_subscriptions s ON s.user_id = u.id
+      WHERE u.id IN (${placeholders})
+        AND u.role IN (${rolePlaceholders})
+        AND u.is_active = 1
+        AND u.deleted_at IS NULL
     `)
     .all(...normalizedUserIds, ...MASTER_WAREHOUSE_ROLES)
     .map((row) => Number(row.id));
@@ -713,14 +758,6 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
     return { ok: false, skipped: true, reason: "cooldown_active" };
   }
 
-  const subscription = resolveDoctorPushSubscription({
-    doctorId: normalizedDoctorId,
-    userId: resolvedUserId,
-  });
-  if (!subscription) {
-    return { ok: false, skipped: true, reason: "no_subscription" };
-  }
-
   const count = lowStockItemIds.length;
   const payload = {
     title: "⚠️ Low Stock Alert",
@@ -733,7 +770,7 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
     tag: "doctor-low-stock",
   };
 
-  const result = await sendNotification(subscription, payload);
+  const result = await sendPushToUser(resolvedUserId, payload);
   if (result.ok) {
     recordLowStockNotification(resolvedUserId, payloadHash, LOW_STOCK_DOCTOR_NOTIFICATION_KEY);
   }
@@ -772,12 +809,7 @@ async function notifyOcsLowStockSubscribers({ userIds = null } = {}) {
         return { ok: false, skipped: true, reason: "cooldown_active", userId: targetUserId };
       }
 
-      const subscription = getUserPushSubscription(targetUserId);
-      if (!subscription) {
-        return { ok: false, skipped: true, reason: "no_subscription", userId: targetUserId };
-      }
-
-      const result = await sendNotification(subscription, payload);
+      const result = await sendPushToUser(targetUserId, payload);
       if (result.ok) {
         recordLowStockNotification(targetUserId, payloadHash, LOW_STOCK_OCS_NOTIFICATION_KEY);
       }
@@ -813,11 +845,11 @@ function listPushSubscriptionStatus() {
         u.username,
         u.role,
         d.full_name AS doctor_profile_name,
-        CASE
-          WHEN u.push_subscription_token IS NOT NULL AND TRIM(u.push_subscription_token) != ''
-          THEN 1
-          ELSE 0
-        END AS push_enabled
+        (
+          SELECT COUNT(*)
+          FROM user_push_subscriptions s
+          WHERE s.user_id = u.id
+        ) AS device_count
       FROM users u
       LEFT JOIN doctors d ON d.id = u.doctor_id
       WHERE u.is_active = 1
@@ -842,7 +874,8 @@ function listPushSubscriptionStatus() {
     username: row.username,
     role: row.role,
     doctor_profile_name: row.doctor_profile_name || null,
-    push_enabled: Boolean(row.push_enabled),
+    push_enabled: Number(row.device_count || 0) > 0,
+    device_count: Number(row.device_count || 0),
   }));
 
   const summary = {
@@ -872,12 +905,11 @@ function listPushSubscriptionStatus() {
 function getTeamPushSubscriptions({ roles = null, excludeRoles = [] } = {}) {
   const rows = db
     .prepare(`
-      SELECT push_subscription_token, role
-      FROM users
-      WHERE is_active = 1
-        AND deleted_at IS NULL
-        AND push_subscription_token IS NOT NULL
-        AND TRIM(push_subscription_token) != ''
+      SELECT s.subscription_json, u.role
+      FROM user_push_subscriptions s
+      INNER JOIN users u ON u.id = s.user_id
+      WHERE u.is_active = 1
+        AND u.deleted_at IS NULL
     `)
     .all();
 
@@ -893,7 +925,7 @@ function getTeamPushSubscriptions({ roles = null, excludeRoles = [] } = {}) {
 
       return true;
     })
-    .map((row) => row.push_subscription_token)
+    .map((row) => row.subscription_json)
     .filter(Boolean);
 }
 
@@ -934,16 +966,26 @@ async function maybeNotifyDoctorLowStock(itemId, actingUserId = null) {
   return maybeNotifyLowStock(itemId, actingUserId);
 }
 
+// Banner copy ("Get HCM news and operational updates on this device") is
+// only shown to roles that actually need HCM digests: doctors, lab techs,
+// and accountants. Admins and operators see a low-stock-only banner, so
+// excluding them here keeps the surface area honest and avoids sending
+// unsolicited noise to those devices.
+const HCM_BROADCAST_ROLES = ["doctor", "lab_tech", "accountant"];
+
 async function broadcastHcmNewsToDoctors(newsArticle) {
-  const subscriptions = getTeamPushSubscriptions({ excludeRoles: ["admin"] });
+  const subscriptions = getTeamPushSubscriptions({ roles: HCM_BROADCAST_ROLES });
   if (!subscriptions.length) {
     return;
   }
 
-  const title = String(newsArticle?.title || "HCM update").trim();
+  const rawTitle = String(newsArticle?.title || "HCM update").trim();
+  // iOS truncates oversized push payload bodies inconsistently; keep the
+  // headline short and let the deep link carry the full read.
+  const title = rawTitle.length > 120 ? `${rawTitle.slice(0, 117)}…` : rawTitle;
   const payload = {
     title: "📢 New HCM Update",
-    body: `${title} - Tap to read full notice.`,
+    body: `${title} — Tap to read full notice.`,
     url: "/hcm-news",
     icon: "/icon-192.png",
     tag: "hcm-news",

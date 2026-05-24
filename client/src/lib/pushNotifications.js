@@ -42,6 +42,21 @@ export function dismissPushBanner() {
   window.localStorage.setItem(PUSH_DISMISS_KEY, "1");
 }
 
+async function postVapidKeyToServiceWorker(publicKey) {
+  if (!publicKey || typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const target = registration?.active || navigator.serviceWorker.controller;
+    target?.postMessage({ type: "ocs:vapid-key", publicKey });
+  } catch {
+    // The SW may not be ready yet on first boot; the next call from
+    // syncPushSubscriptionIfGranted will retry with the same payload.
+  }
+}
+
 export async function fetchPushConfiguration() {
   if (!isPushSupported()) {
     return { configured: false, publicKey: null };
@@ -50,11 +65,17 @@ export async function fetchPushConfiguration() {
   try {
     const payload = await api.get("/push/vapid-public-key");
     const publicKey = payload?.publicKey || null;
+    const configured = Boolean(payload?.configured && publicKey);
 
-    return {
-      configured: Boolean(payload?.configured && publicKey),
-      publicKey,
-    };
+    // Cache the VAPID public key inside the service worker so the SW can
+    // re-subscribe on its own when the browser invalidates the existing
+    // subscription (the pushsubscriptionchange event fires even when no
+    // window client is alive — common on iOS after PWA backgrounding).
+    if (configured) {
+      void postVapidKeyToServiceWorker(publicKey);
+    }
+
+    return { configured, publicKey };
   } catch {
     return { configured: false, publicKey: null };
   }
@@ -85,12 +106,44 @@ export function listenForPushSubscriptionChanges(onChange) {
 
   function handleMessage(event) {
     if (event?.data?.type === "ocs:push-subscription-change") {
-      onChange?.();
+      onChange?.(event.data.subscription || null);
     }
   }
 
   navigator.serviceWorker.addEventListener("message", handleMessage);
   return () => navigator.serviceWorker.removeEventListener("message", handleMessage);
+}
+
+export async function persistPushSubscriptionPayload(subscriptionJson) {
+  // Accepts a subscription JSON that was minted by either the SW (after a
+  // pushsubscriptionchange) or the page itself, and pushes it up to the
+  // server. Surfaces failures so the caller can decide whether to retry.
+  if (!subscriptionJson?.endpoint) {
+    return { ok: false, reason: "missing_endpoint" };
+  }
+
+  try {
+    await api.post("/push/subscribe", { subscription: subscriptionJson });
+    window.localStorage.removeItem(PUSH_DISMISS_KEY);
+    return { ok: true };
+  } catch (error) {
+    console.warn("[push] could not persist subscription on server:", error?.message || error);
+    return { ok: false, error };
+  }
+}
+
+export async function drainPendingServiceWorkerSubscription() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const target = registration?.active || navigator.serviceWorker.controller;
+    target?.postMessage({ type: "ocs:request-pending-subscription" });
+  } catch {
+    // SW not ready yet; the next boot will retry.
+  }
 }
 
 export async function getPushPermissionState() {
@@ -212,25 +265,40 @@ export async function syncPushSubscriptionIfGranted() {
     return null;
   }
 
+  let registration;
   try {
-    const registration = await getPushServiceWorkerRegistration();
-    if (!registration) {
-      return null;
-    }
+    registration = await getPushServiceWorkerRegistration();
+  } catch (error) {
+    console.warn("[push] service worker registration failed:", error?.message || error);
+    return null;
+  }
+  if (!registration) {
+    return null;
+  }
 
+  let subscription;
+  try {
     const existing = await registration.pushManager.getSubscription();
-    const subscription =
+    subscription =
       existing ||
       (await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       }));
-
-    await api.post("/push/subscribe", { subscription: subscription.toJSON() });
-    return subscription;
-  } catch {
+  } catch (error) {
+    console.warn("[push] could not resolve local subscription:", error?.message || error);
     return null;
   }
+
+  // Persist the (possibly refreshed) subscription on the server every time
+  // and SURFACE failures — silently swallowing the POST means the device
+  // has a live subscription but the server has nothing to dispatch to.
+  const persisted = await persistPushSubscriptionPayload(subscription.toJSON());
+  if (!persisted.ok) {
+    return null;
+  }
+
+  return subscription;
 }
 
 export async function refreshPushSubscriptionOnLogin(role) {

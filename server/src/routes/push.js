@@ -36,12 +36,17 @@ router.post("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES),
     return res.status(503).json({ error: "Web push is not configured on this server." });
   }
 
-  saveUserPushSubscription(req.auth.id, subscription);
-  res.json({ ok: true });
+  const userAgent = req.headers["user-agent"] || null;
+  const result = saveUserPushSubscription(req.auth.id, subscription, userAgent);
+  res.json({ ok: result?.ok !== false, endpoint: result?.endpoint || subscription.endpoint });
 });
 
 router.delete("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES), (req, res) => {
-  clearUserPushSubscription(req.auth.id);
+  // Allow callers to scope the unsubscribe to a specific browser endpoint
+  // (the device the user is currently on) so disabling alerts on the phone
+  // doesn't kill alerts on the desktop. Falls back to clearing every device.
+  const endpoint = req.body?.endpoint || req.query?.endpoint || null;
+  clearUserPushSubscription(req.auth.id, endpoint ? { endpoint: String(endpoint) } : {});
   res.json({ ok: true });
 });
 

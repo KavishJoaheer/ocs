@@ -136,6 +136,63 @@ function createAuthSessionsTable() {
   `);
 }
 
+function createUserPushSubscriptionsTable() {
+  // One row per (user, browser endpoint). Replaces the single-token field on
+  // users so a single account can keep working subscriptions on phone +
+  // tablet + desktop simultaneously without one device overwriting another.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_push_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      subscription_json TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+}
+
+function backfillLegacyPushSubscriptions() {
+  // One-time copy of the legacy users.push_subscription_token JSON into the
+  // new per-endpoint table so existing devices keep receiving notifications
+  // after the schema migration without forcing re-subscription.
+  const rows = db
+    .prepare(`
+      SELECT id, push_subscription_token
+      FROM users
+      WHERE push_subscription_token IS NOT NULL
+        AND TRIM(push_subscription_token) != ''
+    `)
+    .all();
+
+  if (!rows.length) {
+    return;
+  }
+
+  const insertStmt = db.prepare(`
+    INSERT OR IGNORE INTO user_push_subscriptions
+      (user_id, endpoint, subscription_json, user_agent, last_seen_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `);
+
+  for (const row of rows) {
+    try {
+      const parsed = JSON.parse(row.push_subscription_token);
+      const endpoint = parsed?.endpoint && String(parsed.endpoint).trim();
+      if (!endpoint) {
+        continue;
+      }
+      insertStmt.run(row.id, endpoint, row.push_subscription_token, "legacy-migrated");
+    } catch {
+      // Ignore unparseable legacy tokens; they'll be re-collected on the next
+      // login when the client re-syncs its subscription.
+    }
+  }
+}
+
 function createLabReportsTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS lab_reports (
@@ -523,6 +580,7 @@ function initializeDatabase() {
   migrateUsersSchemaIfNeeded();
   createUsersTable();
   createAuthSessionsTable();
+  createUserPushSubscriptionsTable();
   createLabReportsTable();
   createLabReportAttachmentsTable();
   createPatientRevisionsTable();
@@ -536,6 +594,7 @@ function initializeDatabase() {
   ensurePatientColumns();
   ensureDoctorColumns();
   ensureUserColumns();
+  backfillLegacyPushSubscriptions();
   ensureHcmNewsColumns();
   ensureBillingColumns();
   ensureConsultationFeeTypes();
@@ -580,6 +639,10 @@ function initializeDatabase() {
       ON patient_operator_access(expires_at);
     CREATE INDEX IF NOT EXISTS idx_users_operation_status ON users(operation_status);
     CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_user_push_subscriptions_user
+      ON user_push_subscriptions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_push_subscriptions_updated
+      ON user_push_subscriptions(updated_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_created_at ON hcm_news_posts(created_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_updated_at ON hcm_news_posts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_status ON hcm_news_posts(status);
