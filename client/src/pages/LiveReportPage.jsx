@@ -1,8 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Download } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { jsPDF } from "jspdf";
-import * as XLSX from "xlsx";
 import {
   Bar,
   BarChart,
@@ -104,212 +101,6 @@ function DateField({ value, onChange, compact = false }) {
   );
 }
 
-function exportCsv(fileName, rows) {
-  const worksheet = XLSX.utils.json_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Report");
-  XLSX.writeFile(workbook, `${fileName}.csv`);
-}
-
-function downloadFullLiveReportPdf({
-  statement,
-  revenueRows,
-  volumeRows,
-  locationRows,
-  period,
-  anchorDate,
-}) {
-  const doc = new jsPDF();
-  let y = 20;
-  const pageBottom = 280;
-  const line = (text, size = 11) => {
-    doc.setFontSize(size);
-    if (y > pageBottom) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.text(String(text), 14, y);
-    y += size > 12 ? 9 : 6;
-  };
-
-  doc.setFontSize(16);
-  line("Live Report Statement", 16);
-  doc.setFontSize(10);
-  line(`Period: ${period} · Anchor: ${anchorDate}`, 10);
-  y += 4;
-
-  doc.setFontSize(12);
-  line("Revenue statement", 12);
-  doc.setFontSize(11);
-  [
-    `Total Revenue: ${formatCurrency(statement.totalRevenue || 0)}`,
-    `OCS Commission (60%): ${formatCurrency(statement.ocsCommission || 0)}`,
-    `Doctor Commission (40%): ${formatCurrency(statement.doctorCommission || 0)}`,
-    `Transport Benefits: ${formatCurrency(statement.transportBenefits || 0)}`,
-    `Doctor Net Revenue: ${formatCurrency(statement.doctorNetRevenue || 0)}`,
-    `Paid Revenue: ${formatCurrency(statement.paidRevenue || 0)}`,
-    `Unpaid Revenue: ${formatCurrency(statement.unpaidRevenue || 0)}`,
-  ].forEach((t) => line(t, 11));
-  y += 4;
-
-  line("Revenue reports (line items)", 12);
-  doc.setFontSize(10);
-  revenueRows.forEach((r) => {
-    line(`${r.patient_name} · ${r.consultation_date} · ${formatCurrency(r.total_amount)} · ${r.status}`, 10);
-  });
-  y += 4;
-
-  line("Patients volume", 12);
-  doc.setFontSize(10);
-  volumeRows.forEach((r) => {
-    line(`${r.label}: ${formatInteger(r.patient_count)}`, 10);
-  });
-  y += 4;
-
-  line("Patients seen per location", 12);
-  doc.setFontSize(10);
-  locationRows.forEach((r) => {
-    line(`${r.location}: ${formatInteger(r.patient_count)}`, 10);
-  });
-
-  doc.save(`live_report_statement_${anchorDate}.pdf`);
-}
-
-function exportLiveReportSpreadsheet({
-  statement,
-  revenueRows,
-  volumeRows,
-  locationRows,
-  anchorDate,
-}) {
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet([
-      {
-        totalRevenue: statement.totalRevenue,
-        ocsCommission: statement.ocsCommission,
-        doctorCommission: statement.doctorCommission,
-        transportBenefits: statement.transportBenefits,
-        doctorNetRevenue: statement.doctorNetRevenue,
-        paidRevenue: statement.paidRevenue,
-        unpaidRevenue: statement.unpaidRevenue,
-      },
-    ]),
-    "Revenue Statement",
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(revenueRows.length ? revenueRows : [{ note: "No rows" }]),
-    "Revenue Reports",
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(volumeRows.length ? volumeRows : [{ note: "No rows" }]),
-    "Volume",
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(locationRows.length ? locationRows : [{ note: "No rows" }]),
-    "Locations",
-  );
-  XLSX.writeFile(wb, `live_report_statement_${anchorDate}.xlsx`);
-}
-
-function ExportStatementMenu({
-  statement,
-  revenueRows,
-  volumeRows,
-  locationRows,
-  period,
-  anchorDate,
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function handleMouseDown(event) {
-      if (ref.current && !ref.current.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#26717c]"
-      >
-        <Download className="size-4" />
-        Export statement
-        <ChevronDown className={`size-4 transition ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open ? (
-        <div className="absolute right-0 z-30 mt-1 min-w-[200px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              setOpen(false);
-              downloadFullLiveReportPdf({
-                statement,
-                revenueRows,
-                volumeRows,
-                locationRows,
-                period,
-                anchorDate,
-              });
-            }}
-          >
-            Download PDF
-          </button>
-          <button
-            type="button"
-            className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              setOpen(false);
-              exportLiveReportSpreadsheet({
-                statement,
-                revenueRows,
-                volumeRows,
-                locationRows,
-                anchorDate,
-              });
-            }}
-          >
-            Download spreadsheet (Excel)
-          </button>
-          <button
-            type="button"
-            className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              setOpen(false);
-              exportCsv(`live_report_statement_${anchorDate}`, [
-                {
-                  totalRevenue: statement.totalRevenue,
-                  ocsCommission: statement.ocsCommission,
-                  doctorCommission: statement.doctorCommission,
-                  transportBenefits: statement.transportBenefits,
-                  doctorNetRevenue: statement.doctorNetRevenue,
-                  paidRevenue: statement.paidRevenue,
-                  unpaidRevenue: statement.unpaidRevenue,
-                },
-              ]);
-            }}
-          >
-            Download CSV (summary)
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function LiveReportPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -367,18 +158,10 @@ export default function LiveReportPage() {
   const visibleRevenueRows = isRevenueExpanded ? revenueRows : revenueRows.slice(0, 3);
   const statement = report.revenueStatement || {};
 
-  const timeAndExportControls = (
+  const timeAndFilterControls = (
     <div className="flex flex-row flex-wrap items-center justify-end gap-2">
       <FilterButtonGroup value={period} onChange={setPeriod} compact />
       <DateField value={anchorDate} onChange={setAnchorDate} compact />
-      <ExportStatementMenu
-        statement={statement}
-        revenueRows={revenueRows}
-        volumeRows={volumeRows}
-        locationRows={locationRows}
-        period={period}
-        anchorDate={anchorDate}
-      />
     </div>
   );
 
@@ -447,10 +230,10 @@ export default function LiveReportPage() {
               ) : null}
             </div>
           </div>
-          <div className="min-w-0 shrink-0 lg:ml-auto">{timeAndExportControls}</div>
+          <div className="min-w-0 shrink-0 lg:ml-auto">{timeAndFilterControls}</div>
         </div>
       ) : (
-        <PageHeader eyebrow="Analytics" title="Live Report" actions={timeAndExportControls} />
+        <PageHeader eyebrow="Analytics" title="Live Report" actions={timeAndFilterControls} />
       )}
 
       <SectionCard title="Revenue Statement">
