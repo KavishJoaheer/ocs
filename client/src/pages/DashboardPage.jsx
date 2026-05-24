@@ -25,6 +25,7 @@ import LowStockBanner from "../components/LowStockBanner.jsx";
 import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.jsx";
 import { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
+import { prefetchPatientOfflineDirectory } from "../lib/patientOfflineSync.js";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -70,6 +71,12 @@ function DoctorMobileLauncher({ user }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
   const showLowStockStrip = !loading && lowStockCount > 0;
+
+  useEffect(() => {
+    if (user?.role === "doctor" && user?.id) {
+      void prefetchPatientOfflineDirectory(user.id);
+    }
+  }, [user?.id, user?.role]);
 
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">

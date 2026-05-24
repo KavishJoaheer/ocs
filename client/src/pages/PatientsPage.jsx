@@ -5,6 +5,7 @@ import {
   IdCard,
   MoreVertical,
   Plus,
+  RefreshCw,
   Search,
   SquarePen,
   Trash2,
@@ -21,6 +22,13 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
+import { isBrowserOffline, isNetworkFailure } from "../lib/networkErrors.js";
+import {
+  buildOfflinePatientsPage,
+  filterOfflineDirectoryItems,
+  prefetchPatientOfflineDirectory,
+  getCachedPatientDirectory,
+} from "../lib/patientOfflineSync.js";
 import {
   formatAgeFromDateOfBirth,
   formatDate,
@@ -199,6 +207,8 @@ function PatientsPage() {
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [patientCardMenu, setPatientCardMenu] = useState(null);
   const [desktopTableMenu, setDesktopTableMenu] = useState(null);
+  const [offlineDirectoryActive, setOfflineDirectoryActive] = useState(false);
+  const isDoctorMobile = user.role === "doctor" && isMobile;
   useEffect(() => {
     if (!desktopTableMenu) return undefined;
 
@@ -231,7 +241,38 @@ function PatientsPage() {
     }
   }
 
+  async function loadOfflinePatientDirectory() {
+    const target = patientsData ? setRefreshing : setLoading;
+    target(true);
+
+    try {
+      const cached = await getCachedPatientDirectory(user.id);
+      const filtered = filterOfflineDirectoryItems(cached?.items || [], {
+        search: deferredSearch,
+        statusFilter,
+      });
+      const pagePayload = buildOfflinePatientsPage(filtered, page, 15);
+      setPatientsData(pagePayload);
+      setOfflineDirectoryActive(true);
+    } catch (error) {
+      toast.error(error.message || "Unable to load cached patient directory.");
+      setPatientsData({
+        items: [],
+        pagination: { page: 1, limit: 15, total: 0, totalPages: 1 },
+      });
+      setOfflineDirectoryActive(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
   async function loadPatients() {
+    if (isDoctorMobile && isBrowserOffline()) {
+      await loadOfflinePatientDirectory();
+      return;
+    }
+
     const target = patientsData ? setRefreshing : setLoading;
     target(true);
 
@@ -262,11 +303,33 @@ function PatientsPage() {
 
       const data = await api.get(url);
       setPatientsData(data);
+      setOfflineDirectoryActive(false);
+
+      if (isDoctorMobile) {
+        void prefetchPatientOfflineDirectory(user.id);
+      }
     } catch (error) {
+      if (isDoctorMobile && isNetworkFailure(error)) {
+        console.warn("Online fetch failed, falling back to local storage cache.");
+        await loadOfflinePatientDirectory();
+        return;
+      }
       toast.error(error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  async function handleMobileDirectoryRefresh() {
+    if (isDoctorMobile && isBrowserOffline()) {
+      await loadOfflinePatientDirectory();
+      return;
+    }
+
+    await loadPatients();
+    if (isDoctorMobile) {
+      await prefetchPatientOfflineDirectory(user.id, { force: true });
     }
   }
 
@@ -313,7 +376,27 @@ function PatientsPage() {
     myAssignedFilterActive,
     user.doctor_id,
     user.role,
+    user.id,
+    isDoctorMobile,
   ]);
+
+  useEffect(() => {
+    if (!isDoctorMobile) {
+      return undefined;
+    }
+
+    function handleConnectivityChange() {
+      void loadPatients();
+    }
+
+    window.addEventListener("online", handleConnectivityChange);
+    window.addEventListener("offline", handleConnectivityChange);
+
+    return () => {
+      window.removeEventListener("online", handleConnectivityChange);
+      window.removeEventListener("offline", handleConnectivityChange);
+    };
+  }, [isDoctorMobile]);
 
   const patients = useMemo(() => {
     const items = patientsData?.items || [];
@@ -524,8 +607,27 @@ function PatientsPage() {
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <h1 className="text-xl font-bold tracking-tight text-gray-900">Patient Directory</h1>
-            {headerActions}
+            <div className="flex items-center gap-2">
+              {isDoctorMobile ? (
+                <button
+                  type="button"
+                  onClick={() => void handleMobileDirectoryRefresh()}
+                  disabled={loading || refreshing}
+                  className="grid size-10 place-items-center rounded-xl border border-[#557373]/20 bg-white text-[#557373] transition hover:bg-[#557373]/10 active:scale-95 disabled:opacity-50"
+                  aria-label="Refresh patient directory"
+                >
+                  <RefreshCw className={cx("size-4", refreshing && "animate-spin")} strokeWidth={2.25} />
+                </button>
+              ) : null}
+              {headerActions}
+            </div>
           </div>
+          {offlineDirectoryActive && isDoctorMobile ? (
+            <div className="flex items-center gap-2 rounded-2xl border border-amber-200/80 bg-[#557373]/15 px-3.5 py-2.5 text-xs font-semibold text-gray-800">
+              <span aria-hidden>⚠️</span>
+              <span>Offline Mode — Displaying cached directory</span>
+            </div>
+          ) : null}
           {searchField}
         </header>
       ) : (
@@ -617,6 +719,27 @@ function PatientsPage() {
                               <p className="mt-1.5 text-xs font-medium text-amber-700">
                                 ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
                               </p>
+                            ) : null}
+
+                            {offlineDirectoryActive && patient.offline_directory ? (
+                              <div className="mt-3 space-y-1.5 rounded-xl border border-[#557373]/15 bg-white/70 p-2.5 text-[11px] leading-relaxed text-gray-700">
+                                <p>
+                                  <span className="font-bold text-gray-800">Location:</span>{" "}
+                                  {patient.offline_directory.address_location}
+                                </p>
+                                <p>
+                                  <span className="font-bold text-gray-800">Emergency:</span>{" "}
+                                  {patient.offline_directory.emergency_contact}
+                                </p>
+                                <p>
+                                  <span className="font-bold text-gray-800">Alerts:</span>{" "}
+                                  {patient.offline_directory.medical_alerts}
+                                </p>
+                                <p>
+                                  <span className="font-bold text-gray-800">Last visit:</span>{" "}
+                                  {patient.offline_directory.last_consultation_summary}
+                                </p>
+                              </div>
                             ) : null}
 
                             {user.role === "operator" && patient.operator_edit_allowed ? (

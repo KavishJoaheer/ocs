@@ -24,6 +24,7 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/dashboard"],
     ["GET", "/api/dashboard/doctor-workspace"],
     ["GET", "/api/patients?page=1&limit=5"],
+    ["GET", "/api/patients/offline-directory"],
     ["GET", "/api/patients?filter=my_assigned&page=1&limit=5"],
     ["GET", "/api/inventory"],
     ["GET", "/api/billing"],

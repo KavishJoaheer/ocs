@@ -1,6 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
+import {
+  clearPatientOfflineCache,
+  prefetchPatientOfflineDirectory,
+} from "../lib/patientOfflineSync.js";
 
 const AuthContext = createContext(null);
 
@@ -29,6 +33,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
     setHcmUnreadCount(0);
+    await clearPatientOfflineCache();
   }, []);
 
   const login = useCallback(async ({ username, password }) => {
@@ -41,6 +46,10 @@ export function AuthProvider({ children }) {
     setStoredAuthToken(payload.token);
     setToken(payload.token);
     setUser(payload.user);
+
+    if (payload.user?.role === "doctor") {
+      void prefetchPatientOfflineDirectory(payload.user.id);
+    }
 
     return payload.user;
   }, []);
@@ -114,6 +123,9 @@ export function AuthProvider({ children }) {
         const payload = await api.get("/auth/me");
         if (!ignore) {
           setUser(payload.user);
+          if (payload.user?.role === "doctor") {
+            void prefetchPatientOfflineDirectory(payload.user.id);
+          }
         }
       } catch {
         if (!ignore && getStoredAuthToken() === restoringToken) {

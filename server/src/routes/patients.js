@@ -668,6 +668,119 @@ function getLabReportsByPatientId(patientId) {
   }));
 }
 
+function formatPatientGenderLabel(gender) {
+  if (gender === "M") return "Male";
+  if (gender === "F") return "Female";
+  const normalized = String(gender || "").trim();
+  return normalized || "Unknown";
+}
+
+function buildMedicalAlertsSummary(patient) {
+  const parts = [
+    patient.drug_allergy_history,
+    patient.past_medical_history,
+    patient.particularity,
+    patient.ongoing_treatment,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  return parts.length ? parts.join(", ") : "None recorded";
+}
+
+function buildEmergencyContactSummary(patient) {
+  const name = String(patient.next_of_kin_name || "").trim();
+  const phone = String(patient.next_of_kin_contact_number || "").trim();
+
+  if (name && phone) {
+    return `${name} (${phone})`;
+  }
+
+  return name || phone || "Not recorded";
+}
+
+function buildAddressLocationSummary(patient) {
+  return [patient.address, patient.location]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function summarizeConsultationNotes(notes) {
+  const normalized = String(notes || "").trim();
+  if (!normalized) {
+    return "No recent consultation summary on file.";
+  }
+
+  return normalized.length > 220 ? `${normalized.slice(0, 217).trim()}...` : normalized;
+}
+
+router.get("/offline-directory", (req, res) => {
+  if (req.auth.role !== "doctor" || !req.auth.doctor_id) {
+    return res.status(403).json({ error: "Only doctor accounts can prefetch the offline directory." });
+  }
+
+  const doctorId = Number(req.auth.doctor_id);
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  const startDate = now.toISOString().slice(0, 10);
+  const endDate = windowEnd.toISOString().slice(0, 10);
+
+  const patients = db
+    .prepare(`
+      SELECT DISTINCT p.*
+      FROM patients p
+      INNER JOIN appointments a ON a.patient_id = p.id
+      WHERE p.deleted_at IS NULL
+        AND a.doctor_id = @doctorId
+        AND a.status = 'scheduled'
+        AND a.appointment_date >= @startDate
+        AND a.appointment_date <= @endDate
+      ORDER BY p.full_name ASC
+    `)
+    .all({ doctorId, startDate, endDate });
+
+  const latestConsultationStmt = db.prepare(`
+    SELECT doctor_notes, consultation_date
+    FROM consultations
+    WHERE patient_id = ?
+      AND doctor_id = ?
+    ORDER BY consultation_date DESC, id DESC
+    LIMIT 1
+  `);
+
+  const items = patients.map((patient) => {
+    const age = calculateAgeFromDateOfBirth(patient.date_of_birth) || Number(patient.age || 0);
+    const genderLabel = formatPatientGenderLabel(patient.gender);
+    const consultation = latestConsultationStmt.get(patient.id, doctorId);
+
+    return {
+      id: Number(patient.id),
+      patient_id: String(patient.patient_identifier || `PT-${patient.id}`),
+      full_name: patient.full_name,
+      age_gender: `${age}, ${genderLabel}`,
+      contact_number: String(patient.patient_contact_number || patient.contact_number || "").trim(),
+      emergency_contact: buildEmergencyContactSummary(patient),
+      address_location: buildAddressLocationSummary(patient) || "Address not recorded",
+      medical_alerts: buildMedicalAlertsSummary(patient),
+      last_consultation_summary: summarizeConsultationNotes(consultation?.doctor_notes),
+      status: patient.status,
+      patient_identifier: patient.patient_identifier,
+      date_of_birth: patient.date_of_birth || "",
+      gender: patient.gender,
+      location: patient.location || "",
+      assigned_doctor_id: patient.assigned_doctor_id ? Number(patient.assigned_doctor_id) : null,
+    };
+  });
+
+  res.json({
+    items,
+    synced_at: new Date().toISOString(),
+    window_hours: 48,
+    total: items.length,
+  });
+});
+
 router.get("/options", (req, res) => {
   const auth = req.auth;
   if (!auth) {
