@@ -12,6 +12,18 @@ function supportsWebCrypto() {
   return typeof crypto !== "undefined" && typeof crypto.subtle !== "undefined";
 }
 
+function getKeyStore() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (window.localStorage) {
+    return window.localStorage;
+  }
+
+  return window.sessionStorage || null;
+}
+
 function bytesToBase64(bytes) {
   const chunkSize = 0x8000;
   let binary = "";
@@ -39,12 +51,32 @@ async function getOrCreateCryptoKey() {
     return null;
   }
 
-  let encodedKey = sessionStorage.getItem(CRYPTO_KEY_STORAGE);
+  const keyStore = getKeyStore();
+  if (!keyStore) {
+    return null;
+  }
+
+  let encodedKey = keyStore.getItem(CRYPTO_KEY_STORAGE);
+
+  // Migrate a legacy key that used to live in sessionStorage so encrypted caches
+  // written by older builds remain decryptable after the PWA cold-starts.
+  if (!encodedKey && typeof window !== "undefined" && window.sessionStorage) {
+    const legacyKey = window.sessionStorage.getItem(CRYPTO_KEY_STORAGE);
+    if (legacyKey) {
+      encodedKey = legacyKey;
+      try {
+        keyStore.setItem(CRYPTO_KEY_STORAGE, legacyKey);
+        window.sessionStorage.removeItem(CRYPTO_KEY_STORAGE);
+      } catch {
+        // Best-effort migration only.
+      }
+    }
+  }
 
   if (!encodedKey) {
     const keyBytes = crypto.getRandomValues(new Uint8Array(32));
     encodedKey = bytesToBase64(keyBytes);
-    sessionStorage.setItem(CRYPTO_KEY_STORAGE, encodedKey);
+    keyStore.setItem(CRYPTO_KEY_STORAGE, encodedKey);
   }
 
   const rawKey = base64ToBytes(encodedKey);
@@ -82,11 +114,16 @@ async function decryptPayload(record) {
     return null;
   }
 
-  const iv = base64ToBytes(record.iv);
-  const cipher = base64ToBytes(record.cipher);
-  const plainBuffer = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
-  const decoded = new TextDecoder().decode(plainBuffer);
-  return JSON.parse(decoded);
+  try {
+    const iv = base64ToBytes(record.iv);
+    const cipher = base64ToBytes(record.cipher);
+    const plainBuffer = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
+    const decoded = new TextDecoder().decode(plainBuffer);
+    return JSON.parse(decoded);
+  } catch (error) {
+    console.warn("Patient offline cache decryption failed (key rotated or storage corrupted):", error?.message || error);
+    return null;
+  }
 }
 
 function openDb() {
@@ -154,17 +191,22 @@ export async function savePatientDirectoryCache(userId, payload) {
 export async function getPatientDirectoryCache(userId) {
   let record = null;
 
-  if (supportsIndexedDb()) {
-    record = await withStore("readonly", (store) =>
-      new Promise((resolve, reject) => {
-        const request = store.get(RECORD_ID);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      }),
-    );
-  } else {
-    const raw = sessionStorage.getItem(`${RECORD_ID}:${userId}`);
-    record = raw ? JSON.parse(raw) : null;
+  try {
+    if (supportsIndexedDb()) {
+      record = await withStore("readonly", (store) =>
+        new Promise((resolve, reject) => {
+          const request = store.get(RECORD_ID);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error);
+        }),
+      );
+    } else if (typeof sessionStorage !== "undefined") {
+      const raw = sessionStorage.getItem(`${RECORD_ID}:${userId}`);
+      record = raw ? JSON.parse(raw) : null;
+    }
+  } catch (error) {
+    console.warn("Patient offline cache read failed:", error?.message || error);
+    return null;
   }
 
   if (!record || Number(record.userId) !== Number(userId)) {
@@ -183,7 +225,14 @@ export async function getPatientDirectoryCache(userId) {
 }
 
 export async function clearPatientOfflineCache() {
-  sessionStorage.removeItem(CRYPTO_KEY_STORAGE);
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage?.removeItem(CRYPTO_KEY_STORAGE);
+      window.sessionStorage?.removeItem(CRYPTO_KEY_STORAGE);
+    }
+  } catch {
+    // Best-effort key clearing only.
+  }
 
   if (supportsIndexedDb()) {
     await new Promise((resolve, reject) => {
@@ -195,7 +244,9 @@ export async function clearPatientOfflineCache() {
     return;
   }
 
-  Object.keys(sessionStorage)
-    .filter((key) => key.startsWith(`${RECORD_ID}:`))
-    .forEach((key) => sessionStorage.removeItem(key));
+  if (typeof sessionStorage !== "undefined") {
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith(`${RECORD_ID}:`))
+      .forEach((key) => sessionStorage.removeItem(key));
+  }
 }

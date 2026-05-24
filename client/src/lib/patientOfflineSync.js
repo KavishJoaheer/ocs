@@ -102,12 +102,22 @@ export async function prefetchPatientOfflineDirectory(userId, { force = false } 
 
   try {
     const payload = await api.get("/patients/offline-directory");
+
+    // Always commit the fresh payload to persistent client storage so the
+    // doctor's bag has an up-to-date directory ready for offline rounds.
     await savePatientDirectoryCache(userId, payload);
-    dispatchCacheUpdated({ synced_at: payload.synced_at, total: payload.total });
+    dispatchCacheUpdated({
+      synced_at: payload?.synced_at,
+      total: payload?.total ?? payload?.items?.length ?? 0,
+    });
+
+    console.log(
+      `[patient-offline] cached ${payload?.items?.length ?? 0} patient record(s) for offline readiness.`,
+    );
     return payload;
   } catch (error) {
     if (!force) {
-      console.warn("Patient offline prefetch failed:", error?.message || error);
+      console.warn("[patient-offline] prefetch failed:", error?.message || error);
     }
     return null;
   }
@@ -122,20 +132,27 @@ export async function loadPatientDirectory({
 }) {
   const readCache = async () => {
     const cached = await getPatientDirectoryCache(userId);
-    if (!cached?.items?.length) {
+    const cachedItems = Array.isArray(cached?.items) ? cached.items : [];
+
+    if (!cachedItems.length) {
+      // Only surface the empty-state illustration when BOTH the live server
+      // path is unreachable AND the local cache holds zero rows.
       return {
         items: [],
         pagination: { page: 1, limit, total: 0, totalPages: 1 },
         offline: true,
         synced_at: cached?.synced_at || null,
+        empty: true,
       };
     }
 
-    const filtered = filterOfflineDirectoryItems(cached.items, { search, statusFilter });
+    const filtered = filterOfflineDirectoryItems(cachedItems, { search, statusFilter });
     const pagePayload = buildOfflinePatientsPage(filtered, page, limit);
     return {
       ...pagePayload,
+      offline: true,
       synced_at: cached.synced_at || null,
+      empty: false,
     };
   };
 
@@ -146,19 +163,30 @@ export async function loadPatientDirectory({
   try {
     const freshData = await api.get("/patients/offline-directory");
     await savePatientDirectoryCache(userId, freshData);
-    dispatchCacheUpdated({ synced_at: freshData.synced_at, total: freshData.total });
+    dispatchCacheUpdated({
+      synced_at: freshData?.synced_at,
+      total: freshData?.total ?? freshData?.items?.length ?? 0,
+    });
 
-    const filtered = filterOfflineDirectoryItems(freshData.items || [], { search, statusFilter });
+    const filtered = filterOfflineDirectoryItems(freshData?.items || [], { search, statusFilter });
     return {
       ...buildOfflinePatientsPage(filtered, page, limit),
       offline: false,
-      synced_at: freshData.synced_at,
+      synced_at: freshData?.synced_at,
     };
   } catch (error) {
     console.warn("Online patient directory prefetch failed, falling back to local storage cache.");
     if (isNetworkFailure(error)) {
       return readCache();
     }
+
+    // Even when the failure is non-network (e.g. auth blip), prefer cached
+    // data over an empty list so the doctor never loses sight of patients.
+    const fallback = await readCache();
+    if (fallback?.items?.length) {
+      return fallback;
+    }
+
     throw error;
   }
 }

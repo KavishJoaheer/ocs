@@ -110,6 +110,21 @@ export function AuthProvider({ children }) {
   }, [logout]);
 
   useEffect(() => {
+    if (user?.role !== "doctor" || !user?.id) {
+      return undefined;
+    }
+
+    // Refill the encrypted patient cache the moment connectivity returns so
+    // the doctor walking back into a clinic Wi-Fi area is always covered.
+    const handleOnline = () => {
+      void prefetchPatientOfflineDirectory(user.id, { force: true });
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
     let ignore = false;
 
     async function restoreSession() {
