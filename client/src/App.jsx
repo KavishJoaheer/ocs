@@ -120,9 +120,12 @@ function App() {
             />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor"]} />}>
+          <Route element={<ProtectedRoute roles={["admin"]} />}>
             <Route path="/team-operations" element={<DoctorsPage />} />
             <Route path="/doctors" element={<Navigate to="/team-operations" replace />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={["admin", "doctor"]} />}>
             <Route path="/live-report" element={<LiveReportPage />} />
           </Route>
 

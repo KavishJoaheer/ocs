@@ -836,20 +836,26 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
 
 const STOCK_OUT_REASONS = ["Wasted", "Expired", "Sale"];
 
-function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
+function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Wasted");
   const [note, setNote] = useState("");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setQuantity("1");
     setReason("Wasted");
     setNote("");
+    setSelectedPatientId("");
   }, [open, item]);
 
   const available = Number(item?.quantity || 0);
   const isSale = reason === "Sale";
+  const selectedPatient = isSale
+    ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
+    : null;
+  const saleRequiresPatient = isSale && !selectedPatient;
 
   return (
     <Modal
@@ -869,7 +875,19 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
           event.preventDefault();
           const qty = Number(quantity || 0);
           if (!Number.isInteger(qty) || qty <= 0) return;
-          onSubmit({ quantity: qty, reason, note: note.trim() });
+          if (saleRequiresPatient) {
+            toast.error("Select an assigned patient before recording a Sale.");
+            return;
+          }
+          onSubmit({
+            quantity: qty,
+            reason,
+            note: note.trim(),
+            patient_id: selectedPatient ? Number(selectedPatient.id) : null,
+            patient_label: selectedPatient
+              ? `${selectedPatient.full_name}${selectedPatient.patient_identifier ? ` (${selectedPatient.patient_identifier})` : ""}`
+              : "",
+          });
         }}
       >
         {isSale ? (
@@ -912,6 +930,36 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
             </select>
           </label>
 
+          {isSale ? (
+            <label className="mt-4 block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">
+                Assign to Patient <span className="text-rose-600">*</span>
+              </span>
+              <select
+                value={selectedPatientId}
+                onChange={(event) => setSelectedPatientId(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+              >
+                <option value="" disabled>
+                  {assignedPatients.length
+                    ? "Select assigned patient..."
+                    : "No assigned patients available"}
+                </option>
+                {assignedPatients.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.full_name}
+                    {patient.patient_identifier ? ` (${patient.patient_identifier})` : ""}
+                  </option>
+                ))}
+              </select>
+              {!assignedPatients.length ? (
+                <p className="text-[11px] leading-tight text-rose-600">
+                  Connect to the clinic network to refresh your assigned patient roster, then retry.
+                </p>
+              ) : null}
+            </label>
+          ) : null}
+
           <label className="mt-4 block space-y-2">
             <span className="text-sm font-semibold text-slate-700">Notes (optional)</span>
             <textarea
@@ -920,7 +968,7 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
               onChange={(event) => setNote(event.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
               placeholder={
-                isSale ? "e.g. patient name, payment reference" : "e.g. batch reference, disposal details"
+                isSale ? "e.g. payment reference, billing note" : "e.g. batch reference, disposal details"
               }
             />
           </label>
@@ -941,11 +989,16 @@ function StockOutModal({ open, item, isSaving, onClose, onSubmit }) {
               !item?.id ||
               !Number.isInteger(Number(quantity || 0)) ||
               Number(quantity || 0) <= 0 ||
-              Number(quantity || 0) > available
+              Number(quantity || 0) > available ||
+              saleRequiresPatient
             }
             className="rounded-2xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
           >
-            {isSaving ? "Recording..." : "Confirm Stock Out"}
+            {isSaving
+              ? "Recording..."
+              : isSale
+                ? "Confirm Allocation & Save"
+                : "Confirm Stock Out"}
           </button>
         </div>
       </form>
@@ -2712,7 +2765,7 @@ export default function InventoryPage() {
   const [removeStock, setRemoveStock] = useState(null);
   const [stockOut, setStockOut] = useState(null);
   const [mobileDeductItem, setMobileDeductItem] = useState(null);
-  const [mobileAssignedPatients, setMobileAssignedPatients] = useState([]);
+  const [assignedPatientsList, setAssignedPatientsList] = useState([]);
   const [mobileRestockTarget, setMobileRestockTarget] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
@@ -2925,7 +2978,12 @@ export default function InventoryPage() {
   }, [selectedContextDoctorId, doctorContext]);
 
   useEffect(() => {
-    if (!showMobileDoctorBag || !mobileDeductItem || !user?.id) {
+    if (user?.role !== "doctor" || !user?.id || !user?.doctor_id) {
+      return;
+    }
+
+    const needsPicker = Boolean(mobileDeductItem) || Boolean(stockOut?.item);
+    if (!needsPicker) {
       return;
     }
 
@@ -2936,14 +2994,14 @@ export default function InventoryPage() {
         doctorId: user.doctor_id,
       });
       if (!cancelled) {
-        setMobileAssignedPatients(list);
+        setAssignedPatientsList(list);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [showMobileDoctorBag, mobileDeductItem, user?.id, user?.doctor_id]);
+  }, [mobileDeductItem, stockOut, user?.id, user?.doctor_id, user?.role]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -3462,24 +3520,55 @@ export default function InventoryPage() {
     const quantity = Number(payload?.quantity || 0);
     if (!Number.isInteger(quantity) || quantity <= 0) return;
 
+    const item = stockOut.item;
+    const isSale = payload.reason === "Sale";
+    if (isSale && !payload.patient_id) {
+      toast.error("Select an assigned patient before recording a Sale.");
+      return;
+    }
+
+    const requestBody = {
+      action_type: "stock_out",
+      quantity,
+      reason: payload.reason,
+      note: payload.note || "",
+      expected_version: Number(item.row_version || 0),
+      ...(isSale
+        ? {
+            patient_id: Number(payload.patient_id),
+            patient_label: payload.patient_label || "",
+          }
+        : {}),
+    };
+
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${stockOut.item.id}/actions${inventoryListQuery}`, {
-        action_type: "stock_out",
-        quantity,
-        reason: payload.reason,
-        note: payload.note || "",
-      });
+      const next = await api.post(
+        `/inventory/items/${item.id}/actions${inventoryListQuery}`,
+        requestBody,
+      );
       commitInventoryData(next);
       setStockOut(null);
       toast.success(
-        payload.reason === "Sale"
-          ? "Sale recorded in your sales report."
+        isSale
+          ? payload.patient_label
+            ? `Sale allocated to ${payload.patient_label} for Admin audit.`
+            : "Sale recorded in your sales report."
           : payload.reason === "Expired"
             ? "Expired stock logged."
             : "Stock out recorded.",
       );
     } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        if (error.data?.inventory) {
+          commitInventoryData(error.data.inventory);
+        } else {
+          await load(selectedContextDoctorId, doctorContext, { silent: true });
+        }
+        setStockOut(null);
+        toast.error("Stock changed on another device. Quantities refreshed.");
+        return;
+      }
       toast.error(error.message);
     } finally {
       setIsSaving(false);
@@ -3693,6 +3782,9 @@ export default function InventoryPage() {
         } else {
           await load(selectedContextDoctorId, doctorContext, { silent: true });
         }
+        // Close the sheet so the doctor re-opens it against the freshly
+        // refreshed row (avoids retry loops on stale expected_version).
+        setMobileDeductItem(null);
         toast.error("Stock changed on another device. Quantities refreshed.");
         return;
       }
@@ -3773,7 +3865,7 @@ export default function InventoryPage() {
             open={Boolean(mobileDeductItem)}
             item={mobileDeductItem}
             isSaving={isSaving}
-            assignedPatients={mobileAssignedPatients}
+            assignedPatients={assignedPatientsList}
             onClose={() => setMobileDeductItem(null)}
             onSubmit={saveMobileDoctorDeduct}
           />
@@ -4333,6 +4425,7 @@ export default function InventoryPage() {
         open={Boolean(stockOut)}
         item={stockOut?.item}
         isSaving={isSaving}
+        assignedPatients={assignedPatientsList}
         onClose={() => setStockOut(null)}
         onSubmit={saveStockOut}
       />

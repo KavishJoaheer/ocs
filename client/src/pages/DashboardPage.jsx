@@ -1437,12 +1437,6 @@ function LabDashboardView({ dashboard, user, onStatusChange, isSavingStatus }) {
             to: "/consultations",
           },
           {
-            eyebrow: "Inventory",
-            icon: Activity,
-            title: "Inventory",
-            to: "/inventory",
-          },
-          {
             eyebrow: "Long-term review",
             icon: UsersRound,
             title: "Patient review",

@@ -1941,7 +1941,7 @@ router.post("/items/:id/actions", (req, res) => {
   let salePatient = null;
   if (actionType === "stock_out" && stockOutReason === "Sale") {
     const requestedPatientId = Number(req.body.patient_id || 0);
-    if (!requestedPatientId) {
+    if (!Number.isInteger(requestedPatientId) || requestedPatientId <= 0) {
       return res.status(400).json({
         error: "Select an assigned patient before logging a Sale deduction.",
       });
@@ -1954,12 +1954,13 @@ router.post("/items/:id/actions", (req, res) => {
         WHERE id = ?
           AND deleted_at IS NULL
           AND assigned_doctor_id = ?
+          AND COALESCE(status, 'active') = 'active'
       `)
       .get(requestedPatientId, doctorId);
 
     if (!patientRow?.id) {
       return res.status(404).json({
-        error: "Selected patient is not on your assigned roster.",
+        error: "Selected patient is not on your active assigned roster.",
       });
     }
 

@@ -26,6 +26,7 @@ export const ROUTE_ACCESS = {
   "/hcm-news": ["admin", "doctor", "operator", "lab_tech", "accountant"],
   "/patients": ["admin", "doctor", "operator", "lab_tech"],
   "/patients/:id": ["admin", "doctor", "operator", "lab_tech"],
+  "/patients/add": ["admin", "doctor"],
   "/appointments": ["admin", "doctor"],
   "/doctor/current-week-roster": ["doctor"],
   "/doctor/april-roster": ["doctor"],
@@ -43,8 +44,11 @@ export const ROUTE_ACCESS = {
   "/operator/long-term-review": ["operator"],
   "/operator/review-appointments-april": ["operator"],
   "/consultations": ["admin", "doctor", "lab_tech"],
+  "/consultations/:id": ["admin", "doctor", "lab_tech"],
   "/lab": ["admin", "lab_tech"],
   "/billing": ["admin", "doctor", "accountant"],
+  "/admin/finance": ["admin", "doctor", "accountant"],
+  "/admin/roster": ["admin"],
   "/live-report": ["admin", "doctor"],
   "/inventory": ["admin", "doctor", "operator"],
   "/stock-history": ["admin", "operator"],
@@ -75,11 +79,19 @@ export function canAccessPath(role, path) {
     return false;
   }
 
-  if (path.startsWith("/patients/")) {
+  if (ROUTE_ACCESS[path]) {
+    return ROUTE_ACCESS[path].includes(role);
+  }
+
+  if (path.startsWith("/patients/") && path !== "/patients/add") {
     return ROUTE_ACCESS["/patients/:id"]?.includes(role) ?? false;
   }
 
-  return ROUTE_ACCESS[path]?.includes(role) ?? false;
+  if (path.startsWith("/consultations/")) {
+    return ROUTE_ACCESS["/consultations/:id"]?.includes(role) ?? false;
+  }
+
+  return false;
 }
 
 /** Admin and accountant: always. Doctors: any patient (same directory access as the Patients page). */

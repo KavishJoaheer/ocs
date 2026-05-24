@@ -54,7 +54,7 @@ function AdminRosterPage() {
     try {
       const formData = new FormData();
       formData.append("roster", rosterUploadFile);
-      const payload = await api.postForm("/dashboard/roster", formData);
+      const payload = await api.post("/dashboard/roster", formData);
       setRosterMeta(payload);
       setRosterUploadFile(null);
       toast.success("Roster PDF uploaded.");

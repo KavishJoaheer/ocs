@@ -118,8 +118,11 @@ function parseSubscription(raw) {
 }
 
 function getPushDeliveryOptions(payload = {}) {
+  // Keep urgency high so the OS surfaces alerts immediately, but give push
+  // services a 24h retention window so devices that are temporarily offline
+  // still receive low-stock/critical notifications when they reconnect.
   const options = {
-    TTL: 0,
+    TTL: 86400,
     urgency: "high",
   };
 
