@@ -1,11 +1,9 @@
 import { Link } from "react-router-dom";
 
 export default function DoctorMobileLowStockStrip({ lowStockCount }) {
-  if (lowStockCount === 0) {
+  if (!lowStockCount || lowStockCount === 0) {
     return null;
   }
-
-  const itemLabel = lowStockCount === 1 ? "item is" : "items are";
 
   return (
     <Link
@@ -19,7 +17,7 @@ export default function DoctorMobileLowStockStrip({ lowStockCount }) {
 
       <div className="flex w-full items-center justify-between gap-3">
         <span className="text-xs font-bold tracking-wide text-gray-800">
-          {lowStockCount} {itemLabel} currently low in your bag.
+          {lowStockCount} items are currently low in your bag.
         </span>
         <span className="shrink-0 rounded-lg bg-rose-100/60 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-rose-600">
           Action Needed

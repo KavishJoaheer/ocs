@@ -2421,7 +2421,7 @@ function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock,
   const qtyTone = low ? "text-rose-600" : "text-emerald-700";
 
   return (
-    <div className="flex min-h-[72px] items-center justify-between rounded-2xl border border-gray-100/50 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all active:scale-[0.99]">
+    <div className="flex min-h-[72px] items-center justify-between rounded-2xl bg-white p-4 shadow-sm transition-all active:scale-[0.99]">
       <div className="flex max-w-[65%] min-w-0 items-center gap-3">
         <span
           className={cx(
@@ -3856,13 +3856,15 @@ export default function InventoryPage() {
                     <col style={{ width: doctorDesktopBagTable ? "21%" : "26%" }} />
                     <col style={{ width: inventoryActionsColWidth }} />
                   </colgroup>
-                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
                       <th className="px-3 py-2 text-center align-middle">Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Min Qty</th>
                       <th className="px-3 py-2 text-center align-middle">Nearest Expiry</th>
-                      <th className="px-3 py-2 text-right align-middle">Actions</th>
+                      <th className="sticky right-0 z-30 bg-slate-50 px-3 py-2 text-right align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3931,10 +3933,12 @@ export default function InventoryPage() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-3 py-1.5 align-middle text-center">{item.minimum_quantity}</td>
-                            <td className="px-3 py-1.5 align-middle text-center">{item.expiry_date || "Not set"}</td>
+                            <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>
+                            <td className="truncate px-3 py-1.5 align-middle text-center" title={item.expiry_date || "Not set"}>
+                              {item.expiry_date || "Not set"}
+                            </td>
                             <td
-                              className="px-3 py-2 align-middle"
+                              className="sticky right-0 z-10 bg-white px-3 py-2 align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]"
                               onClick={(event) => event.stopPropagation()}
                             >
                               <div className="flex justify-end">

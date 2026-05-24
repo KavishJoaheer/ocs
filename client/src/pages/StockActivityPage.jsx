@@ -420,8 +420,17 @@ function StockActivityPage() {
           <EmptyState title="No activity recorded" description="Try changing the filters or date range to find stock events." />
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-600">
+            <table className="min-w-full table-fixed text-sm">
+              <colgroup>
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "16%" }} />
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "6%" }} />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-600">
                 <tr>
                   <th className="px-3 py-3 text-left">Timestamp</th>
                   <th className="px-3 py-3 text-left">Actor</th>
@@ -429,7 +438,9 @@ function StockActivityPage() {
                   <th className="px-3 py-3 text-left">Item & Qty</th>
                   <th className="px-3 py-3 text-left">Source / Destination</th>
                   <th className="px-3 py-3 text-left">Batch ID</th>
-                  <th className="px-3 py-3 text-right">Tools</th>
+                  <th className="sticky right-0 z-20 bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
+                    Tools
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -451,15 +462,25 @@ function StockActivityPage() {
                       : actionDisplayLabel(label);
                   return (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
-                      <td className="px-3 py-3 text-slate-700">{formatTimestamp(row.timestamp)}</td>
-                      <td className="px-3 py-3 text-slate-700">{row.actor_name || "System"} <span className="text-slate-400">({row.actor_role || "N/A"})</span></td>
-                      <td className="px-3 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`}>{actionCellText}</span>
+                      <td className="truncate px-3 py-3 text-slate-700" title={formatTimestamp(row.timestamp)}>
+                        {formatTimestamp(row.timestamp)}
                       </td>
-                      <td className="px-3 py-3 text-slate-700">{absoluteQty} units · {row.item_name || "-"}</td>
-                      <td className="px-3 py-3 text-slate-700">{row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}</td>
-                      <td className="px-3 py-3 text-xs text-slate-400">{row.batch_id || "-"}</td>
-                      <td className="px-3 py-3 text-right">
+                      <td className="truncate px-3 py-3 text-slate-700" title={`${row.actor_name || "System"} (${row.actor_role || "N/A"})`}>
+                        {row.actor_name || "System"} <span className="text-slate-400">({row.actor_role || "N/A"})</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`} title={actionCellText}>{actionCellText}</span>
+                      </td>
+                      <td className="truncate px-3 py-3 text-slate-700" title={`${absoluteQty} units · ${row.item_name || "-"}`}>
+                        {absoluteQty} units · {row.item_name || "-"}
+                      </td>
+                      <td className="truncate px-3 py-3 text-slate-700" title={`${row.source_text || "-"} → ${row.destination_text || "-"}`}>
+                        {row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}
+                      </td>
+                      <td className="truncate px-3 py-3 text-xs text-slate-400" title={row.batch_id || "-"}>
+                        {row.batch_id || "-"}
+                      </td>
+                      <td className="sticky right-0 z-10 bg-white px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]">
                         {transactionId && isRestockTransfer ? (
                           <button
                             type="button"

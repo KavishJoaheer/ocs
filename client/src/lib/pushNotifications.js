@@ -278,7 +278,12 @@ export async function subscribeToPushNotifications() {
       applicationServerKey: urlBase64ToUint8Array(publicKey),
     }));
 
-  await api.post("/push/subscribe", { subscription: subscription.toJSON() });
+  try {
+    await api.post("/push/subscribe", { subscription: subscription.toJSON() });
+  } catch (error) {
+    throw new Error(error?.message || "Could not save your notification subscription on the server.");
+  }
+
   window.localStorage.removeItem(PUSH_DISMISS_KEY);
 
   return subscription;

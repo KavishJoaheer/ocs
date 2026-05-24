@@ -1145,13 +1145,17 @@ function PatientProfilePage() {
   }
 
   async function reloadPatientProfile() {
-    const [response, doctorOptions] = await Promise.all([
-      api.get(`/patients/${id}`),
-      user.role === "admin" ? api.get("/doctors") : Promise.resolve(doctors),
-    ]);
+    try {
+      const [response, doctorOptions] = await Promise.all([
+        api.get(`/patients/${id}`),
+        user.role === "admin" ? api.get("/doctors") : Promise.resolve(doctors),
+      ]);
 
-    setData(response);
-    setDoctors(doctorOptions);
+      setData(response);
+      setDoctors(doctorOptions);
+    } catch (error) {
+      toast.error(error?.message || "Could not refresh the patient profile.");
+    }
   }
 
   async function handleSavePatient(payload) {

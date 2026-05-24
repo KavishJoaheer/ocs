@@ -229,8 +229,12 @@ function TeamOperationsPage() {
   }, [activeRole]);
 
   async function reloadMembers() {
-    const data = await api.get(`/team-operations/${activeRole}`);
-    setMembers(data);
+    try {
+      const data = await api.get(`/team-operations/${activeRole}`);
+      setMembers(data);
+    } catch (error) {
+      toast.error(error?.message || "Could not refresh team members.");
+    }
   }
 
   async function handleSave(payload) {

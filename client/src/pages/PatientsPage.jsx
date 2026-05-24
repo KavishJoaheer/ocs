@@ -806,7 +806,7 @@ function PatientsPage() {
                               <th className="w-[18%] px-4 py-2.5">Assigned clinician</th>
                               <th className="w-[16%] px-4 py-2.5">Review timeline</th>
                               <th className="w-[22%] px-4 py-2.5">Review notes</th>
-                              <th className="w-12 px-2 py-2.5 text-right">
+                              <th className="sticky right-0 z-10 w-12 bg-slate-50 px-2 py-2.5 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                                 <span className="sr-only">Row actions</span>
                               </th>
                             </tr>
@@ -817,7 +817,7 @@ function PatientsPage() {
                               <th className="w-[16%] px-4 py-2.5">Next of kin</th>
                               <th className="w-[22%] px-4 py-2.5">Clinical</th>
                               <th className="w-[10%] px-4 py-2.5">Created</th>
-                              <th className="w-12 px-2 py-2.5 text-right">
+                              <th className="sticky right-0 z-10 w-12 bg-slate-50 px-2 py-2.5 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                                 <span className="sr-only">Row actions</span>
                               </th>
                             </tr>
@@ -997,7 +997,7 @@ function PatientsPage() {
                                 </>
                               )}
 
-                              <td className="px-2 py-2 align-top">
+                              <td className="sticky right-0 z-10 bg-white px-2 py-2 align-top shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]">
                                 <div className="flex justify-end">
                                   <button
                                     type="button"
