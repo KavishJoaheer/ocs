@@ -701,7 +701,7 @@ router.get("/", (req, res) => {
   const requestedDoctorId = Number(req.query.doctorId);
   let doctorId =
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0 ? requestedDoctorId : null;
-  if (req.auth?.role === "doctor" && req.auth.doctor_id) {
+  if (myAssignedFilter && req.auth?.role === "doctor" && req.auth.doctor_id) {
     doctorId = Number(req.auth.doctor_id);
   }
 

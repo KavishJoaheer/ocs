@@ -253,6 +253,7 @@ function PatientsPage() {
       }
 
       if (myAssignedFilterActive && user.role === "doctor" && user.doctor_id) {
+        url += "&filter=my_assigned";
         url += `&doctorId=${user.doctor_id}`;
         if (statusFilter === "all") {
           url += "&status=active";
