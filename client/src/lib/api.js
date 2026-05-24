@@ -1,3 +1,5 @@
+import { NetworkError } from "./networkErrors.js";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const AUTH_TOKEN_KEY = "ocs_medecins_auth_token";
 
@@ -63,15 +65,21 @@ async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(resolveApiPath(path), {
-    ...options,
-    headers,
-    body: options.body
-      ? isFormData
-        ? options.body
-        : JSON.stringify(options.body)
-      : undefined,
-  });
+  let response;
+
+  try {
+    response = await fetch(resolveApiPath(path), {
+      ...options,
+      headers,
+      body: options.body
+        ? isFormData
+          ? options.body
+          : JSON.stringify(options.body)
+        : undefined,
+    });
+  } catch (error) {
+    throw new NetworkError("Network connection unavailable.", error);
+  }
 
   if (response.status === 204) {
     return null;

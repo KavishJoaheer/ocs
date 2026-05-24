@@ -39,6 +39,15 @@ import {
   notifyOcsInventoryUpdated,
   OCS_INVENTORY_EVENT,
 } from "../lib/inventorySync.js";
+import {
+  applyOptimisticBagDeduct,
+  applyOptimisticBagRestock,
+  OFFLINE_QUEUE_FLUSH_COMPLETE,
+  OFFLINE_QUEUE_ITEM_SYNCED,
+  OFFLINE_SAVED_TOAST,
+  queueInventoryMutation,
+  shouldQueueInventoryMutation,
+} from "../lib/inventoryOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
@@ -2962,6 +2971,31 @@ export default function InventoryPage() {
     }
   }, [showMobileDoctorBag, currentPage, mobileBagTotalPages]);
 
+  useEffect(() => {
+    if (!showMobileDoctorBag) {
+      return undefined;
+    }
+
+    function handleItemSynced(event) {
+      const result = event.detail?.result;
+      if (result) {
+        commitInventoryData(result);
+      }
+    }
+
+    function handleFlushComplete() {
+      void load(selectedContextDoctorId, doctorContext, { silent: true });
+    }
+
+    window.addEventListener(OFFLINE_QUEUE_ITEM_SYNCED, handleItemSynced);
+    window.addEventListener(OFFLINE_QUEUE_FLUSH_COMPLETE, handleFlushComplete);
+
+    return () => {
+      window.removeEventListener(OFFLINE_QUEUE_ITEM_SYNCED, handleItemSynced);
+      window.removeEventListener(OFFLINE_QUEUE_FLUSH_COMPLETE, handleFlushComplete);
+    };
+  }, [showMobileDoctorBag, commitInventoryData, selectedContextDoctorId, doctorContext]);
+
   async function loadBatches(itemId) {
     const key = Number(itemId);
     if (!key || batchMap[key]) return;
@@ -3388,17 +3422,46 @@ export default function InventoryPage() {
       return;
     }
 
+    const endpoint = `/inventory/restock/my-inventory${inventoryListQuery}`;
+    const payload = {
+      items: [
+        {
+          ocs_item_id: Number(target.ocs_item_id),
+          quantity: qty,
+          expiry_date,
+        },
+      ],
+    };
+
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
-        items: [
-          {
-            ocs_item_id: Number(target.ocs_item_id),
+      if (shouldQueueInventoryMutation()) {
+        await queueInventoryMutation({
+          kind: "inventory_restock",
+          endpoint,
+          payload,
+          meta: {
+            ocsItemId: target.ocs_item_id,
+            itemName: target.item_name,
             quantity: qty,
-            expiry_date,
+            doctorId: user.doctor_id,
           },
-        ],
-      });
+        });
+        if (data) {
+          commitInventoryData(
+            applyOptimisticBagRestock(data, {
+              ocsItemId: target.ocs_item_id,
+              itemName: target.item_name,
+              quantity: qty,
+            }),
+          );
+        }
+        setMobileRestockTarget(null);
+        toast.success(OFFLINE_SAVED_TOAST);
+        return;
+      }
+
+      const next = await api.post(endpoint, payload);
       commitInventoryData(next);
       setMobileRestockTarget(null);
       toast.success("Restocked from OCS master into your bag.");
@@ -3407,6 +3470,31 @@ export default function InventoryPage() {
         setReceiptModalOpen(true);
       }
     } catch (error) {
+      if (shouldQueueInventoryMutation(error)) {
+        await queueInventoryMutation({
+          kind: "inventory_restock",
+          endpoint,
+          payload,
+          meta: {
+            ocsItemId: target.ocs_item_id,
+            itemName: target.item_name,
+            quantity: qty,
+            doctorId: user.doctor_id,
+          },
+        });
+        if (data) {
+          commitInventoryData(
+            applyOptimisticBagRestock(data, {
+              ocsItemId: target.ocs_item_id,
+              itemName: target.item_name,
+              quantity: qty,
+            }),
+          );
+        }
+        setMobileRestockTarget(null);
+        toast.success(OFFLINE_SAVED_TOAST);
+        return;
+      }
       toast.error(error.message);
     } finally {
       setIsSaving(false);
@@ -3433,14 +3521,38 @@ export default function InventoryPage() {
           ? "Damage"
           : "";
 
+    const endpoint = `/inventory/items/${item.id}/actions${inventoryListQuery}`;
+    const payload = {
+      action_type: "stock_out",
+      quantity: qty,
+      reason: stockOutReason,
+      note,
+    };
+
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${item.id}/actions${inventoryListQuery}`, {
-        action_type: "stock_out",
-        quantity: qty,
-        reason: stockOutReason,
-        note,
-      });
+      if (shouldQueueInventoryMutation()) {
+        await queueInventoryMutation({
+          kind: "inventory_deduct",
+          endpoint,
+          payload,
+          meta: {
+            itemId: item.id,
+            itemName: item.item_name,
+            quantity: qty,
+            reason,
+            doctorId: user.doctor_id,
+          },
+        });
+        if (data) {
+          commitInventoryData(applyOptimisticBagDeduct(data, item.id, qty));
+        }
+        setMobileDeductItem(null);
+        toast.success(OFFLINE_SAVED_TOAST);
+        return;
+      }
+
+      const next = await api.post(endpoint, payload);
       commitInventoryData(next);
       setMobileDeductItem(null);
       if (reason === "Sale") {
@@ -3451,6 +3563,26 @@ export default function InventoryPage() {
         toast.success("Damaged stock logged to operational loss.");
       }
     } catch (error) {
+      if (shouldQueueInventoryMutation(error)) {
+        await queueInventoryMutation({
+          kind: "inventory_deduct",
+          endpoint,
+          payload,
+          meta: {
+            itemId: item.id,
+            itemName: item.item_name,
+            quantity: qty,
+            reason,
+            doctorId: user.doctor_id,
+          },
+        });
+        if (data) {
+          commitInventoryData(applyOptimisticBagDeduct(data, item.id, qty));
+        }
+        setMobileDeductItem(null);
+        toast.success(OFFLINE_SAVED_TOAST);
+        return;
+      }
       toast.error(error.message);
     } finally {
       setIsSaving(false);
