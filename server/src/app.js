@@ -2,6 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const { initializeDatabase } = require("./db");
 const authRouter = require("./routes/auth");
 const dashboardRouter = require("./routes/dashboard");
@@ -33,6 +35,10 @@ function getClientDistPath() {
     : path.resolve(__dirname, "../../client/dist");
 }
 
+function isProductionEnv() {
+  return String(process.env.NODE_ENV || "").toLowerCase() === "production";
+}
+
 function createApp() {
   if (!initialized) {
     initializeDatabase();
@@ -40,21 +46,74 @@ function createApp() {
   }
 
   const configuredOrigins = getAllowedOrigins();
+  const productionMode = isProductionEnv();
+
+  // Refuse to boot in production without an explicit allow-list. The previous
+  // behaviour (empty list → allow everything) would silently expose the API
+  // to any origin once deployed behind a public tunnel/CDN.
+  if (productionMode && configuredOrigins.length === 0) {
+    throw new Error(
+      "CLIENT_ORIGINS (or CLIENT_ORIGIN) must be set in production. " +
+        "Refusing to start with an open CORS allow-list.",
+    );
+  }
+
   const app = express();
+
+  // Behind Cloudflare/Tunnel/NAS reverse proxies the real client IP arrives
+  // in X-Forwarded-For. Trust the first hop so rate limiting and logging
+  // record the real IP instead of the loopback proxy address.
+  app.set("trust proxy", 1);
+
+  // Baseline security headers. CSP and COEP are disabled because the SPA
+  // bundle ships inline runtime, registers a service worker, and loads
+  // cross-origin push manager + EventSource — all of which need a tailored
+  // CSP that the SPA can opt into later.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    }),
+  );
 
   app.use(
     cors({
       origin(origin, callback) {
-        if (!origin || configuredOrigins.length === 0 || configuredOrigins.includes(origin)) {
+        if (!origin) {
+          // Same-origin / curl / mobile WebView with no Origin header.
+          callback(null, true);
+          return;
+        }
+        if (configuredOrigins.length === 0 || configuredOrigins.includes(origin)) {
           callback(null, true);
           return;
         }
 
         callback(new Error(`Origin not allowed by CORS: ${origin}`));
       },
+      credentials: true,
     }),
   );
   app.use(express.json({ limit: "2mb" }));
+
+  // Defensive throttles. Defaults are deliberately conservative so a
+  // mistyped script can't brute-force credentials or hammer the SQLite DB.
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: "Too many login attempts. Please try again in a few minutes." },
+  });
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.API_RATE_LIMIT_PER_MINUTE || 600),
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many requests. Please slow down and retry." },
+  });
 
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -70,6 +129,11 @@ function createApp() {
       },
     });
   });
+
+  // Apply the API throttle before any router so it covers public push +
+  // auth endpoints too. Login attempts get an additional, stricter limiter.
+  app.use("/api", apiLimiter);
+  app.use("/api/auth/login", loginLimiter);
 
   app.use("/api/auth", authRouter);
   app.use("/api/push", pushRouter);
