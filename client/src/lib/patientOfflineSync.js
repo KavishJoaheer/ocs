@@ -242,7 +242,7 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
         filter: "my_assigned",
         doctorId: String(doctorId),
         status: "active",
-        limit: "100",
+        limit: "500",
       });
       const live = await api.get(`/patients?${params.toString()}`);
       return (live?.items || [])

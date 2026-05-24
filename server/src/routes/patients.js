@@ -820,7 +820,16 @@ router.get("/", (req, res) => {
 
   const effectiveStatus =
     myAssignedFilter && req.auth?.role === "doctor" && !status ? "active" : status;
-  const { page, limit, offset } = toPagination(req.query.page, req.query.limit, 8);
+  // The Sale-allocation picker needs the full assigned roster in one shot so
+  // doctors with large patient panels still see every option without paging
+  // inside a select dropdown. Other list views keep the default 100 cap.
+  const pageLimitCeiling = myAssignedFilter ? 500 : 100;
+  const { page, limit, offset } = toPagination(
+    req.query.page,
+    req.query.limit,
+    8,
+    pageLimitCeiling,
+  );
   const operatorUserId = req.auth?.role === "operator" ? Number(req.auth.id) : null;
 
   const filters = {

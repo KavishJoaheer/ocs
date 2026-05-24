@@ -52,9 +52,10 @@ function calculateBillingTotal(items) {
   );
 }
 
-function toPagination(queryPage, queryLimit, fallbackLimit = 8) {
+function toPagination(queryPage, queryLimit, fallbackLimit = 8, maxLimit = 100) {
+  const ceiling = Math.max(1, Math.floor(Number(maxLimit) || 100));
   const page = Math.max(1, parseInt(queryPage || "1", 10));
-  const limit = Math.max(1, Math.min(100, parseInt(queryLimit || String(fallbackLimit), 10)));
+  const limit = Math.max(1, Math.min(ceiling, parseInt(queryLimit || String(fallbackLimit), 10)));
   const offset = (page - 1) * limit;
 
   return { page, limit, offset };
