@@ -171,6 +171,39 @@ function MobileLauncher({
       to: "/operator/billing-status",
       description: "Check billing status and payment follow-up.",
     });
+    const monthLabel = dayjs().format("MMMM");
+    cards.push(
+      {
+        label: "Scheduled visits",
+        icon: CalendarClock,
+        to: "/operator/scheduled-visits",
+        description: "Track future visits across all doctors.",
+      },
+      {
+        label: `${monthLabel} roster`,
+        icon: ClipboardList,
+        to: "/operator/april-roster",
+        description: "Open the full monthly doctor schedule.",
+      },
+      {
+        label: "Monthly review",
+        icon: UsersRound,
+        to: "/operator/review-appointments-april",
+        description: "Review this month's appointments across the team.",
+      },
+      {
+        label: "Pending payment",
+        icon: CreditCard,
+        to: "/operator/pending-payment",
+        description: "Follow up on unpaid consultation bills.",
+      },
+      {
+        label: "Long term review",
+        icon: Activity,
+        to: "/operator/long-term-review",
+        description: "Patients flagged for long-term operator follow-up.",
+      },
+    );
   }
 
   if (["admin", "doctor", "operator"].includes(user.role)) {
@@ -938,20 +971,11 @@ function DoctorScheduledVisitsWidget({ today, visits, listPath }) {
 
 function OperatorScheduledVisitsMetricCard() {
   return (
-    <div
-      aria-disabled="true"
-      className="relative flex min-h-[140px] cursor-not-allowed flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white px-5 py-5 opacity-50 md:px-6 md:py-5"
-    >
-      <div className="flex items-start gap-3 border-b border-gray-100 pb-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50 text-[#2d8f98]">
-            <CalendarClock className="size-5" />
-          </div>
-          <p className="text-base font-medium leading-snug tracking-tight text-slate-950">Scheduled visits</p>
-        </div>
-      </div>
-      <p className="mt-4 text-sm font-medium text-slate-500">Feature Inactive</p>
-    </div>
+    <PersonalOperationOverviewCard
+      icon={CalendarClock}
+      title="Scheduled visits"
+      to="/operator/scheduled-visits"
+    />
   );
 }
 
@@ -1201,6 +1225,11 @@ function OperatorPersonalOperationUpdates({ metrics }) {
             title="Pending payment"
             to="/operator/pending-payment"
           />
+          <PersonalOperationOverviewCard
+            icon={UsersRound}
+            title="Monthly review"
+            to="/operator/review-appointments-april"
+          />
         </div>
       </div>
     </div>
@@ -1357,7 +1386,7 @@ function OperatorDashboardView({ user, dashboard, operatorMetrics, onStatusChang
                     icon={ClipboardList}
                     size="compact"
                     title={`${monthLabel} roster`}
-                    onClick={onOpenRosterPdf}
+                    to="/operator/april-roster"
                   />
                 </div>
               </div>

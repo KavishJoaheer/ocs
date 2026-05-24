@@ -131,7 +131,7 @@ function AppShell() {
   const isDashboard = location.pathname === "/";
   const isPatientsDirectory = location.pathname === "/patients";
   const isInventory = location.pathname === "/inventory";
-  const hideBottomNav = isMobile;
+  const hideBottomNav = false;
   const userRole = user?.role;
   const alwaysHideTopHeader =
     (isDashboard && (userRole === "doctor" || userRole === "operator")) ||

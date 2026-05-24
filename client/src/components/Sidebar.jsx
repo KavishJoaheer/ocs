@@ -188,7 +188,7 @@ function Sidebar() {
     return new Set(paths);
   }, [user.role]);
 
-  const desktopOnlyPaths = new Set(["/appointments", "/live-report"]);
+  const desktopOnlyPaths = new Set(["/appointments"]);
 
   const drawerNavItems = useMemo(
     () => visibleNavItems.filter((item) => !bottomPaths.has(item.to) && !desktopOnlyPaths.has(item.to)),

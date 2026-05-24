@@ -7,7 +7,7 @@ export function getClinicalTwinMetricRoutes(role) {
       };
     case "operator":
       return {
-        longTermReview: "/patients?tab=under_review",
+        longTermReview: "/operator/long-term-review",
         healthPlans: "/patients?filter=subscribed",
       };
     case "doctor":
