@@ -6,6 +6,11 @@ const {
   normalizeBillingItems,
   parseBillingRow,
 } = require("../lib/utils");
+const { publishInventoryChange } = require("../lib/inventoryRealtime");
+const {
+  findUnbilledSaleCredit,
+  markSaleMovementsBilled,
+} = require("../lib/saleBillingLinkage");
 
 const router = express.Router();
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
@@ -211,10 +216,12 @@ function applyInventoryTransactions({
   items,
   userId,
   actor,
+  billingId = null,
 }) {
   const normalized = normalizeBillingItems(items);
   const inventoryLines = normalized.filter((item) => item.inventory_item_id && Number(item.quantity) > 0);
   const processed = [];
+  const touchedItemIds = new Set();
 
   for (const line of inventoryLines) {
     const stockItem = db
@@ -238,22 +245,49 @@ function applyInventoryTransactions({
       throw new Error("Inventory quantity must be a positive whole number.");
     }
 
+    const isSellLine = line.type !== "Wastage" && line.type !== "Adjustment";
+
+    // For Sale-style lines, see if the doctor already deducted this exact
+    // patient/item combo from the bag while in the field. If so we credit
+    // those movements against the bill instead of deducting again — which
+    // is how the bag was getting double-decremented before.
+    let linkedSaleMovementIds = [];
+    let qtyToDecrement = qty;
+    if (isSellLine && billingId) {
+      const { matched, consumedQty } = findUnbilledSaleCredit({
+        itemId: stockItem.id,
+        patientId: Number(consultation.patient_id),
+        doctorId: Number(consultation.doctor_id),
+        maxQty: qty,
+      });
+
+      if (matched.length > 0) {
+        linkedSaleMovementIds = markSaleMovementsBilled(matched, billingId);
+        qtyToDecrement = qty - consumedQty;
+      }
+    }
+
     const available = Number(stockItem.quantity || 0);
     const allowOverride = Boolean(line.emergency_override);
-    if (available < qty && !allowOverride) {
+    if (qtyToDecrement > 0 && available < qtyToDecrement && !allowOverride) {
       throw new Error(`Insufficient stock for ${stockItem.item_name}. Enable emergency override if clinically required.`);
     }
 
     const previousQuantity = available;
-    const nextQuantity = previousQuantity - qty;
-    const batchQty = allowOverride && available < qty ? Math.max(available, 0) : qty;
+    const nextQuantity = previousQuantity - qtyToDecrement;
+    const batchQty =
+      allowOverride && available < qtyToDecrement
+        ? Math.max(available, 0)
+        : qtyToDecrement;
     if (batchQty > 0) {
       consumeDoctorBatches(stockItem.id, batchQty);
     }
-    db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
-      nextQuantity,
-      stockItem.id,
-    );
+    if (qtyToDecrement > 0) {
+      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
+        nextQuantity,
+        stockItem.id,
+      );
+    }
 
     const actionType =
       line.type === "Wastage"
@@ -261,32 +295,43 @@ function applyInventoryTransactions({
         : line.type === "Adjustment"
           ? "adjustment"
           : "sell";
-    insertInventoryMovement({
-      itemId: stockItem.id,
-      quantity: qty,
-      previousQuantity,
-      nextQuantity,
-      actionType,
-      note:
-        actionType === "wastage"
-          ? "Marked as clinical wastage from billing."
-          : actionType === "adjustment"
-            ? "Inventory adjustment recorded from billing."
-          : "Billed to patient.",
-      userId,
-      appointmentId: consultation.appointment_id,
-      consultationId: consultation.id,
-      meta: {
-        item_name: stockItem.item_name,
-        emergency_override: Boolean(line.emergency_override),
-        batch_shortfall: allowOverride && available < qty ? qty - Math.max(available, 0) : 0,
-        performed_by_user_id: actor?.id || userId || null,
-        performed_by_role: actor?.role || "",
-        performed_by_name: actor?.full_name || actor?.username || "",
-        source_text: actor?.full_name ? `${actor.full_name} (${actor.role || ""})` : "Doctor Stock",
-        destination_text: "Patient Bill",
-      },
-    });
+
+    if (qtyToDecrement > 0) {
+      insertInventoryMovement({
+        itemId: stockItem.id,
+        quantity: qtyToDecrement,
+        previousQuantity,
+        nextQuantity,
+        actionType,
+        note:
+          actionType === "wastage"
+            ? "Marked as clinical wastage from billing."
+            : actionType === "adjustment"
+              ? "Inventory adjustment recorded from billing."
+            : "Billed to patient.",
+        userId,
+        appointmentId: consultation.appointment_id,
+        consultationId: consultation.id,
+        meta: {
+          item_name: stockItem.item_name,
+          emergency_override: Boolean(line.emergency_override),
+          batch_shortfall:
+            allowOverride && available < qtyToDecrement
+              ? qtyToDecrement - Math.max(available, 0)
+              : 0,
+          performed_by_user_id: actor?.id || userId || null,
+          performed_by_role: actor?.role || "",
+          performed_by_name: actor?.full_name || actor?.username || "",
+          source_text: actor?.full_name ? `${actor.full_name} (${actor.role || ""})` : "Doctor Stock",
+          destination_text: "Patient Bill",
+          billing_id: billingId,
+          linked_sale_movement_ids: linkedSaleMovementIds,
+          linked_sale_credit_qty: qty - qtyToDecrement,
+        },
+      });
+    }
+
+    touchedItemIds.add(Number(stockItem.id));
 
     processed.push({
       ...line,
@@ -296,11 +341,12 @@ function applyInventoryTransactions({
           ? roundCurrency(Number(stockItem.cost_price || 0) * qty)
           : roundCurrency(Number(stockItem.selling_price || 0) * qty),
       inventory_item_id: Number(stockItem.id),
+      linked_sale_movement_ids: linkedSaleMovementIds,
     });
   }
 
   const passthrough = normalized.filter((item) => !(item.inventory_item_id && Number(item.quantity) > 0));
-  return [...passthrough, ...processed];
+  return { items: [...passthrough, ...processed], touchedItemIds: [...touchedItemIds] };
 }
 
 function getJoinedBillById(billId) {
@@ -562,16 +608,14 @@ router.post("/", (req, res) => {
       : null;
 
   let createdId = null;
+  let touchedItemIds = [];
   try {
     db.transaction(() => {
-      const computedItems = applyInventoryTransactions({
-        consultation,
-        items,
-        userId: req.auth?.id || null,
-        actor: req.auth || {},
-      });
-
-      const result = db.prepare(`
+      // Insert a placeholder bill first so the linkage helper has a billing
+      // id to stamp onto any matched Sale movements. Items + total are
+      // computed inside the same transaction below so callers never observe
+      // the empty row.
+      const inserted = db.prepare(`
         INSERT INTO billing (
           consultation_id,
           patient_id,
@@ -581,20 +625,47 @@ router.post("/", (req, res) => {
           payment_method,
           payment_date
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, '[]', 0, ?, ?, ?)
       `).run(
         consultationId,
         patientId,
-        JSON.stringify(computedItems),
-        calculateBillingTotal(computedItems),
         status,
         paymentMethod,
         paymentDate,
       );
-      createdId = Number(result.lastInsertRowid);
+      createdId = Number(inserted.lastInsertRowid);
+
+      const { items: computedItems, touchedItemIds: itemIds } = applyInventoryTransactions({
+        consultation,
+        items,
+        userId: req.auth?.id || null,
+        actor: req.auth || {},
+        billingId: createdId,
+      });
+      touchedItemIds = itemIds;
+
+      db.prepare(`
+        UPDATE billing
+        SET items = ?, total_amount = ?
+        WHERE id = ?
+      `).run(
+        JSON.stringify(computedItems),
+        calculateBillingTotal(computedItems),
+        createdId,
+      );
     })();
   } catch (error) {
     return res.status(400).json({ error: error?.message || "Failed to create billing entry." });
+  }
+
+  // Fan stock-level changes out to every other connected tab/device so the
+  // doctor's bag and OCS views stay in sync after a billing run.
+  for (const itemId of touchedItemIds) {
+    try {
+      publishInventoryChange({ itemId, changedByUserId: req.auth?.id || null });
+    } catch (publishError) {
+      console.warn("[billing] publishInventoryChange failed:", publishError?.message || publishError);
+    }
   }
 
   res.status(201).json(getJoinedBillById(createdId));

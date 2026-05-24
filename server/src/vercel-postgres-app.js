@@ -1067,6 +1067,18 @@ function createPostgresApp() {
       return res.status(400).json({ error: "At least one billing line item is required." });
     }
 
+    // The Vercel/Postgres build does NOT mirror the inventory tables, so a
+    // bill that touches inventory_item_id would silently skip the doctor
+    // bag decrement and the Sale↔billing linkage. Fail loud instead of
+    // corrupting stock numbers — production deployments must run the
+    // SQLite/NAS build (USE_POSTGRES=false) for any inventory-linked work.
+    if (items.some((item) => item?.inventory_item_id && Number(item.quantity) > 0)) {
+      return res.status(503).json({
+        error:
+          "This deployment runs without inventory sync. Inventory-linked billing must be created on the primary (SQLite/NAS) build.",
+      });
+    }
+
     const status = String(req.body.status ?? "unpaid")
       .trim()
       .toLowerCase();

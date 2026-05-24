@@ -66,11 +66,22 @@ function sortEntries(entries) {
   return [...entries].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
 }
 
+function matchesUserScope(entry, userId) {
+  if (userId == null) {
+    return true;
+  }
+  const entryUserId = entry?.userId;
+  // Legacy entries (no userId) are treated as orphaned — they belong to a
+  // previous session and should not leak across user switches.
+  return entryUserId != null && Number(entryUserId) === Number(userId);
+}
+
 export async function enqueueOfflineMutation(entry) {
   const record = {
     ...entry,
     id: entry.id || crypto.randomUUID(),
     timestamp: entry.timestamp || new Date().toISOString(),
+    userId: entry.userId != null ? Number(entry.userId) : null,
   };
 
   if (supportsIndexedDb()) {
@@ -86,19 +97,22 @@ export async function enqueueOfflineMutation(entry) {
   return record;
 }
 
-export async function listOfflineMutations() {
+export async function listOfflineMutations({ userId = null } = {}) {
+  let entries;
   if (supportsIndexedDb()) {
-    const entries = await withStore("readonly", (store) =>
+    entries = await withStore("readonly", (store) =>
       new Promise((resolve, reject) => {
         const request = store.getAll();
         request.onsuccess = () => resolve(request.result || []);
         request.onerror = () => reject(request.error);
       }),
     );
-    return sortEntries(entries);
+  } else {
+    entries = readLocalStorageQueue();
   }
 
-  return sortEntries(readLocalStorageQueue());
+  const scoped = userId == null ? entries : entries.filter((entry) => matchesUserScope(entry, userId));
+  return sortEntries(scoped);
 }
 
 export async function removeOfflineMutation(id) {
@@ -116,7 +130,38 @@ export async function removeOfflineMutation(id) {
   writeLocalStorageQueue(readLocalStorageQueue().filter((entry) => entry.id !== id));
 }
 
-export async function countOfflineMutations() {
-  const entries = await listOfflineMutations();
+export async function countOfflineMutations({ userId = null } = {}) {
+  const entries = await listOfflineMutations({ userId });
   return entries.length;
+}
+
+export async function clearOfflineMutationsForUser(userId) {
+  if (userId == null) return 0;
+  const targetId = Number(userId);
+
+  if (supportsIndexedDb()) {
+    const removed = await withStore("readwrite", (store) =>
+      new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+          const all = request.result || [];
+          let count = 0;
+          for (const entry of all) {
+            if (entry?.userId != null && Number(entry.userId) === targetId) {
+              store.delete(entry.id);
+              count += 1;
+            }
+          }
+          resolve(count);
+        };
+        request.onerror = () => reject(request.error);
+      }),
+    );
+    return removed;
+  }
+
+  const entries = readLocalStorageQueue();
+  const kept = entries.filter((entry) => !(entry?.userId != null && Number(entry.userId) === targetId));
+  writeLocalStorageQueue(kept);
+  return entries.length - kept.length;
 }

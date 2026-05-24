@@ -1,4 +1,6 @@
 const { db } = require("../db");
+const { publishInventoryChange } = require("./inventoryRealtime");
+const { unlinkSaleMovementsForBills } = require("./saleBillingLinkage");
 
 function restoreBatch(itemId, quantity, expiryDate, unitCost) {
   if (quantity <= 0) return;
@@ -14,6 +16,20 @@ function reverseInventoryForConsultation(consultationId, actor = {}) {
     .get(consultationId);
   if (!consultation) {
     return { reversed: 0 };
+  }
+
+  // Any Sale movements that were "absorbed" into bills for this
+  // consultation need to flip back to Pending Manual Entry so the next
+  // bill in the linkage window can pick them up. The bag stays decremented
+  // because the doctor really did dispense the item — only the linkage is
+  // undone.
+  const billIds = db
+    .prepare("SELECT id FROM billing WHERE consultation_id = ?")
+    .all(consultationId)
+    .map((row) => Number(row.id))
+    .filter(Boolean);
+  if (billIds.length > 0) {
+    unlinkSaleMovementsForBills(billIds);
   }
 
   const movements = db
@@ -37,6 +53,7 @@ function reverseInventoryForConsultation(consultationId, actor = {}) {
   }
 
   let reversed = 0;
+  const touchedItemIds = new Set();
   for (const movement of movements) {
     const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(movement.item_id);
     if (!item) continue;
@@ -48,6 +65,7 @@ function reverseInventoryForConsultation(consultationId, actor = {}) {
     const nextQuantity = previousQuantity + qty;
 
     restoreBatch(item.id, qty, item.expiry_date, item.cost_price);
+    touchedItemIds.add(Number(item.id));
     db.prepare(`
       UPDATE inventory
       SET quantity = ?, updated_at = CURRENT_TIMESTAMP
@@ -90,6 +108,14 @@ function reverseInventoryForConsultation(consultationId, actor = {}) {
     DELETE FROM inventory_movements
     WHERE id IN (${movementIds.map(() => "?").join(", ")})
   `).run(...movementIds);
+
+  for (const itemId of touchedItemIds) {
+    try {
+      publishInventoryChange({ itemId, changedByUserId: actor?.id || null });
+    } catch (error) {
+      console.warn("[inventoryReversal] publishInventoryChange failed:", error?.message || error);
+    }
+  }
 
   return { reversed };
 }

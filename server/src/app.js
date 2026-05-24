@@ -19,6 +19,7 @@ const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
+const { withClientSessionContext } = require("./lib/inventoryRealtime");
 
 let initialized = false;
 
@@ -96,6 +97,12 @@ function createApp() {
     }),
   );
   app.use(express.json({ limit: "2mb" }));
+
+  // Capture the per-tab X-Client-Session-Id into an async-local store so deep
+  // helpers (inventory writes, billing decrements) can fan SSE updates to
+  // every device except the originating tab without threading the id through
+  // every call site.
+  app.use(withClientSessionContext);
 
   // Defensive throttles. Defaults are deliberately conservative so a
   // mistyped script can't brute-force credentials or hammer the SQLite DB.

@@ -28,6 +28,8 @@
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
     "audit:push-audience": "node src/scripts/validatePushAudienceRouting.js",
     "audit:inventory-realtime": "node src/scripts/validateInventoryRealtimeRouting.js",
+    "audit:sale-billing-linkage": "node src/scripts/validateSaleBillingLinkage.js",
+    "audit:cross-device-stream": "node src/scripts/validateCrossDeviceInventoryStream.js",
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
     "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",
     "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js"

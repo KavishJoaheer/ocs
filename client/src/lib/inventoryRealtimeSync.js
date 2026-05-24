@@ -1,4 +1,5 @@
 import { getStoredAuthToken, resolveApiPath } from "./api.js";
+import { getClientSessionId } from "./clientSession.js";
 import {
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
@@ -138,7 +139,10 @@ export function startInventoryRealtimeSync(user) {
   stopInventoryRealtimeSync();
   activeSessionKey = sessionKey;
 
-  const streamUrl = `${resolveApiPath("/inventory/stream")}?access_token=${encodeURIComponent(token)}`;
+  const tabSessionId = getClientSessionId();
+  const streamUrl = `${resolveApiPath("/inventory/stream")}?access_token=${encodeURIComponent(
+    token,
+  )}&client_session_id=${encodeURIComponent(tabSessionId)}`;
   const source = new EventSource(streamUrl);
   eventSource = source;
 
@@ -153,7 +157,13 @@ export function startInventoryRealtimeSync(user) {
         return;
       }
 
-      if (Number(event.changedByUserId || 0) === Number(user.id || 0)) {
+      // Only suppress the originating tab. A second tab/device for the same
+      // user must still receive and apply the change so the inventory stays
+      // in sync across devices.
+      if (
+        event.changedByClientSessionId &&
+        String(event.changedByClientSessionId) === tabSessionId
+      ) {
         return;
       }
 

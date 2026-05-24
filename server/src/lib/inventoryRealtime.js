@@ -1,9 +1,32 @@
+const { AsyncLocalStorage } = require("node:async_hooks");
 const { db } = require("../db");
 const { ensureInventoryRowVersionColumn } = require("./inventoryQuantity");
 
-/** @type {Map<number, { res: import('express').Response, role: string, doctorId: number|null, userId: number }>} */
+/** @type {Map<number, { res: import('express').Response, role: string, doctorId: number|null, userId: number, clientSessionId: string }>} */
 const clients = new Map();
 let nextClientId = 1;
+
+// Request-scoped context so deep helpers (e.g. recordMovement) can fan out
+// inventory changes that are correctly tagged with the originating tab's
+// client_session_id without every caller having to thread it manually.
+const requestContext = new AsyncLocalStorage();
+
+function extractClientSessionId(req) {
+  if (!req) return "";
+  const headerId = req.headers ? req.headers["x-client-session-id"] : null;
+  const queryId = req.query ? req.query.client_session_id || req.query.clientSessionId : null;
+  return String(headerId || queryId || "").trim();
+}
+
+function withClientSessionContext(req, _res, next) {
+  const clientSessionId = extractClientSessionId(req);
+  requestContext.run({ clientSessionId }, () => next());
+}
+
+function getCurrentClientSessionId() {
+  const ctx = requestContext.getStore();
+  return ctx?.clientSessionId || "";
+}
 
 function shouldDeliverInventoryEvent(client, event) {
   const role = String(client.role || "");
@@ -31,7 +54,7 @@ function writeSseEvent(res, eventName, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function addInventoryStreamClient(res, auth) {
+function addInventoryStreamClient(res, auth, clientSessionId = "") {
   const clientId = nextClientId;
   nextClientId += 1;
 
@@ -40,6 +63,7 @@ function addInventoryStreamClient(res, auth) {
     role: auth.role,
     doctorId: auth.doctor_id ? Number(auth.doctor_id) : null,
     userId: Number(auth.id),
+    clientSessionId: String(clientSessionId || ""),
   });
 
   res.on("close", () => {
@@ -55,7 +79,11 @@ function addInventoryStreamClient(res, auth) {
   return clientId;
 }
 
-function publishInventoryChange({ itemId, changedByUserId = null } = {}) {
+function publishInventoryChange({
+  itemId,
+  changedByUserId = null,
+  changedByClientSessionId = null,
+} = {}) {
   ensureInventoryRowVersionColumn();
 
   const row = db
@@ -78,6 +106,13 @@ function publishInventoryChange({ itemId, changedByUserId = null } = {}) {
     return { delivered: 0 };
   }
 
+  // Auto-fill the session id from the request context when callers don't
+  // pass one explicitly (e.g. recordMovement is invoked from deep within a
+  // route handler).
+  const sessionId = changedByClientSessionId
+    ? String(changedByClientSessionId)
+    : getCurrentClientSessionId() || null;
+
   const event = {
     type: "inventory_change",
     itemId: Number(row.id),
@@ -89,6 +124,7 @@ function publishInventoryChange({ itemId, changedByUserId = null } = {}) {
     rowVersion: Number(row.row_version || 1),
     updatedAt: row.updated_at || null,
     changedByUserId: changedByUserId ? Number(changedByUserId) : null,
+    changedByClientSessionId: sessionId || null,
   };
 
   let delivered = 0;
@@ -116,7 +152,7 @@ function handleInventoryStream(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
 
-  addInventoryStreamClient(res, req.auth);
+  addInventoryStreamClient(res, req.auth, extractClientSessionId(req));
 
   const heartbeat = setInterval(() => {
     try {
@@ -133,7 +169,10 @@ function handleInventoryStream(req, res) {
 
 module.exports = {
   addInventoryStreamClient,
+  extractClientSessionId,
+  getCurrentClientSessionId,
   handleInventoryStream,
   publishInventoryChange,
   shouldDeliverInventoryEvent,
+  withClientSessionContext,
 };

@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
+import { setOfflineQueueUserContext } from "../lib/inventoryOfflineSync.js";
+import { clearOfflineMutationsForUser } from "../lib/offlineQueue.js";
 import {
   clearPatientOfflineCache,
   prefetchPatientOfflineDirectory,
@@ -17,6 +19,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async ({ remote = true } = {}) => {
     const activeToken = getStoredAuthToken();
+    const departingUserId = user?.id ?? null;
 
     if (remote && activeToken) {
       try {
@@ -34,8 +37,18 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
     setHcmUnreadCount(0);
+    // Detach the offline queue from this user immediately so any subsequent
+    // login on the same device starts with a clean scope.
+    setOfflineQueueUserContext(null);
+    if (departingUserId != null) {
+      try {
+        await clearOfflineMutationsForUser(departingUserId);
+      } catch {
+        // Best effort cleanup only.
+      }
+    }
     await clearPatientOfflineCache();
-  }, []);
+  }, [user?.id]);
 
   const login = useCallback(async ({ username, password }) => {
     const payload = await api.post(
@@ -47,6 +60,7 @@ export function AuthProvider({ children }) {
     setStoredAuthToken(payload.token);
     setToken(payload.token);
     setUser(payload.user);
+    setOfflineQueueUserContext(payload.user?.id ?? null);
 
     if (payload.user?.role === "doctor") {
       void prefetchPatientOfflineDirectory(payload.user.id);
@@ -141,6 +155,7 @@ export function AuthProvider({ children }) {
         const payload = await api.get("/auth/me");
         if (!ignore) {
           setUser(payload.user);
+          setOfflineQueueUserContext(payload.user?.id ?? null);
           if (payload.user?.role === "doctor") {
             void prefetchPatientOfflineDirectory(payload.user.id);
           }

@@ -9,6 +9,16 @@ import {
 } from "./offlineQueue.js";
 import { notifyDoctorBagInventoryUpdated } from "./inventorySync.js";
 
+let activeUserId = null;
+
+export function setOfflineQueueUserContext(userId) {
+  activeUserId = userId != null ? Number(userId) : null;
+}
+
+export function getOfflineQueueUserContext() {
+  return activeUserId;
+}
+
 export const OFFLINE_SAVED_TOAST =
   "Transaction saved locally. Will sync automatically once your connection is restored.";
 
@@ -75,6 +85,7 @@ export async function queueInventoryMutation({
   endpoint,
   payload,
   meta = {},
+  userId = activeUserId,
 }) {
   if (!INVENTORY_QUEUE_KINDS.has(kind)) {
     throw new Error("Unsupported offline inventory mutation.");
@@ -86,6 +97,7 @@ export async function queueInventoryMutation({
     endpoint,
     payload,
     meta,
+    userId: userId != null ? Number(userId) : null,
   });
 
   notifyQueueChanged();
@@ -97,16 +109,27 @@ export function shouldQueueInventoryMutation(error) {
 }
 
 export async function getPendingInventoryQueueCount() {
-  const entries = await listOfflineMutations();
+  const entries = await listOfflineMutations({ userId: activeUserId });
   return entries.filter((entry) => INVENTORY_QUEUE_KINDS.has(entry.kind)).length;
 }
 
 export async function flushOfflineQueue({ silent = false } = {}) {
   if (typeof window === "undefined" || isBrowserOffline()) {
-    return { synced: 0, remaining: await countOfflineMutations() };
+    return { synced: 0, remaining: await countOfflineMutations({ userId: activeUserId }) };
   }
 
-  const entries = await listOfflineMutations();
+  // Refuse to flush before a user is bound to the queue. Without this guard
+  // a stale entry from a previous session could be replayed under whatever
+  // bearer token the next user lands with.
+  if (activeUserId == null) {
+    return { synced: 0, remaining: 0 };
+  }
+
+  // Only flush entries that belong to the currently signed-in user. This
+  // protects against scenarios where User A queues an offline action and
+  // then User B signs in on the same device — without this scope, B's
+  // bearer token would replay A's mutation against the server.
+  const entries = await listOfflineMutations({ userId: activeUserId });
   let synced = 0;
 
   for (const entry of entries) {
@@ -170,7 +193,7 @@ export async function flushOfflineQueue({ silent = false } = {}) {
     }
   }
 
-  const remaining = await countOfflineMutations();
+  const remaining = await countOfflineMutations({ userId: activeUserId });
   notifyQueueChanged();
   dispatchQueueEvent(OFFLINE_QUEUE_FLUSH_COMPLETE, { synced, remaining });
 

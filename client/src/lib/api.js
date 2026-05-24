@@ -1,3 +1,4 @@
+import { CLIENT_SESSION_HEADER, getClientSessionId } from "./clientSession.js";
 import { NetworkError } from "./networkErrors.js";
 
 export class ApiError extends Error {
@@ -72,6 +73,13 @@ async function apiRequest(path, options = {}) {
 
   if (!options.skipAuth && authToken && !headers.Authorization) {
     headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  // Always advertise the per-tab session id so the server can fan real-time
+  // inventory changes out to every other connected tab/device for the same
+  // user without echoing the mutation back to the originating tab.
+  if (!headers[CLIENT_SESSION_HEADER]) {
+    headers[CLIENT_SESSION_HEADER] = getClientSessionId();
   }
 
   let response;
