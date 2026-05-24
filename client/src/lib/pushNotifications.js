@@ -2,6 +2,15 @@ import { api } from "./api.js";
 
 const SW_PATH = "/sw.js";
 const PUSH_DISMISS_KEY = "ocs_push_banner_dismissed";
+const PUSH_SUBSCRIBER_ROLES = ["admin", "doctor", "operator", "lab_tech", "accountant"];
+
+export class PushPermissionDeniedError extends Error {
+  constructor() {
+    super("Notifications are blocked in your browser settings.");
+    this.name = "PushPermissionDeniedError";
+    this.recoveryInstructions = getPushPermissionRecoveryInstructions();
+  }
+}
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -92,6 +101,57 @@ export async function getPushPermissionState() {
   return Notification.permission;
 }
 
+export function getPushPermissionRecoveryInstructions() {
+  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+  const isIOS =
+    /iPad|iPhone|iPod/.test(userAgent) ||
+    (typeof navigator !== "undefined" &&
+      navigator.platform === "MacIntel" &&
+      navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(userAgent);
+
+  if (isIOS) {
+    return {
+      title: "Notifications blocked",
+      description:
+        "Low-stock and HCM alerts cannot reach this device until iOS notifications are re-enabled for OCS.",
+      steps: [
+        "Open Settings → Notifications",
+        "Select the OCS home-screen app",
+        "Turn on Allow Notifications and Alerts",
+        "Return here and enable alerts again",
+      ],
+    };
+  }
+
+  if (isAndroid) {
+    return {
+      title: "Notifications blocked",
+      description:
+        "Critical inventory alerts are paused because Android blocked notifications for this app or browser.",
+      steps: [
+        "Open Settings → Apps → OCS (or Chrome if using the browser)",
+        "Tap Notifications and enable all categories",
+        "Return here and turn alerts back on",
+      ],
+    };
+  }
+
+  return {
+    title: "Notifications blocked",
+    description: "Your browser is blocking OCS alerts. Re-enable notifications in site settings to restore them.",
+    steps: [
+      "Open browser settings for this site",
+      "Set Notifications to Allow",
+      "Reload OCS and enable alerts again",
+    ],
+  };
+}
+
+export function canSubscribeToPush(role) {
+  return PUSH_SUBSCRIBER_ROLES.includes(role);
+}
+
 export function getPushBannerCopy(role) {
   if (role === "doctor") {
     return {
@@ -173,9 +233,21 @@ export async function syncPushSubscriptionIfGranted() {
   }
 }
 
+export async function refreshPushSubscriptionOnLogin(role) {
+  if (!canSubscribeToPush(role)) {
+    return null;
+  }
+
+  return syncPushSubscriptionIfGranted();
+}
+
 export async function subscribeToPushNotifications() {
   if (!isPushSupported()) {
     throw new Error("Push notifications are not supported on this device.");
+  }
+
+  if (Notification.permission === "denied") {
+    throw new PushPermissionDeniedError();
   }
 
   const { configured, publicKey } = await fetchPushConfiguration();
@@ -184,6 +256,10 @@ export async function subscribeToPushNotifications() {
   }
 
   const permission = await Notification.requestPermission();
+  if (permission === "denied") {
+    throw new PushPermissionDeniedError();
+  }
+
   if (permission !== "granted") {
     throw new Error("Notification permission was not granted.");
   }

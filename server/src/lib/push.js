@@ -80,7 +80,7 @@ function configureWebPush() {
   }
 
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || "mailto:support@ocs.local",
+    process.env.VAPID_SUBJECT || "mailto:admin@ocsmedecins.com",
     keys.publicKey,
     keys.privateKey,
   );
@@ -117,6 +117,20 @@ function parseSubscription(raw) {
   }
 }
 
+function getPushDeliveryOptions(payload = {}) {
+  const options = {
+    TTL: 0,
+    urgency: "high",
+  };
+
+  const topic = String(payload?.tag || "").trim();
+  if (topic) {
+    options.topic = topic.slice(0, 32);
+  }
+
+  return options;
+}
+
 async function sendNotification(subscriptionRaw, payload) {
   if (!isPushConfigured()) {
     return { ok: false, skipped: true, reason: "push_not_configured" };
@@ -130,8 +144,17 @@ async function sendNotification(subscriptionRaw, payload) {
   const body =
     typeof payload === "string" ? payload : JSON.stringify(payload ?? {});
 
+  let deliveryPayload = payload;
+  if (typeof payload === "string") {
+    try {
+      deliveryPayload = JSON.parse(payload);
+    } catch {
+      deliveryPayload = {};
+    }
+  }
+
   try {
-    await webpush.sendNotification(subscription, body);
+    await webpush.sendNotification(subscription, body, getPushDeliveryOptions(deliveryPayload));
     return { ok: true };
   } catch (error) {
     const statusCode = Number(error?.statusCode || 0);
@@ -392,7 +415,7 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
         ? "1 kit item is below 50% par level. Tap to restock now."
         : `${count} kit items are below 50% par level. Tap to restock now.`,
     url: "/inventory?context=my&restock=alert",
-    icon: "/favicon.svg",
+    icon: "/icon-192.png",
     tag: "doctor-low-stock",
   };
 
@@ -427,7 +450,8 @@ async function notifyOcsLowStockSubscribers({ userIds = null } = {}) {
         ? "1 OCS stock item is at or below par level. Tap to review inventory."
         : `${count} OCS stock items are at or below par level. Tap to review inventory.`,
     url: "/inventory",
-    icon: "/favicon.svg",
+    icon: "/icon-192.png",
+    tag: "ocs-low-stock",
   };
 
   const results = await Promise.allSettled(
@@ -618,7 +642,8 @@ async function broadcastHcmNewsToDoctors(newsArticle) {
     title: "📢 New HCM Update",
     body: `${title} - Tap to read full notice.`,
     url: "/hcm-news",
-    icon: "/assets/icons/news-icon.svg",
+    icon: "/icon-192.png",
+    tag: "hcm-news",
   };
 
   await Promise.allSettled(

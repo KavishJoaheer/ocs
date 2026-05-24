@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { BellRing, X } from "lucide-react";
+import { AlertTriangle, BellRing, X } from "lucide-react";
 import toast from "react-hot-toast";
 import {
+  PushPermissionDeniedError,
   dismissPushBanner,
   fetchPushConfiguration,
   getPushBannerCopy,
+  getPushPermissionRecoveryInstructions,
   getPushPermissionState,
   isPushBannerDismissed,
   isPushSupported,
@@ -13,8 +15,10 @@ import {
 
 function PushNotificationBanner({ role, className = "" }) {
   const [visible, setVisible] = useState(false);
+  const [isDenied, setIsDenied] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
   const copy = getPushBannerCopy(role);
+  const recovery = getPushPermissionRecoveryInstructions();
 
   useEffect(() => {
     let cancelled = false;
@@ -23,6 +27,7 @@ function PushNotificationBanner({ role, className = "" }) {
       if (!isPushSupported() || isPushBannerDismissed()) {
         if (!cancelled) {
           setVisible(false);
+          setIsDenied(false);
         }
         return;
       }
@@ -33,14 +38,23 @@ function PushNotificationBanner({ role, className = "" }) {
       ]);
 
       if (!cancelled) {
-        setVisible(configured && permission === "default");
+        setIsDenied(permission === "denied");
+        setVisible(configured && (permission === "default" || permission === "denied"));
       }
     }
 
     evaluateVisibility();
 
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        evaluateVisibility();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -55,7 +69,13 @@ function PushNotificationBanner({ role, className = "" }) {
       await subscribeToPushNotifications();
       toast.success("Notifications enabled.");
       setVisible(false);
+      setIsDenied(false);
     } catch (error) {
+      if (error instanceof PushPermissionDeniedError) {
+        setIsDenied(true);
+        return;
+      }
+
       const message = error?.message || "Could not enable notifications.";
       if (!message.toLowerCase().includes("not available")) {
         toast.error(message);
@@ -72,19 +92,38 @@ function PushNotificationBanner({ role, className = "" }) {
     setVisible(false);
   }
 
+  const shellClassName = isDenied
+    ? `rounded-2xl border border-amber-200 bg-[#fff8eb] px-4 py-3 shadow-sm ${className}`.trim()
+    : `rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] px-4 py-3 shadow-sm ${className}`.trim();
+
   return (
     <div
-      className={`rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] px-4 py-3 shadow-sm ${className}`.trim()}
-      role="region"
-      aria-label="Enable push notifications"
+      className={shellClassName}
+      role="dialog"
+      aria-modal="true"
+      aria-label={isDenied ? "Notification permission recovery" : "Enable push notifications"}
     >
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#2d8f98] shadow-sm">
-          <BellRing className="size-5" aria-hidden />
-        </div>
+        <BannerIcon isDenied={isDenied} />
+
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#3b4733]">{copy.title}</p>
-          <p className="mt-1 text-xs leading-relaxed text-[#67755d]">{copy.description}</p>
+          {isDenied ? (
+            <>
+              <p className="text-sm font-semibold text-[#7a4b00]">{recovery.title}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#8a5a12]">{recovery.description}</p>
+              <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-[#7a4b00]">
+                {recovery.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-[#3b4733]">{copy.title}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#67755d]">{copy.description}</p>
+            </>
+          )}
+
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -92,7 +131,13 @@ function PushNotificationBanner({ role, className = "" }) {
               onClick={handleEnable}
               className="inline-flex items-center justify-center rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isEnabling ? "Enabling..." : "Turn on notifications"}
+              {isEnabling
+                ? isDenied
+                  ? "Checking..."
+                  : "Enabling..."
+                : isDenied
+                  ? "I updated settings"
+                  : "Turn on notifications"}
             </button>
             <button
               type="button"
@@ -103,6 +148,7 @@ function PushNotificationBanner({ role, className = "" }) {
             </button>
           </div>
         </div>
+
         <button
           type="button"
           onClick={handleDismiss}
@@ -112,6 +158,18 @@ function PushNotificationBanner({ role, className = "" }) {
           <X className="size-4" />
         </button>
       </div>
+    </div>
+  );
+}
+
+function BannerIcon({ isDenied }) {
+  return (
+    <div
+      className={`flex size-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ${
+        isDenied ? "text-amber-700" : "text-[#2d8f98]"
+      }`}
+    >
+      {isDenied ? <AlertTriangle className="size-5" aria-hidden /> : <BellRing className="size-5" aria-hidden />}
     </div>
   );
 }

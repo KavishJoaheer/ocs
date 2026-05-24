@@ -5,6 +5,7 @@ import {
   clearPatientOfflineCache,
   prefetchPatientOfflineDirectory,
 } from "../lib/patientOfflineSync.js";
+import { refreshPushSubscriptionOnLogin } from "../lib/pushNotifications.js";
 
 const AuthContext = createContext(null);
 
@@ -50,6 +51,8 @@ export function AuthProvider({ children }) {
     if (payload.user?.role === "doctor") {
       void prefetchPatientOfflineDirectory(payload.user.id);
     }
+
+    void refreshPushSubscriptionOnLogin(payload.user?.role);
 
     return payload.user;
   }, []);
@@ -126,6 +129,7 @@ export function AuthProvider({ children }) {
           if (payload.user?.role === "doctor") {
             void prefetchPatientOfflineDirectory(payload.user.id);
           }
+          void refreshPushSubscriptionOnLogin(payload.user?.role);
         }
       } catch {
         if (!ignore && getStoredAuthToken() === restoringToken) {

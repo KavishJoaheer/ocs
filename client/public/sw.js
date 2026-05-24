@@ -1,28 +1,59 @@
-self.addEventListener("push", (event) => {
-  let data = {
-    title: "OCS Update",
-    body: "You have a new notification.",
-    url: "/",
-    icon: "/favicon.svg",
-  };
+const DEFAULT_ICON = "/icon-192.png";
+const DEFAULT_BADGE = "/icon-192.png";
 
-  try {
-    data = event.data?.json() || data;
-  } catch {
-    // Keep default payload when push body is not JSON.
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+function buildNotificationPayload(raw = {}) {
+  return {
+    title: raw.title || "OCS Update",
+    body: raw.body || "You have a new notification.",
+    url: raw.url || "/",
+    icon: raw.icon || DEFAULT_ICON,
+    badge: raw.badge || DEFAULT_BADGE,
+    tag: raw.tag || "ocs-alert",
+    requireInteraction: raw.requireInteraction !== false,
+  };
+}
+
+self.addEventListener("push", (event) => {
+  if (!event.data) {
+    return;
   }
 
-  const targetUrl = data.url || "/";
-  const tag = data.tag || "ocs-alert";
+  let alertData = buildNotificationPayload();
+
+  try {
+    alertData = buildNotificationPayload(event.data.json());
+  } catch {
+    try {
+      alertData = buildNotificationPayload({ body: event.data.text() });
+    } catch {
+      // Keep default payload when push body is unreadable.
+    }
+  }
+
+  const targetUrl = alertData.url || "/";
 
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon || "/favicon.svg",
-      badge: "/favicon.svg",
-      tag,
+    self.registration.showNotification(alertData.title, {
+      body: alertData.body,
+      icon: alertData.icon,
+      badge: alertData.badge,
+      tag: alertData.tag,
       renotify: true,
-      data: { url: targetUrl },
+      requireInteraction: alertData.requireInteraction,
+      vibrate: [180, 90, 180],
+      silent: false,
+      data: {
+        url: targetUrl,
+        tag: alertData.tag,
+      },
     }),
   );
 });
