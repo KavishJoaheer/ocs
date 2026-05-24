@@ -324,10 +324,14 @@ function itemFormState(item, folders = []) {
 
 function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, onClose, onSubmit }) {
   const [form, setForm] = useState(() => itemFormState(item, folders));
+  const foldersRef = useRef(folders);
+  useEffect(() => {
+    foldersRef.current = folders;
+  }, [folders]);
 
   useEffect(() => {
-    if (open) setForm(itemFormState(item, folders));
-  }, [item, open, folders]);
+    if (open) setForm(itemFormState(item, foldersRef.current));
+  }, [item, open]);
 
   const masterReadOnly = lockMasterFields;
   const fieldClass = (locked) =>
@@ -1870,6 +1874,10 @@ const MOBILE_STOCK_OUT_OPTIONS = [
 
 function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeCategory, isSaving, onSubmit }) {
   const [form, setForm] = useState(() => operatorItemFormState(activeFolderId));
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1880,7 +1888,7 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current?.();
     };
     window.addEventListener("keydown", handleKeyDown);
 
@@ -1888,7 +1896,7 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, activeFolderId, onClose]);
+  }, [open, activeFolderId]);
 
   if (!open) return null;
 
@@ -2651,8 +2659,9 @@ export default function InventoryPage() {
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
-    (next) => {
+    (next, { silent = false } = {}) => {
       setData(next);
+      if (silent) return;
       if (isDoctor) {
         notifyDoctorBagInventoryUpdated();
       }
@@ -2804,7 +2813,7 @@ export default function InventoryPage() {
           activityStaffUserId,
         })}`,
       );
-      commitInventoryData(payload);
+      commitInventoryData(payload, { silent: true });
     } catch (error) {
       toast.error(error.message);
       if (!silent) setData(null);
