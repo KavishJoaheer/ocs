@@ -612,16 +612,17 @@ function recordMovement({
   actionType,
   note,
   userId,
-  referenceType = null,
+  referenceType = "",
   referenceId = null,
   metaJson = "{}",
 }) {
+  const referenceTypeValue = referenceType == null ? "" : String(referenceType);
   const meta = safeParseJson(metaJson, {});
   const movementItem = db
     .prepare("SELECT item_name, owner_doctor_id FROM inventory WHERE id = ?")
     .get(itemId);
   const locationContext = {};
-  if (referenceType === "doctor" && referenceId) {
+  if (referenceTypeValue === "doctor" && referenceId) {
     const doctor = db.prepare("SELECT full_name FROM doctors WHERE id = ?").get(referenceId);
     locationContext.targetDoctorName = doctor?.full_name || "";
   }
@@ -650,7 +651,7 @@ function recordMovement({
     userId || null,
     String(note || "").trim(),
     actionType,
-    referenceType,
+    referenceTypeValue,
     referenceId,
     finalMetaJson,
   );
@@ -1526,7 +1527,7 @@ router.put("/items/:id", (req, res) => {
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });
 
-  if (!isDoctor) {
+  if (!isDoctor && isOcsMasterRow) {
     try {
       assertOcsMasterItemNameAvailable(itemName, itemId);
     } catch (error) {
