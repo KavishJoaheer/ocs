@@ -18,6 +18,7 @@ const billingRouter = require("./routes/billing");
 const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
+const restockRequestsRouter = require("./routes/restockRequests");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
 const { withClientSessionContext } = require("./lib/inventoryRealtime");
 
@@ -237,6 +238,17 @@ function createApp() {
     requireAuthFlexible,
     authorizeRoles("admin", "doctor", "operator"),
     inventoryRouter,
+  );
+
+  app.use(
+    "/api/restock-requests",
+    requireAuth,
+    authorizeByMethod({
+      GET: ["admin", "doctor", "operator"],
+      POST: ["doctor"],
+      PATCH: ["admin", "operator"],
+    }),
+    restockRequestsRouter,
   );
 
   const clientDistPath = getClientDistPath();

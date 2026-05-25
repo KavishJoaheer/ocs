@@ -355,6 +355,42 @@ function createInventoryMovementsTable() {
   `);
 }
 
+function createRestockRequestsTable() {
+  // Collection day is restricted at the schema level so any future writer
+  // (script, migration, manual edit) is forced to honour the logistics
+  // calendar (Mon / Wed / Fri / Sat = 1 / 3 / 5 / 6).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS restock_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      doctor_id INTEGER NOT NULL,
+      requested_by_user_id INTEGER NOT NULL,
+      collection_date TEXT NOT NULL,
+      collection_day INTEGER NOT NULL CHECK (collection_day IN (1, 3, 5, 6)),
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'prepared', 'cancelled')),
+      note TEXT NOT NULL DEFAULT '',
+      prepared_at TEXT,
+      prepared_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE RESTRICT,
+      FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (prepared_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS restock_request_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      inventory_id INTEGER,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE CASCADE,
+      FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
+    );
+  `);
+}
+
 function migrateUsersSchemaIfNeeded() {
   const usersTableSql = getUsersTableSql();
 
@@ -590,6 +626,7 @@ function initializeDatabase() {
   createPatientLocationsTables();
   createInventoryFoldersTable();
   createInventoryMovementsTable();
+  createRestockRequestsTable();
 
   ensurePatientColumns();
   ensureDoctorColumns();
@@ -656,6 +693,11 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(item_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_doctor ON inventory_movements(doctor_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_created_at ON inventory_movements(created_at);
+    CREATE INDEX IF NOT EXISTS idx_restock_requests_doctor ON restock_requests(doctor_id);
+    CREATE INDEX IF NOT EXISTS idx_restock_requests_status ON restock_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_restock_requests_collection_date ON restock_requests(collection_date);
+    CREATE INDEX IF NOT EXISTS idx_restock_request_items_request ON restock_request_items(request_id);
+    CREATE INDEX IF NOT EXISTS idx_restock_request_items_inventory ON restock_request_items(inventory_id);
   `);
 
   migrateLegacySeedDataIfNeeded();

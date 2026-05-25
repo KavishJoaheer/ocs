@@ -3,11 +3,14 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Calendar,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  ClipboardList,
   Clock,
   Download,
+  Inbox,
   Minus,
   MinusCircle,
   MoreVertical,
@@ -51,6 +54,7 @@ import {
 } from "../lib/inventoryOfflineSync.js";
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
+import { getValidCollectionDays } from "../lib/collectionDays.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 dayjs.extend(isoWeek);
@@ -2088,6 +2092,420 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
   );
 }
 
+function RestockRequestModal({
+  open,
+  onClose,
+  onSubmit,
+  catalogItems,
+  isSaving,
+}) {
+  const [items, setItems] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [collectionDate, setCollectionDate] = useState("");
+  const [note, setNote] = useState("");
+
+  const collectionOptions = useMemo(() => getValidCollectionDays(4), [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setItems([]);
+    setSearchQuery("");
+    setSuggestionsOpen(false);
+    setNote("");
+    setCollectionDate(collectionOptions[0]?.iso || "");
+  }, [open, collectionOptions]);
+
+  const selectedKeys = useMemo(
+    () =>
+      new Set(
+        items.map((row) =>
+          row.inventory_id ? `inv:${row.inventory_id}` : `name:${row.item_name.toLowerCase()}`,
+        ),
+      ),
+    [items],
+  );
+
+  const filteredCatalog = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return (catalogItems || [])
+      .filter((item) => {
+        const name = String(item.item_name || "").toLowerCase();
+        if (!name) return false;
+        if (query && !name.includes(query)) return false;
+        const key = `inv:${item.id}`;
+        return !selectedKeys.has(key);
+      })
+      .slice(0, 8);
+  }, [catalogItems, searchQuery, selectedKeys]);
+
+  function addItem(catalogItem) {
+    setItems((prev) => [
+      ...prev,
+      {
+        inventory_id: Number(catalogItem.id) || null,
+        item_name: catalogItem.item_name,
+        quantity: 1,
+        ocs_available: Number(catalogItem.quantity || 0),
+      },
+    ]);
+    setSearchQuery("");
+    setSuggestionsOpen(false);
+  }
+
+  function changeQuantity(idx, delta) {
+    setItems((prev) =>
+      prev.map((row, i) =>
+        i === idx
+          ? { ...row, quantity: Math.max(1, Math.min(999, Number(row.quantity || 0) + delta)) }
+          : row,
+      ),
+    );
+  }
+
+  function removeItem(idx) {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleSubmit() {
+    if (!items.length) {
+      toast.error("Add at least one item to your supply request.");
+      return;
+    }
+    if (!collectionDate) {
+      toast.error("Pick a target collection day.");
+      return;
+    }
+    onSubmit({
+      collection_date: collectionDate,
+      note: note.trim(),
+      items: items.map((row) => ({
+        inventory_id: row.inventory_id,
+        item_name: row.item_name,
+        quantity: Number(row.quantity || 0),
+      })),
+    });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Request Supply from OCS"
+      description="Choose stock items and a target collection day. Operators will prepare your pack."
+      size="md"
+    >
+      <div className="flex flex-col gap-4">
+        <div className="relative">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Add item
+          </label>
+          <div className="relative mt-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setSuggestionsOpen(true);
+              }}
+              onFocus={() => setSuggestionsOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestionsOpen(false), 120)}
+              placeholder="Search OCS stock by name"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
+            />
+          </div>
+          {suggestionsOpen && filteredCatalog.length ? (
+            <div className="absolute z-20 mt-1 max-h-[220px] w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg">
+              {filteredCatalog.map((catalogItem) => (
+                <button
+                  key={catalogItem.id}
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    addItem(catalogItem);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left text-sm transition last:border-b-0 hover:bg-slate-50"
+                >
+                  <span className="font-semibold text-slate-800">{catalogItem.item_name}</span>
+                  <span className="text-xs text-slate-500">
+                    {Number(catalogItem.quantity || 0)} in OCS
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {items.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
+              No items added yet. Search above to start your request.
+            </div>
+          ) : (
+            items.map((row, idx) => (
+              <div
+                key={`${row.inventory_id || row.item_name}-${idx}`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-900">{row.item_name}</p>
+                  {Number.isFinite(row.ocs_available) ? (
+                    <p className="text-[11px] text-slate-500">
+                      {row.ocs_available} available in OCS
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label={`Decrease ${row.item_name}`}
+                    onClick={() => changeQuantity(idx, -1)}
+                    disabled={row.quantity <= 1}
+                    className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:opacity-40"
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <span className="min-w-8 text-center text-base font-bold tabular-nums text-slate-900">
+                    {row.quantity}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Increase ${row.item_name}`}
+                    onClick={() => changeQuantity(idx, +1)}
+                    className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700"
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${row.item_name}`}
+                    onClick={() => removeItem(idx)}
+                    className="inline-flex size-9 items-center justify-center rounded-xl text-rose-500 transition hover:bg-rose-50"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Target collection day
+          </label>
+          <select
+            value={collectionDate}
+            onChange={(event) => setCollectionDate(event.target.value)}
+            className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 focus:border-[#4FB8B3] focus:outline-none"
+          >
+            {collectionOptions.map((option) => (
+              <option key={option.iso} value={option.iso}>
+                {option.formatted}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Note (optional)
+          </label>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value.slice(0, 500))}
+            rows={2}
+            placeholder="Anything operators should know? (e.g. priority items, packaging)"
+            className="mt-1 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 focus:border-[#4FB8B3] focus:outline-none"
+          />
+        </div>
+
+        <div className="bg-gray-50 border border-gray-100 p-3 rounded-xl text-[11px] text-gray-500 font-medium leading-normal">
+          ℹ️ Restock requests can be submitted at any time, but logistics packing
+          preparations are completed solely for collection on{" "}
+          <strong>Mondays, Wednesdays, Fridays, and Saturdays</strong>.
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSaving || items.length === 0}
+            className="min-h-11 rounded-2xl bg-[#ba5a32] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#9d4a28] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? "Submitting…" : "Submit request"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function OperatorRestockRequestsInbox({ refreshKey }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = await api.get("/restock-requests?status=pending,prepared");
+      setRequests(Array.isArray(payload?.requests) ? payload.requests : []);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not load restock requests.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load, refreshKey]);
+
+  // Lightweight poll so a new doctor request shows up without a manual refresh.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      load();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  const handleMarkPrepared = async (request) => {
+    if (updatingId) return;
+    setUpdatingId(request.id);
+    try {
+      await api.patch(`/restock-requests/${request.id}`, { status: "prepared" });
+      toast.success("Marked as prepared. Doctor has been notified.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not update request.";
+      toast.error(message);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const pendingCount = requests.filter((row) => row.status === "pending").length;
+
+  return (
+    <SectionCard
+      title="Restock Requests"
+      subtitle={
+        loading
+          ? "Loading…"
+          : pendingCount > 0
+            ? `${pendingCount} pending pack${pendingCount === 1 ? "" : "s"} to prepare`
+            : "No pending packs"
+      }
+      actions={
+        <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#ba5a32]/10 px-3 py-1.5 text-xs font-bold text-[#ba5a32]">
+          <Inbox className="size-3.5" />
+          Inbox
+        </span>
+      }
+    >
+      {error ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : !requests.length && !loading ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
+          No active restock requests from doctors right now.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Doctor</th>
+                <th className="px-3 py-2 text-left">Requested items</th>
+                <th className="px-3 py-2 text-left">Collection</th>
+                <th className="px-3 py-2 text-left">Status</th>
+                <th className="px-3 py-2 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {requests.map((request) => {
+                const itemsSummary = request.items
+                  .map((item) => `${item.item_name} × ${item.quantity}`)
+                  .join(", ");
+                const isPrepared = request.status === "prepared";
+                return (
+                  <tr key={request.id} className="align-top">
+                    <td className="px-3 py-3 font-semibold text-slate-800">
+                      <div>Dr. {request.doctor_name}</div>
+                      <div className="text-[11px] font-normal text-slate-400">
+                        Sent {dayjs(request.created_at).format("DD MMM HH:mm")}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-slate-700">
+                      <div className="max-w-[28rem] break-words">{itemsSummary}</div>
+                      {request.note ? (
+                        <div className="mt-1 text-[11px] italic text-slate-500">
+                          “{request.note}”
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3 text-slate-700">
+                      {dayjs(request.collection_date).format("ddd, DD MMM")}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={cx(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                          isPrepared
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700",
+                        )}
+                      >
+                        {isPrepared ? (
+                          <CheckCircle2 className="size-3" />
+                        ) : (
+                          <ClipboardList className="size-3" />
+                        )}
+                        {isPrepared ? "Prepared" : "Pending"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {isPrepared ? (
+                        <span className="text-[11px] text-slate-400">
+                          {request.prepared_by_name
+                            ? `By ${request.prepared_by_name}`
+                            : "Done"}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={updatingId === request.id}
+                          onClick={() => handleMarkPrepared(request)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
+                        >
+                          {updatingId === request.id ? "Saving…" : "Mark as Prepared"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 function MobileBottomSheet({ open, onClose, title, subtitle, children }) {
   if (!open) return null;
 
@@ -2594,6 +3012,7 @@ function MobileDoctorBagLayout({
   setCurrentPage,
   doctorRestockCandidates = [],
   onOpenRestockInventory,
+  onOpenRequestSupply,
   onOpenDeduct,
   onOpenRestock,
 }) {
@@ -2604,15 +3023,25 @@ function MobileDoctorBagLayout({
           {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
         </h1>
         {!doctorViewIsOcs ? (
-          <button
-            type="button"
-            onClick={onOpenRestockInventory}
-            disabled={!doctorRestockCandidates.length}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Truck className="size-4" />
-            Restock
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenRequestSupply}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-[#f5e3d7] bg-[#ba5a32]/10 px-3 py-1.5 text-xs font-bold text-[#ba5a32] transition active:bg-[#ba5a32]/20"
+            >
+              <ClipboardList className="size-3.5" />
+              Request Supply
+            </button>
+            <button
+              type="button"
+              onClick={onOpenRestockInventory}
+              disabled={!doctorRestockCandidates.length}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Truck className="size-4" />
+              Restock
+            </button>
+          </div>
         ) : null}
       </header>
 
@@ -2759,6 +3188,9 @@ export default function InventoryPage() {
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [doctorRestockItem, setDoctorRestockItem] = useState(null);
+  const [restockRequestOpen, setRestockRequestOpen] = useState(false);
+  const [isSubmittingRestockRequest, setIsSubmittingRestockRequest] = useState(false);
+  const [restockRequestsRefreshKey, setRestockRequestsRefreshKey] = useState(0);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
   const [addStock, setAddStock] = useState(null);
@@ -3378,6 +3810,21 @@ export default function InventoryPage() {
     }
   }
 
+  async function submitRestockRequest(payload) {
+    setIsSubmittingRestockRequest(true);
+    try {
+      await api.post("/restock-requests", payload);
+      toast.success("Supply request sent to operators.");
+      setRestockRequestOpen(false);
+      setRestockRequestsRefreshKey((value) => value + 1);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Could not send request.";
+      toast.error(message);
+    } finally {
+      setIsSubmittingRestockRequest(false);
+    }
+  }
+
   function buildReceiptPrintHtml(receipt) {
     const rows = (receipt.items || [])
       .map(
@@ -3858,6 +4305,7 @@ export default function InventoryPage() {
             setCurrentPage={setCurrentPage}
             doctorRestockCandidates={doctorRestockCandidates}
             onOpenRestockInventory={() => setDoctorRestockOpen(true)}
+            onOpenRequestSupply={() => setRestockRequestOpen(true)}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
             onOpenRestock={openMobileDoctorRestock}
           />
@@ -3886,15 +4334,25 @@ export default function InventoryPage() {
         title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
         actions={
           isDoctor ? (
-            <button
-              type="button"
-              onClick={() => setDoctorRestockOpen(true)}
-              disabled={!doctorRestockCandidates.length}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Truck className="size-4" />
-              Restock My Inventory
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRestockRequestOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#f5e3d7] bg-[#ba5a32]/10 px-3 py-2 text-xs font-bold text-[#ba5a32] transition hover:bg-[#ba5a32]/20"
+              >
+                <ClipboardList className="size-3.5" />
+                Request Supply
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorRestockOpen(true)}
+                disabled={!doctorRestockCandidates.length}
+                className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Truck className="size-4" />
+                Restock My Inventory
+              </button>
+            </div>
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
               {isAdmin ? (
@@ -3949,6 +4407,10 @@ export default function InventoryPage() {
           />
         </div>
       )}
+
+      {isOperator || isAdmin ? (
+        <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+      ) : null}
 
       <SectionCard
         className={isOperator ? "pb-3" : undefined}
@@ -4420,6 +4882,13 @@ export default function InventoryPage() {
           setDoctorRestockItem(null);
         }}
         onSubmit={saveDoctorRestock}
+      />
+      <RestockRequestModal
+        open={restockRequestOpen}
+        isSaving={isSubmittingRestockRequest}
+        catalogItems={data?.ocs_stock || []}
+        onClose={() => setRestockRequestOpen(false)}
+        onSubmit={submitRestockRequest}
       />
       <StockOutModal
         open={Boolean(stockOut)}
