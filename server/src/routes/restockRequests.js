@@ -357,4 +357,28 @@ router.patch("/:id", (req, res) => {
   return res.json({ request: updated });
 });
 
+router.delete("/:id", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can delete restock requests." });
+  }
+
+  const requestId = Number(req.params.id);
+  if (!requestId) {
+    return res.status(400).json({ error: "Invalid restock request id." });
+  }
+
+  const existing = db
+    .prepare("SELECT id FROM restock_requests WHERE id = ? LIMIT 1")
+    .get(requestId);
+
+  if (!existing) {
+    return res.status(404).json({ error: "Restock request not found." });
+  }
+
+  db.prepare("DELETE FROM restock_requests WHERE id = ?").run(requestId);
+
+  return res.json({ ok: true });
+});
+
 module.exports = router;

@@ -2396,6 +2396,26 @@ function OperatorRestockRequestsInbox({ refreshKey }) {
     }
   };
 
+  const handleDismiss = async (request) => {
+    if (updatingId) return;
+    const confirmed = window.confirm(
+      "Remove this restock request? This cannot be undone.",
+    );
+    if (!confirmed) return;
+
+    setUpdatingId(request.id);
+    try {
+      await api.delete(`/restock-requests/${request.id}`);
+      toast.success("Restock request removed.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not remove request.";
+      toast.error(message);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const pendingCount = requests.filter((row) => row.status === "pending").length;
 
   return (
@@ -2479,20 +2499,42 @@ function OperatorRestockRequestsInbox({ refreshKey }) {
                     </td>
                     <td className="px-3 py-3 text-right">
                       {isPrepared ? (
-                        <span className="text-[11px] text-slate-400">
-                          {request.prepared_by_name
-                            ? `By ${request.prepared_by_name}`
-                            : "Done"}
-                        </span>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="text-[11px] text-slate-400">
+                            {request.prepared_by_name
+                              ? `By ${request.prepared_by_name}`
+                              : "Done"}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={updatingId === request.id}
+                            onClick={() => handleDismiss(request)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                          >
+                            <Trash2 className="size-3" />
+                            {updatingId === request.id ? "Removing…" : "Remove"}
+                          </button>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          disabled={updatingId === request.id}
-                          onClick={() => handleMarkPrepared(request)}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
-                        >
-                          {updatingId === request.id ? "Saving…" : "Mark as Prepared"}
-                        </button>
+                        <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-end">
+                          <button
+                            type="button"
+                            disabled={updatingId === request.id}
+                            onClick={() => handleMarkPrepared(request)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
+                          >
+                            {updatingId === request.id ? "Saving…" : "Mark as Prepared"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={updatingId === request.id}
+                            onClick={() => handleDismiss(request)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                          >
+                            <Trash2 className="size-3.5" />
+                            Dismiss
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
