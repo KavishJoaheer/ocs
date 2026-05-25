@@ -1499,7 +1499,9 @@ router.put("/items/:id", (req, res) => {
   const isOcsMasterRow =
     String(existing.stock_scope || "") === "ocs" &&
     (existing.owner_doctor_id == null || existing.owner_doctor_id === "");
-  const masterFieldsLocked = isDoctor || (isOperator && isOcsMasterRow);
+  // Doctors must not rename master-catalog rows or override OCS pricing from their bag view.
+  // Operators and admins manage the warehouse catalog, including cost/sell prices.
+  const masterFieldsLocked = isDoctor;
 
   const itemName = masterFieldsLocked
     ? String(existing.item_name || "").trim()
