@@ -13,7 +13,7 @@ function LowStockBanner({ alert, variant = "doctor" }) {
       <p className="text-xs font-bold uppercase tracking-wider text-rose-700">Low stock alert</p>
       <p className="mt-1 text-sm font-semibold text-rose-900">
         {isDoctor
-          ? `${count} item${count === 1 ? "" : "s"} below 50% par level in your kit.`
+          ? `${count} item${count === 1 ? "" : "s"} at or below par level in your kit.`
           : `${count} OCS stock item${count === 1 ? "" : "s"} at or below par level.`}
       </p>
       <p className="mt-1 text-xs leading-relaxed text-rose-700">

@@ -22,7 +22,7 @@ import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import LowStockBanner from "../components/LowStockBanner.jsx";
 import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.jsx";
-import { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
+import HcmBulletinBanner, { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
 import { prefetchPatientOfflineDirectory } from "../lib/patientOfflineSync.js";
 import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
@@ -37,7 +37,7 @@ import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { api } from "../lib/api.js";
-import { formatCurrency, formatDateTime, statusLabel, truncate } from "../lib/format.js";
+import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
 function buildDoctorMobileDateLabel() {
@@ -91,7 +91,7 @@ function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
   );
 }
 
-function DoctorMobileLauncher({ user }) {
+function DoctorMobileLauncher({ user, latestHcmPost = null }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
   const showLowStockStrip = !loading && lowStockCount > 0;
@@ -109,6 +109,8 @@ function DoctorMobileLauncher({ user }) {
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
         <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
       </header>
+
+      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
 
       {showLowStockStrip ? <DoctorMobileLowStockStrip lowStockCount={lowStockCount} /> : null}
 
@@ -152,7 +154,7 @@ function MobileLauncher({
 
   if (isDoctor) {
     return (
-      <DoctorMobileLauncher user={user} />
+      <DoctorMobileLauncher user={user} latestHcmPost={latestHcmPost} />
     );
   }
 
@@ -323,79 +325,6 @@ function SummaryCard({ label, value }) {
   );
 }
 
-function QuickLinkCard({ id, title, description, to, onClick }) {
-  const cardClasses =
-    "rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-white/88 p-5 text-left shadow-[0_24px_64px_rgba(34,72,91,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_28px_70px_rgba(34,72,91,0.12)]";
-
-  const content = (
-    <>
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{title}</p>
-      <p className="mt-3 text-base leading-7 text-[#486976]">{description}</p>
-    </>
-  );
-
-  if (to) {
-    return (
-      <Link className={cardClasses} id={id} to={to}>
-        {content}
-      </Link>
-    );
-  }
-
-  return (
-    <button className={cardClasses} id={id} onClick={onClick} type="button">
-      {content}
-    </button>
-  );
-}
-
-function scrollToSection(sectionId) {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  const element = document.getElementById(sectionId);
-  if (!element) {
-    return;
-  }
-
-  element.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function DashboardPill({ children, dark = false, to, onClick }) {
-  const classes = `block w-full rounded-[24px] border px-4 py-5 text-center transition ${
-    dark
-      ? "border-white/10 bg-[#678994] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[#5f818b]"
-      : "border-[rgba(58,84,92,0.18)] bg-[rgba(255,255,255,0.72)] text-slate-950 hover:bg-white"
-  }`;
-
-  const content = (
-    <div
-      className={`whitespace-pre-line text-[15px] leading-tight ${
-        dark ? "font-semibold text-white" : "text-slate-950"
-      }`}
-    >
-      {children}
-    </div>
-  );
-
-  if (to) {
-    return <Link className={classes} to={to}>{content}</Link>;
-  }
-
-  if (onClick) {
-    return (
-      <button className={classes} onClick={onClick} type="button">
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div className={classes}>{content}</div>
-  );
-}
-
 function DoctorDashboardTile({
   to,
   onClick,
@@ -519,74 +448,6 @@ function DoctorDashboardTile({
     <button className={classes} onClick={onClick} type="button">
       {content}
     </button>
-  );
-}
-
-function RoleBoard({
-  eyebrow = "OCS MEDECINS",
-  title = "Operations Dashboard",
-  statusMarkup,
-  leftTitle,
-  leftItems,
-  rightTitle,
-  rightItems,
-}) {
-  return (
-    <section className="rounded-[38px] border border-[rgba(106,129,138,0.4)] bg-[#aebdc3] p-5 shadow-[0_36px_90px_rgba(34,72,91,0.12)]">
-      <p className="pl-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-        {eyebrow}
-      </p>
-      <h2 className="mt-3 pl-2 font-display text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
-        {title}
-      </h2>
-
-      <div className="mt-5 rounded-[34px] border border-[rgba(255,255,255,0.56)] bg-[#edf7f8] px-6 py-7">
-        <div className="grid gap-5 xl:grid-cols-[1.02fr_0.98fr]">
-          <div>
-            <p className="text-2xl font-semibold uppercase tracking-tight text-[#2e5f68]">
-              <span className="text-[#efbe39]">TOGETHER,</span> BRINGING HEALTHCARE TO EVERY
-              DOORSTEP
-            </p>
-          </div>
-          <div className="text-left text-sm font-semibold uppercase tracking-[0.08em] text-[#2e5f68] xl:text-right xl:pt-1">
-            {statusMarkup}
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-6 xl:grid-cols-2">
-          <div className="rounded-[30px] border border-[rgba(106,129,138,0.34)] bg-[rgba(255,255,255,0.38)] px-6 py-6">
-            <p className="text-lg font-semibold text-slate-950 md:text-xl">{leftTitle}</p>
-            <div className="mt-5 space-y-4">
-              {leftItems.map((item, index) => (
-                <DashboardPill
-                  key={`${leftTitle}-${index}`}
-                  dark={item.dark}
-                  onClick={item.onClick}
-                  to={item.to}
-                >
-                  {item.label}
-                </DashboardPill>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[30px] border border-[rgba(106,129,138,0.34)] bg-[rgba(255,255,255,0.38)] px-6 py-6">
-            <p className="text-lg font-semibold text-slate-950 md:text-xl">{rightTitle}</p>
-            <div className="mt-5 space-y-4">
-              {rightItems.map((item, index) => (
-                <DashboardPill
-                  key={`${rightTitle}-${index}`}
-                  onClick={item.onClick}
-                  to={item.to}
-                >
-                  {item.label}
-                </DashboardPill>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -802,116 +663,6 @@ function RecentActivityPanel({ dashboard }) {
         />
       )}
     </SectionCard>
-  );
-}
-
-function DashboardActionSections({ sections }) {
-  if (!sections?.length) {
-    return null;
-  }
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {sections.map((section) => (
-        <QuickLinkCard
-          key={section.id}
-          id={section.id}
-          title={section.title}
-          description={section.description}
-          to={section.to}
-          onClick={section.onClick}
-        />
-      ))}
-    </div>
-  );
-}
-
-function doctorOperationStatusDotClass(status) {
-  switch (String(status || "").toLowerCase()) {
-    case "available":
-      return "bg-emerald-500";
-    case "active":
-      return "bg-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.35)]";
-    case "offline":
-      return "bg-slate-300";
-    default:
-      return "bg-slate-200";
-  }
-}
-
-function DoctorStatusPanel({ doctors = [] }) {
-  const availableCount = doctors.filter((doctor) => doctor.operation_status === "available").length;
-  const activeCount = doctors.filter((doctor) => doctor.operation_status === "active").length;
-  const offlineCount = doctors.filter((doctor) => doctor.operation_status === "offline").length;
-
-  return (
-    <div className="rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-white/82 px-4 py-4 shadow-[0_20px_50px_rgba(34,72,91,0.08)] backdrop-blur md:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Doctors live status
-          </p>
-          <p className="mt-1.5 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
-            Doctor availability overview
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-600">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-            Available {availableCount}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              className="size-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.35)]"
-              aria-hidden
-            />
-            Active {activeCount}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 shrink-0 rounded-full bg-slate-300" aria-hidden />
-            Offline {offlineCount}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-3 max-h-[280px] divide-y divide-slate-200/80 overflow-y-auto pr-0.5">
-        {doctors.length ? (
-          doctors.map((doctor) => {
-            const status = doctor.operation_status || "not linked";
-            const dotClass = doctorOperationStatusDotClass(status);
-            const label = statusLabel(status);
-            return (
-              <div key={doctor.id} className="flex min-w-0 items-center gap-3 py-2.5">
-                <span className="sr-only">
-                  {doctor.full_name}
-                  {label ? `, ${label}` : ""}
-                  {doctor.operation_status_updated_at
-                    ? `, updated ${dayjs(doctor.operation_status_updated_at).format("MMM D, YYYY [at] h:mm A")}`
-                    : ""}
-                </span>
-                <div
-                  className={cx("size-3 shrink-0 rounded-full", dotClass)}
-                  title={label}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 truncate font-semibold text-slate-950">{doctor.full_name}</span>
-                <span className="shrink-0 text-xs font-normal text-gray-400">
-                  {doctor.operation_status_updated_at
-                    ? dayjs(doctor.operation_status_updated_at).format("MMM D, YYYY [at] h:mm A")
-                    : "No update yet"}
-                </span>
-              </div>
-            );
-          })
-        ) : (
-          <EmptyState
-            title="No doctor statuses available"
-            description="Doctor live statuses will appear here once doctor accounts are linked."
-          />
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1221,7 +972,15 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
   );
 }
 
-function DoctorDashboardView({ user, dashboard, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
+function DoctorDashboardView({
+  user,
+  dashboard,
+  onStatusChange,
+  isSavingStatus,
+  onOpenRosterPdf,
+  lowStockAlert,
+  latestHcmPost = null,
+}) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -1243,6 +1002,8 @@ function DoctorDashboardView({ user, dashboard, onStatusChange, isSavingStatus, 
           }
           title="Operations Dashboard"
         />
+
+        {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
 
         <DoctorMetricsRow dashboard={dashboard} />
 
@@ -1718,6 +1479,7 @@ function DashboardPage() {
       <DoctorDashboardView
         dashboard={dashboard}
         isSavingStatus={isSavingStatus}
+        latestHcmPost={latestHcmPost}
         lowStockAlert={dashboard.doctor_low_stock_alert}
         onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}

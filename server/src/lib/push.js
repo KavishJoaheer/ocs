@@ -763,8 +763,8 @@ async function notifyDoctorLowStockSummary({ doctorId, userId = null }) {
     title: "⚠️ Low Stock Alert",
     body:
       count === 1
-        ? "1 kit item is below 50% par level. Tap to restock now."
-        : `${count} kit items are below 50% par level. Tap to restock now.`,
+        ? "1 kit item is at or below par level. Tap to restock now."
+        : `${count} kit items are at or below par level. Tap to restock now.`,
     url: "/inventory?context=my&restock=alert",
     icon: "/icon-192.png",
     tag: "doctor-low-stock",
@@ -940,7 +940,7 @@ async function maybeNotifyLowStock(itemId, actingUserId = null) {
   const currentQuantity = Number(item.quantity || 0);
 
   if (item.stock_scope === "doctor" && item.owner_doctor_id) {
-    if (parLevel <= 0 || currentQuantity > parLevel * 0.5) {
+    if (parLevel <= 0 || currentQuantity > parLevel) {
       return { ok: false, skipped: true, reason: "not_low_stock" };
     }
 

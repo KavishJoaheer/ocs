@@ -81,7 +81,7 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     }
 
     if (role === "doctor") {
-      return "Get mobile alerts when your kit items fall below 50% par level.";
+      return "Get mobile alerts when your kit items are at or below par level.";
     }
 
     if (role === "admin" || role === "operator") {
