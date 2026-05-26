@@ -32,7 +32,8 @@
     "audit:cross-device-stream": "node src/scripts/validateCrossDeviceInventoryStream.js",
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
     "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",
-    "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js"
+    "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js",
+    "clone:doctor-bag-template": "node src/scripts/cloneDoctorBagFromTemplate.js"
   },
   "keywords": [],
   "author": "",

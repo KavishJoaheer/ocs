@@ -150,6 +150,13 @@ export function startInventoryRealtimeSync(user) {
     clearReconnectTimer();
   });
 
+  source.addEventListener("inventory_resync", () => {
+    notifyDoctorBagInventoryUpdated();
+    if (user.role === "admin" || user.role === "operator") {
+      notifyOcsInventoryUpdated();
+    }
+  });
+
   source.addEventListener("inventory_change", (message) => {
     try {
       const event = JSON.parse(message.data);

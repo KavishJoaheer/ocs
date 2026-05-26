@@ -145,6 +145,28 @@ function publishInventoryChange({
   return { delivered, event };
 }
 
+/** Fan out a full inventory refresh hint after bulk DB maintenance (no warehouse mutation). */
+function publishInventoryResyncBroadcast() {
+  const event = {
+    type: "inventory_resync",
+    reason: "doctor_bag_matrix_clone",
+    at: new Date().toISOString(),
+  };
+
+  let delivered = 0;
+
+  for (const client of clients.values()) {
+    try {
+      writeSseEvent(client.res, "inventory_resync", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  return { delivered, event };
+}
+
 function handleInventoryStream(req, res) {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -173,6 +195,7 @@ module.exports = {
   getCurrentClientSessionId,
   handleInventoryStream,
   publishInventoryChange,
+  publishInventoryResyncBroadcast,
   shouldDeliverInventoryEvent,
   withClientSessionContext,
 };

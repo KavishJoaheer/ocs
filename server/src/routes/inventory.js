@@ -12,7 +12,11 @@ const {
   ensureInventoryRowVersionColumn,
   updateInventoryQuantity,
 } = require("../lib/inventoryQuantity");
-const { handleInventoryStream, publishInventoryChange } = require("../lib/inventoryRealtime");
+const {
+  handleInventoryStream,
+  publishInventoryChange,
+  publishInventoryResyncBroadcast,
+} = require("../lib/inventoryRealtime");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
 
@@ -24,6 +28,14 @@ const NEAR_EXPIRY_DAYS = 90;
 
 router.get("/stream", (req, res) => {
   handleInventoryStream(req, res);
+});
+
+router.post("/resync-broadcast", (req, res) => {
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({ error: "Only administrators can broadcast inventory resync." });
+  }
+  const result = publishInventoryResyncBroadcast();
+  return res.json({ ok: true, delivered: result.delivered });
 });
 
 let infrastructureReady = false;
