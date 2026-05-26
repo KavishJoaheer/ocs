@@ -6,6 +6,8 @@ server/node_modules
 server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
+nas-data/
+nas-data/**
 server/data/vapid.json
 server/ocs.db
 server/ocs.db-shm

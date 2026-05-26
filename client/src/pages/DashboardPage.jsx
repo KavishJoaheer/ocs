@@ -8,7 +8,6 @@ import {
   ClipboardList,
   CreditCard,
   DollarSign,
-  MapPinned,
   Package,
   PhoneCall,
   Search,
@@ -146,7 +145,6 @@ function MobileLauncher({
   dashboard,
   operatorMetrics,
   latestHcmPost = null,
-  hcmLatestTitle = null,
   onOpenRosterPdf,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
@@ -948,55 +946,6 @@ function DoctorPatientQuickSearch() {
   );
 }
 
-function DoctorScheduledVisitsWidget({ today, visits, listPath }) {
-  const todayRows = useMemo(() => {
-    const rows = visits || [];
-    return rows.filter((row) => row.appointment_date === today).slice(0, 3);
-  }, [visits, today]);
-
-  return (
-    <div className="relative flex min-h-[140px] flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white px-5 py-5 md:px-6 md:py-5">
-      <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50 text-[#2d8f98]">
-            <CalendarClock className="size-5" />
-          </div>
-          <p className="text-base font-medium leading-snug tracking-tight text-slate-950">Scheduled visits</p>
-        </div>
-        <Link
-          to={listPath}
-          className="shrink-0 text-xs font-semibold text-[#2d8f98] transition hover:text-[#236d75] hover:underline"
-        >
-          View all
-        </Link>
-      </div>
-      <div className="mt-4 flex flex-1 flex-col gap-3">
-        {todayRows.length === 0 ? (
-          <p className="text-sm text-slate-500">No visits scheduled for today.</p>
-        ) : (
-          todayRows.map((row) => (
-            <div key={row.id} className="min-w-0 border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
-              <p className="truncate text-sm font-semibold text-slate-900">{row.patient_name}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
-                {formatDateTime(row.appointment_date, row.appointment_time)}
-                {row.location ? (
-                  <>
-                    <span className="text-slate-300"> · </span>
-                    <span className="inline-flex items-start gap-1">
-                      <MapPinned className="mt-0.5 size-3 shrink-0 text-slate-400" aria-hidden />
-                      <span>{row.location}</span>
-                    </span>
-                  </>
-                ) : null}
-              </p>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
 function OperatorScheduledVisitsMetricCard() {
   return (
     <PersonalOperationOverviewCard
@@ -1004,28 +953,6 @@ function OperatorScheduledVisitsMetricCard() {
       title="Scheduled visits"
       to="/operator/scheduled-visits"
     />
-  );
-}
-
-function DoctorAssignedPatientsMetricCard({ activeCount, listPath }) {
-  return (
-    <Link
-      to={listPath}
-      className="group relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-[30px] border border-gray-200 bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))] px-5 py-5 transition hover:border-[#2d8f98]/40 md:px-6 md:py-5"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white text-[#2d8f98]">
-          <UsersRound className="size-5" />
-        </div>
-        <span className="inline-flex size-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
-          <ArrowUpRight className="size-4" />
-        </span>
-      </div>
-      <div className="mt-6 text-center">
-        <p className="text-4xl font-semibold tabular-nums tracking-tight text-slate-950">{activeCount}</p>
-        <p className="mt-1 text-sm font-medium text-slate-600">Active patients</p>
-      </div>
-    </Link>
   );
 }
 
@@ -1181,44 +1108,6 @@ function DoctorMetricsRow({ dashboard }) {
   );
 }
 
-function DoctorPersonalOperationUpdates({ dashboard }) {
-  const today = dashboard?.periods?.today || "";
-  const visits = dashboard?.scheduledVisits || [];
-  const activeAssigned = Number(dashboard?.summary?.activeAssignedPatientsCount ?? 0);
-
-  return (
-    <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
-
-      <div className="relative z-10">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Clinical flow
-        </p>
-        <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
-          Personal operation updates
-        </h3>
-
-        <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <DoctorScheduledVisitsWidget listPath="/doctor/scheduled-visits" today={today} visits={visits} />
-          <PersonalOperationOverviewCard
-            icon={CreditCard}
-            title="Pending payment"
-            to="/doctor/pending-payment"
-          />
-          <PersonalOperationOverviewCard
-            icon={Activity}
-            title="Total patients seen"
-            to="/doctor/patients-seen-april"
-          />
-          <DoctorAssignedPatientsMetricCard activeCount={activeAssigned} listPath="/doctor/assigned-patients" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function OperatorPersonalOperationUpdates({ metrics }) {
   const pendingBills = Number(metrics?.pending_payment?.unpaid_bills_count ?? 0);
   const clinicalCounts = resolveClinicalTwinCounts("operator", { operatorMetrics: metrics });
@@ -1332,7 +1221,7 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
   );
 }
 
-function DoctorDashboardView({ user, dashboard, hcmLatestTitle, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
+function DoctorDashboardView({ user, dashboard, onStatusChange, isSavingStatus, onOpenRosterPdf, lowStockAlert }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -1700,7 +1589,6 @@ function DashboardPage() {
   const isOperator = user.role === "operator";
   const { metrics: operatorMetrics } = useOperatorDashboardMetrics(isOperator);
   const [dashboard, setDashboard] = useState(null);
-  const [doctorHcmHeadline, setDoctorHcmHeadline] = useState(null);
   const [latestHcmPost, setLatestHcmPost] = useState(null);
   const [rosterMeta, setRosterMeta] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1732,16 +1620,13 @@ function DashboardPage() {
           }
         }
 
-        let headline = null;
         let bulletinPost = null;
         if (user.role === "doctor") {
           try {
             const hcm = await api.get("/hcm-news");
             const newestPost = hcm.posts?.[0] || null;
-            headline = String(newestPost?.title || "").trim() || null;
             bulletinPost = isHcmPostWithinBulletinWindow(newestPost) ? newestPost : null;
           } catch {
-            headline = null;
             bulletinPost = null;
           }
         }
@@ -1749,7 +1634,6 @@ function DashboardPage() {
         if (!ignore) {
           setDashboard(merged);
           setRosterMeta(rosterData);
-          setDoctorHcmHeadline(headline);
           setLatestHcmPost(bulletinPost);
         }
       } catch (error) {
@@ -1824,7 +1708,6 @@ function DashboardPage() {
         dashboard={dashboard}
         operatorMetrics={operatorMetrics}
         latestHcmPost={latestHcmPost}
-        hcmLatestTitle={doctorHcmHeadline}
         onOpenRosterPdf={handleOpenRosterPdf}
       />
     );
@@ -1834,7 +1717,6 @@ function DashboardPage() {
     return (
       <DoctorDashboardView
         dashboard={dashboard}
-        hcmLatestTitle={doctorHcmHeadline}
         isSavingStatus={isSavingStatus}
         lowStockAlert={dashboard.doctor_low_stock_alert}
         onOpenRosterPdf={handleOpenRosterPdf}

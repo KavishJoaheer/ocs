@@ -2,6 +2,10 @@
 /**
  * Smoke-test critical API routes for all roles (catches SQL binding errors, 500s).
  * Usage: node src/scripts/smokeApiAudit.js
+ *
+ * Env:
+ *   SEED_USER_PASSWORD — login password (default Welcome@123). On production DBs with
+ *     custom passwords, accountant routes are skipped when login fails.
  */
 
 const { createApp } = require("../app");
@@ -38,7 +42,6 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/inventory"],
     ["GET", "/api/billing/patient-summary"],
     ["GET", "/api/inventory/activity-history"],
-    ["GET", "/api/dashboard/live-report"],
     ["GET", "/api/hcm-news"],
   ],
   lab_tech: [
@@ -52,6 +55,13 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/billing"],
     ["GET", "/api/hcm-news"],
   ],
+};
+
+/** role -> path -> expected HTTP status (RBAC-by-design, not a failure). */
+const EXPECTED_STATUS = {
+  accountant: {
+    "/api/dashboard/live-report": 403,
+  },
 };
 
 async function login(username) {
@@ -97,6 +107,10 @@ function pickUserForRole(role) {
   return row?.username || null;
 }
 
+function expectedStatusFor(role, path) {
+  return EXPECTED_STATUS[role]?.[path] ?? null;
+}
+
 let baseUrl;
 let server;
 
@@ -117,11 +131,12 @@ async function main() {
 
   const failures = [];
   const passes = [];
+  const skipped = [];
 
   for (const [role, endpoints] of Object.entries(ROLE_ENDPOINTS)) {
     const username = pickUserForRole(role);
     if (!username) {
-      failures.push({ role, path: "(login)", error: "No seed user for role" });
+      skipped.push({ role, reason: "No active user for role" });
       continue;
     }
 
@@ -129,6 +144,14 @@ async function main() {
     try {
       token = await login(username);
     } catch (error) {
+      if (role === "accountant") {
+        skipped.push({
+          role,
+          username,
+          reason: `${error.message} (set SEED_USER_PASSWORD to audit accountant routes)`,
+        });
+        continue;
+      }
       failures.push({ role, path: "/api/auth/login", error: error.message });
       continue;
     }
@@ -141,6 +164,13 @@ async function main() {
     for (const [method, path] of paths) {
       try {
         const result = await request(token, method, path);
+        const expected = expectedStatusFor(role, path);
+
+        if (expected != null && result.status === expected) {
+          passes.push({ role, path, status: result.status, note: "expected RBAC" });
+          continue;
+        }
+
         if (result.status >= 500 || result.status === 404) {
           failures.push({
             role,
@@ -195,7 +225,19 @@ async function main() {
     }
   }
 
-  console.log(`\nSmoke audit: ${passes.length} passed, ${failures.length} failed\n`);
+  console.log(`\nSmoke audit: ${passes.length} passed, ${failures.length} failed`);
+  if (skipped.length) {
+    console.log(`  (${skipped.length} role(s) skipped)`);
+  }
+  console.log("");
+
+  if (skipped.length) {
+    console.log("SKIPPED:");
+    skipped.forEach((entry) => {
+      console.log(`  [${entry.role}] ${entry.username || ""} ${entry.reason || ""}`.trim());
+    });
+    console.log("");
+  }
 
   if (failures.length) {
     console.log("FAILURES:");

@@ -1,5 +1,6 @@
 -- Migration 001: patient affiliations + HCM archive status (UTF-8 safe)
 -- SQLite uses UTF-8 text storage by default; values like "Santé" and "Médecin" are preserved.
+-- Canonical schema is also applied in server/src/db.js on initialize.
 
 BEGIN TRANSACTION;
 
