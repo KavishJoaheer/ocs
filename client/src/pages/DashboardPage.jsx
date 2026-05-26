@@ -26,6 +26,7 @@ import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.j
 import { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
 import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
 import { prefetchPatientOfflineDirectory } from "../lib/patientOfflineSync.js";
+import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -67,10 +68,35 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
   );
 }
 
+function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
+  return (
+    <Link
+      to="/supply-requests"
+      className="relative flex min-h-[110px] cursor-pointer flex-col justify-between rounded-2xl border border-gray-100/80 bg-white p-4 shadow-sm transition-all active:scale-[0.98]"
+    >
+      <div className="flex items-start justify-between">
+        <span className="text-xl" aria-hidden="true">
+          📋
+        </span>
+        {pendingCount > 0 ? (
+          <span className="rounded-full border border-[#f5e3d7] bg-[#ba5a32]/10 px-2 py-0.5 text-[10px] font-extrabold text-[#ba5a32]">
+            {pendingCount} Pending
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-4">
+        <p className="text-sm font-bold text-gray-800">Supply Requests</p>
+        <p className="text-[11px] font-semibold text-gray-400">Track, edit or cancel orders</p>
+      </div>
+    </Link>
+  );
+}
+
 function DoctorMobileLauncher({ user }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
   const showLowStockStrip = !loading && lowStockCount > 0;
+  const { pendingCount: supplyPendingCount } = useDoctorSupplyRequests();
 
   useEffect(() => {
     if (user?.role === "doctor" && user?.id) {
@@ -97,6 +123,8 @@ function DoctorMobileLauncher({ user }) {
             showLowStockLed={hasLowStockAlert}
           />
         </div>
+
+        <DoctorMobileSupplyRequestsCard pendingCount={supplyPendingCount} />
 
         <Link
           to="/patients/add"

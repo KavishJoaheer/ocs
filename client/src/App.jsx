@@ -11,6 +11,7 @@ import DoctorWorkspacePage from "./pages/DoctorWorkspacePage.jsx";
 import DoctorsPage from "./pages/DoctorsPage.jsx";
 import HcmNewsPage from "./pages/HcmNewsPage.jsx";
 import InventoryPage from "./pages/InventoryPage.jsx";
+import SupplyRequestsPage from "./pages/SupplyRequestsPage.jsx";
 import LabWorkspacePage from "./pages/LabWorkspacePage.jsx";
 import LiveReportPage from "./pages/LiveReportPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -87,6 +88,7 @@ function App() {
               path="/doctor/long-term-review"
               element={<DoctorWorkspacePage workspaceKey="long-term-review" />}
             />
+            <Route path="/supply-requests" element={<SupplyRequestsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["operator"]} />}>

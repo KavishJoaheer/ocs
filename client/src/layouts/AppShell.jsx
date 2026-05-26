@@ -24,6 +24,10 @@ const pageMeta = {
     label: "Inventory",
     helper: "",
   },
+  "/supply-requests": {
+    label: "Supply requests",
+    helper: "Track, edit, or cancel your OCS supply orders.",
+  },
   "/patients/add": {
     label: "Add patient",
     helper: "Register a new patient record.",
@@ -131,12 +135,14 @@ function AppShell() {
   const isDashboard = location.pathname === "/";
   const isPatientsDirectory = location.pathname === "/patients";
   const isInventory = location.pathname === "/inventory";
+  const isSupplyRequests = location.pathname === "/supply-requests";
   const hideBottomNav = isMobile;
   const userRole = user?.role;
   const alwaysHideTopHeader =
     (isDashboard && (userRole === "doctor" || userRole === "operator")) ||
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
-    (isMobile && isInventory && userRole === "doctor");
+    (isMobile && isInventory && userRole === "doctor") ||
+    (isMobile && isSupplyRequests && userRole === "doctor");
 
   const dashboardMetaByRole = {
     doctor: {

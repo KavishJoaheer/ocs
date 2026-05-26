@@ -471,7 +471,7 @@ router.patch("/:id", (req, res) => {
       void sendPushToUser(doctorUserId, {
         title: "✅ Supplies Ready for Collection",
         body: `Your restock request is prepared. Pick it up on ${updated.collection_date}.`,
-        url: "/inventory?context=my",
+        url: "/supply-requests",
         icon: "/icon-192.png",
         tag: `restock-request-${requestId}-prepared`,
       }).catch((error) => {
