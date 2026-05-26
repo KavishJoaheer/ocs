@@ -506,7 +506,7 @@ function getDoctorLowStockAlert(doctorId) {
           ratio,
         };
       })
-      .filter((row) => row.par_level > 0 && row.ratio < 0.5 && row.required_quantity > 0);
+      .filter((row) => row.par_level > 0 && row.current_quantity <= row.par_level);
 
     return {
       triggered: rows.length > 0,

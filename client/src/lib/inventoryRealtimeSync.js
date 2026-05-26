@@ -5,6 +5,7 @@ import {
   OCS_INVENTORY_EVENT,
   notifyDoctorBagInventoryUpdated,
   notifyOcsInventoryUpdated,
+  notifySupplyRequestsUpdated,
 } from "./inventorySync.js";
 
 const INVENTORY_REALTIME_ROLES = new Set(["admin", "doctor", "operator"]);
@@ -155,6 +156,10 @@ export function startInventoryRealtimeSync(user) {
     if (user.role === "admin" || user.role === "operator") {
       notifyOcsInventoryUpdated();
     }
+  });
+
+  source.addEventListener("supply_request_change", () => {
+    notifySupplyRequestsUpdated();
   });
 
   source.addEventListener("inventory_change", (message) => {

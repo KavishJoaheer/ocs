@@ -339,7 +339,7 @@ function getDoctorLowStockItemIds(doctorId) {
         requiredQuantity,
       };
     })
-    .filter((row) => row.parLevel > 0 && row.ratio < 0.5 && row.requiredQuantity > 0)
+    .filter((row) => row.parLevel > 0 && row.quantity <= row.parLevel)
     .map((row) => row.itemId);
 }
 

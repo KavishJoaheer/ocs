@@ -214,7 +214,7 @@ function Sidebar() {
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
-        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white/92 px-4 backdrop-blur-lg md:hidden"
+        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white px-4 md:hidden"
         style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button

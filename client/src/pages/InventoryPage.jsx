@@ -42,6 +42,7 @@ import {
   notifyOcsInventoryUpdated,
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
+  SUPPLY_REQUESTS_EVENT,
 } from "../lib/inventorySync.js";
 import {
   applyOptimisticBagDeduct,
@@ -774,10 +775,12 @@ function RestockModal({ open, doctors, item, presetDoctorId = null, presetDoctor
 
 function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
+  const [expiryDate, setExpiryDate] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setQuantity("1");
+    setExpiryDate("");
   }, [open, item]);
 
   const available = Number(item?.ocs_available || 0);
@@ -796,9 +799,14 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
           event.preventDefault();
           const qty = Number(quantity || 0);
           if (!Number.isInteger(qty) || qty <= 0) return;
+          if (!expiryDate) {
+            toast.error("Select a batch expiry date.");
+            return;
+          }
           onSubmit({
             ocs_item_id: Number(item?.ocs_item_id || 0),
             quantity: qty,
+            expiry_date: expiryDate,
             item_name: item?.item_name || "",
             ocs_available: available,
           });
@@ -822,13 +830,29 @@ function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
               Requested quantity exceeds OCS Master availability.
             </p>
           ) : null}
+          <label className="mt-4 block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Batch expiry date</span>
+            <input
+              required
+              type="date"
+              value={expiryDate}
+              onChange={(event) => setExpiryDate(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+            />
+          </label>
         </div>
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
             Cancel
           </button>
-          <button type="submit" disabled={isSaving || !item?.ocs_item_id || Number(quantity || 0) > available} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          <button
+            type="submit"
+            disabled={
+              isSaving || !item?.ocs_item_id || Number(quantity || 0) > available || !expiryDate
+            }
+            className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
             {isSaving ? "Restocking..." : "Restock My Inventory"}
           </button>
         </div>
@@ -2115,7 +2139,15 @@ function OperatorRestockRequestsInbox({ refreshKey }) {
     load();
   }, [load, refreshKey]);
 
-  // Lightweight poll so a new doctor request shows up without a manual refresh.
+  useEffect(() => {
+    const handleRefresh = () => {
+      void load();
+    };
+    window.addEventListener(SUPPLY_REQUESTS_EVENT, handleRefresh);
+    return () => window.removeEventListener(SUPPLY_REQUESTS_EVENT, handleRefresh);
+  }, [load]);
+
+  // Fallback poll when SSE is disconnected.
   useEffect(() => {
     const timer = window.setInterval(() => {
       load();
@@ -2800,7 +2832,7 @@ function MobileDoctorBagLayout({
   onOpenRestock,
 }) {
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3 bg-[#f8f9fa] px-4 py-3">
+    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3.5 bg-[#f8f9fa] px-4 py-3">
       <header className="flex items-start justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight text-gray-900">
           {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
@@ -3564,6 +3596,7 @@ export default function InventoryPage() {
         items: requests.map((item) => ({
           ocs_item_id: Number(item.ocs_item_id),
           quantity: Number(item.required_quantity || item.quantity),
+          expiry_date: item.expiry_date ? String(item.expiry_date).trim() : null,
         })),
       });
       commitInventoryData(next);
@@ -4296,7 +4329,12 @@ export default function InventoryPage() {
                       const parLevel = Number(item.minimum_quantity || 0);
                       const quantity = Number(item.quantity || 0);
                       const ratio = parLevel > 0 ? quantity / parLevel : 1;
-                      const trafficTone = quantity <= 0 ? "critical" : parLevel > 0 && ratio < 0.5 ? "warning" : "healthy";
+                      const trafficTone =
+                        quantity <= 0
+                          ? "critical"
+                          : parLevel > 0 && quantity <= parLevel
+                            ? "warning"
+                            : "healthy";
                       return (
                         <Fragment key={item.id}>
                           <tr

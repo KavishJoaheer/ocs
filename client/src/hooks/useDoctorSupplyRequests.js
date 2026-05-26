@@ -4,6 +4,7 @@ import {
   fetchDoctorSupplyRequests,
   filterDisplayableSupplyRequests,
 } from "../lib/supplyRequests.js";
+import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
 
 export function useDoctorSupplyRequests({ enabled = true, refreshKey = 0 } = {}) {
   const [requests, setRequests] = useState([]);
@@ -48,6 +49,19 @@ export function useDoctorSupplyRequests({ enabled = true, refreshKey = 0 } = {})
   useEffect(() => {
     void reload();
   }, [reload, refreshKey]);
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleRefresh = () => {
+      void reload();
+    };
+
+    window.addEventListener(SUPPLY_REQUESTS_EVENT, handleRefresh);
+    return () => window.removeEventListener(SUPPLY_REQUESTS_EVENT, handleRefresh);
+  }, [enabled, reload]);
 
   const pendingCount = requests.filter((row) => row.status === "pending").length;
 

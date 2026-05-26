@@ -4,6 +4,9 @@ export const DOCTOR_BAG_INVENTORY_EVENT = "doctor-bag-inventory-updated";
 /** Dispatched when OCS master stock changes (operator/admin replenishment, adjustments). */
 export const OCS_INVENTORY_EVENT = "ocs-inventory-updated";
 
+/** Dispatched when supply / restock request lists change (doctor or operator views). */
+export const SUPPLY_REQUESTS_EVENT = "supply-requests-updated";
+
 const CHANNEL_NAME = "ocs-inventory-sync";
 
 const broadcastChannel =
@@ -28,7 +31,11 @@ function dispatch(eventName) {
 if (broadcastChannel && typeof window !== "undefined") {
   broadcastChannel.addEventListener("message", (event) => {
     const eventName = event?.data?.type;
-    if (eventName === DOCTOR_BAG_INVENTORY_EVENT || eventName === OCS_INVENTORY_EVENT) {
+    if (
+      eventName === DOCTOR_BAG_INVENTORY_EVENT ||
+      eventName === OCS_INVENTORY_EVENT ||
+      eventName === SUPPLY_REQUESTS_EVENT
+    ) {
       window.dispatchEvent(new CustomEvent(eventName));
     }
   });
@@ -40,4 +47,8 @@ export function notifyDoctorBagInventoryUpdated() {
 
 export function notifyOcsInventoryUpdated() {
   dispatch(OCS_INVENTORY_EVENT);
+}
+
+export function notifySupplyRequestsUpdated() {
+  dispatch(SUPPLY_REQUESTS_EVENT);
 }

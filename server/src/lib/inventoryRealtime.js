@@ -49,6 +49,19 @@ function shouldDeliverInventoryEvent(client, event) {
   return false;
 }
 
+function shouldDeliverSupplyRequestEvent(client, event) {
+  const role = String(client.role || "");
+  if (role === "admin" || role === "operator") {
+    return true;
+  }
+
+  if (role === "doctor") {
+    return Number(event.doctorId || 0) === Number(client.doctorId || 0);
+  }
+
+  return false;
+}
+
 function writeSseEvent(res, eventName, payload) {
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -167,6 +180,32 @@ function publishInventoryResyncBroadcast() {
   return { delivered, event };
 }
 
+/** Notify doctors/operators when supply request status or lines change. */
+function publishSupplyRequestChange({ doctorId = null } = {}) {
+  const event = {
+    type: "supply_request_change",
+    doctorId: doctorId ? Number(doctorId) : null,
+    at: new Date().toISOString(),
+  };
+
+  let delivered = 0;
+
+  for (const client of clients.values()) {
+    if (!shouldDeliverSupplyRequestEvent(client, event)) {
+      continue;
+    }
+
+    try {
+      writeSseEvent(client.res, "supply_request_change", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  return { delivered, event };
+}
+
 function handleInventoryStream(req, res) {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -196,6 +235,8 @@ module.exports = {
   handleInventoryStream,
   publishInventoryChange,
   publishInventoryResyncBroadcast,
+  publishSupplyRequestChange,
   shouldDeliverInventoryEvent,
+  shouldDeliverSupplyRequestEvent,
   withClientSessionContext,
 };

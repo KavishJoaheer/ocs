@@ -2146,18 +2146,20 @@ function BillingPage() {
                         <th className="px-5 py-3">Status</th>
                         <th className="px-5 py-3">Pay by</th>
                         <th className="px-5 py-3">Payment date</th>
-                        <th className="px-5 py-3 text-right">Actions</th>
+                        <th className="sticky right-0 z-[1] bg-slate-50 px-5 py-3 text-right shadow-[-2px_0_0_rgba(226,232,240,0.9)]">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {billsForDisplay.map((bill) => (
                         <tr key={bill.id} className="group border-t border-slate-200/70 hover:bg-slate-50/70">
                           <td className="sticky left-0 z-[1] bg-white px-5 py-3 align-middle shadow-[2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
-                            <p className="font-semibold text-slate-950">{bill.patient_name}</p>
-                            <p className="mt-1 text-sm text-slate-500">{bill.doctor_name}</p>
+                            <p className="truncate font-semibold text-slate-950">{bill.patient_name}</p>
+                            <p className="mt-1 truncate text-sm text-slate-500">{bill.doctor_name}</p>
                           </td>
-                          <td className="px-5 py-3 text-sm text-slate-600">
-                            <p>{formatDate(bill.consultation_date)}</p>
+                          <td className="max-w-[220px] px-5 py-3 text-sm text-slate-600">
+                            <p className="truncate">{formatDate(bill.consultation_date)}</p>
                             <p className="mt-1 text-slate-500">
                               Bill #{bill.id} - {bill.items.length} line item
                               {bill.items.length === 1 ? "" : "s"}
@@ -2189,7 +2191,7 @@ function BillingPage() {
                           <td className="px-5 py-3 text-sm text-slate-600">
                             {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
                           </td>
-                          <td className="px-5 py-3">
+                          <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
                               {bill.status === "unpaid" && canMarkPaid ? (
                                 <button

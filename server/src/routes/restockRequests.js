@@ -5,7 +5,16 @@ const {
   getWeekdayForIsoDate,
   isValidCollectionDate,
 } = require("../lib/collectionDays");
+const { publishSupplyRequestChange } = require("../lib/inventoryRealtime");
 const { sendPushToRole, sendPushToUser } = require("../lib/push");
+
+function broadcastSupplyRequestChange(doctorId) {
+  try {
+    publishSupplyRequestChange({ doctorId });
+  } catch {
+    // SSE fan-out is best-effort.
+  }
+}
 
 const router = express.Router();
 
@@ -342,6 +351,8 @@ router.post("/", (req, res) => {
     console.warn("[push] restock request operator notify failed:", error?.message || error);
   });
 
+  broadcastSupplyRequestChange(doctorId);
+
   return res.status(201).json({ request: created });
 });
 
@@ -400,6 +411,8 @@ router.put("/:id", (req, res) => {
     console.warn("[push] restock request update notify failed:", error?.message || error);
   });
 
+  broadcastSupplyRequestChange(updated.doctor_id);
+
   return res.json({ request: updated });
 });
 
@@ -430,7 +443,10 @@ router.patch("/:id", (req, res) => {
       WHERE id = ?
     `).run(requestId);
 
-    return res.json({ request: getRequestById(requestId) });
+    const cancelled = getRequestById(requestId);
+    broadcastSupplyRequestChange(cancelled?.doctor_id);
+
+    return res.json({ request: cancelled });
   }
 
   if (role !== "operator" && role !== "admin") {
@@ -480,6 +496,8 @@ router.patch("/:id", (req, res) => {
     }
   }
 
+  broadcastSupplyRequestChange(updated.doctor_id);
+
   return res.json({ request: updated });
 });
 
@@ -495,7 +513,7 @@ router.delete("/:id", (req, res) => {
   }
 
   const existing = db
-    .prepare("SELECT id FROM restock_requests WHERE id = ? LIMIT 1")
+    .prepare("SELECT id, doctor_id FROM restock_requests WHERE id = ? LIMIT 1")
     .get(requestId);
 
   if (!existing) {
@@ -503,6 +521,8 @@ router.delete("/:id", (req, res) => {
   }
 
   db.prepare("DELETE FROM restock_requests WHERE id = ?").run(requestId);
+
+  broadcastSupplyRequestChange(existing.doctor_id);
 
   return res.json({ ok: true });
 });

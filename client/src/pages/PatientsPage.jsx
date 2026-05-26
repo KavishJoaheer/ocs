@@ -688,7 +688,7 @@ function PatientsPage() {
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
-                        className="mb-3 flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-2xl border border-[#557373]/25 bg-[#557373]/15 p-4 shadow-sm transition-all active:scale-[0.99]"
+                        className="mb-3 flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-2xl border border-[#557373]/15 bg-[#557373]/15 p-4 shadow-sm transition-all active:scale-[0.99]"
                       >
                         <div className="flex items-center gap-3">
                           <div

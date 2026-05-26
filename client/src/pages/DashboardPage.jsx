@@ -1305,7 +1305,7 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
           <div className="flex items-center justify-between border-b border-rose-200/60 pb-3">
             <span className="text-xs font-bold uppercase tracking-widest text-rose-700">Inventory alerts</span>
             <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-              {lowStockCount} below par
+              {lowStockCount} at or below par
             </span>
           </div>
           <div className="mt-4 flex items-center gap-3">
@@ -1313,7 +1313,7 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
               <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
             </div>
             <span className="min-w-0 text-xs font-semibold leading-normal text-rose-900">
-              {lowStockCount} item{lowStockCount === 1 ? "" : "s"} under 50% par. Tap to restock.
+              {lowStockCount} item{lowStockCount === 1 ? "" : "s"} are currently low in your bag. Tap to restock.
             </span>
           </div>
         </Link>
