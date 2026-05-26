@@ -26,7 +26,8 @@ export default function SupplyRequestsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
 
-  const { requests, loading, error, reload } = useDoctorSupplyRequests({ refreshKey });
+  const { displayableRequests, loading, error, reload, dismissRequest } =
+    useDoctorSupplyRequests({ refreshKey });
 
   useEffect(() => {
     let ignore = false;
@@ -99,7 +100,7 @@ export default function SupplyRequestsPage() {
     }
   }
 
-  async function handleCancel(requestId) {
+  async function handleDismissRequestCard(requestId) {
     if (updatingId) return;
     const confirmed = window.confirm(
       "Cancel this supply order? Operators will no longer prepare this pack.",
@@ -109,12 +110,12 @@ export default function SupplyRequestsPage() {
     setUpdatingId(requestId);
     try {
       await api.patch(`/restock-requests/${requestId}`, { status: "cancelled" });
-      toast.success("Supply request cancelled.");
-      await reload();
-      bumpRefresh();
+      dismissRequest(requestId);
+      toast.success("Request successfully cleared.");
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Could not cancel request.";
+      const message = err instanceof ApiError ? err.message : "Could not clear request.";
       toast.error(message);
+      console.error("Failed to dismiss request card:", err);
     } finally {
       setUpdatingId(null);
     }
@@ -157,17 +158,18 @@ export default function SupplyRequestsPage() {
           <div className="mx-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
-        ) : !requests.length ? (
+        ) : displayableRequests.length === 0 ? (
           <div className="mx-1 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
             <ClipboardList className="mx-auto mb-3 size-8 text-[#ba5a32]/60" />
-            <p>No supply requests yet.</p>
-            <p className="mt-1 text-[11px] text-gray-400">Submit a request and track it here.</p>
+            <p>No active supply requests.</p>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Submit a new request or check back when an order is prepared.
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-3.5 px-1">
-            {requests.map((request) => {
+            {displayableRequests.map((request) => {
               const isPending = request.status === "pending";
-              const isCancelled = request.status === "cancelled";
               const statusLabel = supplyRequestStatusLabel(request.status);
 
               return (
@@ -228,18 +230,12 @@ export default function SupplyRequestsPage() {
                       <button
                         type="button"
                         disabled={updatingId === request.id}
-                        onClick={() => handleCancel(request.id)}
+                        onClick={() => handleDismissRequestCard(request.id)}
                         className="flex-1 rounded-xl border border-rose-100/60 bg-rose-50 py-2.5 text-xs font-bold text-rose-600 transition-all hover:bg-rose-100 active:scale-[0.98] disabled:opacity-60"
                       >
-                        {updatingId === request.id ? "Cancelling…" : "Cancel order"}
+                        {updatingId === request.id ? "Clearing…" : "Cancel order"}
                       </button>
                     </div>
-                  ) : null}
-
-                  {isCancelled ? (
-                    <p className="border-t border-gray-50 pt-2 text-[11px] text-gray-400">
-                      This request was cancelled and is read-only.
-                    </p>
                   ) : null}
                 </article>
               );

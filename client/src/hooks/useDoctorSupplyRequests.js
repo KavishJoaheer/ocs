@@ -1,11 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "../lib/api.js";
-import { fetchDoctorSupplyRequests } from "../lib/supplyRequests.js";
+import {
+  fetchDoctorSupplyRequests,
+  filterDisplayableSupplyRequests,
+} from "../lib/supplyRequests.js";
 
 export function useDoctorSupplyRequests({ enabled = true, refreshKey = 0 } = {}) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const displayableRequests = useMemo(
+    () => filterDisplayableSupplyRequests(requests),
+    [requests],
+  );
+
+  const dismissRequest = useCallback((requestId) => {
+    const id = Number(requestId);
+    if (!id) return;
+    setRequests((current) => current.filter((row) => Number(row.id) !== id));
+  }, []);
 
   const reload = useCallback(async () => {
     if (!enabled) {
@@ -39,9 +53,11 @@ export function useDoctorSupplyRequests({ enabled = true, refreshKey = 0 } = {})
 
   return {
     requests,
+    displayableRequests,
     loading,
     error,
     pendingCount,
     reload,
+    dismissRequest,
   };
 }

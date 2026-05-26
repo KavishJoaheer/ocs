@@ -22,7 +22,18 @@ export function formatSupplyRequestCollectionDay(collectionDate) {
   return dayjs(collectionDate).format("ddd, DD MMM YYYY");
 }
 
+/** Doctors never see cancelled rows; admins retain them in the database for audit. */
+export function isDisplayableSupplyRequest(request) {
+  return String(request?.status || "").trim().toLowerCase() !== "cancelled";
+}
+
+export function filterDisplayableSupplyRequests(requests = []) {
+  return (Array.isArray(requests) ? requests : []).filter(isDisplayableSupplyRequest);
+}
+
 export async function fetchDoctorSupplyRequests() {
-  const payload = await api.get("/restock-requests?status=pending,prepared,cancelled");
-  return Array.isArray(payload?.requests) ? payload.requests : [];
+  const payload = await api.get("/restock-requests?status=pending,prepared");
+  return filterDisplayableSupplyRequests(
+    Array.isArray(payload?.requests) ? payload.requests : [],
+  );
 }
