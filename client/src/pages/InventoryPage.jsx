@@ -54,7 +54,6 @@ import {
 } from "../lib/inventoryOfflineSync.js";
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
-import RestockRequestModal from "../components/RestockRequestModal.jsx";
 import { cx, pageContainerClass } from "../lib/utils.js";
 
 dayjs.extend(isoWeek);
@@ -2797,7 +2796,6 @@ function MobileDoctorBagLayout({
   setCurrentPage,
   doctorRestockCandidates = [],
   onOpenRestockInventory,
-  onOpenRequestSupply,
   onOpenDeduct,
   onOpenRestock,
 }) {
@@ -2808,25 +2806,15 @@ function MobileDoctorBagLayout({
           {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
         </h1>
         {!doctorViewIsOcs ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpenRequestSupply}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-[#f5e3d7] bg-[#ba5a32]/10 px-3 py-1.5 text-xs font-bold text-[#ba5a32] transition active:bg-[#ba5a32]/20"
-            >
-              <ClipboardList className="size-3.5" />
-              Request Supply
-            </button>
-            <button
-              type="button"
-              onClick={onOpenRestockInventory}
-              disabled={!doctorRestockCandidates.length}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Truck className="size-4" />
-              Restock
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onOpenRestockInventory}
+            disabled={!doctorRestockCandidates.length}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Truck className="size-4" />
+            Restock
+          </button>
         ) : null}
       </header>
 
@@ -2973,8 +2961,6 @@ export default function InventoryPage() {
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [doctorRestockItem, setDoctorRestockItem] = useState(null);
-  const [restockRequestOpen, setRestockRequestOpen] = useState(false);
-  const [isSubmittingRestockRequest, setIsSubmittingRestockRequest] = useState(false);
   const [restockRequestsRefreshKey, setRestockRequestsRefreshKey] = useState(0);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
@@ -3595,21 +3581,6 @@ export default function InventoryPage() {
     }
   }
 
-  async function submitRestockRequest(payload) {
-    setIsSubmittingRestockRequest(true);
-    try {
-      await api.post("/restock-requests", payload);
-      toast.success("Supply request sent to operators.");
-      setRestockRequestOpen(false);
-      setRestockRequestsRefreshKey((value) => value + 1);
-    } catch (error) {
-      const message = error instanceof ApiError ? error.message : "Could not send request.";
-      toast.error(message);
-    } finally {
-      setIsSubmittingRestockRequest(false);
-    }
-  }
-
   function buildReceiptPrintHtml(receipt) {
     const rows = (receipt.items || [])
       .map(
@@ -4090,7 +4061,6 @@ export default function InventoryPage() {
             setCurrentPage={setCurrentPage}
             doctorRestockCandidates={doctorRestockCandidates}
             onOpenRestockInventory={() => setDoctorRestockOpen(true)}
-            onOpenRequestSupply={() => setRestockRequestOpen(true)}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
             onOpenRestock={openMobileDoctorRestock}
           />
@@ -4119,25 +4089,15 @@ export default function InventoryPage() {
         title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
         actions={
           isDoctor ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setRestockRequestOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-[#f5e3d7] bg-[#ba5a32]/10 px-3 py-2 text-xs font-bold text-[#ba5a32] transition hover:bg-[#ba5a32]/20"
-              >
-                <ClipboardList className="size-3.5" />
-                Request Supply
-              </button>
-              <button
-                type="button"
-                onClick={() => setDoctorRestockOpen(true)}
-                disabled={!doctorRestockCandidates.length}
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Truck className="size-4" />
-                Restock My Inventory
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setDoctorRestockOpen(true)}
+              disabled={!doctorRestockCandidates.length}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Truck className="size-4" />
+              Restock My Inventory
+            </button>
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
               {isAdmin ? (
@@ -4667,13 +4627,6 @@ export default function InventoryPage() {
           setDoctorRestockItem(null);
         }}
         onSubmit={saveDoctorRestock}
-      />
-      <RestockRequestModal
-        open={restockRequestOpen}
-        isSaving={isSubmittingRestockRequest}
-        catalogItems={data?.ocs_stock || []}
-        onClose={() => setRestockRequestOpen(false)}
-        onSubmit={submitRestockRequest}
       />
       <StockOutModal
         open={Boolean(stockOut)}
