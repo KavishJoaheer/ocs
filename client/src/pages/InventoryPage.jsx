@@ -21,6 +21,7 @@ import {
   Trash2,
   Truck,
   X,
+  XCircle,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
@@ -2092,13 +2093,31 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
   );
 }
 
+function supplyRequestStatusTone(status) {
+  if (status === "prepared") {
+    return "bg-emerald-50 text-emerald-700";
+  }
+  if (status === "cancelled") {
+    return "bg-slate-100 text-slate-600";
+  }
+  return "bg-amber-50 text-amber-700";
+}
+
+function supplyRequestStatusLabel(status) {
+  if (status === "prepared") return "Prepared";
+  if (status === "cancelled") return "Cancelled";
+  return "Pending";
+}
+
 function RestockRequestModal({
   open,
   onClose,
   onSubmit,
   catalogItems,
   isSaving,
+  editingRequest = null,
 }) {
+  const isEditing = Boolean(editingRequest?.id);
   const [items, setItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -2109,12 +2128,29 @@ function RestockRequestModal({
 
   useEffect(() => {
     if (!open) return;
-    setItems([]);
     setSearchQuery("");
     setSuggestionsOpen(false);
+
+    if (editingRequest) {
+      setItems(
+        (editingRequest.items || []).map((row) => ({
+          inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
+          item_name: row.item_name,
+          quantity: Number(row.quantity || 1),
+          ocs_available: row.inventory_quantity ?? null,
+        })),
+      );
+      setNote(String(editingRequest.note || ""));
+      const existingDate = String(editingRequest.collection_date || "");
+      const stillValid = collectionOptions.some((option) => option.iso === existingDate);
+      setCollectionDate(stillValid ? existingDate : collectionOptions[0]?.iso || "");
+      return;
+    }
+
+    setItems([]);
     setNote("");
     setCollectionDate(collectionOptions[0]?.iso || "");
-  }, [open, collectionOptions]);
+  }, [open, editingRequest, collectionOptions]);
 
   const selectedKeys = useMemo(
     () =>
@@ -2191,8 +2227,12 @@ function RestockRequestModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Request Supply from OCS"
-      description="Choose stock items and a target collection day. Operators will prepare your pack."
+      title={isEditing ? "Edit Supply Request" : "Request Supply from OCS"}
+      description={
+        isEditing
+          ? "Update items or collection day while your request is still pending."
+          : "Choose stock items and a target collection day. Operators will prepare your pack."
+      }
       size="md"
     >
       <div className="flex flex-col gap-4">
@@ -2341,11 +2381,228 @@ function RestockRequestModal({
             disabled={isSaving || items.length === 0}
             className="min-h-11 rounded-2xl bg-[#ba5a32] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#9d4a28] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? "Submitting…" : "Submit request"}
+            {isSaving ? "Saving…" : isEditing ? "Save changes" : "Submit request"}
           </button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+function DoctorMySupplyRequests({
+  refreshKey,
+  compact = false,
+  onEditRequest,
+  onRequestSupply,
+}) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [expanded, setExpanded] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = await api.get("/restock-requests?status=pending,prepared,cancelled");
+      setRequests(Array.isArray(payload?.requests) ? payload.requests : []);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not load your supply requests.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load, refreshKey]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      load();
+    }, 45000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  const pendingCount = requests.filter((row) => row.status === "pending").length;
+
+  useEffect(() => {
+    if (compact && pendingCount > 0) {
+      setExpanded(true);
+    }
+  }, [compact, pendingCount]);
+  const preparedCount = requests.filter((row) => row.status === "prepared").length;
+
+  const handleCancel = async (request) => {
+    if (updatingId) return;
+    const confirmed = window.confirm(
+      "Cancel this supply request? Operators will no longer prepare this pack.",
+    );
+    if (!confirmed) return;
+
+    setUpdatingId(request.id);
+    try {
+      await api.patch(`/restock-requests/${request.id}`, { status: "cancelled" });
+      toast.success("Supply request cancelled.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not cancel request.";
+      toast.error(message);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const subtitle = loading
+    ? "Loading…"
+    : pendingCount > 0
+      ? `${pendingCount} pending · ${preparedCount} ready to collect`
+      : preparedCount > 0
+        ? `${preparedCount} ready to collect`
+        : "No active requests";
+
+  const body = error ? (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      {error}
+    </div>
+  ) : !requests.length && !loading ? (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">
+      <p>You have not submitted any supply requests yet.</p>
+      {onRequestSupply ? (
+        <button
+          type="button"
+          onClick={onRequestSupply}
+          className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-[#ba5a32] px-4 py-2 text-xs font-bold text-white"
+        >
+          <ClipboardList className="size-3.5" />
+          Request Supply
+        </button>
+      ) : null}
+    </div>
+  ) : (
+    <div className={cx("flex flex-col gap-3", compact ? "" : "md:gap-4")}>
+      {requests.map((request) => {
+        const isPending = request.status === "pending";
+        const isPrepared = request.status === "prepared";
+        const itemsSummary = request.items
+          .map((item) => `${item.item_name} × ${item.quantity}`)
+          .join(", ");
+
+        return (
+          <article
+            key={request.id}
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-900">
+                  Collection {dayjs(request.collection_date).format("ddd, DD MMM")}
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Submitted {dayjs(request.created_at).format("DD MMM YYYY · HH:mm")}
+                </p>
+              </div>
+              <span
+                className={cx(
+                  "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                  supplyRequestStatusTone(request.status),
+                )}
+              >
+                {isPrepared ? (
+                  <CheckCircle2 className="size-3" />
+                ) : isPending ? (
+                  <ClipboardList className="size-3" />
+                ) : (
+                  <XCircle className="size-3" />
+                )}
+                {supplyRequestStatusLabel(request.status)}
+              </span>
+            </div>
+
+            <p className="mt-2 text-sm text-slate-700 break-words">{itemsSummary}</p>
+
+            {request.note ? (
+              <p className="mt-1 text-[11px] italic text-slate-500">“{request.note}”</p>
+            ) : null}
+
+            {isPrepared && request.prepared_by_name ? (
+              <p className="mt-2 text-[11px] font-medium text-emerald-700">
+                Prepared by {request.prepared_by_name}
+                {request.prepared_at
+                  ? ` · ${dayjs(request.prepared_at).format("DD MMM HH:mm")}`
+                  : ""}
+              </p>
+            ) : null}
+
+            {isPending ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={updatingId === request.id}
+                  onClick={() => onEditRequest?.(request)}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  <Pencil className="size-3.5" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={updatingId === request.id}
+                  onClick={() => handleCancel(request)}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+                >
+                  <XCircle className="size-3.5" />
+                  {updatingId === request.id ? "Cancelling…" : "Cancel"}
+                </button>
+              </div>
+            ) : null}
+          </article>
+        );
+      })}
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+        >
+          <div>
+            <p className="text-sm font-bold text-slate-900">My Supply Requests</p>
+            <p className="text-[11px] text-slate-500">{subtitle}</p>
+          </div>
+          <ChevronDown
+            className={cx(
+              "size-5 shrink-0 text-slate-400 transition",
+              expanded ? "rotate-180" : "",
+            )}
+          />
+        </button>
+        {expanded ? <div className="border-t border-slate-100 px-3 pb-3 pt-2">{body}</div> : null}
+      </section>
+    );
+  }
+
+  return (
+    <SectionCard
+      title="My Supply Requests"
+      subtitle={subtitle}
+      actions={
+        pendingCount > 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
+            <Clock className="size-3.5" />
+            {pendingCount} pending
+          </span>
+        ) : null
+      }
+    >
+      {body}
+    </SectionCard>
   );
 }
 
@@ -3231,6 +3488,7 @@ export default function InventoryPage() {
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [doctorRestockItem, setDoctorRestockItem] = useState(null);
   const [restockRequestOpen, setRestockRequestOpen] = useState(false);
+  const [editingRestockRequest, setEditingRestockRequest] = useState(null);
   const [isSubmittingRestockRequest, setIsSubmittingRestockRequest] = useState(false);
   const [restockRequestsRefreshKey, setRestockRequestsRefreshKey] = useState(0);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
@@ -3852,12 +4110,32 @@ export default function InventoryPage() {
     }
   }
 
+  function closeRestockRequestModal() {
+    setRestockRequestOpen(false);
+    setEditingRestockRequest(null);
+  }
+
+  function openCreateRestockRequest() {
+    setEditingRestockRequest(null);
+    setRestockRequestOpen(true);
+  }
+
+  function openEditRestockRequest(request) {
+    setEditingRestockRequest(request);
+    setRestockRequestOpen(true);
+  }
+
   async function submitRestockRequest(payload) {
     setIsSubmittingRestockRequest(true);
     try {
-      await api.post("/restock-requests", payload);
-      toast.success("Supply request sent to operators.");
-      setRestockRequestOpen(false);
+      if (editingRestockRequest?.id) {
+        await api.put(`/restock-requests/${editingRestockRequest.id}`, payload);
+        toast.success("Supply request updated.");
+      } else {
+        await api.post("/restock-requests", payload);
+        toast.success("Supply request sent to operators.");
+      }
+      closeRestockRequestModal();
       setRestockRequestsRefreshKey((value) => value + 1);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "Could not send request.";
@@ -4332,6 +4610,14 @@ export default function InventoryPage() {
     <>
       {showMobileDoctorBag ? (
         <>
+          <div className="mx-auto w-full max-w-md px-4 pt-3">
+            <DoctorMySupplyRequests
+              compact
+              refreshKey={restockRequestsRefreshKey}
+              onEditRequest={openEditRestockRequest}
+              onRequestSupply={openCreateRestockRequest}
+            />
+          </div>
           <MobileDoctorBagLayout
             search={search}
             setSearch={setSearch}
@@ -4347,7 +4633,7 @@ export default function InventoryPage() {
             setCurrentPage={setCurrentPage}
             doctorRestockCandidates={doctorRestockCandidates}
             onOpenRestockInventory={() => setDoctorRestockOpen(true)}
-            onOpenRequestSupply={() => setRestockRequestOpen(true)}
+            onOpenRequestSupply={openCreateRestockRequest}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
             onOpenRestock={openMobileDoctorRestock}
           />
@@ -4379,7 +4665,7 @@ export default function InventoryPage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setRestockRequestOpen(true)}
+                onClick={openCreateRestockRequest}
                 className="inline-flex items-center gap-2 rounded-xl border border-[#f5e3d7] bg-[#ba5a32]/10 px-3 py-2 text-xs font-bold text-[#ba5a32] transition hover:bg-[#ba5a32]/20"
               >
                 <ClipboardList className="size-3.5" />
@@ -4452,6 +4738,14 @@ export default function InventoryPage() {
 
       {isOperator || isAdmin ? (
         <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+      ) : null}
+
+      {isDoctor && !showMobileDoctorBag ? (
+        <DoctorMySupplyRequests
+          refreshKey={restockRequestsRefreshKey}
+          onEditRequest={openEditRestockRequest}
+          onRequestSupply={openCreateRestockRequest}
+        />
       ) : null}
 
       <SectionCard
@@ -4929,7 +5223,8 @@ export default function InventoryPage() {
         open={restockRequestOpen}
         isSaving={isSubmittingRestockRequest}
         catalogItems={data?.ocs_stock || []}
-        onClose={() => setRestockRequestOpen(false)}
+        editingRequest={editingRestockRequest}
+        onClose={closeRestockRequestModal}
         onSubmit={submitRestockRequest}
       />
       <StockOutModal

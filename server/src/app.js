@@ -246,7 +246,8 @@ function createApp() {
     authorizeByMethod({
       GET: ["admin", "doctor", "operator"],
       POST: ["doctor"],
-      PATCH: ["admin", "operator"],
+      PUT: ["doctor"],
+      PATCH: ["admin", "operator", "doctor"],
     }),
     restockRequestsRouter,
   );

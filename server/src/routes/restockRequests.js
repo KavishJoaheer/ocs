@@ -35,9 +35,13 @@ function getDoctorUserId(doctorId) {
   return row?.id ? Number(row.id) : null;
 }
 
-function listRequests({ status, doctorId } = {}) {
+function listRequests({ status, doctorId, requestId } = {}) {
   const filters = [];
   const params = {};
+  if (requestId) {
+    filters.push("r.id = @request_id");
+    params.request_id = Number(requestId);
+  }
   if (Array.isArray(status) && status.length) {
     filters.push(
       `r.status IN (${status.map((_, idx) => `@status_${idx}`).join(", ")})`,
@@ -137,8 +141,8 @@ function listRequests({ status, doctorId } = {}) {
 }
 
 function getRequestById(id) {
-  const matches = listRequests({});
-  return matches.find((row) => row.id === Number(id)) || null;
+  const matches = listRequests({ requestId: Number(id) });
+  return matches[0] || null;
 }
 
 function parseStatusFilter(rawStatus) {
@@ -191,6 +195,48 @@ function normaliseItemsPayload(rawItems) {
   }
 
   return { items: Array.from(merged.values()) };
+}
+
+function loadPendingRequestForDoctor(requestId, userId) {
+  const doctorId = getDoctorIdForUser(userId);
+  if (!doctorId) {
+    return { error: "Your account is not linked to a doctor profile.", status: 400 };
+  }
+
+  const row = db
+    .prepare("SELECT id, doctor_id, status FROM restock_requests WHERE id = ? LIMIT 1")
+    .get(Number(requestId));
+
+  if (!row) {
+    return { error: "Restock request not found.", status: 404 };
+  }
+  if (Number(row.doctor_id) !== doctorId) {
+    return { error: "You can only change your own supply requests.", status: 403 };
+  }
+  if (row.status !== "pending") {
+    return {
+      error: "Only pending requests can be edited or cancelled. Prepared packs are locked.",
+      status: 400,
+    };
+  }
+
+  return { row, doctorId };
+}
+
+function replaceRequestItems(requestId, items) {
+  db.prepare("DELETE FROM restock_request_items WHERE request_id = ?").run(requestId);
+  const insertItem = db.prepare(`
+    INSERT INTO restock_request_items (
+      request_id,
+      inventory_id,
+      item_name,
+      quantity
+    )
+    VALUES (?, ?, ?, ?)
+  `);
+  for (const item of items) {
+    insertItem.run(requestId, item.inventory_id, item.item_name, item.quantity);
+  }
 }
 
 router.get("/", (req, res) => {
@@ -299,15 +345,96 @@ router.post("/", (req, res) => {
   return res.status(201).json({ request: created });
 });
 
-router.patch("/:id", (req, res) => {
-  const role = req.auth?.role;
-  if (role !== "operator" && role !== "admin") {
-    return res.status(403).json({ error: "Only operators or admins can update restock requests." });
+router.put("/:id", (req, res) => {
+  if (req.auth?.role !== "doctor") {
+    return res.status(403).json({ error: "Only doctors can edit their supply requests." });
   }
 
   const requestId = Number(req.params.id);
   if (!requestId) {
     return res.status(400).json({ error: "Invalid restock request id." });
+  }
+
+  const access = loadPendingRequestForDoctor(requestId, req.auth.id);
+  if (access.error) {
+    return res.status(access.status).json({ error: access.error });
+  }
+
+  const collectionDate = String(req.body?.collection_date || "").trim();
+  if (!isValidCollectionDate(collectionDate)) {
+    return res.status(400).json({
+      error: `Collection date must be one of the available ${describeValidCollectionDays()}.`,
+    });
+  }
+
+  const itemsPayload = normaliseItemsPayload(req.body?.items);
+  if (itemsPayload.error) {
+    return res.status(400).json({ error: itemsPayload.error });
+  }
+
+  const note = String(req.body?.note || "").trim().slice(0, 500);
+  const collectionDay = getWeekdayForIsoDate(collectionDate);
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE restock_requests
+      SET
+        collection_date = ?,
+        collection_day = ?,
+        note = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(collectionDate, collectionDay, note, requestId);
+    replaceRequestItems(requestId, itemsPayload.items);
+  })();
+
+  const updated = getRequestById(requestId);
+
+  void sendPushToRole("operator", {
+    title: "📋 Supply Request Updated",
+    body: `Dr. ${updated.doctor_name} revised a pending request for ${updated.collection_date}.`,
+    url: "/inventory",
+    icon: "/icon-192.png",
+    tag: `restock-request-${requestId}-updated`,
+  }).catch((error) => {
+    console.warn("[push] restock request update notify failed:", error?.message || error);
+  });
+
+  return res.json({ request: updated });
+});
+
+router.patch("/:id", (req, res) => {
+  const role = req.auth?.role;
+  const requestId = Number(req.params.id);
+  if (!requestId) {
+    return res.status(400).json({ error: "Invalid restock request id." });
+  }
+
+  const nextStatus = String(req.body?.status || "").trim().toLowerCase();
+
+  if (role === "doctor") {
+    if (nextStatus !== "cancelled") {
+      return res.status(400).json({
+        error: "Doctors can only cancel a pending request. Use PUT to edit items or collection day.",
+      });
+    }
+
+    const access = loadPendingRequestForDoctor(requestId, req.auth.id);
+    if (access.error) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    db.prepare(`
+      UPDATE restock_requests
+      SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(requestId);
+
+    return res.json({ request: getRequestById(requestId) });
+  }
+
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can update restock requests." });
   }
 
   const existing = db
@@ -318,7 +445,6 @@ router.patch("/:id", (req, res) => {
     return res.status(404).json({ error: "Restock request not found." });
   }
 
-  const nextStatus = String(req.body?.status || "").trim().toLowerCase();
   if (!["prepared", "cancelled"].includes(nextStatus)) {
     return res.status(400).json({ error: "Status must be 'prepared' or 'cancelled'." });
   }
