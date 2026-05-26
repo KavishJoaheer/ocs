@@ -33,7 +33,8 @@
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
     "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",
     "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js",
-    "clone:doctor-bag-template": "node src/scripts/cloneDoctorBagFromTemplate.js"
+    "clone:doctor-bag-template": "node src/scripts/cloneDoctorBagFromTemplate.js",
+    "clone:davish-bag": "SOURCE_DOCTOR_USERNAME=dbalgobin node src/scripts/cloneDoctorBagFromTemplate.js"
   },
   "keywords": [],
   "author": "",

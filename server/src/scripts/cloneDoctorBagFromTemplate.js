@@ -8,7 +8,9 @@
  *
  * Required for execution:
  *   ALLOW_DB_PURGE=true
- *   SOURCE_DOCTOR_ID=<integer>   OR   SOURCE_DOCTOR_NAME=davish
+ *   SOURCE_DOCTOR_ID=<integer>
+ *   SOURCE_DOCTOR_USERNAME=dbalgobin   (Davish Balgobin on production)
+ *   SOURCE_DOCTOR_NAME=balgobin        (fallback name match)
  *
  * Optional:
  *   DRY_RUN=true                 — preview only (default when ALLOW_DB_PURGE is unset)
@@ -17,7 +19,7 @@
  * Usage:
  *   DRY_RUN=true node src/scripts/cloneDoctorBagFromTemplate.js
  *   ALLOW_DB_PURGE=true SOURCE_DOCTOR_ID=4 DB_PATH=./nas-data/clinic.db node src/scripts/cloneDoctorBagFromTemplate.js
- *   docker exec -e ALLOW_DB_PURGE=true -e SOURCE_DOCTOR_NAME=davish clinicflow-app node src/scripts/cloneDoctorBagFromTemplate.js
+ *   docker exec -e ALLOW_DB_PURGE=true -e SOURCE_DOCTOR_USERNAME=dbalgobin clinicflow-app node src/scripts/cloneDoctorBagFromTemplate.js
  */
 
 const { db, initializeDatabase } = require("../db");
@@ -59,7 +61,24 @@ function resolveSourceDoctor() {
     return doctor;
   }
 
-  const nameNeedle = String(process.env.SOURCE_DOCTOR_NAME || "davish").trim().toLowerCase();
+  const usernameNeedle = String(process.env.SOURCE_DOCTOR_USERNAME || "").trim().toLowerCase();
+  if (usernameNeedle) {
+    const doctor = db
+      .prepare(`
+        SELECT d.id, d.full_name
+        FROM doctors d
+        INNER JOIN users u ON u.doctor_id = d.id
+        WHERE d.deleted_at IS NULL
+          AND LOWER(u.username) = ?
+      `)
+      .get(usernameNeedle);
+    if (!doctor) {
+      throw new Error(`No active doctor with username "${usernameNeedle}".`);
+    }
+    return doctor;
+  }
+
+  const nameNeedle = String(process.env.SOURCE_DOCTOR_NAME || "balgobin").trim().toLowerCase();
   if (!nameNeedle) {
     throw new Error("Set SOURCE_DOCTOR_ID or SOURCE_DOCTOR_NAME.");
   }
