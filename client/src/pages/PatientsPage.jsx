@@ -180,7 +180,7 @@ function PatientsPage() {
   const subscriberFilterActive = searchParams.get("filter") === "subscribed";
   const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
   const isMobile = useIsMobile();
-  const canCreatePatients = ["admin", "doctor"].includes(user.role);
+  const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
   const canOpenBilling =

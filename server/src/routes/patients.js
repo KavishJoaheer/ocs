@@ -1129,10 +1129,6 @@ router.patch("/:id/long-term-review", (req, res) => {
 });
 
 router.post("/", (req, res) => {
-  if (req.auth.role === "operator") {
-    return res.status(403).json({ error: "Operators cannot create patient records." });
-  }
-
   const payload = normalizePatientPayload(req.body);
   const validationError = validatePatientPayload(payload, {
     isCreate: true,
@@ -1234,6 +1230,28 @@ router.post("/", (req, res) => {
 
   if (PATIENT_TAG_ROLES.has(req.auth.role)) {
     updatePatientLocationTags(result.lastInsertRowid, payload.location_tags);
+  }
+
+  if (req.auth.role === "operator") {
+    const patientId = Number(result.lastInsertRowid);
+    const operatorUserId = Number(req.auth.id);
+    const expiresAt = getDefaultOperatorExpiry();
+
+    db.prepare(`
+      DELETE FROM patient_operator_access
+      WHERE patient_id = ?
+        AND operator_user_id = ?
+    `).run(patientId, operatorUserId);
+
+    db.prepare(`
+      INSERT INTO patient_operator_access (
+        patient_id,
+        operator_user_id,
+        granted_by_user_id,
+        expires_at
+      )
+      VALUES (?, ?, ?, ?)
+    `).run(patientId, operatorUserId, operatorUserId, expiresAt);
   }
 
   const patient = {

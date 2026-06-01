@@ -35,7 +35,7 @@ function App() {
             <Route path="/hcm-news" element={<HcmNewsPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>
             <Route path="/patients/add" element={<PatientAddPage />} />
           </Route>
 

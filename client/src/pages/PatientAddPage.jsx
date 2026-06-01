@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import LoadingState from "../components/LoadingState.jsx";
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
@@ -11,9 +11,6 @@ function PatientAddPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  if (user.role === "operator") {
-    return <Navigate to="/patients" replace />;
-  }
   const isMobile = useIsMobile();
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +62,7 @@ function PatientAddPage() {
   return (
     <PatientFormModal
       canEditPatientIdentifier={user.role === "admin"}
-      canSelectAssignedDoctor={user.role === "admin"}
+      canSelectAssignedDoctor={user.role === "admin" || user.role === "operator"}
       doctors={doctors}
       isSaving={isSaving}
       layout={isMobile ? "page" : "modal"}

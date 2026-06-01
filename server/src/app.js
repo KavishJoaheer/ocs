@@ -163,7 +163,7 @@ function createApp() {
     requireAuth,
     authorizeByMethod({
       GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
-      POST: ["admin", "doctor"],
+      POST: ["admin", "doctor", "operator"],
       PUT: ["admin", "doctor", "operator"],
       PATCH: ["admin", "operator"],
       DELETE: ["admin"],

@@ -176,7 +176,7 @@ function MobileLauncher({
     });
   }
 
-  if (["admin", "doctor"].includes(user.role)) {
+  if (["admin", "doctor", "operator"].includes(user.role)) {
     cards.push({
       label: "Add a Patient",
       icon: UserPlus,

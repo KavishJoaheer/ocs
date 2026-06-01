@@ -26,7 +26,7 @@ export const ROUTE_ACCESS = {
   "/hcm-news": ["admin", "doctor", "operator", "lab_tech", "accountant"],
   "/patients": ["admin", "doctor", "operator", "lab_tech"],
   "/patients/:id": ["admin", "doctor", "operator", "lab_tech"],
-  "/patients/add": ["admin", "doctor"],
+  "/patients/add": ["admin", "doctor", "operator"],
   "/appointments": ["admin", "doctor"],
   "/doctor/current-week-roster": ["doctor"],
   "/doctor/april-roster": ["doctor"],

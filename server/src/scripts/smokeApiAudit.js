@@ -39,6 +39,7 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/dashboard"],
     ["GET", "/api/dashboard/operator-workspace"],
     ["GET", "/api/patients?page=1&limit=5"],
+    ["GET", "/api/doctors"],
     ["GET", "/api/inventory"],
     ["GET", "/api/billing/patient-summary"],
     ["GET", "/api/inventory/activity-history"],
