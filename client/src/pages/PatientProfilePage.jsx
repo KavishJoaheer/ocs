@@ -937,13 +937,7 @@ function PatientProfilePage() {
     if (!data) {
       return false;
     }
-    if (user.role === "admin" || user.role === "doctor") {
-      return true;
-    }
-    if (user.role === "operator") {
-      return Boolean(data.operator_can_edit);
-    }
-    return false;
+    return ["admin", "doctor", "operator"].includes(user.role);
   }, [data, user.role]);
 
   const showPatientBillingUi = useMemo(

@@ -1073,10 +1073,7 @@ router.get("/:id", (req, res) => {
     revisions,
     operatorAccess,
     operatorOptions,
-    operator_can_edit:
-      req.auth.role === "operator"
-        ? hasActiveOperatorEditAccess(patientId, Number(req.auth.id))
-        : false,
+    operator_can_edit: req.auth.role === "operator",
   });
 });
 
@@ -1269,13 +1266,7 @@ router.put("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (req.auth.role === "operator") {
-    if (!hasActiveOperatorEditAccess(patientId, Number(req.auth.id))) {
-      return res.status(403).json({
-        error: "Operator edit access has expired or was not granted for this patient.",
-      });
-    }
-  } else if (!ensureDoctorPatientAccess(existing, req.auth)) {
+  if (req.auth.role !== "operator" && !ensureDoctorPatientAccess(existing, req.auth)) {
     return res.status(403).json({
       error: "Your doctor account is not linked to a doctor profile.",
     });

@@ -222,14 +222,8 @@ function PatientsPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [desktopTableMenu]);
 
-  function canEditPatient(patient) {
-    if (user.role === "admin" || user.role === "doctor") {
-      return true;
-    }
-    if (user.role === "operator") {
-      return Boolean(patient?.operator_edit_allowed);
-    }
-    return false;
+  function canEditPatient() {
+    return ["admin", "doctor", "operator"].includes(user.role);
   }
 
   async function loadDoctors() {
@@ -660,9 +654,8 @@ function PatientsPage() {
                 {myAssignedFilterBadge}
 
                 {user.role === "operator" ? (
-                  <div className="rounded-[24px] border border-amber-100 bg-amber-50/75 px-4 py-3 text-sm text-amber-800">
-                    Operators can add new patients anytime. Existing patient records stay
-                    edit-locked unless an active admin approval is in place.
+                  <div className="rounded-[24px] border border-sky-100 bg-sky-50/75 px-4 py-3 text-sm text-sky-900">
+                    Operators can add and update patient records. Only admins can delete patients.
                   </div>
                 ) : null}
               </div>
@@ -672,9 +665,8 @@ function PatientsPage() {
                 {subscriberFilterBadge}
                 {myAssignedFilterBadge}
                 {user.role === "operator" ? (
-                  <div className="rounded-[20px] border border-amber-100 bg-amber-50/75 px-3 py-2.5 text-sm text-amber-800">
-                    Operators can add new patients anytime. Existing patient records stay
-                    edit-locked unless an active admin approval is in place.
+                  <div className="rounded-[20px] border border-sky-100 bg-sky-50/75 px-3 py-2.5 text-sm text-sky-900">
+                    Operators can add and update patient records. Only admins can delete patients.
                   </div>
                 ) : null}
               </div>
@@ -742,11 +734,6 @@ function PatientsPage() {
                               </div>
                             ) : null}
 
-                            {user.role === "operator" && patient.operator_edit_allowed ? (
-                              <span className="mt-1.5 inline-flex rounded-lg border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">
-                                Edit enabled
-                              </span>
-                            ) : null}
                           </Link>
 
                           <button
@@ -981,11 +968,6 @@ function PatientsPage() {
                                       <p className="text-xs font-medium text-amber-700">
                                         ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
                                       </p>
-                                    ) : null}
-                                    {user.role === "operator" && patient.operator_edit_allowed ? (
-                                      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
-                                        Edit enabled
-                                      </span>
                                     ) : null}
                                   </div>
                                 </div>
