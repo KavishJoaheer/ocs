@@ -3,8 +3,10 @@ import { ArrowLeft, LockKeyhole } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
 import PatientDateOfBirthInput from "./PatientDateOfBirthInput.jsx";
+import PatientNationalIdInput from "./PatientNationalIdInput.jsx";
 import PatientLocationTags from "./PatientLocationTags.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientAutofill.js";
 import { cx } from "../lib/utils.js";
 
 const DRAFT_KEY = "ocs_patient_draft";
@@ -184,6 +186,13 @@ function PatientFormModal({
   const stepFirstInputRef = useRef(null);
   const draftRestoreToastShownRef = useRef(false);
   const isPageLayout = layout === "page";
+
+  const { handleNationalIdChange, isDobLockedFromNic, nicParsed } = useMauritianNicPatientAutofill({
+    nationalId: form.patient_id_number,
+    dateOfBirth: form.date_of_birth,
+    setForm,
+    enabled: open,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -415,23 +424,19 @@ function PatientFormModal({
                     className={MOBILE_INPUT_DISABLED}
                   />
                 </label>
-                <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>Patient ID</span>
-                  <input
-                    name="patient_id_number"
-                    value={form.patient_id_number}
-                    onChange={handleChange}
-                    placeholder="National ID card number or passport number"
-                    inputMode="numeric"
-                    className={MOBILE_INPUT}
-                  />
-                </label>
+                <PatientNationalIdInput
+                  required
+                  value={form.patient_id_number}
+                  variant="mobile"
+                  onChange={handleNationalIdChange}
+                />
                 <PatientDateOfBirthInput
                   open={open}
                   resetKey={patient?.id ?? "create"}
                   required
                   value={form.date_of_birth}
                   variant="mobile"
+                  nicAutofill={isDobLockedFromNic ? nicParsed : null}
                   onChange={(isoDate) =>
                     setForm((current) => ({ ...current, date_of_birth: isoDate }))
                   }
@@ -799,16 +804,12 @@ function PatientFormModal({
                 />
               </label>
 
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Patient ID</span>
-                <input
-                  name="patient_id_number"
-                  value={form.patient_id_number}
-                  onChange={handleChange}
-                  placeholder="National ID card number or passport number"
-                  className={DESKTOP_INPUT}
-                />
-              </label>
+              <PatientNationalIdInput
+                required
+                value={form.patient_id_number}
+                variant="desktop"
+                onChange={handleNationalIdChange}
+              />
 
               <PatientDateOfBirthInput
                 open={open}
@@ -816,6 +817,7 @@ function PatientFormModal({
                 required
                 value={form.date_of_birth}
                 variant="desktop"
+                nicAutofill={isDobLockedFromNic ? nicParsed : null}
                 onChange={(isoDate) =>
                   setForm((current) => ({ ...current, date_of_birth: isoDate }))
                 }
