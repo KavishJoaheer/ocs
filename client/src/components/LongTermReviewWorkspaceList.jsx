@@ -128,7 +128,12 @@ function LongTermReviewDueDateModal({ open, patient, onClose, onSubmit, isSaving
   );
 }
 
-function LongTermReviewWorkspaceList({ patients, onPatientsChange }) {
+function LongTermReviewWorkspaceList({
+  patients,
+  onPatientsChange,
+  emptyTitle = "No long term review patients",
+  emptyDescription = "Patients flagged by the operator desk for long term review will appear here.",
+}) {
   const [quickActionPatient, setQuickActionPatient] = useState(null);
   const [dueDatePatient, setDueDatePatient] = useState(null);
   const [resolvePatient, setResolvePatient] = useState(null);
@@ -182,12 +187,7 @@ function LongTermReviewWorkspaceList({ patients, onPatientsChange }) {
   }
 
   if (!patients.length) {
-    return (
-      <EmptyState
-        title="No long term review patients"
-        description="Patients flagged by the operator desk for long term review will appear here."
-      />
-    );
+    return <EmptyState title={emptyTitle} description={emptyDescription} />;
   }
 
   return (

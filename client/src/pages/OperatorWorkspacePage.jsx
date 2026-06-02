@@ -10,7 +10,7 @@ import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import LongTermReviewWorkspaceList from "../components/LongTermReviewWorkspaceList.jsx";
+import LongTermReviewOperatorPanel from "../components/LongTermReviewOperatorPanel.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -394,37 +394,9 @@ function OperatorWorkspacePage({ workspaceKey }) {
   }
 
   if (workspaceKey === "long-term-review") {
-    metrics = [
-      {
-        icon: Stethoscope,
-        label: "Review patients",
-        value: data.summary.longTermReviewCount,
-        description: "Active patients carrying long-term treatment or particularity notes.",
-        accent: "bg-gradient-to-br from-sky-500 to-blue-600",
-      },
-      {
-        icon: UsersRound,
-        label: "Doctors assigned",
-        value: new Set(
-          data.longTermReview
-            .map((patient) => patient.assigned_doctor_name)
-            .filter(Boolean),
-        ).size,
-        description: "Doctors attached to the current long-term review panel.",
-        accent: "bg-gradient-to-br from-cyan-500 to-sky-600",
-      },
-      {
-        icon: ClipboardList,
-        label: "Active care",
-        value: data.longTermReview.filter((patient) => patient.status === "active").length,
-        description: "Patients still marked as active in the review queue.",
-        accent: "bg-gradient-to-br from-emerald-500 to-teal-600",
-      },
-    ];
-
     content = (
       <SectionCard actions={sharedActions}>
-        <LongTermReviewWorkspaceList
+        <LongTermReviewOperatorPanel
           patients={data.longTermReview}
           onPatientsChange={reloadWorkspace}
         />
@@ -440,18 +412,20 @@ function OperatorWorkspacePage({ workspaceKey }) {
         description={isLongTermReview ? undefined : meta.description}
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {metrics.map((metric) => (
-          <MetricCard
-            key={metric.label}
-            accent={metric.accent}
-            description={metric.description}
-            icon={metric.icon}
-            label={metric.label}
-            value={metric.value}
-          />
-        ))}
-      </div>
+      {!isLongTermReview && metrics.length ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {metrics.map((metric) => (
+            <MetricCard
+              key={metric.label}
+              accent={metric.accent}
+              description={metric.description}
+              icon={metric.icon}
+              label={metric.label}
+              value={metric.value}
+            />
+          ))}
+        </div>
+      ) : null}
 
       {content}
     </div>
