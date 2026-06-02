@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
+import PatientDateOfBirthInput from "./PatientDateOfBirthInput.jsx";
 import PatientLocationTags from "./PatientLocationTags.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { cx } from "../lib/utils.js";
@@ -425,16 +426,16 @@ function PatientFormModal({
                     className={MOBILE_INPUT}
                   />
                 </label>
-                <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>Date of birth</span>
-                  <input
-                    name="date_of_birth"
-                    type="date"
-                    value={form.date_of_birth}
-                    onChange={handleChange}
-                    className={MOBILE_INPUT}
-                  />
-                </label>
+                <PatientDateOfBirthInput
+                  open={open}
+                  resetKey={patient?.id ?? "create"}
+                  required
+                  value={form.date_of_birth}
+                  variant="mobile"
+                  onChange={(isoDate) =>
+                    setForm((current) => ({ ...current, date_of_birth: isoDate }))
+                  }
+                />
                 <label className="block">
                   <span className={MOBILE_FIELD_LABEL}>Gender</span>
                   <select
@@ -809,16 +810,16 @@ function PatientFormModal({
                 />
               </label>
 
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Date of birth</span>
-                <input
-                  name="date_of_birth"
-                  type="date"
-                  value={form.date_of_birth}
-                  onChange={handleChange}
-                  className={DESKTOP_INPUT}
-                />
-              </label>
+              <PatientDateOfBirthInput
+                open={open}
+                resetKey={patient?.id ?? "create"}
+                required
+                value={form.date_of_birth}
+                variant="desktop"
+                onChange={(isoDate) =>
+                  setForm((current) => ({ ...current, date_of_birth: isoDate }))
+                }
+              />
 
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Gender</span>
