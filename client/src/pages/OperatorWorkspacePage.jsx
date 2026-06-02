@@ -395,7 +395,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
 
   if (workspaceKey === "long-term-review") {
     content = (
-      <SectionCard actions={sharedActions}>
+      <SectionCard>
         <LongTermReviewOperatorPanel
           patients={data.longTermReview}
           onPatientsChange={reloadWorkspace}

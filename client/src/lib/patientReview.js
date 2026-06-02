@@ -19,6 +19,19 @@ export function formatReviewDueShort(value) {
   return parsed.isValid() ? parsed.format("DD MMM") : "";
 }
 
+/** Two-digit month (01–12) from review_due_date for calendar-month filters. */
+export function parsePatientReviewDueMonth(reviewDueDate) {
+  const raw = String(reviewDueDate || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const isoPrefix = raw.length >= 10 ? raw.slice(0, 10) : raw;
+  const parsed = dayjs(isoPrefix);
+
+  return parsed.isValid() ? parsed.format("MM") : "";
+}
+
 export function formatReviewTimelineDate(value) {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format("MMM D, YYYY") : "";
