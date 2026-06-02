@@ -43,7 +43,6 @@ export const ROUTE_ACCESS = {
   "/operator/billing-status": ["operator"],
   "/operator/pending-payment": ["operator"],
   "/operator/long-term-review": ["operator"],
-  "/operator/review-appointments-april": ["operator"],
   "/consultations": ["admin", "doctor", "lab_tech"],
   "/consultations/:id": ["admin", "doctor", "lab_tech"],
   "/lab": ["admin", "lab_tech"],

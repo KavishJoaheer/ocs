@@ -214,12 +214,6 @@ function MobileLauncher({
         description: "Open the full monthly doctor schedule.",
       },
       {
-        label: "Monthly review",
-        icon: UsersRound,
-        to: "/operator/review-appointments-april",
-        description: "Review this month's appointments across the team.",
-      },
-      {
         label: "Pending payment",
         icon: CreditCard,
         to: "/operator/pending-payment",
@@ -892,11 +886,6 @@ function OperatorPersonalOperationUpdates({ metrics }) {
             metricLine={`${pendingBills} unpaid bill${pendingBills === 1 ? "" : "s"}`}
             title="Pending payment"
             to="/operator/pending-payment"
-          />
-          <PersonalOperationOverviewCard
-            icon={UsersRound}
-            title="Monthly review"
-            to="/operator/review-appointments-april"
           />
         </div>
       </div>

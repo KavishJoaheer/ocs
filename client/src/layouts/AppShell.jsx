@@ -100,10 +100,6 @@ const pageMeta = {
     label: "Long term review",
     helper: "",
   },
-  "/operator/review-appointments-april": {
-    label: "Monthly review",
-    helper: "Review the full current-month appointment board across all doctors.",
-  },
   "/consultations": {
     label: "Consultations",
     helper: "Capture doctor notes and keep billing linked automatically.",

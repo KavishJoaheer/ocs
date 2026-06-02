@@ -52,13 +52,6 @@ const workspaceMeta = {
     description: "",
     icon: Stethoscope,
   },
-  "review-appointments-april": {
-    eyebrow: "Monthly review",
-    title: (data) => `Review appointments in ${data?.periods?.monthLabel || "this month"}`,
-    description:
-      "Open the current month visit review board for all doctors from the operator dashboard.",
-    icon: UsersRound,
-  },
 };
 
 function MetricCard({ icon: Icon, label, value, description, accent }) {
@@ -434,48 +427,6 @@ function OperatorWorkspacePage({ workspaceKey }) {
         <LongTermReviewWorkspaceList
           patients={data.longTermReview}
           onPatientsChange={reloadWorkspace}
-        />
-      </SectionCard>
-    );
-  }
-
-  if (workspaceKey === "review-appointments-april") {
-    metrics = [
-      {
-        icon: ClipboardList,
-        label: `${monthLabel} visits`,
-        value: data.summary.reviewAppointmentsCount,
-        description: `All rostered appointments currently on the shared ${monthLabel} review board.`,
-        accent: "bg-gradient-to-br from-sky-500 to-blue-600",
-      },
-      {
-        icon: CalendarClock,
-        label: "Completed",
-        value: data.reviewAppointmentsThisMonth.filter(
-          (appointment) => appointment.status === "completed",
-        ).length,
-        description: `Appointments completed during ${monthLabel}.`,
-        accent: "bg-gradient-to-br from-emerald-500 to-teal-600",
-      },
-      {
-        icon: UsersRound,
-        label: "Doctors involved",
-        value: new Set(data.reviewAppointmentsThisMonth.map((appointment) => appointment.doctor_id)).size,
-        description: `Doctors represented in the ${monthLabel} review board.`,
-        accent: "bg-gradient-to-br from-cyan-500 to-sky-600",
-      },
-    ];
-
-    content = (
-      <SectionCard
-        actions={sharedActions}
-        subtitle={`Shared appointment review for ${monthLabel}.`}
-        title={`${monthLabel} appointment review`}
-      >
-        <AppointmentQueueList
-          appointments={data.reviewAppointmentsThisMonth}
-          emptyDescription={`No appointments have been added to the ${monthLabel} review board yet.`}
-          emptyTitle={`No appointments in ${monthLabel}`}
         />
       </SectionCard>
     );

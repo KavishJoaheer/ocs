@@ -116,10 +116,6 @@ function App() {
               path="/operator/long-term-review"
               element={<OperatorWorkspacePage workspaceKey="long-term-review" />}
             />
-            <Route
-              path="/operator/review-appointments-april"
-              element={<OperatorWorkspacePage workspaceKey="review-appointments-april" />}
-            />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin"]} />}>
