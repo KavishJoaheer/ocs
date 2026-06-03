@@ -6,6 +6,10 @@ const { db, rosterDir } = require("../db");
 const { notifyDoctorLowStockSummary, notifyOcsLowStockSubscribers } = require("../lib/push");
 const { serializeUser } = require("../lib/auth");
 const {
+  getGlobalLongTermReviewPatients,
+  getLongTermReviewCount,
+} = require("../lib/longTermReview");
+const {
   getTodayLocal,
   offsetLocalDate,
   parseBillingRow,
@@ -856,52 +860,7 @@ function getOperatorWorkspacePayload() {
     .all()
     .map(parseBillingRow);
 
-  const longTermReview = db
-    .prepare(`
-      SELECT
-        p.id,
-        p.full_name,
-        p.patient_identifier,
-        p.patient_contact_number,
-        p.location,
-        p.status,
-        p.ongoing_treatment,
-        p.particularity,
-        p.review_reason_note,
-        p.review_due_date,
-        p.created_at,
-        d.full_name AS assigned_doctor_name,
-        d.specialization AS assigned_doctor_specialization,
-        MAX(c.consultation_date) AS last_consultation_date
-      FROM patients p
-      LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
-      LEFT JOIN consultations c ON c.patient_id = p.id
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'active'
-        AND p.is_under_review = 1
-      GROUP BY
-        p.id,
-        p.full_name,
-        p.patient_identifier,
-        p.patient_contact_number,
-        p.location,
-        p.status,
-        p.ongoing_treatment,
-        p.particularity,
-        p.review_reason_note,
-        p.review_due_date,
-        p.created_at,
-        d.full_name,
-        d.specialization
-      ORDER BY
-        CASE
-          WHEN p.review_due_date IS NULL OR trim(p.review_due_date) = '' THEN 1
-          ELSE 0
-        END ASC,
-        p.review_due_date ASC,
-        p.full_name ASC
-    `)
-    .all();
+  const longTermReview = getGlobalLongTermReviewPatients();
 
   const reviewAppointmentsThisMonth = currentMonthRoster;
   const pendingPaymentAmount = pendingPayments.reduce(
@@ -974,19 +933,6 @@ function getOperatorWorkspacePayload() {
     longTermReview,
     reviewAppointmentsThisMonth,
   };
-}
-
-function getLongTermReviewCount() {
-  const row = db
-    .prepare(`
-      SELECT COUNT(*) AS count
-      FROM patients p
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'active'
-        AND p.is_under_review = 1
-    `)
-    .get();
-  return Number(row?.count || 0);
 }
 
 function getActiveSubscriptionPatientsCount() {
@@ -1232,6 +1178,17 @@ router.get("/operator-workspace", (req, res) => {
   });
 
   res.json(getOperatorWorkspacePayload());
+});
+
+router.get("/long-term-review", (req, res) => {
+  if (!["admin", "doctor", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only clinical staff can open the long term review queue." });
+  }
+
+  res.json({
+    patients: getGlobalLongTermReviewPatients(),
+    count: getLongTermReviewCount(),
+  });
 });
 
 router.get("/live-report", (req, res) => {

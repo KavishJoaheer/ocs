@@ -3,21 +3,17 @@ import {
   CalendarClock,
   ClipboardList,
   CreditCard,
-  Stethoscope,
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import LongTermReviewOperatorPanel from "../components/LongTermReviewOperatorPanel.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
-import { cx } from "../lib/utils.js";
-
 const workspaceMeta = {
   "current-week-roster": {
     eyebrow: "Coordination",
@@ -45,12 +41,6 @@ const workspaceMeta = {
     description:
       "Review unpaid consultation billing for every doctor so operators can keep follow-up visible.",
     icon: CreditCard,
-  },
-  "long-term-review": {
-    eyebrow: "Patient review",
-    title: () => "Long term review",
-    description: "",
-    icon: Stethoscope,
   },
 };
 
@@ -214,7 +204,6 @@ function OperatorWorkspacePage({ workspaceKey }) {
   }
 
   const title = useMemo(() => (meta ? meta.title(data) : "Operator workspace"), [data, meta]);
-  const isLongTermReview = workspaceKey === "long-term-review";
 
   if (!meta) {
     return (
@@ -393,26 +382,15 @@ function OperatorWorkspacePage({ workspaceKey }) {
     );
   }
 
-  if (workspaceKey === "long-term-review") {
-    content = (
-      <SectionCard>
-        <LongTermReviewOperatorPanel
-          patients={data.longTermReview}
-          onPatientsChange={reloadWorkspace}
-        />
-      </SectionCard>
-    );
-  }
-
   return (
-    <div className={cx("space-y-6", isLongTermReview && "space-y-4")}>
+    <div className="space-y-6">
       <PageHeader
         eyebrow={meta.eyebrow}
         title={title}
-        description={isLongTermReview ? undefined : meta.description}
+        description={meta.description}
       />
 
-      {!isLongTermReview && metrics.length ? (
+      {metrics.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {metrics.map((metric) => (
             <MetricCard

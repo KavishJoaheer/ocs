@@ -7,6 +7,9 @@ export const OCS_INVENTORY_EVENT = "ocs-inventory-updated";
 /** Dispatched when supply / restock request lists change (doctor or operator views). */
 export const SUPPLY_REQUESTS_EVENT = "supply-requests-updated";
 
+/** Dispatched when the practice-wide long-term review queue changes. */
+export const LONG_TERM_REVIEW_EVENT = "long-term-review-updated";
+
 const CHANNEL_NAME = "ocs-inventory-sync";
 
 const broadcastChannel =
@@ -34,7 +37,8 @@ if (broadcastChannel && typeof window !== "undefined") {
     if (
       eventName === DOCTOR_BAG_INVENTORY_EVENT ||
       eventName === OCS_INVENTORY_EVENT ||
-      eventName === SUPPLY_REQUESTS_EVENT
+      eventName === SUPPLY_REQUESTS_EVENT ||
+      eventName === LONG_TERM_REVIEW_EVENT
     ) {
       window.dispatchEvent(new CustomEvent(eventName));
     }
@@ -51,4 +55,8 @@ export function notifyOcsInventoryUpdated() {
 
 export function notifySupplyRequestsUpdated() {
   dispatch(SUPPLY_REQUESTS_EVENT);
+}
+
+export function notifyLongTermReviewUpdated() {
+  dispatch(LONG_TERM_REVIEW_EVENT);
 }

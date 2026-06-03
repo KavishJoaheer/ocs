@@ -1,5 +1,6 @@
 const express = require("express");
 const { db, ensureBillingForConsultation } = require("../db");
+const { publishLongTermReviewChange } = require("../lib/inventoryRealtime");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 
 const router = express.Router();
@@ -1078,9 +1079,9 @@ router.get("/:id", (req, res) => {
 });
 
 router.patch("/:id/long-term-review", (req, res) => {
-  if (!["admin", "operator"].includes(req.auth.role)) {
+  if (!["admin", "operator", "doctor"].includes(req.auth.role)) {
     return res.status(403).json({
-      error: "Only admin and operator accounts can update long term review flags.",
+      error: "Only clinical staff can update long term review records.",
     });
   }
 
@@ -1092,6 +1093,15 @@ router.patch("/:id/long-term-review", (req, res) => {
   }
 
   const isUnderReview = parseBooleanField(req.body.is_under_review);
+  const wasUnderReview = parseBooleanField(existing.is_under_review);
+  const role = String(req.auth.role || "");
+
+  if (role === "doctor" && isUnderReview && !wasUnderReview) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can flag patients for long term review.",
+    });
+  }
+
   const reviewReasonNote = isUnderReview ? String(req.body.review_reason_note ?? "").trim() : "";
   const reviewDueDate = isUnderReview ? normalizeReviewDueDate(req.body.review_due_date) : "";
 
@@ -1116,6 +1126,11 @@ router.patch("/:id/long-term-review", (req, res) => {
     reviewDueDate || null,
     patientId,
   );
+
+  publishLongTermReviewChange({
+    patientId,
+    changedByUserId: req.auth.id,
+  });
 
   res.json(
     formatPatientRecord({

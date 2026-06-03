@@ -54,6 +54,7 @@ export const ROUTE_ACCESS = {
   "/stock-history": ["admin", "operator"],
   "/team-operations": ["admin"],
   "/doctors": ["admin"],
+  "/admin/long-term-review": ["admin"],
 };
 
 export function getDefaultPathForRole(role) {

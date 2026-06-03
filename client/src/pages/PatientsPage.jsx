@@ -328,11 +328,19 @@ function PatientsPage() {
   }
 
   useEffect(() => {
-    if (user.role === "doctor") {
-      const tab = searchParams.get("tab");
-      const filter = searchParams.get("filter");
-      if (tab === "under_review" || filter === "under_review") {
+    const tab = searchParams.get("tab");
+    const filter = searchParams.get("filter");
+    if (tab === "under_review" || filter === "under_review") {
+      if (user.role === "doctor") {
         navigate("/doctor/long-term-review", { replace: true });
+        return;
+      }
+      if (user.role === "admin") {
+        navigate("/admin/long-term-review", { replace: true });
+        return;
+      }
+      if (user.role === "operator") {
+        navigate("/operator/long-term-review", { replace: true });
         return;
       }
     }
@@ -340,10 +348,7 @@ function PatientsPage() {
     const next = searchParams.get("search") || "";
     setSearch((prev) => (prev === next ? prev : next));
 
-    if (
-      searchParams.get("tab") === "under_review" ||
-      searchParams.get("filter") === "under_review"
-    ) {
+    if (tab === "under_review" || filter === "under_review") {
       setStatusFilter("under_review");
     }
 

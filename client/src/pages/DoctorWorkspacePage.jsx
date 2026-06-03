@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useIsMobile } from "../hooks/useIsMobile.js";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -74,13 +73,6 @@ const workspaceMeta = {
     title: () => "Assigned patients",
     description:
       "Open the patient panel for everyone currently assigned to you and jump straight into their ongoing care records.",
-    icon: UsersRound,
-  },
-  "long-term-review": {
-    eyebrow: "Doctor patients",
-    title: () => "Long term review",
-    description:
-      "Review assigned patients flagged for long-term follow-up and open their care records.",
     icon: UsersRound,
   },
 };
@@ -378,14 +370,9 @@ function DoctorWorkspacePage({ workspaceKey }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const isMobile = useIsMobile();
-
   const meta = workspaceMeta[workspaceKey];
-  const isLongTermReviewWorkspace = workspaceKey === "long-term-review";
-  const underReviewFilter =
-    isLongTermReviewWorkspace || searchParams.get("tab") === "under_review";
-  const subscribedFilter =
-    !isLongTermReviewWorkspace && searchParams.get("filter") === "subscribed";
+  const underReviewFilter = searchParams.get("tab") === "under_review";
+  const subscribedFilter = searchParams.get("filter") === "subscribed";
 
   useEffect(() => {
     if (
@@ -775,7 +762,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
     );
   }
 
-  if (workspaceKey === "assigned-patients" || workspaceKey === "long-term-review") {
+  if (workspaceKey === "assigned-patients") {
     let assignedPatients = data.assignedPatients;
 
     if (underReviewFilter) {
@@ -828,10 +815,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
       />
     );
 
-    content =
-      isMobile && isLongTermReviewWorkspace ? (
-        assignedPatientsList
-      ) : (
+    content = (
         <SectionCard
           actions={
             <>
@@ -886,20 +870,6 @@ function DoctorWorkspacePage({ workspaceKey }) {
           {assignedPatientsList}
         </SectionCard>
       );
-  }
-
-  if (isMobile && isLongTermReviewWorkspace) {
-    return (
-      <div className="mx-auto w-full max-w-md space-y-4 pb-8">
-        <header>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900">Long term review</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Assigned patients flagged for long-term follow-up.
-          </p>
-        </header>
-        {content}
-      </div>
-    );
   }
 
   return (

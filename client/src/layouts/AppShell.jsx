@@ -74,7 +74,7 @@ const pageMeta = {
   },
   "/doctor/long-term-review": {
     label: "Long term review",
-    helper: "Review assigned patients flagged for long-term follow-up.",
+    helper: "Practice-wide chronic care follow-up queue.",
   },
   "/operator/current-week-roster": {
     label: "SOS Planning",
@@ -98,7 +98,11 @@ const pageMeta = {
   },
   "/operator/long-term-review": {
     label: "Long term review",
-    helper: "",
+    helper: "Practice-wide chronic care follow-up queue.",
+  },
+  "/admin/long-term-review": {
+    label: "Long term review",
+    helper: "Practice-wide chronic care follow-up queue.",
   },
   "/consultations": {
     label: "Consultations",

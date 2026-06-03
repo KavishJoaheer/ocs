@@ -17,6 +17,7 @@ import LiveReportPage from "./pages/LiveReportPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import OperatorBillingStatusPage from "./pages/OperatorBillingStatusPage.jsx";
 import OperatorWorkspacePage from "./pages/OperatorWorkspacePage.jsx";
+import LongTermReviewQueuePage from "./pages/LongTermReviewQueuePage.jsx";
 import PatientProfilePage from "./pages/PatientProfilePage.jsx";
 import PatientAddPage from "./pages/PatientAddPage.jsx";
 import PatientsPage from "./pages/PatientsPage.jsx";
@@ -84,10 +85,7 @@ function App() {
               path="/doctor/assigned-patients"
               element={<DoctorWorkspacePage workspaceKey="assigned-patients" />}
             />
-            <Route
-              path="/doctor/long-term-review"
-              element={<DoctorWorkspacePage workspaceKey="long-term-review" />}
-            />
+            <Route path="/doctor/long-term-review" element={<LongTermReviewQueuePage />} />
             <Route path="/supply-requests" element={<SupplyRequestsPage />} />
           </Route>
 
@@ -112,10 +110,7 @@ function App() {
               path="/operator/pending-payment"
               element={<OperatorWorkspacePage workspaceKey="pending-payment" />}
             />
-            <Route
-              path="/operator/long-term-review"
-              element={<OperatorWorkspacePage workspaceKey="long-term-review" />}
-            />
+            <Route path="/operator/long-term-review" element={<LongTermReviewQueuePage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin"]} />}>
@@ -143,6 +138,7 @@ function App() {
 
           <Route element={<ProtectedRoute roles={["admin"]} />}>
             <Route path="/admin/roster" element={<AdminRosterPage />} />
+            <Route path="/admin/long-term-review" element={<LongTermReviewQueuePage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -4,6 +4,7 @@ import {
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
   notifyDoctorBagInventoryUpdated,
+  notifyLongTermReviewUpdated,
   notifyOcsInventoryUpdated,
   notifySupplyRequestsUpdated,
 } from "./inventorySync.js";
@@ -160,6 +161,21 @@ export function startInventoryRealtimeSync(user) {
 
   source.addEventListener("supply_request_change", () => {
     notifySupplyRequestsUpdated();
+  });
+
+  source.addEventListener("long_term_review_change", (message) => {
+    try {
+      const event = JSON.parse(message.data);
+      if (
+        event.changedByClientSessionId &&
+        String(event.changedByClientSessionId) === tabSessionId
+      ) {
+        return;
+      }
+    } catch {
+      /* fall through to invalidation */
+    }
+    notifyLongTermReviewUpdated();
   });
 
   source.addEventListener("inventory_change", (message) => {

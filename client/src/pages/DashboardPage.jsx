@@ -1270,7 +1270,7 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
 
       <AdminExecutiveCard
         title="Long Term Review"
-        to="/patients?tab=under_review"
+        to="/admin/long-term-review"
         accent="amber"
         anchorAccent="amber"
         hoverAccent="amber"

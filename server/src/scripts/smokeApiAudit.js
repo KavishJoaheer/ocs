@@ -16,6 +16,7 @@ const PASSWORD = process.env.SEED_USER_PASSWORD || "Welcome@123";
 const ROLE_ENDPOINTS = {
   admin: [
     ["GET", "/api/dashboard"],
+    ["GET", "/api/dashboard/long-term-review"],
     ["GET", "/api/patients?page=1&limit=5"],
     ["GET", "/api/inventory"],
     ["GET", "/api/billing"],
@@ -26,6 +27,7 @@ const ROLE_ENDPOINTS = {
   ],
   doctor: [
     ["GET", "/api/dashboard"],
+    ["GET", "/api/dashboard/long-term-review"],
     ["GET", "/api/dashboard/doctor-workspace"],
     ["GET", "/api/patients?page=1&limit=5"],
     ["GET", "/api/patients/offline-directory"],
@@ -37,6 +39,7 @@ const ROLE_ENDPOINTS = {
   ],
   operator: [
     ["GET", "/api/dashboard"],
+    ["GET", "/api/dashboard/long-term-review"],
     ["GET", "/api/dashboard/operator-workspace"],
     ["GET", "/api/patients?page=1&limit=5"],
     ["GET", "/api/doctors"],

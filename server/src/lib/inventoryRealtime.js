@@ -62,6 +62,11 @@ function shouldDeliverSupplyRequestEvent(client, event) {
   return false;
 }
 
+function shouldDeliverLongTermReviewEvent(client) {
+  const role = String(client.role || "");
+  return role === "admin" || role === "operator" || role === "doctor";
+}
+
 function writeSseEvent(res, eventName, payload) {
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -206,6 +211,42 @@ function publishSupplyRequestChange({ doctorId = null } = {}) {
   return { delivered, event };
 }
 
+/** Notify all clinical roles when the practice-wide long-term review queue changes. */
+function publishLongTermReviewChange({
+  patientId = null,
+  changedByUserId = null,
+  changedByClientSessionId = null,
+} = {}) {
+  const sessionId = changedByClientSessionId
+    ? String(changedByClientSessionId)
+    : getCurrentClientSessionId() || null;
+
+  const event = {
+    type: "long_term_review_change",
+    patientId: patientId ? Number(patientId) : null,
+    at: new Date().toISOString(),
+    changedByUserId: changedByUserId ? Number(changedByUserId) : null,
+    changedByClientSessionId: sessionId || null,
+  };
+
+  let delivered = 0;
+
+  for (const client of clients.values()) {
+    if (!shouldDeliverLongTermReviewEvent(client)) {
+      continue;
+    }
+
+    try {
+      writeSseEvent(client.res, "long_term_review_change", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  return { delivered, event };
+}
+
 function handleInventoryStream(req, res) {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -235,8 +276,10 @@ module.exports = {
   handleInventoryStream,
   publishInventoryChange,
   publishInventoryResyncBroadcast,
+  publishLongTermReviewChange,
   publishSupplyRequestChange,
   shouldDeliverInventoryEvent,
+  shouldDeliverLongTermReviewEvent,
   shouldDeliverSupplyRequestEvent,
   withClientSessionContext,
 };

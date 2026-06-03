@@ -2,7 +2,7 @@ export function getClinicalTwinMetricRoutes(role) {
   switch (role) {
     case "admin":
       return {
-        longTermReview: "/patients?tab=under_review",
+        longTermReview: "/admin/long-term-review",
         healthPlans: "/live-report",
       };
     case "operator":
@@ -27,7 +27,7 @@ export function getClinicalTwinMetricCopy(role) {
   switch (role) {
     case "doctor":
       return {
-        longTermReview: "Assigned patients flagged for long-term review",
+        longTermReview: "Practice-wide patients flagged for long-term review",
         healthPlans: "Assigned patients on an active health plan",
       };
     case "operator":
@@ -52,9 +52,11 @@ export function resolveClinicalTwinCounts(role, { dashboard, operatorMetrics } =
   }
 
   if (role === "doctor") {
-    const summary = dashboard?.doctorWorkspace?.summary || {};
+    const summary = dashboard?.summary || dashboard?.doctorWorkspace?.summary || {};
     return {
-      longTermReviewCount: Number(summary.longTermReviewAssignedCount ?? 0),
+      longTermReviewCount: Number(
+        summary.longTermReviewCount ?? summary.longTermReviewAssignedCount ?? 0,
+      ),
       healthPlansCount: Number(summary.subscribedAssignedCount ?? 0),
     };
   }
