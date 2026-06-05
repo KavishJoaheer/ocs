@@ -91,6 +91,12 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
     };
   }, [open, onClose]);
 
+  const patientCaseHistoryRecords = patient?.case_history_records || [];
+  const insurerSummarizedList = useMemo(
+    () => generateInsurerSummary(patientCaseHistoryRecords),
+    [patientCaseHistoryRecords],
+  );
+
   if (!open) {
     return null;
   }
@@ -109,12 +115,6 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
   const policyNumberLabel = patient?.insurance_policy_number?.trim()
     ? patient.insurance_policy_number
     : "MISSING POLICY ID";
-
-  const patientCaseHistoryRecords = patient?.case_history_records || [];
-  const insurerSummarizedList = useMemo(
-    () => generateInsurerSummary(patientCaseHistoryRecords),
-    [patientCaseHistoryRecords],
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -156,7 +156,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                       Policy Number Code
                     </span>
-                    <span className="mt-0.5 font-mono text-sm font-black tracking-wide text-[#557373]">
+                    <span className="mt-0.5 font-mono text-sm font-black tracking-wide text-[#065a60]">
                       {policyNumberLabel}
                     </span>
                   </div>
@@ -172,7 +172,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
               </div>
 
               <div className="mt-6 border-t border-gray-100 pt-4">
-                <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#557373]">
+                <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#065a60]">
                   Demographics Summary
                 </h4>
 
@@ -186,7 +186,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
               </div>
 
               <div className="mt-6 border-t border-gray-100 pt-4">
-                <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#557373]">
+                <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#065a60]">
                   Contact & Address
                 </h4>
 
@@ -219,7 +219,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                             key={item.sequenceNumber}
                             className="animate-fade-in flex items-start gap-2 border-b border-gray-50 pb-2.5 text-xs font-medium text-gray-700 last:border-0 last:pb-0"
                           >
-                            <span className="font-black text-[#557373]">
+                            <span className="font-black text-[#065a60]">
                               {item.sequenceNumber}.
                             </span>
                             <div>
