@@ -65,16 +65,18 @@ function LoginPage() {
           </a>
         </div>
 
-        <div className="relative z-10 my-auto max-w-md">
-          <h1 className="text-3xl font-black leading-[1.15] tracking-tight text-[#3b595c] lg:text-5xl">
-            Step into a <br />
-            <span className="bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
-              practice of excellence
-            </span>
-          </h1>
-          <p className="mt-5 text-sm font-medium leading-relaxed tracking-wide text-[#3b595c]/75">
-            Together, let&apos;s make a difference in healthcare.
-          </p>
+        <div className="relative z-10 flex flex-1 flex-col justify-center py-10 lg:py-14">
+          <div className="max-w-xl border-l-4 border-[#2bccc4]/40 pl-8 lg:pl-10">
+            <h1 className="text-4xl font-black leading-[1.08] tracking-tight text-[#3b595c] sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
+              Step into a{" "}
+              <span className="bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
+                practice of excellence
+              </span>
+            </h1>
+            <p className="mt-6 max-w-lg text-base font-medium leading-relaxed tracking-wide text-[#3b595c]/75 sm:text-lg lg:mt-8 lg:text-xl">
+              Together, let&apos;s make a difference in healthcare.
+            </p>
+          </div>
         </div>
 
         <div className="relative z-10 text-[10px] font-medium tracking-wider text-[#3b595c]/45">
