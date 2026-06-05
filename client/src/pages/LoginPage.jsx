@@ -70,7 +70,7 @@ function LoginPage() {
             <div className="mt-8 flex flex-col items-center px-2 text-center">
               <h1 className="text-4xl font-black tracking-tight md:text-5xl">
                 <span className="text-[var(--color-text-hero-muted)]">Step into a </span>
-                <span className="bg-gradient-to-r from-[#065a60] to-[#3e5c76] bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-[var(--gradient-hero-excellence-start)] to-[var(--gradient-hero-excellence-end)] bg-clip-text text-transparent">
                   practice of excellence
                 </span>
               </h1>
