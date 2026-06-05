@@ -125,8 +125,8 @@ const pageMeta = {
     helper: "Maintain doctor, operator, accountant, and Linkham Admin accounts from one admin workspace.",
   },
   "/linkham/dashboard": {
-    label: "Linkham overview",
-    helper: "Coverage metrics and outstanding corporate ledger totals.",
+    label: "Operational overview",
+    helper: "Real-time indicators for active Linkham corporate coverage metrics.",
   },
   "/linkham/patients": {
     label: "Insured clients",
@@ -135,6 +135,10 @@ const pageMeta = {
   "/linkham/claims-clearance": {
     label: "Claims clearance",
     helper: "Review and approve the 80/20 split-billing corporate ledger.",
+  },
+  "/linkham/reports": {
+    label: "Data & analytics",
+    helper: "Visual trends for Linkham patient volumes and claims performance.",
   },
 };
 
@@ -148,7 +152,9 @@ function AppShell() {
   const isPatientsDirectory = location.pathname === "/patients";
   const isInventory = location.pathname === "/inventory";
   const isSupplyRequests = location.pathname === "/supply-requests";
+  const isLinkhamPortal = location.pathname.startsWith("/linkham");
   const hideBottomNav = isMobile;
+  const hideLinkhamTopHeader = isLinkhamPortal;
   const userRole = user?.role;
   const alwaysHideTopHeader =
     (isDashboard && (userRole === "doctor" || userRole === "operator")) ||
@@ -214,12 +220,18 @@ function AppShell() {
   }, [user?.id, user?.role, user?.doctor_id]);
 
   return (
-    <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900">
+    <div
+      className={
+        isLinkhamPortal
+          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[#f8f9fa] text-slate-900"
+          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900"
+      }
+    >
       <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
         <Sidebar />
 
         <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
-          {!alwaysHideTopHeader ? (
+          {!alwaysHideTopHeader && !hideLinkhamTopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}

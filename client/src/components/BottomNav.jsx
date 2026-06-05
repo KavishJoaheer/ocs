@@ -5,6 +5,7 @@ import {
   CreditCard,
   LayoutDashboard,
   Package,
+  PieChart,
   Stethoscope,
   UsersRound,
 } from "lucide-react";
@@ -22,9 +23,10 @@ export const bottomNavItems = [
 ];
 
 export const linkhamBottomNavItems = [
-  { to: "/linkham/dashboard", label: "Overview", icon: LayoutDashboard, end: true, roles: ["linkham_admin"] },
-  { to: "/linkham/patients", label: "Clients", icon: UsersRound, roles: ["linkham_admin"] },
+  { to: "/linkham/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true, roles: ["linkham_admin"] },
+  { to: "/linkham/patients", label: "Patients", icon: UsersRound, roles: ["linkham_admin"] },
   { to: "/linkham/claims-clearance", label: "Claims", icon: ClipboardList, roles: ["linkham_admin"] },
+  { to: "/linkham/reports", label: "Reports", icon: PieChart, roles: ["linkham_admin"] },
 ];
 
 function BottomNav() {

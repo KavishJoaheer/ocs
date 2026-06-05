@@ -62,6 +62,7 @@ export const ROUTE_ACCESS = {
   "/linkham/dashboard": ["linkham_admin"],
   "/linkham/patients": ["linkham_admin"],
   "/linkham/claims-clearance": ["linkham_admin"],
+  "/linkham/reports": ["linkham_admin"],
 };
 
 export function getDefaultPathForRole(role) {

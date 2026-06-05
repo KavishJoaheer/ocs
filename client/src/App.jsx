@@ -25,6 +25,7 @@ import StockActivityPage from "./pages/StockActivityPage.jsx";
 import LinkhamDashboardPage from "./pages/linkham/LinkhamDashboardPage.jsx";
 import LinkhamPatientsPage from "./pages/linkham/LinkhamPatientsPage.jsx";
 import LinkhamClaimsClearancePage from "./pages/linkham/LinkhamClaimsClearancePage.jsx";
+import LinkhamReportsPage from "./pages/linkham/LinkhamReportsPage.jsx";
 
 function App() {
   return (
@@ -52,6 +53,7 @@ function App() {
             <Route path="/linkham/dashboard" element={<LinkhamDashboardPage />} />
             <Route path="/linkham/patients" element={<LinkhamPatientsPage />} />
             <Route path="/linkham/claims-clearance" element={<LinkhamClaimsClearancePage />} />
+            <Route path="/linkham/reports" element={<LinkhamReportsPage />} />
             <Route path="/" element={<Navigate to="/linkham/dashboard" replace />} />
           </Route>
 

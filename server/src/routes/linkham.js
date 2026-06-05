@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   approveLinkhamClaim,
+  getLinkhamAnalyticsReports,
   getLinkhamClaimById,
   getLinkhamDashboardMetrics,
   getLinkhamPatientById,
@@ -12,6 +13,15 @@ const router = express.Router();
 
 router.get("/dashboard", (_req, res) => {
   res.json(getLinkhamDashboardMetrics());
+});
+
+router.get("/reports", (req, res) => {
+  res.json(
+    getLinkhamAnalyticsReports({
+      seenTimeFilter: req.query.seenFilter,
+      claimsTimeFilter: req.query.claimsFilter,
+    }),
+  );
 });
 
 router.get("/patients", (_req, res) => {

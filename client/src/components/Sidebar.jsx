@@ -19,6 +19,7 @@ import {
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
+import LinkhamSidebar from "./LinkhamSidebar.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
 import { bottomNavItems, linkhamBottomNavItems } from "./BottomNav.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -115,28 +116,6 @@ const navItems = [
   },
 ];
 
-const linkhamNavItems = [
-  {
-    to: "/linkham/dashboard",
-    label: "Overview",
-    icon: LayoutDashboard,
-    end: true,
-    roles: ["linkham_admin"],
-  },
-  {
-    to: "/linkham/patients",
-    label: "Insured clients",
-    icon: UsersRound,
-    roles: ["linkham_admin"],
-  },
-  {
-    to: "/linkham/claims-clearance",
-    label: "Claims clearance",
-    icon: ClipboardList,
-    roles: ["linkham_admin"],
-  },
-];
-
 function resolveNavTarget(to) {
   const [pathname, search = ""] = String(to || "").split("?");
   return search ? { pathname, search: `?${search}` } : pathname;
@@ -199,12 +178,10 @@ function Sidebar() {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const visibleNavItems = useMemo(() => {
-    if (user.role === "linkham_admin") {
-      return linkhamNavItems;
-    }
-    return navItems.filter((item) => item.roles.includes(user.role));
-  }, [user.role]);
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => item.roles.includes(user.role)),
+    [user.role],
+  );
 
   const bottomPaths = useMemo(() => {
     const items = user.role === "linkham_admin" ? linkhamBottomNavItems : bottomNavItems;
@@ -235,6 +212,10 @@ function Sidebar() {
       document.body.style.overflow = "";
     };
   }, [drawerOpen]);
+
+  if (user.role === "linkham_admin") {
+    return <LinkhamSidebar />;
+  }
 
   return (
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
