@@ -376,3 +376,37 @@ table {
     radial-gradient(circle at 10% 80%, rgba(242, 193, 77, 0.08), transparent 20%),
     linear-gradient(180deg, #f8fdfd 0%, #f5fbfb 50%, #eef8f8 100%);
 }
+
+/* TRUE TEAL GLOW EFFECT - Multi-layered opacity mapping */
+.glow-teal-capsule {
+  box-shadow:
+    0 4px 14px 0 rgba(28, 78, 82, 0.4),
+    0 12px 30px 4px rgba(28, 78, 82, 0.35),
+    0 20px 50px 10px rgba(28, 78, 82, 0.15);
+  transition: all 0.3s ease;
+}
+
+.glow-teal-capsule:hover {
+  box-shadow:
+    0 6px 20px 0 rgba(28, 78, 82, 0.5),
+    0 16px 40px 8px rgba(28, 78, 82, 0.45),
+    0 24px 60px 15px rgba(28, 78, 82, 0.25);
+  transform: translateY(-1px);
+}
+
+/* TRUE AMBER GOLD GLOW EFFECT - Multi-layered opacity mapping */
+.glow-amber-capsule {
+  box-shadow:
+    0 4px 14px 0 rgba(247, 186, 36, 0.5),
+    0 12px 30px 4px rgba(247, 186, 36, 0.4),
+    0 20px 50px 10px rgba(247, 186, 36, 0.18);
+  transition: all 0.3s ease;
+}
+
+.glow-amber-capsule:hover {
+  box-shadow:
+    0 6px 20px 0 rgba(247, 186, 36, 0.6),
+    0 16px 40px 8px rgba(247, 186, 36, 0.5),
+    0 24px 60px 15px rgba(247, 186, 36, 0.3);
+  transform: translateY(-1px);
+}
