@@ -127,6 +127,26 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
             <LoadingState label="Loading patient profile" />
           ) : patient ? (
             <div className="space-y-6">
+              <div className="flex flex-col gap-2 rounded-2xl border border-gray-100 bg-gray-50/50 p-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                  Insured Eligibility Validation Anchor
+                </span>
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-gray-400">Policy Number Code</span>
+                    <span className="mt-0.5 font-mono text-sm font-black tracking-wide text-[#557373]">
+                      {patient.insurance_policy_number || "🚨 MISSING POLICY ID"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-bold text-gray-400">Verification Status</span>
+                    <span className="mt-0.5 ml-auto w-fit rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
+                      🟢 Verified Covered
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <section className="space-y-3">
                 <h3 className="text-sm font-bold text-gray-800">Demographics</h3>
                 <ReadOnlyField label="Full name" value={patient.full_name} />

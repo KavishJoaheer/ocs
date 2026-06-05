@@ -48,6 +48,11 @@ export default function LinkhamPatientsPage() {
                   <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-500">
                     {client.case_number}
                   </span>
+                  {client.insurance_policy_number ? (
+                    <span className="rounded-lg border border-amber-200/80 bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-extrabold text-amber-800">
+                      Policy: {client.insurance_policy_number}
+                    </span>
+                  ) : null}
                 </div>
                 <span className="text-xs font-medium text-gray-400">
                   {formatClientAddress(client)} · DOB:{" "}

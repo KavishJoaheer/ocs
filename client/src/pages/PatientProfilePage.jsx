@@ -29,6 +29,7 @@ import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PatientLinkhamPolicyBadge from "../components/PatientLinkhamPolicyBadge.jsx";
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -1351,6 +1352,12 @@ function PatientProfilePage() {
   const lastVisitDate = data.consultations[0]?.consultation_date
     ? formatDate(data.consultations[0].consultation_date)
     : "Not recorded";
+  const profileAgeLabel = data.patient.date_of_birth
+    ? formatAgeFromDateOfBirth(data.patient.date_of_birth)
+    : "Not recorded";
+  const profileAddressLabel = hasMeaningfulPatientField(data.patient.address)
+    ? data.patient.address
+    : "Not recorded";
 
   const mobileDemographicsPrimary = [
     [data.patient.first_name, data.patient.last_name].filter(Boolean).join(" ").trim(),
@@ -1444,22 +1451,25 @@ function PatientProfilePage() {
         >
           <div className="flex min-w-0 items-start justify-between gap-3 pt-3">
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-base font-bold leading-snug text-slate-950">
-                {data.patient.full_name}
-              </h1>
-              {isPatientSubscribed(data.patient) ? (
-                <div className="mt-1.5">
-                  <HealthPlanBadge className="ml-0" compact />
+              <div className="flex w-full flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate text-base font-extrabold leading-snug text-slate-950">
+                    {data.patient.full_name}
+                  </h1>
+                  <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-bold text-gray-500">
+                    {data.patient.patient_identifier || "No OCS care number"}
+                  </span>
+                  <PatientLinkhamPolicyBadge patient={data.patient} />
                 </div>
-              ) : null}
-              <p
-                className={cx(
-                  "text-xs text-slate-500",
-                  isPatientSubscribed(data.patient) ? "mt-1" : "mt-0.5",
-                )}
-              >
-                {data.patient.patient_identifier || "No OCS care number"}
-              </p>
+                {isPatientSubscribed(data.patient) ? (
+                  <div className="mt-0.5">
+                    <HealthPlanBadge className="ml-0" compact />
+                  </div>
+                ) : null}
+                <span className="text-xs text-gray-400">
+                  📍 {profileAddressLabel} • Age: {profileAgeLabel}
+                </span>
+              </div>
             </div>
             <a
               href={`tel:${patientContactNumber}`}
@@ -1476,11 +1486,22 @@ function PatientProfilePage() {
         <PageHeader
           eyebrow="Patient profile"
           title={
-            <div className="flex flex-col items-start gap-2">
-              <span>{data.patient.full_name}</span>
+            <div className="mb-4 flex w-full flex-col gap-1 border-b border-gray-100 pb-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-lg font-extrabold text-gray-900">
+                  {data.patient.full_name}
+                </span>
+                <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-bold text-gray-500">
+                  {data.patient.patient_identifier || "No OCS care number"}
+                </span>
+                <PatientLinkhamPolicyBadge patient={data.patient} />
+              </div>
               {isPatientSubscribed(data.patient) ? (
                 <HealthPlanBadge className="ml-0" />
               ) : null}
+              <span className="text-xs text-gray-400">
+                📍 {profileAddressLabel} • Age: {profileAgeLabel}
+              </span>
             </div>
           }
           actions={(

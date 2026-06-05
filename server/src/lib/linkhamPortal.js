@@ -271,6 +271,8 @@ function formatLinkhamClientRow(row) {
     address: row.address || "",
     village,
     patient_contact_number: row.patient_contact_number || "",
+    insurance_provider: row.insurance_provider || "",
+    insurance_policy_number: row.insurance_policy_number || "",
     status: row.status || "active",
     created_at: row.created_at,
     age: ageFromDob ?? ageFromNic,
@@ -750,6 +752,8 @@ function listLinkhamPatients() {
         p.address,
         p.location,
         p.patient_contact_number,
+        p.insurance_provider,
+        p.insurance_policy_number,
         p.status,
         p.created_at,
         (
@@ -844,6 +848,8 @@ function getLinkhamPatientById(patientId) {
         p.address,
         p.location,
         p.patient_contact_number,
+        p.insurance_provider,
+        p.insurance_policy_number,
         p.status,
         p.created_at,
         (

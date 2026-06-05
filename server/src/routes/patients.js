@@ -423,6 +423,8 @@ function getPatientSnapshot(patient) {
     is_under_review: parseBooleanField(patient.is_under_review),
     review_reason_note: String(patient.review_reason_note ?? "").trim(),
     review_due_date: String(patient.review_due_date ?? "").trim(),
+    insurance_provider: String(patient.insurance_provider ?? "").trim(),
+    insurance_policy_number: String(patient.insurance_policy_number ?? "").trim(),
   };
 }
 
