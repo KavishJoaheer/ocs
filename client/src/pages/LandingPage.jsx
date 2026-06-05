@@ -326,15 +326,25 @@ function LandingPage() {
             </FadeInSection>
 
             <FadeInSection delay={300}>
-              <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[var(--color-text-hero-muted)]">
-                A unified digital headquarters for home visit coordination,
-                clinical operations, and patient care management. Together,
-                let&apos;s make a difference.
-              </p>
+              <div className="mx-auto mt-6 w-full max-w-3xl px-4 text-center">
+                <p className="text-xs font-semibold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-sm">
+                  We are more than a healthcare service, We are a community of care.
+                </p>
+
+                <p className="mt-2.5 text-sm font-black leading-snug tracking-tight text-[#14213d] sm:text-base md:text-lg">
+                  One Commitment
+                  <span className="mx-1.5 font-bold text-[#f7ba24] sm:mx-2">|</span>
+                  One Promise
+                  <span className="mx-1.5 font-bold text-[#f7ba24] sm:mx-2">|</span>
+                  <span className="bg-gradient-to-r from-[#065a60] to-[#3b595c] bg-clip-text text-transparent">
+                    Bringing healthcare to every Mauritian doorstep
+                  </span>
+                </p>
+              </div>
             </FadeInSection>
 
             <FadeInSection delay={450}>
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
                 <button
                   type="button"
                   onClick={() => navigate("/login")}
