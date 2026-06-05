@@ -73,7 +73,7 @@ function LoginPage() {
                 Practice of Excellence
               </span>
             </h1>
-            <p className="mt-6 max-w-lg text-base font-medium leading-relaxed tracking-wide text-[#f7ba24] sm:text-lg lg:mt-8 lg:text-xl">
+            <p className="mt-6 max-w-lg text-base font-semibold leading-relaxed tracking-wide text-[#065a60] sm:text-lg lg:mt-8 lg:text-xl">
               Together, let&apos;s make a difference in healthcare
             </p>
           </div>
