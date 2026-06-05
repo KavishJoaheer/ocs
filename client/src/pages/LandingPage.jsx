@@ -327,8 +327,8 @@ function LandingPage() {
 
             <FadeInSection delay={300}>
               <div className="mx-auto mt-6 w-full max-w-3xl px-4 text-center">
-                <p className="text-xs font-bold tracking-wide text-[#3b595c]">
-                  We are more than a healthcare service — We are a community of care.
+                <p className="text-xs font-semibold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-sm">
+                  We are more than a healthcare service, We are a community of care.
                 </p>
 
                 <p className="mt-2.5 text-sm font-black leading-snug tracking-tight text-[#14213d] sm:text-base md:text-lg">
