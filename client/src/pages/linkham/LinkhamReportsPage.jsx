@@ -16,6 +16,7 @@ import LoadingState from "../../components/LoadingState.jsx";
 import { api } from "../../lib/api.js";
 import { LINKHAM_CLAIMS_EVENT } from "../../lib/inventorySync.js";
 import { formatRupees } from "../../lib/format.js";
+import { linkhamChartStyles } from "../../lib/linkhamTheme.js";
 
 const AXIS_TICK = {
   fontSize: 10,
@@ -56,7 +57,10 @@ function PremiumChartTooltip({ active, payload, label, formatValue, valueLabel }
     <div className="rounded-xl border border-gray-200/80 bg-white/90 px-3 py-3 shadow-sm backdrop-blur-sm">
       {label ? <p className="text-xs font-semibold text-gray-800">{label}</p> : null}
       <p className="mt-1 flex items-center gap-2 text-xs text-gray-600">
-        <span className="inline-block size-2 rounded-full bg-[#557373]" />
+        <span
+          className="inline-block size-2 rounded-full"
+          style={{ backgroundColor: linkhamChartStyles.lineColor }}
+        />
         <span>
           {valueLabel}: {formatValue(value)}
         </span>
@@ -142,7 +146,7 @@ export default function LinkhamReportsPage() {
   return (
     <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
       <div>
-        <h1 className="text-xl font-extrabold text-gray-800">Data & Analytics Ledger</h1>
+        <h1 className="text-xl font-extrabold text-[#14213d]">Data & Analytics Ledger</h1>
         <span className="text-xs font-medium text-gray-400">
           Visual trends monitoring deployment operations and claims performance metrics.
         </span>
@@ -156,7 +160,7 @@ export default function LinkhamReportsPage() {
                 Patients Seen by OCS
               </span>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-gray-900">{formatInteger(patientsSeenTotal)}</span>
+                <span className="text-2xl font-black text-[#14213d]">{formatInteger(patientsSeenTotal)}</span>
                 <span className="text-[10px] font-medium text-gray-400">
                   {SEEN_PERIOD_LABELS[seenTimeFilter] || "this period"}
                 </span>
@@ -179,7 +183,8 @@ export default function LinkhamReportsPage() {
               <BarChart data={patientsSeenRows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid
                   vertical={false}
-                  stroke="rgba(243, 244, 246, 0.8)"
+                  stroke={linkhamChartStyles.gridBorderColor}
+                  strokeOpacity={0.18}
                   strokeDasharray="4 4"
                 />
                 <XAxis
@@ -196,7 +201,7 @@ export default function LinkhamReportsPage() {
                   tickLine={false}
                 />
                 <Tooltip
-                  cursor={{ fill: "rgba(85, 115, 115, 0.06)" }}
+                  cursor={{ fill: "rgba(6, 90, 96, 0.06)" }}
                   content={
                     <PremiumChartTooltip
                       formatValue={(value) => formatInteger(value)}
@@ -204,7 +209,11 @@ export default function LinkhamReportsPage() {
                     />
                   }
                 />
-                <Bar dataKey="patient_count" fill="#557373" radius={[6, 6, 0, 0]} />
+                <Bar
+                  dataKey="patient_count"
+                  fill={linkhamChartStyles.lineColor}
+                  radius={[6, 6, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -215,7 +224,7 @@ export default function LinkhamReportsPage() {
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
               Case Density Heatmap
             </span>
-            <span className="rounded-md bg-[#557373]/10 px-2 py-0.5 text-[10px] font-bold text-[#557373]">
+            <span className="rounded-md bg-[#065a60]/10 px-2 py-0.5 text-[10px] font-bold text-[#065a60]">
               Geographic Intelligence
             </span>
           </div>
@@ -232,7 +241,7 @@ export default function LinkhamReportsPage() {
                 Total Claims Processed (80% Outlay Value)
               </span>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-gray-900">{formatRupees(claimsOutlayTotal)}</span>
+                <span className="text-2xl font-black text-[#14213d]">{formatRupees(claimsOutlayTotal)}</span>
                 <span className="text-[10px] font-medium text-gray-400">
                   {CLAIMS_PERIOD_LABELS[claimsTimeFilter] || "this period"}
                 </span>
@@ -254,13 +263,14 @@ export default function LinkhamReportsPage() {
               <AreaChart data={claimsRows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="linkhamClaimsFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#557373" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#557373" stopOpacity={0.02} />
+                    <stop offset="5%" stopColor={linkhamChartStyles.gradientFillColorStart} />
+                    <stop offset="95%" stopColor={linkhamChartStyles.gradientFillColorStop} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
                   vertical={false}
-                  stroke="rgba(243, 244, 246, 0.8)"
+                  stroke={linkhamChartStyles.gridBorderColor}
+                  strokeOpacity={0.18}
                   strokeDasharray="4 4"
                 />
                 <XAxis
@@ -272,7 +282,7 @@ export default function LinkhamReportsPage() {
                 />
                 <YAxis tick={Y_AXIS_TICK} axisLine={false} tickLine={false} />
                 <Tooltip
-                  cursor={{ stroke: "rgba(85, 115, 115, 0.2)", strokeWidth: 1 }}
+                  cursor={{ stroke: "rgba(6, 90, 96, 0.2)", strokeWidth: 1 }}
                   content={
                     <PremiumChartTooltip
                       formatValue={(value) => `Rs ${formatInteger(value)}`}
@@ -283,7 +293,7 @@ export default function LinkhamReportsPage() {
                 <Area
                   type="monotone"
                   dataKey="linkham_outlay"
-                  stroke="#557373"
+                  stroke={linkhamChartStyles.lineColor}
                   fill="url(#linkhamClaimsFill)"
                   strokeWidth={2}
                 />

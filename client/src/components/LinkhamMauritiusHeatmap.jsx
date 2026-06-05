@@ -5,12 +5,12 @@ function Hotspot({ cluster, size = "md", tone = "primary" }) {
   const sizeClass = size === "lg" ? "h-3 w-3" : "h-2 w-2";
   const pingClass =
     tone === "primary"
-      ? "bg-[#557373] opacity-75"
-      : "bg-teal-400 opacity-60";
+      ? "bg-[#065a60] opacity-75"
+      : "bg-[#3e5c76] opacity-60";
   const dotClass =
     tone === "primary"
-      ? "bg-[#557373] shadow-md"
-      : "bg-teal-500";
+      ? "bg-[#065a60] shadow-md"
+      : "bg-[#3e5c76]";
 
   return (
     <div
@@ -42,7 +42,7 @@ export default function LinkhamMauritiusHeatmap({ clusters = [], predictiveInsig
     <div className="flex h-full flex-col">
       <div className="relative mt-2 flex min-h-[220px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-gray-50/40">
         <svg
-          className="h-40 w-auto fill-none stroke-2 stroke-[#557373] opacity-20"
+          className="h-40 w-auto fill-none stroke-2 stroke-[#065a60] opacity-20"
           viewBox="0 0 100 100"
           aria-hidden="true"
         >

@@ -60,7 +60,7 @@ export default function LinkhamDashboardPage() {
   return (
     <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
       <div>
-        <h1 className="text-xl font-extrabold text-gray-800">Operational Overview</h1>
+        <h1 className="text-xl font-extrabold text-[#14213d]">Operational Overview</h1>
         <span className="text-xs font-medium text-gray-400">
           Real-time indicators for active Linkham corporate coverage metrics.
         </span>
@@ -97,10 +97,10 @@ export default function LinkhamDashboardPage() {
             Patients Seen ({metrics?.currentMonthName || "Current month"})
           </span>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-gray-900">
+            <span className="text-3xl font-black text-[#14213d]">
               {metrics?.monthlySeenPatientsCount ?? 0}
             </span>
-            <span className="rounded-lg bg-[#557373]/10 px-2 py-0.5 text-[11px] font-bold text-[#557373]">
+            <span className="rounded-lg bg-[#065a60]/10 px-2 py-0.5 text-[11px] font-bold text-[#065a60]">
               Active Month
             </span>
           </div>
@@ -111,10 +111,10 @@ export default function LinkhamDashboardPage() {
             Pending Corporate Claims
           </span>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-gray-900">
+            <span className="text-3xl font-black text-[#fca311]">
               {metrics?.pendingClaimsCount ?? 0}
             </span>
-            <span className="rounded-lg border border-amber-200/40 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+            <span className="rounded-lg border border-[#fca311]/20 bg-[#fca311]/5 px-2 py-0.5 text-[11px] font-bold text-[#fca311]">
               Awaiting Clearance
             </span>
           </div>

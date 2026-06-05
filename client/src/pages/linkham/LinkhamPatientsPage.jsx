@@ -63,7 +63,7 @@ export default function LinkhamPatientsPage() {
               <button
                 type="button"
                 onClick={() => setSelectedPatientId(client.id)}
-                className="shrink-0 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 shadow-sm transition-all duration-200 hover:border-[#557373] hover:text-[#557373]"
+                className="shrink-0 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-[#3e5c76] shadow-sm transition-all duration-200 hover:border-[#065a60] hover:bg-[#065a60]/5 hover:text-[#065a60]"
               >
                 View Patient Details
               </button>

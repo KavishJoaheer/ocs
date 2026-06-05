@@ -16,7 +16,7 @@ const linkhamNavItems = [
 function LinkhamNavIcon({ id, active }) {
   const strokeClass = active
     ? "stroke-white"
-    : "stroke-gray-400 group-hover:stroke-gray-700";
+    : "stroke-[#3e5c76] group-hover:stroke-[#14213d]";
 
   const iconProps = {
     className: cx("size-4 fill-none stroke-2", strokeClass),
@@ -73,8 +73,8 @@ function LinkhamNavButton({ item, onNavigate }) {
         cx(
           "group flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-xs font-bold transition-all duration-200",
           isActive
-            ? "bg-[#557373] text-white shadow-sm"
-            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900",
+            ? "bg-[#065a60] text-white shadow-sm"
+            : "text-[#3e5c76] hover:bg-gray-50 hover:text-[#14213d]",
         )
       }
     >
@@ -131,7 +131,7 @@ export default function LinkhamSidebar() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="rounded-xl p-2 text-[#557373] transition hover:bg-gray-50"
+          className="rounded-xl p-2 text-[#065a60] transition hover:bg-gray-50"
           aria-label="Open menu"
         >
           <Menu className="size-6" strokeWidth={2.25} />
@@ -184,7 +184,7 @@ export default function LinkhamSidebar() {
         <div className="border-b border-gray-100 px-4 py-5">
           <BrandMark maxWidth={150} size={34} />
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3">
-            <div className="rounded-xl border border-gray-100 bg-white p-2 text-[#557373]">
+            <div className="rounded-xl border border-gray-100 bg-white p-2 text-[#065a60]">
               <ShieldCheck className="size-4" />
             </div>
             <div className="min-w-0">

@@ -46,7 +46,7 @@ export default function LinkhamClaimsLedger({
                 toast.error(error.message || "Could not clear clean claims batch.");
               }
             }}
-            className="rounded-xl bg-[#557373] px-5 py-2.5 text-xs font-bold text-white shadow-sm shadow-[#557373]/10 transition-all duration-200 hover:bg-[#435c5c] disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-[#065a60] px-5 py-2.5 text-xs font-bold text-white shadow-sm shadow-[#065a60]/10 transition-all duration-200 hover:bg-[#054a4f] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {batchApproving ? "Clearing..." : "Clear Clean Claims Batch"}
           </button>
@@ -103,7 +103,7 @@ export default function LinkhamClaimsLedger({
                         <button
                           type="button"
                           onClick={() => onViewSummary?.(claim)}
-                          className="rounded-lg bg-[#557373]/5 px-3 py-1.5 text-xs font-bold text-[#557373] transition-all hover:bg-[#557373]/10 hover:text-[#435c5c]"
+                          className="rounded-lg bg-[#065a60]/5 px-3 py-1.5 text-xs font-bold text-[#065a60] transition-all hover:bg-[#065a60]/10 hover:text-[#054a4f]"
                         >
                           📄 View Summary
                         </button>
@@ -153,7 +153,7 @@ export default function LinkhamClaimsLedger({
                                 toast.error(error.message || "Could not approve claim.");
                               }
                             }}
-                            className="ml-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-extrabold text-gray-700 shadow-sm transition-all duration-150 hover:border-[#557373] hover:bg-white hover:text-[#557373] disabled:opacity-60"
+                            className="ml-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-extrabold text-[#3e5c76] shadow-sm transition-all duration-150 hover:border-[#065a60] hover:bg-[#065a60]/5 hover:text-[#065a60] disabled:opacity-60"
                           >
                             {approvingClaimId === claim.id ? "Saving..." : "Approve"}
                           </button>

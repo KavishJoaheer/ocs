@@ -19,21 +19,21 @@ export default function LinkhamBudgetExposureGauge({ exposure }) {
 
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black tabular-nums text-gray-900">
+            <span className="text-2xl font-black tabular-nums text-[#14213d]">
               {formatRupees(currentTotal)}
             </span>
             <span className="text-xs font-medium text-gray-400">
               of {formatRupees(threshold)}
             </span>
           </div>
-          <span className="text-sm font-black tabular-nums text-gray-900">
+          <span className="text-sm font-black tabular-nums text-[#14213d]">
             {percent.toFixed(1)}% utilized
           </span>
         </div>
 
         <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
           <div
-            className="h-full rounded-full bg-[#557373] transition-all duration-500"
+            className="h-full rounded-full bg-[#065a60] transition-all duration-500"
             style={{ width: `${percent}%` }}
           />
         </div>
