@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import BrandMark from "../components/BrandMark.jsx";
@@ -14,7 +14,6 @@ function LoginPage() {
     username: "",
     password: "",
   });
-  const signInSectionRef = useRef(null);
 
   const attemptedPath = useMemo(
     () => location.state?.from?.pathname || "",
@@ -56,57 +55,27 @@ function LoginPage() {
       style={{ paddingTop: `max(2rem, var(--sat))`, paddingBottom: `max(2rem, var(--sab))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
     >
       <div className="mx-auto grid min-h-[calc(100svh-4rem)] w-full min-w-0 max-w-7xl gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
-        <section className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(236,246,247,0.94))] p-5 shadow-[0_36px_90px_rgba(34,72,91,0.16)] lg:p-6">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.62),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.08),transparent_22%)]" />
-
-          <div className="relative z-10 rounded-[36px] border border-[rgba(255,255,255,0.72)] bg-[linear-gradient(180deg,#dfe8ea_0%,#d4dde0_100%)] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] lg:p-7">
-            <div className="rounded-[20px] border border-[rgba(65,200,198,0.14)] bg-white/94 px-4 py-4 shadow-[0_16px_34px_rgba(34,72,91,0.12)]">
-              <BrandMark maxWidth={264} size={58} />
-              <p className="mt-3 text-[1.35rem] font-medium italic tracking-[0.02em] text-[#2d5f69] sm:text-[1.55rem]">
-                Virtual Practice
-              </p>
-            </div>
-
-            <div className="mt-8 flex flex-col items-center px-2 text-center">
-              <h1 className="text-4xl font-black tracking-tight md:text-5xl">
-                <span className="text-[var(--color-text-hero-muted)]">Step into a </span>
-                <span className="bg-gradient-to-r from-[var(--gradient-hero-excellence-start)] to-[var(--gradient-hero-excellence-end)] bg-clip-text text-transparent">
-                  practice of excellence
-                </span>
-              </h1>
-
-              <p className="mt-4 max-w-md text-sm font-medium leading-relaxed text-[var(--color-text-hero-muted)]">
-                Welcome to the OCS Virtual Practice — our digital headquarters for coordinated
-                clinical care.
-              </p>
-
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    signInSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  }}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-staff-start)] to-[var(--gradient-staff-end)] px-6 py-3.5 text-xs font-bold text-white shadow-md shadow-[var(--gradient-staff-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
-                >
-                  <span>Staff Portal</span>
-                  <span className="text-[10px]">→</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => toast("Patient self-service portal is coming soon.")}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-patient-start)] to-[var(--gradient-patient-end)] px-6 py-3.5 text-xs font-black text-[#14213d] shadow-md shadow-[var(--gradient-patient-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
-                >
-                  <span>Patient Portal</span>
-                  <span className="text-[10px]">→</span>
-                </button>
-              </div>
-            </div>
+        <section className="hidden min-h-[500px] w-full max-w-md flex-col justify-between rounded-[32px] bg-[#eef3f5] p-10 lg:flex">
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <BrandMark maxWidth={220} size={36} />
+            <p className="mt-3 text-base font-black tracking-tight text-[#065a60]">OCS VP</p>
           </div>
+
+          <div className="my-auto py-6 text-center">
+            <h1 className="text-3xl font-black leading-tight tracking-tight md:text-4xl">
+              <span className="text-[#3b595c]">Step into a</span>{" "}
+              <span className="block text-[#065a60]">practice of excellence</span>
+            </h1>
+
+            <p className="mx-auto mt-4 max-w-xs text-xs font-bold leading-relaxed tracking-wide text-[#3b595c]">
+              Together, let&apos;s make a difference in healthcare
+            </p>
+          </div>
+
+          <div className="h-6" />
         </section>
 
         <section
-          ref={signInSectionRef}
           className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,251,250,0.9))] p-6 shadow-[0_30px_80px_rgba(34,72,91,0.12)] lg:p-8"
         >
           <div>
