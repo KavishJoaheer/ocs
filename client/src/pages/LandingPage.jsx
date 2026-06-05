@@ -291,17 +291,17 @@ function LandingPage() {
             }`}
           >
             <BrandMark maxWidth={200} size={44} />
-            <div className="flex items-center gap-3">
+            <div className="flex flex-row items-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate("/login")}
-                className="rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 px-5 py-2.5 text-sm font-semibold text-[#2d8f98] shadow-[0_4px_16px_rgba(34,72,91,0.08)] backdrop-blur transition-all hover:bg-white hover:shadow-[0_8px_24px_rgba(34,72,91,0.12)]"
+                className="rounded-full border border-[#3b595c]/30 px-5 py-2 text-xs font-bold text-[#3b595c] transition-all duration-200 hover:border-[#065a60] hover:bg-gray-50 hover:text-[#065a60]"
               >
                 Staff Login
               </button>
               <a
                 href={PATIENT_PORTAL_URL}
-                className="rounded-xl bg-gradient-to-b from-[var(--gradient-patient-start)] to-[var(--gradient-patient-end)] px-5 py-2.5 text-sm font-black text-[#14213d] shadow-md shadow-[var(--gradient-patient-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+                className="glow-amber-capsule rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-5 py-2 text-xs font-black text-[#14213d] shadow-[0_4px_12px_rgba(247,186,36,0.35)] transition-all duration-200 active:scale-[0.98]"
               >
                 Patient Portal
               </a>
@@ -327,8 +327,8 @@ function LandingPage() {
 
             <FadeInSection delay={300}>
               <div className="mx-auto mt-6 w-full max-w-3xl px-4 text-center">
-                <p className="text-xs font-semibold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-sm">
-                  We are more than a healthcare service, We are a community of care.
+                <p className="text-xs font-bold tracking-wide text-[#3b595c]">
+                  We are more than a healthcare service — We are a community of care.
                 </p>
 
                 <p className="mt-2.5 text-sm font-black leading-snug tracking-tight text-[#14213d] sm:text-base md:text-lg">
