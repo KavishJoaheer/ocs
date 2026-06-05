@@ -6,19 +6,29 @@ import { api } from "../lib/api.js";
 import { formatDate, formatRupees } from "../lib/format.js";
 import { parseMauritianID } from "../lib/nicParser.js";
 
-function ReadOnlyField({ label, value }) {
+function MetadataField({ label, value, valueClassName = "", mono = false, span = 1 }) {
+  const content =
+    value === null || value === undefined || String(value).trim() === ""
+      ? "Not recorded"
+      : String(value);
+
   return (
-    <label className="block space-y-1.5">
-      <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+    <div className={span === 2 ? "col-span-2 flex flex-col gap-0.5" : "flex flex-col gap-0.5"}>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
         {label}
       </span>
-      <input
-        readOnly
-        disabled
-        value={value || "Not recorded"}
-        className="w-full cursor-default rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm font-semibold text-gray-800"
-      />
-    </label>
+      <span
+        className={[
+          mono ? "font-mono" : "",
+          "text-sm font-semibold text-gray-800",
+          valueClassName,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {content}
+      </span>
+    </div>
   );
 }
 
@@ -95,6 +105,9 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
     ? formatDate(patient.date_of_birth)
     : nicProfile?.formattedDob || "Not recorded";
   const financing = patient?.financing || {};
+  const policyNumberLabel = patient?.insurance_policy_number?.trim()
+    ? patient.insurance_policy_number
+    : "MISSING POLICY ID";
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -133,43 +146,64 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                 </span>
                 <div className="flex w-full items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold text-gray-400">Policy Number Code</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Policy Number Code
+                    </span>
                     <span className="mt-0.5 font-mono text-sm font-black tracking-wide text-[#557373]">
-                      {patient.insurance_policy_number || "🚨 MISSING POLICY ID"}
+                      {policyNumberLabel}
                     </span>
                   </div>
                   <div className="flex flex-col text-right">
-                    <span className="text-xs font-bold text-gray-400">Verification Status</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Verification Status
+                    </span>
                     <span className="mt-0.5 ml-auto w-fit rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
-                      🟢 Verified Covered
+                      Verified Covered
                     </span>
                   </div>
                 </div>
               </div>
 
-              <section className="space-y-3">
-                <h3 className="text-sm font-bold text-gray-800">Demographics</h3>
-                <ReadOnlyField label="Full name" value={patient.full_name} />
-                <ReadOnlyField label="Case number" value={patient.case_number} />
-                <ReadOnlyField label="National ID" value={patient.national_id} />
-                <div className="grid grid-cols-2 gap-3">
-                  <ReadOnlyField label="Date of birth" value={dobLabel} />
-                  <ReadOnlyField label="Age" value={ageLabel} />
+              <div className="mt-6 border-t border-gray-100 pt-4">
+                <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#557373]">
+                  Demographics Summary
+                </h4>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                  <MetadataField label="Full Name" value={patient.full_name} span={2} />
+                  <MetadataField label="National ID" value={patient.national_id} mono />
+                  <MetadataField label="Case Number" value={patient.case_number} mono />
+                  <MetadataField label="Date of Birth" value={dobLabel} />
+                  <MetadataField label="Computed Patient Age" value={ageLabel} />
                 </div>
-                <ReadOnlyField label="Phone" value={patient.patient_contact_number} />
-                <ReadOnlyField
-                  label="Address"
-                  value={[patient.address, patient.village].filter(Boolean).join(", ")}
-                />
-                <ReadOnlyField label="Registered" value={formatDate(patient.created_at)} />
-              </section>
+              </div>
+
+              <div className="mt-6 border-t border-gray-100 pt-4">
+                <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#557373]">
+                  Contact & Address
+                </h4>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                  <MetadataField label="Phone" value={patient.patient_contact_number} />
+                  <MetadataField label="Registered" value={formatDate(patient.created_at)} />
+                  <MetadataField
+                    label="Address"
+                    value={[patient.address, patient.village].filter(Boolean).join(", ")}
+                    span={2}
+                  />
+                </div>
+              </div>
 
               <section className="space-y-3">
                 <h3 className="text-sm font-bold text-gray-800">Treatment summary</h3>
-                <ReadOnlyField
-                  label="Active care profile"
-                  value={patient.treatment_summary || "No treatment summary recorded"}
-                />
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                    Active care profile
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-gray-800">
+                    {patient.treatment_summary || "No treatment summary recorded"}
+                  </p>
+                </div>
                 <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1.5">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
                     ICD-10 Code
@@ -183,27 +217,49 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                 ) : null}
               </section>
 
-              <section className="space-y-3">
-                <h3 className="text-sm font-bold text-gray-800">80/20 financing summary</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <ReadOnlyField
-                    label="Patient copay collected (20%)"
-                    value={formatRupees(financing.patient_copay_collected)}
-                  />
-                  <ReadOnlyField
-                    label="Linkham obligation (80%)"
-                    value={formatRupees(financing.linkham_coverage_obligation)}
-                  />
-                  <ReadOnlyField
-                    label="Approved corporate share"
-                    value={formatRupees(financing.linkham_approved_amount)}
-                  />
-                  <ReadOnlyField
-                    label="Outstanding corporate share"
-                    value={formatRupees(financing.linkham_outstanding_amount)}
-                  />
+              <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-5">
+                <h4 className="border-b border-gray-200/60 pb-2 text-xs font-extrabold uppercase tracking-wider text-gray-500">
+                  80/20 Financing Matrix
+                </h4>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Patient Copay Collected (20%)
+                    </span>
+                    <span className="text-sm font-black text-emerald-600">
+                      {formatRupees(financing.patient_copay_collected)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Linkham Corporate Share (80%)
+                    </span>
+                    <span className="text-sm font-black text-gray-900">
+                      {formatRupees(financing.linkham_coverage_obligation)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5 border-t border-gray-200/60 pt-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Approved Share
+                    </span>
+                    <span className="text-sm font-semibold text-gray-500">
+                      {formatRupees(financing.linkham_approved_amount)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5 border-t border-gray-200/60 pt-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Outstanding Balance Due
+                    </span>
+                    <span className="text-sm font-black text-amber-600">
+                      {formatRupees(financing.linkham_outstanding_amount)}
+                    </span>
+                  </div>
                 </div>
-              </section>
+              </div>
 
               {financing.visits?.length ? (
                 <section className="space-y-3">
