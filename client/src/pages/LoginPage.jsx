@@ -50,93 +50,120 @@ function LoginPage() {
   }
 
   return (
-    <div
-      className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden bg-[radial-gradient(circle_at_top_right,_rgba(65,200,198,0.18),_transparent_24%),linear-gradient(180deg,_#f8fdfd_0%,_#edf8f8_100%)] px-4 py-8 text-slate-900 lg:px-8"
-      style={{ paddingTop: `max(2rem, var(--sat))`, paddingBottom: `max(2rem, var(--sab))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
-    >
-      <div className="mx-auto grid min-h-[calc(100svh-4rem)] w-full min-w-0 max-w-7xl gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
-        <section className="hidden min-h-[500px] w-full max-w-md flex-col justify-between rounded-[32px] bg-[#eef3f5] p-10 lg:flex">
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <BrandMark maxWidth={220} size={36} />
-            <p className="mt-3 text-base font-black tracking-tight text-[#065a60]">OCS VP</p>
+    <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
+      {/* Left: premium brand canvas */}
+      <div className="relative flex w-full flex-col justify-between overflow-hidden bg-[#3b595c] p-12 md:w-1/2 lg:p-16">
+        <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/10 blur-[120px]" />
+        <div className="pointer-events-none absolute -bottom-40 -right-20 h-[500px] w-[500px] rounded-full bg-[#f7ba24]/5 blur-[150px]" />
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2 backdrop-blur-md">
+            <span className="text-xs font-black uppercase tracking-widest text-white">
+              OCS VP
+            </span>
           </div>
+        </div>
 
-          <div className="my-auto py-6 text-center">
-            <h1 className="text-3xl font-black leading-tight tracking-tight md:text-4xl">
-              <span className="text-[#3b595c]">Step into a</span>{" "}
-              <span className="block text-[#065a60]">practice of excellence</span>
-            </h1>
+        <div className="relative z-10 my-auto max-w-md">
+          <h1 className="text-3xl font-black leading-[1.15] tracking-tight text-white lg:text-5xl">
+            Step into a <br />
+            <span className="text-[#2bccc4]">practice of excellence</span>
+          </h1>
+          <p className="mt-5 text-sm font-medium leading-relaxed tracking-wide text-white/70">
+            Together, let&apos;s make a difference in healthcare.
+          </p>
+        </div>
 
-            <p className="mx-auto mt-4 max-w-xs text-xs font-bold leading-relaxed tracking-wide text-[#3b595c]">
-              Together, let&apos;s make a difference in healthcare
-            </p>
-          </div>
+        <div className="relative z-10 text-[10px] font-medium tracking-wider text-white/40">
+          DIGITAL HEADQUARTERS © {new Date().getFullYear()} OCS MÉDECINS
+        </div>
+      </div>
 
-          <div className="h-6" />
-        </section>
+      {/* Right: secure entry portal */}
+      <div className="flex w-full flex-col justify-between bg-slate-50/50 p-12 md:w-1/2 lg:p-16">
+        <div className="flex items-center justify-end">
+          <BrandMark maxWidth={160} size={32} />
+        </div>
 
-        <section
-          className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,251,250,0.9))] p-6 shadow-[0_30px_80px_rgba(34,72,91,0.12)] lg:p-8"
-        >
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-              Secure sign-in
-            </p>
-            <h2 className="mt-3 font-display text-3xl tracking-tight text-slate-950">
-              Sign in with your assigned credentials
+        <div className="mx-auto my-auto w-full max-w-sm py-8">
+          <div className="mb-8">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#065a60]">
+              Protected Access Gateway
+            </span>
+            <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
+              Sign in with credentials
             </h2>
-            <p className="mt-3 text-sm leading-7 text-[#496773]">
-              Enter the username and password provided by admin to access your workspace.
+            <p className="mt-2 text-xs font-medium leading-relaxed text-gray-500">
+              Enter the administrative username and secure password provided by system
+              operations to enter your custom workspace.
             </p>
           </div>
 
-          <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Username</span>
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div>
+              <label
+                htmlFor="login-username"
+                className="mb-2 block text-[10px] font-black uppercase tracking-wider text-[#3b595c]"
+              >
+                Username
+              </label>
               <input
+                id="login-username"
                 required
+                type="text"
                 value={form.username}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, username: event.target.value }))
                 }
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
                 placeholder="Enter your username"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-sm font-medium text-[#14213d] placeholder:text-gray-400 transition-all focus:border-[#065a60] focus:outline-none focus:ring-4 focus:ring-[#065a60]/5"
               />
-            </label>
+            </div>
 
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Password</span>
+            <div>
+              <label
+                htmlFor="login-password"
+                className="mb-2 block text-[10px] font-black uppercase tracking-wider text-[#3b595c]"
+              >
+                Password
+              </label>
               <input
+                id="login-password"
                 required
                 type="password"
                 value={form.password}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, password: event.target.value }))
                 }
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
                 placeholder="Enter your password"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-sm font-medium text-[#14213d] placeholder:text-gray-400 transition-all focus:border-[#065a60] focus:outline-none focus:ring-4 focus:ring-[#065a60]/5"
               />
-            </label>
+            </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="glow-teal-capsule mt-8 block w-full rounded-full bg-gradient-to-r from-[#1c4e52] to-[#123638] py-4 text-center text-xs font-black tracking-wide text-white shadow-[0_10px_25px_-5px_rgba(28,78,82,0.35)] transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_15px_30px_-5px_rgba(28,78,82,0.5)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "Signing in..." : "Sign in"}
+              {isSubmitting ? "Signing in..." : "Sign in to Workspace"}
             </button>
           </form>
 
-          <div className="mt-5 text-center">
+          <div className="mt-8 text-center">
             <button
               type="button"
               onClick={() => navigate("/welcome")}
-              className="text-sm font-semibold text-[#2d8f98] transition-colors hover:text-[#22485b]"
+              className="group inline-flex items-center gap-1.5 text-xs font-bold text-gray-400 transition-colors hover:text-[#065a60]"
             >
-              ← Back to Home
+              <span className="transform transition-transform duration-200 group-hover:-translate-x-0.5">
+                ←
+              </span>
+              Back to Welcome Gateway
             </button>
           </div>
-        </section>
+        </div>
+
+        <div className="h-4" />
       </div>
     </div>
   );
