@@ -4,12 +4,13 @@ import {
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
   notifyDoctorBagInventoryUpdated,
+  notifyLinkhamPatientsUpdated,
   notifyLongTermReviewUpdated,
   notifyOcsInventoryUpdated,
   notifySupplyRequestsUpdated,
 } from "./inventorySync.js";
 
-const INVENTORY_REALTIME_ROLES = new Set(["admin", "doctor", "operator"]);
+const INVENTORY_REALTIME_ROLES = new Set(["admin", "doctor", "operator", "linkham_admin"]);
 const INVALIDATION_DEBOUNCE_MS = 120;
 
 let eventSource = null;
@@ -161,6 +162,21 @@ export function startInventoryRealtimeSync(user) {
 
   source.addEventListener("supply_request_change", () => {
     notifySupplyRequestsUpdated();
+  });
+
+  source.addEventListener("linkham_patients_change", (message) => {
+    try {
+      const event = JSON.parse(message.data);
+      if (
+        event.changedByClientSessionId &&
+        String(event.changedByClientSessionId) === tabSessionId
+      ) {
+        return;
+      }
+    } catch {
+      /* fall through to invalidation */
+    }
+    notifyLinkhamPatientsUpdated();
   });
 
   source.addEventListener("long_term_review_change", (message) => {

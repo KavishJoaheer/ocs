@@ -5,6 +5,7 @@ import LoadingState from "../../components/LoadingState.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { api } from "../../lib/api.js";
 import { formatRupees } from "../../lib/format.js";
+import { LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
 
 function MetricCard({ icon: Icon, label, value, accent }) {
   return (
@@ -33,8 +34,10 @@ export default function LinkhamDashboardPage() {
   useEffect(() => {
     let ignore = false;
 
-    async function loadMetrics() {
-      setLoading(true);
+    async function loadMetrics({ showSpinner = true } = {}) {
+      if (showSpinner) {
+        setLoading(true);
+      }
       try {
         const data = await api.get("/linkham/dashboard");
         if (!ignore) {
@@ -45,15 +48,22 @@ export default function LinkhamDashboardPage() {
           toast.error(error.message);
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && showSpinner) {
           setLoading(false);
         }
       }
     }
 
     void loadMetrics();
+
+    const handleRefresh = () => {
+      void loadMetrics({ showSpinner: false });
+    };
+
+    window.addEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
     return () => {
       ignore = true;
+      window.removeEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
     };
   }, []);
 

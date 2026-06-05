@@ -147,6 +147,18 @@ async function main() {
     .get();
   const patientId = patient?.id;
 
+  const linkhamPatient = db
+    .prepare(`
+      SELECT id
+      FROM patients
+      WHERE deleted_at IS NULL
+        AND lower(trim(insurance_provider)) = 'linkham'
+      ORDER BY id ASC
+      LIMIT 1
+    `)
+    .get();
+  const linkhamPatientId = linkhamPatient?.id;
+
   const failures = [];
   const passes = [];
   const skipped = [];
@@ -177,6 +189,9 @@ async function main() {
     const paths = [...endpoints];
     if (patientId) {
       paths.push(["GET", `/api/patients/${patientId}`]);
+    }
+    if (role === "linkham_admin" && linkhamPatientId) {
+      paths.push(["GET", `/api/linkham/patients/${linkhamPatientId}`]);
     }
 
     for (const [method, path] of paths) {

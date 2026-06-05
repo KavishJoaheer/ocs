@@ -1,10 +1,14 @@
 const express = require("express");
 const { db, ensureBillingForConsultation } = require("../db");
-const { publishLongTermReviewChange } = require("../lib/inventoryRealtime");
+const { publishLinkhamPatientsChange, publishLongTermReviewChange } = require("../lib/inventoryRealtime");
 const {
   ensureLinkhamPatientAccess,
   getLinkhamPatientFilterSql,
 } = require("../lib/linkhamRbac");
+const {
+  isLinkhamInsuranceProvider,
+  resolveInsuranceProviderFromTags,
+} = require("../lib/insuranceProvider");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 
 const router = express.Router();
@@ -179,7 +183,34 @@ function normalizePatientPayload(body) {
     ongoing_treatment:
       status === "active" ? String(body.ongoing_treatment ?? "").trim() : "",
     is_subscribed: parseBooleanField(body.is_subscribed),
+    insurance_provider: resolveInsuranceProviderFromTags(
+      Array.isArray(body.location_tags)
+        ? body.location_tags
+        : Array.isArray(body.locationTags)
+          ? body.locationTags
+          : [],
+      body.insurance_provider,
+    ),
   };
+}
+
+function notifyLinkhamPatientsIfNeeded(
+  patientId,
+  insuranceProvider,
+  userId,
+  previousInsuranceProvider = null,
+) {
+  if (
+    !isLinkhamInsuranceProvider(insuranceProvider) &&
+    !isLinkhamInsuranceProvider(previousInsuranceProvider)
+  ) {
+    return;
+  }
+
+  publishLinkhamPatientsChange({
+    patientId,
+    changedByUserId: userId,
+  });
 }
 
 function normalizeLocationTag(tag) {
@@ -1218,9 +1249,10 @@ router.post("/", (req, res) => {
         next_of_kin_address,
         status,
         ongoing_treatment,
-        is_subscribed
+        is_subscribed,
+        insurance_provider
       )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
     .run(
       fullName,
@@ -1251,14 +1283,18 @@ router.post("/", (req, res) => {
       payload.status,
       payload.ongoing_treatment,
       payload.is_subscribed ? 1 : 0,
+      payload.insurance_provider || null,
     );
 
+  const patientId = Number(result.lastInsertRowid);
+
   if (PATIENT_TAG_ROLES.has(req.auth.role)) {
-    updatePatientLocationTags(result.lastInsertRowid, payload.location_tags);
+    updatePatientLocationTags(patientId, payload.location_tags);
   }
 
+  notifyLinkhamPatientsIfNeeded(patientId, payload.insurance_provider, req.auth.id);
+
   if (req.auth.role === "operator") {
-    const patientId = Number(result.lastInsertRowid);
     const operatorUserId = Number(req.auth.id);
     const expiresAt = getDefaultOperatorExpiry();
 
@@ -1413,7 +1449,8 @@ router.put("/:id", (req, res) => {
         next_of_kin_address = ?,
         status = ?,
         ongoing_treatment = ?,
-        is_subscribed = ?
+        is_subscribed = ?,
+        insurance_provider = ?
       WHERE id = ?
     `).run(
       fullName,
@@ -1444,6 +1481,7 @@ router.put("/:id", (req, res) => {
       payload.status,
       payload.ongoing_treatment,
       payload.is_subscribed ? 1 : 0,
+      payload.insurance_provider || null,
       patientId,
     );
 
@@ -1451,6 +1489,13 @@ router.put("/:id", (req, res) => {
   });
 
   updatePatient();
+
+  notifyLinkhamPatientsIfNeeded(
+    patientId,
+    payload.insurance_provider,
+    req.auth.id,
+    existing.insurance_provider,
+  );
 
   if (PATIENT_TAG_ROLES.has(req.auth.role)) {
     const savedTags = updatePatientLocationTags(patientId, payload.location_tags);

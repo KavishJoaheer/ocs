@@ -3,6 +3,7 @@ const {
   approveLinkhamClaim,
   getLinkhamClaimById,
   getLinkhamDashboardMetrics,
+  getLinkhamPatientById,
   listLinkhamClaims,
   listLinkhamPatients,
 } = require("../lib/linkhamPortal");
@@ -15,6 +16,16 @@ router.get("/dashboard", (_req, res) => {
 
 router.get("/patients", (_req, res) => {
   res.json({ patients: listLinkhamPatients() });
+});
+
+router.get("/patients/:id", (req, res) => {
+  const patient = getLinkhamPatientById(req.params.id);
+
+  if (!patient) {
+    return res.status(404).json({ error: "Linkham client not found." });
+  }
+
+  res.json({ patient });
 });
 
 router.get("/claims", (_req, res) => {

@@ -10,6 +10,9 @@ export const SUPPLY_REQUESTS_EVENT = "supply-requests-updated";
 /** Dispatched when the practice-wide long-term review queue changes. */
 export const LONG_TERM_REVIEW_EVENT = "long-term-review-updated";
 
+/** Dispatched when Linkham-insured patient directory changes. */
+export const LINKHAM_PATIENTS_EVENT = "linkham-patients-updated";
+
 const CHANNEL_NAME = "ocs-inventory-sync";
 
 const broadcastChannel =
@@ -38,7 +41,8 @@ if (broadcastChannel && typeof window !== "undefined") {
       eventName === DOCTOR_BAG_INVENTORY_EVENT ||
       eventName === OCS_INVENTORY_EVENT ||
       eventName === SUPPLY_REQUESTS_EVENT ||
-      eventName === LONG_TERM_REVIEW_EVENT
+      eventName === LONG_TERM_REVIEW_EVENT ||
+      eventName === LINKHAM_PATIENTS_EVENT
     ) {
       window.dispatchEvent(new CustomEvent(eventName));
     }
@@ -59,4 +63,8 @@ export function notifySupplyRequestsUpdated() {
 
 export function notifyLongTermReviewUpdated() {
   dispatch(LONG_TERM_REVIEW_EVENT);
+}
+
+export function notifyLinkhamPatientsUpdated() {
+  dispatch(LINKHAM_PATIENTS_EVENT);
 }

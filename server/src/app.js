@@ -243,7 +243,15 @@ function createApp() {
   app.use(
     "/api/inventory",
     requireAuthFlexible,
-    authorizeRoles("admin", "doctor", "operator"),
+    (req, res, next) => {
+      const isStreamRequest = req.method === "GET" && req.path === "/stream";
+
+      if (isStreamRequest) {
+        return authorizeRoles("admin", "doctor", "operator", "linkham_admin")(req, res, next);
+      }
+
+      return authorizeRoles("admin", "doctor", "operator")(req, res, next);
+    },
     inventoryRouter,
   );
 

@@ -5,6 +5,7 @@ import Modal from "./Modal.jsx";
 import PatientDateOfBirthInput from "./PatientDateOfBirthInput.jsx";
 import PatientNationalIdInput from "./PatientNationalIdInput.jsx";
 import PatientLocationTags from "./PatientLocationTags.jsx";
+import { resolveInsuranceProviderFromTags, syncInsuranceProviderWithTags } from "../lib/insuranceProvider.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientAutofill.js";
 import { cx } from "../lib/utils.js";
@@ -89,6 +90,7 @@ const emptyPatient = {
   address: "",
   location: "",
   location_tags: [],
+  insurance_provider: "",
   past_medical_history: "",
   past_surgical_history: "",
   drug_history: "",
@@ -121,6 +123,9 @@ function toPatientFormState(patient) {
     address: patient.address ?? "",
     location: patient.location ?? "",
     location_tags: patient.location_tags ?? [],
+    insurance_provider:
+      patient.insurance_provider ||
+      resolveInsuranceProviderFromTags(patient.location_tags ?? []),
     past_medical_history: patient.past_medical_history ?? "",
     past_surgical_history: patient.past_surgical_history ?? "",
     drug_history: patient.drug_history ?? "",
@@ -317,10 +322,16 @@ function PatientFormModal({
     const locationTags = Array.isArray(form.location_tags) ? form.location_tags : [];
     const legacyLocation = locationTags.map((tag) => tag.name).join(", ");
 
+    const insuranceProvider = resolveInsuranceProviderFromTags(
+      locationTags,
+      form.insurance_provider,
+    );
+
     onSubmit({
       ...form,
       location_tags: locationTags,
       location: legacyLocation,
+      insurance_provider: insuranceProvider,
       assigned_doctor_id: form.assigned_doctor_id ? Number(form.assigned_doctor_id) : null,
       ongoing_treatment: form.status === "active" ? form.ongoing_treatment : "",
     });
@@ -541,7 +552,7 @@ function PatientFormModal({
                   <PatientLocationTags
                     tags={form.location_tags}
                     onChange={(nextTags) =>
-                      setForm((current) => ({ ...current, location_tags: nextTags }))
+                      setForm((current) => syncInsuranceProviderWithTags(current, nextTags))
                     }
                   />
                 </div>
@@ -931,7 +942,7 @@ function PatientFormModal({
                   <PatientLocationTags
                     tags={form.location_tags}
                     onChange={(nextTags) =>
-                      setForm((current) => ({ ...current, location_tags: nextTags }))
+                      setForm((current) => syncInsuranceProviderWithTags(current, nextTags))
                     }
                   />
                 </div>

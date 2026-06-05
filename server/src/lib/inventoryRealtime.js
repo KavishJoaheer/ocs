@@ -67,6 +67,10 @@ function shouldDeliverLongTermReviewEvent(client) {
   return role === "admin" || role === "operator" || role === "doctor";
 }
 
+function shouldDeliverLinkhamPatientsEvent(client) {
+  return String(client.role || "") === "linkham_admin";
+}
+
 function writeSseEvent(res, eventName, payload) {
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -247,6 +251,42 @@ function publishLongTermReviewChange({
   return { delivered, event };
 }
 
+/** Notify Linkham insurer portal when a Linkham-tagged patient record changes. */
+function publishLinkhamPatientsChange({
+  patientId = null,
+  changedByUserId = null,
+  changedByClientSessionId = null,
+} = {}) {
+  const sessionId = changedByClientSessionId
+    ? String(changedByClientSessionId)
+    : getCurrentClientSessionId() || null;
+
+  const event = {
+    type: "linkham_patients_change",
+    patientId: patientId ? Number(patientId) : null,
+    at: new Date().toISOString(),
+    changedByUserId: changedByUserId ? Number(changedByUserId) : null,
+    changedByClientSessionId: sessionId || null,
+  };
+
+  let delivered = 0;
+
+  for (const client of clients.values()) {
+    if (!shouldDeliverLinkhamPatientsEvent(client)) {
+      continue;
+    }
+
+    try {
+      writeSseEvent(client.res, "linkham_patients_change", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  return { delivered, event };
+}
+
 function handleInventoryStream(req, res) {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -276,9 +316,11 @@ module.exports = {
   handleInventoryStream,
   publishInventoryChange,
   publishInventoryResyncBroadcast,
+  publishLinkhamPatientsChange,
   publishLongTermReviewChange,
   publishSupplyRequestChange,
   shouldDeliverInventoryEvent,
+  shouldDeliverLinkhamPatientsEvent,
   shouldDeliverLongTermReviewEvent,
   shouldDeliverSupplyRequestEvent,
   withClientSessionContext,

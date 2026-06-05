@@ -1,3 +1,5 @@
+const { isLinkhamInsuranceProvider } = require("./insuranceProvider");
+
 const LINKHAM_INSURANCE_PROVIDER = "linkham";
 
 function isLinkhamAdminRole(role) {
@@ -5,7 +7,7 @@ function isLinkhamAdminRole(role) {
 }
 
 function isLinkhamInsuredPatient(patient) {
-  return String(patient?.insurance_provider || "").trim().toLowerCase() === LINKHAM_INSURANCE_PROVIDER;
+  return isLinkhamInsuranceProvider(patient?.insurance_provider);
 }
 
 /** SQL fragment appended to patient queries for Linkham Admin read scope. */

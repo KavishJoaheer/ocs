@@ -1,44 +1,30 @@
-import { useEffect, useState } from "react";
-import toast from "react-hot-toast";
+import { useState } from "react";
 import EmptyState from "../../components/EmptyState.jsx";
+import LinkhamPatientDetailsSheet from "../../components/LinkhamPatientDetailsSheet.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
-import { api } from "../../lib/api.js";
+import { useLinkhamPatients } from "../../hooks/useLinkhamPatients.js";
 import { formatDate } from "../../lib/format.js";
 
+function formatClientAddress(client) {
+  return [client.address, client.village].filter(Boolean).join(", ") || "Address not recorded";
+}
+
 export default function LinkhamPatientsPage() {
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadPatients() {
-      setLoading(true);
-      try {
-        const data = await api.get("/linkham/patients");
-        if (!ignore) {
-          setPatients(Array.isArray(data?.patients) ? data.patients : []);
-        }
-      } catch (error) {
-        if (!ignore) {
-          toast.error(error.message);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadPatients();
-    return () => {
-      ignore = true;
-    };
-  }, []);
+  const { patients, loading, error } = useLinkhamPatients();
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
 
   if (loading) {
     return <LoadingState label="Loading insured clients" />;
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        title="Insured clients unavailable"
+        description={error}
+      />
+    );
   }
 
   return (
@@ -50,37 +36,34 @@ export default function LinkhamPatientsPage() {
       />
 
       {patients.length ? (
-        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-semibold text-gray-600">
-              <thead>
-                <tr className="border-b border-gray-50 bg-gray-50/70 text-[10px] uppercase tracking-wider text-gray-400">
-                  <th className="px-5 py-3">Client name</th>
-                  <th className="px-5 py-3">OCS ID</th>
-                  <th className="px-5 py-3">Contact</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Last visit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {patients.map((patient) => (
-                  <tr key={patient.id} className="border-b border-gray-50 last:border-0">
-                    <td className="px-5 py-3.5 font-bold text-gray-800">{patient.full_name}</td>
-                    <td className="px-5 py-3.5 font-mono text-gray-500">
-                      {patient.patient_identifier || `PT-${patient.id}`}
-                    </td>
-                    <td className="px-5 py-3.5 text-gray-500">
-                      {patient.patient_contact_number || "Not recorded"}
-                    </td>
-                    <td className="px-5 py-3.5 capitalize text-gray-500">{patient.status}</td>
-                    <td className="px-5 py-3.5 text-gray-500">
-                      {patient.last_visit_date ? formatDate(patient.last_visit_date) : "No visits"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="mt-4 grid w-full grid-cols-1 gap-3.5">
+          {patients.map((client) => (
+            <div
+              key={client.id}
+              className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:border-gray-200"
+            >
+              <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="text-sm font-extrabold text-gray-800">{client.full_name}</span>
+                  <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-500">
+                    {client.case_number}
+                  </span>
+                </div>
+                <span className="text-xs font-medium text-gray-400">
+                  {formatClientAddress(client)} · DOB:{" "}
+                  {client.date_of_birth ? formatDate(client.date_of_birth) : "Not recorded"}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedPatientId(client.id)}
+                className="shrink-0 rounded-xl border border-[#557373]/20 bg-[#557373]/10 px-4 py-2 text-xs font-bold text-[#557373] transition-all hover:bg-[#557373]/20"
+              >
+                View Patient Details
+              </button>
+            </div>
+          ))}
         </div>
       ) : (
         <EmptyState
@@ -88,6 +71,12 @@ export default function LinkhamPatientsPage() {
           description="Patients tagged with Linkham insurance will appear here for coverage audit."
         />
       )}
+
+      <LinkhamPatientDetailsSheet
+        open={Boolean(selectedPatientId)}
+        patientId={selectedPatientId}
+        onClose={() => setSelectedPatientId(null)}
+      />
     </div>
   );
 }

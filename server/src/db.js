@@ -708,6 +708,8 @@ function initializeDatabase() {
   backfillPatientLocations();
   ensureInventorySeedData();
   supportAccounts.forEach(upsertSupportUser);
+  const { backfillLinkhamInsuranceFromTags } = require("./lib/linkhamPortal");
+  backfillLinkhamInsuranceFromTags();
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);

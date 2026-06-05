@@ -204,7 +204,7 @@ function AppShell() {
   }, [user?.id, user?.role]);
 
   useEffect(() => {
-    if (!user?.role || user.role === "linkham_admin") {
+    if (!user?.role) {
       stopInventoryRealtimeSync();
       return undefined;
     }

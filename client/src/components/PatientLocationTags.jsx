@@ -155,7 +155,7 @@ export default function PatientLocationTags({ tags = [], onChange, readOnly = fa
             <select
               className="mt-2 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400"
               onChange={(e) => {
-                if (e.target.value) addTag("Insurance", e.target.value);
+                if (e.target.value) addTag("Insurance", e.target.value, { replaceCategory: true });
                 e.target.value = "";
               }}
             >
