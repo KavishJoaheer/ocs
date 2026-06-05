@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Sniper Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #222;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+        }
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: linear-gradient(to bottom, #87CEEB 0%, #e0f7fa 50%, #4caf50 50%, #2e7d32 100%);
+            border: 4px solid #000;
+            cursor: none;
+            overflow: hidden;
+        }
+        #scope {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border: 2px solid rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.85);
+        }
+        #scope::before, #scope::after {
+            content: '';
+            position: absolute;
+            background: black;
+        }
+        #scope::before {
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #scope::after {
+            height: 2px;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .target {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: red;
+            border-radius: 50%;
+            border: 2px solid white;
+            transition: transform 0.1s;
+        }
+        .target.hit {
+            background-color: yellow;
+            transform: scale(1.5);
+            opacity: 0;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            z-index: 20;
+            text-shadow: 1px 1px 2px black;
+        }
+        #gameOver {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="scope"></div>
+    <div id="ui">Score: <span id="score">0</span> | Ammo: <span id="ammo">5</span></div>
+    <div id="gameOver">
+        <h1>GAME OVER</h1>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <button onclick="resetGame()">Play Again</button>
+    </div>
+</div>
+
+<script>
+    const container = document.getElementById('gameContainer');
+    const scope = document.getElementById('scope');
+    const scoreEl = document.getElementById('score');
+    const ammoEl = document.getElementById('ammo');
+    const gameOverScreen = document.getElementById('gameOver');
+    const finalScoreEl = document.getElementById('finalScore');
+
+    let score = 0;
+    let ammo = 5;
+    let gameActive = true;
+    let mouseX = 0;
+    let mouseY = 0;
+    let targets = [];
+    let bullets = [];
+    let lastShotTime = 0;
+    const FIRE_RATE = 500; // ms
+    const BULLET_SPEED = 15;
+    const GRAVITY = 0.2;
+
+    // Mouse tracking
+    container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+        scope.style.left = mouseX + 'px';
+        scope.style.top = mouseY + 'px';
+    });
+
+    // Shooting
+    container.addEventListener('mousedown', (e) => {
+        if (!gameActive || ammo <= 0) return;
+        
+        const now = Date.now();
+        if (now - lastShotTime < FIRE_RATE) return;
+
+        lastShotTime = now;
+        ammo--;
+        updateUI();
+        shootBullet();
+    });
+
+    function shootBullet() {
+        const bullet = {
+            x: mouseX,
+            y: mouseY,
+            vx: 0, // Initial velocity is zero relative to scope, but we simulate travel
+            vy: 0,
+            active: true,
+            angle: 0
+        };
+        
+        // Calculate angle to simulate bullet drop over distance
+        // For simplicity in 2D, we just simulate gravity acting on the bullet immediately
+        // But let's make it travel forward slightly to simulate a shot
+        bullet.vx = 0; 
+        bullet.vy = 0;
+        
+        // We will simulate the bullet moving from the center of the scope
+        // Actually, let's make the bullet travel in the direction of the mouse relative to center?
+        // No, in a sniper game, you aim and shoot. The bullet goes where you aim.
+        // Let's add a slight "travel" time by moving the bullet from a "gun" position to the target?
+        // Simplified: Bullet appears at mouse and falls due to gravity.
+        
+        bullets.push(bullet);
+        checkHit(bullet);
+    }
+
+    function checkHit(bullet) {
+        // Simple collision: if bullet is within radius of a target
+        // Since bullet is instantaneous in this 2D view (we don't simulate travel time for simplicity),
+        // we check immediately.
+        // To make it more realistic, let's simulate a short travel time.
+        
+        let hit = false;
+        targets.forEach((target, index) => {
+            const dx = bullet.x - target.x;
+            const dy = bullet.y - target.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < 20) { // Hit radius
+                hit = true;
+                score += 10;
+                updateUI();
+                target.element.classList.add('hit');
+                setTimeout(() => {
+                    if(target.element.parentNode) target.element.parentNode.removeChild(target.element);
+                }, 100);
+                targets.splice(index, 1);
+            }
+        });
+        
+        if (hit) {
+            // Bullet disappears on hit
+            bullet.active = false;
+        }
+    }
+
+    function spawnTarget() {
+        if (!gameActive) return;
+        
+        const target = document.createElement('div');
+        target.className = 'target';
+        const x = Math.random() * (800 - 40) + 20;
+        const y = Math.random() * (200) + 250; // Sky area
+        target.style.left = x + 'px';
+        target.style.top = y + 'px';
+        container.appendChild(target);
+        
+        targets.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 2,
+            element: target
+        });
+        
+        // Random spawn time
+        setTimeout(spawnTarget, Math.random() * 2000 + 1000);
+    }
+
+    function updateGame() {
+        if (!gameActive) return;
+
+        // Move targets
+        targets.forEach(t => {
+            t.x += t.vx;
+            if (t.x <= 0 || t.x >= 770) t.vx *= -1;
+            t.element.style.left = t.x + 'px';
+        });
+
+        // Check ammo
+        if (ammo === 0 && targets.length === 0) {
+            // Respawn targets if empty but no ammo? Or game over?
+            // Let's just wait for reload or game over if time runs out?
+            // For now, just game over if ammo 0 and no targets left to shoot?
+            // Let's add a reload mechanic or just end game.
+            // Simple: Game over if you miss all ammo and no targets left?
+            // Let's just end game if ammo 0 and you can't shoot.
+            // Actually, let's just end game after a while if ammo 0.
+        }
+
+        requestAnimationFrame(updateGame);
+    }
+
+    function updateUI() {
+        scoreEl.innerText = score;
+        ammoEl.innerText = ammo;
+        if (ammo === 0) {
+            setTimeout(() => {
+                if (ammo === 0) endGame();
+            }, 2000);
+        }
+    }
+
+    function endGame() {
+        gameActive = false;
+        finalScoreEl.innerText = score;
+        gameOverScreen.style.display = 'flex';
+    }
+
+    function resetGame() {
+        score = 0;
+        ammo = 5;
+        gameActive = true;
+        gameOverScreen.style.display = 'none';
+        targets.forEach(t => t.element.remove());
+        targets = [];
+        updateUI();
+        spawnTarget();
+        updateGame();
+    }
+
+    // Start
+    spawnTarget();
+    updateGame();
+
+</script>
+</body>
+</html>

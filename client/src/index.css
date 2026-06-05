@@ -343,3 +343,26 @@ table {
 .hcm-banner-slide-out {
   animation: hcm-banner-slide-out 0.28s ease-in forwards;
 }
+
+/* ── Landing Page Animations ── */
+@keyframes landing-float {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-30px) scale(1.15);
+    opacity: 0.8;
+  }
+}
+
+.landing-particle {
+  animation: landing-float 8s ease-in-out infinite;
+}
+
+.landing-page {
+  background:
+    radial-gradient(circle at top right, rgba(65, 200, 198, 0.14), transparent 28%),
+    radial-gradient(circle at 10% 80%, rgba(242, 193, 77, 0.08), transparent 20%),
+    linear-gradient(180deg, #f8fdfd 0%, #f5fbfb 50%, #eef8f8 100%);
+}

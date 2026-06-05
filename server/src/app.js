@@ -20,16 +20,25 @@ const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
 const restockRequestsRouter = require("./routes/restockRequests");
+const patientAuthRouter = require("./routes/patientAuth");
+const patientPortalRouter = require("./routes/patientPortal");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
+const { requirePatientAuth } = require("./lib/patientAuth");
 const { withClientSessionContext } = require("./lib/inventoryRealtime");
 
 let initialized = false;
 
 function getAllowedOrigins() {
-  return (process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const configured = process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || "";
+
+  if (configured) {
+    return configured
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  return ["http://localhost:5173", "http://localhost:5174"];
 }
 
 function getClientDistPath() {
@@ -266,6 +275,9 @@ function createApp() {
     }),
     restockRequestsRouter,
   );
+
+  app.use("/api/patient-auth", patientAuthRouter);
+  app.use("/api/patient-portal", requirePatientAuth, patientPortalRouter);
 
   const clientDistPath = getClientDistPath();
   const clientIndexPath = path.join(clientDistPath, "index.html");

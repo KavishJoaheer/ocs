@@ -1,0 +1,222 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito Sans", "Segoe UI", sans-serif;
+  --font-display: "Poppins", "Segoe UI", sans-serif;
+}
+
+:root {
+  --ocs-teal-strong: #2d8f98;
+  --ocs-teal: #41c8c6;
+  --ocs-teal-soft: #70ddd2;
+  --ocs-gold: #f2c14d;
+  --ocs-ink: #22485b;
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5fbfb;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ocs-ink);
+  background:
+    radial-gradient(circle at top right, rgba(112, 221, 210, 0.18), transparent 24%),
+    radial-gradient(circle at 10% 20%, rgba(65, 200, 198, 0.12), transparent 16%),
+    linear-gradient(180deg, #f7fcfc 0%, #edf8f8 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgb(100 116 139);
+}
+
+::selection {
+  background: rgba(65, 200, 198, 0.24);
+}
+
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(244, 251, 251, 0.8);
+  border-radius: 999px;
+  background: rgba(65, 200, 198, 0.55);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+.ocs-pattern {
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.18), transparent 18%),
+    radial-gradient(circle at 85% 18%, rgba(255, 255, 255, 0.15), transparent 18%),
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: auto, auto, 42px 42px, 42px 42px;
+}
+
+.ocs-glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 251, 250, 0.82));
+  box-shadow: 0 24px 80px rgba(34, 72, 91, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.text-sky-600 {
+  color: var(--ocs-teal-strong);
+}
+
+.text-sky-700 {
+  color: #277f88;
+}
+
+.text-sky-200 {
+  color: #dff9f5;
+}
+
+.bg-sky-50 {
+  background-color: rgba(65, 200, 198, 0.1);
+}
+
+.bg-sky-50\/70 {
+  background-color: rgba(65, 200, 198, 0.1);
+}
+
+.bg-sky-100 {
+  background-color: rgba(65, 200, 198, 0.16);
+}
+
+.bg-sky-500 {
+  background-color: var(--ocs-teal);
+}
+
+.bg-sky-600 {
+  background-color: var(--ocs-teal-strong);
+}
+
+.border-sky-100 {
+  border-color: rgba(65, 200, 198, 0.18);
+}
+
+.border-sky-200 {
+  border-color: rgba(65, 200, 198, 0.28);
+}
+
+.border-sky-300 {
+  border-color: rgba(65, 200, 198, 0.4);
+}
+
+.border-sky-400 {
+  border-color: rgba(45, 143, 152, 0.68);
+}
+
+.ring-sky-600\/20 {
+  --tw-ring-color: rgba(45, 143, 152, 0.2);
+}
+
+.shadow-sky-600\/20 {
+  --tw-shadow-color: rgba(45, 143, 152, 0.22);
+}
+
+.from-sky-500 {
+  --tw-gradient-from: #41c8c6 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgba(65, 200, 198, 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.from-cyan-500 {
+  --tw-gradient-from: #6ad8d1 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgba(106, 216, 209, 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.via-blue-600 {
+  --tw-gradient-via: #2d8f98 var(--tw-gradient-via-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to);
+}
+
+.to-blue-600,
+.to-sky-600 {
+  --tw-gradient-to: #2d8f98 var(--tw-gradient-to-position);
+}
+
+.to-teal-600 {
+  --tw-gradient-to: #26717c var(--tw-gradient-to-position);
+}
+
+.hover\:bg-sky-700:hover {
+  background-color: #26717c;
+}
+
+.hover\:text-sky-700:hover {
+  color: #277f88;
+}
+
+.hover\:border-sky-200:hover {
+  border-color: rgba(65, 200, 198, 0.34);
+}
+
+.hover\:border-sky-300:hover {
+  border-color: rgba(65, 200, 198, 0.42);
+}
+
+.focus\:border-sky-400:focus {
+  border-color: rgba(45, 143, 152, 0.68);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }

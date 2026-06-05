@@ -315,6 +315,37 @@ function createPatientLocationsTables() {
   `);
 }
 
+function createPatientUsersTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      patient_id INTEGER,
+      full_name TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      date_of_birth TEXT NOT NULL DEFAULT '',
+      gender TEXT NOT NULL DEFAULT 'M' CHECK (gender IN ('M', 'F')),
+      is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
+    );
+  `);
+}
+
+function createPatientAuthSessionsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_auth_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE CASCADE
+    );
+  `);
+}
+
 function createInventoryFoldersTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_folders (
@@ -694,6 +725,8 @@ function initializeDatabase() {
   createPatientLocationsTables();
   createInventoryFoldersTable();
   createInventoryMovementsTable();
+  createPatientUsersTable();
+  createPatientAuthSessionsTable();
   createRestockRequestsTable();
 
   ensurePatientColumns();
@@ -769,6 +802,10 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_restock_requests_collection_date ON restock_requests(collection_date);
     CREATE INDEX IF NOT EXISTS idx_restock_request_items_request ON restock_request_items(request_id);
     CREATE INDEX IF NOT EXISTS idx_restock_request_items_inventory ON restock_request_items(inventory_id);
+    CREATE INDEX IF NOT EXISTS idx_patient_users_email ON patient_users(email);
+    CREATE INDEX IF NOT EXISTS idx_patient_users_patient_id ON patient_users(patient_id);
+    CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_user ON patient_auth_sessions(patient_user_id);
+    CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_expires ON patient_auth_sessions(expires_at);
   `);
 
   migrateLegacySeedDataIfNeeded();

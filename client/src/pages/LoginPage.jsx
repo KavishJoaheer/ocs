@@ -134,6 +134,16 @@ function LoginPage() {
               {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
           </form>
+
+          <div className="mt-5 text-center">
+            <button
+              type="button"
+              onClick={() => navigate("/welcome")}
+              className="text-sm font-semibold text-[#2d8f98] transition-colors hover:text-[#22485b]"
+            >
+              ← Back to Home
+            </button>
+          </div>
         </section>
       </div>
     </div>
