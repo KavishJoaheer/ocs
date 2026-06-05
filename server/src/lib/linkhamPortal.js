@@ -890,6 +890,36 @@ function getLinkhamPatientById(patientId) {
     `)
     .get(client.id);
 
+  // Chronological consultation notes used by insurer portal diagnosis summaries.
+  // We only ship doctor_notes + doctor name; vitals/medications are filtered out by the client-side parser.
+  const caseHistoryRecords = db
+    .prepare(`
+      SELECT
+        d.full_name AS doctor_name,
+        c.doctor_notes AS raw_text
+      FROM consultations c
+      JOIN doctors d ON d.id = c.doctor_id
+      WHERE c.patient_id = ?
+        AND c.doctor_notes IS NOT NULL
+        AND trim(c.doctor_notes) <> ''
+      ORDER BY c.consultation_date ASC, c.id ASC
+    `)
+    .all(client.id)
+    .map((r) => ({
+      doctor_name: r.doctor_name || "OCS Doctor",
+      raw_text: String(r.raw_text || "").trim(),
+    }))
+    .filter((r) => r.raw_text);
+
+  // Fallback: when there are no consultation rows, still attempt to parse patient-level consultation_notes.
+  const patientLevelNotes = String(treatmentContext?.consultation_notes || "").trim();
+  if (caseHistoryRecords.length === 0 && patientLevelNotes) {
+    caseHistoryRecords.push({
+      doctor_name: "OCS Doctor",
+      raw_text: patientLevelNotes,
+    });
+  }
+
   const treatmentSummary = [
     treatmentContext?.ongoing_treatment,
     treatmentContext?.latest_doctor_notes,
@@ -908,6 +938,7 @@ function getLinkhamPatientById(patientId) {
   return {
     ...client,
     treatment_summary: treatmentSummary,
+    case_history_records: caseHistoryRecords,
     active_icd10_code: icd10Match?.code || null,
     active_icd10_label: icd10Match?.label || null,
     financing: getLinkhamPatientFinancing(client.id),

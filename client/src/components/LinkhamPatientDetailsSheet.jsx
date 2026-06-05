@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import toast from "react-hot-toast";
 import LoadingState from "./LoadingState.jsx";
 import { api } from "../lib/api.js";
 import { formatDate, formatRupees } from "../lib/format.js";
 import { parseMauritianID } from "../lib/nicParser.js";
+import { generateInsurerSummary } from "../utils/clinicalParser.js";
 
 function MetadataField({ label, value, valueClassName = "", mono = false, span = 1 }) {
   const content =
@@ -109,6 +110,12 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
     ? patient.insurance_policy_number
     : "MISSING POLICY ID";
 
+  const patientCaseHistoryRecords = patient?.case_history_records || [];
+  const insurerSummarizedList = useMemo(
+    () => generateInsurerSummary(patientCaseHistoryRecords),
+    [patientCaseHistoryRecords],
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button
@@ -195,14 +202,40 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
               </div>
 
               <section className="space-y-3">
-                <h3 className="text-sm font-bold text-gray-800">Treatment summary</h3>
-                <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-                    Active care profile
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-gray-800">
-                    {patient.treatment_summary || "No treatment summary recorded"}
-                  </p>
+                <div className="mt-6">
+                  <h4 className="mb-2.5 text-xs font-extrabold uppercase tracking-wider text-gray-500">
+                    Treatment summary
+                  </h4>
+
+                  <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                    {insurerSummarizedList.length === 0 ? (
+                      <span className="text-xs italic text-gray-400">
+                        No treatment history summaries logged yet.
+                      </span>
+                    ) : (
+                      <ul className="flex flex-col gap-2.5">
+                        {insurerSummarizedList.map((item) => (
+                          <li
+                            key={item.sequenceNumber}
+                            className="animate-fade-in flex items-start gap-2 border-b border-gray-50 pb-2.5 text-xs font-medium text-gray-700 last:border-0 last:pb-0"
+                          >
+                            <span className="font-black text-[#557373]">
+                              {item.sequenceNumber}.
+                            </span>
+                            <div>
+                              <span className="font-extrabold text-gray-800">
+                                {item.doctorTitle} consultation
+                              </span>
+                              <span className="mx-1.5 text-gray-300">—</span>
+                              <span className="rounded-md border border-gray-100/60 bg-slate-50 px-2 py-0.5 font-semibold text-gray-600">
+                                {item.summaryString}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1.5">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
