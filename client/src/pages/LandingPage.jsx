@@ -344,21 +344,25 @@ function LandingPage() {
             </FadeInSection>
 
             <FadeInSection delay={450}>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+              <div className="mt-10 flex flex-row flex-wrap items-center justify-center gap-5">
                 <button
                   type="button"
                   onClick={() => navigate("/login")}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-staff-start)] to-[var(--gradient-staff-end)] px-6 py-3.5 text-xs font-bold text-white shadow-md shadow-[var(--gradient-staff-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+                  className="group relative flex items-center gap-2 rounded-full bg-gradient-to-r from-[#1c4e52] to-[#123638] px-8 py-3.5 text-xs font-bold tracking-wide text-white shadow-[0_10px_25px_-5px_rgba(28,78,82,0.4)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_15px_30px_-5px_rgba(28,78,82,0.55)] active:scale-[0.98]"
                 >
                   <span>Staff Portal</span>
-                  <span className="text-[10px]">→</span>
+                  <span className="transform text-[10px] transition-transform duration-200 group-hover:translate-x-0.5">
+                    →
+                  </span>
                 </button>
                 <a
                   href={PATIENT_PORTAL_URL}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-patient-start)] to-[var(--gradient-patient-end)] px-6 py-3.5 text-xs font-black text-[#14213d] shadow-md shadow-[var(--gradient-patient-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+                  className="group relative flex items-center gap-2 rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-8 py-3.5 text-xs font-black tracking-wide text-[#14213d] shadow-[0_10px_25px_-5px_rgba(247,186,36,0.45)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_15px_30px_-5px_rgba(247,186,36,0.6)] active:scale-[0.98]"
                 >
                   <span>Patient Portal</span>
-                  <span className="text-[10px]">→</span>
+                  <span className="transform text-[10px] transition-transform duration-200 group-hover:translate-x-0.5">
+                    →
+                  </span>
                 </a>
               </div>
             </FadeInSection>
