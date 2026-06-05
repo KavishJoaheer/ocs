@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import BrandMark from "../components/BrandMark.jsx";
@@ -14,6 +14,7 @@ function LoginPage() {
     username: "",
     password: "",
   });
+  const signInSectionRef = useRef(null);
 
   const attemptedPath = useMemo(
     () => location.state?.from?.pathname || "",
@@ -66,26 +67,48 @@ function LoginPage() {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-[0.94fr_1.06fr]">
-              <div className="rounded-[30px] border border-[rgba(65,200,198,0.18)] bg-[rgba(226,234,236,0.88)] p-6 shadow-[0_16px_34px_rgba(34,72,91,0.08)]">
-                <p className="text-[1.65rem] font-semibold leading-[1.15] tracking-tight text-slate-950 sm:text-[2rem]">
-                  Welcome to the <span className="text-[#f1bc35]">OCS VP</span>, our new digital headquarters.
-                </p>
-              </div>
+            <div className="mt-8 flex flex-col items-center px-2 text-center">
+              <h1 className="text-4xl font-black tracking-tight md:text-5xl">
+                <span className="text-[var(--color-text-hero-muted)]">Step into a </span>
+                <span className="bg-gradient-to-r from-[#065a60] to-[#3e5c76] bg-clip-text text-transparent">
+                  practice of excellence
+                </span>
+              </h1>
 
-              <div className="rounded-[30px] border border-[rgba(45,143,152,0.2)] bg-[linear-gradient(180deg,#5f8690_0%,#537781_100%)] p-6 shadow-[0_18px_40px_rgba(34,72,91,0.16)]">
-                <p className="text-[1.65rem] font-semibold leading-[1.14] tracking-tight text-slate-950 sm:text-[1.95rem]">
-                  Step into a practice of excellence.
-                </p>
-                <p className="mt-4 text-[1.55rem] font-medium italic leading-[1.12] text-[#ffd24a] sm:text-[1.9rem]">
-                  Together, let&apos;s make a difference.
-                </p>
+              <p className="mt-4 max-w-md text-sm font-medium leading-relaxed text-[var(--color-text-hero-muted)]">
+                Welcome to the OCS Virtual Practice — our digital headquarters for coordinated
+                clinical care.
+              </p>
+
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    signInSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-staff-start)] to-[var(--gradient-staff-end)] px-6 py-3.5 text-xs font-bold text-white shadow-md shadow-[var(--gradient-staff-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+                >
+                  <span>Staff Portal</span>
+                  <span className="text-[10px]">→</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => toast("Patient self-service portal is coming soon.")}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-patient-start)] to-[var(--gradient-patient-end)] px-6 py-3.5 text-xs font-black text-[#14213d] shadow-md shadow-[var(--gradient-patient-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
+                >
+                  <span>Patient Portal</span>
+                  <span className="text-[10px]">→</span>
+                </button>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,251,250,0.9))] p-6 shadow-[0_30px_80px_rgba(34,72,91,0.12)] lg:p-8">
+        <section
+          ref={signInSectionRef}
+          className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,251,250,0.9))] p-6 shadow-[0_30px_80px_rgba(34,72,91,0.12)] lg:p-8"
+        >
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
               Secure sign-in
