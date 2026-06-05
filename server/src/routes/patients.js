@@ -183,14 +183,26 @@ function normalizePatientPayload(body) {
     ongoing_treatment:
       status === "active" ? String(body.ongoing_treatment ?? "").trim() : "",
     is_subscribed: parseBooleanField(body.is_subscribed),
-    insurance_provider: resolveInsuranceProviderFromTags(
-      Array.isArray(body.location_tags)
+    insurance_provider: (() => {
+      const locationTags = Array.isArray(body.location_tags)
         ? body.location_tags
         : Array.isArray(body.locationTags)
           ? body.locationTags
-          : [],
-      body.insurance_provider,
-    ),
+          : [];
+      return resolveInsuranceProviderFromTags(locationTags, body.insurance_provider);
+    })(),
+    insurance_policy_number: (() => {
+      const locationTags = Array.isArray(body.location_tags)
+        ? body.location_tags
+        : Array.isArray(body.locationTags)
+          ? body.locationTags
+          : [];
+      const provider = resolveInsuranceProviderFromTags(locationTags, body.insurance_provider);
+      if (!isLinkhamInsuranceProvider(provider)) {
+        return "";
+      }
+      return String(body.insurance_policy_number ?? "").trim();
+    })(),
   };
 }
 
@@ -334,6 +346,9 @@ function validatePatientPayload(
   }
   if (isCreate && requireAssignedDoctor && !payload.assigned_doctor_id) {
     return "Assigned doctor is required at registration.";
+  }
+  if (isLinkhamInsuranceProvider(payload.insurance_provider) && !payload.insurance_policy_number) {
+    return "Linkham policy number is required when Linkham insurance is selected.";
   }
 
   return null;
@@ -1250,9 +1265,10 @@ router.post("/", (req, res) => {
         status,
         ongoing_treatment,
         is_subscribed,
-        insurance_provider
+        insurance_provider,
+        insurance_policy_number
       )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
     .run(
       fullName,
@@ -1284,6 +1300,7 @@ router.post("/", (req, res) => {
       payload.ongoing_treatment,
       payload.is_subscribed ? 1 : 0,
       payload.insurance_provider || null,
+      payload.insurance_policy_number || null,
     );
 
   const patientId = Number(result.lastInsertRowid);
@@ -1450,7 +1467,8 @@ router.put("/:id", (req, res) => {
         status = ?,
         ongoing_treatment = ?,
         is_subscribed = ?,
-        insurance_provider = ?
+        insurance_provider = ?,
+        insurance_policy_number = ?
       WHERE id = ?
     `).run(
       fullName,
@@ -1482,6 +1500,7 @@ router.put("/:id", (req, res) => {
       payload.ongoing_treatment,
       payload.is_subscribed ? 1 : 0,
       payload.insurance_provider || null,
+      payload.insurance_policy_number || null,
       patientId,
     );
 

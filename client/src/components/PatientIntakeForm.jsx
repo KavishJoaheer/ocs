@@ -5,7 +5,12 @@ import Modal from "./Modal.jsx";
 import PatientDateOfBirthInput from "./PatientDateOfBirthInput.jsx";
 import PatientNationalIdInput from "./PatientNationalIdInput.jsx";
 import PatientLocationTags from "./PatientLocationTags.jsx";
-import { resolveInsuranceProviderFromTags, syncInsuranceProviderWithTags } from "../lib/insuranceProvider.js";
+import {
+  isLinkhamInsuranceProvider,
+  resolveInsuranceProviderFromTags,
+  syncInsuranceProviderWithTags,
+  syncInsuranceSelection,
+} from "../lib/insuranceProvider.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientAutofill.js";
 import { cx } from "../lib/utils.js";
@@ -47,6 +52,8 @@ const DRAFT_TEXT_FIELDS = [
   "next_of_kin_contact_number",
   "next_of_kin_email",
   "ongoing_treatment",
+  "insurance_provider",
+  "insurance_policy_number",
 ];
 
 function isPatientDraftMeaningful(form) {
@@ -91,6 +98,7 @@ const emptyPatient = {
   location: "",
   location_tags: [],
   insurance_provider: "",
+  insurance_policy_number: "",
   past_medical_history: "",
   past_surgical_history: "",
   drug_history: "",
@@ -126,6 +134,7 @@ function toPatientFormState(patient) {
     insurance_provider:
       patient.insurance_provider ||
       resolveInsuranceProviderFromTags(patient.location_tags ?? []),
+    insurance_policy_number: patient.insurance_policy_number ?? "",
     past_medical_history: patient.past_medical_history ?? "",
     past_surgical_history: patient.past_surgical_history ?? "",
     drug_history: patient.drug_history ?? "",
@@ -326,12 +335,21 @@ function PatientFormModal({
       locationTags,
       form.insurance_provider,
     );
+    const insurancePolicyNumber = isLinkhamInsuranceProvider(insuranceProvider)
+      ? String(form.insurance_policy_number || "").trim()
+      : "";
+
+    if (isLinkhamInsuranceProvider(insuranceProvider) && !insurancePolicyNumber) {
+      toast.error("Linkham policy number is required when Linkham insurance is selected.");
+      return;
+    }
 
     onSubmit({
       ...form,
       location_tags: locationTags,
       location: legacyLocation,
       insurance_provider: insuranceProvider,
+      insurance_policy_number: insurancePolicyNumber,
       assigned_doctor_id: form.assigned_doctor_id ? Number(form.assigned_doctor_id) : null,
       ongoing_treatment: form.status === "active" ? form.ongoing_treatment : "",
     });
@@ -551,6 +569,11 @@ function PatientFormModal({
                   <span className={MOBILE_FIELD_LABEL}>Locations and affiliations</span>
                   <PatientLocationTags
                     tags={form.location_tags}
+                    insuranceProvider={form.insurance_provider}
+                    insurancePolicyNumber={form.insurance_policy_number}
+                    onInsuranceChange={(update) =>
+                      setForm((current) => syncInsuranceSelection(current, update))
+                    }
                     onChange={(nextTags) =>
                       setForm((current) => syncInsuranceProviderWithTags(current, nextTags))
                     }
@@ -941,6 +964,11 @@ function PatientFormModal({
                   </span>
                   <PatientLocationTags
                     tags={form.location_tags}
+                    insuranceProvider={form.insurance_provider}
+                    insurancePolicyNumber={form.insurance_policy_number}
+                    onInsuranceChange={(update) =>
+                      setForm((current) => syncInsuranceSelection(current, update))
+                    }
                     onChange={(nextTags) =>
                       setForm((current) => syncInsuranceProviderWithTags(current, nextTags))
                     }

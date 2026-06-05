@@ -911,6 +911,10 @@ function ensurePatientColumns() {
       name: "insurance_provider",
       sql: "ALTER TABLE patients ADD COLUMN insurance_provider TEXT NOT NULL DEFAULT ''",
     },
+    {
+      name: "insurance_policy_number",
+      sql: "ALTER TABLE patients ADD COLUMN insurance_policy_number TEXT NOT NULL DEFAULT ''",
+    },
   ];
 
   requiredColumns.forEach((column) => {

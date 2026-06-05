@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Search, X, MapPin } from "lucide-react";
 import { MAURITIUS_LOCATION_OPTIONS } from "../lib/mauritiusLocations.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { isLinkhamInsuranceProvider } from "../lib/insuranceProvider.js";
 
 const CLINICS = ["Anahita Residence", "Anahita Hotel", "Four Seasons", "Radisson Blu Poste Lafayette", "Radisson Blu Azuri", "Azuri Residence", "Crystal Beach", "Medic World", "OCS Santé Flacq", "OCS Médecin PL"];
 const INSURANCE = ["Linkham", "NIC", "Swan", "MUA", "Eagle", "Jubilee", "Alliance Sanlam"];
@@ -94,7 +95,14 @@ function SearchableOverlay({ open, title, items, onSelect, onClose }) {
   );
 }
 
-export default function PatientLocationTags({ tags = [], onChange, readOnly = false }) {
+export default function PatientLocationTags({
+  tags = [],
+  onChange,
+  readOnly = false,
+  insuranceProvider = "",
+  insurancePolicyNumber = "",
+  onInsuranceChange,
+}) {
   const isMobile = useIsMobile();
   const [locationType, setLocationType] = useState("village");
   const [selectedTown, setSelectedTown] = useState("");
@@ -112,7 +120,14 @@ export default function PatientLocationTags({ tags = [], onChange, readOnly = fa
   };
 
   const removeTag = (category, name) => {
-    onChange(tags.filter((t) => !(t.category === category && t.name === name)));
+    const nextTags = tags.filter((t) => !(t.category === category && t.name === name));
+    onChange(nextTags);
+    if (category === "Insurance") {
+      onInsuranceChange?.({
+        insurance_provider: "",
+        insurance_policy_number: "",
+      });
+    }
   };
 
   const getTagColor = (category) => {
@@ -150,20 +165,47 @@ export default function PatientLocationTags({ tags = [], onChange, readOnly = fa
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700">Insurance</label>
+          <div className="flex w-full flex-col gap-1.5">
+            <label className="text-xs font-bold text-gray-500">Insurance</label>
             <select
-              className="mt-2 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400"
+              value={insuranceProvider || ""}
               onChange={(e) => {
-                if (e.target.value) addTag("Insurance", e.target.value, { replaceCategory: true });
-                e.target.value = "";
+                const nextProvider = e.target.value;
+                onInsuranceChange?.({
+                  insurance_provider: nextProvider,
+                  insurance_policy_number: isLinkhamInsuranceProvider(nextProvider)
+                    ? insurancePolicyNumber
+                    : "",
+                });
               }}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-gray-700 outline-none transition focus:border-[#557373]"
             >
               <option value="">Add Insurance...</option>
-              {INSURANCE.map((i) => (
-                <option key={i} value={i}>{i}</option>
+              {INSURANCE.map((insurer) => (
+                <option key={insurer} value={insurer}>
+                  {insurer}
+                </option>
               ))}
             </select>
+
+            {isLinkhamInsuranceProvider(insuranceProvider) ? (
+              <div className="animate-fade-in mt-3 flex w-full flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-700">Linkham Policy Number *</label>
+                <input
+                  type="text"
+                  required
+                  value={insurancePolicyNumber}
+                  placeholder="e.g., LKM-983214-X"
+                  onChange={(e) =>
+                    onInsuranceChange?.({
+                      insurance_provider: insuranceProvider,
+                      insurance_policy_number: e.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#557373]"
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="relative md:col-span-2">
