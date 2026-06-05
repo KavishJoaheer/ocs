@@ -1299,8 +1299,8 @@ router.post("/", (req, res) => {
       payload.status,
       payload.ongoing_treatment,
       payload.is_subscribed ? 1 : 0,
-      payload.insurance_provider || null,
-      payload.insurance_policy_number || null,
+      payload.insurance_provider || "",
+      payload.insurance_policy_number || "",
     );
 
   const patientId = Number(result.lastInsertRowid);
@@ -1499,8 +1499,8 @@ router.put("/:id", (req, res) => {
       payload.status,
       payload.ongoing_treatment,
       payload.is_subscribed ? 1 : 0,
-      payload.insurance_provider || null,
-      payload.insurance_policy_number || null,
+      payload.insurance_provider || "",
+      payload.insurance_policy_number || "",
       patientId,
     );
 
