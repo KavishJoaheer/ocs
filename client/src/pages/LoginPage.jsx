@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import BrandMark from "../components/BrandMark.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { canAccessPath, getDefaultPathForRole } from "../lib/access.js";
 
@@ -50,99 +51,33 @@ function LoginPage() {
 
   return (
     <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
-      {/* Left: premium brand canvas */}
-      <div className="relative flex w-full flex-col justify-between overflow-hidden bg-[#3b595c] p-12 md:w-1/2 lg:p-16">
-        <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/10 blur-[120px]" />
+      {/* Left: brand canvas */}
+      <div className="relative flex w-full flex-col justify-between overflow-hidden bg-gradient-to-br from-[#f4fbfb] via-[#ebf6f6] to-[#dceeee] p-12 md:w-1/2 lg:p-16">
+        <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/15 blur-[120px]" />
+        <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-[#f7ba24]/10 blur-[100px]" />
 
-        <div className="relative z-10 flex flex-col items-start gap-1">
+        <div className="relative z-10 flex flex-col items-start">
           <a href="/welcome" className="transition-opacity hover:opacity-90">
-            <div className="flex items-center gap-3">
-              <svg
-                className="h-9 w-9 shrink-0"
-                viewBox="0 0 32 32"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden="true"
-              >
-                <path
-                  d="M17.5 6C9.5 6 6.5 11.5 6.5 15.5C6.5 20.8 11.4 24.5 17.5 24.5c3.5 0 6.5-1.2 8.7-3.5"
-                  fill="none"
-                  stroke="#2bccc4"
-                  strokeWidth="4.2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M23.5 5.9h1.9"
-                  stroke="#2bccc4"
-                  strokeWidth="4.2"
-                  strokeLinecap="round"
-                />
-                <g transform="translate(17 2.5)">
-                  <rect
-                    x="0"
-                    y="4"
-                    width="5"
-                    height="5"
-                    rx="1.4"
-                    transform="rotate(-45 0 4)"
-                    fill="#53bda7"
-                  />
-                  <rect
-                    x="4"
-                    y="4"
-                    width="5"
-                    height="5"
-                    rx="1.4"
-                    transform="rotate(-45 4 4)"
-                    fill="#4caaa0"
-                  />
-                  <rect
-                    x="0"
-                    y="8"
-                    width="5"
-                    height="5"
-                    rx="1.4"
-                    transform="rotate(-45 0 8)"
-                    fill="#f7ba24"
-                  />
-                  <rect
-                    x="4"
-                    y="8"
-                    width="5"
-                    height="5"
-                    rx="1.4"
-                    transform="rotate(-45 4 8)"
-                    fill="#f1c54b"
-                  />
-                </g>
-              </svg>
-              <span className="text-xl font-black tracking-tight text-white">
-                OCS<span className="font-light text-white"> Médecins</span>
-              </span>
-            </div>
-
-            <div className="mt-1.5 flex items-center gap-2 pl-0.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2bccc4]">
-                OCS VP
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-                • Virtual Practice
-              </span>
-            </div>
+            <BrandMark maxWidth={280} size={52} />
+            <span className="mt-3 block text-xs font-bold uppercase tracking-[0.25em] text-[#065a60]">
+              Virtual Practice
+            </span>
           </a>
         </div>
 
         <div className="relative z-10 my-auto max-w-md">
-          <h1 className="text-3xl font-black leading-[1.15] tracking-tight text-white lg:text-5xl">
+          <h1 className="text-3xl font-black leading-[1.15] tracking-tight text-[#3b595c] lg:text-5xl">
             Step into a <br />
-            <span className="text-[#2bccc4]">practice of excellence</span>
+            <span className="bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
+              practice of excellence
+            </span>
           </h1>
-          <p className="mt-5 text-sm font-medium leading-relaxed tracking-wide text-white/70">
+          <p className="mt-5 text-sm font-medium leading-relaxed tracking-wide text-[#3b595c]/75">
             Together, let&apos;s make a difference in healthcare.
           </p>
         </div>
 
-        <div className="relative z-10 text-[10px] font-medium tracking-wider text-white/40">
+        <div className="relative z-10 text-[10px] font-medium tracking-wider text-[#3b595c]/45">
           DIGITAL HEADQUARTERS © {new Date().getFullYear()} OCS MÉDECINS
         </div>
       </div>
