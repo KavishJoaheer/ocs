@@ -162,7 +162,7 @@ function createApp() {
     "/api/patients",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+      GET: ["admin", "doctor", "operator", "lab_tech", "accountant", "linkham_admin"],
       POST: ["admin", "doctor", "operator"],
       PUT: ["admin", "doctor", "operator"],
       PATCH: ["admin", "operator"],

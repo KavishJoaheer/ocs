@@ -38,7 +38,7 @@ function purgeSoftDeletedTeamAccountsSync() {
     .prepare(`
       SELECT id, full_name, role, username
       FROM users
-      WHERE role IN ('operator', 'accountant')
+      WHERE role IN ('operator', 'accountant', 'linkham_admin')
         AND deleted_at IS NOT NULL
     `)
     .all();

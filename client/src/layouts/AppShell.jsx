@@ -118,11 +118,11 @@ const pageMeta = {
   },
   "/team-operations": {
     label: "Team operations",
-    helper: "Maintain doctor, operator, and accountant accounts from one admin workspace.",
+    helper: "Maintain doctor, operator, accountant, and Linkham Admin accounts from one admin workspace.",
   },
   "/doctors": {
     label: "Team operations",
-    helper: "Maintain doctor, operator, and accountant accounts from one admin workspace.",
+    helper: "Maintain doctor, operator, accountant, and Linkham Admin accounts from one admin workspace.",
   },
 };
 
@@ -164,6 +164,10 @@ function AppShell() {
     accountant: {
       label: "Finance dashboard",
       helper: "",
+    },
+    linkham_admin: {
+      label: "Linkham coverage audit",
+      helper: "Review Linkham-insured patient records.",
     },
   };
 

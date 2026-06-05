@@ -19,13 +19,17 @@ export const ROLE_CONFIG = {
     label: "Accountant",
     defaultPath: "/",
   },
+  linkham_admin: {
+    label: "Linkham Admin",
+    defaultPath: "/patients",
+  },
 };
 
 export const ROUTE_ACCESS = {
   "/": ["admin", "doctor", "operator", "lab_tech", "accountant"],
   "/hcm-news": ["admin", "doctor", "operator", "lab_tech", "accountant"],
-  "/patients": ["admin", "doctor", "operator", "lab_tech"],
-  "/patients/:id": ["admin", "doctor", "operator", "lab_tech"],
+  "/patients": ["admin", "doctor", "operator", "lab_tech", "linkham_admin"],
+  "/patients/:id": ["admin", "doctor", "operator", "lab_tech", "linkham_admin"],
   "/patients/add": ["admin", "doctor", "operator"],
   "/appointments": ["admin", "doctor"],
   "/doctor/current-week-roster": ["doctor"],

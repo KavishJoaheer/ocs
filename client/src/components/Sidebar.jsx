@@ -36,7 +36,7 @@ const navItems = [
     to: "/patients",
     label: "Patient",
     icon: UsersRound,
-    roles: ["admin", "doctor", "operator", "lab_tech"],
+    roles: ["admin", "doctor", "operator", "lab_tech", "linkham_admin"],
     isActiveWhen: (location) => {
       if (location.pathname !== "/patients") return false;
       const params = new URLSearchParams(location.search);

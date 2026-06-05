@@ -1,6 +1,10 @@
 const express = require("express");
 const { db, ensureBillingForConsultation } = require("../db");
 const { publishLongTermReviewChange } = require("../lib/inventoryRealtime");
+const {
+  ensureLinkhamPatientAccess,
+  getLinkhamPatientFilterSql,
+} = require("../lib/linkhamRbac");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 
 const router = express.Router();
@@ -788,11 +792,13 @@ router.get("/options", (req, res) => {
     return res.status(401).json({ error: "Authentication is required." });
   }
 
+  const linkhamFilterSql = getLinkhamPatientFilterSql(auth.role);
   const patients = db
     .prepare(`
       SELECT id, patient_identifier, patient_id_number, full_name
       FROM patients
       WHERE deleted_at IS NULL
+        ${linkhamFilterSql}
       ORDER BY full_name ASC
     `)
     .all();
@@ -844,6 +850,7 @@ router.get("/", (req, res) => {
   };
   const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
   const subscribedFilterSql = "AND (@subscribed = 0 OR p.is_subscribed = 1)";
+  const linkhamFilterSql = getLinkhamPatientFilterSql(req.auth?.role);
   const listOrderSql = underReview
     ? `ORDER BY
         CASE
@@ -882,6 +889,7 @@ router.get("/", (req, res) => {
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
         ${subscribedFilterSql}
+        ${linkhamFilterSql}
     `)
     .get(filters).count;
 
@@ -929,6 +937,7 @@ router.get("/", (req, res) => {
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
         ${subscribedFilterSql}
+        ${linkhamFilterSql}
       GROUP BY p.id, d.full_name, d.specialization
       ${listOrderSql}
       LIMIT @limit OFFSET @offset
@@ -1002,6 +1011,10 @@ router.get("/:id", (req, res) => {
   const patient = getPatientById(patientId);
 
   if (!patient) {
+    return res.status(404).json({ error: "Patient not found." });
+  }
+
+  if (!ensureLinkhamPatientAccess(patient, req.auth)) {
     return res.status(404).json({ error: "Patient not found." });
   }
 

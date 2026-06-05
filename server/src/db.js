@@ -109,7 +109,7 @@ function createUsersTable() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       full_name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin', 'doctor', 'operator', 'lab_tech', 'accountant')),
+      role TEXT NOT NULL CHECK (role IN ('admin', 'doctor', 'operator', 'lab_tech', 'accountant', 'linkham_admin')),
       password_hash TEXT NOT NULL,
       doctor_id INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
@@ -478,6 +478,73 @@ function migrateUsersSchemaIfNeeded() {
   db.pragma("foreign_keys = ON");
 }
 
+function migrateUsersLinkhamAdminRoleIfNeeded() {
+  const usersTableSql = getUsersTableSql();
+
+  if (!usersTableSql || usersTableSql.includes("'linkham_admin'")) {
+    repairUsersForeignKeyReferencesIfNeeded();
+    return;
+  }
+
+  db.pragma("foreign_keys = OFF");
+
+  const migrate = db.transaction(() => {
+    db.exec("ALTER TABLE users RENAME TO users_linkham_role_legacy");
+
+    createUsersTable();
+
+    const legacyColumns = db
+      .prepare("PRAGMA table_info(users_linkham_role_legacy)")
+      .all()
+      .map((column) => column.name);
+    const nextColumns = db
+      .prepare("PRAGMA table_info(users)")
+      .all()
+      .map((column) => column.name);
+    const sharedColumns = legacyColumns.filter((column) => nextColumns.includes(column));
+    const columnList = sharedColumns.join(", ");
+
+    db.exec(`
+      INSERT INTO users (${columnList})
+      SELECT ${columnList}
+      FROM users_linkham_role_legacy
+    `);
+
+    db.exec("DROP TABLE users_linkham_role_legacy");
+  });
+
+  migrate();
+
+  // SQLite rewrites child FK targets to the renamed legacy table during the
+  // migration above. Repoint every dependent table back to `users`.
+  db.exec("ALTER TABLE users RENAME TO users_linkham_role_legacy");
+  db.exec("ALTER TABLE users_linkham_role_legacy RENAME TO users");
+
+  db.pragma("foreign_keys = ON");
+  repairUsersForeignKeyReferencesIfNeeded();
+}
+
+function repairUsersForeignKeyReferencesIfNeeded() {
+  const brokenReference = db
+    .prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND sql LIKE '%users_linkham_role_legacy%'
+      LIMIT 1
+    `)
+    .get();
+
+  if (!brokenReference || !tableExists("users")) {
+    return;
+  }
+
+  db.pragma("foreign_keys = OFF");
+  db.exec("ALTER TABLE users RENAME TO users_linkham_role_legacy");
+  db.exec("ALTER TABLE users_linkham_role_legacy RENAME TO users");
+  db.pragma("foreign_keys = ON");
+}
+
 function initializeDatabase() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS patients (
@@ -615,6 +682,7 @@ function initializeDatabase() {
 
   migrateUsersSchemaIfNeeded();
   createUsersTable();
+  migrateUsersLinkhamAdminRoleIfNeeded();
   createAuthSessionsTable();
   createUserPushSubscriptionsTable();
   createLabReportsTable();
@@ -835,6 +903,10 @@ function ensurePatientColumns() {
     {
       name: "review_due_date",
       sql: "ALTER TABLE patients ADD COLUMN review_due_date TEXT",
+    },
+    {
+      name: "insurance_provider",
+      sql: "ALTER TABLE patients ADD COLUMN insurance_provider TEXT NOT NULL DEFAULT ''",
     },
   ];
 

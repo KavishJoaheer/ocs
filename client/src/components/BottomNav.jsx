@@ -13,7 +13,7 @@ import { cx } from "../lib/utils.js";
 
 export const bottomNavItems = [
   { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["admin", "doctor", "operator", "lab_tech", "accountant"] },
-  { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "operator", "lab_tech"] },
+  { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "operator", "lab_tech", "linkham_admin"] },
   { to: "/billing", label: "Billing", icon: CreditCard, roles: ["admin", "accountant"] },
   { to: "/operator/billing-status", label: "Billing", icon: CreditCard, roles: ["operator"] },
   { to: "/lab", label: "Lab", icon: Stethoscope, roles: ["lab_tech"] },

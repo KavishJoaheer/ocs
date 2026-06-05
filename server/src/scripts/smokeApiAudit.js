@@ -23,6 +23,7 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/dashboard/live-report"],
     ["GET", "/api/hcm-news"],
     ["GET", "/api/doctors"],
+    ["GET", "/api/team-operations/linkham_admin"],
     ["GET", "/api/inventory/activity-history"],
   ],
   doctor: [
