@@ -4,6 +4,7 @@ import {
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
   notifyDoctorBagInventoryUpdated,
+  notifyLinkhamClaimsUpdated,
   notifyLinkhamPatientsUpdated,
   notifyLongTermReviewUpdated,
   notifyOcsInventoryUpdated,
@@ -162,6 +163,21 @@ export function startInventoryRealtimeSync(user) {
 
   source.addEventListener("supply_request_change", () => {
     notifySupplyRequestsUpdated();
+  });
+
+  source.addEventListener("linkham_claims_change", (message) => {
+    try {
+      const event = JSON.parse(message.data);
+      if (
+        event.changedByClientSessionId &&
+        String(event.changedByClientSessionId) === tabSessionId
+      ) {
+        return;
+      }
+    } catch {
+      /* fall through to invalidation */
+    }
+    notifyLinkhamClaimsUpdated();
   });
 
   source.addEventListener("linkham_patients_change", (message) => {

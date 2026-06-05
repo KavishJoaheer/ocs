@@ -1052,6 +1052,14 @@ function ensureBillingColumns() {
   if (!columns.includes("linkham_claim_reviewed_at")) {
     db.exec("ALTER TABLE billing ADD COLUMN linkham_claim_reviewed_at TEXT");
   }
+
+  if (!columns.includes("dispute_status")) {
+    db.exec(`
+      ALTER TABLE billing
+      ADD COLUMN dispute_status TEXT NOT NULL DEFAULT 'Clean'
+        CHECK (dispute_status IN ('Clean', 'Flagged_Review'))
+    `);
+  }
 }
 
 function ensureConsultationFeeTypes() {

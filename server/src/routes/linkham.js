@@ -1,12 +1,16 @@
 const express = require("express");
+const { publishLinkhamClaimsChange } = require("../lib/inventoryRealtime");
 const {
   approveLinkhamClaim,
+  approveLinkhamCleanClaimsBatch,
   getLinkhamAnalyticsReports,
   getLinkhamClaimById,
   getLinkhamDashboardMetrics,
   getLinkhamPatientById,
   listLinkhamClaims,
   listLinkhamPatients,
+  setLinkhamClaimDisputeStatus,
+  summarizeLinkhamClaimsLedger,
 } = require("../lib/linkhamPortal");
 
 const router = express.Router();
@@ -40,14 +44,22 @@ router.get("/patients/:id", (req, res) => {
 
 router.get("/claims", (_req, res) => {
   const claims = listLinkhamClaims();
-  const totalOutstandingClaims = claims
-    .filter((claim) => claim.linkham_claim_status === "pending")
-    .reduce((sum, claim) => sum + Number(claim.linkham_share_amount || 0), 0);
+  const ledger = summarizeLinkhamClaimsLedger(claims);
 
   res.json({
     claims,
-    totalOutstandingClaims: Number(totalOutstandingClaims.toFixed(2)),
+    ...ledger,
   });
+});
+
+router.patch("/claims/batch-approve-clean", (req, res) => {
+  const result = approveLinkhamCleanClaimsBatch();
+
+  publishLinkhamClaimsChange({
+    changedByUserId: req.auth.id,
+  });
+
+  res.json(result);
 });
 
 router.get("/claims/:id/summary", (req, res) => {
@@ -70,6 +82,7 @@ router.get("/claims/:id/summary", (req, res) => {
       patient_copay_amount: claim.patient_copay_amount,
       linkham_share_amount: claim.linkham_share_amount,
       claim_status: claim.linkham_claim_status,
+      dispute_status: claim.dispute_status,
       generated_at: new Date().toISOString(),
     },
   });
@@ -79,8 +92,29 @@ router.patch("/claims/:id/approve", (req, res) => {
   const updated = approveLinkhamClaim(req.params.id);
 
   if (!updated) {
+    return res.status(404).json({ error: "Claim not found or cannot be approved." });
+  }
+
+  publishLinkhamClaimsChange({
+    claimId: updated.id,
+    changedByUserId: req.auth.id,
+  });
+
+  res.json(updated);
+});
+
+router.patch("/claims/:id/dispute", (req, res) => {
+  const disputeStatus = req.body?.dispute_status;
+  const updated = setLinkhamClaimDisputeStatus(req.params.id, disputeStatus);
+
+  if (!updated) {
     return res.status(404).json({ error: "Claim not found." });
   }
+
+  publishLinkhamClaimsChange({
+    claimId: updated.id,
+    changedByUserId: req.auth.id,
+  });
 
   res.json(updated);
 });

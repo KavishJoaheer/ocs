@@ -13,6 +13,9 @@ export const LONG_TERM_REVIEW_EVENT = "long-term-review-updated";
 /** Dispatched when Linkham-insured patient directory changes. */
 export const LINKHAM_PATIENTS_EVENT = "linkham-patients-updated";
 
+/** Dispatched when Linkham claims ledger or clearance state changes. */
+export const LINKHAM_CLAIMS_EVENT = "linkham-claims-updated";
+
 const CHANNEL_NAME = "ocs-inventory-sync";
 
 const broadcastChannel =
@@ -42,7 +45,8 @@ if (broadcastChannel && typeof window !== "undefined") {
       eventName === OCS_INVENTORY_EVENT ||
       eventName === SUPPLY_REQUESTS_EVENT ||
       eventName === LONG_TERM_REVIEW_EVENT ||
-      eventName === LINKHAM_PATIENTS_EVENT
+      eventName === LINKHAM_PATIENTS_EVENT ||
+      eventName === LINKHAM_CLAIMS_EVENT
     ) {
       window.dispatchEvent(new CustomEvent(eventName));
     }
@@ -67,4 +71,8 @@ export function notifyLongTermReviewUpdated() {
 
 export function notifyLinkhamPatientsUpdated() {
   dispatch(LINKHAM_PATIENTS_EVENT);
+}
+
+export function notifyLinkhamClaimsUpdated() {
+  dispatch(LINKHAM_CLAIMS_EVENT);
 }

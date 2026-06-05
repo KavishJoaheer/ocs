@@ -1,21 +1,48 @@
 import toast from "react-hot-toast";
 import { formatDate, formatRupees } from "../lib/format.js";
-import { api } from "../lib/api.js";
+import { cx } from "../lib/utils.js";
 
 export default function LinkhamClaimsLedger({
   claims = [],
-  totalOutstandingClaims = 0,
+  clearableBatchTotal = 0,
+  cleanPendingCount = 0,
+  flaggedPendingCount = 0,
   onApproveClaim,
   onViewSummary,
+  onToggleDispute,
+  onApproveCleanBatch,
   approvingClaimId = null,
+  flaggingClaimId = null,
+  batchApproving = false,
 }) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-bold text-gray-800">Linkham 80% Corporate Claims Ledger</h3>
-        <span className="rounded-lg bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600">
-          Outstanding: {formatRupees(totalOutstandingClaims)}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-lg bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600">
+            Clean batch: {formatRupees(clearableBatchTotal)}
+          </span>
+          {flaggedPendingCount > 0 ? (
+            <span className="rounded-lg bg-amber-50/80 px-3 py-1 text-xs font-bold text-amber-700">
+              {flaggedPendingCount} flagged for review
+            </span>
+          ) : null}
+          <button
+            type="button"
+            disabled={batchApproving || cleanPendingCount === 0}
+            onClick={async () => {
+              try {
+                await onApproveCleanBatch?.();
+              } catch (error) {
+                toast.error(error.message || "Could not clear clean claims batch.");
+              }
+            }}
+            className="rounded-xl bg-[#557373] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#435c5c] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {batchApproving ? "Clearing..." : "Clear Clean Claims Batch"}
+          </button>
+        </div>
       </div>
 
       {claims.length ? (
@@ -29,6 +56,7 @@ export default function LinkhamClaimsLedger({
                 <th className="pb-3">Patient Copay (20%)</th>
                 <th className="pb-3">Linkham Share (80%)</th>
                 <th className="pb-3">Verification</th>
+                <th className="pb-3">Clarification</th>
                 <th className="pb-3 text-right">Action</th>
               </tr>
             </thead>
@@ -37,11 +65,17 @@ export default function LinkhamClaimsLedger({
                 const isApproved =
                   claim.linkham_claim_status === "approved" ||
                   claim.linkham_claim_status === "settled";
+                const isFlagged = claim.dispute_status === "Flagged_Review";
 
                 return (
                   <tr
                     key={claim.id}
-                    className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50"
+                    className={cx(
+                      "border-b border-gray-50 last:border-0",
+                      isFlagged
+                        ? "border-l-4 border-l-amber-400 bg-amber-50/40"
+                        : "hover:bg-gray-50/50",
+                    )}
                   >
                     <td className="py-3.5 text-gray-700">{formatDate(claim.visit_date)}</td>
                     <td className="py-3.5 font-bold text-gray-800">{claim.patient_name}</td>
@@ -61,10 +95,43 @@ export default function LinkhamClaimsLedger({
                         View Summary
                       </button>
                     </td>
+                    <td className="py-3.5">
+                      {!isApproved ? (
+                        <button
+                          type="button"
+                          disabled={flaggingClaimId === claim.id}
+                          onClick={async () => {
+                            try {
+                              await onToggleDispute?.(claim);
+                            } catch (error) {
+                              toast.error(error.message || "Could not update clarification flag.");
+                            }
+                          }}
+                          className={cx(
+                            "rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition",
+                            isFlagged
+                              ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                              : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
+                          )}
+                        >
+                          {flaggingClaimId === claim.id
+                            ? "Saving..."
+                            : isFlagged
+                              ? "Remove Flag"
+                              : "Request Clarification"}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="py-3.5 text-right">
                       {isApproved ? (
                         <span className="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
                           Approved
+                        </span>
+                      ) : isFlagged ? (
+                        <span className="rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
+                          Flagged
                         </span>
                       ) : (
                         <button

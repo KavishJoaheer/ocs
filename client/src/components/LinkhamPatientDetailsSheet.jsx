@@ -145,6 +145,25 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
               </section>
 
               <section className="space-y-3">
+                <h3 className="text-sm font-bold text-gray-800">Treatment summary</h3>
+                <ReadOnlyField
+                  label="Active care profile"
+                  value={patient.treatment_summary || "No treatment summary recorded"}
+                />
+                <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                    ICD-10 Code
+                  </span>
+                  <span className="font-mono text-xs font-black text-gray-800">
+                    {patient.active_icd10_code || "N/A"}
+                  </span>
+                </div>
+                {patient.active_icd10_label ? (
+                  <p className="text-[11px] font-medium text-gray-500">{patient.active_icd10_label}</p>
+                ) : null}
+              </section>
+
+              <section className="space-y-3">
                 <h3 className="text-sm font-bold text-gray-800">80/20 financing summary</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <ReadOnlyField

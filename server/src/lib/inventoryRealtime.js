@@ -287,6 +287,42 @@ function publishLinkhamPatientsChange({
   return { delivered, event };
 }
 
+/** Notify Linkham insurer portal when claims ledger or clearance state changes. */
+function publishLinkhamClaimsChange({
+  claimId = null,
+  changedByUserId = null,
+  changedByClientSessionId = null,
+} = {}) {
+  const sessionId = changedByClientSessionId
+    ? String(changedByClientSessionId)
+    : getCurrentClientSessionId() || null;
+
+  const event = {
+    type: "linkham_claims_change",
+    claimId: claimId ? Number(claimId) : null,
+    at: new Date().toISOString(),
+    changedByUserId: changedByUserId ? Number(changedByUserId) : null,
+    changedByClientSessionId: sessionId || null,
+  };
+
+  let delivered = 0;
+
+  for (const client of clients.values()) {
+    if (!shouldDeliverLinkhamPatientsEvent(client)) {
+      continue;
+    }
+
+    try {
+      writeSseEvent(client.res, "linkham_claims_change", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  return { delivered, event };
+}
+
 function handleInventoryStream(req, res) {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -316,6 +352,7 @@ module.exports = {
   handleInventoryStream,
   publishInventoryChange,
   publishInventoryResyncBroadcast,
+  publishLinkhamClaimsChange,
   publishLinkhamPatientsChange,
   publishLongTermReviewChange,
   publishSupplyRequestChange,

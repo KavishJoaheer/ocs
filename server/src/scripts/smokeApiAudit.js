@@ -65,6 +65,7 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/linkham/patients"],
     ["GET", "/api/linkham/claims"],
     ["GET", "/api/linkham/reports?seenFilter=month&claimsFilter=month"],
+    ["PATCH", "/api/linkham/claims/batch-approve-clean"],
   ],
 };
 

@@ -1,8 +1,22 @@
 const { db } = require("../db");
+const { resolveIcd10FromText } = require("./icd10Lookup");
 const { isLinkhamInsuranceProvider } = require("./insuranceProvider");
-const { getTodayLocal } = require("./utils");
+const { getTodayLocal, offsetLocalDate } = require("./utils");
 
 const LINKHAM_PATIENT_SQL = "lower(trim(p.insurance_provider)) = 'linkham'";
+const LINKHAM_MONTHLY_BUDGET_THRESHOLD = Number(process.env.LINKHAM_MONTHLY_BUDGET_THRESHOLD || 200000);
+
+const MAURITIUS_REGIONS = [
+  { id: "port-louis", name: "Port Louis", x: 42, y: 38, aliases: ["port louis"] },
+  { id: "triolet", name: "Triolet", x: 48, y: 32, aliases: ["triolet", "pamplemousses"] },
+  { id: "flacq", name: "Flacq", x: 72, y: 48, aliases: ["flacq", "centre de flacq", "bel air"] },
+  { id: "quatre-bornes", name: "Quatre Bornes", x: 38, y: 52, aliases: ["quatre bornes", "q-borns"] },
+  { id: "curepipe", name: "Curepipe", x: 42, y: 58, aliases: ["curepipe"] },
+  { id: "vacoas", name: "Vacoas", x: 35, y: 55, aliases: ["vacoas", "phoenix"] },
+  { id: "rose-hill", name: "Rose Hill", x: 40, y: 48, aliases: ["rose hill", "beau bassin"] },
+  { id: "mahebourg", name: "Mahebourg", x: 65, y: 72, aliases: ["mahebourg", "grand port"] },
+  { id: "grand-baie", name: "Grand Baie", x: 52, y: 22, aliases: ["grand baie", "grand bay"] },
+];
 
 function getMonthStartLocal() {
   const now = new Date();
@@ -57,8 +71,13 @@ function parseMauritianNicAge(nationalId) {
   return calculateAgeFromDateOfBirth(isoDob);
 }
 
+function normalizeDisputeStatus(value) {
+  return String(value || "Clean").trim() === "Flagged_Review" ? "Flagged_Review" : "Clean";
+}
+
 function formatClaimRow(row) {
   const total = Number(row.total_amount || 0);
+  const disputeStatus = normalizeDisputeStatus(row.dispute_status);
   return {
     id: Number(row.id),
     visit_date: row.visit_date || null,
@@ -70,7 +89,171 @@ function formatClaimRow(row) {
     linkham_share_amount: roundMoney(total * 0.8),
     billing_status: row.billing_status,
     linkham_claim_status: row.linkham_claim_status || "pending",
+    dispute_status: disputeStatus,
     copay_paid: row.billing_status === "paid",
+  };
+}
+
+function resolveMauritiusRegion(locationText) {
+  const normalized = String(locationText || "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  for (const region of MAURITIUS_REGIONS) {
+    if (region.aliases.some((alias) => normalized.includes(alias))) {
+      return region;
+    }
+  }
+
+  return {
+    id: "unspecified",
+    name: String(locationText || "Unspecified").trim() || "Unspecified",
+    x: 50,
+    y: 50,
+    aliases: [],
+  };
+}
+
+function getLinkhamBudgetExposure() {
+  const monthStart = getMonthStartLocal();
+  const currentMonthClaimsTotal = roundMoney(
+    db
+      .prepare(`
+        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        FROM billing b
+        JOIN patients p ON p.id = b.patient_id
+        JOIN consultations c ON c.id = b.consultation_id
+        WHERE ${LINKHAM_PATIENT_SQL}
+          AND b.status = 'paid'
+          AND c.consultation_date >= date(?)
+      `)
+      .get(monthStart)?.total || 0,
+  );
+
+  const monthlyThreshold = LINKHAM_MONTHLY_BUDGET_THRESHOLD;
+  const exposurePercent =
+    monthlyThreshold > 0
+      ? roundMoney((currentMonthClaimsTotal / monthlyThreshold) * 100)
+      : 0;
+  const thresholdWarningLevel = exposurePercent >= 80;
+
+  return {
+    monthlyThreshold,
+    currentMonthClaimsTotal,
+    exposurePercent,
+    thresholdWarningLevel,
+    remainingBudget: roundMoney(Math.max(monthlyThreshold - currentMonthClaimsTotal, 0)),
+  };
+}
+
+function getLinkhamGeographicHeatmap() {
+  const recentStart = offsetLocalDate(-13);
+  const priorStart = offsetLocalDate(-27);
+  const priorEnd = offsetLocalDate(-14);
+
+  const rows = db
+    .prepare(`
+      SELECT
+        COALESCE(NULLIF(trim(p.location), ''), (
+          SELECT l.name
+          FROM patient_locations pl
+          JOIN locations l ON l.id = pl.location_id
+          WHERE pl.patient_id = p.id
+            AND l.category = 'Village'
+          ORDER BY l.name ASC
+          LIMIT 1
+        ), 'Unspecified') AS location_label,
+        c.consultation_date
+      FROM consultations c
+      JOIN patients p ON p.id = c.patient_id
+      WHERE p.deleted_at IS NULL
+        AND ${LINKHAM_PATIENT_SQL}
+        AND c.consultation_date >= date(?)
+    `)
+    .all(priorStart);
+
+  const regionMap = new Map(
+    MAURITIUS_REGIONS.map((region) => [
+      region.id,
+      {
+        ...region,
+        case_count: 0,
+        recent_count: 0,
+        prior_count: 0,
+        intensity: 0,
+      },
+    ]),
+  );
+
+  rows.forEach((row) => {
+    const region = resolveMauritiusRegion(row.location_label);
+    if (!region || region.id === "unspecified") {
+      return;
+    }
+
+    const bucket = regionMap.get(region.id);
+    if (!bucket) {
+      return;
+    }
+
+    bucket.case_count += 1;
+    if (row.consultation_date >= recentStart) {
+      bucket.recent_count += 1;
+    } else if (row.consultation_date >= priorStart && row.consultation_date <= priorEnd) {
+      bucket.prior_count += 1;
+    }
+  });
+
+  const clusters = Array.from(regionMap.values())
+    .filter((region) => region.case_count > 0)
+    .map((region) => {
+      const maxRecent = Math.max(...Array.from(regionMap.values()).map((item) => item.recent_count), 1);
+      return {
+        id: region.id,
+        name: region.name,
+        x: region.x,
+        y: region.y,
+        case_count: region.case_count,
+        recent_count: region.recent_count,
+        prior_count: region.prior_count,
+        intensity: Number((region.recent_count / maxRecent).toFixed(2)),
+      };
+    })
+    .sort((left, right) => right.recent_count - left.recent_count);
+
+  let predictiveInsight = {
+    region_name: "Mauritius",
+    change_percent: 0,
+    message:
+      "Regional visit density is stable across monitored districts. No acute localized surges detected in the last 14 days.",
+  };
+
+  const trendCandidates = clusters
+    .map((cluster) => {
+      const prior = cluster.prior_count || 0;
+      const recent = cluster.recent_count || 0;
+      const changePercent =
+        prior > 0 ? roundMoney(((recent - prior) / prior) * 100) : recent > 0 ? 100 : 0;
+      return { ...cluster, change_percent: changePercent };
+    })
+    .filter((cluster) => cluster.recent_count > 0)
+    .sort((left, right) => right.change_percent - left.change_percent);
+
+  if (trendCandidates.length) {
+    const leader = trendCandidates[0];
+    predictiveInsight = {
+      region_name: leader.name,
+      change_percent: leader.change_percent,
+      message: `Over the last 14 days, OCS has noted a ${Math.abs(leader.change_percent)}% ${
+        leader.change_percent >= 0 ? "increase" : "decrease"
+      } in home-visits centered around ${leader.name}. Anticipating a localized rise in nebulizer and chronic antibiotic claims over the coming week.`,
+    };
+  }
+
+  return {
+    clusters,
+    predictiveInsight,
   };
 }
 
@@ -527,6 +710,7 @@ function getLinkhamDashboardMetrics() {
     pendingClaimsCount,
     dueLongTermReviews: listLinkhamDueLongTermReviews(),
     hcmNews: listLinkhamHcmNewsFeed(4),
+    budgetExposure: getLinkhamBudgetExposure(),
     totalInsuredClients,
     monthlyClaimsSettled,
     outstandingEightyLedger,
@@ -539,6 +723,8 @@ function getLinkhamAnalyticsReports({ seenTimeFilter = "month", claimsTimeFilter
   const seenRange = getLinkhamReportRange(seenPeriod);
   const claimsRange = getLinkhamReportRange(claimsPeriod);
 
+  const geographicHeatmap = getLinkhamGeographicHeatmap();
+
   return {
     seenTimeFilter: seenTimeFilter || "month",
     claimsTimeFilter: claimsTimeFilter || "month",
@@ -547,6 +733,8 @@ function getLinkhamAnalyticsReports({ seenTimeFilter = "month", claimsTimeFilter
     patientsSeen: getLinkhamPatientsSeenVolume(seenPeriod, seenRange),
     locationDistribution: getLinkhamLocationDistribution(seenRange),
     claimsVolume: getLinkhamClaimsVolume(claimsPeriod, claimsRange),
+    geographicHeatmap,
+    predictiveInsight: geographicHeatmap.predictiveInsight,
   };
 }
 
@@ -679,8 +867,43 @@ function getLinkhamPatientById(patientId) {
   }
 
   const client = formatLinkhamClientRow(row);
+  const treatmentContext = db
+    .prepare(`
+      SELECT
+        p.ongoing_treatment,
+        p.consultation_notes,
+        (
+          SELECT c.doctor_notes
+          FROM consultations c
+          WHERE c.patient_id = p.id
+          ORDER BY c.consultation_date DESC, c.id DESC
+          LIMIT 1
+        ) AS latest_doctor_notes
+      FROM patients p
+      WHERE p.id = ?
+    `)
+    .get(client.id);
+
+  const treatmentSummary = [
+    treatmentContext?.ongoing_treatment,
+    treatmentContext?.latest_doctor_notes,
+    treatmentContext?.consultation_notes,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+
+  const icd10Match = resolveIcd10FromText(
+    treatmentContext?.ongoing_treatment,
+    treatmentContext?.latest_doctor_notes,
+    treatmentContext?.consultation_notes,
+  );
+
   return {
     ...client,
+    treatment_summary: treatmentSummary,
+    active_icd10_code: icd10Match?.code || null,
+    active_icd10_label: icd10Match?.label || null,
     financing: getLinkhamPatientFinancing(client.id),
   };
 }
@@ -693,6 +916,7 @@ function listLinkhamClaims() {
         b.total_amount,
         b.status AS billing_status,
         COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
+        COALESCE(b.dispute_status, 'Clean') AS dispute_status,
         c.consultation_date AS visit_date,
         p.full_name AS patient_name,
         p.patient_identifier
@@ -715,6 +939,7 @@ function getLinkhamClaimById(claimId) {
         b.total_amount,
         b.status AS billing_status,
         COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
+        COALESCE(b.dispute_status, 'Clean') AS dispute_status,
         b.payment_method,
         b.payment_date,
         c.consultation_date AS visit_date,
@@ -744,10 +969,49 @@ function getLinkhamClaimById(claimId) {
   };
 }
 
+function summarizeLinkhamClaimsLedger(claims = []) {
+  const pendingClaims = claims.filter((claim) => claim.linkham_claim_status === "pending");
+  const cleanPendingClaims = pendingClaims.filter((claim) => claim.dispute_status === "Clean");
+  const flaggedPendingClaims = pendingClaims.filter(
+    (claim) => claim.dispute_status === "Flagged_Review",
+  );
+
+  return {
+    totalOutstandingClaims: roundMoney(
+      pendingClaims.reduce((sum, claim) => sum + Number(claim.linkham_share_amount || 0), 0),
+    ),
+    clearableBatchTotal: roundMoney(
+      cleanPendingClaims.reduce((sum, claim) => sum + Number(claim.linkham_share_amount || 0), 0),
+    ),
+    cleanPendingCount: cleanPendingClaims.length,
+    flaggedPendingCount: flaggedPendingClaims.length,
+  };
+}
+
+function setLinkhamClaimDisputeStatus(claimId, disputeStatus) {
+  const existing = getLinkhamClaimById(claimId);
+  if (!existing) {
+    return null;
+  }
+
+  const normalizedStatus = normalizeDisputeStatus(disputeStatus);
+  db.prepare(`
+    UPDATE billing
+    SET dispute_status = ?
+    WHERE id = ?
+  `).run(normalizedStatus, Number(claimId));
+
+  return getLinkhamClaimById(claimId);
+}
+
 function approveLinkhamClaim(claimId) {
   const existing = getLinkhamClaimById(claimId);
 
   if (!existing) {
+    return null;
+  }
+
+  if (existing.dispute_status === "Flagged_Review") {
     return null;
   }
 
@@ -764,6 +1028,43 @@ function approveLinkhamClaim(claimId) {
   `).run(Number(claimId));
 
   return getLinkhamClaimById(claimId);
+}
+
+function approveLinkhamCleanClaimsBatch() {
+  const cleanPendingClaims = listLinkhamClaims().filter(
+    (claim) =>
+      claim.linkham_claim_status === "pending" && claim.dispute_status === "Clean",
+  );
+
+  if (!cleanPendingClaims.length) {
+    return { approvedCount: 0, approvedClaims: [] };
+  }
+
+  const approveStatement = db.prepare(`
+    UPDATE billing
+    SET
+      linkham_claim_status = 'approved',
+      linkham_claim_reviewed_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+      AND COALESCE(dispute_status, 'Clean') = 'Clean'
+      AND COALESCE(linkham_claim_status, 'pending') = 'pending'
+  `);
+
+  const approvedClaims = [];
+
+  db.transaction(() => {
+    cleanPendingClaims.forEach((claim) => {
+      const result = approveStatement.run(Number(claim.id));
+      if (result.changes > 0) {
+        approvedClaims.push(getLinkhamClaimById(claim.id));
+      }
+    });
+  })();
+
+  return {
+    approvedCount: approvedClaims.length,
+    approvedClaims,
+  };
 }
 
 function backfillLinkhamInsuranceFromTags() {
@@ -784,6 +1085,7 @@ function backfillLinkhamInsuranceFromTags() {
 
 module.exports = {
   approveLinkhamClaim,
+  approveLinkhamCleanClaimsBatch,
   backfillLinkhamInsuranceFromTags,
   getLinkhamAnalyticsReports,
   getLinkhamClaimById,
@@ -792,4 +1094,6 @@ module.exports = {
   isLinkhamInsuranceProvider,
   listLinkhamClaims,
   listLinkhamPatients,
+  setLinkhamClaimDisputeStatus,
+  summarizeLinkhamClaimsLedger,
 };

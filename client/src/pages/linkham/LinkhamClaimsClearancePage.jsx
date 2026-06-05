@@ -5,6 +5,7 @@ import LoadingState from "../../components/LoadingState.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { api } from "../../lib/api.js";
 import { formatDate, formatRupees } from "../../lib/format.js";
+import { LINKHAM_CLAIMS_EVENT } from "../../lib/inventorySync.js";
 
 function openClaimSummaryWindow(summary) {
   const popup = window.open("", "_blank", "noopener,noreferrer,width=720,height=840");
@@ -38,6 +39,7 @@ function openClaimSummaryWindow(summary) {
         <div class="row"><span class="label">Patient copay (20%)</span><span class="value">${formatRupees(summary.patient_copay_amount)}</span></div>
         <div class="row"><span class="label">Linkham share (80%)</span><span class="value">${formatRupees(summary.linkham_share_amount)}</span></div>
         <div class="row"><span class="label">Claim status</span><span class="value">${summary.claim_status}</span></div>
+        <div class="row"><span class="label">Dispute status</span><span class="value">${summary.dispute_status || "Clean"}</span></div>
       </body>
     </html>
   `);
@@ -48,43 +50,46 @@ function openClaimSummaryWindow(summary) {
 
 export default function LinkhamClaimsClearancePage() {
   const [claims, setClaims] = useState([]);
-  const [totalOutstandingClaims, setTotalOutstandingClaims] = useState(0);
+  const [clearableBatchTotal, setClearableBatchTotal] = useState(0);
+  const [cleanPendingCount, setCleanPendingCount] = useState(0);
+  const [flaggedPendingCount, setFlaggedPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [approvingClaimId, setApprovingClaimId] = useState(null);
+  const [flaggingClaimId, setFlaggingClaimId] = useState(null);
+  const [batchApproving, setBatchApproving] = useState(false);
 
-  const reloadClaims = useCallback(async () => {
-    const data = await api.get("/linkham/claims");
+  const applyClaimsPayload = useCallback((data) => {
     setClaims(Array.isArray(data?.claims) ? data.claims : []);
-    setTotalOutstandingClaims(Number(data?.totalOutstandingClaims || 0));
+    setClearableBatchTotal(Number(data?.clearableBatchTotal || 0));
+    setCleanPendingCount(Number(data?.cleanPendingCount || 0));
+    setFlaggedPendingCount(Number(data?.flaggedPendingCount || 0));
   }, []);
+
+  const reloadClaims = useCallback(
+    async ({ showSpinner = false } = {}) => {
+      if (showSpinner) {
+        setLoading(true);
+      }
+      const data = await api.get("/linkham/claims");
+      applyClaimsPayload(data);
+      if (showSpinner) {
+        setLoading(false);
+      }
+    },
+    [applyClaimsPayload],
+  );
 
   useEffect(() => {
-    let ignore = false;
+    void reloadClaims({ showSpinner: true });
+  }, [reloadClaims]);
 
-    async function loadClaims() {
-      setLoading(true);
-      try {
-        const data = await api.get("/linkham/claims");
-        if (!ignore) {
-          setClaims(Array.isArray(data?.claims) ? data.claims : []);
-          setTotalOutstandingClaims(Number(data?.totalOutstandingClaims || 0));
-        }
-      } catch (error) {
-        if (!ignore) {
-          toast.error(error.message);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadClaims();
-    return () => {
-      ignore = true;
+  useEffect(() => {
+    const handleRefresh = () => {
+      void reloadClaims();
     };
-  }, []);
+    window.addEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
+    return () => window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
+  }, [reloadClaims]);
 
   async function handleApproveClaim(claim) {
     setApprovingClaimId(claim.id);
@@ -94,6 +99,36 @@ export default function LinkhamClaimsClearancePage() {
       await reloadClaims();
     } finally {
       setApprovingClaimId(null);
+    }
+  }
+
+  async function handleToggleDispute(claim) {
+    const nextStatus =
+      claim.dispute_status === "Flagged_Review" ? "Clean" : "Flagged_Review";
+    setFlaggingClaimId(claim.id);
+    try {
+      await api.patch(`/linkham/claims/${claim.id}/dispute`, {
+        dispute_status: nextStatus,
+      });
+      toast.success(
+        nextStatus === "Flagged_Review"
+          ? "Claim flagged for clarification."
+          : "Clarification flag removed.",
+      );
+      await reloadClaims();
+    } finally {
+      setFlaggingClaimId(null);
+    }
+  }
+
+  async function handleApproveCleanBatch() {
+    setBatchApproving(true);
+    try {
+      const result = await api.patch("/linkham/claims/batch-approve-clean", {});
+      toast.success(`Cleared ${result?.approvedCount || 0} clean claims.`);
+      await reloadClaims();
+    } finally {
+      setBatchApproving(false);
     }
   }
 
@@ -118,14 +153,20 @@ export default function LinkhamClaimsClearancePage() {
       <PageHeader
         eyebrow="Linkham insurer portal"
         title="Claims clearance"
-        description="Track the 80/20 split-billing ledger and approve corporate share settlements."
+        description="Flag disputed line items without blocking clean claim batch settlement."
       />
 
       <LinkhamClaimsLedger
         claims={claims}
-        totalOutstandingClaims={totalOutstandingClaims}
+        clearableBatchTotal={clearableBatchTotal}
+        cleanPendingCount={cleanPendingCount}
+        flaggedPendingCount={flaggedPendingCount}
         approvingClaimId={approvingClaimId}
+        flaggingClaimId={flaggingClaimId}
+        batchApproving={batchApproving}
         onApproveClaim={handleApproveClaim}
+        onToggleDispute={handleToggleDispute}
+        onApproveCleanBatch={handleApproveCleanBatch}
         onViewSummary={handleViewSummary}
       />
     </div>

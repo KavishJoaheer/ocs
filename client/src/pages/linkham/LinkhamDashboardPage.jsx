@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import EmptyState from "../../components/EmptyState.jsx";
+import LinkhamBudgetExposureGauge from "../../components/LinkhamBudgetExposureGauge.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import { api } from "../../lib/api.js";
-import { LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
+import { LINKHAM_CLAIMS_EVENT, LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
 
 export default function LinkhamDashboardPage() {
   const [metrics, setMetrics] = useState(null);
@@ -39,9 +40,11 @@ export default function LinkhamDashboardPage() {
     };
 
     window.addEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
+    window.addEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
     return () => {
       ignore = true;
       window.removeEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
+      window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
     };
   }, []);
 
@@ -51,6 +54,8 @@ export default function LinkhamDashboardPage() {
 
   const dueReviews = Array.isArray(metrics?.dueLongTermReviews) ? metrics.dueLongTermReviews : [];
   const hcmNews = Array.isArray(metrics?.hcmNews) ? metrics.hcmNews : [];
+  const budgetExposure = metrics?.budgetExposure || null;
+  const showBudgetAlert = Boolean(budgetExposure?.thresholdWarningLevel);
 
   return (
     <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
@@ -60,6 +65,23 @@ export default function LinkhamDashboardPage() {
           Real-time indicators for active Linkham corporate coverage metrics.
         </span>
       </div>
+
+      {showBudgetAlert ? (
+        <div className="flex animate-pulse items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50 p-4">
+          <span className="text-lg">⚠️</span>
+          <div className="flex flex-col">
+            <span className="text-xs font-bold text-amber-900">
+              Linkham Monthly Coverage Pool Reached 80%
+            </span>
+            <span className="mt-0.5 text-[11px] font-medium text-amber-700">
+              OCS has automatically prioritized non-emergency chronic reviews to the first week of
+              next month to stabilize your monthly cash flow exposure.
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      <LinkhamBudgetExposureGauge exposure={budgetExposure} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="flex min-h-[110px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">

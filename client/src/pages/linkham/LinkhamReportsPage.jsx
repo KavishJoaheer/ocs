@@ -5,21 +5,17 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import toast from "react-hot-toast";
+import LinkhamMauritiusHeatmap from "../../components/LinkhamMauritiusHeatmap.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import { api } from "../../lib/api.js";
+import { LINKHAM_CLAIMS_EVENT } from "../../lib/inventorySync.js";
 import { formatRupees } from "../../lib/format.js";
-
-const CHART_COLORS = ["#557373", "#6d8f8f", "#8aa7a7", "#a8bebe", "#c5d4d4", "#e2eaea"];
 
 function formatInteger(value) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -55,8 +51,15 @@ export default function LinkhamReportsPage() {
     }
 
     void loadReport();
+
+    const handleRefresh = () => {
+      void loadReport();
+    };
+
+    window.addEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
     return () => {
       ignore = true;
+      window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
     };
   }, [seenTimeFilter, claimsTimeFilter]);
 
@@ -67,15 +70,6 @@ export default function LinkhamReportsPage() {
         patient_count: Number(row.patient_count || 0),
       })),
     [report?.patientsSeen],
-  );
-
-  const locationRows = useMemo(
-    () =>
-      (Array.isArray(report?.locationDistribution) ? report.locationDistribution : []).map((row) => ({
-        name: row.location,
-        value: Number(row.patient_count || 0),
-      })),
-    [report?.locationDistribution],
   );
 
   const claimsRows = useMemo(
@@ -133,39 +127,16 @@ export default function LinkhamReportsPage() {
         <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-50 pb-3">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-400">
-              Patient Volume by Location
+              Case Density Heatmap
             </h3>
             <span className="rounded-md bg-[#557373]/10 px-2 py-0.5 text-[10px] font-bold text-[#557373]">
-              Geographic Distribution
+              Geographic Intelligence
             </span>
           </div>
-          <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
-            {locationRows.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={locationRows}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={48}
-                    outerRadius={88}
-                    paddingAngle={2}
-                  >
-                    {locationRows.map((entry, index) => (
-                      <Cell
-                        key={`${entry.name}-${index}`}
-                        fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => [formatInteger(value), "Patients"]} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-xs font-medium text-gray-400">No location data for this period.</p>
-            )}
-          </div>
+          <LinkhamMauritiusHeatmap
+            clusters={report?.geographicHeatmap?.clusters || []}
+            predictiveInsight={report?.predictiveInsight}
+          />
         </div>
 
         <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm lg:col-span-2">
