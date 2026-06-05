@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import BrandMark from "../components/BrandMark.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { canAccessPath, getDefaultPathForRole } from "../lib/access.js";
 
@@ -54,13 +53,16 @@ function LoginPage() {
       {/* Left: premium brand canvas */}
       <div className="relative flex w-full flex-col justify-between overflow-hidden bg-[#3b595c] p-12 md:w-1/2 lg:p-16">
         <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/10 blur-[120px]" />
-        <div className="pointer-events-none absolute -bottom-40 -right-20 h-[500px] w-[500px] rounded-full bg-[#f7ba24]/5 blur-[150px]" />
 
         <div className="relative z-10 flex flex-col items-start">
           <a href="/welcome" className="block transition-opacity hover:opacity-90">
-            <BrandMark maxWidth={200} size={36} />
+            <img
+              src="/logo-pure-white.svg"
+              alt="OCS Médecins"
+              className="h-9 w-auto object-contain"
+            />
           </a>
-          <span className="mt-3 block pl-0.5 text-xs font-extrabold uppercase tracking-[0.2em] text-[#2bccc4]">
+          <span className="mt-3.5 block pl-0.5 text-[11px] font-black uppercase tracking-[0.25em] text-[#2bccc4]">
             OCS VP
           </span>
         </div>
@@ -82,11 +84,9 @@ function LoginPage() {
 
       {/* Right: secure entry portal */}
       <div className="flex w-full flex-col justify-between bg-slate-50/50 p-12 md:w-1/2 lg:p-16">
-        <div className="flex items-center justify-end">
-          <BrandMark maxWidth={160} size={32} />
-        </div>
+        <div className="h-8" />
 
-        <div className="mx-auto my-auto w-full max-w-sm py-8">
+        <div className="mx-auto my-auto w-full max-w-sm py-4">
           <div className="mb-8">
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#065a60]">
               Protected Access Gateway
