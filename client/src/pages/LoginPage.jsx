@@ -56,12 +56,13 @@ function LoginPage() {
         <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/10 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-40 -right-20 h-[500px] w-[500px] rounded-full bg-[#f7ba24]/5 blur-[150px]" />
 
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2 backdrop-blur-md">
-            <span className="text-xs font-black uppercase tracking-widest text-white">
-              OCS VP
-            </span>
-          </div>
+        <div className="relative z-10 flex flex-col items-start">
+          <a href="/welcome" className="block transition-opacity hover:opacity-90">
+            <BrandMark maxWidth={200} size={36} />
+          </a>
+          <span className="mt-3 block pl-0.5 text-xs font-extrabold uppercase tracking-[0.2em] text-[#2bccc4]">
+            OCS VP
+          </span>
         </div>
 
         <div className="relative z-10 my-auto max-w-md">
