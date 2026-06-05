@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import BrandMark from "../components/BrandMark.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { canAccessPath, getDefaultPathForRole } from "../lib/access.js";
 
@@ -56,13 +57,11 @@ function LoginPage() {
 
         <div className="relative z-10 flex flex-col items-start">
           <a href="/welcome" className="block transition-opacity hover:opacity-90">
-            <img
-              src="/logo-pure-white.svg"
-              alt="OCS Médecins"
-              className="h-9 w-auto object-contain"
-            />
+            <div className="rounded-2xl border border-white/20 bg-white px-5 py-3.5 shadow-[0_10px_40px_rgba(0,0,0,0.18)]">
+              <BrandMark maxWidth={240} size={44} />
+            </div>
           </a>
-          <span className="mt-3.5 block pl-0.5 text-[11px] font-black uppercase tracking-[0.25em] text-[#2bccc4]">
+          <span className="mt-4 block text-sm font-black uppercase tracking-[0.25em] text-[#2bccc4] drop-shadow-[0_0_12px_rgba(43,204,196,0.55)]">
             OCS VP
           </span>
         </div>
