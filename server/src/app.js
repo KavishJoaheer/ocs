@@ -12,6 +12,7 @@ const hcmNewsRouter = require("./routes/hcmNews");
 const patientsRouter = require("./routes/patients");
 const doctorsRouter = require("./routes/doctors");
 const teamOperationsRouter = require("./routes/teamOperations");
+const linkhamRouter = require("./routes/linkham");
 const appointmentsRouter = require("./routes/appointments");
 const consultationsRouter = require("./routes/consultations");
 const billingRouter = require("./routes/billing");
@@ -162,7 +163,7 @@ function createApp() {
     "/api/patients",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "operator", "lab_tech", "accountant", "linkham_admin"],
+      GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
       POST: ["admin", "doctor", "operator"],
       PUT: ["admin", "doctor", "operator"],
       PATCH: ["admin", "operator"],
@@ -186,6 +187,12 @@ function createApp() {
     requireAuth,
     authorizeRoles("admin"),
     teamOperationsRouter,
+  );
+  app.use(
+    "/api/linkham",
+    requireAuth,
+    authorizeRoles("linkham_admin"),
+    linkhamRouter,
   );
   app.use(
     "/api/appointments",

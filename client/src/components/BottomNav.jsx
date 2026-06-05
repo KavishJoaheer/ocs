@@ -13,7 +13,7 @@ import { cx } from "../lib/utils.js";
 
 export const bottomNavItems = [
   { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["admin", "doctor", "operator", "lab_tech", "accountant"] },
-  { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "operator", "lab_tech", "linkham_admin"] },
+  { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "operator", "lab_tech"] },
   { to: "/billing", label: "Billing", icon: CreditCard, roles: ["admin", "accountant"] },
   { to: "/operator/billing-status", label: "Billing", icon: CreditCard, roles: ["operator"] },
   { to: "/lab", label: "Lab", icon: Stethoscope, roles: ["lab_tech"] },
@@ -21,12 +21,18 @@ export const bottomNavItems = [
   { to: "/inventory", label: "Inventory", icon: Package, roles: ["admin", "doctor", "operator"] },
 ];
 
+export const linkhamBottomNavItems = [
+  { to: "/linkham/dashboard", label: "Overview", icon: LayoutDashboard, end: true, roles: ["linkham_admin"] },
+  { to: "/linkham/patients", label: "Clients", icon: UsersRound, roles: ["linkham_admin"] },
+  { to: "/linkham/claims-clearance", label: "Claims", icon: ClipboardList, roles: ["linkham_admin"] },
+];
+
 function BottomNav() {
   const { user } = useAuth();
-  const items = useMemo(
-    () => bottomNavItems.filter((item) => item.roles.includes(user.role)),
-    [user.role],
-  );
+  const items = useMemo(() => {
+    const source = user.role === "linkham_admin" ? linkhamBottomNavItems : bottomNavItems;
+    return source.filter((item) => item.roles.includes(user.role));
+  }, [user.role]);
 
   return (
     <nav

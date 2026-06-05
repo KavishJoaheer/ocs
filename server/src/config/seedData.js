@@ -66,6 +66,7 @@ const supportAccounts = [
   { username: "operator03", full_name: "Sara Marday", role: "operator" },
   { username: "labtech01", full_name: "Leena Ramloll", role: "lab_tech" },
   { username: "accountant01", full_name: "Nadia Khoury", role: "accountant" },
+  { username: "linkham01", full_name: "Linkham Coverage Auditor", role: "linkham_admin" },
 ];
 
 const adminAccount = {

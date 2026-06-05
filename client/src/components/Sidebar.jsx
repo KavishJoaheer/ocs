@@ -2,6 +2,7 @@ import {
   Activity,
   BellRing,
   CalendarDays,
+  ClipboardList,
   CreditCard,
   Home,
   LayoutDashboard,
@@ -19,7 +20,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
-import { bottomNavItems } from "./BottomNav.jsx";
+import { bottomNavItems, linkhamBottomNavItems } from "./BottomNav.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
@@ -36,7 +37,7 @@ const navItems = [
     to: "/patients",
     label: "Patient",
     icon: UsersRound,
-    roles: ["admin", "doctor", "operator", "lab_tech", "linkham_admin"],
+    roles: ["admin", "doctor", "operator", "lab_tech"],
     isActiveWhen: (location) => {
       if (location.pathname !== "/patients") return false;
       const params = new URLSearchParams(location.search);
@@ -114,6 +115,28 @@ const navItems = [
   },
 ];
 
+const linkhamNavItems = [
+  {
+    to: "/linkham/dashboard",
+    label: "Overview",
+    icon: LayoutDashboard,
+    end: true,
+    roles: ["linkham_admin"],
+  },
+  {
+    to: "/linkham/patients",
+    label: "Insured clients",
+    icon: UsersRound,
+    roles: ["linkham_admin"],
+  },
+  {
+    to: "/linkham/claims-clearance",
+    label: "Claims clearance",
+    icon: ClipboardList,
+    roles: ["linkham_admin"],
+  },
+];
+
 function resolveNavTarget(to) {
   const [pathname, search = ""] = String(to || "").split("?");
   return search ? { pathname, search: `?${search}` } : pathname;
@@ -176,13 +199,16 @@ function Sidebar() {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const visibleNavItems = useMemo(
-    () => navItems.filter((item) => item.roles.includes(user.role)),
-    [user.role],
-  );
+  const visibleNavItems = useMemo(() => {
+    if (user.role === "linkham_admin") {
+      return linkhamNavItems;
+    }
+    return navItems.filter((item) => item.roles.includes(user.role));
+  }, [user.role]);
 
   const bottomPaths = useMemo(() => {
-    const paths = bottomNavItems
+    const items = user.role === "linkham_admin" ? linkhamBottomNavItems : bottomNavItems;
+    const paths = items
       .filter((item) => item.roles.includes(user.role))
       .map((item) => item.to);
     return new Set(paths);

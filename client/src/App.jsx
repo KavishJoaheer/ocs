@@ -22,6 +22,9 @@ import PatientProfilePage from "./pages/PatientProfilePage.jsx";
 import PatientAddPage from "./pages/PatientAddPage.jsx";
 import PatientsPage from "./pages/PatientsPage.jsx";
 import StockActivityPage from "./pages/StockActivityPage.jsx";
+import LinkhamDashboardPage from "./pages/linkham/LinkhamDashboardPage.jsx";
+import LinkhamPatientsPage from "./pages/linkham/LinkhamPatientsPage.jsx";
+import LinkhamClaimsClearancePage from "./pages/linkham/LinkhamClaimsClearancePage.jsx";
 
 function App() {
   return (
@@ -40,9 +43,16 @@ function App() {
             <Route path="/patients/add" element={<PatientAddPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "lab_tech", "linkham_admin"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "lab_tech"]} />}>
             <Route path="/patients" element={<PatientsPage />} />
             <Route path="/patients/:id" element={<PatientProfilePage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={["linkham_admin"]} />}>
+            <Route path="/linkham/dashboard" element={<LinkhamDashboardPage />} />
+            <Route path="/linkham/patients" element={<LinkhamPatientsPage />} />
+            <Route path="/linkham/claims-clearance" element={<LinkhamClaimsClearancePage />} />
+            <Route path="/" element={<Navigate to="/linkham/dashboard" replace />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>

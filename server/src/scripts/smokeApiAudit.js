@@ -60,6 +60,11 @@ const ROLE_ENDPOINTS = {
     ["GET", "/api/billing"],
     ["GET", "/api/hcm-news"],
   ],
+  linkham_admin: [
+    ["GET", "/api/linkham/dashboard"],
+    ["GET", "/api/linkham/patients"],
+    ["GET", "/api/linkham/claims"],
+  ],
 };
 
 /** role -> path -> expected HTTP status (RBAC-by-design, not a failure). */
@@ -113,7 +118,15 @@ function pickUserForRole(role) {
 }
 
 function expectedStatusFor(role, path) {
-  return EXPECTED_STATUS[role]?.[path] ?? null;
+  if (EXPECTED_STATUS[role]?.[path] != null) {
+    return EXPECTED_STATUS[role][path];
+  }
+
+  if (role === "linkham_admin" && /^\/api\/patients\/\d+$/.test(path)) {
+    return 403;
+  }
+
+  return null;
 }
 
 let baseUrl;

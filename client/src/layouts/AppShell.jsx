@@ -124,6 +124,18 @@ const pageMeta = {
     label: "Team operations",
     helper: "Maintain doctor, operator, accountant, and Linkham Admin accounts from one admin workspace.",
   },
+  "/linkham/dashboard": {
+    label: "Linkham overview",
+    helper: "Coverage metrics and outstanding corporate ledger totals.",
+  },
+  "/linkham/patients": {
+    label: "Insured clients",
+    helper: "Read-only Linkham client directory without internal clinical notes.",
+  },
+  "/linkham/claims-clearance": {
+    label: "Claims clearance",
+    helper: "Review and approve the 80/20 split-billing corporate ledger.",
+  },
 };
 
 function AppShell() {
@@ -192,7 +204,7 @@ function AppShell() {
   }, [user?.id, user?.role]);
 
   useEffect(() => {
-    if (!user?.role) {
+    if (!user?.role || user.role === "linkham_admin") {
       stopInventoryRealtimeSync();
       return undefined;
     }

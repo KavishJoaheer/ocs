@@ -21,15 +21,15 @@ export const ROLE_CONFIG = {
   },
   linkham_admin: {
     label: "Linkham Admin",
-    defaultPath: "/patients",
+    defaultPath: "/linkham/dashboard",
   },
 };
 
 export const ROUTE_ACCESS = {
   "/": ["admin", "doctor", "operator", "lab_tech", "accountant"],
   "/hcm-news": ["admin", "doctor", "operator", "lab_tech", "accountant"],
-  "/patients": ["admin", "doctor", "operator", "lab_tech", "linkham_admin"],
-  "/patients/:id": ["admin", "doctor", "operator", "lab_tech", "linkham_admin"],
+  "/patients": ["admin", "doctor", "operator", "lab_tech"],
+  "/patients/:id": ["admin", "doctor", "operator", "lab_tech"],
   "/patients/add": ["admin", "doctor", "operator"],
   "/appointments": ["admin", "doctor"],
   "/doctor/current-week-roster": ["doctor"],
@@ -59,6 +59,9 @@ export const ROUTE_ACCESS = {
   "/team-operations": ["admin"],
   "/doctors": ["admin"],
   "/admin/long-term-review": ["admin"],
+  "/linkham/dashboard": ["linkham_admin"],
+  "/linkham/patients": ["linkham_admin"],
+  "/linkham/claims-clearance": ["linkham_admin"],
 };
 
 export function getDefaultPathForRole(role) {

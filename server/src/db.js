@@ -707,6 +707,7 @@ function initializeDatabase() {
   backfillPatientRecords();
   backfillPatientLocations();
   ensureInventorySeedData();
+  supportAccounts.forEach(upsertSupportUser);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date);
@@ -1036,6 +1037,18 @@ function ensureBillingColumns() {
     } finally {
       db.pragma("foreign_keys = ON");
     }
+  }
+
+  if (!columns.includes("linkham_claim_status")) {
+    db.exec(`
+      ALTER TABLE billing
+      ADD COLUMN linkham_claim_status TEXT
+        CHECK (linkham_claim_status IN ('pending', 'approved', 'settled') OR linkham_claim_status IS NULL)
+    `);
+  }
+
+  if (!columns.includes("linkham_claim_reviewed_at")) {
+    db.exec("ALTER TABLE billing ADD COLUMN linkham_claim_reviewed_at TEXT");
   }
 }
 
