@@ -283,33 +283,24 @@ function LandingPage() {
         <div className="ocs-pattern absolute inset-0 opacity-30" />
         <FloatingParticles />
 
-        <div className="relative mx-auto max-w-7xl px-5 py-6 lg:px-8">
+        <div className="relative mx-auto w-full max-w-7xl px-6 py-5">
           {/* Nav bar */}
-          <nav
+          <header
             className={`flex items-center justify-between transition-all duration-700 ${
               mounted ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
             }`}
           >
-            <BrandMark maxWidth={200} size={44} />
-            <div className="flex flex-row items-center gap-3">
-              <button
-                type="button"
-                onClick={() => navigate("/login")}
-                className="rounded-full border border-[#3b595c]/30 px-5 py-2 text-xs font-bold text-[#3b595c] transition-all duration-200 hover:border-[#065a60] hover:bg-gray-50 hover:text-[#065a60]"
-              >
-                Staff Login
-              </button>
-              <a
-                href={PATIENT_PORTAL_URL}
-                className="glow-amber-capsule rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-5 py-2 text-xs font-black text-[#14213d] shadow-[0_4px_12px_rgba(247,186,36,0.35)] transition-all duration-200 active:scale-[0.98]"
-              >
-                Patient Portal
-              </a>
-            </div>
-          </nav>
+            <a
+              href="/welcome"
+              className="flex items-center gap-2 transition-opacity hover:opacity-90"
+            >
+              <BrandMark maxWidth={200} size={44} />
+            </a>
+            <div className="hidden md:block" />
+          </header>
 
           {/* Hero Content */}
-          <div className="mt-16 pb-20 text-center lg:mt-24 lg:pb-28">
+          <div className="mt-12 pb-20 text-center md:mt-20 lg:pb-28">
             <FadeInSection>
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--color-text-hero-muted)]">
                 OCS Médecins — Virtual Practice
