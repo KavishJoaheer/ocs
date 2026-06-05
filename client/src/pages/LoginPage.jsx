@@ -66,16 +66,22 @@ function LoginPage() {
         </div>
 
         <div className="relative z-10 flex flex-1 flex-col justify-center py-10 lg:py-14">
-          <div className="max-w-xl">
-            <h1 className="text-4xl font-black leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
-              <span className="block text-[#3b595c]">Step into a</span>
-              <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
-                Practice of Excellence
-              </span>
-            </h1>
-            <p className="mt-6 max-w-lg text-base font-semibold leading-relaxed tracking-wide text-[#065a60] sm:text-lg lg:mt-8 lg:text-xl">
-              Together, let&apos;s make a difference in healthcare
-            </p>
+          <div className="flex max-w-xl gap-5 lg:gap-6">
+            <div
+              className="w-2 shrink-0 self-stretch rounded-full bg-gradient-to-b from-[#f7ba24] to-[#e0a112] shadow-[0_0_18px_rgba(247,186,36,0.35)]"
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <h1 className="text-4xl font-black leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
+                <span className="block text-[#3b595c]">Step into a</span>
+                <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
+                  Practice of Excellence
+                </span>
+              </h1>
+              <p className="mt-6 max-w-lg text-base font-semibold leading-relaxed tracking-wide text-[#065a60] sm:text-lg lg:mt-8 lg:text-xl">
+                Together, let&apos;s make a difference in healthcare
+              </p>
+            </div>
           </div>
         </div>
 
