@@ -301,7 +301,7 @@ function LandingPage() {
               </button>
               <a
                 href={PATIENT_PORTAL_URL}
-                className="rounded-2xl bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(45,143,152,0.3)] transition-all hover:shadow-[0_12px_32px_rgba(45,143,152,0.4)] hover:brightness-110"
+                className="rounded-xl bg-gradient-to-b from-[var(--gradient-patient-start)] to-[var(--gradient-patient-end)] px-5 py-2.5 text-sm font-black text-[#14213d] shadow-md shadow-[var(--gradient-patient-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
               >
                 Patient Portal
               </a>
@@ -311,22 +311,22 @@ function LandingPage() {
           {/* Hero Content */}
           <div className="mt-16 pb-20 text-center lg:mt-24 lg:pb-28">
             <FadeInSection>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2d8f98]">
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--color-text-hero-muted)]">
                 OCS Médecins — Virtual Practice
               </p>
             </FadeInSection>
 
             <FadeInSection delay={150}>
-              <h1 className="mx-auto mt-5 max-w-4xl font-display text-4xl font-extrabold leading-[1.1] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-                Step into a{" "}
-                <span className="bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] bg-clip-text text-transparent">
+              <h1 className="mx-auto mt-5 max-w-4xl text-center text-4xl font-black tracking-tight md:text-5xl lg:text-6xl">
+                <span className="text-[var(--color-text-hero-muted)]">Step into a </span>
+                <span className="bg-gradient-to-r from-[#065a60] to-[#3e5c76] bg-clip-text text-transparent">
                   practice of excellence
                 </span>
               </h1>
             </FadeInSection>
 
             <FadeInSection delay={300}>
-              <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#3f6270]">
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[var(--color-text-hero-muted)]">
                 A unified digital headquarters for home visit coordination,
                 clinical operations, and patient care management. Together,
                 let&apos;s make a difference.
@@ -334,27 +334,21 @@ function LandingPage() {
             </FadeInSection>
 
             <FadeInSection delay={450}>
-              <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
                 <button
                   type="button"
                   onClick={() => navigate("/login")}
-                  className="group flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] px-8 py-4 text-base font-bold text-white shadow-[0_12px_36px_rgba(45,143,152,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_44px_rgba(45,143,152,0.45)]"
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-staff-start)] to-[var(--gradient-staff-end)] px-6 py-3.5 text-xs font-bold text-white shadow-md shadow-[var(--gradient-staff-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
                 >
-                  Staff Portal
-                  <ArrowRightIcon
-                    size={18}
-                    className="transition-transform group-hover:translate-x-1"
-                  />
+                  <span>Staff Portal</span>
+                  <span className="text-[10px]">→</span>
                 </button>
                 <a
                   href={PATIENT_PORTAL_URL}
-                  className="group flex items-center gap-2 rounded-2xl border-2 border-[rgba(65,200,198,0.3)] bg-white/70 px-8 py-4 text-base font-bold text-[#2d8f98] shadow-[0_8px_24px_rgba(34,72,91,0.1)] backdrop-blur transition-all hover:-translate-y-0.5 hover:border-[rgba(65,200,198,0.5)] hover:shadow-[0_12px_32px_rgba(34,72,91,0.16)]"
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-[var(--gradient-patient-start)] to-[var(--gradient-patient-end)] px-6 py-3.5 text-xs font-black text-[#14213d] shadow-md shadow-[var(--gradient-patient-end)]/20 transition-all duration-200 hover:scale-[1.01] hover:brightness-110 active:scale-[0.99]"
                 >
-                  Patient Portal
-                  <ArrowRightIcon
-                    size={18}
-                    className="transition-transform group-hover:translate-x-1"
-                  />
+                  <span>Patient Portal</span>
+                  <span className="text-[10px]">→</span>
                 </a>
               </div>
             </FadeInSection>
