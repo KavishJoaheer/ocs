@@ -67,8 +67,16 @@ export default function LinkhamDashboardPage() {
       </div>
 
       {showBudgetAlert ? (
-        <div className="flex animate-pulse items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50 p-4">
-          <span className="text-lg">⚠️</span>
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50 p-4">
+          <svg
+            className="mt-0.5 size-4 shrink-0 fill-none stroke-2 stroke-amber-700"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
           <div className="flex flex-col">
             <span className="text-xs font-bold text-amber-900">
               Linkham Monthly Coverage Pool Reached 80%
@@ -83,7 +91,7 @@ export default function LinkhamDashboardPage() {
 
       <LinkhamBudgetExposureGauge exposure={budgetExposure} />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
         <div className="flex min-h-[110px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
             Patients Seen ({metrics?.currentMonthName || "Current month"})
@@ -92,7 +100,7 @@ export default function LinkhamDashboardPage() {
             <span className="text-3xl font-black text-gray-900">
               {metrics?.monthlySeenPatientsCount ?? 0}
             </span>
-            <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-600">
+            <span className="rounded-lg bg-[#557373]/10 px-2 py-0.5 text-[11px] font-bold text-[#557373]">
               Active Month
             </span>
           </div>
@@ -103,10 +111,12 @@ export default function LinkhamDashboardPage() {
             Pending Corporate Claims
           </span>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-amber-600">
+            <span className="text-3xl font-black text-gray-900">
               {metrics?.pendingClaimsCount ?? 0}
             </span>
-            <span className="text-xs font-medium text-gray-400">Awaiting clearance settlement</span>
+            <span className="rounded-lg border border-amber-200/40 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+              Awaiting Clearance
+            </span>
           </div>
         </div>
       </div>

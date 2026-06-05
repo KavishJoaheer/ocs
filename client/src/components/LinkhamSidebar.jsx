@@ -7,11 +7,61 @@ import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 
 const linkhamNavItems = [
-  { id: "dashboard", to: "/linkham/dashboard", label: "Dashboard", emoji: "📊", end: true },
-  { id: "insured_patients", to: "/linkham/patients", label: "Insured Patient", emoji: "👥" },
-  { id: "claims_clearance", to: "/linkham/claims-clearance", label: "Claims Clearance", emoji: "💳" },
-  { id: "reports", to: "/linkham/reports", label: "Report", emoji: "📈" },
+  { id: "dashboard", to: "/linkham/dashboard", label: "Dashboard", end: true },
+  { id: "insured_patients", to: "/linkham/patients", label: "Insured Patient" },
+  { id: "claims_clearance", to: "/linkham/claims-clearance", label: "Claims Clearance" },
+  { id: "reports", to: "/linkham/reports", label: "Report" },
 ];
+
+function LinkhamNavIcon({ id, active }) {
+  const strokeClass = active
+    ? "stroke-white"
+    : "stroke-gray-400 group-hover:stroke-gray-700";
+
+  const iconProps = {
+    className: cx("size-4 fill-none stroke-2", strokeClass),
+    viewBox: "0 0 24 24",
+    "aria-hidden": true,
+  };
+
+  switch (id) {
+    case "dashboard":
+      return (
+        <svg {...iconProps}>
+          <rect x="3" y="3" width="7" height="9" rx="1.5" />
+          <rect x="14" y="3" width="7" height="5" rx="1.5" />
+          <rect x="14" y="12" width="7" height="9" rx="1.5" />
+          <rect x="3" y="16" width="7" height="5" rx="1.5" />
+        </svg>
+      );
+    case "insured_patients":
+      return (
+        <svg {...iconProps}>
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      );
+    case "claims_clearance":
+      return (
+        <svg {...iconProps}>
+          <rect x="2" y="5" width="20" height="14" rx="2" />
+          <line x1="2" y1="10" x2="22" y2="10" />
+        </svg>
+      );
+    case "reports":
+      return (
+        <svg {...iconProps}>
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 
 function LinkhamNavButton({ item, onNavigate }) {
   return (
@@ -21,22 +71,26 @@ function LinkhamNavButton({ item, onNavigate }) {
       onClick={onNavigate}
       className={({ isActive }) =>
         cx(
-          "flex items-center gap-3 rounded-xl px-4 py-3 text-xs font-bold transition-all",
+          "group flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-xs font-bold transition-all duration-200",
           isActive
             ? "bg-[#557373] text-white shadow-sm"
-            : "text-gray-500 hover:bg-gray-50",
+            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900",
         )
       }
     >
-      <span aria-hidden="true">{item.emoji}</span>
-      <span>{item.label}</span>
+      {({ isActive }) => (
+        <>
+          <LinkhamNavIcon id={item.id} active={isActive} />
+          <span>{item.label}</span>
+        </>
+      )}
     </NavLink>
   );
 }
 
 function LinkhamSidebarNav({ onNavigate, className }) {
   return (
-    <nav className={cx("flex flex-col gap-1.5", className)}>
+    <nav className={cx("mt-4 flex w-full flex-col gap-1 px-3", className)}>
       {linkhamNavItems.map((item) => (
         <LinkhamNavButton key={item.id} item={item} onNavigate={onNavigate} />
       ))}
@@ -113,7 +167,7 @@ export default function LinkhamSidebar() {
                 <X className="size-5" />
               </button>
             </div>
-            <LinkhamSidebarNav onNavigate={() => setDrawerOpen(false)} />
+            <LinkhamSidebarNav onNavigate={() => setDrawerOpen(false)} className="mt-0 px-0" />
           </div>
           <button
             type="button"
@@ -142,7 +196,7 @@ export default function LinkhamSidebar() {
           </div>
         </div>
 
-        <LinkhamSidebarNav className="flex-1 p-4" />
+        <LinkhamSidebarNav className="flex-1" />
 
         <div className="border-t border-gray-100 p-4">
           <button
