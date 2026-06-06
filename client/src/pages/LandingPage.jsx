@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import BrandMark from "../components/BrandMark.jsx";
 
 const AMBIENT_BLUR_CROSSES = [
   {
@@ -104,71 +103,54 @@ function LandingPage() {
     <div className="landing-page relative flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col justify-between overflow-x-hidden overscroll-x-none md:min-h-screen md:overflow-hidden">
       <AmbientBlurCrossBackground />
 
-      {/* DESKTOP: max-w-7xl shell | MOBILE: px-5 breathing room */}
       <header
-        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center px-5 py-5 transition-all duration-700 sm:px-6 sm:py-6 ${
+        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center justify-center px-6 py-5 transition-all duration-700 md:justify-between ${
           mounted ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
         }`}
       >
         <a
           href="/welcome"
-          className="flex items-center gap-2 transition-opacity hover:opacity-90"
+          className="flex items-center justify-center transition-opacity hover:opacity-90"
         >
-          <BrandMark maxWidth={200} size={36} className="sm:hidden" />
-          <BrandMark maxWidth={200} size={40} className="hidden sm:inline-flex" />
+          <img
+            src="/ocs-medecins-logo.png"
+            alt="OCS Médecins"
+            className="h-9 w-auto object-contain"
+          />
         </a>
+        <div className="hidden md:block" />
       </header>
 
-      {/* Hero gateway — centered module capped at max-w-md (mobile) → max-w-7xl (desktop) */}
-      <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center justify-center px-5 py-4 sm:px-6 md:-mt-10 md:py-6 lg:py-8">
-        <div className="w-full max-w-md text-center sm:max-w-xl md:max-w-2xl lg:max-w-4xl">
+      <main className="relative z-10 my-auto flex flex-1 flex-col items-center justify-center px-4 text-center">
+        <div className="w-full">
           <FadeInSection>
-            <span className="mb-3 block text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#3e5c76] sm:text-[11px] sm:tracking-widest">
+            <span className="mb-3 block text-[10px] font-extrabold uppercase tracking-widest text-[#3e5c76] md:text-[11px]">
               OCS Médecins — Virtual Practice
             </span>
           </FadeInSection>
 
           <FadeInSection delay={150}>
-            {/*
-              MOBILE (<lg): force exactly 2 lines — "Step into a" / "world of Care"
-              DESKTOP (lg+): collapse to single bold inline headline
-              Scale: text-3xl → sm:text-4xl → md:text-5xl → lg:text-6xl
-            */}
-            <h1 className="mx-auto font-black leading-[1.12] tracking-tight text-[#3b595c] text-3xl sm:text-4xl md:text-5xl lg:text-6xl lg:leading-tight">
-              <span className="block lg:inline">Step into a</span>{" "}
-              <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent lg:inline">
-                world of Care
-              </span>
+            <h1 className="mx-auto max-w-xl text-3xl font-black leading-tight tracking-tight sm:text-5xl md:text-6xl">
+              <span className="text-[#3b595c]">Step into a</span>{" "}
+              <span className="block text-[#065a60] sm:inline">world of Care</span>
             </h1>
           </FadeInSection>
 
           <FadeInSection delay={300}>
-            <div className="mx-auto mt-5 w-full sm:mt-6">
-              <p className="text-[11px] font-bold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-xs md:text-sm">
-                We are more than a healthcare service, We are a community of care.
+            <div className="mx-auto mt-6 w-full max-w-2xl px-2">
+              <p className="text-[11px] font-bold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-xs">
+                We are more than a healthcare service — We are a community of care.
               </p>
 
-              {/*
-                MOBILE: stack three phrases vertically (no pipe separators)
-                TABLET+ (sm): inline row with amber dividers
-              */}
-              <div className="mt-3 flex flex-col items-center gap-1.5 sm:mt-2.5 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-2 md:gap-x-3">
-                <span className="text-sm font-black tracking-tight text-[#14213d] sm:text-base">
-                  One Commitment
-                </span>
-                <span aria-hidden="true" className="hidden font-bold text-[#f7ba24] sm:inline">
-                  |
-                </span>
-                <span className="text-sm font-black tracking-tight text-[#14213d] sm:text-base">
-                  One Promise
-                </span>
-                <span aria-hidden="true" className="hidden font-bold text-[#f7ba24] sm:inline">
-                  |
-                </span>
-                <span className="max-w-[18rem] text-sm font-black leading-snug tracking-tight text-[#065a60] sm:max-w-none sm:text-base">
+              <p className="mx-auto mt-3 max-w-md text-xs font-black leading-normal tracking-tight text-[#14213d] sm:max-w-none sm:text-sm md:text-base">
+                <span className="block sm:inline">One Commitment</span>
+                <span className="mx-1.5 hidden text-[#f7ba24] sm:inline">|</span>
+                <span className="mt-1 block sm:mt-0 sm:inline">One Promise</span>
+                <span className="mx-1.5 hidden text-[#f7ba24] sm:inline">|</span>
+                <span className="mt-1 block text-[#065a60] sm:mt-0 sm:inline">
                   Bringing healthcare to every Mauritian doorstep
                 </span>
-              </div>
+              </p>
             </div>
           </FadeInSection>
 
