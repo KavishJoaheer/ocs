@@ -150,10 +150,18 @@ function LandingPage() {
 
               <p className="mx-auto mt-3 max-w-md text-xs font-black leading-normal tracking-tight text-[#14213d] sm:max-w-none sm:text-sm md:text-base">
                 <span className="block sm:inline">One Commitment</span>
+                <span
+                  className="mx-auto my-1.5 block h-px w-16 rounded-full bg-[#f7ba24] sm:hidden"
+                  aria-hidden="true"
+                />
                 <span className="mx-1.5 hidden text-[#f7ba24] sm:inline">|</span>
-                <span className="mt-1 block sm:mt-0 sm:inline">One Promise</span>
+                <span className="block sm:mt-0 sm:inline">One Promise</span>
+                <span
+                  className="mx-auto my-1.5 block h-px w-16 rounded-full bg-[#f7ba24] sm:hidden"
+                  aria-hidden="true"
+                />
                 <span className="mx-1.5 hidden text-[#f7ba24] sm:inline">|</span>
-                <span className="mt-1 block text-[#065a60] sm:mt-0 sm:inline">
+                <span className="block text-[#065a60] sm:inline">
                   Bringing healthcare to every Mauritian doorstep
                 </span>
               </p>
