@@ -379,44 +379,32 @@ table {
     linear-gradient(180deg, #f8fdfd 0%, #f5fbfb 50%, #eef8f8 100%);
 }
 
-/* OCS brand cross bokeh — slow drift + breathing pulse */
-@keyframes ocsCrossDrift {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-
-  50% {
-    transform: translate3d(5%, -8%, 0) rotate(15deg) scale(1.1);
-  }
-
-  100% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-}
-
-@keyframes ocsCrossPulse {
+/* Ultra-subtle ambient brand crosses — scale + opacity breathing only */
+@keyframes subtleCrossBreath {
   0%,
   100% {
-    opacity: 0.03;
-    filter: blur(35px);
+    transform: scale(1);
+    opacity: 0.025;
   }
 
   50% {
-    opacity: 0.12;
-    filter: blur(45px);
+    transform: scale(1.06);
+    opacity: 0.05;
   }
 }
 
-.brand-cross-orb {
+.ambient-blur-cross {
   position: absolute;
   pointer-events: none;
+  fill: currentColor;
+  filter: blur(50px);
+  transform-origin: center;
   will-change: transform, opacity;
   backface-visibility: hidden;
-  transform: translate3d(0, 0, 0);
-  animation: ocsCrossDrift 28s ease-in-out infinite, ocsCrossPulse 16s ease-in-out infinite;
+  animation: subtleCrossBreath 20s ease-in-out infinite;
 }
 
-.bokeh-cross-layer {
+.ambient-cross-layer {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -427,27 +415,11 @@ table {
   user-select: none;
 }
 
-@media (max-width: 767px) {
-  @keyframes ocsCrossPulse {
-    0%,
-    100% {
-      opacity: 0.03;
-      filter: blur(32px);
-    }
-
-    50% {
-      opacity: 0.1;
-      filter: blur(32px);
-    }
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .landing-particle,
-  .brand-cross-orb {
+  .ambient-blur-cross {
     animation: none;
-    opacity: 0.06;
-    filter: blur(35px);
+    opacity: 0.03;
   }
 }
 
