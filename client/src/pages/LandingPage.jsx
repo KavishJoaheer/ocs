@@ -2,12 +2,30 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BrandMark from "../components/BrandMark.jsx";
 
-/* GPU-friendly ambient mesh — transform/opacity only (no animated blur) for 60fps mobile */
-function PremiumBrandAmbient() {
+/* Slow-drifting brand bokeh bubbles — z-0 layer behind all interactive hero content */
+function BrandBokehBackground() {
   return (
-    <div className="premium-brand-ambient" aria-hidden="true">
-      <div className="premium-brand-ambient__orb premium-brand-ambient__orb--teal" />
-      <div className="premium-brand-ambient__orb premium-brand-ambient__orb--amber" />
+    <div className="bokeh-bubble-layer" aria-hidden="true">
+      <div
+        className="bokeh-bubble h-44 w-44 bg-[#2bccc4]/10 top-[15%] left-[10%]"
+        style={{ animationDuration: "28s, 16s", animationDelay: "0s, 2s" }}
+      />
+      <div
+        className="bokeh-bubble h-32 w-32 bg-[#f7ba24]/8 top-[8%] right-[25%]"
+        style={{ animationDuration: "22s, 12s", animationDelay: "-3s, 0s" }}
+      />
+      <div
+        className="bokeh-bubble h-20 w-20 bg-[#3b595c]/12 bottom-[35%] left-[30%]"
+        style={{ animationDuration: "18s, 10s", animationDelay: "-1s, -2s" }}
+      />
+      <div
+        className="bokeh-bubble h-40 w-40 bg-[#f7ba24]/6 bottom-[12%] right-[12%]"
+        style={{ animationDuration: "32s, 18s", animationDelay: "-5s, 1s" }}
+      />
+      <div
+        className="bokeh-bubble h-14 w-14 bg-[#2bccc4]/15 top-[45%] right-[8%]"
+        style={{ animationDuration: "20s, 14s", animationDelay: "-2s, -4s" }}
+      />
     </div>
   );
 }
@@ -61,7 +79,7 @@ function LandingPage() {
   return (
     /* MOBILE: allow safe vertical scroll on short viewports | DESKTOP: lock single viewport */
     <div className="landing-page relative flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col justify-between overflow-x-hidden overscroll-x-none md:min-h-screen md:overflow-hidden">
-      <PremiumBrandAmbient />
+      <BrandBokehBackground />
 
       {/* DESKTOP: max-w-7xl shell | MOBILE: px-5 breathing room */}
       <header
