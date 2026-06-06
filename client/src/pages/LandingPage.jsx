@@ -136,11 +136,9 @@ function LandingPage() {
           </FadeInSection>
 
           <FadeInSection delay={150}>
-            <h1 className="mx-auto max-w-xl text-3xl font-black leading-tight tracking-tight sm:text-5xl md:text-6xl">
-              <span className="text-[#3b595c]">Step into a</span>{" "}
-              <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent sm:inline">
-                world of Care
-              </span>
+            <h1 className="mx-auto max-w-2xl text-center text-4xl font-black leading-tight tracking-tight sm:text-5xl md:text-6xl">
+              <span className="block text-[#3b595c] sm:inline">Step into a</span>{" "}
+              <span className="block text-[#065a60] sm:inline">world of Care</span>
             </h1>
           </FadeInSection>
 
