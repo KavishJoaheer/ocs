@@ -2,27 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BrandMark from "../components/BrandMark.jsx";
 
-function FloatingParticles() {
+/* GPU-friendly ambient mesh — transform/opacity only (no animated blur) for 60fps mobile */
+function PremiumBrandAmbient() {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {[...Array(6)].map((_, i) => (
-        <div
-          key={i}
-          className="landing-particle absolute rounded-full"
-          style={{
-            width: `${8 + i * 6}px`,
-            height: `${8 + i * 6}px`,
-            left: `${10 + i * 15}%`,
-            top: `${20 + (i % 3) * 25}%`,
-            background:
-              i % 2 === 0
-                ? "rgba(65, 200, 198, 0.12)"
-                : "rgba(242, 193, 77, 0.1)",
-            animationDelay: `${i * 1.2}s`,
-            animationDuration: `${6 + i * 2}s`,
-          }}
-        />
-      ))}
+    <div className="premium-brand-ambient" aria-hidden="true">
+      <div className="premium-brand-ambient__orb premium-brand-ambient__orb--teal" />
+      <div className="premium-brand-ambient__orb premium-brand-ambient__orb--amber" />
     </div>
   );
 }
@@ -74,13 +59,13 @@ function LandingPage() {
       : "http://localhost:5174";
 
   return (
-    <div className="landing-page relative flex min-h-screen flex-col justify-between overflow-hidden bg-gradient-to-tr from-slate-50 to-white text-slate-900">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,_rgba(65,200,198,0.12),_transparent_40%),radial-gradient(circle_at_80%_80%,_rgba(242,193,77,0.08),_transparent_30%)]" />
-      <FloatingParticles />
+    /* MOBILE: allow safe vertical scroll on short viewports | DESKTOP: lock single viewport */
+    <div className="landing-page relative flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col justify-between overflow-x-hidden overscroll-x-none md:min-h-screen md:overflow-hidden">
+      <PremiumBrandAmbient />
 
-      {/* Minimalist logo header */}
+      {/* DESKTOP: max-w-7xl shell | MOBILE: px-5 breathing room */}
       <header
-        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center px-6 py-6 transition-all duration-700 ${
+        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center px-5 py-5 transition-all duration-700 sm:px-6 sm:py-6 ${
           mounted ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
         }`}
       >
@@ -88,63 +73,89 @@ function LandingPage() {
           href="/welcome"
           className="flex items-center gap-2 transition-opacity hover:opacity-90"
         >
-          <BrandMark maxWidth={200} size={40} />
+          <BrandMark maxWidth={200} size={36} className="sm:hidden" />
+          <BrandMark maxWidth={200} size={40} className="hidden sm:inline-flex" />
         </a>
       </header>
 
-      {/* Centered hero gateway */}
-      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 -mt-12 text-center">
-        <FadeInSection>
-          <span className="mb-3 block text-[11px] font-extrabold uppercase tracking-widest text-[#3e5c76]">
-            OCS Médecins — Virtual Practice
-          </span>
-        </FadeInSection>
-
-        <FadeInSection delay={150}>
-          <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl md:text-6xl">
-            <span className="text-[#3b595c]">Step into a</span>{" "}
-            <span className="bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
-              world of Care
+      {/* Hero gateway — centered module capped at max-w-md (mobile) → max-w-7xl (desktop) */}
+      <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center justify-center px-5 py-4 sm:px-6 md:-mt-10 md:py-6 lg:py-8">
+        <div className="w-full max-w-md text-center sm:max-w-xl md:max-w-2xl lg:max-w-4xl">
+          <FadeInSection>
+            <span className="mb-3 block text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#3e5c76] sm:text-[11px] sm:tracking-widest">
+              OCS Médecins — Virtual Practice
             </span>
-          </h1>
-        </FadeInSection>
+          </FadeInSection>
 
-        <FadeInSection delay={300}>
-          <div className="mx-auto mt-6 w-full max-w-2xl text-center">
-            <p className="text-xs font-bold uppercase tracking-wide text-[#3b595c] sm:text-sm">
-              We are more than a healthcare service, We are a community of care.
-            </p>
-            <p className="mt-2 text-sm font-black tracking-tight text-[#14213d] sm:text-base">
-              One Commitment <span className="mx-1 text-[#f7ba24]">|</span>
-              One Promise <span className="mx-1 text-[#f7ba24]">|</span>
-              <span className="text-[#065a60]">
-                Bringing healthcare to every Mauritian doorstep
+          <FadeInSection delay={150}>
+            {/*
+              MOBILE (<lg): force exactly 2 lines — "Step into a" / "world of Care"
+              DESKTOP (lg+): collapse to single bold inline headline
+              Scale: text-3xl → sm:text-4xl → md:text-5xl → lg:text-6xl
+            */}
+            <h1 className="mx-auto font-black leading-[1.12] tracking-tight text-[#3b595c] text-3xl sm:text-4xl md:text-5xl lg:text-6xl lg:leading-tight">
+              <span className="block lg:inline">Step into a</span>{" "}
+              <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent lg:inline">
+                world of Care
               </span>
-            </p>
-          </div>
-        </FadeInSection>
+            </h1>
+          </FadeInSection>
 
-        <FadeInSection delay={450}>
-          <div className="mt-10 flex flex-row flex-wrap items-center justify-center gap-5">
-            <button
-              type="button"
-              onClick={() => navigate("/login")}
-              className="glow-teal-capsule rounded-full bg-gradient-to-r from-[#1c4e52] to-[#123638] px-8 py-3.5 text-xs font-bold tracking-wide text-white transition-all duration-300 active:scale-[0.98]"
-            >
-              Staff Portal →
-            </button>
-            <a
-              href={PATIENT_PORTAL_URL}
-              className="glow-amber-capsule rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-8 py-3.5 text-xs font-black tracking-wide text-[#14213d] transition-all duration-300 active:scale-[0.98]"
-            >
-              Patient Portal →
-            </a>
-          </div>
-        </FadeInSection>
+          <FadeInSection delay={300}>
+            <div className="mx-auto mt-5 w-full sm:mt-6">
+              <p className="text-[11px] font-bold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-xs md:text-sm">
+                We are more than a healthcare service, We are a community of care.
+              </p>
+
+              {/*
+                MOBILE: stack three phrases vertically (no pipe separators)
+                TABLET+ (sm): inline row with amber dividers
+              */}
+              <div className="mt-3 flex flex-col items-center gap-1.5 sm:mt-2.5 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-2 md:gap-x-3">
+                <span className="text-sm font-black tracking-tight text-[#14213d] sm:text-base">
+                  One Commitment
+                </span>
+                <span aria-hidden="true" className="hidden font-bold text-[#f7ba24] sm:inline">
+                  |
+                </span>
+                <span className="text-sm font-black tracking-tight text-[#14213d] sm:text-base">
+                  One Promise
+                </span>
+                <span aria-hidden="true" className="hidden font-bold text-[#f7ba24] sm:inline">
+                  |
+                </span>
+                <span className="max-w-[18rem] text-sm font-black leading-snug tracking-tight text-[#065a60] sm:max-w-none sm:text-base">
+                  Bringing healthcare to every Mauritian doorstep
+                </span>
+              </div>
+            </div>
+          </FadeInSection>
+
+          <FadeInSection delay={450}>
+            {/*
+              MOBILE: full-width vertical stack for thumb reach
+              TABLET+ (md): side-by-side capsule row
+            */}
+            <div className="mx-auto mt-8 flex w-full max-w-md flex-col gap-3 sm:mt-10 md:max-w-none md:flex-row md:items-center md:justify-center md:gap-5">
+              <button
+                type="button"
+                onClick={() => navigate("/login")}
+                className="glow-teal-capsule w-full touch-manipulation rounded-full bg-gradient-to-r from-[#1c4e52] to-[#123638] px-8 py-3.5 text-xs font-bold tracking-wide text-white transition-all duration-300 active:scale-[0.98] md:w-auto"
+              >
+                Staff Portal →
+              </button>
+              <a
+                href={PATIENT_PORTAL_URL}
+                className="glow-amber-capsule w-full touch-manipulation rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-8 py-3.5 text-center text-xs font-black tracking-wide text-[#14213d] transition-all duration-300 active:scale-[0.98] md:w-auto"
+              >
+                Patient Portal →
+              </a>
+            </div>
+          </FadeInSection>
+        </div>
       </main>
 
-      {/* Silent minimalist footer */}
-      <footer className="relative z-10 w-full py-6 text-center text-[10px] font-medium tracking-wide text-gray-400">
+      <footer className="relative z-10 w-full max-w-7xl self-center px-5 py-4 text-center text-[10px] font-medium tracking-wide text-gray-400 sm:py-6">
         © {new Date().getFullYear()} OCS Médecins. All rights reserved.
       </footer>
     </div>

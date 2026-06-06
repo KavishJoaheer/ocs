@@ -357,17 +357,19 @@ table {
 /* ── Landing Page Animations ── */
 @keyframes landing-float {
   0%, 100% {
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
     opacity: 0.5;
   }
   50% {
-    transform: translateY(-30px) scale(1.15);
+    transform: translate3d(0, -30px, 0) scale(1.15);
     opacity: 0.8;
   }
 }
 
 .landing-particle {
   animation: landing-float 8s ease-in-out infinite;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 .landing-page {
@@ -375,6 +377,65 @@ table {
     radial-gradient(circle at top right, rgba(65, 200, 198, 0.14), transparent 28%),
     radial-gradient(circle at 10% 80%, rgba(242, 193, 77, 0.08), transparent 20%),
     linear-gradient(180deg, #f8fdfd 0%, #f5fbfb 50%, #eef8f8 100%);
+}
+
+/* Premium ambient mesh — GPU composited, no horizontal bleed */
+@keyframes premium-brand-ambient-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: translate3d(0, -14px, 0) scale(1.04);
+    opacity: 0.65;
+  }
+}
+
+.premium-brand-ambient {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  isolation: isolate;
+}
+
+.premium-brand-ambient__orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  animation: premium-brand-ambient-drift 14s ease-in-out infinite;
+}
+
+.premium-brand-ambient__orb--teal {
+  top: -12%;
+  left: -8%;
+  width: min(42vw, 420px);
+  height: min(42vw, 420px);
+  background: rgba(43, 204, 196, 0.2);
+}
+
+.premium-brand-ambient__orb--amber {
+  right: -8%;
+  bottom: -10%;
+  width: min(38vw, 380px);
+  height: min(38vw, 380px);
+  background: rgba(247, 186, 36, 0.14);
+  animation-duration: 18s;
+  animation-delay: -7s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-particle,
+  .premium-brand-ambient__orb {
+    animation: none;
+    opacity: 0.5;
+  }
 }
 
 /* TRUE TEAL GLOW EFFECT - Multi-layered opacity mapping */
