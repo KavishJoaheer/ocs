@@ -68,7 +68,7 @@ function LoginPage() {
         <div className="relative z-10 flex flex-1 flex-col justify-center py-10 lg:py-14">
           <div className="flex max-w-xl gap-5 lg:gap-6">
             <div
-              className="w-2 shrink-0 self-stretch rounded-full bg-gradient-to-b from-[#f7ba24] to-[#e0a112] shadow-[0_0_18px_rgba(247,186,36,0.35)]"
+              className="amber-banner-accent w-1.5 shrink-0 self-stretch rounded-full bg-gradient-to-b from-[#f7ba24] to-[#e0a112]"
               aria-hidden="true"
             />
             <div className="min-w-0">
