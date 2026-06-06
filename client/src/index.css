@@ -379,50 +379,44 @@ table {
     linear-gradient(180deg, #f8fdfd 0%, #f5fbfb 50%, #eef8f8 100%);
 }
 
-/* Brand bokeh background — slow drift + breathing glow */
-@keyframes slowDrift {
+/* OCS brand cross bokeh — slow drift + breathing pulse */
+@keyframes ocsCrossDrift {
   0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-
-  33% {
-    transform: translate3d(4%, -6%, 0) scale(1.08);
-  }
-
-  66% {
-    transform: translate3d(-3%, 5%, 0) scale(0.95);
-  }
-
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes breathGlow {
-  0%,
-  100% {
-    opacity: 0.25;
-    filter: blur(40px);
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
   }
 
   50% {
-    opacity: 0.55;
-    filter: blur(55px);
+    transform: translate3d(5%, -8%, 0) rotate(15deg) scale(1.1);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
   }
 }
 
-.bokeh-bubble {
+@keyframes ocsCrossPulse {
+  0%,
+  100% {
+    opacity: 0.03;
+    filter: blur(35px);
+  }
+
+  50% {
+    opacity: 0.12;
+    filter: blur(45px);
+  }
+}
+
+.brand-cross-orb {
   position: absolute;
-  border-radius: 50%;
   pointer-events: none;
-  mix-blend-mode: multiply;
   will-change: transform, opacity;
   backface-visibility: hidden;
   transform: translate3d(0, 0, 0);
-  animation: slowDrift 24s ease-in-out infinite, breathGlow 14s ease-in-out infinite;
+  animation: ocsCrossDrift 28s ease-in-out infinite, ocsCrossPulse 16s ease-in-out infinite;
 }
 
-.bokeh-bubble-layer {
+.bokeh-cross-layer {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -434,26 +428,26 @@ table {
 }
 
 @media (max-width: 767px) {
-  @keyframes breathGlow {
+  @keyframes ocsCrossPulse {
     0%,
     100% {
-      opacity: 0.22;
-      filter: blur(36px);
+      opacity: 0.03;
+      filter: blur(32px);
     }
 
     50% {
-      opacity: 0.48;
-      filter: blur(36px);
+      opacity: 0.1;
+      filter: blur(32px);
     }
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .landing-particle,
-  .bokeh-bubble {
+  .brand-cross-orb {
     animation: none;
-    opacity: 0.35;
-    filter: blur(40px);
+    opacity: 0.06;
+    filter: blur(35px);
   }
 }
 
