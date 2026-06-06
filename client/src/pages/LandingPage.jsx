@@ -4,27 +4,33 @@ import { useNavigate } from "react-router-dom";
 const AMBIENT_BLUR_CROSSES = [
   {
     color: "text-[#2bccc4]",
-    position: "left-[5%] top-[10%] h-64 w-64",
+    position: "left-[5%] top-[10%] h-72 w-72",
     duration: "22s",
     delay: "0s",
   },
   {
     color: "text-[#f7ba24]",
-    position: "right-[12%] top-[22%] h-56 w-56",
+    position: "right-[12%] top-[22%] h-64 w-64",
     duration: "26s",
     delay: "-4s",
   },
   {
     color: "text-[#3b595c]",
-    position: "bottom-[15%] left-[20%] h-48 w-48",
+    position: "bottom-[15%] left-[20%] h-56 w-56",
     duration: "18s",
     delay: "-2s",
   },
   {
     color: "text-[#f7ba24]",
-    position: "bottom-[5%] right-[5%] h-72 w-72",
+    position: "bottom-[5%] right-[5%] h-80 w-80",
     duration: "28s",
     delay: "-6s",
+  },
+  {
+    color: "text-[#2bccc4]",
+    position: "right-[8%] top-[48%] h-40 w-40",
+    duration: "24s",
+    delay: "-3s",
   },
 ];
 
