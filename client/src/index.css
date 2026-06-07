@@ -718,3 +718,66 @@ table {
     padding-left: calc(0.375rem + 1.5rem);
   }
 }
+
+/* Staff portal — left panel layout overrides only */
+.auth-canvas-panel--staff {
+  padding-inline: max(3rem, 48px);
+  padding-block: max(3rem, 48px);
+}
+
+.auth-canvas-panel--staff .auth-brand-header,
+.auth-canvas-panel--staff .auth-canvas-footer {
+  flex-shrink: 0;
+}
+
+.auth-canvas-panel--staff .auth-hero-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.auth-canvas-panel--staff .auth-hero-row,
+.auth-canvas-panel--staff .auth-hero-copy {
+  width: 100%;
+  max-width: none;
+}
+
+.auth-canvas-panel--staff .auth-headline-group {
+  gap: 1.5rem;
+}
+
+.auth-canvas-panel--staff .auth-headline {
+  font-size: clamp(3.25rem, 5vw, 3.625rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+}
+
+.auth-canvas-panel--staff .auth-tagline {
+  margin-top: 1.75rem;
+  max-width: none;
+  padding-left: calc(0.4375rem + 1.5rem);
+  font-size: 1rem;
+  font-weight: 300;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+}
+
+@media (min-width: 1024px) {
+  .auth-canvas-panel--staff {
+    padding-inline: max(4rem, 56px);
+    padding-block: max(4rem, 56px);
+  }
+
+  .auth-canvas-panel--staff .auth-headline {
+    font-size: 3.625rem;
+  }
+
+  .auth-canvas-panel--staff .auth-tagline {
+    margin-top: 2rem;
+    padding-left: calc(0.4375rem + 1.75rem);
+  }
+}

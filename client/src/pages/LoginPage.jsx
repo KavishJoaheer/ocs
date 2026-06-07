@@ -52,7 +52,7 @@ function LoginPage() {
   return (
     <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
       {/* Left: brand canvas */}
-      <div className="auth-canvas-panel md:w-1/2">
+      <div className="auth-canvas-panel auth-canvas-panel--staff md:w-1/2">
         <div className="auth-canvas-orb-teal" />
         <div className="auth-canvas-orb-amber" />
 
