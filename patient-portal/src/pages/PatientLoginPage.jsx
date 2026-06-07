@@ -51,7 +51,7 @@ function PatientLoginPage() {
               alt="OCS Médecins"
               className="h-[52px] w-auto max-w-[280px]"
             />
-            <span className="mt-3 block text-xs font-bold uppercase tracking-[0.25em] text-[#065a60]">
+            <span className="mt-3 block font-sans text-xs font-bold uppercase tracking-widest text-[#065a60]">
               OCS Care
             </span>
           </div>
@@ -64,13 +64,13 @@ function PatientLoginPage() {
               aria-hidden="true"
             />
             <div className="min-w-0">
-              <h1 className="font-serif text-4xl leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
+              <h1 className="font-serif text-4xl leading-[1.06] tracking-tight sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
                 <span className="block font-normal text-[#3b595c]">Your Health.</span>
-                <span className="block font-bold text-[#3b595c]">Experienced differently</span>
+                <span className="block font-bold text-[#3b595c]">Experienced</span>
+                <span className="block font-bold text-[#3b595c]">differently</span>
               </h1>
               <p className="mt-6 max-w-lg text-base font-semibold leading-relaxed tracking-wide text-[#065a60] sm:text-lg lg:mt-8 lg:text-xl">
-                Every visit, every record, every moment of care - safe, organised and always
-                within reach.
+                Every visit, every record, every moment of care - safe, organised and always within reach.
               </p>
             </div>
           </div>
@@ -87,7 +87,7 @@ function PatientLoginPage() {
 
         <div className="mx-auto my-auto w-full max-w-sm py-4">
           <div className="mb-8">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.38em] text-[#065a60]">
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.5em] text-[#065a60]">
               Your Care Space
             </span>
             <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
