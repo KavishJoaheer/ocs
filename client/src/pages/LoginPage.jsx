@@ -65,12 +65,14 @@ function LoginPage() {
 
         <div className="auth-hero-body">
           <div className="auth-hero-row">
-            <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
             <div className="auth-hero-copy">
-              <h1 className="auth-headline auth-headline--staff">
-                <span className="block">Step into a</span>
-                <span className="auth-headline--staff-accent">Practice of Excellence</span>
-              </h1>
+              <div className="auth-headline-group">
+                <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
+                <h1 className="auth-headline auth-headline--staff">
+                  <span className="block">Step into a</span>
+                  <span className="auth-headline--staff-accent">Practice of Excellence</span>
+                </h1>
+              </div>
               <p className="auth-tagline">
                 Together, let&apos;s make a difference in healthcare
               </p>

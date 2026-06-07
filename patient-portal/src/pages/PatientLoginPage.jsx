@@ -55,13 +55,15 @@ function PatientLoginPage() {
 
         <div className="auth-hero-body">
           <div className="auth-hero-row">
-            <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
             <div className="auth-hero-copy">
-              <h1 className="auth-headline auth-headline--staff">
-                <span className="block">Your Health.</span>
-                <span className="block">Experienced</span>
-                <span className="block auth-headline-accent-gold">differently.</span>
-              </h1>
+              <div className="auth-headline-group">
+                <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
+                <h1 className="auth-headline auth-headline--staff">
+                  <span className="block">Your Health.</span>
+                  <span className="block">Experienced</span>
+                  <span className="block auth-headline-accent-gold">differently.</span>
+                </h1>
+              </div>
               <p className="auth-tagline">
                 Every visit, every record, every moment of care - safe, organised and always within reach.
               </p>
