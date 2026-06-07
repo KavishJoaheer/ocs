@@ -48,7 +48,7 @@ function NextAppointmentEmpty() {
         Request a home visit in seconds. A doctor will be with you wherever you are in Mauritius.
       </p>
       <Link
-        to="/active-visit"
+        to="/request-visit"
         className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3 text-sm font-bold text-white shadow-[0_14px_36px_rgba(232,160,32,0.35)] transition hover:gap-3 hover:brightness-105"
       >
         Request a Visit <ArrowRight className="size-4" />

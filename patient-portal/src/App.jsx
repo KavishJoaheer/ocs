@@ -9,6 +9,11 @@ import PatientAppointments from "./pages/PatientAppointments.jsx";
 import PatientConsultations from "./pages/PatientConsultations.jsx";
 import PatientBilling from "./pages/PatientBilling.jsx";
 import PatientProfile from "./pages/PatientProfile.jsx";
+import RequestVisitLayout from "./pages/request-visit/RequestVisitLayout.jsx";
+import RequestVisitForm from "./pages/request-visit/RequestVisitForm.jsx";
+import RequestVisitReview from "./pages/request-visit/RequestVisitReview.jsx";
+import RequestVisitAwaiting from "./pages/request-visit/RequestVisitAwaiting.jsx";
+import RequestVisitTracking from "./pages/request-visit/RequestVisitTracking.jsx";
 
 function App() {
   return (
@@ -24,6 +29,12 @@ function App() {
       >
         <Route index element={<PatientDashboard />} />
         <Route path="active-visit" element={<PatientActiveVisit />} />
+        <Route path="request-visit" element={<RequestVisitLayout />}>
+          <Route index element={<RequestVisitForm />} />
+          <Route path="review" element={<RequestVisitReview />} />
+          <Route path="awaiting" element={<RequestVisitAwaiting />} />
+          <Route path="tracking" element={<RequestVisitTracking />} />
+        </Route>
         <Route path="appointments" element={<PatientAppointments />} />
         <Route path="consultations" element={<PatientConsultations />} />
         <Route path="billing" element={<PatientBilling />} />

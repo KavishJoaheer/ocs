@@ -222,6 +222,26 @@ table {
 .stagger-5 { animation-delay: 0.25s; }
 .stagger-6 { animation-delay: 0.3s; }
 
+.animate-fade-in-fast {
+  animation: fadeIn 0.2s ease both;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.85;
+  }
+}
+
+.animate-breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
 .glow-teal-capsule {
   box-shadow:
     0 4px 14px 0 rgba(28, 78, 82, 0.4),
