@@ -148,15 +148,12 @@ function Sidebar() {
           </div>
 
           {/* Profile */}
-          <div className="mt-7 flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-base font-bold text-white shadow-lg shadow-[rgba(45,143,152,0.22)]">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-base font-semibold tracking-tight text-[#22485b]">
-                {user?.full_name || "Patient"}
-              </p>
-              <p className="mt-0.5 text-xs text-[#6e949b]">Patient since {sinceYear}</p>
+          <div className="mt-7 flex items-start justify-between gap-3">
+            <div className="flex flex-col items-start gap-2">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-base font-bold text-white shadow-lg shadow-[rgba(45,143,152,0.22)]">
+                {initials}
+              </div>
+              <p className="text-xs text-[#6e949b]">Patient since {sinceYear}</p>
             </div>
             <button
               type="button"
