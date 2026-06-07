@@ -30,7 +30,7 @@ jobs:
         run: |
           docker buildx create --name ocs-builder --use 2>/dev/null || docker buildx use ocs-builder
 
-      - name: Build and push image (linux/amd64 for NAS)
+      - name: Build and push main image (linux/amd64 for NAS)
         env:
           IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/clinicflow
         run: |
@@ -38,6 +38,19 @@ jobs:
           docker buildx build \
             --platform linux/amd64 \
             --file ./Dockerfile \
+            --tag "${IMAGE}:latest" \
+            --tag "${IMAGE}:sha-${SHORT_SHA}" \
+            --push \
+            .
+
+      - name: Build and push patient portal image
+        env:
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/clinicflow-patient-portal
+        run: |
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          docker buildx build \
+            --platform linux/amd64 \
+            --file ./patient-portal.Dockerfile \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:sha-${SHORT_SHA}" \
             --push \
