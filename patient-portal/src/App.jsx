@@ -4,6 +4,7 @@ import AppShell from "./layouts/AppShell.jsx";
 import PatientLoginPage from "./pages/PatientLoginPage.jsx";
 import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
+import PatientActiveVisit from "./pages/PatientActiveVisit.jsx";
 import PatientAppointments from "./pages/PatientAppointments.jsx";
 import PatientConsultations from "./pages/PatientConsultations.jsx";
 import PatientBilling from "./pages/PatientBilling.jsx";
@@ -22,6 +23,7 @@ function App() {
         }
       >
         <Route index element={<PatientDashboard />} />
+        <Route path="active-visit" element={<PatientActiveVisit />} />
         <Route path="appointments" element={<PatientAppointments />} />
         <Route path="consultations" element={<PatientConsultations />} />
         <Route path="billing" element={<PatientBilling />} />
