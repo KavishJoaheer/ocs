@@ -49,7 +49,7 @@ function NextAppointmentEmpty() {
       </p>
       <Link
         to="/active-visit"
-        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] px-6 py-3 text-sm font-bold text-white shadow-[0_14px_36px_rgba(31,108,116,0.35)] transition hover:gap-3 hover:brightness-110"
+        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3 text-sm font-bold text-white shadow-[0_14px_36px_rgba(232,160,32,0.35)] transition hover:gap-3 hover:brightness-105"
       >
         Request a Visit <ArrowRight className="size-4" />
       </Link>
@@ -67,6 +67,12 @@ function PastConsultationsEmpty() {
       <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
         Every visit, every record, every moment of care will be beautifully organised right here.
       </p>
+      <Link
+        to="/consultations"
+        className="mt-4 inline-flex items-center gap-1 text-sm font-normal text-[#5f9aa0] transition hover:gap-2 hover:text-[#2d8f98]"
+      >
+        View your health records <ArrowRight className="size-3.5" />
+      </Link>
     </div>
   );
 }
@@ -195,7 +201,7 @@ function PatientDashboard() {
         </div>
       ) : bothEmpty ? (
         /* Both empty — one cohesive, soft panel with a single divider */
-        <div className="animate-fade-in-up stagger-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
+        <div className="animate-fade-in-up stagger-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-10 pb-4">
           <div className="grid gap-y-10 sm:grid-cols-2 sm:gap-x-0">
             <div className="sm:border-r sm:border-[rgba(26,160,140,0.15)] sm:pr-10">
               <NextAppointmentEmpty />
