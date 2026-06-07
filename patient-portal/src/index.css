@@ -318,6 +318,10 @@ table {
   color: #065a60;
 }
 
+.auth-sub-brand--patient {
+  letter-spacing: 0.22em;
+}
+
 .auth-hero-body {
   position: relative;
   z-index: 10;
@@ -357,6 +361,8 @@ table {
 
 .auth-headline--patient {
   font-family: var(--font-serif, "Cormorant Garamond", Georgia, serif);
+  line-height: 1.2;
+  color: #3b595c;
 }
 
 .auth-tagline {

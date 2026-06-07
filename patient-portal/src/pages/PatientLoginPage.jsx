@@ -51,7 +51,7 @@ function PatientLoginPage() {
               alt="OCS Médecins"
               className="h-[52px] w-auto max-w-[280px]"
             />
-            <span className="auth-sub-brand">OCS Care</span>
+            <span className="auth-sub-brand auth-sub-brand--patient">OCS Care</span>
           </div>
         </div>
 
@@ -59,10 +59,10 @@ function PatientLoginPage() {
           <div className="auth-hero-row">
             <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
             <div className="min-w-0">
-              <h1 className="auth-headline auth-headline--patient">
-                <span className="block font-normal">Your Health.</span>
-                <span className="block font-bold">Experienced</span>
-                <span className="block font-bold">differently</span>
+              <h1 className="auth-headline auth-headline--patient !leading-[1.2]">
+                <span className="block font-normal text-[#3b595c]">Your Health.</span>
+                <span className="block font-bold text-[#3b595c]">Experienced</span>
+                <span className="block font-bold text-[#f7ba24]">differently.</span>
               </h1>
               <p className="auth-tagline">
                 Every visit, every record, every moment of care - safe, organised and always within reach.
