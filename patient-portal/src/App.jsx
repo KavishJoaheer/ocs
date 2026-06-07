@@ -5,6 +5,7 @@ import PatientLoginPage from "./pages/PatientLoginPage.jsx";
 import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
 import PatientAppointments from "./pages/PatientAppointments.jsx";
+import PatientConsultations from "./pages/PatientConsultations.jsx";
 import PatientBilling from "./pages/PatientBilling.jsx";
 import PatientProfile from "./pages/PatientProfile.jsx";
 
@@ -22,6 +23,7 @@ function App() {
       >
         <Route index element={<PatientDashboard />} />
         <Route path="appointments" element={<PatientAppointments />} />
+        <Route path="consultations" element={<PatientConsultations />} />
         <Route path="billing" element={<PatientBilling />} />
         <Route path="profile" element={<PatientProfile />} />
       </Route>

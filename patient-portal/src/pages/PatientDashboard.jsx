@@ -4,17 +4,43 @@ import dayjs from "dayjs";
 import {
   CalendarDays,
   CreditCard,
-  UserCircle,
   Clock,
   TrendingUp,
   ArrowRight,
   CalendarCheck,
   Stethoscope,
-  Activity,
+  History,
   Sparkles,
+  MapPin,
+  CalendarClock,
+  Newspaper,
 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { api } from "../lib/api.js";
+
+const OCS_UPDATES = [
+  {
+    icon: MapPin,
+    tag: "Network",
+    title: "New home visit doctors available in your district",
+    desc: "We've expanded our care team near you, so you can book a home visit even faster.",
+    accent: "linear-gradient(135deg, #41c8c6, #2d8f98)",
+  },
+  {
+    icon: CalendarClock,
+    tag: "Operations",
+    title: "Upcoming public holiday operating hours",
+    desc: "Check our adjusted hotline and home visit schedule for the upcoming public holiday.",
+    accent: "linear-gradient(135deg, #f2c14d, #e6a817)",
+  },
+  {
+    icon: Newspaper,
+    tag: "Health Tips",
+    title: "Seasonal wellness: staying healthy this winter",
+    desc: "Practical guidance from our physicians to keep you and your family well all season.",
+    accent: "linear-gradient(135deg, #70ddd2, #41c8c6)",
+  },
+];
 
 function StatCard({ icon: Icon, label, value, color, delay }) {
   return (
@@ -186,13 +212,21 @@ function PatientDashboard() {
           )}
         </div>
 
-        {/* Recent Activity */}
+        {/* Past Consultations */}
         <div className="animate-fade-in-up stagger-5 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-6 shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
-          <div className="flex items-center gap-2">
-            <Activity className="size-4 text-[#2d8f98]" />
-            <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-              Recent Activity
-            </h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="size-4 text-[#2d8f98]" />
+              <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+                Past Consultations
+              </h2>
+            </div>
+            <Link
+              to="/consultations"
+              className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
+            >
+              View all <ArrowRight className="size-3" />
+            </Link>
           </div>
 
           {loading ? (
@@ -220,40 +254,40 @@ function PatientDashboard() {
             </div>
           ) : (
             <div className="mt-4 rounded-[20px] border border-dashed border-[rgba(65,200,198,0.25)] bg-[rgba(65,200,198,0.04)] p-6 text-center">
-              <Activity className="mx-auto size-8 text-[rgba(65,200,198,0.4)]" />
-              <p className="mt-2 text-sm font-semibold text-[#5b7f8a]">No recent activity</p>
+              <History className="mx-auto size-8 text-[rgba(65,200,198,0.4)]" />
+              <p className="mt-2 text-sm font-semibold text-[#5b7f8a]">No past consultations</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Quick Actions */}
+      {/* OCS Updates & Insights */}
       <div className="animate-fade-in-up stagger-6">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
-          Quick Actions
+          OCS Updates &amp; Insights
         </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          {[
-            { to: "/appointments", icon: CalendarDays, label: "View Appointments", desc: "Check your schedule" },
-            { to: "/billing", icon: CreditCard, label: "View Bills", desc: "Payment history" },
-            { to: "/profile", icon: UserCircle, label: "Update Profile", desc: "Personal details" },
-          ].map(({ to, icon: Icon, label, desc }) => (
-            <Link
-              key={to}
-              to={to}
-              className="group rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white/80 p-5 shadow-[0_8px_24px_rgba(34,72,91,0.04)] transition hover:border-[rgba(65,200,198,0.3)] hover:shadow-[0_16px_40px_rgba(34,72,91,0.1)]"
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {OCS_UPDATES.map(({ icon: Icon, tag, title, desc, accent }) => (
+            <article
+              key={title}
+              className="group flex flex-col rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_8px_24px_rgba(34,72,91,0.04)] transition hover:border-[rgba(65,200,198,0.3)] hover:shadow-[0_16px_40px_rgba(34,72,91,0.1)]"
             >
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-[rgba(65,200,198,0.1)] p-2.5 transition group-hover:bg-[rgba(65,200,198,0.16)]">
-                  <Icon className="size-5 text-[#2d8f98]" />
+                <div className="rounded-2xl p-2.5" style={{ background: accent }}>
+                  <Icon className="size-5 text-white" />
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-[#22485b]">{label}</p>
-                  <p className="text-xs text-[#6e949b]">{desc}</p>
-                </div>
-                <ArrowRight className="ml-auto size-4 text-[rgba(65,200,198,0.4)] transition group-hover:text-[#2d8f98]" />
+                <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[#6e949b]">
+                  {tag}
+                </span>
               </div>
-            </Link>
+              <h3 className="mt-4 font-display text-base font-semibold leading-snug text-[#22485b]">
+                {title}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">{desc}</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition group-hover:gap-2">
+                Read more <ArrowRight className="size-3" />
+              </span>
+            </article>
           ))}
         </div>
       </div>

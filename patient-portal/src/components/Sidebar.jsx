@@ -7,6 +7,7 @@ import {
   UserCircle,
   X,
   Heart,
+  History,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/appointments", label: "Appointments", icon: CalendarDays },
+  { to: "/consultations", label: "Consultation History", icon: History },
   { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/profile", label: "Profile", icon: UserCircle },
 ];
@@ -126,7 +128,7 @@ function Sidebar() {
           {/* Brand card */}
           <div className="relative overflow-hidden rounded-[38px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,#a9b8bf_0%,#9aaab2_100%)] p-5 shadow-[0_32px_80px_rgba(34,72,91,0.16)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.38),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(26,56,68,0.08))]" />
-            <div className="relative z-10 flex min-h-[240px] flex-col">
+            <div className="relative z-10 flex flex-col">
               <div className="inline-flex self-center rounded-[20px] bg-white px-4 py-3 shadow-[0_16px_40px_rgba(34,72,91,0.14)]">
                 <img
                   src="/ocs-medecins-logo.png"
@@ -135,19 +137,14 @@ function Sidebar() {
                 />
               </div>
 
-              <div className="mt-8 max-w-[15rem] space-y-4">
-                <h1 className="font-display text-[1.65rem] leading-[1.06] tracking-tight text-[#f3c438]">
-                  Your health, your portal.
-                </h1>
-                <p className="text-[0.95rem] font-semibold leading-7 text-white">
-                  Manage appointments, view bills, and stay connected with your care team.
-                </p>
-              </div>
+              <h1 className="mt-8 max-w-[15rem] font-display text-[1.65rem] leading-[1.1] tracking-tight text-[#f3c438]">
+                Your health, your portal.
+              </h1>
             </div>
           </div>
 
           {/* User card */}
-          <div className="mt-6 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+          <div className="mt-6 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 px-5 py-7 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-sm font-bold text-white shadow-lg shadow-[rgba(45,143,152,0.22)]">
@@ -196,9 +193,11 @@ function Sidebar() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
                 Hotline
               </p>
-              <div className="mt-1 flex items-center gap-2">
-                <Heart className="size-4 text-[#f2c14d]" />
-                <p className="text-xl font-bold tracking-tight text-[#22485b]">52 52 22 34</p>
+              <div className="mt-1 flex items-center gap-3">
+                <Heart className="size-4 shrink-0 text-[#f2c14d]" />
+                <p className="pl-1 text-xl font-bold tracking-tight text-[#22485b]">
+                  52 52 22 34
+                </p>
               </div>
             </div>
           </div>
