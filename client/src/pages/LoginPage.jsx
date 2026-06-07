@@ -69,7 +69,7 @@ function LoginPage() {
               <div className="auth-headline-group">
                 <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
                 <h1 className="auth-headline auth-headline--staff">
-                  <span className="block">Step into a</span>
+                  <span className="block auth-headline--staff-lead">Step into a</span>
                   <span className="block auth-headline--staff-accent">Practice of</span>
                   <span className="block auth-headline--staff-accent">Excellence</span>
                 </h1>

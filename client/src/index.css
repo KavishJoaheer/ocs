@@ -620,6 +620,10 @@ table {
   color: transparent;
 }
 
+.auth-headline--staff-lead {
+  color: #4f9494;
+}
+
 .auth-headline-accent-gold {
   color: #f7ba24;
 }
