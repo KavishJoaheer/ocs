@@ -275,6 +275,7 @@ table {
   position: relative;
   display: flex;
   width: 100%;
+  min-height: 100svh;
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
@@ -399,27 +400,6 @@ table {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-.auth-headline--patient {
-  font-family: var(--font-serif, "Cormorant Garamond", Georgia, serif);
-  font-size: 3.25rem;
-  line-height: 1.22;
-  letter-spacing: -0.01em;
-  color: #3b595c;
-}
-
-.auth-headline-line {
-  display: block;
-  color: #3b595c;
-}
-
-.auth-headline-line--regular {
-  font-weight: 600;
-}
-
-.auth-headline-line--strong {
-  font-weight: 700;
 }
 
 .auth-headline-accent-gold {

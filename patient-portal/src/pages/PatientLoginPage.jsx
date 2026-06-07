@@ -39,33 +39,28 @@ function PatientLoginPage() {
 
   return (
     <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
-      {/* Left: brand canvas */}
+      {/* Left: brand canvas — 1:1 staff portal skeleton */}
       <div className="auth-canvas-panel md:w-1/2">
         <div className="auth-canvas-orb-teal" />
         <div className="auth-canvas-orb-amber" />
 
         <div className="auth-brand-header">
-          <div className="transition-opacity hover:opacity-90">
+          <Link to="/login" className="transition-opacity hover:opacity-90">
             <span className="auth-logo-frame">
-              <img
-                src="/ocs-medecins-logo.png"
-                alt="OCS Médecins"
-              />
+              <img src="/ocs-medecins-logo.png" alt="OCS Médecins" />
             </span>
             <span className="auth-sub-brand auth-sub-brand--patient">OCS Care</span>
-          </div>
+          </Link>
         </div>
 
         <div className="auth-hero-body">
           <div className="auth-hero-row">
             <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
             <div className="auth-hero-copy">
-              <h1 className="auth-headline auth-headline--patient">
-                <span className="auth-headline-line auth-headline-line--regular">Your Health.</span>
-                <span className="auth-headline-line auth-headline-line--strong">Experienced</span>
-                <span className="auth-headline-line auth-headline-line--strong auth-headline-accent-gold">
-                  differently.
-                </span>
+              <h1 className="auth-headline auth-headline--staff">
+                <span className="block">Your Health.</span>
+                <span className="block">Experienced</span>
+                <span className="block auth-headline-accent-gold">differently.</span>
               </h1>
               <p className="auth-tagline">
                 Every visit, every record, every moment of care - safe, organised and always within reach.
