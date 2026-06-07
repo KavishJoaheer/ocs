@@ -721,6 +721,9 @@ table {
 
 /* Staff portal — left panel layout overrides only */
 .auth-canvas-panel--staff {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-content: stretch;
   padding-inline: max(3rem, 48px);
   padding-block: max(3rem, 48px);
 }
@@ -731,8 +734,8 @@ table {
 }
 
 .auth-canvas-panel--staff .auth-hero-body {
-  flex: 1;
   display: flex;
+  flex: unset;
   align-items: center;
   justify-content: center;
   min-height: 0;
@@ -740,7 +743,12 @@ table {
   padding-bottom: 0;
 }
 
-.auth-canvas-panel--staff .auth-hero-row,
+.auth-canvas-panel--staff .auth-hero-row {
+  width: 100%;
+  max-width: none;
+  margin-block: auto;
+}
+
 .auth-canvas-panel--staff .auth-hero-copy {
   width: 100%;
   max-width: none;
@@ -748,6 +756,12 @@ table {
 
 .auth-canvas-panel--staff .auth-headline-group {
   gap: 1.5rem;
+  align-items: stretch;
+  padding-bottom: 9px;
+}
+
+.auth-canvas-panel--staff .auth-accent-bar {
+  align-self: stretch;
 }
 
 .auth-canvas-panel--staff .auth-headline {
@@ -757,7 +771,7 @@ table {
 }
 
 .auth-canvas-panel--staff .auth-tagline {
-  margin-top: 1.75rem;
+  margin-top: 2rem;
   max-width: none;
   padding-left: calc(0.4375rem + 1.5rem);
   font-size: 1rem;
@@ -777,7 +791,6 @@ table {
   }
 
   .auth-canvas-panel--staff .auth-tagline {
-    margin-top: 2rem;
     padding-left: calc(0.4375rem + 1.75rem);
   }
 }
