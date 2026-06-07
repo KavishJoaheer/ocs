@@ -154,7 +154,7 @@ function Sidebar() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-display text-base font-semibold tracking-tight text-[#22485b]">
-                {timeGreeting()}, {firstName}
+                {user?.full_name || "Patient"}
               </p>
               <p className="mt-0.5 text-xs text-[#6e949b]">Patient since {sinceYear}</p>
             </div>
@@ -182,7 +182,7 @@ function Sidebar() {
             <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
               Navigation
             </p>
-            <nav className="mt-4 space-y-3">
+            <nav className="mt-4 space-y-5">
               {navItems.map((item) => (
                 <SidebarLink key={item.to} item={item} />
               ))}

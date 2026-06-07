@@ -46,7 +46,7 @@ const OCS_UPDATES = [
 function StatCard({ icon: Icon, label, value, color, delay }) {
   return (
     <div
-      className={`animate-fade-in-up stagger-${delay} rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-6 shadow-[0_16px_48px_rgba(34,72,91,0.08)] transition hover:shadow-[0_20px_56px_rgba(34,72,91,0.12)]`}
+      className={`animate-fade-in-up stagger-${delay} rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-8 shadow-[0_16px_48px_rgba(34,72,91,0.08)] transition hover:shadow-[0_20px_56px_rgba(34,72,91,0.12)]`}
     >
       <div className="flex items-center gap-3">
         <div
@@ -124,14 +124,8 @@ function PatientDashboard() {
     return `You're all caught up, ${firstName}. Need a doctor at home? We're one tap away.`;
   })();
 
-  const allZero =
-    !loading &&
-    (stats?.upcoming_appointments ?? 0) === 0 &&
-    (stats?.pending_bills ?? 0) === 0 &&
-    (stats?.total_visits ?? 0) === 0;
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-12">
       {/* Welcome header */}
       <div className="animate-fade-in-up">
         <div className="flex items-center gap-3">
@@ -150,37 +144,13 @@ function PatientDashboard() {
 
       {/* Stats cards */}
       {loading ? (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.08)]" />
+            <div key={i} className="h-28 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.08)]" />
           ))}
         </div>
-      ) : allZero ? (
-        <div className="animate-fade-in-up stagger-1 relative overflow-hidden rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(135deg,rgba(65,200,198,0.14),rgba(112,221,210,0.08))] p-8 shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
-          <img
-            src="/ocs-medecins-mark.png"
-            alt=""
-            aria-hidden="true"
-            className="pointer-events-none absolute right-6 top-6 h-12 w-auto opacity-30"
-          />
-          <div className="relative z-10 max-w-2xl">
-            <p className="font-display text-xl font-semibold tracking-tight text-[#22485b] sm:text-2xl">
-              Welcome to OCS Care, {firstName}.
-            </p>
-            <p className="mt-3 text-base leading-relaxed text-[#4e7b83]">
-              Your health space is ready. Request your first home visit and your records,
-              history and care will all live here.
-            </p>
-            <Link
-              to="/active-visit"
-              className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#2d8f98] transition hover:gap-3 hover:text-[#1f6c74]"
-            >
-              Request a Home Visit <ArrowRight className="size-4" />
-            </Link>
-          </div>
-        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-3">
           <StatCard
             icon={CalendarCheck}
             label="Upcoming"
@@ -205,9 +175,9 @@ function PatientDashboard() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         {/* Next Appointment */}
-        <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-7 shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+        <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-10 shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Stethoscope className="size-4 text-[#2d8f98]" />
@@ -251,7 +221,7 @@ function PatientDashboard() {
               </div>
             </div>
           ) : (
-            <div className="mt-4 flex flex-col items-center rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(65,200,198,0.06),rgba(255,255,255,0))] px-6 py-10 text-center">
+            <div className="mt-6 flex flex-col items-center rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(65,200,198,0.06),rgba(255,255,255,0))] px-8 py-16 text-center">
               <div className="flex size-16 items-center justify-center rounded-full bg-[linear-gradient(135deg,rgba(65,200,198,0.18),rgba(45,143,152,0.12))]">
                 <HousePlus className="size-8 text-[#2d8f98]" strokeWidth={1.75} />
               </div>
@@ -273,7 +243,7 @@ function PatientDashboard() {
         </div>
 
         {/* Past Consultations */}
-        <div className="animate-fade-in-up stagger-5 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-7 shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+        <div className="animate-fade-in-up stagger-5 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-10 shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="size-4 text-[#2d8f98]" />
@@ -313,7 +283,7 @@ function PatientDashboard() {
               ))}
             </div>
           ) : (
-            <div className="mt-4 flex flex-col items-center rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(65,200,198,0.06),rgba(255,255,255,0))] px-6 py-10 text-center">
+            <div className="mt-6 flex flex-col items-center rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(65,200,198,0.06),rgba(255,255,255,0))] px-8 py-16 text-center">
               <div className="flex size-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,rgba(65,200,198,0.18),rgba(45,143,152,0.12))]">
                 <History className="size-7 text-[#2d8f98]" strokeWidth={1.75} />
               </div>
@@ -341,7 +311,7 @@ function PatientDashboard() {
           {OCS_UPDATES.map(({ icon: Icon, tag, title, desc, accent }) => (
             <article
               key={title}
-              className="group flex flex-col rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-6 shadow-[0_8px_24px_rgba(34,72,91,0.04)] transition duration-300 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:border-[rgba(65,200,198,0.28)] hover:shadow-[0_22px_50px_rgba(34,72,91,0.12)]"
+              className="group flex flex-col rounded-[28px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-8 shadow-[0_8px_24px_rgba(34,72,91,0.04)] transition duration-300 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:border-[rgba(65,200,198,0.28)] hover:shadow-[0_22px_50px_rgba(34,72,91,0.12)]"
             >
               <div className="flex items-center gap-3">
                 <div className="rounded-2xl p-2.5" style={{ background: accent }}>
