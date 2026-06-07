@@ -56,7 +56,7 @@ function LoginPage() {
         <div className="auth-canvas-orb-teal" />
         <div className="auth-canvas-orb-amber" />
 
-        <div className="relative z-10 flex flex-col items-start">
+        <div className="auth-brand-header">
           <a href="/welcome" className="transition-opacity hover:opacity-90">
             <BrandMark maxWidth={280} size={52} />
             <span className="auth-sub-brand">Virtual Practice</span>
@@ -66,12 +66,10 @@ function LoginPage() {
         <div className="auth-hero-body">
           <div className="auth-hero-row">
             <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
-            <div className="min-w-0">
+            <div className="auth-hero-copy">
               <h1 className="auth-headline auth-headline--staff">
                 <span className="block">Step into a</span>
-                <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
-                  Practice of Excellence
-                </span>
+                <span className="auth-headline--staff-accent">Practice of Excellence</span>
               </h1>
               <p className="auth-tagline">
                 Together, let&apos;s make a difference in healthcare
@@ -86,18 +84,14 @@ function LoginPage() {
       </div>
 
       {/* Right: secure entry portal */}
-      <div className="flex w-full flex-col justify-between bg-slate-50/50 p-12 md:w-1/2 lg:p-16">
+      <div className="auth-form-panel md:w-1/2">
         <div className="h-8" />
 
-        <div className="mx-auto my-auto w-full max-w-sm py-4">
-          <div className="mb-8">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#065a60]">
-              Protected Access Gateway
-            </span>
-            <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
-              Sign in with credentials
-            </h2>
-            <p className="mt-2 text-xs font-medium leading-relaxed text-gray-500">
+        <div className="auth-form-body mx-auto">
+          <div className="auth-form-header">
+            <span className="auth-form-pill">Protected Access Gateway</span>
+            <h2 className="auth-form-title">Sign in with credentials</h2>
+            <p className="auth-form-desc">
               Enter the administrative username and secure password provided by system
               operations to enter your custom workspace.
             </p>

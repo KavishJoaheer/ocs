@@ -44,13 +44,14 @@ function PatientLoginPage() {
         <div className="auth-canvas-orb-teal" />
         <div className="auth-canvas-orb-amber" />
 
-        <div className="relative z-10 flex flex-col items-start">
+        <div className="auth-brand-header">
           <div className="transition-opacity hover:opacity-90">
-            <img
-              src="/ocs-medecins-logo.png"
-              alt="OCS Médecins"
-              className="h-[52px] w-auto max-w-[280px]"
-            />
+            <span className="auth-logo-frame">
+              <img
+                src="/ocs-medecins-logo.png"
+                alt="OCS Médecins"
+              />
+            </span>
             <span className="auth-sub-brand auth-sub-brand--patient">OCS Care</span>
           </div>
         </div>
@@ -58,11 +59,13 @@ function PatientLoginPage() {
         <div className="auth-hero-body">
           <div className="auth-hero-row">
             <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
-            <div className="min-w-0">
-              <h1 className="auth-headline auth-headline--patient !leading-[1.2]">
-                <span className="block font-normal text-[#3b595c]">Your Health.</span>
-                <span className="block font-bold text-[#3b595c]">Experienced</span>
-                <span className="block font-bold text-[#f7ba24]">differently.</span>
+            <div className="auth-hero-copy">
+              <h1 className="auth-headline auth-headline--patient">
+                <span className="auth-headline-line auth-headline-line--regular">Your Health.</span>
+                <span className="auth-headline-line auth-headline-line--strong">Experienced</span>
+                <span className="auth-headline-line auth-headline-line--strong auth-headline-accent-gold">
+                  differently.
+                </span>
               </h1>
               <p className="auth-tagline">
                 Every visit, every record, every moment of care - safe, organised and always within reach.
@@ -77,17 +80,13 @@ function PatientLoginPage() {
       </div>
 
       {/* Right: secure entry portal */}
-      <div className="flex w-full flex-col justify-between bg-white p-12 md:w-1/2 lg:p-16">
+      <div className="auth-form-panel md:w-1/2">
         <div className="h-8" />
 
-        <div className="mx-auto my-auto w-full max-w-sm py-4">
-          <div className="mb-8">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.5em] text-[#065a60]">
-              Your Care Space
-            </span>
-            <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
-              Sign in to access your health records
-            </h2>
+        <div className="auth-form-body mx-auto">
+          <div className="auth-form-header">
+            <span className="auth-form-pill">Your Care Space</span>
+            <h2 className="auth-form-title">Sign in to access your health records</h2>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
