@@ -38,7 +38,12 @@ function getAllowedOrigins() {
       .filter(Boolean);
   }
 
-  return ["http://localhost:5173", "http://localhost:5174"];
+  return [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://ocsvp.com",
+    "https://patient.ocsvp.com"
+  ];
 }
 
 function getClientDistPath() {

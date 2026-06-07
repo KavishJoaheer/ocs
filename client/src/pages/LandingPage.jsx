@@ -101,7 +101,7 @@ function LandingPage() {
 
   const PATIENT_PORTAL_URL =
     typeof window !== "undefined" && window.location.hostname !== "localhost"
-      ? `${window.location.protocol}//${window.location.hostname}:5174`
+      ? "https://patient.ocsvp.com"
       : "http://localhost:5174";
 
   return (
