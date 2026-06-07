@@ -14,7 +14,7 @@ import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/appointments", label: "Appointments", icon: CalendarDays },
+  { to: "/appointments", label: "Review Appointments", icon: CalendarDays },
   { to: "/consultations", label: "Consultation History", icon: History },
   { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/profile", label: "Profile", icon: UserCircle },
@@ -171,7 +171,7 @@ function Sidebar() {
           {/* Request a home visit — primary action */}
           <Link
             to="/active-visit"
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(31,108,116,0.38)] transition hover:brightness-110"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105"
           >
             <HousePlus className="size-5" />
             Request a Home Visit

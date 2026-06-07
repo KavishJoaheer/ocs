@@ -37,6 +37,40 @@ function StatCard({ icon: Icon, label, value, color, delay }) {
   );
 }
 
+function NextAppointmentEmpty() {
+  return (
+    <div className="flex flex-col items-start">
+      <HousePlus className="size-8 text-[#7fd1ca]" strokeWidth={1.5} />
+      <h3 className="mt-6 font-display text-xl font-semibold tracking-tight text-[#22485b]">
+        Your doctor, at your door.
+      </h3>
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
+        Request a home visit in seconds. A doctor will be with you wherever you are in Mauritius.
+      </p>
+      <Link
+        to="/active-visit"
+        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] px-6 py-3 text-sm font-bold text-white shadow-[0_14px_36px_rgba(31,108,116,0.35)] transition hover:gap-3 hover:brightness-110"
+      >
+        Request a Visit <ArrowRight className="size-4" />
+      </Link>
+    </div>
+  );
+}
+
+function PastConsultationsEmpty() {
+  return (
+    <div className="flex flex-col items-start">
+      <History className="size-8 text-[#7fd1ca]" strokeWidth={1.5} />
+      <h3 className="mt-6 font-display text-xl font-semibold tracking-tight text-[#22485b]">
+        Your health story starts here.
+      </h3>
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
+        Every visit, every record, every moment of care will be beautifully organised right here.
+      </p>
+    </div>
+  );
+}
+
 function PatientDashboard() {
   const { user } = usePatientAuth();
   const [stats, setStats] = useState(null);
@@ -103,6 +137,8 @@ function PatientDashboard() {
       (stats?.pending_bills ?? 0) > 0 ||
       (stats?.total_visits ?? 0) > 0);
 
+  const bothEmpty = !loading && !nextAppointment && recentActivity.length === 0;
+
   return (
     <div className="space-y-12">
       {/* Welcome header */}
@@ -148,127 +184,122 @@ function PatientDashboard() {
         </div>
       )}
 
-      <div className="grid gap-12 lg:grid-cols-2">
-        {/* Next Appointment */}
-        <section className="animate-fade-in-up stagger-4 py-2">
-          {loading ? (
-            <div className="h-40 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.06)]" />
-          ) : nextAppointment ? (
-            <>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Stethoscope className="size-4 text-[#2d8f98]" />
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-                    Next Appointment
-                  </h2>
-                </div>
-                <Link
-                  to="/appointments"
-                  className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
-                >
-                  View all <ArrowRight className="size-3" />
-                </Link>
-              </div>
-              <div className="mt-5 rounded-[24px] border border-[rgba(65,200,198,0.12)] bg-white/80 p-6 shadow-[0_8px_24px_rgba(34,72,91,0.04)]">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-2xl bg-[linear-gradient(135deg,rgba(65,200,198,0.15),rgba(45,143,152,0.1))] p-3">
-                    <CalendarDays className="size-6 text-[#2d8f98]" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-display text-lg font-semibold text-[#22485b]">
-                      {nextAppointment.doctor_name || "Doctor"}
-                    </p>
-                    <p className="mt-1 text-sm text-[#5b7f8a]">
-                      {dayjs(nextAppointment.date).format("dddd, MMMM D, YYYY")}
-                    </p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <Clock className="size-3.5 text-[#6e949b]" />
-                      <span className="text-sm font-medium text-[#496773]">
-                        {nextAppointment.time || "Time TBD"}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-[rgba(65,200,198,0.12)] px-3 py-1 text-xs font-bold text-[#2d8f98]">
-                    {nextAppointment.status || "Scheduled"}
-                  </span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-start py-6">
-              <HousePlus className="size-8 text-[#7fd1ca]" strokeWidth={1.5} />
-              <h3 className="mt-6 font-display text-2xl font-semibold tracking-tight text-[#22485b]">
-                Your doctor, at your door.
-              </h3>
-              <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
-                Request a home visit in seconds. A doctor will be with you wherever you are
-                in Mauritius.
-              </p>
-              <Link
-                to="/active-visit"
-                className="mt-8 inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] px-6 py-3 text-sm font-bold text-white shadow-[0_14px_36px_rgba(31,108,116,0.35)] transition hover:gap-3 hover:brightness-110"
-              >
-                Request a Visit <ArrowRight className="size-4" />
-              </Link>
+      {loading ? (
+        <div className="grid gap-12 lg:grid-cols-2">
+          <div className="h-40 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.06)]" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-12 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+            ))}
+          </div>
+        </div>
+      ) : bothEmpty ? (
+        /* Both empty — one cohesive, soft panel with a single divider */
+        <div className="animate-fade-in-up stagger-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
+          <div className="grid gap-y-10 sm:grid-cols-2 sm:gap-x-0">
+            <div className="sm:border-r sm:border-[rgba(26,160,140,0.15)] sm:pr-10">
+              <NextAppointmentEmpty />
             </div>
-          )}
-        </section>
-
-        {/* Past Consultations */}
-        <section className="animate-fade-in-up stagger-5 py-2">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-12 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-              ))}
+            <div className="sm:pl-10">
+              <PastConsultationsEmpty />
             </div>
-          ) : recentActivity.length > 0 ? (
-            <>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <History className="size-4 text-[#2d8f98]" />
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-                    Past Consultations
-                  </h2>
-                </div>
-                <Link
-                  to="/consultations"
-                  className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
-                >
-                  View all <ArrowRight className="size-3" />
-                </Link>
-              </div>
-              <div className="mt-5 space-y-3">
-                {recentActivity.slice(0, 5).map((activity, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-12 lg:grid-cols-2">
+          {/* Next Appointment */}
+          <section className="animate-fade-in-up stagger-4 py-2">
+            {nextAppointment ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Stethoscope className="size-4 text-[#2d8f98]" />
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+                      Next Appointment
+                    </h2>
+                  </div>
+                  <Link
+                    to="/appointments"
+                    className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
                   >
-                    <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
-                      <p className="text-xs text-[#6e949b]">
-                        {dayjs(activity.date).format("MMM D, YYYY")}
-                      </p>
+                    View all <ArrowRight className="size-3" />
+                  </Link>
+                </div>
+                <div className="mt-5 rounded-[24px] border border-[rgba(65,200,198,0.12)] bg-white/80 p-6 shadow-[0_8px_24px_rgba(34,72,91,0.04)]">
+                  <div className="flex items-start gap-4">
+                    <div className="rounded-2xl bg-[linear-gradient(135deg,rgba(65,200,198,0.15),rgba(45,143,152,0.1))] p-3">
+                      <CalendarDays className="size-6 text-[#2d8f98]" />
                     </div>
+                    <div className="flex-1">
+                      <p className="font-display text-lg font-semibold text-[#22485b]">
+                        {nextAppointment.doctor_name || "Doctor"}
+                      </p>
+                      <p className="mt-1 text-sm text-[#5b7f8a]">
+                        {dayjs(nextAppointment.date).format("dddd, MMMM D, YYYY")}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Clock className="size-3.5 text-[#6e949b]" />
+                        <span className="text-sm font-medium text-[#496773]">
+                          {nextAppointment.time || "Time TBD"}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-[rgba(65,200,198,0.12)] px-3 py-1 text-xs font-bold text-[#2d8f98]">
+                      {nextAppointment.status || "Scheduled"}
+                    </span>
                   </div>
-                ))}
+                </div>
+              </>
+            ) : (
+              <div className="py-6">
+                <NextAppointmentEmpty />
               </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-start py-6">
-              <History className="size-8 text-[#7fd1ca]" strokeWidth={1.5} />
-              <h3 className="mt-6 font-display text-2xl font-semibold tracking-tight text-[#22485b]">
-                Your health story starts here.
-              </h3>
-              <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
-                Every visit, every record, every moment of care will be beautifully
-                organised right here.
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
+            )}
+          </section>
+
+          {/* Past Consultations */}
+          <section className="animate-fade-in-up stagger-5 py-2">
+            {recentActivity.length > 0 ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <History className="size-4 text-[#2d8f98]" />
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+                      Past Consultations
+                    </h2>
+                  </div>
+                  <Link
+                    to="/consultations"
+                    className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
+                  >
+                    View all <ArrowRight className="size-3" />
+                  </Link>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {recentActivity.slice(0, 5).map((activity, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
+                    >
+                      <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
+                        <p className="text-xs text-[#6e949b]">
+                          {dayjs(activity.date).format("MMM D, YYYY")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="py-6">
+                <PastConsultationsEmpty />
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }
