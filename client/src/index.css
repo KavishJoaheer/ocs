@@ -614,14 +614,11 @@ table {
 
 .auth-headline--staff-accent {
   display: block;
-  background-image: linear-gradient(to right, #2bccc4, #065a60);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #2bccc4;
 }
 
 .auth-headline--staff-lead {
-  color: #4f9494;
+  color: #065a60;
 }
 
 .auth-headline-accent-gold {
