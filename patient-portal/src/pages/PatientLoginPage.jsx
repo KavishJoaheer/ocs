@@ -40,7 +40,7 @@ function PatientLoginPage() {
   return (
     <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
       {/* Left: brand canvas — 1:1 staff portal skeleton */}
-      <div className="auth-canvas-panel md:w-1/2">
+      <div className="auth-canvas-panel auth-canvas-panel--patient md:w-1/2">
         <div className="auth-canvas-orb-teal" />
         <div className="auth-canvas-orb-amber" />
 
@@ -61,11 +61,11 @@ function PatientLoginPage() {
                 <h1 className="auth-headline auth-headline--staff">
                   <span className="block">Your Health.</span>
                   <span className="block">Experienced</span>
-                  <span className="block auth-headline-accent-gold">differently.</span>
+                  <span className="block">differently.</span>
                 </h1>
               </div>
               <p className="auth-tagline">
-                Every visit, every record, every moment of care - safe, organised and always within reach.
+                Every visit, every record, every moment of care — safely organised with the same heart we bring to your door.
               </p>
             </div>
           </div>
