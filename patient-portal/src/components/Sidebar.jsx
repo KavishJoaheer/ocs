@@ -3,14 +3,13 @@ import {
   CreditCard,
   LayoutDashboard,
   LogOut,
-  Menu,
   UserCircle,
-  X,
   Heart,
   History,
+  HousePlus,
+  Plus,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
-import { useState } from "react";
+import { NavLink, Link } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 
 const navItems = [
@@ -21,39 +20,45 @@ const navItems = [
   { to: "/profile", label: "Profile", icon: UserCircle },
 ];
 
-function SidebarLink({ item, mobile = false, onClick }) {
+function timeGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function SidebarLink({ item }) {
   const Icon = item.icon;
 
   return (
     <NavLink
       end={item.end}
       to={item.to}
-      onClick={onClick}
       className={({ isActive }) =>
         [
-          "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
-          mobile
-            ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
-            : "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
+          "group flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all",
+          "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
           isActive &&
-            (mobile
-              ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
-              : "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"),
+            "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]",
         ]
           .filter(Boolean)
           .join(" ")
       }
     >
-      <Icon className={mobile ? "size-4 text-current" : "size-4 text-[#66d7d0]"} />
-      <span>{item.label}</span>
+      {({ isActive }) => (
+        <>
+          <Icon className={isActive ? "size-4 text-current" : "size-4 text-[#66d7d0]"} />
+          <span>{item.label}</span>
+        </>
+      )}
     </NavLink>
   );
 }
 
 function Sidebar() {
   const { logout, user } = usePatientAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
+  const firstName = user?.full_name?.split(" ")[0] || "there";
   const initials = user?.full_name
     ? user.full_name
         .split(" ")
@@ -62,118 +67,122 @@ function Sidebar() {
         .toUpperCase()
         .slice(0, 2)
     : "?";
+  const sinceYear = user?.created_at ? new Date(user.created_at).getFullYear() : 2026;
 
   return (
     <>
       {/* ─── Mobile top bar ─── */}
-      <div className="border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-4 backdrop-blur lg:hidden">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <img src="/ocs-medecins-mark.png" alt="OCS" className="h-8 w-auto" />
-            <div>
-              <p className="font-display text-sm font-bold tracking-tight text-[#22485b]">
-                Patient Portal
-              </p>
-            </div>
+      <div className="flex items-center justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-3.5 backdrop-blur lg:hidden">
+        <div className="flex items-center gap-3">
+          <img src="/ocs-medecins-mark.png" alt="OCS Care" className="h-8 w-auto" />
+          <div>
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+              OCS Care
+            </p>
+            <p className="font-display text-sm font-bold leading-tight tracking-tight text-[#22485b]">
+              {timeGreeting()}, {firstName}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-2 text-[#2d8f98] transition hover:bg-white"
-          >
-            {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-          </button>
         </div>
-
-        {mobileOpen && (
-          <div className="mt-4 animate-fade-in space-y-3">
-            <div className="rounded-[26px] border border-sky-200 bg-sky-50 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-xs font-bold text-white">
-                  {initials}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{user?.full_name}</p>
-                  <p className="text-xs text-[#5b7f8a]">{user?.email}</p>
-                </div>
-              </div>
-            </div>
-
-            <nav className="flex flex-wrap gap-2">
-              {navItems.map((item) => (
-                <SidebarLink
-                  key={item.to}
-                  item={item}
-                  mobile
-                  onClick={() => setMobileOpen(false)}
-                />
-              ))}
-            </nav>
-
-            <button
-              type="button"
-              onClick={() => logout()}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 px-3 py-2.5 text-sm font-semibold text-[#2d8f98] transition hover:bg-white"
-            >
-              <LogOut className="size-4" />
-              Sign out
-            </button>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => logout()}
+          aria-label="Sign out"
+          className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-2 text-[#2d8f98] transition hover:bg-white"
+        >
+          <LogOut className="size-5" />
+        </button>
       </div>
+
+      {/* ─── Mobile bottom navigation ─── */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[rgba(65,200,198,0.16)] bg-white/95 backdrop-blur lg:hidden">
+        <div className="mx-auto flex max-w-md items-end justify-around px-2 py-2">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                end={item.end}
+                to={item.to}
+                className={({ isActive }) =>
+                  [
+                    "flex min-w-[56px] flex-col items-center gap-1 rounded-2xl px-2 py-1.5 text-[0.6rem] font-semibold transition-all",
+                    isActive ? "text-[#2d8f98]" : "text-[#7c9aa1]",
+                  ].join(" ")
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon className={isActive ? "size-5" : "size-5 opacity-80"} />
+                    <span className="leading-none">{item.label.split(" ")[0]}</span>
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* ─── Mobile floating action button ─── */}
+      <Link
+        to="/active-visit"
+        aria-label="Request a home visit"
+        className="fixed bottom-[4.75rem] left-1/2 z-50 inline-flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] text-white shadow-[0_14px_36px_rgba(31,108,116,0.45)] transition hover:brightness-110 lg:hidden"
+      >
+        <Plus className="size-7" strokeWidth={2.5} />
+      </Link>
 
       {/* ─── Desktop sidebar ─── */}
       <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] lg:flex lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-8">
-          {/* Brand card */}
-          <div className="relative overflow-hidden rounded-[38px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,#a9b8bf_0%,#9aaab2_100%)] p-5 shadow-[0_32px_80px_rgba(34,72,91,0.16)]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.38),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(26,56,68,0.08))]" />
-            <div className="relative z-10 flex flex-col">
-              <div className="inline-flex self-center rounded-[20px] bg-white px-4 py-3 shadow-[0_16px_40px_rgba(34,72,91,0.14)]">
-                <img
-                  src="/ocs-medecins-logo.png"
-                  alt="OCS Médecins"
-                  className="h-10 w-auto drop-shadow-[0_8px_24px_rgba(34,72,91,0.06)]"
-                />
-              </div>
-
-              <h1 className="mt-8 max-w-[15rem] font-display text-[1.65rem] leading-[1.1] tracking-tight text-[#f3c438]">
-                Your health, your portal.
-              </h1>
-            </div>
+          {/* Brand */}
+          <div className="flex flex-col items-start gap-2">
+            <img
+              src="/ocs-medecins-logo.png"
+              alt="OCS Médecins"
+              className="h-11 w-auto drop-shadow-[0_8px_24px_rgba(34,72,91,0.08)]"
+            />
+            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-[#2d8f98]">
+              OCS Care
+            </p>
           </div>
 
-          {/* User card */}
-          <div className="mt-6 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 px-5 py-7 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-sm font-bold text-white shadow-lg shadow-[rgba(45,143,152,0.22)]">
-                  {initials}
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
-                    Patient
-                  </p>
-                  <p className="mt-0.5 text-sm font-semibold text-[#22485b]">{user?.full_name}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => logout()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] px-3 py-2 text-sm font-semibold text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.14)]"
-              >
-                <LogOut className="size-4" />
-                <span className="hidden xl:inline">Sign out</span>
-              </button>
+          {/* Profile */}
+          <div className="mt-7 flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-base font-bold text-white shadow-lg shadow-[rgba(45,143,152,0.22)]">
+              {initials}
             </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-display text-base font-semibold tracking-tight text-[#22485b]">
+                {timeGreeting()}, {firstName}
+              </p>
+              <p className="mt-0.5 text-xs text-[#6e949b]">Patient since {sinceYear}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => logout()}
+              aria-label="Sign out"
+              className="inline-flex shrink-0 items-center justify-center rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] p-2 text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
+            >
+              <LogOut className="size-4" />
+            </button>
           </div>
+
+          {/* Request a home visit — primary action */}
+          <Link
+            to="/active-visit"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(31,108,116,0.38)] transition hover:brightness-110"
+          >
+            <HousePlus className="size-5" />
+            Request a Home Visit
+          </Link>
 
           {/* Nav links */}
-          <div className="mt-8">
+          <div className="mt-9">
             <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
               Navigation
             </p>
-            <nav className="mt-4 space-y-2">
+            <nav className="mt-4 space-y-3">
               {navItems.map((item) => (
                 <SidebarLink key={item.to} item={item} />
               ))}
@@ -189,7 +198,7 @@ function Sidebar() {
             <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
               Reach out any time for appointment changes, billing questions, or medical inquiries.
             </p>
-            <div className="mt-4 rounded-[24px] bg-[linear-gradient(90deg,rgba(65,200,198,0.14),rgba(242,193,77,0.14))] px-4 py-3">
+            <div className="mt-4 rounded-[24px] bg-[rgba(65,200,198,0.10)] px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
                 Hotline
               </p>
