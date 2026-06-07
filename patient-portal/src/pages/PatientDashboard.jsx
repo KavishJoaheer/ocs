@@ -152,7 +152,7 @@ function formatDoctorName(name) {
 
 function LastConsultationCard({ consultation }) {
   return (
-    <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-7">
+    <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-[28px]">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <Clock className="size-3.5 text-[#2d8f98]" strokeWidth={1.75} />
@@ -176,7 +176,7 @@ function LastConsultationCard({ consultation }) {
           {dayjs(consultation.date).format("D MMMM YYYY")}
         </p>
         {consultation.diagnosis ? (
-          <span className="mt-3 inline-flex rounded-full bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
+          <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
             {consultation.diagnosis}
           </span>
         ) : null}
@@ -191,26 +191,6 @@ function LastConsultationCard({ consultation }) {
         </Link>
       </div>
     </section>
-  );
-}
-
-function PastConsultationsEmpty() {
-  return (
-    <div className="flex flex-col items-start py-6">
-      <History className="size-8 text-[#7fd1ca]" strokeWidth={1.5} />
-      <h3 className="mt-6 font-display text-xl font-semibold tracking-tight text-[#22485b]">
-        Your health story starts here.
-      </h3>
-      <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
-        Every visit, every record, every moment of care will be beautifully organised right here.
-      </p>
-      <Link
-        to="/consultations"
-        className="mt-4 inline-flex items-center gap-1 text-sm font-normal text-[#5f9aa0] transition hover:gap-2 hover:text-[#2d8f98]"
-      >
-        View your health records <ArrowRight className="size-3.5" />
-      </Link>
-    </div>
   );
 }
 
@@ -284,8 +264,6 @@ function PatientDashboard() {
       (stats?.pending_bills ?? 0) > 0 ||
       (stats?.total_visits ?? 0) > 0);
 
-  const bothEmpty = !loading && !activeVisit && recentActivity.length === 0;
-
   return (
     <div className="space-y-12">
       {/* Welcome header */}
@@ -332,75 +310,57 @@ function PatientDashboard() {
       )}
 
       {loading ? (
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-          <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-        </div>
-      ) : bothEmpty ? (
-        <div className="animate-fade-in-up stagger-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
-          <div className="grid gap-y-10 sm:grid-cols-2 sm:gap-x-0">
-            <div className="sm:border-r sm:border-[rgba(26,160,140,0.15)] sm:pr-10">
-              <NoActiveVisit />
-            </div>
-            <div className="sm:pl-10">
-              <PastConsultationsEmpty />
-            </div>
-          </div>
-        </div>
+        <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
       ) : (
         <>
-          {/* Active visit */}
           <section className="animate-fade-in-up stagger-4">
             {activeVisit ? (
               <ActiveVisitCard visit={activeVisit} />
             ) : (
-              <NoActiveVisit />
+              <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
+                <NoActiveVisit />
+              </div>
             )}
           </section>
 
-          {!lastConsultation ? null : (
+          {lastConsultation ? (
             <LastConsultationCard consultation={lastConsultation} />
-          )}
+          ) : null}
 
-          {/* Past consultations */}
-          <section className="animate-fade-in-up stagger-6 py-2">
-            {recentActivity.length > 0 ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <History className="size-4 text-[#2d8f98]" />
-                    <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-                      Past Consultations
-                    </h2>
-                  </div>
-                  <Link
-                    to="/consultations"
-                    className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
+          {recentActivity.length > 0 ? (
+            <section className="animate-fade-in-up stagger-6 py-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="size-4 text-[#2d8f98]" />
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+                    Past Consultations
+                  </h2>
+                </div>
+                <Link
+                  to="/consultations"
+                  className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
+                >
+                  View all <ArrowRight className="size-3" />
+                </Link>
+              </div>
+              <div className="mt-5 space-y-3">
+                {recentActivity.slice(0, 5).map((activity, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
                   >
-                    View all <ArrowRight className="size-3" />
-                  </Link>
-                </div>
-                <div className="mt-5 space-y-3">
-                  {recentActivity.slice(0, 5).map((activity, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
-                    >
-                      <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
-                        <p className="text-xs text-[#6e949b]">
-                          {dayjs(activity.date).format("MMM D, YYYY")}
-                        </p>
-                      </div>
+                    <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
+                      <p className="text-xs text-[#6e949b]">
+                        {dayjs(activity.date).format("MMM D, YYYY")}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <PastConsultationsEmpty />
-            )}
-          </section>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       )}
     </div>
