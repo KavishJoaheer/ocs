@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { NavLink, Link } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
+import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -56,18 +58,8 @@ function SidebarLink({ item }) {
 }
 
 function Sidebar() {
-  const { logout, user } = usePatientAuth();
-
-  const firstName = user?.full_name?.split(" ")[0] || "there";
-  const initials = user?.full_name
-    ? user.full_name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : "?";
-  const sinceYear = user?.created_at ? new Date(user.created_at).getFullYear() : 2026;
+  const { logout } = usePatientAuth();
+  const { activeProfile } = useFamilyProfile();
 
   return (
     <>
@@ -80,7 +72,9 @@ function Sidebar() {
               OCS Care
             </p>
             <p className="font-display text-sm font-bold leading-tight tracking-tight text-[#22485b]">
-              {timeGreeting()}, {firstName}
+              {activeProfile.isPrimary
+                ? `${timeGreeting()}, ${activeProfile.firstName}`
+                : `Managing care for ${activeProfile.firstName}`}
             </p>
           </div>
         </div>
@@ -147,14 +141,9 @@ function Sidebar() {
             </p>
           </div>
 
-          {/* Profile */}
-          <div className="mt-7 flex items-start justify-between gap-3">
-            <div className="flex flex-col items-start gap-2">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-base font-bold text-white shadow-lg shadow-[rgba(45,143,152,0.22)]">
-                {initials}
-              </div>
-              <p className="text-xs text-[#6e949b]">Patient since {sinceYear}</p>
-            </div>
+          {/* Profile switcher */}
+          <div className="relative mt-7 flex items-start justify-between gap-3">
+            <FamilyProfileSwitcher />
             <button
               type="button"
               onClick={() => logout()}

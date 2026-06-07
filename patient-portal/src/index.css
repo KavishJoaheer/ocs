@@ -242,6 +242,36 @@ table {
   animation: breathe 2s ease-in-out infinite;
 }
 
+@keyframes profileDropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.profile-dropdown {
+  animation: profileDropdownIn 200ms ease both;
+}
+
+@keyframes dashboardProfileFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-profile-transition {
+  animation: dashboardProfileFade 250ms ease both;
+}
+
 .glow-teal-capsule {
   box-shadow:
     0 4px 14px 0 rgba(28, 78, 82, 0.4),

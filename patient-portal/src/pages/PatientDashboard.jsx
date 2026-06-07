@@ -11,9 +11,10 @@ import {
   HousePlus,
   Clock,
 } from "lucide-react";
-import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { getActiveVisit } from "../lib/activeVisit.js";
+import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
 
 const VISIT_STEPS = [
   "Request received",
@@ -195,13 +196,13 @@ function LastConsultationCard({ consultation }) {
 }
 
 function PatientDashboard() {
-  const { user } = usePatientAuth();
+  const { activeProfile, activeProfileId } = useFamilyProfile();
   const [stats, setStats] = useState(null);
   const [nextAppointment, setNextAppointment] = useState(null);
   const [recentActivity, setRecentActivity] = useState([]);
   const [lastConsultation, setLastConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeVisit] = useState(() => getActiveVisit());
+  const [primaryActiveVisit] = useState(() => getActiveVisit());
 
   useEffect(() => {
     let ignore = false;
@@ -238,21 +239,40 @@ function PatientDashboard() {
     return "Good evening";
   })();
 
-  const firstName = user?.full_name?.split(" ")[0] || "there";
+  const firstName = activeProfile.firstName;
+  const dependentDashboard = DEPENDENT_DASHBOARD[activeProfileId];
+  const isPrimaryProfile = activeProfile.isPrimary;
+
+  const profileStats = isPrimaryProfile ? stats : dependentDashboard?.stats ?? null;
+  const profileNextAppointment = isPrimaryProfile
+    ? nextAppointment
+    : dependentDashboard?.nextAppointment ?? null;
+  const profileRecentActivity = isPrimaryProfile
+    ? recentActivity
+    : dependentDashboard?.recentActivity ?? [];
+  const profileLastConsultation = isPrimaryProfile
+    ? lastConsultation
+    : dependentDashboard?.lastConsultation ?? null;
+  const profileActiveVisit = isPrimaryProfile
+    ? primaryActiveVisit
+    : dependentDashboard?.activeVisit ?? null;
 
   const upcomingLabel = (() => {
-    if (!nextAppointment?.date) return null;
-    const d = dayjs(nextAppointment.date);
+    if (!profileNextAppointment?.date) return null;
+    const d = dayjs(profileNextAppointment.date);
     if (d.isSame(dayjs(), "day")) return "today";
     if (d.isSame(dayjs().add(1, "day"), "day")) return "tomorrow";
     return d.format("dddd, MMMM D");
   })();
 
   const subline = (() => {
-    if (loading) return "Loading your health portal\u2026";
-    if (nextAppointment) {
-      const doctor = nextAppointment.doctor_name || "your doctor";
-      const time = nextAppointment.time ? ` at ${nextAppointment.time}` : "";
+    if (loading && isPrimaryProfile) return "Loading your health portal\u2026";
+    if (!isPrimaryProfile) {
+      return `You're viewing ${activeProfile.firstName}'s health space. All records and visits shown are ${activeProfile.possessive}.`;
+    }
+    if (profileNextAppointment) {
+      const doctor = profileNextAppointment.doctor_name || "your doctor";
+      const time = profileNextAppointment.time ? ` at ${profileNextAppointment.time}` : "";
       return `Your next visit with ${doctor} is confirmed for ${upcomingLabel}${time}.`;
     }
     return `You're all caught up, ${firstName}. Need a doctor at home? We're one tap away.`;
@@ -260,9 +280,20 @@ function PatientDashboard() {
 
   const hasStats =
     !loading &&
-    ((stats?.upcoming_appointments ?? 0) > 0 ||
-      (stats?.pending_bills ?? 0) > 0 ||
-      (stats?.total_visits ?? 0) > 0);
+    isPrimaryProfile &&
+    ((profileStats?.upcoming_appointments ?? 0) > 0 ||
+      (profileStats?.pending_bills ?? 0) > 0 ||
+      (profileStats?.total_visits ?? 0) > 0);
+
+  const headline = isPrimaryProfile ? (
+    <>
+      {greeting}, <span className="text-[#2d8f98]">{firstName}</span>
+    </>
+  ) : (
+    <>
+      Managing care for <span className="text-[#2d8f98]">{firstName}</span>.
+    </>
+  );
 
   return (
     <div className="space-y-12">
@@ -275,47 +306,48 @@ function PatientDashboard() {
           </p>
         </div>
         <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 sm:text-4xl">
-          {greeting}, <span className="text-[#2d8f98]">{firstName}</span>
+          {headline}
         </h1>
         <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a]">
           {subline}
         </p>
       </div>
 
+      <div key={activeProfileId} className="dashboard-profile-transition space-y-12">
       {/* Stats cards — only shown when at least one value is greater than zero */}
       {hasStats && (
         <div className="grid gap-5 sm:grid-cols-3">
           <StatCard
             icon={CalendarCheck}
             label="Upcoming"
-            value={stats?.upcoming_appointments ?? 0}
+            value={profileStats?.upcoming_appointments ?? 0}
             color="linear-gradient(135deg, #41c8c6, #2d8f98)"
             delay={1}
           />
           <StatCard
             icon={CreditCard}
             label="Pending Bills"
-            value={stats?.pending_bills ?? 0}
+            value={profileStats?.pending_bills ?? 0}
             color="linear-gradient(135deg, #f2c14d, #e6a817)"
             delay={2}
           />
           <StatCard
             icon={TrendingUp}
             label="Total Visits"
-            value={stats?.total_visits ?? 0}
+            value={profileStats?.total_visits ?? 0}
             color="linear-gradient(135deg, #70ddd2, #41c8c6)"
             delay={3}
           />
         </div>
       )}
 
-      {loading ? (
+      {loading && isPrimaryProfile ? (
         <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
       ) : (
         <>
           <section className="animate-fade-in-up stagger-4">
-            {activeVisit ? (
-              <ActiveVisitCard visit={activeVisit} />
+            {profileActiveVisit ? (
+              <ActiveVisitCard visit={profileActiveVisit} />
             ) : (
               <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
                 <NoActiveVisit />
@@ -323,11 +355,11 @@ function PatientDashboard() {
             )}
           </section>
 
-          {lastConsultation ? (
-            <LastConsultationCard consultation={lastConsultation} />
+          {profileLastConsultation ? (
+            <LastConsultationCard consultation={profileLastConsultation} />
           ) : null}
 
-          {recentActivity.length > 0 ? (
+          {profileRecentActivity.length > 0 ? (
             <section className="animate-fade-in-up stagger-6 py-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -344,7 +376,7 @@ function PatientDashboard() {
                 </Link>
               </div>
               <div className="mt-5 space-y-3">
-                {recentActivity.slice(0, 5).map((activity, idx) => (
+                {profileRecentActivity.slice(0, 5).map((activity, idx) => (
                   <div
                     key={idx}
                     className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
@@ -363,6 +395,7 @@ function PatientDashboard() {
           ) : null}
         </>
       )}
+      </div>
     </div>
   );
 }
