@@ -52,40 +52,35 @@ function LoginPage() {
   return (
     <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
       {/* Left: brand canvas */}
-      <div className="relative flex w-full flex-col justify-between overflow-hidden bg-gradient-to-br from-[#f4fbfb] via-[#ebf6f6] to-[#dceeee] p-12 md:w-1/2 lg:p-16">
-        <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/15 blur-[120px]" />
-        <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-[#f7ba24]/10 blur-[100px]" />
+      <div className="auth-canvas-panel md:w-1/2">
+        <div className="auth-canvas-orb-teal" />
+        <div className="auth-canvas-orb-amber" />
 
         <div className="relative z-10 flex flex-col items-start">
           <a href="/welcome" className="transition-opacity hover:opacity-90">
             <BrandMark maxWidth={280} size={52} />
-            <span className="mt-3 block text-xs font-bold uppercase tracking-[0.25em] text-[#065a60]">
-              Virtual Practice
-            </span>
+            <span className="auth-sub-brand">Virtual Practice</span>
           </a>
         </div>
 
-        <div className="relative z-10 flex flex-1 flex-col justify-center py-10 lg:py-14">
-          <div className="flex max-w-xl gap-5 lg:gap-6">
-            <div
-              className="amber-banner-accent w-1.5 shrink-0 self-stretch rounded-full bg-gradient-to-b from-[#f7ba24] to-[#e0a112]"
-              aria-hidden="true"
-            />
+        <div className="auth-hero-body">
+          <div className="auth-hero-row">
+            <div className="auth-accent-bar amber-banner-accent" aria-hidden="true" />
             <div className="min-w-0">
-              <h1 className="text-4xl font-black leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
-                <span className="block text-[#3b595c]">Step into a</span>
+              <h1 className="auth-headline auth-headline--staff">
+                <span className="block">Step into a</span>
                 <span className="block bg-gradient-to-r from-[#2bccc4] to-[#065a60] bg-clip-text text-transparent">
                   Practice of Excellence
                 </span>
               </h1>
-              <p className="mt-6 max-w-lg text-base font-semibold leading-relaxed tracking-wide text-[#065a60] sm:text-lg lg:mt-8 lg:text-xl">
+              <p className="auth-tagline">
                 Together, let&apos;s make a difference in healthcare
               </p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 text-[10px] font-medium tracking-wider text-[#3b595c]/45">
+        <div className="auth-canvas-footer">
           DIGITAL HEADQUARTERS © {new Date().getFullYear()} OCS MÉDECINS
         </div>
       </div>
