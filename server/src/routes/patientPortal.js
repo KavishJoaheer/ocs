@@ -3,6 +3,40 @@ const { db } = require("../db");
 
 const router = express.Router();
 
+const DIAGNOSIS_PREFIX_REGEX = /^(imp(ression)?\s*:|dx\s*-\s*|dx\s*:|diagnosis\s*:)/i;
+
+function extractDiagnosisFromNotes(notes) {
+  const rawText = String(notes || "").trim();
+  if (!rawText) {
+    return "General Assessment";
+  }
+
+  for (const line of rawText.split("\n")) {
+    const cleanLine = String(line || "").trim();
+    if (!cleanLine || !DIAGNOSIS_PREFIX_REGEX.test(cleanLine)) {
+      continue;
+    }
+
+    let diagnosis = cleanLine
+      .replace(/^imp(ression)?\s*:/i, "")
+      .replace(/^dx\s*-\s*/i, "")
+      .replace(/^dx\s*:/i, "")
+      .replace(/^diagnosis\s*:/i, "")
+      .trim()
+      .replace(/\bday\s*\d+\b.*$/i, "")
+      .trim();
+
+    if (diagnosis.length > 140) {
+      diagnosis = `${diagnosis.slice(0, 140).trim()}…`;
+    }
+
+    return diagnosis || "General Assessment";
+  }
+
+  const fallback = rawText.length > 80 ? `${rawText.slice(0, 80).trim()}…` : rawText;
+  return fallback || "General Assessment";
+}
+
 router.get("/dashboard", (req, res) => {
   const patientId = req.patientAuth.patient_id;
 
@@ -57,11 +91,36 @@ router.get("/dashboard", (req, res) => {
     `)
     .get(patientId);
 
+  const lastConsultationRow = db
+    .prepare(`
+      SELECT
+        c.id,
+        c.consultation_date,
+        c.doctor_notes,
+        d.full_name AS doctor_name
+      FROM consultations c
+      JOIN doctors d ON d.id = c.doctor_id
+      WHERE c.patient_id = ?
+      ORDER BY c.consultation_date DESC, c.id DESC
+      LIMIT 1
+    `)
+    .get(patientId);
+
+  const lastConsultation = lastConsultationRow
+    ? {
+        id: lastConsultationRow.id,
+        doctor_name: lastConsultationRow.doctor_name,
+        date: lastConsultationRow.consultation_date,
+        diagnosis: extractDiagnosisFromNotes(lastConsultationRow.doctor_notes),
+      }
+    : null;
+
   return res.json({
     patient: patient || null,
     upcoming_appointments_count: upcomingCount?.count || 0,
     pending_bills_count: pendingBills?.count || 0,
     next_appointment: nextAppointment || null,
+    last_consultation: lastConsultation,
   });
 });
 
