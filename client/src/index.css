@@ -610,15 +610,19 @@ table {
 .auth-headline--staff {
   font-family: var(--font-sans);
   font-weight: 900;
+  background: linear-gradient(90deg, #1a5c52 0%, #0d9e8a 60%, #12bfa8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
 }
 
 .auth-headline--staff-accent {
   display: block;
-  color: #0d7a70;
 }
 
 .auth-headline--staff-lead {
-  color: #4ba8a0;
+  display: block;
 }
 
 .auth-headline-accent-gold {
