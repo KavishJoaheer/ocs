@@ -284,6 +284,8 @@ function PatientDashboard() {
       (stats?.pending_bills ?? 0) > 0 ||
       (stats?.total_visits ?? 0) > 0);
 
+  const bothEmpty = !loading && !activeVisit && recentActivity.length === 0;
+
   return (
     <div className="space-y-12">
       {/* Welcome header */}
@@ -329,66 +331,78 @@ function PatientDashboard() {
         </div>
       )}
 
-      {/* Active visit */}
-      <section className="animate-fade-in-up stagger-4">
-        {loading ? (
+      {loading ? (
+        <div className="grid gap-8 lg:grid-cols-2">
           <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-        ) : activeVisit ? (
-          <ActiveVisitCard visit={activeVisit} />
-        ) : (
-          <NoActiveVisit />
-        )}
-      </section>
-
-      {!loading && lastConsultation ? (
-        <LastConsultationCard consultation={lastConsultation} />
-      ) : null}
-
-      {/* Past consultations */}
-      <section className="animate-fade-in-up stagger-6 py-2">
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-            ))}
+          <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+        </div>
+      ) : bothEmpty ? (
+        <div className="animate-fade-in-up stagger-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
+          <div className="grid gap-y-10 sm:grid-cols-2 sm:gap-x-0">
+            <div className="sm:border-r sm:border-[rgba(26,160,140,0.15)] sm:pr-10">
+              <NoActiveVisit />
+            </div>
+            <div className="sm:pl-10">
+              <PastConsultationsEmpty />
+            </div>
           </div>
-        ) : recentActivity.length > 0 ? (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <History className="size-4 text-[#2d8f98]" />
-                <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-                  Past Consultations
-                </h2>
-              </div>
-              <Link
-                to="/consultations"
-                className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
-              >
-                View all <ArrowRight className="size-3" />
-              </Link>
-            </div>
-            <div className="mt-5 space-y-3">
-              {recentActivity.slice(0, 5).map((activity, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
-                >
-                  <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
-                    <p className="text-xs text-[#6e949b]">
-                      {dayjs(activity.date).format("MMM D, YYYY")}
-                    </p>
+        </div>
+      ) : (
+        <>
+          {/* Active visit */}
+          <section className="animate-fade-in-up stagger-4">
+            {activeVisit ? (
+              <ActiveVisitCard visit={activeVisit} />
+            ) : (
+              <NoActiveVisit />
+            )}
+          </section>
+
+          {!lastConsultation ? null : (
+            <LastConsultationCard consultation={lastConsultation} />
+          )}
+
+          {/* Past consultations */}
+          <section className="animate-fade-in-up stagger-6 py-2">
+            {recentActivity.length > 0 ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <History className="size-4 text-[#2d8f98]" />
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+                      Past Consultations
+                    </h2>
                   </div>
+                  <Link
+                    to="/consultations"
+                    className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
+                  >
+                    View all <ArrowRight className="size-3" />
+                  </Link>
                 </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <PastConsultationsEmpty />
-        )}
-      </section>
+                <div className="mt-5 space-y-3">
+                  {recentActivity.slice(0, 5).map((activity, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
+                    >
+                      <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
+                        <p className="text-xs text-[#6e949b]">
+                          {dayjs(activity.date).format("MMM D, YYYY")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <PastConsultationsEmpty />
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

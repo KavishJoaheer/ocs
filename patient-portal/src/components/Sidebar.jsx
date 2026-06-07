@@ -125,7 +125,7 @@ function Sidebar() {
 
       {/* ─── Mobile floating action button ─── */}
       <Link
-        to="/active-visit"
+        to="/request-visit"
         aria-label="Request a home visit"
         className="fixed bottom-[4.75rem] left-1/2 z-50 inline-flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] text-white shadow-[0_14px_36px_rgba(31,108,116,0.45)] transition hover:brightness-110 lg:hidden"
       >
@@ -170,7 +170,7 @@ function Sidebar() {
 
           {/* Request a home visit — primary action */}
           <Link
-            to="/active-visit"
+            to="/request-visit"
             className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105"
           >
             <HousePlus className="size-5" />
