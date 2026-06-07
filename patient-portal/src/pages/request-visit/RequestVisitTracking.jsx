@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Check, ClipboardList, Phone } from "lucide-react";
+import { setActiveVisit } from "../../lib/activeVisit.js";
 
 const STEPS = [
   { label: "Request received", state: "complete" },
@@ -38,6 +40,17 @@ function StepMarker({ state }) {
 }
 
 function RequestVisitTracking() {
+  // Reaching this screen means a visit is confirmed and active — record it so
+  // the dashboard can surface the live mini tracker.
+  useEffect(() => {
+    setActiveVisit({
+      doctor: "Dr. Avinash Sharma",
+      specialty: "General Practitioner",
+      status: "Doctor en route · Est. arrival 25 min",
+      startedAt: new Date().toISOString(),
+    });
+  }, []);
+
   return (
     <div className="mx-auto max-w-[560px] animate-fade-in-fast">
       {/* Header */}
