@@ -110,11 +110,11 @@ function LandingPage() {
       <AmbientBlurCrossBackground />
       
       {/* 3D Hovering Robot Doctor at the back */}
-      <div className="absolute right-[5%] top-[15%] z-0 h-[60%] w-auto max-w-[45%] opacity-60 pointer-events-none md:right-[10%] md:top-[20%] md:h-[70%]">
+      <div className="absolute right-[5%] top-[15%] z-0 h-[60%] w-auto max-w-[45%] opacity-60 pointer-events-none md:right-[10%] md:top-[20%] md:h-[70%] mix-blend-darken">
         <img 
           src="/robot-doctor.png" 
           alt="3D Hovering Robot Doctor" 
-          className="robot-hover h-full w-full object-contain"
+          className="robot-hover h-full w-full object-contain mix-blend-darken"
           aria-hidden="true"
         />
       </div>
