@@ -44,18 +44,7 @@ function PatientLoginPage() {
         <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/15 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-[#f7ba24]/10 blur-[100px]" />
 
-        <div className="relative z-10 flex flex-col items-start">
-          <div className="transition-opacity hover:opacity-90">
-            <img
-              src="/ocs-medecins-logo.png"
-              alt="OCS Médecins"
-              className="h-[52px] w-auto max-w-[280px]"
-            />
-            <span className="mt-3 block text-xs font-bold uppercase tracking-[0.25em] text-[#065a60]">
-              Patient Portal
-            </span>
-          </div>
-        </div>
+        <div className="relative z-10 h-8" />
 
         <div className="relative z-10 flex flex-1 flex-col justify-center py-10 lg:py-14">
           <div className="flex max-w-xl gap-5 lg:gap-6">
@@ -84,20 +73,22 @@ function PatientLoginPage() {
 
       {/* Right: secure entry portal */}
       <div className="flex w-full flex-col justify-between bg-white p-12 md:w-1/2 lg:p-16">
-        <div className="h-8" />
+        <div className="flex justify-end">
+          <img
+            src="/ocs-medecins-logo.png"
+            alt="OCS Médecins"
+            className="h-[52px] w-auto max-w-[280px]"
+          />
+        </div>
 
         <div className="mx-auto my-auto w-full max-w-sm py-4">
           <div className="mb-8">
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#065a60]">
-              → Secure Patient Access
+              Your Care Space
             </span>
             <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
-              Sign in to your health portal
+              Sign in to access your health records
             </h2>
-            <p className="mt-2 text-xs font-medium leading-relaxed text-gray-500">
-              Enter your registered email and password to view appointments, records, and
-              billing in one secure place.
-            </p>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
@@ -146,7 +137,7 @@ function PatientLoginPage() {
               disabled={isSubmitting}
               className="glow-teal-capsule mt-8 block w-full rounded-full bg-gradient-to-r from-[#1c4e52] to-[#123638] py-4 text-center text-xs font-black tracking-wide text-white shadow-[0_10px_25px_-5px_rgba(28,78,82,0.35)] transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_15px_30px_-5px_rgba(28,78,82,0.5)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "Signing in..." : "Sign in to Portal"}
+              {isSubmitting ? "Signing in..." : "Sign in OCS Care"}
             </button>
           </form>
 
