@@ -13,7 +13,7 @@ function ProtectedRoute({ roles }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/welcome" replace state={{ from: location }} />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   if (roles?.length && !roles.includes(user.role)) {

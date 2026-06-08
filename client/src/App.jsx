@@ -13,7 +13,6 @@ import HcmNewsPage from "./pages/HcmNewsPage.jsx";
 import InventoryPage from "./pages/InventoryPage.jsx";
 import SupplyRequestsPage from "./pages/SupplyRequestsPage.jsx";
 import LabWorkspacePage from "./pages/LabWorkspacePage.jsx";
-import LandingPage from "./pages/LandingPage.jsx";
 import LiveReportPage from "./pages/LiveReportPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import OperatorBillingStatusPage from "./pages/OperatorBillingStatusPage.jsx";
@@ -32,8 +31,8 @@ function App() {
   return (
     <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none">
       <Routes>
-        <Route path="/welcome" element={<LandingPage />} />
-      <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>

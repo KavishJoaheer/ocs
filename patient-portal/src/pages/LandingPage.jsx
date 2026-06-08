@@ -99,10 +99,6 @@ function LandingPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const PATIENT_PORTAL_URL =
-    typeof window !== "undefined" && window.location.hostname !== "localhost"
-      ? "https://patient.ocsvp.com"
-      : "http://localhost:5174";
 
   return (
     /* MOBILE: allow safe vertical scroll on short viewports | DESKTOP: lock single viewport */
@@ -115,7 +111,7 @@ function LandingPage() {
         }`}
       >
         <a
-          href="/welcome"
+          href="/"
           className="flex items-center transition-opacity hover:opacity-90"
         >
           <img
@@ -125,14 +121,14 @@ function LandingPage() {
           />
         </a>
         <div className="flex items-center gap-4 text-xs font-semibold tracking-wide text-[#3b595c]">
-          <button
-            onClick={() => navigate("/login")}
+          <a
+            href="https://staff.ocsvp.com/login"
             className="transition-colors hover:text-[#065a60]"
           >
             Staff Login
-          </button>
+          </a>
           <a
-            href="http://localhost:5175"
+            href="https://ins.ocsvp.com/login"
             className="transition-colors hover:text-[#065a60]"
           >
             Insurance Portal
@@ -187,12 +183,12 @@ function LandingPage() {
               TABLET+ (md): side-by-side capsule row
             */}
             <div className="mx-auto mt-8 flex w-full max-w-sm flex-col justify-center sm:mt-10 md:flex-row md:items-center md:justify-center">
-              <a
-                href={PATIENT_PORTAL_URL}
+              <button
+                onClick={() => navigate("/login")}
                 className="glow-amber-capsule w-full touch-manipulation rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-10 py-4 text-center text-sm font-black tracking-wide text-[#14213d] transition-all duration-300 active:scale-[0.98] md:w-auto"
               >
                 Patient Portal →
-              </a>
+              </button>
             </div>
           </FadeInSection>
         </div>
