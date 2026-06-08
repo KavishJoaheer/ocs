@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AppShell from "./layouts/AppShell.jsx";
 import PatientLoginPage from "./pages/PatientLoginPage.jsx";
@@ -6,7 +6,7 @@ import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
 import PatientActiveVisit from "./pages/PatientActiveVisit.jsx";
 import PatientAppointments from "./pages/PatientAppointments.jsx";
-import PatientConsultations from "./pages/PatientConsultations.jsx";
+import PatientHealthRecords from "./pages/PatientHealthRecords.jsx";
 import PatientBilling from "./pages/PatientBilling.jsx";
 import PatientProfile from "./pages/PatientProfile.jsx";
 import RequestVisitLayout from "./pages/request-visit/RequestVisitLayout.jsx";
@@ -36,7 +36,8 @@ function App() {
           <Route path="tracking" element={<RequestVisitTracking />} />
         </Route>
         <Route path="appointments" element={<PatientAppointments />} />
-        <Route path="consultations" element={<PatientConsultations />} />
+        <Route path="health-records" element={<PatientHealthRecords />} />
+        <Route path="consultations" element={<Navigate to="/health-records" replace />} />
         <Route path="billing" element={<PatientBilling />} />
         <Route path="profile" element={<PatientProfile />} />
       </Route>
