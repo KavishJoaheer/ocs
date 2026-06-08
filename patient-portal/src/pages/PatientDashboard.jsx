@@ -159,6 +159,32 @@ function formatDoctorName(name) {
   return `Dr. ${trimmed}`;
 }
 
+function formatDoctorSurname(name) {
+  const trimmed = String(name || "Doctor").trim();
+  const withoutPrefix = trimmed.replace(/^dr\.?\s+/i, "");
+  const parts = withoutPrefix.split(/\s+/).filter(Boolean);
+  const surname = parts[parts.length - 1];
+  return surname ? `Dr. ${surname}` : formatDoctorName(name);
+}
+
+function extractEtaMinutes(visit) {
+  const status = visit?.status || "";
+  const match = status.match(/(\d+)\s*min/i);
+  if (match) return Number.parseInt(match[1], 10);
+  return 25;
+}
+
+function isAppointmentWithin24Hours(appointment) {
+  if (!appointment?.date) return false;
+  let appointmentAt = dayjs(appointment.date);
+  if (appointment.time) {
+    const withTime = dayjs(`${appointment.date} ${appointment.time}`, "YYYY-MM-DD h:mm A");
+    if (withTime.isValid()) appointmentAt = withTime;
+  }
+  const hoursUntil = appointmentAt.diff(dayjs(), "hour", true);
+  return hoursUntil >= 0 && hoursUntil < 24;
+}
+
 function LastConsultationCard({ consultation }) {
   return (
     <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-[28px]">
@@ -265,25 +291,26 @@ function PatientDashboard() {
     ? primaryActiveVisit
     : dependentDashboard?.activeVisit ?? null;
 
-  const upcomingLabel = (() => {
-    if (!profileNextAppointment?.date) return null;
-    const d = dayjs(profileNextAppointment.date);
-    if (d.isSame(dayjs(), "day")) return "today";
-    if (d.isSame(dayjs().add(1, "day"), "day")) return "tomorrow";
-    return d.format("dddd, MMMM D");
-  })();
-
   const subline = (() => {
     if (loading && isPrimaryProfile) return "Loading your health portal\u2026";
     if (!isPrimaryProfile) {
       return `You're viewing ${activeProfile.firstName}'s health space. All records and visits shown are ${activeProfile.possessive}.`;
     }
-    if (profileNextAppointment) {
-      const doctor = profileNextAppointment.doctor_name || "your doctor";
-      const time = profileNextAppointment.time ? ` at ${profileNextAppointment.time}` : "";
-      return `Your next visit with ${doctor} is confirmed for ${upcomingLabel}${time}.`;
+    if (profileActiveVisit) {
+      const doctor = formatDoctorSurname(profileActiveVisit.doctor);
+      const eta = extractEtaMinutes(profileActiveVisit);
+      return `${doctor} is on the way. Estimated arrival in ${eta} minutes.`;
     }
-    return `You're all caught up, ${firstName}. Need a doctor at home? We're one tap away.`;
+    if (profileNextAppointment) {
+      const doctor = formatDoctorName(profileNextAppointment.doctor_name);
+      const time = profileNextAppointment.time || "";
+      if (isAppointmentWithin24Hours(profileNextAppointment)) {
+        return `Your visit with ${doctor} is confirmed for today at ${time}.`;
+      }
+      const dateLabel = dayjs(profileNextAppointment.date).format("D MMMM");
+      return `Your next visit with ${doctor} is confirmed for ${dateLabel} at ${time}.`;
+    }
+    return "A doctor is one tap away, any time of day.";
   })();
 
   const hasStats =

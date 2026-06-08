@@ -60,7 +60,6 @@ function FamilyProfileSwitcher() {
       >
         <ProfileAvatar profile={activeProfile} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-[#1a5c52]">{activeProfile.name}</p>
           <p className="truncate text-xs font-light text-[#6e949b]">{activeProfile.relationship}</p>
         </div>
         <ChevronDown
