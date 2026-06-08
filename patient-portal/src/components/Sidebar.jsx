@@ -1,12 +1,12 @@
 import {
   LayoutDashboard,
   LogOut,
-  UserCircle,
+  CircleUserRound,
   Heart,
   HousePlus,
   Plus,
   ClipboardList,
-  CalendarCheck,
+  CalendarCheck2,
   ReceiptText,
 } from "lucide-react";
 import { NavLink, Link } from "react-router-dom";
@@ -17,9 +17,9 @@ import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/consultations", label: "Consultation History", icon: ClipboardList },
-  { to: "/appointments", label: "Review Appointments", icon: CalendarCheck },
+  { to: "/appointments", label: "Review Appointments", icon: CalendarCheck2 },
   { to: "/billing", label: "Billing", icon: ReceiptText },
-  { to: "/profile", label: "Profile", icon: UserCircle },
+  { to: "/profile", label: "Profile", icon: CircleUserRound },
 ];
 
 function timeGreeting() {

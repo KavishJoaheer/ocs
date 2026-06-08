@@ -80,11 +80,11 @@ function TimelineNode({ consultation, expanded, onToggle }) {
           </div>
 
           <div
-            className="grid transition-[grid-template-rows] duration-250 ease-in-out"
+            className="grid min-h-0 transition-[grid-template-rows] duration-250 ease-in-out"
             style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
           >
-            <div className="overflow-hidden">
-              <div className="pt-5">
+            <div className="min-h-0 overflow-hidden">
+              <div className={expanded ? "pt-5" : ""}>
                 <SectionLabel>Diagnosis</SectionLabel>
                 <span className="mt-2 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
                   {consultation.diagnosis}
@@ -203,7 +203,7 @@ function PatientConsultations() {
             className="absolute bottom-0 left-[4px] top-0 w-[2px] bg-[rgba(26,160,140,0.2)]"
             aria-hidden="true"
           />
-          <div className="space-y-6">
+          <div className="space-y-4">
             {consultations.map((consultation, idx) => (
               <div
                 key={consultation.id}
