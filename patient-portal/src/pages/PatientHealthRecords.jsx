@@ -248,7 +248,7 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
               <p className="text-[15px] font-bold text-[#1a5c52]">
                 {dayjs(report.uploaded_at).format("D MMMM YYYY")}
               </p>
-              <p className="mt-0.5 text-sm font-light text-[#5b7f8a]">
+              <p className="mt-0.5 text-sm font-medium text-[#5b7f8a]">
                 {report.name}
               </p>
             </div>
@@ -470,16 +470,6 @@ function MedicalReportsTab({ reports, onUploadClick }) {
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
-        <button
-          type="button"
-          onClick={onUploadClick}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-[0_12px_32px_rgba(232,160,32,0.35)] transition hover:brightness-105"
-        >
-          + Upload a Report
-        </button>
-      </div>
-
       {sorted.length === 0 ? (
         <div className="flex flex-col items-center px-6 py-20 text-center">
           <FileUp
@@ -502,22 +492,33 @@ function MedicalReportsTab({ reports, onUploadClick }) {
           </button>
         </div>
       ) : (
-        <div className="relative">
-          <div
-            className="absolute bottom-0 left-[4px] top-0 w-[2px] bg-[rgba(26,160,140,0.2)]"
-            aria-hidden="true"
-          />
-          <div className="space-y-3">
-            {sorted.map((report) => (
-              <ReportTimelineNode
-                key={report.id}
-                report={report}
-                expanded={expandedIds.has(report.id)}
-                onToggle={() => toggleExpanded(report.id)}
-              />
-            ))}
+        <>
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={onUploadClick}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-[0_12px_32px_rgba(232,160,32,0.35)] transition hover:brightness-105"
+            >
+              + Upload a Report
+            </button>
           </div>
-        </div>
+          <div className="relative">
+            <div
+              className="absolute bottom-0 left-[4px] top-0 w-[2px] bg-[rgba(26,160,140,0.2)]"
+              aria-hidden="true"
+            />
+            <div className="space-y-3">
+              {sorted.map((report) => (
+                <ReportTimelineNode
+                  key={report.id}
+                  report={report}
+                  expanded={expandedIds.has(report.id)}
+                  onToggle={() => toggleExpanded(report.id)}
+                />
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
