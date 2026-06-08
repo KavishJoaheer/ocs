@@ -68,8 +68,8 @@ function Sidebar() {
       </div>
 
       {/* ─── Mobile bottom navigation ─── */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 h-16 border-t border-[rgba(26,160,140,0.1)] bg-white lg:hidden">
-        <div className="mx-auto flex h-full max-w-md items-center justify-around px-2">
+      <nav className="fixed inset-x-0 bottom-0 z-40 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_12px_rgba(13,42,46,0.06)] lg:hidden">
+        <div className="mx-auto flex h-[68px] max-w-md items-stretch justify-around px-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -79,13 +79,21 @@ function Sidebar() {
                 to={item.to}
                 className={({ isActive }) =>
                   [
-                    "flex min-h-[44px] min-w-[56px] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1 text-[10px] font-normal transition-colors active:opacity-70",
-                    isActive ? "text-[#1a5c52]" : "text-[#8a9e9a]",
+                    "flex min-h-[44px] min-w-[56px] flex-1 flex-col items-center justify-center gap-1 text-[10px] tracking-[0.2px] transition-colors active:opacity-60",
+                    isActive ? "font-semibold text-[#1a5c52]" : "font-normal text-[#8a9e9a]",
                   ].join(" ")
                 }
               >
-                <Icon className="size-[22px]" strokeWidth={1.5} />
-                <span className="leading-none">{item.label.split(" ")[0]}</span>
+                {({ isActive }) => (
+                  <>
+                    <Icon
+                      className="size-[24px]"
+                      strokeWidth={1.6}
+                      fill={isActive ? "currentColor" : "none"}
+                    />
+                    <span className="leading-none">{item.label.split(" ")[0]}</span>
+                  </>
+                )}
               </NavLink>
             );
           })}

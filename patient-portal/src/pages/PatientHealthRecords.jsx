@@ -59,9 +59,9 @@ const SAMPLE_CLINICAL_HISTORY = {
 };
 
 const TABS = [
-  { id: "consultations", label: "Consultation History" },
-  { id: "reports", label: "Medical & Lab Reports" },
-  { id: "clinical", label: "Clinical History" },
+  { id: "consultations", label: "Consultation History", shortLabel: "Consultations" },
+  { id: "reports", label: "Medical & Lab Reports", shortLabel: "Reports" },
+  { id: "clinical", label: "Clinical History", shortLabel: "Clinical" },
 ];
 
 function SectionLabel({ children }) {
@@ -173,7 +173,7 @@ function ConsultationEmptyState() {
       </p>
       <Link
         to="/request-visit"
-        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105"
+        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 active:translate-y-px max-md:shadow-[0_2px_4px_rgba(20,60,55,0.18)]"
       >
         Request a Home Visit →
       </Link>
@@ -551,7 +551,7 @@ function MedicalReportsTab({ reports, onUploadClick }) {
           <button
             type="button"
             onClick={onUploadClick}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105"
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 active:translate-y-px max-md:shadow-[0_2px_4px_rgba(20,60,55,0.18)]"
           >
             + Upload Your First Report
           </button>
@@ -562,7 +562,7 @@ function MedicalReportsTab({ reports, onUploadClick }) {
             <button
               type="button"
               onClick={onUploadClick}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-[0_12px_32px_rgba(232,160,32,0.35)] transition hover:brightness-105"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-[0_12px_32px_rgba(232,160,32,0.35)] transition hover:brightness-105 active:translate-y-px max-md:shadow-[0_2px_4px_rgba(20,60,55,0.18)]"
             >
               + Upload a Report
             </button>
@@ -743,13 +743,14 @@ function PatientHealthRecords() {
         </p>
       </div>
 
-      <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-2 max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
+      {/* Desktop — pill tabs */}
+      <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-2 max-md:hidden">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => handleTabChange(tab.id)}
-            className={`h-[38px] whitespace-nowrap rounded-[20px] px-5 text-sm transition-colors duration-200 ease-in-out max-md:shrink-0 ${
+            className={`h-[38px] rounded-[20px] px-5 text-sm transition-colors duration-200 ease-in-out ${
               activeTab === tab.id
                 ? "bg-[#2d8f98] font-medium text-white"
                 : "border border-[rgba(26,160,140,0.3)] bg-transparent font-normal text-[#5b7f8a]"
@@ -758,6 +759,38 @@ function PatientHealthRecords() {
             {tab.label}
           </button>
         ))}
+      </div>
+
+      {/* Mobile — iOS-style segmented control */}
+      <div className="animate-fade-in-up stagger-1 hidden max-md:block">
+        <div className="relative flex rounded-[10px] bg-[rgba(118,118,128,0.12)] p-[3px]">
+          <span
+            aria-hidden="true"
+            className="absolute bottom-[3px] left-[3px] top-[3px] rounded-[8px] bg-white shadow-[0_3px_8px_rgba(13,42,46,0.12),0_1px_1px_rgba(13,42,46,0.04)] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+            style={{
+              width: "calc((100% - 6px) / 3)",
+              transform: `translateX(${Math.max(
+                0,
+                TABS.findIndex((tab) => tab.id === activeTab),
+              ) * 100}%)`,
+            }}
+          />
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTabChange(tab.id)}
+                className={`relative z-10 flex h-11 flex-1 items-center justify-center text-[13px] transition-colors duration-200 ${
+                  isActive ? "font-semibold text-[#1a5c52]" : "font-medium text-[#5b7f8a]"
+                }`}
+              >
+                {tab.shortLabel}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div
