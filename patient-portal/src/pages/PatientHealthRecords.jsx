@@ -18,7 +18,7 @@ const SAMPLE_CONSULTATIONS = [
       {
         id: 1,
         name: "Throat Swab Results — 7 June 2026",
-        url: "#",
+        url: "/sample-reports/throat-swab-results.pdf",
       },
     ],
   },
@@ -31,7 +31,7 @@ const SAMPLE_CONSULTATIONS = [
       {
         id: 2,
         name: "Blood Panel — 15 April 2026",
-        url: "#",
+        url: "/sample-reports/blood-panel-april.pdf",
       },
     ],
   },
@@ -51,7 +51,7 @@ const SAMPLE_MEDICAL_REPORTS = [
     report_date: "2026-06-05",
     name: "Blood Panel — Private Lab",
     file_type: "PDF",
-    url: "#",
+    url: "/sample-reports/blood-panel-private-lab.pdf",
   },
   {
     id: 2,
@@ -59,7 +59,7 @@ const SAMPLE_MEDICAL_REPORTS = [
     report_date: "2026-03-10",
     name: "Cardiology Specialist Report",
     file_type: "PDF",
-    url: "#",
+    url: "/sample-reports/cardiology-report.pdf",
   },
 ];
 
@@ -136,10 +136,12 @@ function ConsultationTimelineNode({ consultation, expanded, onToggle }) {
                           </div>
                           <a
                             href={report.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="shrink-0 text-[13px] text-[#2d8f98] transition-colors duration-200 hover:text-[#23767f]"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            Download →
+                            View →
                           </a>
                         </div>
                       </div>
@@ -269,10 +271,12 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
               <div className="mt-4">
                 <a
                   href={report.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-[13px] text-[#2d8f98] transition-colors duration-200 hover:text-[#23767f]"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  Download →
+                  View →
                 </a>
               </div>
               <p className="mt-3 text-[11px] font-light text-[#8a9ea3]">
