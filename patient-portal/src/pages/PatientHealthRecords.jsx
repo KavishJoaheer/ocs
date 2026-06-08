@@ -33,11 +33,7 @@ const SAMPLE_MEDICAL_REPORTS = [
 ];
 
 const SAMPLE_CLINICAL_HISTORY = {
-  allergies: [
-    { id: 1, name: "Penicillin", detail: "Severe — rash and swelling" },
-    { id: 2, name: "Pollen", detail: "Seasonal allergic rhinitis" },
-  ],
-  conditions: [
+  medical_history: [
     {
       id: 1,
       name: "Hypertension",
@@ -49,16 +45,16 @@ const SAMPLE_CLINICAL_HISTORY = {
       detail: "Diagnosed 2023 · Diet controlled",
     },
   ],
-  medications: [
-    { id: 1, name: "Amlodipine 5mg", detail: "Once daily, morning" },
-    { id: 2, name: "Metformin 500mg", detail: "Twice daily, with meals" },
-  ],
-  procedures: [
+  surgical_history: [
     { id: 1, name: "Appendectomy", detail: "2015 · Apollo Hospital" },
   ],
-  immunizations: [
-    { id: 1, name: "Influenza Vaccine", detail: "October 2025" },
-    { id: 2, name: "COVID-19 Booster", detail: "January 2025" },
+  allergy_history: [
+    { id: 1, name: "Penicillin", detail: "Severe — rash and swelling" },
+    { id: 2, name: "Pollen", detail: "Seasonal allergic rhinitis" },
+  ],
+  drug_history: [
+    { id: 1, name: "Amlodipine 5mg", detail: "Once daily, morning" },
+    { id: 2, name: "Metformin 500mg", detail: "Twice daily, with meals" },
   ],
 };
 
@@ -591,26 +587,25 @@ function MedicalReportsTab({ reports, onUploadClick }) {
 }
 
 const CLINICAL_SECTIONS = [
-  { key: "allergies", label: "Allergies", empty: "No known allergies." },
   {
-    key: "conditions",
-    label: "Chronic Conditions",
-    empty: "No chronic conditions recorded.",
+    key: "medical_history",
+    label: "Medical History",
+    empty: "No medical history recorded.",
   },
   {
-    key: "medications",
-    label: "Current Medications",
-    empty: "No current medications.",
+    key: "surgical_history",
+    label: "Surgical History",
+    empty: "No surgical history recorded.",
   },
   {
-    key: "procedures",
-    label: "Past Procedures & Surgeries",
-    empty: "No procedures recorded.",
+    key: "allergy_history",
+    label: "Allergy History",
+    empty: "No known allergies.",
   },
   {
-    key: "immunizations",
-    label: "Immunizations",
-    empty: "No immunizations recorded.",
+    key: "drug_history",
+    label: "Drug History",
+    empty: "No drug history recorded.",
   },
 ];
 
