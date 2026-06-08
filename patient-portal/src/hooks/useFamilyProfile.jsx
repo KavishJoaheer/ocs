@@ -1,18 +1,24 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { findProfileById, getDefaultProfileId } from "../lib/familyProfiles.js";
+import { buildPrimaryProfile, getDefaultProfileId } from "../lib/familyProfiles.js";
+import { usePatientAuth } from "./usePatientAuth.jsx";
 
 const FamilyProfileContext = createContext(null);
 
 export function FamilyProfileProvider({ children }) {
+  const { user } = usePatientAuth();
   const [activeProfileId, setActiveProfileId] = useState(getDefaultProfileId);
+
+  // The profile list is derived from the authenticated patient, so each signed-in
+  // user sees their own identity (no shared/hardcoded profile).
+  const profiles = useMemo(() => [buildPrimaryProfile(user)], [user]);
 
   const setActiveProfile = useCallback((profileId) => {
     setActiveProfileId(profileId);
   }, []);
 
   const activeProfile = useMemo(
-    () => findProfileById(activeProfileId),
-    [activeProfileId],
+    () => profiles.find((profile) => profile.id === activeProfileId) || profiles[0],
+    [profiles, activeProfileId],
   );
 
   const value = useMemo(
@@ -20,8 +26,9 @@ export function FamilyProfileProvider({ children }) {
       activeProfile,
       activeProfileId,
       setActiveProfile,
+      profiles,
     }),
-    [activeProfile, activeProfileId, setActiveProfile],
+    [activeProfile, activeProfileId, setActiveProfile, profiles],
   );
 
   return (

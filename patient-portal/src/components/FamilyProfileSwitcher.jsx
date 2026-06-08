@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
-import { AVATAR_STYLES, FAMILY_PROFILES } from "../lib/familyProfiles.js";
+import { AVATAR_STYLES } from "../lib/familyProfiles.js";
 
 function ProfileAvatar({ profile, size = "md" }) {
   const sizeClass =
@@ -22,7 +22,7 @@ function ProfileAvatar({ profile, size = "md" }) {
 }
 
 /* Native bottom sheet used on mobile when the header avatar is tapped. */
-function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect }) {
+function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles }) {
   useEffect(() => {
     if (!open) return undefined;
 
@@ -61,7 +61,7 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect }) {
         </p>
 
         <div className="mt-2 px-3 pb-2">
-          {FAMILY_PROFILES.map((profile) => {
+          {profiles.map((profile) => {
             const isActive = profile.id === activeProfileId;
             return (
               <button
@@ -107,7 +107,7 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect }) {
 }
 
 function FamilyProfileSwitcher({ variant = "default" }) {
-  const { activeProfile, activeProfileId, setActiveProfile } = useFamilyProfile();
+  const { activeProfile, activeProfileId, setActiveProfile, profiles } = useFamilyProfile();
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const isAvatar = variant === "avatar";
@@ -159,6 +159,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
           onClose={() => setOpen(false)}
           activeProfileId={activeProfileId}
           onSelect={handleSelect}
+          profiles={profiles}
         />
       </>
     );
@@ -191,7 +192,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
           aria-label="Family profiles"
           className="profile-dropdown absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-[rgba(26,160,140,0.15)] bg-[rgba(255,255,255,0.92)] shadow-[0_8px_32px_rgba(26,160,140,0.12)] backdrop-blur-[12px]"
         >
-          {FAMILY_PROFILES.map((profile, index) => {
+          {profiles.map((profile, index) => {
             const isActive = profile.id === activeProfileId;
             return (
               <div key={profile.id}>

@@ -1,72 +1,42 @@
-export const FAMILY_PROFILES = [
-  {
-    id: "varun",
-    initials: "VJ",
-    name: "Varun Joaheer",
-    firstName: "Varun",
-    relationship: "Primary Account",
-    avatarVariant: "teal",
-    isPrimary: true,
-    possessive: "yours",
-  },
-  {
-    id: "aisha",
-    initials: "A",
-    name: "Aisha",
-    firstName: "Aisha",
-    relationship: "Daughter",
-    avatarVariant: "amber",
-    isPrimary: false,
-    possessive: "hers",
-  },
-  {
-    id: "raj",
-    initials: "R",
-    name: "Raj",
-    firstName: "Raj",
-    relationship: "Father",
-    avatarVariant: "grey",
-    isPrimary: false,
-    possessive: "his",
-  },
-];
-
 export const AVATAR_STYLES = {
   teal: "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white",
   amber: "bg-[#e8a020] text-white",
   grey: "bg-[#b0bcc0] text-white",
 };
 
-/** Mock dashboard slices shown when a dependent profile is active. */
-export const DEPENDENT_DASHBOARD = {
-  aisha: {
-    stats: null,
-    nextAppointment: null,
-    recentActivity: [],
-    lastConsultation: {
-      doctor_name: "Avinash Sharma",
-      date: "2026-05-12",
-      diagnosis: "Allergic Rhinitis",
-    },
-    activeVisit: null,
-  },
-  raj: {
-    stats: null,
-    nextAppointment: null,
-    recentActivity: [],
-    lastConsultation: {
-      doctor_name: "Priya Naidoo",
-      date: "2026-04-18",
-      diagnosis: "Hypertension Review",
-    },
-    activeVisit: null,
-  },
-};
+export const PRIMARY_PROFILE_ID = "primary";
 
-export function getDefaultProfileId() {
-  return FAMILY_PROFILES[0].id;
+/**
+ * Build the active profile from the *real* signed-in patient. Previously this
+ * file shipped a hardcoded family ("Varun Joaheer" + dependents) which meant
+ * every patient saw the same identity. There is no family/dependents backend
+ * yet, so the only profile is the authenticated patient themselves.
+ */
+export function buildPrimaryProfile(user) {
+  const name = String(user?.full_name || "Your Account").trim() || "Your Account";
+  const parts = name.split(/\s+/).filter(Boolean);
+  const firstName = parts[0] || "You";
+  const initials = (
+    parts.length >= 2
+      ? parts[0][0] + parts[parts.length - 1][0]
+      : (parts[0] || "ME").slice(0, 2)
+  ).toUpperCase();
+
+  return {
+    id: PRIMARY_PROFILE_ID,
+    initials,
+    name,
+    firstName,
+    relationship: "Primary Account",
+    avatarVariant: "teal",
+    isPrimary: true,
+    possessive: "yours",
+  };
 }
 
-export function findProfileById(id) {
-  return FAMILY_PROFILES.find((profile) => profile.id === id) || FAMILY_PROFILES[0];
+/** No dependents backend yet — kept so existing imports stay valid. */
+export const DEPENDENT_DASHBOARD = {};
+
+export function getDefaultProfileId() {
+  return PRIMARY_PROFILE_ID;
 }
