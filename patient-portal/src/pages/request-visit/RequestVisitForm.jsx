@@ -27,7 +27,7 @@ function RequestVisitForm() {
     <div className="mx-auto max-w-[560px] animate-fade-in-fast">
       {/* Header */}
       <Link
-        to="/"
+        to="/dashboard"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-[#5b7f8a] transition hover:text-[#2d8f98]"
       >
         <ArrowLeft className="size-4" /> Dashboard

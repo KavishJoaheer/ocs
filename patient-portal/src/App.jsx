@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import HomeGate from "./components/HomeGate.jsx";
 import AppShell from "./layouts/AppShell.jsx";
-import LandingPage from "./pages/LandingPage.jsx";
 import PatientLoginPage from "./pages/PatientLoginPage.jsx";
 import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
@@ -19,7 +19,7 @@ import RequestVisitTracking from "./pages/request-visit/RequestVisitTracking.jsx
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<HomeGate />} />
       <Route path="/welcome" element={<Navigate to="/" replace />} />
       <Route path="/login" element={<PatientLoginPage />} />
       <Route path="/register" element={<PatientRegisterPage />} />
@@ -30,7 +30,7 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<PatientDashboard />} />
+        <Route path="dashboard" element={<PatientDashboard />} />
         <Route path="active-visit" element={<PatientActiveVisit />} />
         <Route path="request-visit" element={<RequestVisitLayout />}>
           <Route index element={<RequestVisitForm />} />

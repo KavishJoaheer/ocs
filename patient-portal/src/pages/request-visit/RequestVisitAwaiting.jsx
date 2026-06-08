@@ -44,7 +44,7 @@ function RequestVisitAwaiting() {
 
       <div className="mt-10 flex flex-col items-center gap-3">
         <Link
-          to="/"
+          to="/dashboard"
           className="text-sm font-medium text-[#94a9ad] transition hover:text-[#5b7f8a]"
         >
           ← Return to Dashboard

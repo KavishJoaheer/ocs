@@ -140,7 +140,7 @@ function RequestVisitTracking() {
         </a>
         <div className="mt-4 text-center">
           <Link
-            to="/"
+            to="/dashboard"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-[#94a9ad] transition hover:text-[#5b7f8a]"
           >
             <ArrowLeft className="size-4" /> Return to Dashboard

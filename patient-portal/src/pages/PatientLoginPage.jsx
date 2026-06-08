@@ -16,7 +16,7 @@ function PatientLoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
 
   if (!isBootstrapping && isAuthenticated) {
-    const destination = location.state?.from?.pathname || "/";
+    const destination = location.state?.from?.pathname || "/dashboard";
     return <Navigate to={destination} replace />;
   }
 
@@ -27,7 +27,7 @@ function PatientLoginPage() {
     login(form)
       .then((signedInUser) => {
         toast.success(`Welcome back, ${signedInUser.full_name}!`);
-        navigate(location.state?.from?.pathname || "/", { replace: true });
+        navigate(location.state?.from?.pathname || "/dashboard", { replace: true });
       })
       .catch((error) => {
         toast.error(error.message);

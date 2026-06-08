@@ -33,7 +33,7 @@ function PatientRegisterPage() {
   const [errors, setErrors] = useState({});
 
   if (!isBootstrapping && isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   function validate() {
@@ -70,7 +70,7 @@ function PatientRegisterPage() {
     })
       .then((newUser) => {
         toast.success(`Welcome, ${newUser.full_name}! Your account has been created.`);
-        navigate("/", { replace: true });
+        navigate("/dashboard", { replace: true });
       })
       .catch((error) => {
         toast.error(error.message);

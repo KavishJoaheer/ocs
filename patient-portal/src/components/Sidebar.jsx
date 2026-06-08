@@ -13,7 +13,7 @@ import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/health-records", label: "Health Records", icon: HeartPulse },
   { to: "/appointments", label: "Review Appointments", icon: CalendarCheck },
   { to: "/billing", label: "Billing", icon: ReceiptText },
