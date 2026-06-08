@@ -109,16 +109,6 @@ function LandingPage() {
     <div className="landing-page relative flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col justify-between overflow-x-hidden overscroll-x-none md:min-h-screen md:overflow-hidden">
       <AmbientBlurCrossBackground />
       
-      {/* 3D Hovering Robot Doctor at the back */}
-      <div className="absolute right-[5%] top-[15%] z-0 h-[60%] w-auto max-w-[45%] opacity-60 pointer-events-none md:right-[10%] md:top-[20%] md:h-[70%] mix-blend-darken">
-        <img 
-          src="/robot-doctor.png" 
-          alt="3D Hovering Robot Doctor" 
-          className="robot-hover h-full w-full object-contain mix-blend-darken"
-          aria-hidden="true"
-        />
-      </div>
-
       <header
         className={`relative z-10 mx-auto flex w-full max-w-7xl items-center justify-center px-6 py-5 transition-all duration-700 md:justify-between ${
           mounted ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"

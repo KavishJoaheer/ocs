@@ -372,21 +372,6 @@ table {
   backface-visibility: hidden;
 }
 
-@keyframes robot-float {
-  0%, 100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -25px, 0);
-  }
-}
-
-.robot-hover {
-  animation: robot-float 7s ease-in-out infinite;
-  will-change: transform;
-  backface-visibility: hidden;
-}
-
 .landing-page {
   background:
     radial-gradient(circle at top right, rgba(65, 200, 198, 0.14), transparent 28%),
