@@ -1,13 +1,13 @@
 import {
-  CalendarDays,
-  CreditCard,
   LayoutDashboard,
   LogOut,
   UserCircle,
   Heart,
-  History,
   HousePlus,
   Plus,
+  ClipboardHeart,
+  CalendarCheck,
+  ReceiptText,
 } from "lucide-react";
 import { NavLink, Link } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
@@ -16,9 +16,9 @@ import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/appointments", label: "Review Appointments", icon: CalendarDays },
-  { to: "/consultations", label: "Consultation History", icon: History },
-  { to: "/billing", label: "Billing", icon: CreditCard },
+  { to: "/consultations", label: "Consultation History", icon: ClipboardHeart },
+  { to: "/appointments", label: "Review Appointments", icon: CalendarCheck },
+  { to: "/billing", label: "Billing", icon: ReceiptText },
   { to: "/profile", label: "Profile", icon: UserCircle },
 ];
 
@@ -38,18 +38,19 @@ function SidebarLink({ item }) {
       to={item.to}
       className={({ isActive }) =>
         [
-          "group flex items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-semibold transition-all",
-          "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
-          isActive &&
-            "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]",
-        ]
-          .filter(Boolean)
-          .join(" ")
+          "group flex min-h-[44px] items-center gap-3 rounded-2xl px-4 text-sm transition-all",
+          isActive
+            ? "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] font-medium text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"
+            : "font-normal text-[#2a6a5e] hover:bg-white/70",
+        ].join(" ")
       }
     >
       {({ isActive }) => (
         <>
-          <Icon className={isActive ? "size-4 text-current" : "size-4 text-[#66d7d0]"} />
+          <Icon
+            className={`size-[18px] shrink-0 ${isActive ? "text-white" : "text-[#6B9E95]"}`}
+            strokeWidth={1.5}
+          />
           <span>{item.label}</span>
         </>
       )}
@@ -168,7 +169,7 @@ function Sidebar() {
             <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
               Navigation
             </p>
-            <nav className="mt-4 space-y-5">
+            <nav className="mt-4 space-y-[26px]">
               {navItems.map((item) => (
                 <SidebarLink key={item.to} item={item} />
               ))}
