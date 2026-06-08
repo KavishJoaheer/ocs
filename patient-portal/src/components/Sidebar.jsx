@@ -5,7 +5,7 @@ import {
   Heart,
   HousePlus,
   Plus,
-  FolderHeart,
+  Folder,
   CalendarCheck2,
   ReceiptText,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/health-records", label: "Health Records", icon: FolderHeart },
+  { to: "/health-records", label: "Health Records", icon: Folder },
   { to: "/appointments", label: "Review Appointments", icon: CalendarCheck2 },
   { to: "/billing", label: "Billing", icon: ReceiptText },
   { to: "/profile", label: "Profile", icon: CircleUserRound },
@@ -40,8 +40,8 @@ function SidebarLink({ item }) {
         [
           "group flex min-h-[44px] items-center gap-3 rounded-2xl px-4 text-sm transition-all",
           isActive
-            ? "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] font-medium text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"
-            : "font-normal text-[#2a6a5e] hover:bg-white/70",
+            ? "border-l-[3px] border-[#1a5c52] bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] font-medium text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"
+            : "border-l-[3px] border-transparent font-normal text-[#2a6a5e] hover:bg-white/70",
         ].join(" ")
       }
     >

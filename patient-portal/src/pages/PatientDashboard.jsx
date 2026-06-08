@@ -61,7 +61,7 @@ function ActiveVisitCard({ visit }) {
   const [showCancel, setShowCancel] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-[rgba(26,160,140,0.08)] p-6">
+    <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6">
       {showCancel && (
         <div className="mb-5 rounded-xl bg-[rgba(207,91,80,0.08)] p-4">
           <p className="text-sm leading-relaxed text-[#5b6b6b]">
@@ -103,16 +103,23 @@ function ActiveVisitCard({ visit }) {
       {/* 4-step horizontal progress */}
       <div className="mt-5 grid grid-cols-4 gap-1.5">
         {VISIT_STEPS.map((step, i) => (
-          <div key={step} className="flex flex-col gap-1.5">
+          <div key={step} className="flex flex-col gap-2">
+            <div className="flex h-[6px] items-center">
+              {i === ACTIVE_STEP_INDEX ? (
+                <span className="size-2 rounded-full bg-[#1a5c52] animate-active-step-pulse" />
+              ) : (
+                <span className="size-2 rounded-full bg-transparent" aria-hidden="true" />
+              )}
+            </div>
             <span
-              className={`h-1.5 rounded-full ${
+              className={`h-[6px] rounded-full ${
                 i <= ACTIVE_STEP_INDEX ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
               }`}
             />
             <span
               className={`text-[0.55rem] leading-tight ${
                 i === ACTIVE_STEP_INDEX
-                  ? "font-bold text-[#2d8f98]"
+                  ? "font-semibold text-[#1a5c52]"
                   : i < ACTIVE_STEP_INDEX
                     ? "text-[#5b7f8a]"
                     : "text-[#94a9ad]"
@@ -159,14 +166,14 @@ function LastConsultationCard({ consultation }) {
         <div className="flex items-center gap-2">
           <Clock className="size-3.5 text-[#2d8f98]" strokeWidth={1.75} />
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
-            Last Consultation
+            Your Last Visit
           </p>
         </div>
         <Link
-          to="/consultations"
-          className="text-xs font-normal text-[#5f9aa0] transition hover:text-[#2d8f98]"
+          to="/health-records"
+          className="text-[13px] font-medium text-[#5f9aa0] transition hover:text-[#2d8f98]"
         >
-          View all records →
+          View your full health timeline →
         </Link>
       </div>
 
@@ -299,19 +306,29 @@ function PatientDashboard() {
   return (
     <div className="space-y-12">
       {/* Welcome header */}
-      <div className="animate-fade-in-up">
-        <div className="flex items-center gap-3">
-          <Sparkles className="size-5 text-[#f2c14d]" />
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-            Patient Dashboard
+      <div className="relative -mx-6 px-6 pt-12 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-[120px]"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(26, 160, 140, 0.06) 0%, transparent 100%)",
+          }}
+          aria-hidden="true"
+        />
+        <div className="relative animate-fade-in-up">
+          <div className="flex items-center gap-3">
+            <Sparkles className="size-5 text-[#f2c14d]" />
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+              Patient Dashboard
+            </p>
+          </div>
+          <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 sm:text-4xl">
+            {headline}
+          </h1>
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a]">
+            {subline}
           </p>
         </div>
-        <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 sm:text-4xl">
-          {headline}
-        </h1>
-        <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a]">
-          {subline}
-        </p>
       </div>
 
       <div key={activeProfileId} className="dashboard-profile-transition space-y-12">
