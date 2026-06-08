@@ -631,7 +631,69 @@ table {
     font-size: 3.625rem;
   }
 
-  .auth-canvas-panel--patient .auth-tagline {
+.auth-canvas-panel--patient .auth-tagline {
     padding-left: calc(0.4375rem + 1.75rem);
   }
+}
+
+/* Ultra-subtle ambient brand crosses — scale + opacity breathing only */
+@keyframes subtleCrossBreath {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.07;
+  }
+
+  50% {
+    transform: scale(1.06);
+    opacity: 0.14;
+  }
+}
+
+.ambient-blur-cross {
+  position: absolute;
+  pointer-events: none;
+  fill: currentColor;
+  filter: blur(38px);
+  mix-blend-mode: multiply;
+  transform-origin: center;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  animation: subtleCrossBreath 20s ease-in-out infinite;
+}
+
+.ambient-cross-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  isolation: isolate;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-particle,
+  .ambient-blur-cross {
+    animation: none;
+    opacity: 0.09;
+  }
+}
+
+/* TRUE AMBER GOLD GLOW EFFECT - Multi-layered opacity mapping */
+.glow-amber-capsule {
+  box-shadow:
+    0 4px 14px 0 rgba(247, 186, 36, 0.5),
+    0 12px 30px 4px rgba(247, 186, 36, 0.4),
+    0 20px 50px 10px rgba(247, 186, 36, 0.18);
+  transition: all 0.3s ease;
+}
+
+.glow-amber-capsule:hover {
+  box-shadow:
+    0 6px 20px 0 rgba(247, 186, 36, 0.6),
+    0 16px 40px 8px rgba(247, 186, 36, 0.5),
+    0 24px 60px 15px rgba(247, 186, 36, 0.3);
+  transform: translateY(-1px);
 }
