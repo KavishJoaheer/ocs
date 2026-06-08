@@ -67,9 +67,40 @@ const SAMPLE_MEDICAL_REPORTS = [
   },
 ];
 
+const SAMPLE_CLINICAL_HISTORY = {
+  allergies: [
+    { id: 1, name: "Penicillin", detail: "Severe — rash and swelling" },
+    { id: 2, name: "Pollen", detail: "Seasonal allergic rhinitis" },
+  ],
+  conditions: [
+    {
+      id: 1,
+      name: "Hypertension",
+      detail: "Diagnosed 2024 · Managed with medication",
+    },
+    {
+      id: 2,
+      name: "Type 2 Diabetes",
+      detail: "Diagnosed 2023 · Diet controlled",
+    },
+  ],
+  medications: [
+    { id: 1, name: "Amlodipine 5mg", detail: "Once daily, morning" },
+    { id: 2, name: "Metformin 500mg", detail: "Twice daily, with meals" },
+  ],
+  procedures: [
+    { id: 1, name: "Appendectomy", detail: "2015 · Apollo Hospital" },
+  ],
+  immunizations: [
+    { id: 1, name: "Influenza Vaccine", detail: "October 2025" },
+    { id: 2, name: "COVID-19 Booster", detail: "January 2025" },
+  ],
+};
+
 const TABS = [
   { id: "consultations", label: "Consultation History" },
-  { id: "reports", label: "Medical Reports" },
+  { id: "reports", label: "Medical & Lab Reports" },
+  { id: "clinical", label: "Clinical History" },
 ];
 
 function SectionLabel({ children }) {
@@ -594,11 +625,85 @@ function MedicalReportsTab({ reports, onUploadClick }) {
   );
 }
 
+const CLINICAL_SECTIONS = [
+  { key: "allergies", label: "Allergies", empty: "No known allergies." },
+  {
+    key: "conditions",
+    label: "Chronic Conditions",
+    empty: "No chronic conditions recorded.",
+  },
+  {
+    key: "medications",
+    label: "Current Medications",
+    empty: "No current medications.",
+  },
+  {
+    key: "procedures",
+    label: "Past Procedures & Surgeries",
+    empty: "No procedures recorded.",
+  },
+  {
+    key: "immunizations",
+    label: "Immunizations",
+    empty: "No immunizations recorded.",
+  },
+];
+
+function ClinicalHistoryTab({ clinicalHistory }) {
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <p className="text-[11px] font-light italic text-[#8a9ea3]">
+          Read only · Maintained by your OCS doctor
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {CLINICAL_SECTIONS.map((section) => {
+          const items = clinicalHistory[section.key] ?? [];
+          return (
+            <div
+              key={section.key}
+              className="rounded-xl border border-[rgba(26,160,140,0.12)] bg-white px-6 py-5"
+            >
+              <SectionLabel>{section.label}</SectionLabel>
+              {items.length > 0 ? (
+                <ul className="mt-3 space-y-3">
+                  {items.map((item) => (
+                    <li key={item.id} className="flex gap-3">
+                      <span className="mt-[7px] h-[6px] w-[6px] shrink-0 rounded-full bg-[#1aa08c]" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#1a5c52]">
+                          {item.name}
+                        </p>
+                        {item.detail ? (
+                          <p className="mt-0.5 text-[13px] font-light text-[#5b7f8a]">
+                            {item.detail}
+                          </p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-[13px] font-light italic text-[#6e949b]">
+                  {section.empty}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PatientHealthRecords() {
   const [activeTab, setActiveTab] = useState("consultations");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [medicalReports, setMedicalReports] = useState(SAMPLE_MEDICAL_REPORTS);
   const consultations = SAMPLE_CONSULTATIONS;
+  const clinicalHistory = SAMPLE_CLINICAL_HISTORY;
 
   function handleUpload(report) {
     setMedicalReports((prev) => [
@@ -627,7 +732,7 @@ function PatientHealthRecords() {
         </p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -651,11 +756,13 @@ function PatientHealthRecords() {
       >
         {activeTab === "consultations" ? (
           <ConsultationHistoryTab consultations={consultations} />
-        ) : (
+        ) : activeTab === "reports" ? (
           <MedicalReportsTab
             reports={medicalReports}
             onUploadClick={() => setUploadOpen(true)}
           />
+        ) : (
+          <ClinicalHistoryTab clinicalHistory={clinicalHistory} />
         )}
       </div>
 
