@@ -106,7 +106,7 @@ function ActiveVisitCard({ visit }) {
           <div key={step} className="flex flex-col gap-2">
             <div className="flex h-[6px] items-center">
               {i === ACTIVE_STEP_INDEX ? (
-                <span className="size-2 rounded-full bg-[#1a5c52] animate-active-step-pulse" />
+                <span className="size-2 rounded-full bg-[#1a5c52] animate-visit-step-pulse" />
               ) : (
                 <span className="size-2 rounded-full bg-transparent" aria-hidden="true" />
               )}
@@ -308,10 +308,10 @@ function PatientDashboard() {
       {/* Welcome header */}
       <div className="relative -mx-6 px-6 pt-12 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-[120px]"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[140px]"
           style={{
             background:
-              "linear-gradient(180deg, rgba(26, 160, 140, 0.06) 0%, transparent 100%)",
+              "linear-gradient(180deg, rgba(26, 160, 140, 0.07) 0%, rgba(26, 160, 140, 0) 100%)",
           }}
           aria-hidden="true"
         />

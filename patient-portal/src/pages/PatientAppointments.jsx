@@ -47,16 +47,18 @@ function SectionLabel({ children, muted = false }) {
   );
 }
 
-function AppointmentCard({ appointment, variant }) {
+function AppointmentCard({ appointment, variant, isNextVisit = false }) {
   const isUpcoming = variant === "upcoming";
   const date = dayjs(appointment.date);
 
   return (
     <div
       className={`flex items-stretch gap-5 rounded-xl border border-[rgba(26,160,140,0.12)] px-6 py-5 ${
-        isUpcoming
-          ? "border-l-[3px] border-l-[#1a5c52] bg-white"
-          : "border-l-[3px] border-l-[#c0c0c0] bg-[rgba(0,0,0,0.02)]"
+        isUpcoming && isNextVisit
+          ? "border-l-4 border-l-[#1a5c52] bg-[rgba(26,160,140,0.03)]"
+          : isUpcoming
+            ? "border-l-[3px] border-l-[#1a5c52] bg-white"
+            : "border-l-[3px] border-l-[#c0c0c0] bg-[rgba(0,0,0,0.02)]"
       }`}
     >
       <div className="flex shrink-0 items-center gap-5">
@@ -108,7 +110,11 @@ function AppointmentCard({ appointment, variant }) {
       </div>
 
       <div className="flex shrink-0 items-start">
-        {isUpcoming ? (
+        {isUpcoming && isNextVisit ? (
+          <span className="inline-flex rounded-[20px] bg-[#1a5c52] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
+            Next Visit
+          </span>
+        ) : isUpcoming ? (
           <span className="inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#2d8f98]">
             Upcoming
           </span>
@@ -146,7 +152,7 @@ function PatientAppointments() {
         </p>
       </div>
 
-      <section className="space-y-3">
+      <section className="animate-fade-in-up stagger-1 space-y-3">
         <SectionLabel>Upcoming</SectionLabel>
         {upcoming.length === 0 ? (
           <p className="text-[13px] font-light italic text-[#8a9ea3]">
@@ -155,18 +161,29 @@ function PatientAppointments() {
           </p>
         ) : (
           <div className="space-y-3">
-            {upcoming.map((appointment) => (
-              <AppointmentCard
+            {upcoming.map((appointment, idx) => (
+              <div
                 key={appointment.id}
-                appointment={appointment}
-                variant="upcoming"
-              />
+                className={`animate-fade-in-up stagger-${Math.min(idx + 2, 8)}`}
+              >
+                <AppointmentCard
+                  appointment={appointment}
+                  variant="upcoming"
+                  isNextVisit={idx === 0}
+                />
+              </div>
             ))}
           </div>
         )}
       </section>
 
-      <section className="space-y-3">
+      <section
+        className={`animate-fade-in-up space-y-3 ${
+          upcoming.length > 0
+            ? `stagger-${Math.min(upcoming.length + 2, 8)}`
+            : "stagger-2"
+        }`}
+      >
         <SectionLabel muted>Past</SectionLabel>
         {past.length === 0 ? (
           <p className="text-[13px] font-light italic text-[#8a9ea3]">
@@ -174,12 +191,13 @@ function PatientAppointments() {
           </p>
         ) : (
           <div className="space-y-3">
-            {past.map((appointment) => (
-              <AppointmentCard
+            {past.map((appointment, idx) => (
+              <div
                 key={appointment.id}
-                appointment={appointment}
-                variant="past"
-              />
+                className={`animate-fade-in-up stagger-${Math.min(upcoming.length + 3 + idx, 8)}`}
+              >
+                <AppointmentCard appointment={appointment} variant="past" />
+              </div>
             ))}
           </div>
         )}

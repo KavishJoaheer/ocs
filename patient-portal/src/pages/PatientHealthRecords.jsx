@@ -213,13 +213,17 @@ function ConsultationHistoryTab({ consultations }) {
             aria-hidden="true"
           />
           <div className="space-y-3">
-            {consultations.map((consultation) => (
-              <ConsultationTimelineNode
+            {consultations.map((consultation, idx) => (
+              <div
                 key={consultation.id}
-                consultation={consultation}
-                expanded={expandedIds.has(consultation.id)}
-                onToggle={() => toggleExpanded(consultation.id)}
-              />
+                className={`animate-fade-in-up stagger-${Math.min(idx + 1, 8)}`}
+              >
+                <ConsultationTimelineNode
+                  consultation={consultation}
+                  expanded={expandedIds.has(consultation.id)}
+                  onToggle={() => toggleExpanded(consultation.id)}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -368,7 +372,7 @@ function UploadModal({ open, onClose, onUpload }) {
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-6 shadow-[0_24px_64px_rgba(34,72,91,0.12)]"
+        className="w-full max-w-md rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-10 shadow-[0_24px_64px_rgba(34,72,91,0.12)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-xl font-semibold text-[#22485b]">
@@ -492,7 +496,7 @@ function UploadModal({ open, onClose, onUpload }) {
             <button
               type="submit"
               disabled={!selectedFile || !reportName.trim() || !reportDate}
-              className="rounded-full bg-[#E8A020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full bg-[#E8A020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 disabled:cursor-not-allowed"
             >
               Upload Report
             </button>
@@ -569,13 +573,17 @@ function MedicalReportsTab({ reports, onUploadClick }) {
               aria-hidden="true"
             />
             <div className="space-y-3">
-              {sorted.map((report) => (
-                <ReportTimelineNode
+              {sorted.map((report, idx) => (
+                <div
                   key={report.id}
-                  report={report}
-                  expanded={expandedIds.has(report.id)}
-                  onToggle={() => toggleExpanded(report.id)}
-                />
+                  className={`animate-fade-in-up stagger-${Math.min(idx + 1, 8)}`}
+                >
+                  <ReportTimelineNode
+                    report={report}
+                    expanded={expandedIds.has(report.id)}
+                    onToggle={() => toggleExpanded(report.id)}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -622,12 +630,12 @@ function ClinicalHistoryTab({ clinicalHistory }) {
       </div>
 
       <div className="space-y-3">
-        {CLINICAL_SECTIONS.map((section) => {
+        {CLINICAL_SECTIONS.map((section, idx) => {
           const items = clinicalHistory[section.key] ?? [];
           return (
             <div
               key={section.key}
-              className={`rounded-2xl border border-[rgba(26,160,140,0.12)] px-6 py-5 ${section.bg}`}
+              className={`animate-fade-in-up stagger-${Math.min(idx + 1, 8)} rounded-2xl border border-[rgba(26,160,140,0.12)] px-6 py-5 ${section.bg}`}
             >
               <SectionLabel>{section.label}</SectionLabel>
               {items.length > 0 ? (
@@ -735,7 +743,7 @@ function PatientHealthRecords() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -753,7 +761,7 @@ function PatientHealthRecords() {
       </div>
 
       <div
-        className="transition-opacity duration-200 ease-in-out"
+        className="animate-fade-in-up stagger-2 transition-opacity duration-200 ease-in-out"
         style={{ opacity: tabFading ? 0 : 1 }}
       >
         <TabContent

@@ -5,8 +5,8 @@ import {
   Heart,
   HousePlus,
   Plus,
-  Folder,
-  CalendarCheck2,
+  HeartPulse,
+  CalendarCheck,
   ReceiptText,
 } from "lucide-react";
 import { NavLink, Link } from "react-router-dom";
@@ -16,8 +16,8 @@ import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/health-records", label: "Health Records", icon: Folder },
-  { to: "/appointments", label: "Review Appointments", icon: CalendarCheck2 },
+  { to: "/health-records", label: "Health Records", icon: HeartPulse },
+  { to: "/appointments", label: "Review Appointments", icon: CalendarCheck },
   { to: "/billing", label: "Billing", icon: ReceiptText },
   { to: "/profile", label: "Profile", icon: CircleUserRound },
 ];

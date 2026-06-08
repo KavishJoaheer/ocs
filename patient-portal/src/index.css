@@ -194,7 +194,7 @@ table {
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -207,36 +207,38 @@ table {
   to { opacity: 1; }
 }
 
-@keyframes activeStepPulse {
+@keyframes pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(26, 160, 140, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 8px rgba(26, 160, 140, 0);
+    box-shadow: 0 0 0 10px rgba(26, 160, 140, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(26, 160, 140, 0);
   }
 }
 
-.animate-active-step-pulse {
-  animation: activeStepPulse 2s ease-out infinite;
+.animate-visit-step-pulse {
+  animation: pulse 2s infinite;
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp 0.5s ease-out both;
+  animation: fadeInUp 300ms ease-out both;
 }
 
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out both;
 }
 
-.stagger-1 { animation-delay: 0.05s; }
-.stagger-2 { animation-delay: 0.1s; }
-.stagger-3 { animation-delay: 0.15s; }
-.stagger-4 { animation-delay: 0.2s; }
-.stagger-5 { animation-delay: 0.25s; }
-.stagger-6 { animation-delay: 0.3s; }
+.stagger-1 { animation-delay: 100ms; }
+.stagger-2 { animation-delay: 200ms; }
+.stagger-3 { animation-delay: 300ms; }
+.stagger-4 { animation-delay: 400ms; }
+.stagger-5 { animation-delay: 500ms; }
+.stagger-6 { animation-delay: 600ms; }
+.stagger-7 { animation-delay: 700ms; }
+.stagger-8 { animation-delay: 800ms; }
 
 .animate-fade-in-fast {
   animation: fadeIn 0.2s ease both;
