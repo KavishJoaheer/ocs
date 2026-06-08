@@ -99,6 +99,14 @@ function LandingPage() {
     return () => clearTimeout(timer);
   }, []);
 
+  const isProdHost =
+    typeof window !== "undefined" && window.location.hostname !== "localhost";
+  const STAFF_PORTAL_URL = isProdHost
+    ? "https://staff.ocsvp.com/login"
+    : "http://localhost:5173/login";
+  const INSURANCE_PORTAL_URL = isProdHost
+    ? "https://ins.ocsvp.com/login"
+    : "http://localhost:5175/login";
 
   return (
     /* MOBILE: allow safe vertical scroll on short viewports | DESKTOP: lock single viewport */
@@ -122,13 +130,13 @@ function LandingPage() {
         </a>
         <div className="flex items-center gap-4 text-xs font-semibold tracking-wide text-[#3b595c]">
           <a
-            href="https://staff.ocsvp.com/login"
+            href={STAFF_PORTAL_URL}
             className="transition-colors hover:text-[#065a60]"
           >
             Staff Login
           </a>
           <a
-            href="https://ins.ocsvp.com/login"
+            href={INSURANCE_PORTAL_URL}
             className="transition-colors hover:text-[#065a60]"
           >
             Insurance Portal

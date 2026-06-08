@@ -41,8 +41,10 @@ function getAllowedOrigins() {
   return [
     "http://localhost:5173",
     "http://localhost:5174",
+    "http://localhost:5175",
     "https://ocsvp.com",
-    "https://patient.ocsvp.com"
+    "https://staff.ocsvp.com",
+    "https://ins.ocsvp.com"
   ];
 }
 

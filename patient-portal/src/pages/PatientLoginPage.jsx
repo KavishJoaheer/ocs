@@ -5,7 +5,7 @@ import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 
 const STAFF_PORTAL_URL =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? "https://ocsvp.com/login"
+    ? "https://staff.ocsvp.com/login"
     : "http://localhost:5173/login";
 
 function PatientLoginPage() {

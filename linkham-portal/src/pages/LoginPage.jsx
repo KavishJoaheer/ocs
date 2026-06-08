@@ -15,6 +15,10 @@ function LoginPage() {
     password: "",
   });
 
+  const isProdHost =
+    typeof window !== "undefined" && window.location.hostname !== "localhost";
+  const WELCOME_URL = isProdHost ? "https://ocsvp.com" : "http://localhost:5174";
+
   const attemptedPath = useMemo(
     () => location.state?.from?.pathname || "",
     [location.state],
@@ -57,7 +61,7 @@ function LoginPage() {
         <div className="auth-canvas-orb-amber" />
 
         <div className="auth-brand-header">
-          <a href="/welcome" className="transition-opacity hover:opacity-90">
+          <a href={WELCOME_URL} className="transition-opacity hover:opacity-90">
             <BrandMark maxWidth={280} size={52} />
             <span className="auth-sub-brand">Virtual Practice</span>
           </a>
@@ -151,16 +155,15 @@ function LoginPage() {
           </form>
 
           <div className="mt-8 text-center">
-            <button
-              type="button"
-              onClick={() => navigate("/welcome")}
+            <a
+              href={WELCOME_URL}
               className="group inline-flex items-center gap-1.5 text-xs font-bold text-gray-400 transition-colors hover:text-[#065a60]"
             >
               <span className="transform transition-transform duration-200 group-hover:-translate-x-0.5">
                 ←
               </span>
               Back to Welcome Gateway
-            </button>
+            </a>
           </div>
         </div>
 

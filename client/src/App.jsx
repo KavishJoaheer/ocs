@@ -31,7 +31,6 @@ function App() {
   return (
     <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none">
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>

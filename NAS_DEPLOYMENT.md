@@ -228,13 +228,29 @@ docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token eyJh
 
 **B. Public hostnames**
 
-Still in the tunnel wizard (or **Configure** → **Public Hostname**):
+Still in the tunnel wizard (or **Configure** → **Public Hostname**), add **one public hostname per
+app**. Service type is **HTTP** for all three; the URL is the Docker service name on
+`clinicflow-public`:
 
-- **Subdomain** / **Domain**: e.g. `app` + `ocsvp.com`, or `@` for apex — whatever you want public.
-- **Service type**: **HTTP**
-- **URL**: `clinicflow-app:3001` (Cloudflare accepts hostname:port; this is the Docker service name on `clinicflow-public`).
+| Subdomain / Domain | Service (HTTP URL) | Serves |
+|---|---|---|
+| `@` (apex `ocsvp.com`) | `clinicflow-patient-portal:80` | Welcome/landing **+** patient portal |
+| `staff` + `ocsvp.com` | `clinicflow-app:3001` | Staff client + `/api` backend |
+| `ins` + `ocsvp.com` | `clinicflow-linkham-portal:80` | Insurance (linkham) portal |
+
+The `patient-portal` and `linkham-portal` containers proxy `/api` to `clinicflow-app:3001`
+internally (see their nginx confs), so the API is reachable same-origin on every domain — no
+separate API hostname is required.
 
 Save. Cloudflare creates the DNS records pointing at the tunnel.
+
+**Important:** all three service containers (`clinicflow-app`, `clinicflow-patient-portal`,
+`clinicflow-linkham-portal`) and `clinicflow-cloudflared` must share the `clinicflow-public`
+external network so these service names resolve. Also set `CLIENT_ORIGINS` on the `app` service:
+
+```text
+CLIENT_ORIGINS=https://ocsvp.com,https://staff.ocsvp.com,https://ins.ocsvp.com
+```
 
 **C. Deploy the connector on the NAS**
 
