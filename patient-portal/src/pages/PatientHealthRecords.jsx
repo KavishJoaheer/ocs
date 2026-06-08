@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Link } from "react-router-dom";
 import {
@@ -260,8 +260,7 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
 
           {expanded ? (
             <div className="pt-5">
-              <p className="text-sm font-normal text-[#1a5c52]">{report.name}</p>
-              <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
+              <span className="inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
                 {report.file_type}
               </span>
               <div className="mt-4 flex items-center gap-5">
@@ -493,7 +492,7 @@ function UploadModal({ open, onClose, onUpload }) {
             <button
               type="submit"
               disabled={!selectedFile || !reportName.trim() || !reportDate}
-              className="rounded-full bg-[#e8a020] px-5 py-2.5 text-sm font-bold text-white shadow-[0_12px_32px_rgba(232,160,32,0.35)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full bg-[#E8A020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Upload Report
             </button>
@@ -591,21 +590,25 @@ const CLINICAL_SECTIONS = [
     key: "medical_history",
     label: "Medical History",
     empty: "No medical history recorded.",
+    bg: "bg-[rgba(26,160,140,0.04)]",
   },
   {
     key: "surgical_history",
     label: "Surgical History",
     empty: "No surgical history recorded.",
+    bg: "bg-[rgba(66,133,244,0.04)]",
   },
   {
     key: "allergy_history",
     label: "Allergy History",
     empty: "No known allergies.",
+    bg: "bg-[rgba(232,160,32,0.06)]",
   },
   {
     key: "drug_history",
     label: "Drug History",
     empty: "No drug history recorded.",
+    bg: "bg-[rgba(52,168,83,0.04)]",
   },
 ];
 
@@ -624,7 +627,7 @@ function ClinicalHistoryTab({ clinicalHistory }) {
           return (
             <div
               key={section.key}
-              className="rounded-xl border border-[rgba(26,160,140,0.12)] bg-white px-6 py-5"
+              className={`rounded-2xl border border-[rgba(26,160,140,0.12)] px-6 py-5 ${section.bg}`}
             >
               <SectionLabel>{section.label}</SectionLabel>
               {items.length > 0 ? (
@@ -632,10 +635,17 @@ function ClinicalHistoryTab({ clinicalHistory }) {
                   {items.map((item) => (
                     <li key={item.id} className="flex gap-3">
                       <span className="mt-[7px] h-[6px] w-[6px] shrink-0 rounded-full bg-[#1aa08c]" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#1a5c52]">
-                          {item.name}
-                        </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-[#1a5c52]">
+                            {item.name}
+                          </p>
+                          {section.key === "allergy_history" ? (
+                            <span className="inline-flex rounded-[20px] bg-[rgba(232,160,32,0.1)] px-2.5 py-0.5 text-[11px] font-medium text-[#E8A020]">
+                              Allergy
+                            </span>
+                          ) : null}
+                        </div>
                         {item.detail ? (
                           <p className="mt-0.5 text-[13px] font-light text-[#5b7f8a]">
                             {item.detail}
@@ -658,12 +668,45 @@ function ClinicalHistoryTab({ clinicalHistory }) {
   );
 }
 
+function TabContent({ activeTab, consultations, medicalReports, clinicalHistory, onUploadClick }) {
+  if (activeTab === "consultations") {
+    return <ConsultationHistoryTab key="consultations" consultations={consultations} />;
+  }
+  if (activeTab === "reports") {
+    return (
+      <MedicalReportsTab
+        key="reports"
+        reports={medicalReports}
+        onUploadClick={onUploadClick}
+      />
+    );
+  }
+  return <ClinicalHistoryTab key="clinical" clinicalHistory={clinicalHistory} />;
+}
+
 function PatientHealthRecords() {
   const [activeTab, setActiveTab] = useState("consultations");
+  const [displayedTab, setDisplayedTab] = useState("consultations");
+  const [tabFading, setTabFading] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [medicalReports, setMedicalReports] = useState(SAMPLE_MEDICAL_REPORTS);
   const consultations = CONSULTATIONS;
   const clinicalHistory = SAMPLE_CLINICAL_HISTORY;
+
+  function handleTabChange(tabId) {
+    if (tabId === activeTab) return;
+    setActiveTab(tabId);
+    setTabFading(true);
+  }
+
+  useEffect(() => {
+    if (!tabFading) return undefined;
+    const timer = setTimeout(() => {
+      setDisplayedTab(activeTab);
+      setTabFading(false);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [tabFading, activeTab]);
 
   function handleUpload(report) {
     setMedicalReports((prev) => [
@@ -697,7 +740,7 @@ function PatientHealthRecords() {
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => handleTabChange(tab.id)}
             className={`h-[38px] rounded-[20px] px-5 text-sm transition-colors duration-200 ease-in-out ${
               activeTab === tab.id
                 ? "bg-[#2d8f98] font-medium text-white"
@@ -710,20 +753,16 @@ function PatientHealthRecords() {
       </div>
 
       <div
-        key={activeTab}
-        className="animate-fade-in"
-        style={{ animationDuration: "200ms" }}
+        className="transition-opacity duration-200 ease-in-out"
+        style={{ opacity: tabFading ? 0 : 1 }}
       >
-        {activeTab === "consultations" ? (
-          <ConsultationHistoryTab consultations={consultations} />
-        ) : activeTab === "reports" ? (
-          <MedicalReportsTab
-            reports={medicalReports}
-            onUploadClick={() => setUploadOpen(true)}
-          />
-        ) : (
-          <ClinicalHistoryTab clinicalHistory={clinicalHistory} />
-        )}
+        <TabContent
+          activeTab={displayedTab}
+          consultations={consultations}
+          medicalReports={medicalReports}
+          clinicalHistory={clinicalHistory}
+          onUploadClick={() => setUploadOpen(true)}
+        />
       </div>
 
       <UploadModal
