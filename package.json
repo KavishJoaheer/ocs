@@ -4,10 +4,11 @@
   "version": "1.0.0",
   "description": "Clinic patient data management system",
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\" \"npm run dev --prefix patient-portal\"",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\" \"npm run dev --prefix patient-portal\" \"npm run dev --prefix linkham-portal\"",
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server",
     "dev:patient-portal": "npm run dev --prefix patient-portal",
+    "dev:linkham-portal": "npm run dev --prefix linkham-portal",
     "build": "npm run build --prefix client",
     "build:patient-portal": "npm run build --prefix patient-portal",
     "start": "npm run start --prefix server",

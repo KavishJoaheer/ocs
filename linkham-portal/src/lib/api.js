@@ -1,0 +1,189 @@
+import { CLIENT_SESSION_HEADER, getClientSessionId } from "./clientSession.js";
+import { NetworkError } from "./networkErrors.js";
+
+export class ApiError extends Error {
+  constructor(message, { status = 0, data = null } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const AUTH_TOKEN_KEY = "ocs_medecins_auth_token";
+
+/** Normalize API paths so `/api/...` is not doubled when API_BASE is already `/api`. */
+export function resolveApiPath(path) {
+  if (!path || path.startsWith("http")) {
+    return path;
+  }
+
+  const base = API_BASE.replace(/\/$/, "");
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+
+  if (normalized.startsWith(`${base}/`) || normalized === base) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("/api/") && base.endsWith("/api")) {
+    return normalized;
+  }
+
+  return `${base}${normalized}`;
+}
+
+export function getStoredAuthToken() {
+  return window.localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setStoredAuthToken(token) {
+  if (token) {
+    window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+    return;
+  }
+
+  window.localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function parseContentDispositionFilename(headerValue) {
+  if (!headerValue) return "";
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+  const quotedMatch = headerValue.match(/filename="([^"]+)"/i);
+  if (quotedMatch) return quotedMatch[1].trim();
+  const bareMatch = headerValue.match(/filename=([^;]+)/i);
+  if (bareMatch) return bareMatch[1].trim();
+  return "";
+}
+
+async function apiRequest(path, options = {}) {
+  const authToken = getStoredAuthToken();
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const headers = {
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    ...(options.headers || {}),
+  };
+
+  if (!options.skipAuth && authToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  // Always advertise the per-tab session id so the server can fan real-time
+  // inventory changes out to every other connected tab/device for the same
+  // user without echoing the mutation back to the originating tab.
+  if (!headers[CLIENT_SESSION_HEADER]) {
+    headers[CLIENT_SESSION_HEADER] = getClientSessionId();
+  }
+
+  let response;
+
+  try {
+    response = await fetch(resolveApiPath(path), {
+      ...options,
+      headers,
+      body: options.body
+        ? isFormData
+          ? options.body
+          : JSON.stringify(options.body)
+        : undefined,
+    });
+  } catch (error) {
+    throw new NetworkError("Network connection unavailable.", error);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (options.responseType === "blob") {
+    if (!response.ok) {
+      const text = await response.text();
+      let data = null;
+
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+
+      if (response.status === 401 && authToken) {
+        if (getStoredAuthToken() === authToken) {
+          setStoredAuthToken(null);
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("auth:unauthorized", {
+            detail: {
+              token: authToken,
+            },
+          }),
+        );
+      }
+
+      throw new Error(data?.error || "Something went wrong.");
+    }
+
+    return {
+      blob: await response.blob(),
+      contentType: response.headers.get("content-type") || "",
+      filename:
+        response.headers.get("x-file-name") ||
+        parseContentDispositionFilename(response.headers.get("content-disposition")) ||
+        "",
+    };
+  }
+
+  const text = await response.text();
+  let data = null;
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        response.ok
+          ? "Server returned an invalid response."
+          : "Server returned an unreadable error response.",
+      );
+    }
+  }
+
+  if (!response.ok) {
+    if (response.status === 401 && authToken) {
+      if (getStoredAuthToken() === authToken) {
+        setStoredAuthToken(null);
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("auth:unauthorized", {
+          detail: {
+            token: authToken,
+          },
+        }),
+      );
+    }
+
+    throw new ApiError(data?.error || "Something went wrong.", {
+      status: response.status,
+      data,
+    });
+  }
+
+  return data;
+}
+
+export const api = {
+  get: (path) => apiRequest(path),
+  getBlob: (path, options = {}) => apiRequest(path, { ...options, responseType: "blob" }),
+  post: (path, body, options = {}) => apiRequest(path, { ...options, method: "POST", body }),
+  put: (path, body, options = {}) => apiRequest(path, { ...options, method: "PUT", body }),
+  patch: (path, body, options = {}) => apiRequest(path, { ...options, method: "PATCH", body }),
+  delete: (path, options = {}) => apiRequest(path, { ...options, method: "DELETE" }),
+};
