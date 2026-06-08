@@ -15,6 +15,7 @@ import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { getActiveVisit } from "../lib/activeVisit.js";
 import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
+import { getLastConsultation } from "../lib/consultations.js";
 
 const VISIT_STEPS = [
   "Request received",
@@ -251,7 +252,7 @@ function PatientDashboard() {
     ? recentActivity
     : dependentDashboard?.recentActivity ?? [];
   const profileLastConsultation = isPrimaryProfile
-    ? lastConsultation
+    ? getLastConsultation() ?? lastConsultation
     : dependentDashboard?.lastConsultation ?? null;
   const profileActiveVisit = isPrimaryProfile
     ? primaryActiveVisit

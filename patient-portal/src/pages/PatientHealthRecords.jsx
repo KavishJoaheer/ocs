@@ -7,42 +7,7 @@ import {
   FileText,
   FileUp,
 } from "lucide-react";
-
-const SAMPLE_CONSULTATIONS = [
-  {
-    id: 1,
-    date: "2026-06-07",
-    doctor_name: "Dr. Avinash Sharma",
-    diagnosis: "URTI",
-    reports: [
-      {
-        id: 1,
-        name: "Throat Swab Results — 7 June 2026",
-        url: "/sample-reports/throat-swab-results.pdf",
-      },
-    ],
-  },
-  {
-    id: 2,
-    date: "2026-04-15",
-    doctor_name: "Dr. Priya Nair",
-    diagnosis: "Viral Fever",
-    reports: [
-      {
-        id: 2,
-        name: "Blood Panel — 15 April 2026",
-        url: "/sample-reports/blood-panel-april.pdf",
-      },
-    ],
-  },
-  {
-    id: 3,
-    date: "2026-01-02",
-    doctor_name: "Dr. Avinash Sharma",
-    diagnosis: "Hypertension Review",
-    reports: [],
-  },
-];
+import { CONSULTATIONS } from "../lib/consultations.js";
 
 const SAMPLE_MEDICAL_REPORTS = [
   {
@@ -702,7 +667,7 @@ function PatientHealthRecords() {
   const [activeTab, setActiveTab] = useState("consultations");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [medicalReports, setMedicalReports] = useState(SAMPLE_MEDICAL_REPORTS);
-  const consultations = SAMPLE_CONSULTATIONS;
+  const consultations = CONSULTATIONS;
   const clinicalHistory = SAMPLE_CLINICAL_HISTORY;
 
   function handleUpload(report) {
