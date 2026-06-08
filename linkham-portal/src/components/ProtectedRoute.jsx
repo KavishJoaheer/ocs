@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
-import { getDefaultPathForRole, isFinancialBillingPath } from "../lib/access.js";
+import { getDefaultPathForRole, isAllowedInPortal, isFinancialBillingPath } from "../lib/access.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import LoadingState from "./LoadingState.jsx";
 
@@ -13,6 +13,13 @@ function ProtectedRoute({ roles }) {
   }
 
   if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Defense in depth: a session belonging to a role this portal does not serve
+  // (e.g. a clinic doctor/admin on the insurance portal) is bounced back to the
+  // login screen, which clears it. Prevents cross-portal access and redirect loops.
+  if (!isAllowedInPortal(user.role)) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

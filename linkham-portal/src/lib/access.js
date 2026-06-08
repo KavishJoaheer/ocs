@@ -65,6 +65,16 @@ export const ROUTE_ACCESS = {
   "/linkham/reports": ["linkham_admin"],
 };
 
+// Roles permitted to use THIS portal (the insurer / Linkham portal). Valid
+// clinic-staff accounts authenticate against the same backend, so we must
+// reject them here at login — otherwise a doctor/admin gets a working session
+// in the insurance portal.
+export const PORTAL_ROLES = ["linkham_admin"];
+
+export function isAllowedInPortal(role) {
+  return PORTAL_ROLES.includes(role);
+}
+
 export function getDefaultPathForRole(role) {
   return ROLE_CONFIG[role]?.defaultPath || "/";
 }

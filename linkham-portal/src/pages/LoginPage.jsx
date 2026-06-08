@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import BrandMark from "../components/BrandMark.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
-import { canAccessPath, getDefaultPathForRole } from "../lib/access.js";
+import { canAccessPath, getDefaultPathForRole, isAllowedInPortal } from "../lib/access.js";
+
+const PORTAL_DENIED_MESSAGE =
+  "This account isn't authorized for the insurance portal. Clinic staff must sign in at the staff portal.";
 
 function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, isBootstrapping, login, user } = useAuth();
+  const { isAuthenticated, isBootstrapping, login, logout, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     username: "",
@@ -24,7 +27,17 @@ function LoginPage() {
     [location.state],
   );
 
-  if (!isBootstrapping && isAuthenticated && user) {
+  // Drop any existing session whose role this portal does not serve (e.g. a
+  // clinic doctor/admin reaching the insurance portal). Runs before the redirect
+  // guard below so a disallowed session can never proceed into the app.
+  useEffect(() => {
+    if (!isBootstrapping && isAuthenticated && user && !isAllowedInPortal(user.role)) {
+      toast.error(PORTAL_DENIED_MESSAGE);
+      logout();
+    }
+  }, [isBootstrapping, isAuthenticated, user, logout]);
+
+  if (!isBootstrapping && isAuthenticated && user && isAllowedInPortal(user.role)) {
     const destination = canAccessPath(user.role, attemptedPath)
       ? attemptedPath
       : getDefaultPathForRole(user.role);
@@ -38,6 +51,12 @@ function LoginPage() {
 
     login(form)
       .then((signedInUser) => {
+        if (!isAllowedInPortal(signedInUser.role)) {
+          toast.error(PORTAL_DENIED_MESSAGE);
+          logout();
+          return;
+        }
+
         const destination = canAccessPath(signedInUser.role, attemptedPath)
           ? attemptedPath
           : getDefaultPathForRole(signedInUser.role);
