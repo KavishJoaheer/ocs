@@ -1,168 +1,189 @@
-import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-import {
-  CalendarDays,
-  Clock,
-  Stethoscope,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  CalendarCheck,
-} from "lucide-react";
-import { api } from "../lib/api.js";
+import { CalendarCheck2 } from "lucide-react";
 
-const statusConfig = {
-  completed: {
-    label: "Completed",
-    bg: "bg-[rgba(34,197,94,0.1)]",
-    text: "text-emerald-700",
-    border: "border-emerald-200",
-    icon: CheckCircle2,
+const SAMPLE_UPCOMING = [
+  {
+    id: 1,
+    date: "2026-06-15",
+    time: "2:00 PM",
+    type: "Follow-up Consultation",
+    doctor_name: "Dr. Avinash Sharma",
   },
-  scheduled: {
-    label: "Scheduled",
-    bg: "bg-[rgba(242,193,77,0.12)]",
-    text: "text-amber-700",
-    border: "border-amber-200",
-    icon: CalendarCheck,
+  {
+    id: 2,
+    date: "2026-06-28",
+    time: "10:30 AM",
+    type: "Blood Pressure Review",
+    doctor_name: "Dr. Priya Nair",
   },
-  cancelled: {
-    label: "Cancelled",
-    bg: "bg-[rgba(239,68,68,0.08)]",
-    text: "text-red-600",
-    border: "border-red-200",
-    icon: XCircle,
-  },
-  confirmed: {
-    label: "Confirmed",
-    bg: "bg-[rgba(65,200,198,0.1)]",
-    text: "text-[#2d8f98]",
-    border: "border-[rgba(65,200,198,0.3)]",
-    icon: CheckCircle2,
-  },
-};
+];
 
-function StatusBadge({ status }) {
-  const config = statusConfig[status] || statusConfig.scheduled;
-  const Icon = config.icon;
+const SAMPLE_PAST = [
+  {
+    id: 3,
+    date: "2026-06-07",
+    time: "11:00 AM",
+    type: "General Consultation",
+    doctor_name: "Dr. Avinash Sharma",
+  },
+  {
+    id: 4,
+    date: "2026-04-15",
+    time: "3:00 PM",
+    type: "Viral Fever Follow-up",
+    doctor_name: "Dr. Priya Nair",
+  },
+];
+
+function SectionLabel({ children, muted = false }) {
+  return (
+    <p
+      className={`text-[11px] font-semibold uppercase tracking-[1.5px] ${
+        muted ? "text-[#8a9ea3]" : "text-[#6e949b]"
+      }`}
+    >
+      {children}
+    </p>
+  );
+}
+
+function AppointmentCard({ appointment, variant }) {
+  const isUpcoming = variant === "upcoming";
+  const date = dayjs(appointment.date);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${config.bg} ${config.text} ${config.border}`}
+    <div
+      className={`flex items-stretch gap-5 rounded-xl border border-[rgba(26,160,140,0.12)] px-6 py-5 ${
+        isUpcoming
+          ? "border-l-[3px] border-l-[#1a5c52] bg-white"
+          : "border-l-[3px] border-l-[#c0c0c0] bg-[rgba(0,0,0,0.02)]"
+      }`}
     >
-      <Icon className="size-3" />
-      {config.label}
-    </span>
+      <div className="flex shrink-0 items-center gap-5">
+        <div className="text-center">
+          <p
+            className={`font-display text-2xl font-bold leading-none ${
+              isUpcoming ? "text-[#1a5c52]" : "text-[#6e949b]"
+            }`}
+          >
+            {date.format("D")}
+          </p>
+          <p
+            className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+              isUpcoming ? "text-[#5b7f8a]" : "text-[#94a9ad]"
+            }`}
+          >
+            {date.format("MMM")}
+          </p>
+        </div>
+        <div
+          className={`h-full w-px self-stretch ${
+            isUpcoming ? "bg-[rgba(26,160,140,0.12)]" : "bg-[rgba(0,0,0,0.08)]"
+          }`}
+        />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p
+          className={`text-[15px] font-bold ${
+            isUpcoming ? "text-[#1a5c52]" : "text-[#5b7f8a]"
+          }`}
+        >
+          {appointment.type}
+        </p>
+        <p
+          className={`mt-0.5 text-sm font-light ${
+            isUpcoming ? "text-[#5b7f8a]" : "text-[#8a9ea3]"
+          }`}
+        >
+          {appointment.doctor_name}
+        </p>
+        <p
+          className={`mt-1 text-[13px] ${
+            isUpcoming ? "text-[#6e949b]" : "text-[#94a9ad]"
+          }`}
+        >
+          {appointment.time}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-start">
+        {isUpcoming ? (
+          <span className="inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#2d8f98]">
+            Upcoming
+          </span>
+        ) : (
+          <span className="inline-flex rounded-[20px] bg-[rgba(0,0,0,0.06)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8a9ea3]">
+            Completed
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
 function PatientAppointments() {
-  const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function fetchAppointments() {
-      try {
-        const data = await api.get("/patient-portal/appointments");
-        if (!ignore) setAppointments(data.appointments || []);
-      } catch {
-        if (!ignore) setAppointments([]);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    }
-
-    fetchAppointments();
-    return () => { ignore = true; };
-  }, []);
-
-  const sorted = [...appointments].sort(
-    (a, b) => new Date(b.date) - new Date(a.date),
-  );
+  const upcoming = SAMPLE_UPCOMING;
+  const past = SAMPLE_PAST;
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="mx-auto max-w-[720px] space-y-10">
       <div className="animate-fade-in-up">
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] p-2.5 shadow-lg shadow-[rgba(45,143,152,0.22)]">
-            <CalendarDays className="size-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-display text-2xl tracking-tight text-slate-950 sm:text-3xl">
-              Your Appointments
-            </h1>
-            <p className="mt-1 text-sm text-[#5b7f8a]">
-              View and track all your medical appointments.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Appointments list */}
-      {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-24 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.06)]"
-            />
-          ))}
-        </div>
-      ) : sorted.length === 0 ? (
-        <div className="animate-fade-in-up stagger-1 rounded-[30px] border border-dashed border-[rgba(65,200,198,0.25)] bg-[rgba(65,200,198,0.04)] p-12 text-center">
-          <CalendarDays className="mx-auto size-14 text-[rgba(65,200,198,0.3)]" />
-          <h3 className="mt-4 font-display text-xl font-semibold text-[#22485b]">
-            No appointments yet
-          </h3>
-          <p className="mt-2 text-sm text-[#6e949b]">
-            Contact our team to schedule your first appointment with OCS Médecins.
+        <div className="flex items-center gap-2">
+          <CalendarCheck2
+            className="size-[18px] shrink-0 text-[#6B9E95]"
+            strokeWidth={1.5}
+          />
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+            Review Appointments
           </p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {sorted.map((appointment, idx) => (
-            <div
-              key={appointment.id || idx}
-              className={`animate-fade-in-up stagger-${Math.min(idx + 1, 6)} rounded-[24px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_12px_36px_rgba(34,72,91,0.06)] transition hover:shadow-[0_16px_48px_rgba(34,72,91,0.1)]`}
-            >
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-2xl bg-[rgba(65,200,198,0.1)] p-3">
-                    <Stethoscope className="size-5 text-[#2d8f98]" />
-                  </div>
-                  <div>
-                    <p className="font-display text-base font-semibold text-[#22485b]">
-                      {appointment.doctor_name || "Doctor"}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-3 text-sm text-[#5b7f8a]">
-                      <span className="flex items-center gap-1.5">
-                        <CalendarDays className="size-3.5" />
-                        {dayjs(appointment.date).format("ddd, MMM D, YYYY")}
-                      </span>
-                      {appointment.time && (
-                        <span className="flex items-center gap-1.5">
-                          <Clock className="size-3.5" />
-                          {appointment.time}
-                        </span>
-                      )}
-                    </div>
-                    {appointment.notes && (
-                      <p className="mt-2 text-sm text-[#6e949b]">
-                        <AlertCircle className="mr-1 inline size-3.5" />
-                        {appointment.notes}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <StatusBadge status={appointment.status} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+          Your Appointments.
+        </h1>
+        <p className="mt-2 text-sm font-light text-[#5b7f8a]">
+          Scheduled by your OCS care team.
+        </p>
+      </div>
+
+      <section className="space-y-3">
+        <SectionLabel>Upcoming</SectionLabel>
+        {upcoming.length === 0 ? (
+          <p className="text-[13px] font-light italic text-[#8a9ea3]">
+            No upcoming appointments. Your OCS care team will schedule these for
+            you.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {upcoming.map((appointment) => (
+              <AppointmentCard
+                key={appointment.id}
+                appointment={appointment}
+                variant="upcoming"
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <SectionLabel muted>Past</SectionLabel>
+        {past.length === 0 ? (
+          <p className="text-[13px] font-light italic text-[#8a9ea3]">
+            No past appointments yet.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {past.map((appointment) => (
+              <AppointmentCard
+                key={appointment.id}
+                appointment={appointment}
+                variant="past"
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
