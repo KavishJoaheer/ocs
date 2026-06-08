@@ -1,19 +1,19 @@
 # Build stage
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/linkham-portal
 
-# Copy root workspace config
-COPY package*.json ./
-
-# Copy portal source
-COPY linkham-portal/ ./linkham-portal/
+# Copy package files first
+COPY linkham-portal/package*.json ./
 
 # Install dependencies for the portal
-RUN npm ci --workspace=linkham-portal
+RUN npm install
+
+# Copy portal source
+COPY linkham-portal/ ./
 
 # Build the portal
-RUN npm run build --workspace=linkham-portal
+RUN npm run build
 
 # Serve stage
 FROM nginx:alpine
