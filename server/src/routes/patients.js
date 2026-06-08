@@ -1,6 +1,10 @@
 const express = require("express");
 const { db, ensureBillingForConsultation } = require("../db");
-const { publishLinkhamPatientsChange, publishLongTermReviewChange } = require("../lib/inventoryRealtime");
+const {
+  publishLinkhamPatientsChange,
+  publishLongTermReviewChange,
+  publishPatientDataChange,
+} = require("../lib/inventoryRealtime");
 const {
   ensureLinkhamPatientAccess,
   getLinkhamPatientFilterSql,
@@ -1338,6 +1342,7 @@ router.post("/", (req, res) => {
     ...getPatientById(result.lastInsertRowid),
     location_tags: getPatientLocationTags(result.lastInsertRowid),
   };
+  publishPatientDataChange(patientId, { reason: "patient" });
   res.status(201).json(patient);
 });
 
@@ -1530,6 +1535,7 @@ router.put("/:id", (req, res) => {
     ...getPatientById(patientId),
     location_tags: getPatientLocationTags(patientId),
   };
+  publishPatientDataChange(patientId, { reason: "patient" });
   res.json(updated);
 });
 
@@ -1635,6 +1641,8 @@ router.post("/:id/consultations", (req, res) => {
     `)
     .get(consultationId);
 
+  publishPatientDataChange(patientId, { reason: "consultation" });
+
   res.status(201).json(consultation);
 });
 
@@ -1738,6 +1746,8 @@ router.delete("/:id", (req, res) => {
     db.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(patientId);
     db.prepare("DELETE FROM patient_operator_access WHERE patient_id = ?").run(patientId);
   })();
+
+  publishPatientDataChange(patientId, { reason: "patient" });
 
   res.status(204).send();
 });

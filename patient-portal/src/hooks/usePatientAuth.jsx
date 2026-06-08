@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
+import { startPatientRealtime, stopPatientRealtime } from "../lib/realtime.js";
 
 const AuthContext = createContext(null);
 
@@ -106,6 +107,18 @@ export function AuthProvider({ children }) {
     restoreSession();
     return () => { ignore = true; };
   }, [token]);
+
+  // Keep the realtime stream tied to the session lifecycle so the patient's
+  // dashboard/records refresh live when staff or the insurer make changes.
+  useEffect(() => {
+    if (token && user) {
+      startPatientRealtime();
+    } else {
+      stopPatientRealtime();
+    }
+
+    return () => stopPatientRealtime();
+  }, [token, user]);
 
   const value = useMemo(
     () => ({

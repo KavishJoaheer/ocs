@@ -34,6 +34,7 @@ import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import {
@@ -964,6 +965,8 @@ function PatientProfilePage() {
     }
   }, [activeTab, showPatientBillingUi]);
 
+  const refreshKey = useLiveRefreshKey();
+
   useEffect(() => {
     let ignore = false;
 
@@ -995,7 +998,7 @@ function PatientProfilePage() {
     return () => {
       ignore = true;
     };
-  }, [id]);
+  }, [id, refreshKey]);
 
   async function handleSaveLabReport(payload) {
     if (!data?.patient?.id) {

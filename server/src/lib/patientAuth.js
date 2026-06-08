@@ -46,14 +46,27 @@ function getPatientSessionUserByToken(token) {
     .get(tokenHash);
 }
 
-function requirePatientAuth(req, res, next) {
+function extractPatientToken(req, { allowQuery = false } = {}) {
   const header = String(req.headers.authorization || "");
 
-  if (!header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Authentication is required." });
+  if (header.startsWith("Bearer ")) {
+    const token = header.slice(7).trim();
+    if (token) {
+      return token;
+    }
   }
 
-  const token = header.slice(7).trim();
+  // EventSource (SSE) cannot send custom headers, so the patient realtime
+  // stream passes the bearer token as a query parameter instead.
+  if (allowQuery && req.query && req.query.access_token) {
+    return String(req.query.access_token).trim();
+  }
+
+  return "";
+}
+
+function authenticatePatient(req, res, next, { allowQuery = false } = {}) {
+  const token = extractPatientToken(req, { allowQuery });
 
   if (!token) {
     return res.status(401).json({ error: "Authentication is required." });
@@ -71,8 +84,20 @@ function requirePatientAuth(req, res, next) {
   return next();
 }
 
+function requirePatientAuth(req, res, next) {
+  return authenticatePatient(req, res, next, { allowQuery: false });
+}
+
+// Same as requirePatientAuth but also accepts the token via ?access_token=,
+// used by the patient realtime (SSE) stream.
+function requirePatientAuthFlexible(req, res, next) {
+  return authenticatePatient(req, res, next, { allowQuery: true });
+}
+
 module.exports = {
   cleanupExpiredPatientSessions,
+  getPatientSessionUserByToken,
   requirePatientAuth,
+  requirePatientAuthFlexible,
   serializePatientUser,
 };

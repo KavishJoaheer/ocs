@@ -1,5 +1,6 @@
 const express = require("express");
 const { db } = require("../db");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 
 const router = express.Router();
 const validStatuses = new Set(["scheduled", "completed", "cancelled"]);
@@ -95,6 +96,8 @@ router.post("/", (req, res) => {
     `)
     .get(result.lastInsertRowid);
 
+  publishPatientDataChange(appointment.patient_id, { reason: "appointment" });
+
   res.status(201).json(appointment);
 });
 
@@ -147,6 +150,8 @@ router.put("/:id", (req, res) => {
     `)
     .get(appointmentId);
 
+  publishPatientDataChange(appointment.patient_id, { reason: "appointment" });
+
   res.json(appointment);
 });
 
@@ -173,12 +178,15 @@ router.patch("/:id/status", (req, res) => {
 
   db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, appointmentId);
   const updated = db.prepare("SELECT * FROM appointments WHERE id = ?").get(appointmentId);
+  publishPatientDataChange(updated.patient_id, { reason: "appointment" });
   res.json(updated);
 });
 
 router.delete("/:id", (req, res) => {
   const appointmentId = Number(req.params.id);
-  const existing = db.prepare("SELECT id FROM appointments WHERE id = ?").get(appointmentId);
+  const existing = db
+    .prepare("SELECT id, patient_id FROM appointments WHERE id = ?")
+    .get(appointmentId);
 
   if (!existing) return res.status(404).json({ error: "Appointment not found." });
 
@@ -193,6 +201,7 @@ router.delete("/:id", (req, res) => {
   }
 
   db.prepare("DELETE FROM appointments WHERE id = ?").run(appointmentId);
+  publishPatientDataChange(existing.patient_id, { reason: "appointment" });
   res.status(204).send();
 });
 

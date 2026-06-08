@@ -31,6 +31,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { shareOrDownloadBillPdf } from "../lib/billPdf.js";
 import {
@@ -1864,9 +1865,11 @@ function BillingPage() {
     }
   }, [searchParams, statusFilter]);
 
+  const refreshKey = useLiveRefreshKey();
+
   useEffect(() => {
     loadData();
-  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate]);
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, refreshKey]);
 
   useEffect(() => {
     loadReferenceData();

@@ -20,6 +20,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { isBrowserOffline, isNetworkFailure } from "../lib/networkErrors.js";
@@ -360,6 +361,8 @@ function PatientsPage() {
     setPage(1);
   }, [navigate, searchParams, user.doctor_id, user.role]);
 
+  const refreshKey = useLiveRefreshKey();
+
   useEffect(() => {
     loadDoctors();
   }, []);
@@ -377,6 +380,7 @@ function PatientsPage() {
     user.role,
     user.id,
     isDoctorMobile,
+    refreshKey,
   ]);
 
   useEffect(() => {

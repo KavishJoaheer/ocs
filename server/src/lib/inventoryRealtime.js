@@ -6,6 +6,11 @@ const { ensureInventoryRowVersionColumn } = require("./inventoryQuantity");
 const clients = new Map();
 let nextClientId = 1;
 
+/** Patient-portal SSE subscribers, keyed by an internal id → { res, patientId }. */
+/** @type {Map<number, { res: import('express').Response, patientId: number }>} */
+const patientClients = new Map();
+let nextPatientClientId = 1;
+
 // Request-scoped context so deep helpers (e.g. recordMovement) can fan out
 // inventory changes that are correctly tagged with the originating tab's
 // client_session_id without every caller having to thread it manually.
@@ -323,6 +328,127 @@ function publishLinkhamClaimsChange({
   return { delivered, event };
 }
 
+/**
+ * Cross-portal patient sync. Any change to a patient's record, appointments,
+ * consultations, bills, or lab reports fans out to every portal that cares:
+ *  - the patient's own portal session(s) → their dashboard/records refresh live;
+ *  - clinic staff (admin/operator always, the assigned doctor) → lists refresh;
+ *  - the insurer portal (linkham_admin) when the patient is Linkham-insured.
+ *
+ * The originating tab is suppressed via changedByClientSessionId so the actor's
+ * own optimistic UI is not double-applied.
+ */
+function publishPatientDataChange(patientId, { reason = null, changedByClientSessionId = null } = {}) {
+  const pid = Number(patientId || 0);
+  if (!pid) {
+    return { delivered: 0 };
+  }
+
+  const patient = db
+    .prepare(
+      "SELECT assigned_doctor_id, insurance_provider FROM patients WHERE id = ?",
+    )
+    .get(pid);
+
+  const assignedDoctorId = patient?.assigned_doctor_id ? Number(patient.assigned_doctor_id) : null;
+  const isLinkhamInsured = String(patient?.insurance_provider || "").trim().toLowerCase() === "linkham";
+
+  const sessionId = changedByClientSessionId
+    ? String(changedByClientSessionId)
+    : getCurrentClientSessionId() || null;
+
+  const event = {
+    type: "patient_data_change",
+    patientId: pid,
+    reason: reason || null,
+    assignedDoctorId,
+    at: new Date().toISOString(),
+    changedByClientSessionId: sessionId || null,
+  };
+
+  let delivered = 0;
+
+  // 1) The patient's own portal sessions.
+  for (const client of patientClients.values()) {
+    if (Number(client.patientId) !== pid) {
+      continue;
+    }
+    try {
+      writeSseEvent(client.res, "patient_data_change", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  // 2) Staff + insurer sessions on the shared stream.
+  for (const client of clients.values()) {
+    const role = String(client.role || "");
+    let deliver = false;
+
+    if (role === "admin" || role === "operator" || role === "accountant" || role === "lab_tech") {
+      deliver = true;
+    } else if (role === "doctor") {
+      deliver = assignedDoctorId !== null && Number(client.doctorId || 0) === assignedDoctorId;
+    } else if (role === "linkham_admin") {
+      deliver = isLinkhamInsured;
+    }
+
+    if (!deliver) {
+      continue;
+    }
+
+    try {
+      writeSseEvent(client.res, "patient_data_change", event);
+      delivered += 1;
+    } catch {
+      /* client disconnected mid-write */
+    }
+  }
+
+  return { delivered, event };
+}
+
+function addPatientStreamClient(res, patientId) {
+  const clientId = nextPatientClientId;
+  nextPatientClientId += 1;
+
+  patientClients.set(clientId, {
+    res,
+    patientId: Number(patientId || 0),
+  });
+
+  res.on("close", () => {
+    patientClients.delete(clientId);
+  });
+
+  writeSseEvent(res, "connected", { ok: true, patient_id: Number(patientId || 0) });
+
+  return clientId;
+}
+
+function handlePatientPortalStream(req, res) {
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+
+  addPatientStreamClient(res, req.patientAuth?.patient_id);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": heartbeat\n\n");
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 25000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+  });
+}
+
 function handleInventoryStream(req, res) {
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -347,10 +473,13 @@ function handleInventoryStream(req, res) {
 
 module.exports = {
   addInventoryStreamClient,
+  addPatientStreamClient,
   extractClientSessionId,
   getCurrentClientSessionId,
   handleInventoryStream,
+  handlePatientPortalStream,
   publishInventoryChange,
+  publishPatientDataChange,
   publishInventoryResyncBroadcast,
   publishLinkhamClaimsChange,
   publishLinkhamPatientsChange,

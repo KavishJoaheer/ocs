@@ -1,6 +1,7 @@
 const express = require("express");
 const { reverseInventoryForConsultation } = require("../lib/inventoryReversal");
 const { db, ensureBillingForConsultation } = require("../db");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { parseBillingRow, toNumber } = require("../lib/utils");
 
 const router = express.Router();
@@ -278,6 +279,8 @@ router.post("/", (req, res) => {
   const consultationId = createConsultation();
   const consultation = getConsultationById(consultationId);
 
+  publishPatientDataChange(appointment.patient_id, { reason: "consultation" });
+
   res.status(201).json(consultation);
 });
 
@@ -337,13 +340,15 @@ router.put("/:id", (req, res) => {
 
   const consultation = getConsultationById(consultationId);
 
+  publishPatientDataChange(existing.patient_id, { reason: "consultation" });
+
   res.json(consultation);
 });
 
 router.delete("/:id", (req, res) => {
   const consultationId = Number(req.params.id);
   const existing = db
-    .prepare("SELECT id, doctor_id FROM consultations WHERE id = ?")
+    .prepare("SELECT id, doctor_id, patient_id FROM consultations WHERE id = ?")
     .get(consultationId);
 
   if (!existing) {
@@ -359,6 +364,8 @@ router.delete("/:id", (req, res) => {
     db.prepare("DELETE FROM billing WHERE consultation_id = ?").run(consultationId);
     db.prepare("DELETE FROM consultations WHERE id = ?").run(consultationId);
   })();
+
+  publishPatientDataChange(existing.patient_id, { reason: "consultation" });
 
   res.status(204).send();
 });

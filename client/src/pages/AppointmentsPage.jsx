@@ -20,6 +20,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
 import { formatDateTime } from "../lib/format.js";
@@ -244,13 +245,15 @@ function AppointmentsPage() {
     }
   }
 
+  const refreshKey = useLiveRefreshKey();
+
   useEffect(() => {
     loadReferences();
   }, []);
 
   useEffect(() => {
     loadAppointments();
-  }, [filters]);
+  }, [filters, refreshKey]);
 
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const appointmentsByDate = useMemo(() => {

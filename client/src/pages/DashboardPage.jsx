@@ -33,6 +33,7 @@ import OperationStatusSelector from "../components/OperationStatusSelector.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
@@ -1344,6 +1345,8 @@ function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
 
+  const refreshKey = useLiveRefreshKey();
+
   useEffect(() => {
     let ignore = false;
 
@@ -1402,7 +1405,7 @@ function DashboardPage() {
     return () => {
       ignore = true;
     };
-  }, [user.role]);
+  }, [user.role, refreshKey]);
 
   async function handleOpenRosterPdf() {
     if (!rosterMeta?.has_roster) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import {
   CreditCard,
   Receipt,
@@ -24,6 +25,7 @@ function PatientBilling() {
   const [bills, setBills] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
@@ -47,7 +49,7 @@ function PatientBilling() {
 
     fetchBilling();
     return () => { ignore = true; };
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className="space-y-8">

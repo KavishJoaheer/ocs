@@ -1,5 +1,6 @@
 const express = require("express");
 const { db } = require("../db");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 
 const router = express.Router();
 
@@ -288,6 +289,8 @@ router.put("/profile", (req, res) => {
       WHERE p.id = ?
     `)
     .get(patientId);
+
+  publishPatientDataChange(patientId, { reason: "profile" });
 
   return res.json({ patient: updated });
 });

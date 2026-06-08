@@ -17,6 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 
 function ReadOnlyField({ icon: Icon, label, value }) {
@@ -44,6 +45,7 @@ function PatientProfile() {
     next_of_kin_phone: "",
     next_of_kin_relationship: "",
   });
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
@@ -70,7 +72,7 @@ function PatientProfile() {
 
     fetchProfile();
     return () => { ignore = true; };
-  }, []);
+  }, [refreshKey]);
 
   const initials = user?.full_name
     ? user.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)

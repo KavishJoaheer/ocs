@@ -10,6 +10,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import {
   canEditConsultationNote,
@@ -245,9 +246,11 @@ function ConsultationsPage() {
     }
   }
 
+  const refreshKey = useLiveRefreshKey();
+
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   async function handleSave(payload) {
     setIsSaving(true);

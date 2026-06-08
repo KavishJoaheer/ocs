@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import {
   CreditCard,
   TrendingUp,
@@ -358,6 +359,7 @@ function PatientDashboard() {
   const [lastConsultation, setLastConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [primaryActiveVisit] = useState(() => getActiveVisit());
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
@@ -385,7 +387,7 @@ function PatientDashboard() {
 
     fetchDashboard();
     return () => { ignore = true; };
-  }, []);
+  }, [refreshKey]);
 
   const greeting = (() => {
     const hour = new Date().getHours();

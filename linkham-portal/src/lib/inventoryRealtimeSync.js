@@ -210,6 +210,24 @@ export function startInventoryRealtimeSync(user) {
     notifyLongTermReviewUpdated();
   });
 
+  source.addEventListener("patient_data_change", (message) => {
+    try {
+      const event = JSON.parse(message.data);
+      if (
+        event.changedByClientSessionId &&
+        String(event.changedByClientSessionId) === tabSessionId
+      ) {
+        return;
+      }
+    } catch {
+      /* fall through to invalidation */
+    }
+    // The insurer portal surfaces patient coverage + claims, both of which can
+    // shift when an insured patient's record or bill changes.
+    notifyLinkhamPatientsUpdated();
+    notifyLinkhamClaimsUpdated();
+  });
+
   source.addEventListener("inventory_change", (message) => {
     try {
       const event = JSON.parse(message.data);

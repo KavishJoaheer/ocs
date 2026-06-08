@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const { db, labReportAttachmentsDir } = require("../db");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 
 const router = express.Router();
 
@@ -369,6 +370,8 @@ router.post("/", upload.array("attachments", MAX_ATTACHMENTS_PER_REQUEST), (req,
       return result.lastInsertRowid;
     })();
 
+    publishPatientDataChange(payload.patient_id, { reason: "lab_report" });
+
     res.status(201).json(getLabReportById(createdReportId));
   } catch (error) {
     cleanupUploadedFiles(req.files);
@@ -454,6 +457,8 @@ router.put("/:id", upload.array("attachments", MAX_ATTACHMENTS_PER_REQUEST), (re
         uploadedByUserId: req.auth.id,
       });
     })();
+
+    publishPatientDataChange(existing.patient_id, { reason: "lab_report" });
 
     res.json(getLabReportById(reportId));
   } catch (error) {
@@ -542,6 +547,8 @@ router.delete("/attachments/:attachmentId", (req, res) => {
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
+
+  publishPatientDataChange(attachment.report_patient_id, { reason: "lab_report" });
 
   res.status(204).send();
 });

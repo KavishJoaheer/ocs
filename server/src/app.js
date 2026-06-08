@@ -23,8 +23,8 @@ const restockRequestsRouter = require("./routes/restockRequests");
 const patientAuthRouter = require("./routes/patientAuth");
 const patientPortalRouter = require("./routes/patientPortal");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
-const { requirePatientAuth } = require("./lib/patientAuth");
-const { withClientSessionContext } = require("./lib/inventoryRealtime");
+const { requirePatientAuth, requirePatientAuthFlexible } = require("./lib/patientAuth");
+const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
 
 let initialized = false;
 
@@ -263,7 +263,16 @@ function createApp() {
       const isStreamRequest = req.method === "GET" && req.path === "/stream";
 
       if (isStreamRequest) {
-        return authorizeRoles("admin", "doctor", "operator", "linkham_admin")(req, res, next);
+        // The shared stream also carries cross-portal patient_data_change events,
+        // so every staff role (plus the insurer) subscribes to it.
+        return authorizeRoles(
+          "admin",
+          "doctor",
+          "operator",
+          "lab_tech",
+          "accountant",
+          "linkham_admin",
+        )(req, res, next);
       }
 
       return authorizeRoles("admin", "doctor", "operator")(req, res, next);
@@ -284,6 +293,9 @@ function createApp() {
   );
 
   app.use("/api/patient-auth", patientAuthRouter);
+  // Realtime stream must be registered before the bearer-only router so it can
+  // authenticate via ?access_token= (EventSource cannot send headers).
+  app.get("/api/patient-portal/stream", requirePatientAuthFlexible, handlePatientPortalStream);
   app.use("/api/patient-portal", requirePatientAuth, patientPortalRouter);
 
   const clientDistPath = getClientDistPath();

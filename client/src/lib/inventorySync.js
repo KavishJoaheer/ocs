@@ -16,6 +16,9 @@ export const LINKHAM_PATIENTS_EVENT = "linkham-patients-updated";
 /** Dispatched when Linkham claims ledger or clearance state changes. */
 export const LINKHAM_CLAIMS_EVENT = "linkham-claims-updated";
 
+/** Dispatched when any patient record / appointment / consultation / bill / lab report changes (cross-portal live sync). */
+export const PATIENTS_LIVE_EVENT = "patients-live-updated";
+
 const CHANNEL_NAME = "ocs-inventory-sync";
 
 const broadcastChannel =
@@ -46,7 +49,8 @@ if (broadcastChannel && typeof window !== "undefined") {
       eventName === SUPPLY_REQUESTS_EVENT ||
       eventName === LONG_TERM_REVIEW_EVENT ||
       eventName === LINKHAM_PATIENTS_EVENT ||
-      eventName === LINKHAM_CLAIMS_EVENT
+      eventName === LINKHAM_CLAIMS_EVENT ||
+      eventName === PATIENTS_LIVE_EVENT
     ) {
       window.dispatchEvent(new CustomEvent(eventName));
     }
@@ -75,4 +79,8 @@ export function notifyLinkhamPatientsUpdated() {
 
 export function notifyLinkhamClaimsUpdated() {
   dispatch(LINKHAM_CLAIMS_EVENT);
+}
+
+export function notifyPatientsLiveUpdated() {
+  dispatch(PATIENTS_LIVE_EVENT);
 }

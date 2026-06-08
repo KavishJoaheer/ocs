@@ -6,7 +6,7 @@ const {
   normalizeBillingItems,
   parseBillingRow,
 } = require("../lib/utils");
-const { publishInventoryChange } = require("../lib/inventoryRealtime");
+const { publishInventoryChange, publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
   findUnbilledSaleCredit,
   markSaleMovementsBilled,
@@ -668,6 +668,8 @@ router.post("/", (req, res) => {
     }
   }
 
+  publishPatientDataChange(patientId, { reason: "billing" });
+
   res.status(201).json(getJoinedBillById(createdId));
   } catch (error) {
     console.error("[billing][POST /]", error);
@@ -736,6 +738,10 @@ router.put("/:id", (req, res) => {
     billId,
   );
 
+  if (existing?.patient_id) {
+    publishPatientDataChange(existing.patient_id, { reason: "billing" });
+  }
+
   res.json(getJoinedBillById(billId));
 });
 
@@ -766,6 +772,10 @@ router.patch("/:id/pay", (req, res) => {
         payment_date = ?
     WHERE id = ?
   `).run(paymentMethod, paymentDate, billId);
+
+  if (existing?.patient_id) {
+    publishPatientDataChange(existing.patient_id, { reason: "billing" });
+  }
 
   res.json(getJoinedBillById(billId));
 });
