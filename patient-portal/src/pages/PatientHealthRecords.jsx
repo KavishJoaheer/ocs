@@ -268,7 +268,7 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
               <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
                 {report.file_type}
               </span>
-              <div className="mt-4">
+              <div className="mt-4 flex items-center gap-5">
                 <a
                   href={report.url}
                   target="_blank"
@@ -277,6 +277,14 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
                   onClick={(e) => e.stopPropagation()}
                 >
                   View →
+                </a>
+                <a
+                  href={report.url}
+                  download
+                  className="text-[13px] text-[#2d8f98] transition-colors duration-200 hover:text-[#23767f]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Download ↓
                 </a>
               </div>
               <p className="mt-3 text-[11px] font-light text-[#8a9ea3]">
