@@ -52,6 +52,8 @@ const SAMPLE_MEDICAL_REPORTS = [
     name: "Blood Panel — Private Lab",
     file_type: "PDF",
     url: "/sample-reports/blood-panel-private-lab.pdf",
+    requested_by_source: "External Doctor",
+    requested_by: "Dr. Meera Iyer",
   },
   {
     id: 2,
@@ -60,6 +62,8 @@ const SAMPLE_MEDICAL_REPORTS = [
     name: "Cardiology Specialist Report",
     file_type: "PDF",
     url: "/sample-reports/cardiology-report.pdf",
+    requested_by_source: "OCS Doctor",
+    requested_by: "Dr. Avinash Sharma",
   },
 ];
 
@@ -287,6 +291,20 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
                   Download ↓
                 </a>
               </div>
+              {report.requested_by ? (
+                <p className="mt-3 text-[13px] font-normal text-[#5b7f8a]">
+                  Requested by{" "}
+                  <span className="font-medium text-[#1a5c52]">
+                    {report.requested_by}
+                  </span>
+                  {report.requested_by_source ? (
+                    <span className="text-[#8a9ea3]">
+                      {" "}
+                      ({report.requested_by_source})
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
               <p className="mt-3 text-[11px] font-light text-[#8a9ea3]">
                 Uploaded by you on{" "}
                 {dayjs(report.uploaded_at).format("D MMMM YYYY")}
@@ -305,6 +323,8 @@ function UploadModal({ open, onClose, onUpload }) {
   const [reportDate, setReportDate] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [requestedBySource, setRequestedBySource] = useState("OCS Doctor");
+  const [requestedByName, setRequestedByName] = useState("");
 
   if (!open) return null;
 
@@ -313,6 +333,8 @@ function UploadModal({ open, onClose, onUpload }) {
     setReportDate("");
     setSelectedFile(null);
     setDragOver(false);
+    setRequestedBySource("OCS Doctor");
+    setRequestedByName("");
   }
 
   function handleClose() {
@@ -342,6 +364,8 @@ function UploadModal({ open, onClose, onUpload }) {
       uploaded_at: dayjs().format("YYYY-MM-DD"),
       file_type: isPdf ? "PDF" : "Image",
       url: URL.createObjectURL(selectedFile),
+      requested_by_source: requestedBySource,
+      requested_by: requestedByName.trim(),
     });
     resetForm();
     onClose();
@@ -436,6 +460,40 @@ function UploadModal({ open, onClose, onUpload }) {
               value={reportDate}
               onChange={(e) => setReportDate(e.target.value)}
               className="mt-1.5 w-full rounded-xl border border-[rgba(26,160,140,0.2)] bg-white px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[#2d8f98]"
+            />
+          </div>
+
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[#6e949b]">
+              Requested by
+            </span>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              {["OCS Doctor", "External Doctor"].map((source) => (
+                <button
+                  key={source}
+                  type="button"
+                  onClick={() => setRequestedBySource(source)}
+                  className={`rounded-xl border px-4 py-2.5 text-sm transition ${
+                    requestedBySource === source
+                      ? "border-[#2d8f98] bg-[rgba(26,160,140,0.08)] font-medium text-[#1a5c52]"
+                      : "border-[rgba(26,160,140,0.2)] bg-white font-normal text-[#5b7f8a] hover:border-[#2d8f98]"
+                  }`}
+                >
+                  {source}
+                </button>
+              ))}
+            </div>
+            <input
+              id="requested-by-name"
+              type="text"
+              value={requestedByName}
+              onChange={(e) => setRequestedByName(e.target.value)}
+              placeholder={
+                requestedBySource === "OCS Doctor"
+                  ? "Name of OCS doctor who requested this"
+                  : "Name of doctor who requested this"
+              }
+              className="mt-2 w-full rounded-xl border border-[rgba(26,160,140,0.2)] bg-white px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[#2d8f98]"
             />
           </div>
 
