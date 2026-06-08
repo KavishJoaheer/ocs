@@ -14,6 +14,7 @@ import {
   Users,
   Heart,
   Hash,
+  LogOut,
 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { api } from "../lib/api.js";
@@ -31,7 +32,7 @@ function ReadOnlyField({ icon: Icon, label, value }) {
 }
 
 function PatientProfile() {
-  const { user, updateUser } = usePatientAuth();
+  const { user, updateUser, logout } = usePatientAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -307,6 +308,16 @@ function PatientProfile() {
           </div>
         </div>
       </div>
+
+      {/* Sign out — mobile only (desktop keeps it in the sidebar) */}
+      <button
+        type="button"
+        onClick={() => logout()}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[rgba(207,91,80,0.3)] bg-white px-4 py-3.5 text-sm font-semibold text-[#cf5b50] transition active:bg-[rgba(207,91,80,0.06)] lg:hidden"
+      >
+        <LogOut className="size-4" />
+        Sign Out
+      </button>
     </div>
   );
 }

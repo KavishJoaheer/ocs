@@ -5,7 +5,12 @@ import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { AVATAR_STYLES, FAMILY_PROFILES } from "../lib/familyProfiles.js";
 
 function ProfileAvatar({ profile, size = "md" }) {
-  const sizeClass = size === "sm" ? "size-9 text-sm" : "size-12 text-base";
+  const sizeClass =
+    size === "header"
+      ? "size-8 text-xs"
+      : size === "sm"
+        ? "size-9 text-sm"
+        : "size-12 text-base";
 
   return (
     <div
@@ -16,7 +21,7 @@ function ProfileAvatar({ profile, size = "md" }) {
   );
 }
 
-function FamilyProfileSwitcher() {
+function FamilyProfileSwitcher({ variant = "default" }) {
   const { activeProfile, activeProfileId, setActiveProfile } = useFamilyProfile();
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -49,31 +54,51 @@ function FamilyProfileSwitcher() {
     setOpen(false);
   }
 
+  const isAvatar = variant === "avatar";
+
   return (
-    <div ref={rootRef} className="relative min-w-0 flex-1">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        className="flex w-full items-center gap-3 rounded-2xl px-1 py-1 text-left transition hover:bg-white/50"
-      >
-        <ProfileAvatar profile={activeProfile} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-light text-[#6e949b]">{activeProfile.relationship}</p>
-        </div>
-        <ChevronDown
-          className={`size-4 shrink-0 text-[#6e949b] transition-transform duration-200 ease-out ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+    <div
+      ref={rootRef}
+      className={isAvatar ? "relative shrink-0" : "relative min-w-0 flex-1"}
+    >
+      {isAvatar ? (
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label="Switch family profile"
+          className="rounded-full transition active:scale-95"
+        >
+          <ProfileAvatar profile={activeProfile} size="header" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          className="flex w-full items-center gap-3 rounded-2xl px-1 py-1 text-left transition hover:bg-white/50"
+        >
+          <ProfileAvatar profile={activeProfile} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-light text-[#6e949b]">{activeProfile.relationship}</p>
+          </div>
+          <ChevronDown
+            className={`size-4 shrink-0 text-[#6e949b] transition-transform duration-200 ease-out ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+      )}
 
       {open ? (
         <div
           role="listbox"
           aria-label="Family profiles"
-          className="profile-dropdown absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-[rgba(26,160,140,0.15)] bg-[rgba(255,255,255,0.85)] shadow-[0_8px_32px_rgba(26,160,140,0.12)] backdrop-blur-[12px]"
+          className={`profile-dropdown absolute top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-[rgba(26,160,140,0.15)] bg-[rgba(255,255,255,0.92)] shadow-[0_8px_32px_rgba(26,160,140,0.12)] backdrop-blur-[12px] ${
+            isAvatar ? "right-0 w-64" : "left-0 right-0"
+          }`}
         >
           {FAMILY_PROFILES.map((profile, index) => {
             const isActive = profile.id === activeProfileId;

@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { NavLink, Link } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
-import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
@@ -21,13 +20,6 @@ const navItems = [
   { to: "/billing", label: "Billing", icon: ReceiptText },
   { to: "/profile", label: "Profile", icon: CircleUserRound },
 ];
-
-function timeGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
 
 function SidebarLink({ item }) {
   const Icon = item.icon;
@@ -60,38 +52,25 @@ function SidebarLink({ item }) {
 
 function Sidebar() {
   const { logout } = usePatientAuth();
-  const { activeProfile } = useFamilyProfile();
 
   return (
     <>
       {/* ─── Mobile top bar ─── */}
-      <div className="flex items-center justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] bg-white/88 px-4 py-3.5 backdrop-blur lg:hidden">
-        <div className="flex items-center gap-3">
-          <img src="/ocs-medecins-mark.png" alt="OCS Care" className="h-8 w-auto" />
-          <div>
-            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-              OCS Care
-            </p>
-            <p className="font-display text-sm font-bold leading-tight tracking-tight text-[#22485b]">
-              {activeProfile.isPrimary
-                ? `${timeGreeting()}, ${activeProfile.firstName}`
-                : `Managing care for ${activeProfile.firstName}`}
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => logout()}
-          aria-label="Sign out"
-          className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-2 text-[#2d8f98] transition hover:bg-white"
-        >
-          <LogOut className="size-5" />
-        </button>
+      <div className="relative flex h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden">
+        <img
+          src="/ocs-medecins-mark.png"
+          alt="OCS Care"
+          className="h-8 w-8 shrink-0 object-contain"
+        />
+        <p className="absolute left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-[2px] text-[#2d8f98]">
+          OCS Care
+        </p>
+        <FamilyProfileSwitcher variant="avatar" />
       </div>
 
       {/* ─── Mobile bottom navigation ─── */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[rgba(65,200,198,0.16)] bg-white/95 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-md items-end justify-around px-2 py-2">
+      <nav className="fixed inset-x-0 bottom-0 z-40 h-16 border-t border-[rgba(26,160,140,0.1)] bg-white lg:hidden">
+        <div className="mx-auto flex h-full max-w-md items-center justify-around px-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -101,17 +80,13 @@ function Sidebar() {
                 to={item.to}
                 className={({ isActive }) =>
                   [
-                    "flex min-w-[56px] flex-col items-center gap-1 rounded-2xl px-2 py-1.5 text-[0.6rem] font-semibold transition-all",
-                    isActive ? "text-[#2d8f98]" : "text-[#7c9aa1]",
+                    "flex min-h-[44px] min-w-[56px] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-1 text-[10px] font-normal transition-colors active:opacity-70",
+                    isActive ? "text-[#1a5c52]" : "text-[#8a9e9a]",
                   ].join(" ")
                 }
               >
-                {({ isActive }) => (
-                  <>
-                    <Icon className={isActive ? "size-5" : "size-5 opacity-80"} />
-                    <span className="leading-none">{item.label.split(" ")[0]}</span>
-                  </>
-                )}
+                <Icon className="size-[22px]" strokeWidth={1.5} />
+                <span className="leading-none">{item.label.split(" ")[0]}</span>
               </NavLink>
             );
           })}
@@ -122,7 +97,7 @@ function Sidebar() {
       <Link
         to="/request-visit"
         aria-label="Request a home visit"
-        className="fixed bottom-[4.75rem] left-1/2 z-50 inline-flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] text-white shadow-[0_14px_36px_rgba(31,108,116,0.45)] transition hover:brightness-110 lg:hidden"
+        className="fixed bottom-20 left-1/2 z-50 inline-flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] text-white shadow-[0_14px_36px_rgba(31,108,116,0.45)] transition active:brightness-110 lg:hidden"
       >
         <Plus className="size-7" strokeWidth={2.5} />
       </Link>

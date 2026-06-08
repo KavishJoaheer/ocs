@@ -9,6 +9,7 @@ import {
   History,
   Sparkles,
   HousePlus,
+  Home,
   Clock,
 } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
@@ -28,7 +29,7 @@ const ACTIVE_STEP_INDEX = 2;
 function StatCard({ icon: Icon, label, value, color, delay }) {
   return (
     <div
-      className={`animate-fade-in-up stagger-${delay} rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-8 shadow-[0_16px_48px_rgba(34,72,91,0.08)] transition hover:shadow-[0_20px_56px_rgba(34,72,91,0.12)]`}
+      className={`animate-fade-in-up stagger-${delay} rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-8 shadow-[0_16px_48px_rgba(34,72,91,0.08)] transition hover:shadow-[0_20px_56px_rgba(34,72,91,0.12)] max-md:p-4`}
     >
       <div className="flex items-center gap-3">
         <div className="rounded-2xl p-2.5" style={{ background: color }}>
@@ -61,7 +62,7 @@ function ActiveVisitCard({ visit }) {
   const [showCancel, setShowCancel] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6">
+    <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6 max-md:p-4">
       {showCancel && (
         <div className="mb-5 rounded-xl bg-[rgba(207,91,80,0.08)] p-4">
           <p className="text-sm leading-relaxed text-[#5b6b6b]">
@@ -187,8 +188,8 @@ function isAppointmentWithin24Hours(appointment) {
 
 function LastConsultationCard({ consultation }) {
   return (
-    <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-[28px]">
-      <div className="flex items-center justify-between gap-4">
+    <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-[28px] max-md:p-4">
+      <div className="flex items-center justify-between gap-4 max-md:flex-col max-md:items-start max-md:gap-2">
         <div className="flex items-center gap-2">
           <Clock className="size-3.5 text-[#2d8f98]" strokeWidth={1.75} />
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
@@ -203,11 +204,11 @@ function LastConsultationCard({ consultation }) {
         </Link>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-5 max-md:mt-4">
         <p className="text-base font-bold text-[#1a5c52]">
           {formatDoctorName(consultation.doctor_name)}
         </p>
-        <p className="mt-1 text-sm font-light text-[#5b7f8a]">
+        <p className="mt-1 text-sm font-light text-[#5b7f8a] max-md:text-[13px]">
           {dayjs(consultation.date).format("D MMMM YYYY")}
         </p>
         {consultation.diagnosis ? (
@@ -331,9 +332,9 @@ function PatientDashboard() {
   );
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 max-md:space-y-4">
       {/* Welcome header */}
-      <div className="relative -mx-6 px-6 pt-12 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
+      <div className="relative -mx-6 px-6 pt-12 max-md:-mx-4 max-md:px-4 max-md:pt-0 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-[140px]"
           style={{
@@ -344,24 +345,24 @@ function PatientDashboard() {
         />
         <div className="relative animate-fade-in-up">
           <div className="flex items-center gap-3">
-            <Sparkles className="size-5 text-[#f2c14d]" />
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+            <Sparkles className="size-5 text-[#f2c14d] max-md:size-4" />
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98] max-md:text-[10px] max-md:tracking-[2px]">
               Patient Dashboard
             </p>
           </div>
-          <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 sm:text-4xl">
+          <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 max-md:mt-2 max-md:text-[28px] sm:text-4xl">
             {headline}
           </h1>
-          <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a]">
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a] max-md:text-sm">
             {subline}
           </p>
         </div>
       </div>
 
-      <div key={activeProfileId} className="dashboard-profile-transition space-y-12">
+      <div key={activeProfileId} className="dashboard-profile-transition space-y-12 max-md:space-y-4">
       {/* Stats cards — only shown when at least one value is greater than zero */}
       {hasStats && (
-        <div className="grid gap-5 sm:grid-cols-3">
+        <div className="grid gap-5 max-md:gap-4 sm:grid-cols-3">
           <StatCard
             icon={CalendarCheck}
             label="Upcoming"
@@ -394,9 +395,20 @@ function PatientDashboard() {
             {profileActiveVisit ? (
               <ActiveVisitCard visit={profileActiveVisit} />
             ) : (
-              <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
-                <NoActiveVisit />
-              </div>
+              <>
+                {/* Desktop — centred empty state */}
+                <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10 max-md:hidden">
+                  <NoActiveVisit />
+                </div>
+                {/* Mobile — compact single row */}
+                <div className="hidden items-center gap-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-4 max-md:flex">
+                  <Home className="size-5 shrink-0 text-[#7fd1ca]" strokeWidth={1.5} />
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-[#22485b]">No active visit</h3>
+                    <p className="mt-0.5 text-xs text-[#5b7f8a]">Confirmed visits appear here.</p>
+                  </div>
+                </div>
+              </>
             )}
           </section>
 
