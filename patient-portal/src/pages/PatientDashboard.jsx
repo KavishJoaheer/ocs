@@ -9,7 +9,6 @@ import {
   History,
   Sparkles,
   HousePlus,
-  Home,
   Clock,
 } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
@@ -29,7 +28,7 @@ const ACTIVE_STEP_INDEX = 2;
 function StatCard({ icon: Icon, label, value, color, delay }) {
   return (
     <div
-      className={`animate-fade-in-up stagger-${delay} rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-8 shadow-[0_16px_48px_rgba(34,72,91,0.08)] transition hover:shadow-[0_20px_56px_rgba(34,72,91,0.12)] max-md:p-4`}
+      className={`animate-fade-in-up stagger-${delay} rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-8 shadow-[0_16px_48px_rgba(34,72,91,0.08)] transition hover:shadow-[0_20px_56px_rgba(34,72,91,0.12)]`}
     >
       <div className="flex items-center gap-3">
         <div className="rounded-2xl p-2.5" style={{ background: color }}>
@@ -62,7 +61,7 @@ function ActiveVisitCard({ visit }) {
   const [showCancel, setShowCancel] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6 max-md:p-4">
+    <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6">
       {showCancel && (
         <div className="mb-5 rounded-xl bg-[rgba(207,91,80,0.08)] p-4">
           <p className="text-sm leading-relaxed text-[#5b6b6b]">
@@ -188,8 +187,8 @@ function isAppointmentWithin24Hours(appointment) {
 
 function LastConsultationCard({ consultation }) {
   return (
-    <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-[28px] max-md:p-4">
-      <div className="flex items-center justify-between gap-4 max-md:flex-col max-md:items-start max-md:gap-2">
+    <section className="animate-fade-in-up stagger-5 w-full rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-[28px]">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <Clock className="size-3.5 text-[#2d8f98]" strokeWidth={1.75} />
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
@@ -204,11 +203,11 @@ function LastConsultationCard({ consultation }) {
         </Link>
       </div>
 
-      <div className="mt-5 max-md:mt-4">
+      <div className="mt-5">
         <p className="text-base font-bold text-[#1a5c52]">
           {formatDoctorName(consultation.doctor_name)}
         </p>
-        <p className="mt-1 text-sm font-light text-[#5b7f8a] max-md:text-[13px]">
+        <p className="mt-1 text-sm font-light text-[#5b7f8a]">
           {dayjs(consultation.date).format("D MMMM YYYY")}
         </p>
         {consultation.diagnosis ? (
@@ -227,6 +226,127 @@ function LastConsultationCard({ consultation }) {
         </Link>
       </div>
     </section>
+  );
+}
+
+function MobileLastVisit({ consultation }) {
+  return (
+    <section className="animate-fade-in-up rounded-[12px] border border-[rgba(26,160,140,0.12)] bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#2d8f98]">
+          Your Last Visit
+        </p>
+        <Link
+          to="/health-records"
+          className="shrink-0 text-[12px] font-medium text-[#5f9aa0] transition active:text-[#2d8f98]"
+        >
+          View timeline →
+        </Link>
+      </div>
+
+      <p className="mt-3 text-[15px] font-bold text-[#1a5c52]">
+        {formatDoctorName(consultation.doctor_name)}
+      </p>
+      <p className="mt-0.5 text-[13px] font-light text-[#5b7f8a]">
+        {dayjs(consultation.date).format("D MMMM YYYY")}
+      </p>
+      {consultation.diagnosis ? (
+        <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
+          {consultation.diagnosis}
+        </span>
+      ) : null}
+
+      <Link
+        to="/consultations"
+        className="mt-4 block text-[12px] font-normal text-[#2d8f98] transition active:text-[#23767f]"
+      >
+        View full record →
+      </Link>
+    </section>
+  );
+}
+
+function MobileActiveVisit({ visit }) {
+  const [showCancel, setShowCancel] = useState(false);
+  const doctor = formatDoctorSurname(visit.doctor);
+  const eta = extractEtaMinutes(visit);
+
+  return (
+    <div className="mb-5 animate-fade-in-up">
+      <div className="flex items-center gap-2">
+        <span className="relative flex size-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
+          <span className="relative inline-flex size-2.5 rounded-full bg-[#34c759]" />
+        </span>
+        <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#2d8f98]">
+          Active Visit
+        </p>
+      </div>
+
+      <p className="mt-2 font-display text-[22px] font-bold leading-tight tracking-tight text-[#1a5c52]">
+        {doctor} is on the way.
+      </p>
+      <p className="mt-1 text-[13px] font-light text-[#5b7f8a]">
+        Estimated arrival: {eta} minutes
+      </p>
+
+      <div className="mt-5 grid grid-cols-4 gap-1.5">
+        {VISIT_STEPS.map((step, i) => (
+          <span
+            key={step}
+            className={`h-[6px] rounded-full ${
+              i <= ACTIVE_STEP_INDEX ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
+            }`}
+          />
+        ))}
+      </div>
+
+      <div className="mt-5 space-y-3">
+        <Link
+          to="/request-visit/tracking"
+          className="flex h-[48px] w-full items-center justify-center rounded-[14px] border border-[#2d8f98] text-sm font-bold text-[#2d8f98] transition active:bg-[rgba(26,160,140,0.06)]"
+        >
+          View Live Tracking →
+        </Link>
+        <a
+          href="tel:52522234"
+          className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-[#E8A020] text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition active:brightness-105"
+        >
+          Call {doctor}
+        </a>
+      </div>
+
+      {showCancel ? (
+        <div className="mt-4 rounded-xl bg-[rgba(207,91,80,0.08)] p-4">
+          <p className="text-[13px] leading-relaxed text-[#5b6b6b]">
+            To cancel your visit please call our team directly. Tap below to call now.
+          </p>
+          <a
+            href="tel:52522234"
+            className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-[#cf5b50] text-sm font-bold text-white transition active:brightness-105"
+          >
+            Call OCS to Cancel
+          </a>
+          <button
+            type="button"
+            onClick={() => setShowCancel(false)}
+            className="mt-2 w-full text-center text-xs font-semibold text-[#2d8f98] transition active:text-[#23767f]"
+          >
+            Keep my visit
+          </button>
+        </div>
+      ) : (
+        <div className="mt-3 text-center">
+          <button
+            type="button"
+            onClick={() => setShowCancel(true)}
+            className="text-xs font-medium text-[#cf8079] transition active:text-[#cf5b50]"
+          >
+            Cancel this visit
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -332,9 +452,11 @@ function PatientDashboard() {
   );
 
   return (
-    <div className="space-y-12 max-md:space-y-4">
+    <>
+    {/* ───────── Desktop dashboard ───────── */}
+    <div className="space-y-12 max-md:hidden">
       {/* Welcome header */}
-      <div className="relative -mx-6 px-6 pt-12 max-md:-mx-4 max-md:px-4 max-md:pt-0 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
+      <div className="relative -mx-6 px-6 pt-12 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-[140px]"
           style={{
@@ -345,24 +467,24 @@ function PatientDashboard() {
         />
         <div className="relative animate-fade-in-up">
           <div className="flex items-center gap-3">
-            <Sparkles className="size-5 text-[#f2c14d] max-md:size-4" />
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98] max-md:text-[10px] max-md:tracking-[2px]">
+            <Sparkles className="size-5 text-[#f2c14d]" />
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
               Patient Dashboard
             </p>
           </div>
-          <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 max-md:mt-2 max-md:text-[28px] sm:text-4xl">
+          <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 sm:text-4xl">
             {headline}
           </h1>
-          <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a] max-md:text-sm">
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-[#5b7f8a]">
             {subline}
           </p>
         </div>
       </div>
 
-      <div key={activeProfileId} className="dashboard-profile-transition space-y-12 max-md:space-y-4">
+      <div key={activeProfileId} className="dashboard-profile-transition space-y-12">
       {/* Stats cards — only shown when at least one value is greater than zero */}
       {hasStats && (
-        <div className="grid gap-5 max-md:gap-4 sm:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-3">
           <StatCard
             icon={CalendarCheck}
             label="Upcoming"
@@ -395,20 +517,9 @@ function PatientDashboard() {
             {profileActiveVisit ? (
               <ActiveVisitCard visit={profileActiveVisit} />
             ) : (
-              <>
-                {/* Desktop — centred empty state */}
-                <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10 max-md:hidden">
-                  <NoActiveVisit />
-                </div>
-                {/* Mobile — compact single row */}
-                <div className="hidden items-center gap-4 rounded-2xl bg-[rgba(26,160,140,0.05)] p-4 max-md:flex">
-                  <Home className="size-5 shrink-0 text-[#7fd1ca]" strokeWidth={1.5} />
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-[#22485b]">No active visit</h3>
-                    <p className="mt-0.5 text-xs text-[#5b7f8a]">Confirmed visits appear here.</p>
-                  </div>
-                </div>
-              </>
+              <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
+                <NoActiveVisit />
+              </div>
             )}
           </section>
 
@@ -454,6 +565,49 @@ function PatientDashboard() {
       )}
       </div>
     </div>
+
+    {/* ───────── Mobile dashboard ───────── */}
+    <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-md:block">
+      {loading && isPrimaryProfile ? (
+        <div className="space-y-4">
+          <div className="h-24 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+          <div className="h-40 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+        </div>
+      ) : (
+        <>
+          {profileActiveVisit ? (
+            <MobileActiveVisit visit={profileActiveVisit} />
+          ) : (
+            <>
+              <div className="mb-5 animate-fade-in-up">
+                <h1 className="font-display text-[26px] font-bold leading-tight tracking-tight text-[#1a5c52]">
+                  {headline}
+                </h1>
+                <p className="mt-2 text-[13px] font-light leading-relaxed text-[#5b7f8a]">
+                  {subline}
+                </p>
+              </div>
+
+              <Link
+                to="/request-visit"
+                className="mb-5 flex h-[52px] w-full items-center justify-between rounded-[14px] bg-[#E8A020] px-5 text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition active:brightness-105"
+              >
+                <span className="flex items-center gap-2 text-sm font-bold">
+                  <HousePlus className="size-5" strokeWidth={2} />
+                  Request a Home Visit
+                </span>
+                <ArrowRight className="size-5" strokeWidth={2} />
+              </Link>
+            </>
+          )}
+
+          {profileLastConsultation ? (
+            <MobileLastVisit consultation={profileLastConsultation} />
+          ) : null}
+        </>
+      )}
+    </div>
+    </>
   );
 }
 

@@ -76,8 +76,8 @@ function ConsultationTimelineNode({ consultation, expanded, onToggle }) {
   const hasReports = consultation.reports?.length > 0;
 
   return (
-    <div className="relative flex gap-5">
-      <div className="relative z-10 mt-7 shrink-0">
+    <div className="relative flex gap-5 max-md:gap-3">
+      <div className="relative z-10 mt-7 shrink-0 max-md:mt-6">
         <div className="h-[10px] w-[10px] rounded-full bg-[#1aa08c]" />
       </div>
 
@@ -85,14 +85,14 @@ function ConsultationTimelineNode({ consultation, expanded, onToggle }) {
         <button
           type="button"
           onClick={onToggle}
-          className="group w-full rounded-xl border border-[rgba(26,160,140,0.12)] bg-white px-6 py-5 text-left transition-colors duration-200 ease-in-out hover:bg-[rgba(26,160,140,0.04)]"
+          className="group w-full rounded-xl border border-[rgba(26,160,140,0.12)] bg-white px-6 py-5 text-left transition-colors duration-200 ease-in-out hover:bg-[rgba(26,160,140,0.04)] max-md:px-[14px] max-md:py-[14px]"
         >
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-[15px] font-bold text-[#1a5c52]">
+              <p className="text-[15px] font-bold text-[#1a5c52] max-md:text-[14px]">
                 {dayjs(consultation.date).format("D MMMM YYYY")}
               </p>
-              <p className="mt-0.5 text-sm font-light text-[#5b7f8a]">
+              <p className="mt-0.5 text-sm font-light text-[#5b7f8a] max-md:text-[13px]">
                 {consultation.doctor_name}
               </p>
             </div>
@@ -234,8 +234,8 @@ function ConsultationHistoryTab({ consultations }) {
 
 function ReportTimelineNode({ report, expanded, onToggle }) {
   return (
-    <div className="relative flex gap-5">
-      <div className="relative z-10 mt-7 shrink-0">
+    <div className="relative flex gap-5 max-md:gap-3">
+      <div className="relative z-10 mt-7 shrink-0 max-md:mt-6">
         <div className="h-[10px] w-[10px] rounded-full bg-[#1aa08c]" />
       </div>
 
@@ -243,14 +243,14 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
         <button
           type="button"
           onClick={onToggle}
-          className="group w-full rounded-xl border border-[rgba(26,160,140,0.12)] bg-white px-6 py-5 text-left transition-colors duration-200 ease-in-out hover:bg-[rgba(26,160,140,0.04)]"
+          className="group w-full rounded-xl border border-[rgba(26,160,140,0.12)] bg-white px-6 py-5 text-left transition-colors duration-200 ease-in-out hover:bg-[rgba(26,160,140,0.04)] max-md:px-[14px] max-md:py-[14px]"
         >
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-[15px] font-bold text-[#1a5c52]">
+              <p className="text-[15px] font-bold text-[#1a5c52] max-md:text-[14px]">
                 {dayjs(report.uploaded_at).format("D MMMM YYYY")}
               </p>
-              <p className="mt-0.5 text-sm font-medium text-[#5b7f8a]">
+              <p className="mt-0.5 text-sm font-medium text-[#5b7f8a] max-md:text-[13px]">
                 {report.name}
               </p>
             </div>
@@ -743,13 +743,13 @@ function PatientHealthRecords() {
         </p>
       </div>
 
-      <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-2">
+      <div className="animate-fade-in-up stagger-1 flex flex-wrap gap-2 max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => handleTabChange(tab.id)}
-            className={`h-[38px] rounded-[20px] px-5 text-sm transition-colors duration-200 ease-in-out ${
+            className={`h-[38px] whitespace-nowrap rounded-[20px] px-5 text-sm transition-colors duration-200 ease-in-out max-md:shrink-0 ${
               activeTab === tab.id
                 ? "bg-[#2d8f98] font-medium text-white"
                 : "border border-[rgba(26,160,140,0.3)] bg-transparent font-normal text-[#5b7f8a]"

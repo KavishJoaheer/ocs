@@ -4,7 +4,6 @@ import {
   CircleUserRound,
   Heart,
   HousePlus,
-  Plus,
   HeartPulse,
   CalendarCheck,
   ReceiptText,
@@ -92,15 +91,6 @@ function Sidebar() {
           })}
         </div>
       </nav>
-
-      {/* ─── Mobile floating action button ─── */}
-      <Link
-        to="/request-visit"
-        aria-label="Request a home visit"
-        className="fixed bottom-20 left-1/2 z-50 inline-flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d8f98,#1f6c74)] text-white shadow-[0_14px_36px_rgba(31,108,116,0.45)] transition active:brightness-110 lg:hidden"
-      >
-        <Plus className="size-7" strokeWidth={2.5} />
-      </Link>
 
       {/* ─── Desktop sidebar ─── */}
       <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] lg:flex lg:flex-col">
