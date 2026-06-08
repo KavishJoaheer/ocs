@@ -1,39 +1,38 @@
+import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { CalendarCheck2 } from "lucide-react";
+import { api } from "../lib/api.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 
-const SAMPLE_UPCOMING = [
-  {
-    id: 1,
-    date: "2026-06-15",
-    time: "2:00 PM",
-    type: "Follow-up Consultation",
-    doctor_name: "Dr. Avinash Sharma",
-  },
-  {
-    id: 2,
-    date: "2026-06-28",
-    time: "10:30 AM",
-    type: "Blood Pressure Review",
-    doctor_name: "Dr. Priya Nair",
-  },
-];
+function withDoctorPrefix(name) {
+  const value = String(name || "").trim();
+  if (!value) return "Your OCS doctor";
+  return /^dr\.?\s/i.test(value) ? value : `Dr. ${value}`;
+}
 
-const SAMPLE_PAST = [
-  {
-    id: 3,
-    date: "2026-06-07",
-    time: "11:00 AM",
-    type: "General Consultation",
-    doctor_name: "Dr. Avinash Sharma",
-  },
-  {
-    id: 4,
-    date: "2026-04-15",
-    time: "3:00 PM",
-    type: "Viral Fever Follow-up",
-    doctor_name: "Dr. Priya Nair",
-  },
-];
+function formatTime(time) {
+  const value = String(time || "").trim();
+  if (!value) return "";
+  const parsed = dayjs(`2000-01-01T${value}`);
+  return parsed.isValid() ? parsed.format("h:mm A") : value;
+}
+
+function typeLabel(status) {
+  if (status === "completed") return "Consultation";
+  if (status === "cancelled") return "Cancelled";
+  return "Scheduled Visit";
+}
+
+function mapAppointment(row) {
+  return {
+    id: row.id,
+    date: row.appointment_date,
+    time: formatTime(row.appointment_time),
+    type: typeLabel(row.status),
+    doctor_name: withDoctorPrefix(row.doctor_name),
+    status: row.status,
+  };
+}
 
 function SectionLabel({ children, muted = false }) {
   return (
@@ -120,7 +119,7 @@ function AppointmentCard({ appointment, variant, isNextVisit = false }) {
           </span>
         ) : (
           <span className="inline-flex rounded-[20px] bg-[rgba(0,0,0,0.06)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8a9ea3]">
-            Completed
+            {appointment.status === "cancelled" ? "Cancelled" : "Completed"}
           </span>
         )}
       </div>
@@ -129,8 +128,35 @@ function AppointmentCard({ appointment, variant, isNextVisit = false }) {
 }
 
 function PatientAppointments() {
-  const upcoming = SAMPLE_UPCOMING;
-  const past = SAMPLE_PAST;
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const refreshKey = useLiveRefreshKey();
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function fetchAppointments() {
+      try {
+        const data = await api.get("/patient-portal/appointments");
+        if (!ignore) setAppointments((data.appointments || []).map(mapAppointment));
+      } catch {
+        if (!ignore) setAppointments([]);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    fetchAppointments();
+    return () => { ignore = true; };
+  }, [refreshKey]);
+
+  const today = dayjs().format("YYYY-MM-DD");
+  const upcoming = appointments
+    .filter((a) => a.status === "scheduled" && a.date >= today)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const past = appointments
+    .filter((a) => !(a.status === "scheduled" && a.date >= today))
+    .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
     <div className="mx-auto max-w-[720px] space-y-10">
@@ -152,56 +178,64 @@ function PatientAppointments() {
         </p>
       </div>
 
-      <section className="animate-fade-in-up stagger-1 space-y-3">
-        <SectionLabel>Upcoming</SectionLabel>
-        {upcoming.length === 0 ? (
-          <p className="text-[13px] font-light italic text-[#8a9ea3]">
-            No upcoming appointments. Your OCS care team will schedule these for
-            you.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {upcoming.map((appointment, idx) => (
-              <div
-                key={appointment.id}
-                className={`animate-fade-in-up stagger-${Math.min(idx + 2, 8)}`}
-              >
-                <AppointmentCard
-                  appointment={appointment}
-                  variant="upcoming"
-                  isNextVisit={idx === 0}
-                />
+      {loading ? (
+        <p className="animate-fade-in-up text-[13px] font-light italic text-[#8a9ea3]">
+          Loading your appointments…
+        </p>
+      ) : (
+        <>
+          <section className="animate-fade-in-up stagger-1 space-y-3">
+            <SectionLabel>Upcoming</SectionLabel>
+            {upcoming.length === 0 ? (
+              <p className="text-[13px] font-light italic text-[#8a9ea3]">
+                No upcoming appointments. Your OCS care team will schedule these for
+                you.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {upcoming.map((appointment, idx) => (
+                  <div
+                    key={appointment.id}
+                    className={`animate-fade-in-up stagger-${Math.min(idx + 2, 8)}`}
+                  >
+                    <AppointmentCard
+                      appointment={appointment}
+                      variant="upcoming"
+                      isNextVisit={idx === 0}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            )}
+          </section>
 
-      <section
-        className={`animate-fade-in-up space-y-3 ${
-          upcoming.length > 0
-            ? `stagger-${Math.min(upcoming.length + 2, 8)}`
-            : "stagger-2"
-        }`}
-      >
-        <SectionLabel muted>Past</SectionLabel>
-        {past.length === 0 ? (
-          <p className="text-[13px] font-light italic text-[#8a9ea3]">
-            No past appointments yet.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {past.map((appointment, idx) => (
-              <div
-                key={appointment.id}
-                className={`animate-fade-in-up stagger-${Math.min(upcoming.length + 3 + idx, 8)}`}
-              >
-                <AppointmentCard appointment={appointment} variant="past" />
+          <section
+            className={`animate-fade-in-up space-y-3 ${
+              upcoming.length > 0
+                ? `stagger-${Math.min(upcoming.length + 2, 8)}`
+                : "stagger-2"
+            }`}
+          >
+            <SectionLabel muted>Past</SectionLabel>
+            {past.length === 0 ? (
+              <p className="text-[13px] font-light italic text-[#8a9ea3]">
+                No past appointments yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {past.map((appointment, idx) => (
+                  <div
+                    key={appointment.id}
+                    className={`animate-fade-in-up stagger-${Math.min(idx + 3, 8)}`}
+                  >
+                    <AppointmentCard appointment={appointment} variant="past" />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

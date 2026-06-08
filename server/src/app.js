@@ -296,6 +296,13 @@ function createApp() {
   // Realtime stream must be registered before the bearer-only router so it can
   // authenticate via ?access_token= (EventSource cannot send headers).
   app.get("/api/patient-portal/stream", requirePatientAuthFlexible, handlePatientPortalStream);
+  // Report file download authenticates via ?access_token= so the browser can
+  // open/download it directly (no Authorization header on <a>/window.open).
+  app.get(
+    "/api/patient-portal/reports/attachments/:attachmentId/download",
+    requirePatientAuthFlexible,
+    patientPortalRouter.handleReportAttachmentDownload,
+  );
   app.use("/api/patient-portal", requirePatientAuth, patientPortalRouter);
 
   const clientDistPath = getClientDistPath();

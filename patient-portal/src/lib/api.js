@@ -14,6 +14,17 @@ export function setStoredAuthToken(token) {
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
+/**
+ * Build an absolute URL to an authenticated file endpoint (e.g. a report PDF),
+ * carrying the bearer token in the query string since a plain <a>/window.open
+ * cannot send an Authorization header.
+ */
+export function buildAuthedFileUrl(path) {
+  const token = getStoredAuthToken();
+  const separator = path.includes("?") ? "&" : "?";
+  return `${API_BASE}${path}${token ? `${separator}access_token=${encodeURIComponent(token)}` : ""}`;
+}
+
 async function apiRequest(path, options = {}) {
   const authToken = getStoredAuthToken();
   const headers = {

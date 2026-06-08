@@ -7,56 +7,12 @@ import {
   FileText,
   FileUp,
 } from "lucide-react";
-import { CONSULTATIONS } from "../lib/consultations.js";
+import { api, buildAuthedFileUrl } from "../lib/api.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 
-const SAMPLE_MEDICAL_REPORTS = [
-  {
-    id: 1,
-    uploaded_at: "2026-06-08",
-    report_date: "2026-06-05",
-    name: "Blood Panel — Private Lab",
-    file_type: "PDF",
-    url: "/sample-reports/blood-panel-private-lab.pdf",
-    requested_by_source: "External Doctor",
-    requested_by: "Dr. Meera Iyer",
-  },
-  {
-    id: 2,
-    uploaded_at: "2026-03-12",
-    report_date: "2026-03-10",
-    name: "Cardiology Specialist Report",
-    file_type: "PDF",
-    url: "/sample-reports/cardiology-report.pdf",
-    requested_by_source: "OCS Doctor",
-    requested_by: "Dr. Avinash Sharma",
-  },
-];
-
-const SAMPLE_CLINICAL_HISTORY = {
-  medical_history: [
-    {
-      id: 1,
-      name: "Hypertension",
-      detail: "Diagnosed 2024 · Managed with medication",
-    },
-    {
-      id: 2,
-      name: "Type 2 Diabetes",
-      detail: "Diagnosed 2023 · Diet controlled",
-    },
-  ],
-  surgical_history: [
-    { id: 1, name: "Appendectomy", detail: "2015 · Apollo Hospital" },
-  ],
-  allergy_history: [
-    { id: 1, name: "Penicillin", detail: "Severe — rash and swelling" },
-    { id: 2, name: "Pollen", detail: "Seasonal allergic rhinitis" },
-  ],
-  drug_history: [
-    { id: 1, name: "Amlodipine 5mg", detail: "Once daily, morning" },
-    { id: 2, name: "Metformin 500mg", detail: "Twice daily, with meals" },
-  ],
-};
+function reportUrl(attachmentId) {
+  return buildAuthedFileUrl(`/patient-portal/reports/attachments/${attachmentId}/download`);
+}
 
 const TABS = [
   { id: "consultations", label: "Consultation History", shortLabel: "Consultations" },
@@ -697,9 +653,46 @@ function PatientHealthRecords() {
   const [displayedTab, setDisplayedTab] = useState("consultations");
   const [tabFading, setTabFading] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [medicalReports, setMedicalReports] = useState(SAMPLE_MEDICAL_REPORTS);
-  const consultations = CONSULTATIONS;
-  const clinicalHistory = SAMPLE_CLINICAL_HISTORY;
+  const [medicalReports, setMedicalReports] = useState([]);
+  const [consultations, setConsultations] = useState([]);
+  const [clinicalHistory, setClinicalHistory] = useState({});
+  const [loading, setLoading] = useState(true);
+  const refreshKey = useLiveRefreshKey();
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadRecords() {
+      try {
+        const data = await api.get("/patient-portal/health-records");
+        if (ignore) return;
+        setConsultations(
+          (data.consultations || []).map((consultation) => ({
+            ...consultation,
+            reports: (consultation.reports || []).map((report) => ({
+              ...report,
+              url: reportUrl(report.id),
+            })),
+          })),
+        );
+        setMedicalReports(
+          (data.reports || []).map((report) => ({ ...report, url: reportUrl(report.id) })),
+        );
+        setClinicalHistory(data.clinical || {});
+      } catch {
+        if (!ignore) {
+          setConsultations([]);
+          setMedicalReports([]);
+          setClinicalHistory({});
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadRecords();
+    return () => { ignore = true; };
+  }, [refreshKey]);
 
   function handleTabChange(tabId) {
     if (tabId === activeTab) return;
@@ -797,13 +790,19 @@ function PatientHealthRecords() {
         className="animate-fade-in-up stagger-2 transition-opacity duration-200 ease-in-out"
         style={{ opacity: tabFading ? 0 : 1 }}
       >
-        <TabContent
-          activeTab={displayedTab}
-          consultations={consultations}
-          medicalReports={medicalReports}
-          clinicalHistory={clinicalHistory}
-          onUploadClick={() => setUploadOpen(true)}
-        />
+        {loading ? (
+          <p className="text-[13px] font-light italic text-[#8a9ea3]">
+            Loading your records…
+          </p>
+        ) : (
+          <TabContent
+            activeTab={displayedTab}
+            consultations={consultations}
+            medicalReports={medicalReports}
+            clinicalHistory={clinicalHistory}
+            onUploadClick={() => setUploadOpen(true)}
+          />
+        )}
       </div>
 
       <UploadModal
