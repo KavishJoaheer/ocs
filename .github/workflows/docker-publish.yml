@@ -55,3 +55,16 @@ jobs:
             --tag "${IMAGE}:sha-${SHORT_SHA}" \
             --push \
             .
+
+      - name: Build and push linkham portal image
+        env:
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/clinicflow-linkham-portal
+        run: |
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          docker buildx build \
+            --platform linux/amd64 \
+            --file ./linkham-portal.Dockerfile \
+            --tag "${IMAGE}:latest" \
+            --tag "${IMAGE}:sha-${SHORT_SHA}" \
+            --push \
+            .
