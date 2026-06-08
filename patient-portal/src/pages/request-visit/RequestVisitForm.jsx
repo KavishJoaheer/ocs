@@ -77,7 +77,7 @@ function RequestVisitForm() {
               value={draft.address}
               onChange={(e) => updateDraft({ address: e.target.value })}
               placeholder="Your home address"
-              className="h-[52px] w-full rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/80 pl-11 pr-4 text-sm text-[#22485b] outline-none transition focus:border-[#41c8c6] focus:bg-white focus:ring-4 focus:ring-[rgba(65,200,198,0.12)]"
+              className="h-[52px] w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] pl-11 pr-4 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
             />
           </div>
           <button
@@ -97,7 +97,7 @@ function RequestVisitForm() {
             onChange={(e) => updateDraft({ reason: e.target.value })}
             rows={3}
             placeholder="Briefly describe your symptoms or reason for the visit"
-            className="mt-3 w-full resize-none rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/80 px-4 py-3.5 text-sm leading-relaxed text-[#22485b] outline-none transition focus:border-[#41c8c6] focus:bg-white focus:ring-4 focus:ring-[rgba(65,200,198,0.12)]"
+            className="mt-3 w-full resize-none rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-3.5 text-sm leading-relaxed text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
           />
 
           <div className="mt-3 grid grid-cols-3 gap-3">
@@ -131,8 +131,8 @@ function RequestVisitForm() {
           onClick={handleReview}
           disabled={!canReview}
           className={[
-            "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.35)] transition",
-            canReview ? "hover:brightness-105" : "cursor-not-allowed opacity-50",
+            "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition",
+            canReview ? "hover:brightness-105 active:scale-95" : "cursor-not-allowed opacity-50",
           ].join(" ")}
         >
           Review My Request <ArrowRight className="size-4" />

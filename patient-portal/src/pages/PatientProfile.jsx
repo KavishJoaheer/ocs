@@ -202,7 +202,7 @@ function PatientProfile() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[rgba(45,143,152,0.22)] transition hover:bg-sky-700 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 active:scale-95 disabled:opacity-60 disabled:active:scale-100"
               >
                 {saving ? (
                   <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -225,7 +225,7 @@ function PatientProfile() {
                 <input
                   value={editForm.phone}
                   onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 outline-none transition focus:border-sky-400 focus:bg-white"
+                  className="w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] py-3 pl-11 pr-4 outline-none transition focus:border-sky-400 focus:bg-white"
                   placeholder="Phone number"
                 />
               </div>
@@ -244,7 +244,7 @@ function PatientProfile() {
                   value={editForm.address}
                   onChange={(e) => setEditForm((c) => ({ ...c, address: e.target.value }))}
                   rows={2}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 outline-none transition focus:border-sky-400 focus:bg-white"
+                  className="w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] py-3 pl-11 pr-4 outline-none transition focus:border-sky-400 focus:bg-white"
                   placeholder="Your address"
                 />
               </div>
@@ -270,7 +270,7 @@ function PatientProfile() {
                 <input
                   value={editForm.next_of_kin_name}
                   onChange={(e) => setEditForm((c) => ({ ...c, next_of_kin_name: e.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+                  className="w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
                   placeholder="Name"
                 />
               ) : (
@@ -284,7 +284,7 @@ function PatientProfile() {
                 <input
                   value={editForm.next_of_kin_phone}
                   onChange={(e) => setEditForm((c) => ({ ...c, next_of_kin_phone: e.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+                  className="w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
                   placeholder="Phone number"
                 />
               ) : (
@@ -298,7 +298,7 @@ function PatientProfile() {
                 <input
                   value={editForm.next_of_kin_relationship}
                   onChange={(e) => setEditForm((c) => ({ ...c, next_of_kin_relationship: e.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+                  className="w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
                   placeholder="e.g. Spouse, Parent"
                 />
               ) : (

@@ -134,7 +134,7 @@ function RequestVisitTracking() {
       <div className="mt-8">
         <a
           href="tel:52522234"
-          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.35)] transition hover:brightness-105"
+          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
         >
           <Phone className="size-4" /> Call Dr. Sharma
         </a>

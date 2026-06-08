@@ -173,7 +173,7 @@ function ConsultationEmptyState() {
       </p>
       <Link
         to="/request-visit"
-        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 active:translate-y-px max-md:shadow-[0_2px_4px_rgba(20,60,55,0.18)]"
+        className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
       >
         Request a Home Visit →
       </Link>
@@ -401,17 +401,17 @@ function UploadModal({ open, onClose, onUpload }) {
               setDragOver(false);
               handleFileSelect(e.dataTransfer.files[0]);
             }}
-            className={`cursor-pointer rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors duration-200 ${
+            className={`cursor-pointer rounded-xl border border-transparent px-4 py-8 text-center transition-colors duration-200 active:scale-[0.99] ${
               dragOver
-                ? "border-[#2d8f98] bg-[rgba(26,160,140,0.08)]"
-                : "border-[rgba(26,160,140,0.25)] bg-[rgba(26,160,140,0.04)]"
+                ? "bg-[rgba(26,160,140,0.14)]"
+                : "bg-[rgba(65,200,198,0.08)]"
             }`}
           >
             <FileUp className="mx-auto size-8 text-[#2d8f98]" strokeWidth={1.5} />
             <p className="mt-3 text-sm text-[#5b7f8a]">
               {selectedFile
                 ? selectedFile.name
-                : "Drag and drop or click to browse"}
+                : "Tap to scan or upload document"}
             </p>
             <p className="mt-1 text-xs font-light text-[#8a9ea3]">
               PDF and image files only
@@ -438,7 +438,7 @@ function UploadModal({ open, onClose, onUpload }) {
               value={reportName}
               onChange={(e) => setReportName(e.target.value)}
               placeholder="Name this report"
-              className="mt-1.5 w-full rounded-xl border border-[rgba(26,160,140,0.2)] bg-white px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[#2d8f98]"
+              className="mt-1.5 w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
             />
           </div>
 
@@ -454,7 +454,7 @@ function UploadModal({ open, onClose, onUpload }) {
               type="date"
               value={reportDate}
               onChange={(e) => setReportDate(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-[rgba(26,160,140,0.2)] bg-white px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[#2d8f98]"
+              className="mt-1.5 w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
             />
           </div>
 
@@ -488,7 +488,7 @@ function UploadModal({ open, onClose, onUpload }) {
                   ? "Name of OCS doctor who requested this"
                   : "Name of doctor who requested this"
               }
-              className="mt-2 w-full rounded-xl border border-[rgba(26,160,140,0.2)] bg-white px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[#2d8f98]"
+              className="mt-2 w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
             />
           </div>
 
@@ -496,7 +496,7 @@ function UploadModal({ open, onClose, onUpload }) {
             <button
               type="submit"
               disabled={!selectedFile || !reportName.trim() || !reportDate}
-              className="rounded-full bg-[#E8A020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 disabled:cursor-not-allowed"
+              className="rounded-full bg-[#E8A020] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:active:scale-100"
             >
               Upload Report
             </button>
@@ -551,7 +551,7 @@ function MedicalReportsTab({ reports, onUploadClick }) {
           <button
             type="button"
             onClick={onUploadClick}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105 active:translate-y-px max-md:shadow-[0_2px_4px_rgba(20,60,55,0.18)]"
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
           >
             + Upload Your First Report
           </button>
@@ -562,7 +562,7 @@ function MedicalReportsTab({ reports, onUploadClick }) {
             <button
               type="button"
               onClick={onUploadClick}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-[0_12px_32px_rgba(232,160,32,0.35)] transition hover:brightness-105 active:translate-y-px max-md:shadow-[0_2px_4px_rgba(20,60,55,0.18)]"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
             >
               + Upload a Report
             </button>

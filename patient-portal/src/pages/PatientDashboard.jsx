@@ -304,13 +304,13 @@ function MobileActiveVisit({ visit }) {
       <div className="mt-5 space-y-3">
         <Link
           to="/request-visit/tracking"
-          className="flex h-[48px] w-full items-center justify-center rounded-[14px] border border-[#2d8f98] text-sm font-bold text-[#2d8f98] transition active:bg-[rgba(26,160,140,0.06)]"
+          className="flex h-[48px] w-full items-center justify-center rounded-[14px] border border-[#2d8f98] text-sm font-bold text-[#2d8f98] transition active:scale-95 active:bg-[rgba(26,160,140,0.06)]"
         >
           View Live Tracking →
         </Link>
         <a
           href="tel:52522234"
-          className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-[#E8A020] text-sm font-bold text-white shadow-[0_2px_4px_rgba(20,60,55,0.18)] transition active:translate-y-px active:brightness-105"
+          className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-[#E8A020] text-sm font-bold text-white shadow-sm transition active:scale-95 active:brightness-105"
         >
           Call {doctor}
         </a>
@@ -590,7 +590,7 @@ function PatientDashboard() {
 
               <Link
                 to="/request-visit"
-                className="mb-5 flex h-[52px] w-full items-center justify-between rounded-[14px] bg-[#E8A020] px-5 text-white shadow-[0_2px_4px_rgba(20,60,55,0.18)] transition active:translate-y-px active:brightness-105"
+                className="mb-5 flex h-[52px] w-full items-center justify-between rounded-[14px] bg-[#E8A020] px-5 text-white shadow-sm transition active:scale-95 active:brightness-105"
               >
                 <span className="flex items-center gap-2 text-sm font-bold">
                   <HousePlus className="size-5" strokeWidth={2} />

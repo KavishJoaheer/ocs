@@ -68,7 +68,7 @@ function Sidebar() {
       </div>
 
       {/* ─── Mobile bottom navigation ─── */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_12px_rgba(13,42,46,0.06)] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 bg-white/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
         <div className="mx-auto flex h-[68px] max-w-md items-stretch justify-around px-2">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -131,7 +131,7 @@ function Sidebar() {
           {/* Request a home visit — primary action */}
           <Link
             to="/request-visit"
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_16px_40px_rgba(232,160,32,0.38)] transition hover:brightness-105"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
           >
             <HousePlus className="size-5" />
             Request a Home Visit
