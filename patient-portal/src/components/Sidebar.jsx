@@ -5,7 +5,7 @@ import {
   Heart,
   HousePlus,
   Plus,
-  ClipboardHeart,
+  ClipboardList,
   CalendarCheck,
   ReceiptText,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/consultations", label: "Consultation History", icon: ClipboardHeart },
+  { to: "/consultations", label: "Consultation History", icon: ClipboardList },
   { to: "/appointments", label: "Review Appointments", icon: CalendarCheck },
   { to: "/billing", label: "Billing", icon: ReceiptText },
   { to: "/profile", label: "Profile", icon: UserCircle },

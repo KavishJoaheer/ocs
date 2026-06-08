@@ -1,7 +1,7 @@
 import { useState } from "react";
 import dayjs from "dayjs";
 import { Link } from "react-router-dom";
-import { ClipboardHeart, ChevronRight, FileText } from "lucide-react";
+import { ClipboardList, ChevronRight, FileText } from "lucide-react";
 
 const SAMPLE_CONSULTATIONS = [
   {
@@ -138,7 +138,7 @@ function TimelineNode({ consultation, expanded, onToggle }) {
 function EmptyState() {
   return (
     <div className="animate-fade-in-up stagger-1 flex flex-col items-center px-6 py-20 text-center">
-      <ClipboardHeart
+      <ClipboardList
         className="size-12 text-[rgba(26,160,140,0.35)]"
         strokeWidth={1.5}
       />
@@ -179,7 +179,7 @@ function PatientConsultations() {
     <div className="mx-auto max-w-[720px] space-y-8">
       <div className="animate-fade-in-up">
         <div className="flex items-center gap-2">
-          <ClipboardHeart
+          <ClipboardList
             className="size-[18px] shrink-0 text-[#6B9E95]"
             strokeWidth={1.5}
           />
