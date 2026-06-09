@@ -33,8 +33,9 @@
   /* Desktop dashboard — luxury concierge canvas */
   --desktop-canvas: #fafafc;
   --desktop-card-radius: 18px;
-  --desktop-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
-  --desktop-card-shadow-hover: 0 6px 28px rgba(0, 0, 0, 0.06);
+  --desktop-card-border: 1px solid rgba(0, 0, 0, 0.04);
+  --desktop-card-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  --desktop-card-shadow-hover: 0 10px 36px rgba(0, 0, 0, 0.06);
   --ocs-teal-dark: #1a5c52;
   color-scheme: light;
   font-synthesis: none;
@@ -784,7 +785,15 @@ table {
 /* ─── Desktop dashboard — ultra-minimal concierge layout ─── */
 
 .desktop-dashboard-greeting {
-  margin-bottom: 40px;
+  margin-bottom: 28px;
+}
+
+.desktop-greeting-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #d4a03a;
 }
 
 .desktop-dashboard-grid {
@@ -809,38 +818,101 @@ table {
   border-radius: var(--desktop-card-radius);
   background: #fff;
   padding: 32px;
+  border: var(--desktop-card-border);
   box-shadow: var(--desktop-card-shadow);
-  border: none;
 }
 
 .desktop-card-hover {
-  transition: box-shadow 200ms ease;
+  transition:
+    box-shadow 200ms ease,
+    border-color 200ms ease;
 }
 
 .desktop-card-hover:hover {
+  border-color: rgba(0, 0, 0, 0.06);
   box-shadow: var(--desktop-card-shadow-hover);
 }
 
 .desktop-stat-widget {
-  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.desktop-stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+
+.desktop-stat-icon--teal {
+  background: rgba(26, 160, 140, 0.1);
+  color: #2d8f98;
+}
+
+.desktop-stat-icon--orange {
+  background: rgba(232, 160, 32, 0.12);
+  color: #c88710;
 }
 
 .desktop-stat-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #8a9e9a;
 }
 
 .desktop-stat-value {
-  margin-top: 10px;
+  margin-top: 4px;
   font-family: var(--font-display);
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;
-  color: #1a2e38;
+  color: #1a5c52;
+}
+
+.desktop-support-card {
+  border-radius: var(--desktop-card-radius);
+  padding: 32px;
+  border: var(--desktop-card-border);
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7f7 100%);
+  box-shadow: var(--desktop-card-shadow);
+}
+
+.desktop-support-phone-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(232, 160, 32, 0.14);
+}
+
+.desktop-support-phone {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #1a5c52;
+  text-decoration: none;
+}
+
+.desktop-visit-badge {
+  border-radius: 999px;
+  background: rgba(59, 125, 216, 0.1);
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #1e4d8c;
 }
 
 /* Display typography — explicit weight for SF Pro / Roboto parity */

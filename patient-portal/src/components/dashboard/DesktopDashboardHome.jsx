@@ -1,6 +1,14 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { Heart, HousePlus } from "lucide-react";
+import {
+  CreditCard,
+  Headset,
+  HousePlus,
+  Moon,
+  Sun,
+  Sunset,
+  TrendingUp,
+} from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 function doctorInitials(name) {
@@ -11,30 +19,46 @@ function doctorInitials(name) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-function DesktopStatWidget({ label, value }) {
+function getTimeOfDayIcon() {
+  const hour = new Date().getHours();
+  if (hour < 12) return Sun;
+  if (hour < 17) return Sunset;
+  return Moon;
+}
+
+function DesktopStatWidget({ label, value, icon: Icon, tone }) {
   return (
     <div className="desktop-stat-widget">
-      <p className="desktop-stat-label">{label}</p>
-      <p className="desktop-stat-value">{value}</p>
+      <div className={`desktop-stat-icon desktop-stat-icon--${tone}`}>
+        <Icon className="size-5" strokeWidth={1.75} />
+      </div>
+      <div className="min-w-0">
+        <p className="desktop-stat-label">{label}</p>
+        <p className="desktop-stat-value">{value}</p>
+      </div>
     </div>
   );
 }
 
 function DesktopHelpCard() {
   return (
-    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-3">
+    <section className="desktop-support-card desktop-card-hover animate-fade-in-up stagger-3">
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a9e9a]">
         Need help?
       </p>
-      <p className="mt-3 text-sm font-semibold text-[#22485b]">Contact our care team</p>
-      <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
-        Reach out any time for appointment changes, billing questions, or medical inquiries.
+      <p className="mt-3 font-display text-base font-bold text-[#1a5c52]">
+        Your dedicated care concierge
       </p>
-      <div className="mt-5 flex items-center gap-3">
-        <Heart className="size-4 shrink-0 text-[#f2c14d]" />
+      <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
+        Priority support for appointments, billing, and clinical questions — any time.
+      </p>
+      <div className="mt-6 flex items-center gap-4">
+        <div className="desktop-support-phone-icon" aria-hidden="true">
+          <Headset className="size-5 text-ocs-orange" strokeWidth={1.75} />
+        </div>
         <a
           href="tel:52522234"
-          className="text-lg font-bold tracking-tight text-[#22485b] transition hover:text-[#2d8f98]"
+          className="desktop-support-phone transition hover:text-[#2d8f98]"
         >
           52 52 22 34
         </a>
@@ -58,7 +82,7 @@ function DesktopLastVisitCard({ consultation }) {
 
       <div className="mt-6 flex items-center justify-between gap-3">
         <p className="text-[13px] font-medium text-[#5b7f8a]">{dateLabel}</p>
-        <span className="consultation-visit-badge shrink-0">Home Visit</span>
+        <span className="desktop-visit-badge shrink-0">Home Visit</span>
       </div>
 
       <div className="mt-5 flex items-center gap-4">
@@ -86,7 +110,7 @@ function DesktopLastVisitCard({ consultation }) {
       <div className="mt-8 flex justify-end">
         <Link
           to={summaryTo}
-          className="text-sm font-semibold text-ocs-orange transition hover:text-[#c88710]"
+          className="text-sm font-bold text-ocs-orange transition hover:text-[#c88710]"
         >
           View Visit Summary →
         </Link>
@@ -105,14 +129,20 @@ function DesktopDashboardHome({
 }) {
   const pendingBills = profileStats?.pending_bills ?? 0;
   const totalVisits = profileStats?.total_visits ?? 0;
+  const TimeIcon = getTimeOfDayIcon();
 
   return (
     <div className="desktop-dashboard">
       <header className="desktop-dashboard-greeting animate-fade-in-up">
-        <h1 className="font-display text-[2rem] tracking-tight text-[#1a5c52] sm:text-4xl">
-          {headline}
-        </h1>
-        <p className="mt-2.5 max-w-xl text-base leading-relaxed text-[#5b7f8a]">{subline}</p>
+        <div className="flex items-center gap-3.5">
+          <span className="desktop-greeting-icon" aria-hidden="true">
+            <TimeIcon className="size-6" strokeWidth={1.75} />
+          </span>
+          <h1 className="font-display text-[2rem] tracking-tight text-[#1a5c52] sm:text-4xl">
+            {headline}
+          </h1>
+        </div>
+        <p className="mt-2 max-w-xl pl-[42px] text-base leading-relaxed text-[#5b7f8a]">{subline}</p>
       </header>
 
       <div className="desktop-dashboard-grid">
@@ -127,7 +157,7 @@ function DesktopDashboardHome({
             <section className="desktop-card">
               <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
               <div className="mt-6 flex items-center gap-4">
-                <div className="flex size-11 items-center justify-center rounded-[14px] bg-[rgba(26,160,140,0.06)]">
+                <div className="flex size-11 items-center justify-center rounded-[12px] bg-[rgba(26,160,140,0.06)]">
                   <HousePlus className="size-5 text-[#2d8f98]" strokeWidth={1.5} />
                 </div>
                 <div>
@@ -144,9 +174,19 @@ function DesktopDashboardHome({
         <div className="desktop-dashboard-col">
           {isPrimaryProfile ? (
             <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-1">
-              <div className="grid grid-cols-2 gap-8">
-                <DesktopStatWidget label="Pending Bills" value={pendingBills} />
-                <DesktopStatWidget label="Total Visits" value={totalVisits} />
+              <div className="flex flex-col gap-7">
+                <DesktopStatWidget
+                  label="Pending Bills"
+                  value={pendingBills}
+                  icon={CreditCard}
+                  tone="orange"
+                />
+                <DesktopStatWidget
+                  label="Total Visits"
+                  value={totalVisits}
+                  icon={TrendingUp}
+                  tone="teal"
+                />
               </div>
             </section>
           ) : null}

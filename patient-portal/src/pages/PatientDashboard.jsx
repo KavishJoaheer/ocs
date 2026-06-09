@@ -335,7 +335,7 @@ function PatientDashboard() {
     <div className="max-lg:hidden">
       {loading && isPrimaryProfile ? (
         <div className="desktop-dashboard">
-          <div className="desktop-dashboard-greeting mb-10">
+          <div className="desktop-dashboard-greeting">
             <div className="h-10 w-72 animate-pulse rounded-lg bg-[rgba(0,0,0,0.04)]" />
             <div className="mt-3 h-5 w-96 animate-pulse rounded-lg bg-[rgba(0,0,0,0.03)]" />
           </div>
