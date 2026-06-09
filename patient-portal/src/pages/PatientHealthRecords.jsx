@@ -27,15 +27,12 @@ import {
   MobileHealthSummaryCard,
   VitalsTrendsPanel,
 } from "../components/health-records/HealthOverview.jsx";
-import { UnifiedTimeline } from "../components/health-records/UnifiedTimeline.jsx";
-
 function reportUrl(attachmentId) {
   return buildAuthedFileUrl(`/patient-portal/reports/attachments/${attachmentId}/download`);
 }
 
 const TABS = [
   { id: "overview", label: "Overview", shortLabel: "Overview" },
-  { id: "timeline", label: "Care Timeline", shortLabel: "Timeline" },
   { id: "consultations", label: "Consultation History", shortLabel: "Consultations" },
   { id: "reports", label: "Medical & Lab Reports", shortLabel: "Reports" },
   { id: "clinical", label: "Clinical History", shortLabel: "Clinical" },
@@ -653,19 +650,15 @@ function ClinicalHistoryTab({ clinicalHistory }) {
       <div className="space-y-3">
         {CLINICAL_SECTIONS.map((section, idx) => {
           const items = clinicalHistory[section.key] ?? [];
-          const visibleItems =
-            section.key === "allergy_history"
-              ? items.filter((item) => !isNilAllergyValue(item.name))
-              : items;
           return (
             <div
               key={section.key}
               className={`animate-fade-in-up stagger-${Math.min(idx + 1, 8)} rounded-2xl border border-[rgba(26,160,140,0.12)] px-6 py-5 ${section.bg} max-md:rounded-[16px] max-md:border-0 max-md:bg-white max-md:px-4 max-md:py-4 max-md:shadow-[0_2px_12px_rgba(26,160,140,0.08)]`}
             >
               <SectionLabel>{section.label}</SectionLabel>
-              {visibleItems.length > 0 ? (
+              {items.length > 0 ? (
                 <ul className="mt-3 space-y-3">
-                  {visibleItems.map((item) => (
+                  {items.map((item) => (
                     <li key={item.id} className="flex gap-3">
                       <span className="mt-[7px] h-[6px] w-[6px] shrink-0 rounded-full bg-[#1aa08c]" />
                       <div className="min-w-0 flex-1">
@@ -675,7 +668,7 @@ function ClinicalHistoryTab({ clinicalHistory }) {
                               ? formatMedicalConditionName(item.name)
                               : item.name}
                           </p>
-                          {section.key === "allergy_history" ? (
+                          {section.key === "allergy_history" && !isNilAllergyValue(item.name) ? (
                             <span className="inline-flex rounded-[20px] bg-[rgba(232,160,32,0.1)] px-2.5 py-0.5 text-[11px] font-medium text-[#E8A020]">
                               Allergy
                             </span>
@@ -709,7 +702,6 @@ function TabContent({
   medicalReports,
   clinicalHistory,
   summary,
-  timeline,
   vitalsTrends,
   onUploadClick,
   onExport,
@@ -728,9 +720,6 @@ function TabContent({
         </div>
       </>
     );
-  }
-  if (activeTab === "timeline") {
-    return <UnifiedTimeline timeline={timeline} reportUrlBuilder={reportUrl} />;
   }
   if (activeTab === "consultations") {
     return <ConsultationHistoryTab key="consultations" consultations={consultations} />;
@@ -934,7 +923,6 @@ function PatientHealthRecords() {
             medicalReports={medicalReports}
             clinicalHistory={clinicalHistory}
             summary={summary}
-            timeline={timeline}
             vitalsTrends={vitalsTrends}
             onUploadClick={() => setUploadOpen(true)}
             onExport={handleExportPdf}
