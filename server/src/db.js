@@ -346,6 +346,34 @@ function createPatientAuthSessionsTable() {
   `);
 }
 
+function createVisitRequestsTable() {
+  // Home-visit requests raised from the patient portal. This is the bridge that
+  // lets a patient-initiated request surface on the staff dispatch board.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS visit_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      patient_user_id INTEGER,
+      visit_for TEXT NOT NULL DEFAULT 'myself',
+      address TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL DEFAULT '',
+      urgency TEXT NOT NULL DEFAULT 'routine'
+        CHECK (urgency IN ('routine', 'urgent', 'emergency')),
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'acknowledged', 'assigned', 'en_route', 'arrived', 'completed', 'cancelled')),
+      assigned_doctor_id INTEGER,
+      eta_minutes INTEGER,
+      staff_notes TEXT NOT NULL DEFAULT '',
+      cancelled_by TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE SET NULL,
+      FOREIGN KEY (assigned_doctor_id) REFERENCES doctors(id) ON DELETE SET NULL
+    );
+  `);
+}
+
 function createInventoryFoldersTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_folders (
@@ -727,6 +755,7 @@ function initializeDatabase() {
   createInventoryMovementsTable();
   createPatientUsersTable();
   createPatientAuthSessionsTable();
+  createVisitRequestsTable();
   createRestockRequestsTable();
 
   ensurePatientColumns();
@@ -806,6 +835,9 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_patient_users_patient_id ON patient_users(patient_id);
     CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_user ON patient_auth_sessions(patient_user_id);
     CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_expires ON patient_auth_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_visit_requests_patient ON visit_requests(patient_id);
+    CREATE INDEX IF NOT EXISTS idx_visit_requests_status ON visit_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_visit_requests_created_at ON visit_requests(created_at);
   `);
 
   migrateLegacySeedDataIfNeeded();

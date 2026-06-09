@@ -55,6 +55,7 @@ export const ROUTE_ACCESS = {
   "/admin/roster": ["admin"],
   "/live-report": ["admin", "doctor"],
   "/inventory": ["admin", "doctor", "operator"],
+  "/visit-requests": ["admin", "doctor", "operator"],
   "/stock-history": ["admin", "operator"],
   "/team-operations": ["admin"],
   "/doctors": ["admin"],

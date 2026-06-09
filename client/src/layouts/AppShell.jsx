@@ -24,6 +24,10 @@ const pageMeta = {
     label: "Inventory",
     helper: "",
   },
+  "/visit-requests": {
+    label: "Visit requests",
+    helper: "Home-visit requests raised by patients.",
+  },
   "/supply-requests": {
     label: "Supply requests",
     helper: "Track, edit, or cancel your OCS supply orders.",

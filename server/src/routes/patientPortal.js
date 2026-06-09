@@ -3,6 +3,11 @@ const path = require("path");
 const express = require("express");
 const { db, labReportAttachmentsDir } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
+const {
+  ACTIVE_VISIT_STATUSES,
+  getActiveVisitRequestForPatient,
+  getVisitRequestById,
+} = require("../lib/visitRequests");
 
 const router = express.Router();
 
@@ -430,6 +435,87 @@ function handleReportAttachmentDownload(req, res) {
   );
   return res.sendFile(filePath);
 }
+
+router.get("/visit-requests/active", (req, res) => {
+  const patientId = req.patientAuth.patient_id;
+
+  if (!patientId) {
+    return res.json({ visit_request: null });
+  }
+
+  return res.json({ visit_request: getActiveVisitRequestForPatient(patientId) });
+});
+
+router.post("/visit-requests", (req, res) => {
+  const patientId = req.patientAuth.patient_id;
+  const patientUserId = req.patientAuth.id;
+
+  if (!patientId) {
+    return res.status(404).json({ error: "Patient record not found." });
+  }
+
+  const existingActive = getActiveVisitRequestForPatient(patientId);
+  if (existingActive) {
+    return res.status(409).json({
+      error: "You already have an active visit request in progress.",
+      visit_request: existingActive,
+    });
+  }
+
+  const visitFor = String(req.body.visit_for ?? "myself").trim() || "myself";
+  const address = String(req.body.address ?? "").trim();
+  const reason = String(req.body.reason ?? "").trim();
+  const urgencyRaw = String(req.body.urgency ?? "routine").trim().toLowerCase();
+  const urgency = ["routine", "urgent", "emergency"].includes(urgencyRaw) ? urgencyRaw : "routine";
+
+  if (!address) {
+    return res.status(400).json({ error: "A visiting address is required." });
+  }
+
+  if (!reason) {
+    return res.status(400).json({ error: "A reason for the visit is required." });
+  }
+
+  const result = db
+    .prepare(`
+      INSERT INTO visit_requests (patient_id, patient_user_id, visit_for, address, reason, urgency, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending')
+    `)
+    .run(patientId, patientUserId || null, visitFor, address, reason, urgency);
+
+  publishPatientDataChange(patientId, { reason: "visit_request" });
+
+  return res.status(201).json({ visit_request: getVisitRequestById(result.lastInsertRowid) });
+});
+
+router.patch("/visit-requests/:id/cancel", (req, res) => {
+  const patientId = req.patientAuth.patient_id;
+  const requestId = Number(req.params.id);
+
+  if (!patientId || !Number.isInteger(requestId)) {
+    return res.status(404).json({ error: "Visit request not found." });
+  }
+
+  const existing = db.prepare("SELECT * FROM visit_requests WHERE id = ?").get(requestId);
+
+  if (!existing || Number(existing.patient_id) !== Number(patientId)) {
+    return res.status(404).json({ error: "Visit request not found." });
+  }
+
+  if (!ACTIVE_VISIT_STATUSES.includes(existing.status)) {
+    return res.status(400).json({ error: "This visit request can no longer be cancelled." });
+  }
+
+  db.prepare(`
+    UPDATE visit_requests
+    SET status = 'cancelled', cancelled_by = 'patient', updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(requestId);
+
+  publishPatientDataChange(patientId, { reason: "visit_request" });
+
+  return res.json({ visit_request: getVisitRequestById(requestId) });
+});
 
 router.handleReportAttachmentDownload = handleReportAttachmentDownload;
 

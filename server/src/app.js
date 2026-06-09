@@ -20,6 +20,7 @@ const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
 const restockRequestsRouter = require("./routes/restockRequests");
+const visitRequestsRouter = require("./routes/visitRequests");
 const patientAuthRouter = require("./routes/patientAuth");
 const patientPortalRouter = require("./routes/patientPortal");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
@@ -290,6 +291,16 @@ function createApp() {
       PATCH: ["admin", "operator", "doctor"],
     }),
     restockRequestsRouter,
+  );
+
+  app.use(
+    "/api/visit-requests",
+    requireAuth,
+    authorizeByMethod({
+      GET: ["admin", "doctor", "operator"],
+      PATCH: ["admin", "doctor", "operator"],
+    }),
+    visitRequestsRouter,
   );
 
   app.use("/api/patient-auth", patientAuthRouter);

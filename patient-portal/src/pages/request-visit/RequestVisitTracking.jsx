@@ -1,13 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Check, ClipboardList, Phone } from "lucide-react";
-import { setActiveVisit } from "../../lib/activeVisit.js";
+import { api } from "../../lib/api.js";
 
-const STEPS = [
-  { label: "Request received", state: "complete" },
-  { label: "Doctor assigned", state: "complete" },
-  { label: "Doctor en route", state: "active" },
-  { label: "Doctor arrived", state: "upcoming" },
+// Ordered milestones a live request moves through. The patient tracker derives
+// each step's state from the request's current backend status.
+const STEP_FLOW = [
+  { key: "pending", label: "Request received" },
+  { key: "acknowledged", label: "Care team reviewing" },
+  { key: "assigned", label: "Doctor assigned" },
+  { key: "en_route", label: "Doctor en route" },
+  { key: "arrived", label: "Doctor arrived" },
 ];
 
 const PREP = [
@@ -15,6 +18,19 @@ const PREP = [
   "Ensure someone is available to open the door",
   "Secure any pets if needed",
 ];
+
+function initialsFromName(name) {
+  const parts = String(name || "")
+    .replace(/^dr\.?\s+/i, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "OCS";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+}
 
 function StepMarker({ state }) {
   if (state === "complete") {
@@ -40,53 +56,118 @@ function StepMarker({ state }) {
 }
 
 function RequestVisitTracking() {
-  // Reaching this screen means a visit is confirmed and active — record it so
-  // the dashboard can surface the live mini tracker.
+  const [visit, setVisit] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    setActiveVisit({
-      doctor: "Dr. Avinash Sharma",
-      specialty: "General Practitioner",
-      status: "Doctor en route · Est. arrival 25 min",
-      startedAt: new Date().toISOString(),
-    });
+    let ignore = false;
+
+    async function load() {
+      try {
+        const data = await api.get("/patient-portal/visit-requests/active");
+        if (!ignore) {
+          setVisit(data.visit_request || null);
+        }
+      } catch {
+        if (!ignore) {
+          setVisit(null);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    load();
+    return () => {
+      ignore = true;
+    };
   }, []);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[560px] py-20 text-center text-sm text-[#5b7f8a]">
+        Loading your visit…
+      </div>
+    );
+  }
+
+  if (!visit) {
+    return (
+      <div className="mx-auto max-w-[560px] animate-fade-in-fast py-16 text-center">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-slate-950">
+          No active visit right now.
+        </h1>
+        <p className="mt-3 text-sm text-[#5b7f8a]">
+          When you request a home visit, you'll be able to track your doctor here.
+        </p>
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <Link
+            to="/request-visit"
+            className="flex h-[52px] w-full max-w-[320px] items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
+          >
+            Request a visit
+          </Link>
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-[#94a9ad] transition hover:text-[#5b7f8a]"
+          >
+            <ArrowLeft className="size-4" /> Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const currentIndex = STEP_FLOW.findIndex((step) => step.key === visit.status);
+  const steps = STEP_FLOW.map((step, idx) => {
+    let state = "upcoming";
+    if (currentIndex >= 0 && idx < currentIndex) state = "complete";
+    else if (idx === currentIndex) state = "active";
+    return { ...step, state };
+  });
+
+  const doctorName = visit.doctor_name || "Awaiting assignment";
+  const etaText =
+    visit.eta_minutes != null ? `Estimated arrival: ${visit.eta_minutes} minutes` : visit.status_label;
 
   return (
     <div className="mx-auto max-w-[560px] animate-fade-in-fast">
       {/* Header */}
       <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
         <span className="bg-[linear-gradient(90deg,#1a5c52_0%,#0d9e8a_60%,#12bfa8_100%)] bg-clip-text text-transparent">
-          Your doctor is on the way.
+          {visit.status === "arrived" ? "Your doctor has arrived." : "Your doctor is on the way."}
         </span>
       </h1>
       <p className="mt-3 text-sm text-[#5b7f8a]">
-        Dr. Avinash Sharma · Estimated arrival: 25 minutes
+        {doctorName} · {etaText}
       </p>
 
       {/* Doctor card */}
       <div className="mt-8 flex items-center gap-4 rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/85 p-6">
         <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-lg font-bold text-white">
-          AS
+          {initialsFromName(visit.doctor_name)}
         </div>
         <div className="flex-1">
           <p className="font-display text-lg font-bold tracking-tight text-[#22485b]">
-            Dr. Avinash Sharma
+            {doctorName}
           </p>
-          <p className="mt-0.5 text-sm text-[#5b7f8a]">General Practitioner</p>
+          <p className="mt-0.5 text-sm text-[#5b7f8a]">Home visit</p>
         </div>
         <span className="rounded-full bg-[rgba(45,143,152,0.12)] px-3 py-1 text-xs font-bold text-[#23767f]">
-          En route
+          {visit.status_label}
         </span>
       </div>
 
       {/* Progress tracker */}
       <div className="mt-8 rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/85 p-6">
         <ol>
-          {STEPS.map((step, idx) => {
-            const isLast = idx === STEPS.length - 1;
+          {steps.map((step, idx) => {
+            const isLast = idx === steps.length - 1;
             const muted = step.state === "upcoming";
             return (
-              <li key={step.label} className="flex gap-4">
+              <li key={step.key} className="flex gap-4">
                 <div className="flex flex-col items-center">
                   <StepMarker state={step.state} />
                   {!isLast && (
@@ -136,7 +217,7 @@ function RequestVisitTracking() {
           href="tel:52522234"
           className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
         >
-          <Phone className="size-4" /> Call Dr. Sharma
+          <Phone className="size-4" /> Call the care team
         </a>
         <div className="mt-4 text-center">
           <Link

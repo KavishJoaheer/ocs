@@ -103,6 +103,12 @@ const navItems = [
     roles: ["admin", "doctor", "operator"],
   },
   {
+    to: "/visit-requests",
+    label: "Visit requests",
+    icon: ClipboardList,
+    roles: ["admin", "doctor", "operator"],
+  },
+  {
     to: "/stock-history",
     label: "Live Activity",
     icon: RotateCw,

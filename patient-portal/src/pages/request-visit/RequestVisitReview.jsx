@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
+import toast from "react-hot-toast";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
+import { api } from "../../lib/api.js";
 import { URGENCY_META } from "./urgency.js";
 
 function SummaryRow({ label, children }) {
@@ -18,14 +21,45 @@ function RequestVisitReview() {
   const navigate = useNavigate();
   const { draft, updateDraft } = useOutletContext();
   const { user } = usePatientAuth();
+  const [submitting, setSubmitting] = useState(false);
 
   const visitForName =
     draft.visitFor === "myself" ? user?.full_name || "Myself" : "A dependent";
   const urgency = URGENCY_META[draft.urgency] || URGENCY_META.routine;
 
-  function handleConfirm() {
-    updateDraft({ submittedAt: new Date().toISOString() });
-    navigate("/request-visit/awaiting");
+  async function handleConfirm() {
+    if (submitting) {
+      return;
+    }
+
+    if (!draft.address?.trim() || !draft.reason?.trim()) {
+      toast.error("Please add a visiting address and reason before confirming.");
+      navigate("/request-visit");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await api.post("/patient-portal/visit-requests", {
+        visit_for: draft.visitFor,
+        address: draft.address,
+        reason: draft.reason,
+        urgency: draft.urgency,
+      });
+      updateDraft({ submittedAt: new Date().toISOString() });
+      navigate("/request-visit/awaiting");
+    } catch (error) {
+      // A 409 means there's already an active request — send them to tracking.
+      if (/active visit request/i.test(error?.message || "")) {
+        toast("You already have an active visit request.");
+        navigate("/request-visit/tracking");
+        return;
+      }
+      toast.error(error?.message || "We couldn't submit your request. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -69,9 +103,10 @@ function RequestVisitReview() {
         <button
           type="button"
           onClick={handleConfirm}
-          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
+          disabled={submitting}
+          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Confirm Request <ArrowRight className="size-4" />
+          {submitting ? "Submitting…" : "Confirm Request"} <ArrowRight className="size-4" />
         </button>
         <p className="mt-3 text-center text-xs text-[#6e949b]">
           By confirming you agree to our standard visit terms
