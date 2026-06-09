@@ -46,20 +46,25 @@ function RequestVisitTracking() {
   const navigate = useNavigate();
   const [visit, setVisit] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retryToken, setRetryToken] = useState(0);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
 
     async function load() {
+      setLoadError(null);
       try {
         const data = await api.get("/patient-portal/visit-requests/active");
         if (!ignore) {
           setVisit(data.visit_request || null);
         }
-      } catch {
+      } catch (error) {
         if (!ignore) {
           setVisit(null);
+          setLoadError(error?.message || "Could not load your visit status.");
         }
       } finally {
         if (!ignore) {
@@ -72,16 +77,35 @@ function RequestVisitTracking() {
     return () => {
       ignore = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, retryToken]);
 
   if (loading) {
     return (
       <div className="visit-status-screen">
         <VisitStatusHeader onBack={() => navigate("/dashboard")} />
-        <div className="visit-status-content space-y-6">
+        <div className="visit-status-content visit-status-content--padded space-y-6">
           <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
           <div className="h-10 w-3/4 animate-pulse rounded-lg bg-white/70" />
           <div className="visit-status-doctor-card h-24 animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="visit-status-screen">
+        <VisitStatusHeader onBack={() => navigate("/dashboard")} />
+        <div className="visit-status-content visit-status-content--padded flex flex-col items-center py-16 text-center">
+          <h2 className="native-display text-[22px] text-[#1a5c52]">Unable to load visit status</h2>
+          <p className="mt-3 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryToken((token) => token + 1)}
+            className="request-wizard-primary-btn mt-8 w-full max-w-[280px]"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -91,7 +115,7 @@ function RequestVisitTracking() {
     return (
       <div className="visit-status-screen">
         <VisitStatusHeader onBack={() => navigate("/dashboard")} />
-        <div className="visit-status-content flex flex-col items-center py-16 text-center">
+        <div className="visit-status-content visit-status-content--padded flex flex-col items-center py-16 text-center">
           <h2 className="native-display text-[22px] text-[#1a5c52]">No active visit right now.</h2>
           <p className="mt-3 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">
             When you request a home visit, you&apos;ll be able to track your doctor here.

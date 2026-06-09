@@ -1,35 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, MapPin, User, Users } from "lucide-react";
 import { api } from "../../lib/api.js";
-
-const VISIT_DRAFT_KEY = "ocs-visit-draft";
-
-function useKeyboardOffset(enabled) {
-  const [offset, setOffset] = useState(0);
-
-  useEffect(() => {
-    if (!enabled || typeof window === "undefined" || !window.visualViewport) return undefined;
-
-    const viewport = window.visualViewport;
-
-    function updateOffset() {
-      const keyboardInset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-      setOffset(keyboardInset);
-    }
-
-    viewport.addEventListener("resize", updateOffset);
-    viewport.addEventListener("scroll", updateOffset);
-    updateOffset();
-
-    return () => {
-      viewport.removeEventListener("resize", updateOffset);
-      viewport.removeEventListener("scroll", updateOffset);
-    };
-  }, [enabled]);
-
-  return offset;
-}
+import { useFocusTrap } from "../../hooks/useFocusTrap.js";
+import { useKeyboardOffset } from "../../hooks/useKeyboardOffset.js";
+import { useScrollLock } from "../../hooks/useScrollLock.js";
 
 function MiniMapPreview() {
   return (
@@ -58,7 +33,7 @@ function EmergencyWarningModal({ open, onAcknowledge }) {
 
   return (
     <div
-      className="request-emergency-overlay absolute inset-0 z-10 flex items-center justify-center p-5"
+      className="request-emergency-overlay absolute inset-0 z-20 flex items-center justify-center rounded-t-[24px] p-5"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="emergency-warning-title"
@@ -98,7 +73,7 @@ function StepBackButton({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="request-wizard-back mb-4 inline-flex items-center gap-1 text-[13px] font-semibold text-[#5b7f8a] transition active:text-[#2d8f98]"
+      className="request-wizard-back mb-4 inline-flex min-h-[44px] min-w-[44px] items-center gap-1 pl-1 text-[13px] font-semibold text-[#5b7f8a] transition active:text-[#2d8f98]"
     >
       <ChevronLeft className="size-4" strokeWidth={2.25} />
       Back
@@ -108,7 +83,13 @@ function StepBackButton({ onClick }) {
 
 function RequestDoctorSheet({ open, onClose }) {
   const navigate = useNavigate();
-  const keyboardOffset = useKeyboardOffset(open);
+  const modalRef = useRef(null);
+  const keyboardInset = useKeyboardOffset(open);
+  useScrollLock(open);
+  useFocusTrap(open, modalRef);
+
+  const patientSelectTimerRef = useRef(null);
+  const addressHydratedRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [stepDirection, setStepDirection] = useState("forward");
@@ -120,6 +101,9 @@ function RequestDoctorSheet({ open, onClose }) {
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
 
   function resetWizard() {
+    clearTimeout(patientSelectTimerRef.current);
+    patientSelectTimerRef.current = null;
+    addressHydratedRef.current = false;
     setCurrentStep(1);
     setStepDirection("forward");
     setVisitFor(null);
@@ -143,7 +127,8 @@ function RequestDoctorSheet({ open, onClose }) {
   function handlePatientSelect(value) {
     setPendingPatient(value);
     setVisitFor(value);
-    window.setTimeout(() => {
+    clearTimeout(patientSelectTimerRef.current);
+    patientSelectTimerRef.current = window.setTimeout(() => {
       setStepDirection("forward");
       setCurrentStep(2);
       setPendingPatient(null);
@@ -162,31 +147,33 @@ function RequestDoctorSheet({ open, onClose }) {
   function handleReviewSubmit() {
     if (!reason.trim() || !address.trim() || !visitFor) return;
 
-    sessionStorage.setItem(
-      VISIT_DRAFT_KEY,
-      JSON.stringify({
-        visitFor,
-        address: address.trim(),
-        reason: reason.trim(),
-        urgency,
-      }),
-    );
+    const wizardDraft = {
+      visitFor,
+      address: address.trim(),
+      reason: reason.trim(),
+      urgency,
+    };
 
     handleClose();
-    navigate("/request-visit/review");
+    navigate("/request-visit/review", { state: { wizardDraft } });
   }
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      clearTimeout(patientSelectTimerRef.current);
+      return undefined;
+    }
 
     let ignore = false;
+    addressHydratedRef.current = false;
 
     async function loadAddress() {
       try {
         const data = await api.get("/patient-portal/profile");
         const profileAddress = data.profile?.address || data.address || "";
-        if (!ignore && profileAddress) {
+        if (!ignore && profileAddress && !addressHydratedRef.current) {
           setAddress(profileAddress);
+          addressHydratedRef.current = true;
         }
       } catch {
         // Keep placeholder address when profile is unavailable.
@@ -195,19 +182,26 @@ function RequestDoctorSheet({ open, onClose }) {
 
     loadAddress();
 
-    function handleKeyDown(event) {
-      if (event.key === "Escape" && !emergencyModalOpen) handleClose();
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleKeyDown);
-
     return () => {
       ignore = true;
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
+      clearTimeout(patientSelectTimerRef.current);
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key !== "Escape") return;
+      if (emergencyModalOpen) {
+        setEmergencyModalOpen(false);
+        return;
+      }
+      handleClose();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, emergencyModalOpen]);
 
   if (!open) return null;
@@ -218,32 +212,50 @@ function RequestDoctorSheet({ open, onClose }) {
   const canConfirmLocation = address.trim().length > 0;
   const canReviewSubmit = reason.trim().length > 0;
 
+  const sheetStyle = {
+    paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardInset.bottom}px)`,
+    transform: keyboardInset.top ? `translateY(-${keyboardInset.top}px)` : undefined,
+  };
+
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="request-doctor-title">
+    <div
+      ref={modalRef}
+      className="app-modal-root fixed inset-0 z-[70]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="request-doctor-title"
+    >
       <button
         type="button"
         aria-label="Close request doctor dialog"
-        onClick={handleClose}
-        className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px]"
+        onClick={emergencyModalOpen ? undefined : handleClose}
+        disabled={emergencyModalOpen}
+        className={[
+          "animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px]",
+          emergencyModalOpen ? "pointer-events-none" : "",
+        ].join(" ")}
       />
 
       <div
         className="request-doctor-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)]"
-        style={{
-          paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardOffset}px)`,
-        }}
+        style={sheetStyle}
         onClick={(e) => e.stopPropagation()}
       >
+        <EmergencyWarningModal
+          open={emergencyModalOpen}
+          onAcknowledge={() => setEmergencyModalOpen(false)}
+        />
+
         <div className="flex justify-center pt-3">
           <span className="h-[5px] w-[40px] rounded-full bg-[rgba(13,42,46,0.14)]" aria-hidden="true" />
         </div>
 
-        <div className="request-sheet-scroll relative flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-4">
-          <EmergencyWarningModal
-            open={emergencyModalOpen}
-            onAcknowledge={() => setEmergencyModalOpen(false)}
-          />
-
+        <div
+          className={[
+            "request-sheet-scroll relative flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-4",
+            emergencyModalOpen ? "overflow-hidden" : "",
+          ].join(" ")}
+        >
           <div key={currentStep} className={stepAnimationClass}>
             {currentStep === 1 ? (
               <div>
@@ -265,7 +277,7 @@ function RequestDoctorSheet({ open, onClose }) {
                         type="button"
                         onClick={() => handlePatientSelect(option.value)}
                         className={[
-                          "request-patient-card squircle-inner flex flex-col items-center justify-center gap-3 px-3 py-7 transition",
+                          "request-patient-card squircle-inner flex min-h-[120px] flex-col items-center justify-center gap-3 px-3 py-7 transition",
                           isSelected ? "request-patient-card-selected" : "request-patient-card-idle",
                         ].join(" ")}
                       >
@@ -381,4 +393,3 @@ function RequestDoctorSheet({ open, onClose }) {
 }
 
 export default RequestDoctorSheet;
-export { VISIT_DRAFT_KEY };

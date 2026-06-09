@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api.js";
-import { VISIT_DRAFT_KEY } from "../../components/request-visit/RequestDoctorSheet.jsx";
 
 const INITIAL_DRAFT = {
   visitFor: "myself",
@@ -12,25 +11,59 @@ const INITIAL_DRAFT = {
 };
 
 function RequestVisitLayout() {
-  const [draft, setDraft] = useState(INITIAL_DRAFT);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [draft, setDraft] = useState(() => {
+    const handoff = location.state?.wizardDraft;
+    return handoff ? { ...INITIAL_DRAFT, ...handoff } : INITIAL_DRAFT;
+  });
 
   const updateDraft = useCallback((patch) => {
     setDraft((current) => ({ ...current, ...patch }));
   }, []);
 
+  const resetDraft = useCallback(() => {
+    setDraft(INITIAL_DRAFT);
+  }, []);
+
   useEffect(() => {
-    const storedDraft = sessionStorage.getItem(VISIT_DRAFT_KEY);
-    if (storedDraft) {
+    if (location.state?.wizardDraft) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (
+      (location.pathname === "/request-visit" || location.pathname === "/request-visit/") &&
+      draft.submittedAt
+    ) {
+      setDraft(INITIAL_DRAFT);
+    }
+  }, [location.pathname, draft.submittedAt]);
+
+  useEffect(() => {
+    const isRequestForm =
+      location.pathname === "/request-visit" || location.pathname === "/request-visit/";
+    if (!isRequestForm || location.state?.wizardDraft) return undefined;
+
+    let ignore = false;
+
+    async function guardActiveVisit() {
       try {
-        const parsed = JSON.parse(storedDraft);
-        setDraft((current) => ({ ...current, ...parsed }));
+        const data = await api.get("/patient-portal/visit-requests/active");
+        if (!ignore && data.visit_request) {
+          navigate("/request-visit/tracking", { replace: true });
+        }
       } catch {
-        // Ignore malformed wizard handoff data.
-      } finally {
-        sessionStorage.removeItem(VISIT_DRAFT_KEY);
+        // Non-blocking — allow request flow when status is unavailable.
       }
     }
-  }, []);
+
+    guardActiveVisit();
+    return () => {
+      ignore = true;
+    };
+  }, [location.pathname, location.state?.wizardDraft, navigate]);
 
   useEffect(() => {
     let ignore = false;
@@ -48,10 +81,12 @@ function RequestVisitLayout() {
     }
 
     loadAddress();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, []);
 
-  return <Outlet context={{ draft, updateDraft }} />;
+  return <Outlet context={{ draft, updateDraft, resetDraft }} />;
 }
 
 export default RequestVisitLayout;

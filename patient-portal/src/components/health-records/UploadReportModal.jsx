@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import { Calendar, FileUp } from "lucide-react";
+import { useFocusTrap } from "../../hooks/useFocusTrap.js";
+import { useKeyboardOffset } from "../../hooks/useKeyboardOffset.js";
+import { useScrollLock } from "../../hooks/useScrollLock.js";
 
 dayjs.extend(customParseFormat);
 
@@ -11,32 +14,6 @@ const DOCTOR_NAME_PLACEHOLDER = {
   "OCS Doctor": "Name of OCS doctor who requested this",
   "External Doctor": "Name of doctor who requested this",
 };
-
-function useKeyboardOffset(enabled) {
-  const [offset, setOffset] = useState(0);
-
-  useEffect(() => {
-    if (!enabled || typeof window === "undefined" || !window.visualViewport) return undefined;
-
-    const viewport = window.visualViewport;
-
-    function updateOffset() {
-      const keyboardInset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-      setOffset(keyboardInset);
-    }
-
-    viewport.addEventListener("resize", updateOffset);
-    viewport.addEventListener("scroll", updateOffset);
-    updateOffset();
-
-    return () => {
-      viewport.removeEventListener("resize", updateOffset);
-      viewport.removeEventListener("scroll", updateOffset);
-    };
-  }, [enabled]);
-
-  return offset;
-}
 
 function FieldLabel({ htmlFor, children }) {
   return (
@@ -50,6 +27,7 @@ function FieldLabel({ htmlFor, children }) {
 }
 
 function UploadReportModal({ open, onClose, onUpload }) {
+  const modalRef = useRef(null);
   const fileInputRef = useRef(null);
   const datePickerRef = useRef(null);
   const [reportName, setReportName] = useState("");
@@ -58,7 +36,9 @@ function UploadReportModal({ open, onClose, onUpload }) {
   const [dragOver, setDragOver] = useState(false);
   const [requestedBySource, setRequestedBySource] = useState("OCS Doctor");
   const [requestedByName, setRequestedByName] = useState("");
-  const keyboardOffset = useKeyboardOffset(open);
+  const keyboardInset = useKeyboardOffset(open);
+  useScrollLock(open);
+  useFocusTrap(open, modalRef);
 
   function resetForm() {
     setReportName("");
@@ -144,21 +124,16 @@ function UploadReportModal({ open, onClose, onUpload }) {
       if (event.key === "Escape") handleClose();
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50"
+      ref={modalRef}
+      className="app-modal-root fixed inset-0 z-[70]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upload-report-title"
@@ -175,7 +150,8 @@ function UploadReportModal({ open, onClose, onUpload }) {
       <div
         className="upload-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)]"
         style={{
-          paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardOffset}px)`,
+          paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardInset.bottom}px)`,
+          transform: keyboardInset.top ? `translateY(-${keyboardInset.top}px)` : undefined,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -259,7 +235,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
                   type="button"
                   onClick={openDatePicker}
                   aria-label="Open calendar"
-                  className="absolute right-1 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-[10px] text-[#5b7f8a] transition active:bg-[rgba(26,160,140,0.08)]"
+                  className="absolute right-1 top-1/2 flex size-11 min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center rounded-[10px] text-[#5b7f8a] transition active:bg-[rgba(26,160,140,0.08)]"
                 >
                   <Calendar className="size-[18px]" strokeWidth={1.75} />
                 </button>
@@ -313,14 +289,14 @@ function UploadReportModal({ open, onClose, onUpload }) {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="upload-submit-btn rounded-full bg-ocs-orange px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                className="upload-submit-btn min-h-[44px] rounded-full bg-ocs-orange px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Upload Report
               </button>
               <button
                 type="button"
                 onClick={handleClose}
-                className="text-[14px] font-medium text-[#5b7f8a] transition active:text-[#1a5c52]"
+                className="inline-flex min-h-[44px] items-center px-2 text-[14px] font-medium text-[#5b7f8a] transition active:text-[#1a5c52]"
               >
                 Cancel
               </button>

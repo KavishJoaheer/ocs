@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import dayjs from "dayjs";
 import { Headphones } from "lucide-react";
+import { api } from "../../lib/api.js";
 import { URGENCY_META } from "./urgency.js";
 
 function RequestVisitAwaiting() {
@@ -11,17 +12,23 @@ function RequestVisitAwaiting() {
   const submittedAt = draft.submittedAt ? dayjs(draft.submittedAt) : dayjs();
   const urgencyLabel = (URGENCY_META[draft.urgency] || URGENCY_META.routine).label;
 
-  // Simulate the care team confirming and dispatching a doctor.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      navigate("/request-visit/tracking");
+    if (!draft.submittedAt) return undefined;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const data = await api.get("/patient-portal/visit-requests/active");
+        navigate(data.visit_request ? "/request-visit/tracking" : "/dashboard");
+      } catch {
+        navigate("/dashboard");
+      }
     }, 6000);
-    return () => clearTimeout(timer);
-  }, [navigate]);
+
+    return () => window.clearTimeout(timer);
+  }, [draft.submittedAt, navigate]);
 
   return (
     <div className="mx-auto flex min-h-[72vh] max-w-[460px] animate-fade-in-fast flex-col items-center justify-center text-center">
-      {/* Breathing circle */}
       <div className="relative flex size-28 items-center justify-center">
         <span className="animate-breathe absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(65,200,198,0.45),rgba(65,200,198,0.05)_70%)]" />
         <span className="relative flex size-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] shadow-[0_16px_40px_rgba(45,143,152,0.3)]">

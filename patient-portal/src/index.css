@@ -261,6 +261,11 @@ table {
   animation: fadeIn 0.2s ease both;
 }
 
+.mobile-top-bar {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  min-height: calc(3.5rem + env(safe-area-inset-top, 0px));
+}
+
 /* ─── Native mobile screens (dashboard, health records, etc.) ─────────────── */
 
 .native-screen {
@@ -312,8 +317,22 @@ table {
   border-radius: var(--native-radius-inner);
 }
 
+/* Parallel radius: inner corner = outer − inset (prevents sharp corners inside rounded parents) */
+.squircle-outer > .squircle-inner,
+.squircle-outer .squircle-inner--nested {
+  border-radius: min(
+    var(--native-radius-inner),
+    max(4px, calc(var(--native-radius-outer) - var(--squircle-inset, 10px)))
+  );
+}
+
 @supports (corner-shape: squircle) {
   .squircle-inner {
+    corner-shape: squircle;
+  }
+
+  .squircle-outer > .squircle-inner,
+  .squircle-outer .squircle-inner--nested {
     corner-shape: squircle;
   }
 }
@@ -563,6 +582,10 @@ table {
   padding: 0 var(--native-pad-screen);
 }
 
+.visit-status-content--padded {
+  padding-bottom: var(--native-nav-clearance);
+}
+
 .visit-status-hero {
   margin: 40px 0;
 }
@@ -705,10 +728,17 @@ table {
 }
 
 .visit-tracker-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1.3;
-  max-width: 72px;
+  max-width: 100%;
+  padding-inline: 2px;
+}
+
+@media (min-width: 375px) {
+  .visit-tracker-label {
+    font-size: 11px;
+  }
 }
 
 .visit-tracker-label-active,
@@ -808,18 +838,22 @@ table {
   background: #f4f6f8;
 }
 
-@media (max-width: 1023px) {
-  .profile-screen.native-screen {
-    background: #f4f6f8;
-    padding-bottom: calc(var(--native-nav-clearance) + 56px);
-  }
-}
-
 .profile-teal-band {
   height: calc(150px + env(safe-area-inset-top, 0px));
   margin-left: calc(-1 * var(--native-pad-screen));
   margin-right: calc(-1 * var(--native-pad-screen));
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--ocs-teal-strong);
+}
+
+@media (max-width: 1023px) {
+  .profile-screen.native-screen {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: var(--native-pad-screen);
+    padding-right: var(--native-pad-screen);
+    background: #f4f6f8;
+  }
 }
 
 .profile-identity-header {
@@ -1135,6 +1169,10 @@ table {
   line-height: 1.55;
 }
 
+.request-wizard-urgency-pill {
+  min-height: 44px;
+}
+
 .request-wizard-urgency-inactive {
   border: 1.5px solid rgba(138, 158, 154, 0.3);
   color: #8a9e9a;
@@ -1187,6 +1225,10 @@ table {
 .upload-field-input:focus {
   background: #fff;
   box-shadow: 0 0 0 2px rgba(45, 143, 152, 0.28);
+}
+
+.upload-toggle-btn {
+  min-height: 44px;
 }
 
 .upload-toggle-btn-active {

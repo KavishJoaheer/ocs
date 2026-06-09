@@ -139,7 +139,7 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
   const [requestSheetOpen, setRequestSheetOpen] = useState(false);
 
   return (
-    <div className="native-dashboard -mx-4 min-h-full bg-[#f4f7f7]">
+    <div className="native-dashboard min-h-full bg-[#f4f7f7]">
       {/* ── 1. Welcome Zone — respects notch / punch-hole via --native-safe-top ─ */}
       <header className="animate-fade-in-up flex items-center justify-between gap-4 pb-10">
         <div className="min-w-0 flex-1 pr-2">

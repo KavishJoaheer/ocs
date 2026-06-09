@@ -52,6 +52,23 @@ function StatCard({ icon: Icon, label, value, color, delay }) {
   );
 }
 
+function DashboardErrorState({ message, onRetry, className = "" }) {
+  return (
+    <div
+      className={[
+        "flex flex-col items-center justify-center px-[var(--native-pad-screen)] py-16 text-center",
+        className,
+      ].join(" ")}
+    >
+      <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load your dashboard</p>
+      <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{message}</p>
+      <button type="button" onClick={onRetry} className="request-wizard-primary-btn mt-6 w-full max-w-[280px]">
+        Try Again
+      </button>
+    </div>
+  );
+}
+
 function NoActiveVisit() {
   return (
     <div className="flex h-14 max-h-14 items-center gap-3 rounded-[10px] bg-[rgba(26,160,140,0.04)] px-5">
@@ -279,11 +296,15 @@ function PatientDashboard() {
   const [nextAppointment, setNextAppointment] = useState(null);
   const [lastConsultation, setLastConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retryToken, setRetryToken] = useState(0);
   const [activeVisit, setActiveVisit] = useState(null);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
+    setLoadError(null);
 
     async function fetchDashboard() {
       try {
@@ -297,12 +318,9 @@ function PatientDashboard() {
           setLastConsultation(data.last_consultation || null);
           setActiveVisit(visitData.visit_request || null);
         }
-      } catch {
+      } catch (error) {
         if (!ignore) {
-          setStats({ upcoming_appointments: 0, pending_bills: 0, total_visits: 0 });
-          setNextAppointment(null);
-          setLastConsultation(null);
-          setActiveVisit(null);
+          setLoadError(error?.message || "We couldn't reach your health portal. Check your connection and try again.");
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -310,8 +328,14 @@ function PatientDashboard() {
     }
 
     fetchDashboard();
-    return () => { ignore = true; };
-  }, [refreshKey]);
+    return () => {
+      ignore = true;
+    };
+  }, [refreshKey, retryToken]);
+
+  function handleRetryDashboard() {
+    setRetryToken((token) => token + 1);
+  }
 
   function handleVisitCancelled() {
     setActiveVisit(null);
@@ -353,6 +377,7 @@ function PatientDashboard() {
     : dependentDashboard?.activeVisit ?? null;
 
   const subline = (() => {
+    if (loadError && isPrimaryProfile) return "We couldn't refresh your dashboard data.";
     if (loading && isPrimaryProfile) return "Loading your health portal\u2026";
     if (!isPrimaryProfile) {
       return `You're viewing ${activeProfile.firstName}'s health space. All records and visits shown are ${activeProfile.possessive}.`;
@@ -457,6 +482,8 @@ function PatientDashboard() {
 
       {loading && isPrimaryProfile ? (
         <div className="h-14 animate-pulse rounded-[10px] bg-[rgba(65,200,198,0.06)]" />
+      ) : loadError && isPrimaryProfile ? (
+        <DashboardErrorState message={loadError} onRetry={handleRetryDashboard} />
       ) : (
         <>
           <section className="animate-fade-in-up stagger-4">
@@ -478,9 +505,13 @@ function PatientDashboard() {
     {/* ───────── Mobile dashboard — native home experience ───────── */}
     <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-md:block">
       {loading && isPrimaryProfile ? (
-        <div className="native-dashboard -mx-4 space-y-5 bg-[#f4f7f7]">
+        <div className="native-dashboard space-y-5 bg-[#f4f7f7]">
           <div className="squircle-outer h-20 animate-pulse bg-white/60" />
           <div className="squircle-outer h-32 animate-pulse bg-white/60" />
+        </div>
+      ) : loadError && isPrimaryProfile ? (
+        <div className="native-dashboard min-h-full bg-[#f4f7f7]">
+          <DashboardErrorState message={loadError} onRetry={handleRetryDashboard} className="min-h-[60vh]" />
         </div>
       ) : profileActiveVisit ? (
         <div

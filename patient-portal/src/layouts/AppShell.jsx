@@ -8,18 +8,19 @@ function AppShellContent() {
   const isNativeDashboard = pathname === "/dashboard";
   const isVisitSummary = pathname.startsWith("/health-records/visits/");
   const isVisitStatus = pathname === "/request-visit/tracking";
-  const isFullBleedMobile = isNativeDashboard || isVisitSummary || isVisitStatus;
+  const isProfile = pathname === "/profile";
+  const isFullBleedMobile = isNativeDashboard || isVisitSummary || isVisitStatus || isProfile;
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
+      <main id="app-main-scroll" className="flex-1 overflow-y-auto">
         <div
           className={[
             "mx-auto max-w-6xl sm:px-10 lg:px-12 lg:pb-10 lg:pt-10",
             isFullBleedMobile
               ? "max-md:px-0 max-md:pb-0 max-md:pt-0"
-              : "px-6 pb-36 pt-6 max-md:px-4 max-md:pt-0",
+              : "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pb-0 max-md:pt-0",
           ].join(" ")}
         >
           {!isFullBleedMobile ? <PushNotificationBanner className="mb-5" /> : null}
