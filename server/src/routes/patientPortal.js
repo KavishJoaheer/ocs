@@ -49,6 +49,8 @@ function serializePatientProfile(patient) {
     next_of_kin_phone: patient.next_of_kin_contact_number || "",
     next_of_kin_email: patient.next_of_kin_email || "",
     next_of_kin_address: patient.next_of_kin_address || "",
+    insurance_provider: patient.insurance_provider || "",
+    insurance_policy_number: patient.insurance_policy_number || "",
     is_under_review: patient.is_under_review === 1 || patient.is_under_review === true,
     review_reason_note: String(patient.review_reason_note || "").trim() || null,
     review_due_date: String(patient.review_due_date || "").trim() || null,
@@ -397,6 +399,8 @@ function applyProfileUpdate(req, res) {
   const nextOfKinContactNumber = readField("next_of_kin_phone", "next_of_kin_contact_number");
   const nextOfKinEmail = readField("next_of_kin_email");
   const nextOfKinAddress = readField("next_of_kin_address");
+  const insuranceProvider = readField("insurance_provider");
+  const insurancePolicyNumber = readField("insurance_policy_number");
 
   const updates = [];
   const params = [];
@@ -416,6 +420,8 @@ function applyProfileUpdate(req, res) {
   pushUpdate("next_of_kin_contact_number", nextOfKinContactNumber);
   pushUpdate("next_of_kin_email", nextOfKinEmail);
   pushUpdate("next_of_kin_address", nextOfKinAddress);
+  pushUpdate("insurance_provider", insuranceProvider);
+  pushUpdate("insurance_policy_number", insurancePolicyNumber);
 
   if (updates.length === 0) {
     return res.status(400).json({ error: "No valid fields provided for update." });

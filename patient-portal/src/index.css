@@ -425,6 +425,55 @@ table {
   box-shadow: 0 2px 8px rgba(var(--ocs-orange-rgb), 0.3);
 }
 
+/* ─── Profile screen — native settings list ───────────────────────────────── */
+
+.profile-list-card {
+  border-radius: 18px;
+}
+
+.profile-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a9e9a;
+}
+
+.profile-list-divider {
+  height: 1px;
+  margin-left: 52px;
+  margin-right: 20px;
+  background: rgba(138, 158, 154, 0.2);
+}
+
+.profile-id-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--ocs-orange-soft);
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ocs-orange);
+  letter-spacing: 0.02em;
+}
+
+.profile-sign-out-btn {
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(207, 91, 80, 0.22);
+  background: rgba(207, 91, 80, 0.06);
+  font-size: 15px;
+  font-weight: 600;
+  color: #cf5b50;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.profile-sign-out-btn:active {
+  background: rgba(207, 91, 80, 0.12);
+  transform: scale(0.98);
+}
+
 @supports (corner-shape: squircle) {
   .native-action-btn {
     corner-shape: squircle;
