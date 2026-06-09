@@ -54,11 +54,13 @@ function Sidebar() {
   const { logout } = usePatientAuth();
   const { pathname } = useLocation();
   const isNativeDashboard = pathname === "/dashboard";
+  const isVisitSummary = pathname.startsWith("/health-records/visits/");
+  const hideMobileTopBar = isNativeDashboard || isVisitSummary;
 
   return (
     <>
       {/* ─── Mobile top bar (hidden on native dashboard — header is in-page) ─── */}
-      <div className={`relative flex h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden ${isNativeDashboard ? "hidden" : ""}`}>
+      <div className={`relative flex h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden ${hideMobileTopBar ? "hidden" : ""}`}>
         <img
           src="/ocs-medecins-mark.png"
           alt="OCS Care"

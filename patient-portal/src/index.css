@@ -416,6 +416,101 @@ table {
   background: rgba(138, 158, 154, 0.2);
 }
 
+/* ─── Visit Summary dossier screen ────────────────────────────────────────── */
+
+.visit-summary-screen {
+  min-height: 100%;
+  background: #f4f6f8;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.visit-summary-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: max(env(safe-area-inset-top, 0px), 12px) 16px 12px;
+  background: rgba(244, 246, 248, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(138, 158, 154, 0.12);
+}
+
+.visit-summary-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ocs-orange);
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+
+.visit-summary-back-btn:active {
+  opacity: 0.7;
+}
+
+.visit-summary-header-title {
+  justify-self: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a5c52;
+  letter-spacing: -0.01em;
+}
+
+.visit-summary-content {
+  padding: 20px var(--native-pad-screen) var(--native-nav-clearance);
+}
+
+.visit-summary-card {
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+.visit-summary-hero-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2d8f98, #41c8c6);
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(45, 143, 152, 0.22);
+}
+
+.visit-summary-card-divider {
+  height: 1px;
+  margin-left: 20px;
+  margin-right: 20px;
+  background: rgba(138, 158, 154, 0.18);
+}
+
+.visit-summary-list-divider {
+  height: 1px;
+  margin-left: 68px;
+  margin-right: 20px;
+  background: rgba(138, 158, 154, 0.16);
+}
+
+.visit-summary-section-title {
+  padding-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a9e9a;
+}
+
 /* Hero CTA arrow — perfect white circle, orange icon */
 .dashboard-hero-arrow-btn {
   display: flex;

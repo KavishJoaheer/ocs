@@ -1,5 +1,5 @@
-import { useState } from "react";
 import dayjs from "dayjs";
+import { useNavigate } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
@@ -18,7 +18,7 @@ function formatConsultationDateTime(date, time) {
 }
 
 function ConsultationCard({ consultation }) {
-  const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
 
   const doctorName = formatDoctorName(consultation.doctor_name);
   const specialty = consultation.doctor_specialty || "General Practitioner";
@@ -28,8 +28,7 @@ function ConsultationCard({ consultation }) {
   return (
     <button
       type="button"
-      onClick={() => setExpanded((prev) => !prev)}
-      aria-expanded={expanded}
+      onClick={() => navigate(`/health-records/visits/${consultation.id}`)}
       className="consultation-card-pressable squircle-outer ocs-elevate-timeline w-full bg-white text-left"
     >
       {/* Top row — date/time + visit badge */}
@@ -62,24 +61,11 @@ function ConsultationCard({ consultation }) {
         </div>
       ) : null}
 
-      {/* Expanded summary */}
-      {expanded && consultation.plain_summary ? (
-        <p className="mt-4 px-5 text-[14px] leading-relaxed text-[#5b7f8a]">
-          {consultation.plain_summary}
-        </p>
-      ) : null}
-
       {/* Footer CTA */}
       <div className="consultation-card-divider mt-5" aria-hidden="true" />
       <div className="flex items-center justify-between px-5 py-4">
         <span className="text-[14px] font-semibold text-[#1a5c52]">View Full Report</span>
-        <ChevronRight
-          className={[
-            "size-[18px] text-ocs-orange transition-transform duration-200",
-            expanded ? "rotate-90" : "",
-          ].join(" ")}
-          strokeWidth={2.25}
-        />
+        <ChevronRight className="size-[18px] text-ocs-orange" strokeWidth={2.25} />
       </div>
     </button>
   );
