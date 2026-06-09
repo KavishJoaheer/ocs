@@ -33,10 +33,14 @@ function getAllowedOrigins() {
   const configured = process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || "";
 
   if (configured) {
-    return configured
+    const origins = configured
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
+
+    if (origins.length > 0) {
+      return origins;
+    }
   }
 
   return [

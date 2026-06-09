@@ -42,6 +42,28 @@ services:
     networks:
       - clinicflow-public
 
+  patient-portal:
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:latest
+    container_name: clinicflow-patient-portal
+    restart: unless-stopped
+    depends_on:
+      - app
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    networks:
+      - clinicflow-public
+
+  linkham-portal:
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:latest
+    container_name: clinicflow-linkham-portal
+    restart: unless-stopped
+    depends_on:
+      - app
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    networks:
+      - clinicflow-public
+
   watchtower:
     image: containrrr/watchtower:latest
     container_name: clinicflow-watchtower
