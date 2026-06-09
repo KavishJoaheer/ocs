@@ -61,6 +61,38 @@ function extractDiagnosisFromNotes(notes) {
   return fallback || "General Assessment";
 }
 
+// Normalize a raw patients row (DB column names) into the shape the patient
+// portal UI consumes (phone, ocs_care_number, next_of_kin_phone, review, ...).
+function serializePatientProfile(patient) {
+  if (!patient) {
+    return null;
+  }
+
+  return {
+    id: patient.id,
+    full_name: patient.full_name,
+    first_name: patient.first_name,
+    last_name: patient.last_name,
+    ocs_care_number: patient.patient_identifier || null,
+    patient_id_number: patient.patient_id_number || null,
+    date_of_birth: patient.date_of_birth || null,
+    gender: patient.gender || null,
+    age: patient.age ?? null,
+    phone: patient.patient_contact_number || patient.contact_number || "",
+    address: patient.address || "",
+    location: patient.location || "",
+    assigned_doctor_name: patient.assigned_doctor_name || null,
+    next_of_kin_name: patient.next_of_kin_name || "",
+    next_of_kin_relationship: patient.next_of_kin_relationship || "",
+    next_of_kin_phone: patient.next_of_kin_contact_number || "",
+    next_of_kin_email: patient.next_of_kin_email || "",
+    next_of_kin_address: patient.next_of_kin_address || "",
+    is_under_review: patient.is_under_review === 1 || patient.is_under_review === true,
+    review_reason_note: String(patient.review_reason_note || "").trim() || null,
+    review_due_date: String(patient.review_due_date || "").trim() || null,
+  };
+}
+
 router.get("/dashboard", (req, res) => {
   const patientId = req.patientAuth.patient_id;
 
@@ -167,6 +199,32 @@ router.get("/appointments", (req, res) => {
     `)
     .all(patientId);
 
+  // Surface a staff-scheduled long-term review as an upcoming item so the
+  // patient sees the follow-up their care team booked.
+  const patient = db
+    .prepare(`
+      SELECT p.is_under_review, p.review_due_date, p.review_reason_note, d.full_name AS doctor_name
+      FROM patients p
+      LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
+      WHERE p.id = ? AND p.deleted_at IS NULL
+    `)
+    .get(patientId);
+
+  const reviewDueDate = String(patient?.review_due_date || "").trim();
+
+  if (patient && (patient.is_under_review === 1 || patient.is_under_review === true) && reviewDueDate) {
+    appointments.unshift({
+      id: `review-${patientId}`,
+      patient_id: patientId,
+      appointment_date: reviewDueDate,
+      appointment_time: "",
+      status: "scheduled",
+      doctor_name: patient.doctor_name || null,
+      kind: "review",
+      reason: String(patient.review_reason_note || "").trim() || null,
+    });
+  }
+
   return res.json({ appointments });
 });
 
@@ -211,7 +269,9 @@ router.get("/profile", (req, res) => {
     `)
     .get(patientId);
 
-  return res.json({ patient: patient || null });
+  // Return both the normalized profile (what the UI reads) and the raw row for
+  // any older callers.
+  return res.json({ profile: serializePatientProfile(patient), patient: patient || null });
 });
 
 router.get("/health-records", (req, res) => {
@@ -296,7 +356,7 @@ router.get("/health-records", (req, res) => {
   return res.json({ consultations, reports, clinical });
 });
 
-router.put("/profile", (req, res) => {
+function applyProfileUpdate(req, res) {
   const patientId = req.patientAuth.patient_id;
 
   if (!patientId) {
@@ -311,68 +371,43 @@ router.put("/profile", (req, res) => {
     return res.status(404).json({ error: "Patient record not found." });
   }
 
-  const phone = req.body.phone !== undefined ? String(req.body.phone).trim() : undefined;
-  const address = req.body.address !== undefined ? String(req.body.address).trim() : undefined;
-  const location = req.body.location !== undefined ? String(req.body.location).trim() : undefined;
-  const nextOfKinName =
-    req.body.next_of_kin_name !== undefined ? String(req.body.next_of_kin_name).trim() : undefined;
-  const nextOfKinRelationship =
-    req.body.next_of_kin_relationship !== undefined
-      ? String(req.body.next_of_kin_relationship).trim()
-      : undefined;
-  const nextOfKinContactNumber =
-    req.body.next_of_kin_contact_number !== undefined
-      ? String(req.body.next_of_kin_contact_number).trim()
-      : undefined;
-  const nextOfKinEmail =
-    req.body.next_of_kin_email !== undefined ? String(req.body.next_of_kin_email).trim() : undefined;
-  const nextOfKinAddress =
-    req.body.next_of_kin_address !== undefined
-      ? String(req.body.next_of_kin_address).trim()
-      : undefined;
+  const readField = (...keys) => {
+    for (const key of keys) {
+      if (req.body[key] !== undefined) {
+        return String(req.body[key]).trim();
+      }
+    }
+    return undefined;
+  };
+
+  const phone = readField("phone", "patient_contact_number");
+  const address = readField("address");
+  const location = readField("location");
+  const nextOfKinName = readField("next_of_kin_name");
+  const nextOfKinRelationship = readField("next_of_kin_relationship");
+  // The UI sends next_of_kin_phone; accept the canonical DB name too.
+  const nextOfKinContactNumber = readField("next_of_kin_phone", "next_of_kin_contact_number");
+  const nextOfKinEmail = readField("next_of_kin_email");
+  const nextOfKinAddress = readField("next_of_kin_address");
 
   const updates = [];
   const params = [];
 
-  if (phone !== undefined) {
-    updates.push("patient_contact_number = ?");
-    params.push(phone);
-  }
+  const pushUpdate = (column, value) => {
+    if (value !== undefined) {
+      updates.push(`${column} = ?`);
+      params.push(value);
+    }
+  };
 
-  if (address !== undefined) {
-    updates.push("address = ?");
-    params.push(address);
-  }
-
-  if (location !== undefined) {
-    updates.push("location = ?");
-    params.push(location);
-  }
-
-  if (nextOfKinName !== undefined) {
-    updates.push("next_of_kin_name = ?");
-    params.push(nextOfKinName);
-  }
-
-  if (nextOfKinRelationship !== undefined) {
-    updates.push("next_of_kin_relationship = ?");
-    params.push(nextOfKinRelationship);
-  }
-
-  if (nextOfKinContactNumber !== undefined) {
-    updates.push("next_of_kin_contact_number = ?");
-    params.push(nextOfKinContactNumber);
-  }
-
-  if (nextOfKinEmail !== undefined) {
-    updates.push("next_of_kin_email = ?");
-    params.push(nextOfKinEmail);
-  }
-
-  if (nextOfKinAddress !== undefined) {
-    updates.push("next_of_kin_address = ?");
-    params.push(nextOfKinAddress);
-  }
+  pushUpdate("patient_contact_number", phone);
+  pushUpdate("address", address);
+  pushUpdate("location", location);
+  pushUpdate("next_of_kin_name", nextOfKinName);
+  pushUpdate("next_of_kin_relationship", nextOfKinRelationship);
+  pushUpdate("next_of_kin_contact_number", nextOfKinContactNumber);
+  pushUpdate("next_of_kin_email", nextOfKinEmail);
+  pushUpdate("next_of_kin_address", nextOfKinAddress);
 
   if (updates.length === 0) {
     return res.status(400).json({ error: "No valid fields provided for update." });
@@ -395,10 +430,28 @@ router.put("/profile", (req, res) => {
     `)
     .get(patientId);
 
+  const user = db.prepare("SELECT * FROM patient_users WHERE patient_id = ?").get(patientId);
+
   publishPatientDataChange(patientId, { reason: "profile" });
 
-  return res.json({ patient: updated });
-});
+  return res.json({
+    profile: serializePatientProfile(updated),
+    patient: updated,
+    user: user
+      ? {
+          id: user.id,
+          email: user.email,
+          full_name: user.full_name,
+          phone: user.phone,
+          date_of_birth: user.date_of_birth,
+          gender: user.gender,
+        }
+      : undefined,
+  });
+}
+
+router.put("/profile", applyProfileUpdate);
+router.patch("/profile", applyProfileUpdate);
 
 // Serve a report attachment to the patient who owns it. Mounted in app.js with
 // requirePatientAuthFlexible so the browser can open it directly (token in the

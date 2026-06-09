@@ -17,7 +17,8 @@ function formatTime(time) {
   return parsed.isValid() ? parsed.format("h:mm A") : value;
 }
 
-function typeLabel(status) {
+function typeLabel(status, kind) {
+  if (kind === "review") return "Scheduled Review";
   if (status === "completed") return "Consultation";
   if (status === "cancelled") return "Cancelled";
   return "Scheduled Visit";
@@ -28,9 +29,11 @@ function mapAppointment(row) {
     id: row.id,
     date: row.appointment_date,
     time: formatTime(row.appointment_time),
-    type: typeLabel(row.status),
+    type: typeLabel(row.status, row.kind),
     doctor_name: withDoctorPrefix(row.doctor_name),
     status: row.status,
+    kind: row.kind || null,
+    note: row.reason || null,
   };
 }
 
@@ -99,13 +102,24 @@ function AppointmentCard({ appointment, variant, isNextVisit = false }) {
         >
           {appointment.doctor_name}
         </p>
-        <p
-          className={`mt-1 text-[13px] ${
-            isUpcoming ? "text-[#6e949b]" : "text-[#94a9ad]"
-          }`}
-        >
-          {appointment.time}
-        </p>
+        {appointment.note && (
+          <p
+            className={`mt-1 text-[13px] ${
+              isUpcoming ? "text-[#6e949b]" : "text-[#94a9ad]"
+            }`}
+          >
+            {appointment.note}
+          </p>
+        )}
+        {appointment.time && (
+          <p
+            className={`mt-1 text-[13px] ${
+              isUpcoming ? "text-[#6e949b]" : "text-[#94a9ad]"
+            }`}
+          >
+            {appointment.time}
+          </p>
+        )}
       </div>
 
       <div className="flex shrink-0 items-start">
