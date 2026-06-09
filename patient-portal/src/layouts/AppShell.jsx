@@ -15,7 +15,7 @@ function AppShellContent() {
           className={[
             "mx-auto max-w-6xl sm:px-10 lg:px-12 lg:pb-10 lg:pt-10",
             isNativeDashboard
-              ? "max-md:px-0 max-md:pb-32 max-md:pt-0"
+              ? "max-md:px-0 max-md:pb-0 max-md:pt-0"
               : "px-6 pb-36 pt-6 max-md:px-4 max-md:pt-0",
           ].join(" ")}
         >

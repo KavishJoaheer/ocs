@@ -478,12 +478,18 @@ function PatientDashboard() {
     {/* ───────── Mobile dashboard — native home experience ───────── */}
     <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-md:block">
       {loading && isPrimaryProfile ? (
-        <div className="native-dashboard -mx-4 space-y-4 bg-[#f4f7f7] px-4 pt-[max(env(safe-area-inset-top),12px)]">
-          <div className="h-20 animate-pulse rounded-2xl bg-white/60" />
-          <div className="h-28 animate-pulse rounded-[24px] bg-white/60" />
+        <div className="native-dashboard -mx-4 space-y-5 bg-[#f4f7f7]">
+          <div className="squircle-outer h-20 animate-pulse bg-white/60" />
+          <div className="squircle-outer h-32 animate-pulse bg-white/60" />
         </div>
       ) : profileActiveVisit ? (
-        <div className="px-0 pt-[max(env(safe-area-inset-top),12px)]">
+        <div
+          className="px-[var(--native-pad-screen)]"
+          style={{
+            paddingTop: "var(--native-safe-top)",
+            paddingBottom: "var(--native-nav-clearance)",
+          }}
+        >
           <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
         </div>
       ) : (

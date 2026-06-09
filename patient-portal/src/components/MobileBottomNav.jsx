@@ -12,10 +12,10 @@ const navItems = [
 function MobileBottomNav() {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-2 lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 px-[var(--native-pad-screen)] pb-[max(env(safe-area-inset-bottom,0px),12px)] pt-2 lg:hidden"
       aria-label="Main navigation"
     >
-      <div className="mobile-nav-pill mx-auto flex max-w-md items-center justify-around rounded-full border border-white/60 bg-white/75 px-2 py-2 shadow-[0_8px_32px_rgba(34,72,91,0.12)] backdrop-blur-xl">
+      <div className="mobile-nav-pill mx-auto flex max-w-md items-center justify-around rounded-full bg-white/80 px-2 py-2 backdrop-blur-xl">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -23,15 +23,15 @@ function MobileBottomNav() {
               key={item.to}
               end={item.end}
               to={item.to}
-              className="flex min-h-[44px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full transition-all"
+              className="flex min-h-[44px] min-w-[64px] flex-1 flex-col items-center justify-center gap-1 rounded-full transition-all"
             >
               {({ isActive }) => (
                 <>
                   <span
                     className={[
-                      "flex size-9 items-center justify-center rounded-full transition-all",
+                      "flex size-9 items-center justify-center transition-all",
                       isActive
-                        ? "bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-white shadow-[0_4px_16px_rgba(45,143,152,0.35)]"
+                        ? "squircle-inner-active bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-white"
                         : "text-[#8a9e9a]",
                     ].join(" ")}
                   >
@@ -44,7 +44,7 @@ function MobileBottomNav() {
                   <span
                     className={[
                       "text-[10px] leading-none tracking-wide",
-                      isActive ? "font-bold text-[#1a5c52]" : "font-medium text-[#8a9e9a]",
+                      isActive ? "native-label text-[#1a5c52]" : "font-medium text-[#8a9e9a]",
                     ].join(" ")}
                   >
                     {item.label}

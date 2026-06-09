@@ -13,6 +13,19 @@
   --ocs-teal-soft: #70ddd2;
   --ocs-gold: #f2c14d;
   --ocs-ink: #22485b;
+  /* Native dashboard tokens — squircle radii, spacing, elevation, safe areas */
+  --native-radius-outer: 24px;
+  --native-radius-inner: 14px;
+  --native-pad-card: 20px;
+  --native-pad-screen: 20px;
+  --native-safe-top: max(env(safe-area-inset-top, 0px), 16px);
+  --native-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --native-nav-height: 72px;
+  --native-nav-clearance: calc(var(--native-nav-height) + var(--native-safe-bottom) + 20px);
+  /* Teal-tinted ambient shadow — reads soft on iOS Safari and Android Chrome */
+  --native-shadow-ambient: 0 4px 15px rgba(34, 72, 91, 0.04);
+  --native-shadow-lift: 0 4px 15px rgba(34, 72, 91, 0.04), 0 1px 2px rgba(34, 72, 91, 0.03);
+  --native-shadow-hero: 0 8px 24px rgba(45, 143, 152, 0.12), 0 2px 6px rgba(34, 72, 91, 0.04);
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -248,28 +261,148 @@ table {
 
 .native-dashboard {
   -webkit-tap-highlight-color: transparent;
+  padding-top: var(--native-safe-top);
+  padding-bottom: var(--native-nav-clearance);
+  padding-left: var(--native-pad-screen);
+  padding-right: var(--native-pad-screen);
+  /* System-adjacent stack for weight parity across iOS (SF) and Android (Roboto) */
+  font-family:
+    "Nunito Sans",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Inter",
+    "Roboto",
+    "Segoe UI",
+    sans-serif;
+}
+
+/* Squircle outer containers (cards, hero) — 24px with continuous corners where supported */
+.squircle-outer {
+  border-radius: var(--native-radius-outer);
+}
+
+@supports (corner-shape: squircle) {
+  .squircle-outer {
+    corner-shape: squircle;
+  }
+}
+
+/* Squircle nested children (icon wells, action buttons) — 14px parallel radius */
+.squircle-inner {
+  border-radius: var(--native-radius-inner);
+}
+
+@supports (corner-shape: squircle) {
+  .squircle-inner {
+    corner-shape: squircle;
+  }
+}
+
+/* Soft elevation — teal-tinted shadow avoids harsh black on Android Chrome */
+.ocs-elevate {
+  box-shadow: var(--native-shadow-lift);
+}
+
+.ocs-elevate-hero {
+  box-shadow: var(--native-shadow-hero);
+}
+
+/* Header icon buttons (bell, avatar) */
+.native-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--native-shadow-ambient);
+  transition: transform 160ms ease;
+}
+
+.native-header-btn:active {
+  transform: scale(0.95);
+}
+
+/* Display typography — explicit weight for SF Pro / Roboto parity */
+.native-display {
+  font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Inter", "Roboto", sans-serif;
+  font-weight: 700;
+  font-synthesis: none;
+  letter-spacing: -0.02em;
+}
+
+.native-label {
+  font-weight: 600;
+  font-synthesis: none;
 }
 
 /* Tactile scale-down on hero CTA press */
 .dashboard-hero-press {
+  padding: var(--native-pad-card);
   transition: transform 180ms cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 180ms ease;
   will-change: transform;
 }
 
 .dashboard-hero-press:active {
   transform: scale(0.97);
-  box-shadow: 0 6px 24px rgba(45, 143, 152, 0.22);
+  box-shadow: 0 4px 12px rgba(45, 143, 152, 0.1);
 }
 
-/* Horizontal carousels — hide scrollbar, keep swipe */
+/* Timeline action chip */
+.native-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 10px 16px;
+  border-radius: var(--native-radius-inner);
+  font-size: 13px;
+  font-weight: 700;
+  color: #2d8f98;
+  background: rgba(26, 160, 140, 0.08);
+  transition: gap 160ms ease, background 160ms ease;
+}
+
+.native-action-btn:active {
+  background: rgba(26, 160, 140, 0.14);
+  gap: 8px;
+}
+
+@supports (corner-shape: squircle) {
+  .native-action-btn {
+    corner-shape: squircle;
+  }
+}
+
+/* Horizontal carousels — hide scrollbar, safe scroll padding, breathing room */
 .native-carousel {
   -ms-overflow-style: none;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-inline: var(--native-pad-screen);
+  padding-bottom: 4px;
 }
 
 .native-carousel::-webkit-scrollbar {
   display: none;
+}
+
+/* Floating bottom nav — soft ambient elevation, no harsh border */
+.mobile-nav-pill {
+  box-shadow: var(--native-shadow-lift);
+  border: none;
+}
+
+.mobile-nav-pill .squircle-inner-active {
+  border-radius: var(--native-radius-inner);
+  box-shadow: 0 4px 12px rgba(45, 143, 152, 0.18);
+}
+
+@supports (corner-shape: squircle) {
+  .mobile-nav-pill .squircle-inner-active {
+    corner-shape: squircle;
+  }
 }
 
 @keyframes breathe {
