@@ -1029,11 +1029,55 @@ table {
   }
 }
 
+.health-records-segment .health-records-tab {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.health-records-segment .health-records-tab:focus,
+.health-records-segment .health-records-tab:focus-visible {
+  outline: none;
+}
+
 .health-records-tab-active {
   background: #fff;
   color: #1a5c52;
   border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  outline: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.health-records-segment .health-records-tab-active:focus,
+.health-records-segment .health-records-tab-active:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.ocs-primary-action-btn {
+  background: #e8a020;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 8px 24px -6px rgba(232, 160, 32, 0.45);
+  transition:
+    filter 200ms ease,
+    box-shadow 200ms ease,
+    transform 180ms ease;
+}
+
+.ocs-primary-action-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: 0 10px 28px -6px rgba(232, 160, 32, 0.5);
+}
+
+.ocs-primary-action-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.ocs-primary-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ─── Profile screen — premium concierge hub ──────────────────────────────── */
@@ -1457,7 +1501,7 @@ table {
   font-weight: 500;
   color: #1a5c52;
   outline: none;
-  transition: background 160ms ease, box-shadow 160ms ease;
+  transition: background 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
 
 .upload-field-input::placeholder {
@@ -1470,8 +1514,21 @@ table {
   box-shadow: 0 0 0 2px rgba(45, 143, 152, 0.28);
 }
 
+.upload-drawer .upload-field-input {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  outline: none;
+}
+
+.upload-drawer .upload-field-input:focus {
+  border-color: rgba(45, 143, 152, 0.45);
+  box-shadow: 0 0 0 3px rgba(45, 143, 152, 0.14);
+  outline: none;
+}
+
 .upload-toggle-btn {
   min-height: 44px;
+  outline: none;
 }
 
 .upload-toggle-btn-active {
@@ -1484,6 +1541,30 @@ table {
   border: 1.5px solid rgba(138, 158, 154, 0.35);
   color: #8a9e9a;
   background: #fff;
+}
+
+.upload-drawer .upload-toggle-btn-active {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
+  color: #1a5c52;
+  box-shadow: 0 0 0 2px rgba(45, 143, 152, 0.18);
+}
+
+.upload-drawer .upload-toggle-btn-inactive {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
+  color: #8a9e9a;
+}
+
+.upload-drawer .upload-toggle-btn:focus,
+.upload-drawer .upload-toggle-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(45, 143, 152, 0.14);
+}
+
+.upload-drawer .upload-toggle-btn-active:focus,
+.upload-drawer .upload-toggle-btn-active:focus-visible {
+  box-shadow: 0 0 0 3px rgba(45, 143, 152, 0.18);
 }
 
 @supports (corner-shape: squircle) {

@@ -13,9 +13,9 @@ const SECTIONS = [
 ];
 
 const CELL_BORDERS = [
-  "border-b border-[rgba(0,0,0,0.05)] lg:border-b lg:border-r lg:border-[rgba(0,0,0,0.05)]",
-  "border-b border-[rgba(0,0,0,0.05)] lg:border-b lg:border-[rgba(0,0,0,0.05)]",
-  "border-b border-[rgba(0,0,0,0.05)] lg:border-b-0 lg:border-r lg:border-[rgba(0,0,0,0.05)]",
+  "border-b border-[rgba(0,0,0,0.03)] lg:border-b lg:border-r lg:border-[rgba(0,0,0,0.03)]",
+  "border-b border-[rgba(0,0,0,0.03)] lg:border-b lg:border-[rgba(0,0,0,0.03)]",
+  "border-b border-[rgba(0,0,0,0.03)] lg:border-b-0 lg:border-r lg:border-[rgba(0,0,0,0.03)]",
   "",
 ];
 
@@ -75,7 +75,7 @@ function ClinicalHistoryView({ clinicalHistory }) {
       </p>
 
       <article className="health-records-crafted-card animate-fade-in-up overflow-hidden bg-white max-lg:squircle-outer max-lg:ocs-elevate">
-        <header className="border-b border-[rgba(0,0,0,0.05)] px-6 py-5 lg:px-7">
+        <header className="border-b border-[rgba(0,0,0,0.03)] px-6 py-5 lg:px-7">
           <h2 className="native-display text-[17px] text-[#1a5c52]">Clinical Dossier</h2>
           <p className="mt-1 text-[13px] text-[#8a9e9a]">Your medical background at a glance</p>
         </header>

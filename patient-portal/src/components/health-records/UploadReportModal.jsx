@@ -385,7 +385,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
             <button
               type="submit"
               disabled={!canSubmit}
-              className="min-h-[44px] rounded-full bg-ocs-orange px-7 py-3 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              className="ocs-primary-action-btn min-h-[44px] rounded-[16px] px-7 py-3 text-[14px] text-white"
             >
               Upload
             </button>
