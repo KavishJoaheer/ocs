@@ -15,6 +15,7 @@ import {
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
+import VisitCancelPrompt from "../components/VisitCancelPrompt.jsx";
 
 // Map a backend visit-request status onto the dashboard's 4-step mini tracker.
 const VISIT_STATUS_STEP_INDEX = {
@@ -65,33 +66,11 @@ function NoActiveVisit() {
   );
 }
 
-function ActiveVisitCard({ visit }) {
-  const [showCancel, setShowCancel] = useState(false);
+function ActiveVisitCard({ visit, onCancelled }) {
   const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
 
   return (
     <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6">
-      {showCancel && (
-        <div className="mb-5 rounded-xl bg-[rgba(207,91,80,0.08)] p-4">
-          <p className="text-sm leading-relaxed text-[#5b6b6b]">
-            To cancel your visit please call our team directly. Tap below to call now.
-          </p>
-          <a
-            href="tel:52522234"
-            className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-[#cf5b50] text-sm font-bold text-white transition hover:brightness-105"
-          >
-            Call OCS to Cancel
-          </a>
-          <button
-            type="button"
-            onClick={() => setShowCancel(false)}
-            className="mt-2 w-full text-center text-xs font-semibold text-[#2d8f98] transition hover:text-[#23767f]"
-          >
-            Keep my visit
-          </button>
-        </div>
-      )}
-
       <div className="flex items-center gap-2">
         <span className="relative flex size-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
@@ -106,7 +85,7 @@ function ActiveVisitCard({ visit }) {
         {visit.doctor || "Your doctor"}
       </p>
       <p className="mt-1 text-sm text-[#5b7f8a]">
-        {visit.status || "Doctor en route · Est. arrival 25 min"}
+        {visit.statusText || "Doctor en route · Est. arrival 25 min"}
       </p>
 
       {/* 4-step horizontal progress */}
@@ -147,15 +126,12 @@ function ActiveVisitCard({ visit }) {
         View Live Tracking <ArrowRight className="size-4" />
       </Link>
 
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowCancel(true)}
-          className="mt-3 text-xs font-medium text-[#cf8079] transition hover:text-[#cf5b50]"
-        >
-          Cancel this visit
-        </button>
-      </div>
+      <VisitCancelPrompt
+        visitId={visit.id}
+        visitStatus={visit.status}
+        onCancelled={onCancelled}
+        className="mt-3"
+      />
     </div>
   );
 }
@@ -275,10 +251,10 @@ function MobileLastVisit({ consultation }) {
   );
 }
 
-function MobileActiveVisit({ visit }) {
-  const [showCancel, setShowCancel] = useState(false);
+function MobileActiveVisit({ visit, onCancelled }) {
   const doctor = formatDoctorSurname(visit.doctor);
   const eta = extractEtaMinutes(visit);
+  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
 
   return (
     <div className="mb-5 animate-fade-in-up">
@@ -304,7 +280,7 @@ function MobileActiveVisit({ visit }) {
           <span
             key={step}
             className={`h-[6px] rounded-full ${
-              i <= ACTIVE_STEP_INDEX ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
+              i <= activeStepIndex ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
             }`}
           />
         ))}
@@ -325,36 +301,13 @@ function MobileActiveVisit({ visit }) {
         </a>
       </div>
 
-      {showCancel ? (
-        <div className="mt-4 rounded-xl bg-[rgba(207,91,80,0.08)] p-4">
-          <p className="text-[13px] leading-relaxed text-[#5b6b6b]">
-            To cancel your visit please call our team directly. Tap below to call now.
-          </p>
-          <a
-            href="tel:52522234"
-            className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-[#cf5b50] text-sm font-bold text-white transition active:brightness-105"
-          >
-            Call OCS to Cancel
-          </a>
-          <button
-            type="button"
-            onClick={() => setShowCancel(false)}
-            className="mt-2 w-full text-center text-xs font-semibold text-[#2d8f98] transition active:text-[#23767f]"
-          >
-            Keep my visit
-          </button>
-        </div>
-      ) : (
-        <div className="mt-3 text-center">
-          <button
-            type="button"
-            onClick={() => setShowCancel(true)}
-            className="text-xs font-medium text-[#cf8079] transition active:text-[#cf5b50]"
-          >
-            Cancel this visit
-          </button>
-        </div>
-      )}
+      <VisitCancelPrompt
+        visitId={visit.id}
+        visitStatus={visit.status}
+        onCancelled={onCancelled}
+        className="mt-3 text-center"
+        buttonClassName="text-xs font-medium text-[#cf8079] transition active:text-[#cf5b50]"
+      />
     </div>
   );
 }
@@ -402,10 +355,16 @@ function PatientDashboard() {
     return () => { ignore = true; };
   }, [refreshKey]);
 
+  function handleVisitCancelled() {
+    setActiveVisit(null);
+  }
+
   const primaryActiveVisit = activeVisit
     ? {
+        id: activeVisit.id,
+        status: activeVisit.status,
         doctor: activeVisit.doctor_name ? formatDoctorName(activeVisit.doctor_name) : "Your doctor",
-        status:
+        statusText:
           activeVisit.eta_minutes != null
             ? `${activeVisit.status_label} · Est. arrival ${activeVisit.eta_minutes} min`
             : activeVisit.status_label,
@@ -541,7 +500,7 @@ function PatientDashboard() {
         <>
           <section className="animate-fade-in-up stagger-4">
             {profileActiveVisit ? (
-              <ActiveVisitCard visit={profileActiveVisit} />
+              <ActiveVisitCard visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
             ) : (
               <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
                 <NoActiveVisit />
@@ -602,7 +561,7 @@ function PatientDashboard() {
       ) : (
         <>
           {profileActiveVisit ? (
-            <MobileActiveVisit visit={profileActiveVisit} />
+            <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
           ) : (
             <>
               <div className="mb-5 animate-fade-in-up">

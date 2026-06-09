@@ -29,6 +29,18 @@ async function registerPatient(request, suffix) {
   return { email, token: body.token };
 }
 
+async function injectPatientSession(page, token) {
+  await page.addInitScript((authToken) => {
+    window.localStorage.setItem("ocs_patient_auth_token", authToken);
+  }, token);
+}
+
+async function injectStaffSession(page, token) {
+  await page.addInitScript((authToken) => {
+    window.localStorage.setItem("ocs_medecins_auth_token", authToken);
+  }, token);
+}
+
 test.describe("OCS smoke", () => {
   test("staff portal login page loads", async ({ page }) => {
     await page.goto(`${STAFF_BASE}/login`);
@@ -72,8 +84,39 @@ test.describe("OCS smoke", () => {
     expect(listBody.visit_requests.some((row) => row.id === visitBody.visit_request.id)).toBeTruthy();
   });
 
+  test("API patient can cancel a pending visit request", async ({ request }) => {
+    const { token } = await registerPatient(request, "cancel-api");
+    const authHeaders = { Authorization: `Bearer ${token}` };
+
+    const createVisit = await request.post(`${API_BASE}/patient-portal/visit-requests`, {
+      headers: authHeaders,
+      data: {
+        address: "Beau Bassin, Mauritius",
+        reason: "Routine check",
+        urgency: "routine",
+      },
+    });
+    const visitBody = await createVisit.json();
+    const requestId = visitBody.visit_request.id;
+
+    const cancelled = await request.patch(
+      `${API_BASE}/patient-portal/visit-requests/${requestId}/cancel`,
+      { headers: authHeaders },
+    );
+    expect(cancelled.ok()).toBeTruthy();
+    const cancelledBody = await cancelled.json();
+    expect(cancelledBody.visit_request.status).toBe("cancelled");
+
+    const active = await request.get(`${API_BASE}/patient-portal/visit-requests/active`, {
+      headers: authHeaders,
+    });
+    const activeBody = await active.json();
+    expect(activeBody.visit_request).toBeNull();
+  });
+
   test("patient visit tracking UI renders for an active request", async ({ page, request }) => {
     const { token } = await registerPatient(request, "tracking");
+    await injectPatientSession(page, token);
 
     await request.post(`${API_BASE}/patient-portal/visit-requests`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -84,10 +127,6 @@ test.describe("OCS smoke", () => {
       },
     });
 
-    await page.addInitScript((authToken) => {
-      window.localStorage.setItem("ocs_patient_auth_token", authToken);
-    }, token);
-
     await page.goto(`${PATIENT_BASE}/request-visit/tracking`);
     await expect(page.getByText(/request received|care team|doctor|on the way/i).first()).toBeVisible({
       timeout: 20_000,
@@ -95,12 +134,69 @@ test.describe("OCS smoke", () => {
     await expect(page.getByText(/visit location/i)).toBeVisible();
   });
 
+  test("patient can cancel an active visit from tracking", async ({ page, request }) => {
+    const { token } = await registerPatient(request, "cancel-ui");
+    await injectPatientSession(page, token);
+
+    await request.post(`${API_BASE}/patient-portal/visit-requests`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        address: "Vacoas, Mauritius",
+        reason: "Cancel flow test",
+        urgency: "routine",
+      },
+    });
+
+    await page.goto(`${PATIENT_BASE}/request-visit/tracking`);
+    await expect(page.getByRole("button", { name: /cancel this visit/i })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.getByRole("button", { name: /cancel this visit/i }).click();
+    await page.getByRole("button", { name: /yes, cancel visit/i }).click();
+
+    await expect(page.getByText(/no active visit right now/i)).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("patient dashboard loads for an authenticated user", async ({ page, request }) => {
+    const { token } = await registerPatient(request, "dashboard");
+    await injectPatientSession(page, token);
+
+    await page.goto(`${PATIENT_BASE}/dashboard`);
+    await expect(
+      page.getByRole("heading", { name: /good (morning|afternoon|evening), e2e/i }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByText(/no active visit|request a home visit/i).first()).toBeVisible();
+  });
+
+  test("patient health records overview loads", async ({ page, request }) => {
+    const { token } = await registerPatient(request, "records");
+    await injectPatientSession(page, token);
+
+    await page.goto(`${PATIENT_BASE}/health-records`);
+    await expect(page.getByRole("heading", { name: "Your Health Records.", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("button", { name: /^overview$/i })).toBeVisible();
+    await expect(page.getByText(/your health summary|health story starts here/i).first()).toBeVisible();
+  });
+
+  test("patient billing page loads", async ({ page, request }) => {
+    const { token } = await registerPatient(request, "billing");
+    await injectPatientSession(page, token);
+
+    await page.goto(`${PATIENT_BASE}/billing`);
+    await expect(page.getByRole("heading", { name: /billing & payments/i })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByText(/total billed|no bills found/i).first()).toBeVisible();
+  });
+
   test("staff visit requests board loads for an authenticated admin", async ({ page, request }) => {
     const staff = await staffLogin(request);
-
-    await page.addInitScript((authToken) => {
-      window.localStorage.setItem("ocs_medecins_auth_token", authToken);
-    }, staff.token);
+    await injectStaffSession(page, staff.token);
 
     await page.goto(`${STAFF_BASE}/visit-requests`);
     await expect(page.getByRole("heading", { name: /visit requests/i })).toBeVisible();

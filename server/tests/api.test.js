@@ -321,6 +321,70 @@ test("home-visit request flows patient -> staff -> patient", async () => {
   assert.ok(active.data.visit_request.doctor_name);
 });
 
+test("patient can cancel a pending visit request", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("cancel"),
+      password: "secret123",
+      full_name: "Cancel Tester",
+      phone: "57007777",
+      date_of_birth: "1991-01-01",
+      gender: "F",
+    },
+  });
+  const token = reg.data.token;
+
+  const created = await api("POST", "/api/patient-portal/visit-requests", {
+    token,
+    body: { address: "Rose Hill", reason: "Headache", urgency: "routine" },
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.data.visit_request.id;
+
+  const cancelled = await api("PATCH", `/api/patient-portal/visit-requests/${requestId}/cancel`, {
+    token,
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  assert.equal(cancelled.data.visit_request.status, "cancelled");
+
+  const active = await api("GET", "/api/patient-portal/visit-requests/active", { token });
+  assert.equal(active.data.visit_request, null);
+});
+
+test("patient cannot cancel a visit after the doctor has arrived", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("no-cancel"),
+      password: "secret123",
+      full_name: "No Cancel Tester",
+      phone: "57008888",
+      date_of_birth: "1990-02-02",
+      gender: "M",
+    },
+  });
+  const token = reg.data.token;
+
+  const created = await api("POST", "/api/patient-portal/visit-requests", {
+    token,
+    body: { address: "Quatre Bornes", reason: "Check-up", urgency: "routine" },
+  });
+  const requestId = created.data.visit_request.id;
+
+  const doctors = await api("GET", "/api/doctors", { token: adminToken });
+  const doctorId = (doctors.data.doctors || doctors.data)[0].id;
+
+  const arrived = await api("PATCH", `/api/visit-requests/${requestId}`, {
+    token: adminToken,
+    body: { status: "arrived", assigned_doctor_id: doctorId },
+  });
+  assert.equal(arrived.status, 200);
+
+  const denied = await api("PATCH", `/api/patient-portal/visit-requests/${requestId}/cancel`, {
+    token,
+  });
+  assert.equal(denied.status, 400);
+});
+
 test("doctors only see assigned visit requests and can complete consultation", async () => {
   const reg = await api("POST", "/api/patient-auth/register", {
     body: {

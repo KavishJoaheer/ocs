@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ClipboardList, Phone } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import VisitLocationMap from "../../components/VisitLocationMap.jsx";
+import VisitCancelPrompt from "../../components/VisitCancelPrompt.jsx";
 
 // Ordered milestones a live request moves through. The patient tracker derives
 // each step's state from the request's current backend status.
@@ -296,6 +297,13 @@ function RequestVisitTracking() {
         >
           <Phone className="size-4" /> Call the care team
         </a>
+        <VisitCancelPrompt
+          visitId={visit.id}
+          visitStatus={visit.status}
+          onCancelled={() => setVisit(null)}
+          className="mt-4 text-center"
+          buttonClassName="text-sm font-medium text-[#cf8079] transition hover:text-[#cf5b50]"
+        />
         <div className="mt-4 text-center">
           <Link
             to="/dashboard"
