@@ -1,21 +1,68 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { FileUp } from "lucide-react";
+import customParseFormat from "dayjs/plugin/customParseFormat";
+import { Calendar, FileUp } from "lucide-react";
+
+dayjs.extend(customParseFormat);
+
+const REQUESTED_BY_OPTIONS = ["OCS Doctor", "External Doctor"];
+
+const DOCTOR_NAME_PLACEHOLDER = {
+  "OCS Doctor": "Name of OCS doctor who requested this",
+  "External Doctor": "Name of doctor who requested this",
+};
+
+function useKeyboardOffset(enabled) {
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined" || !window.visualViewport) return undefined;
+
+    const viewport = window.visualViewport;
+
+    function updateOffset() {
+      const keyboardInset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setOffset(keyboardInset);
+    }
+
+    viewport.addEventListener("resize", updateOffset);
+    viewport.addEventListener("scroll", updateOffset);
+    updateOffset();
+
+    return () => {
+      viewport.removeEventListener("resize", updateOffset);
+      viewport.removeEventListener("scroll", updateOffset);
+    };
+  }, [enabled]);
+
+  return offset;
+}
+
+function FieldLabel({ htmlFor, children }) {
+  return (
+    <label
+      htmlFor={htmlFor}
+      className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a9e9a]"
+    >
+      {children}
+    </label>
+  );
+}
 
 function UploadReportModal({ open, onClose, onUpload }) {
   const fileInputRef = useRef(null);
+  const datePickerRef = useRef(null);
   const [reportName, setReportName] = useState("");
-  const [reportDate, setReportDate] = useState("");
+  const [reportDateText, setReportDateText] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [requestedBySource, setRequestedBySource] = useState("OCS Doctor");
   const [requestedByName, setRequestedByName] = useState("");
-
-  if (!open) return null;
+  const keyboardOffset = useKeyboardOffset(open);
 
   function resetForm() {
     setReportName("");
-    setReportDate("");
+    setReportDateText("");
     setSelectedFile(null);
     setDragOver(false);
     setRequestedBySource("OCS Doctor");
@@ -38,8 +85,38 @@ function UploadReportModal({ open, onClose, onUpload }) {
     }
   }
 
+  function parseReportDate() {
+    const trimmed = reportDateText.trim();
+    if (!trimmed) return null;
+
+    const parsed = dayjs(trimmed, ["DD/MM/YYYY", "D/M/YYYY"], true);
+    return parsed.isValid() ? parsed.format("YYYY-MM-DD") : null;
+  }
+
+  function handleDatePickerChange(isoValue) {
+    if (!isoValue) {
+      setReportDateText("");
+      return;
+    }
+    const parsed = dayjs(isoValue);
+    if (parsed.isValid()) {
+      setReportDateText(parsed.format("DD/MM/YYYY"));
+    }
+  }
+
+  function openDatePicker() {
+    const picker = datePickerRef.current;
+    if (!picker) return;
+    if (typeof picker.showPicker === "function") {
+      picker.showPicker();
+    } else {
+      picker.click();
+    }
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
+    const reportDate = parseReportDate();
     if (!selectedFile || !reportName.trim() || !reportDate) return;
 
     const isPdf = selectedFile.type === "application/pdf";
@@ -57,121 +134,199 @@ function UploadReportModal({ open, onClose, onUpload }) {
     onClose();
   }
 
+  const parsedDate = parseReportDate();
+  const canSubmit = Boolean(selectedFile && reportName.trim() && parsedDate);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") handleClose();
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  if (!open) return null;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[rgba(34,72,91,0.25)] p-4 backdrop-blur-sm sm:items-center"
-      onClick={handleClose}
+      className="fixed inset-0 z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="upload-report-title"
     >
+      {/* Dimmed / blurred overlay */}
+      <button
+        type="button"
+        aria-label="Close upload dialog"
+        onClick={handleClose}
+        className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px]"
+      />
+
+      {/* Bottom sheet — shifts above the mobile keyboard */}
       <div
-        className="squircle-outer ocs-elevate w-full max-w-md bg-white"
-        style={{ padding: "var(--native-pad-card)" }}
+        className="upload-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)]"
+        style={{
+          paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardOffset}px)`,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="native-display text-[20px] text-[#22485b]">Upload a Medical Report</h2>
-        <p className="mt-2 text-[14px] leading-relaxed text-[#8a9e9a]">
-          Add test results, specialist reports, or any health documents.
-        </p>
+        <div className="flex justify-center pt-3">
+          <span className="h-[5px] w-[40px] rounded-full bg-[rgba(13,42,46,0.14)]" aria-hidden="true" />
+        </div>
 
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <div
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              handleFileSelect(e.dataTransfer.files[0]);
-            }}
-            className={[
-              "squircle-inner cursor-pointer px-4 py-8 text-center transition active:scale-[0.99]",
-              dragOver ? "bg-[rgba(26,160,140,0.14)]" : "bg-[rgba(65,200,198,0.08)]",
-            ].join(" ")}
-          >
-            <FileUp className="mx-auto size-8 text-[#2d8f98]" strokeWidth={1.5} />
-            <p className="mt-3 text-[14px] text-[#5b7f8a]">
-              {selectedFile ? selectedFile.name : "Tap to scan or upload document"}
-            </p>
-            <p className="mt-1 text-[12px] text-[#8a9ea3]">PDF and image files only</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,image/*"
-              className="hidden"
-              onChange={(e) => handleFileSelect(e.target.files?.[0])}
-            />
-          </div>
+        <div className="upload-sheet-scroll flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-4">
+          <h2 id="upload-report-title" className="native-display text-left text-[20px] text-[#1a5c52]">
+            Upload a Medical Report
+          </h2>
+          <p className="mt-2 text-left text-[14px] leading-relaxed text-[#8a9e9a]">
+            Add test results, specialist reports or any health documents to your personal records.
+          </p>
 
-          <div>
-            <label htmlFor="report-name" className="native-label text-[12px] uppercase tracking-wide text-[#8a9e9a]">
-              Report name
-            </label>
-            <input
-              id="report-name"
-              type="text"
-              value={reportName}
-              onChange={(e) => setReportName(e.target.value)}
-              placeholder="Name this report"
-              className="squircle-inner mt-2 w-full bg-[rgba(65,200,198,0.08)] px-4 py-3 text-[14px] text-[#22485b] outline-none focus:bg-white focus:shadow-[0_0_0_2px_rgba(65,200,198,0.35)]"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="report-date" className="native-label text-[12px] uppercase tracking-wide text-[#8a9e9a]">
-              Date of report
-            </label>
-            <input
-              id="report-date"
-              type="date"
-              value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
-              className="squircle-inner mt-2 w-full bg-[rgba(65,200,198,0.08)] px-4 py-3 text-[14px] text-[#22485b] outline-none focus:bg-white focus:shadow-[0_0_0_2px_rgba(65,200,198,0.35)]"
-            />
-          </div>
-
-          <div>
-            <span className="native-label text-[12px] uppercase tracking-wide text-[#8a9e9a]">
-              Requested by
-            </span>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {["OCS Doctor", "External Doctor"].map((source) => (
-                <button
-                  key={source}
-                  type="button"
-                  onClick={() => setRequestedBySource(source)}
-                  className={[
-                    "squircle-inner px-3 py-2.5 text-[13px] transition",
-                    requestedBySource === source
-                      ? "native-label bg-[rgba(26,160,140,0.12)] text-[#1a5c52]"
-                      : "text-[#5b7f8a]",
-                  ].join(" ")}
-                >
-                  {source}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 pt-2">
-            <button
-              type="submit"
-              disabled={!selectedFile || !reportName.trim() || !reportDate}
-              className="squircle-inner bg-[#e8a020] px-5 py-3.5 text-[14px] font-bold text-white transition active:scale-[0.98] disabled:opacity-50"
+          <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+            {/* Dropzone */}
+            <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                handleFileSelect(e.dataTransfer.files[0]);
+              }}
+              className={[
+                "upload-dropzone squircle-inner cursor-pointer px-4 py-9 text-center transition active:scale-[0.99]",
+                dragOver ? "bg-[rgba(26,160,140,0.12)]" : "",
+              ].join(" ")}
             >
-              Upload Report
-            </button>
-            <button type="button" onClick={handleClose} className="text-[14px] text-[#5b7f8a]">
-              Cancel
-            </button>
-          </div>
-        </form>
+              <FileUp className="mx-auto size-9 text-[#2d8f98]" strokeWidth={1.5} />
+              <p className="mt-3 text-[15px] font-medium text-[#5b7f8a]">
+                {selectedFile ? selectedFile.name : "Tap to scan or upload document"}
+              </p>
+              <p className="mt-1 text-[12px] text-[#8a9ea3]">PDF and image files only</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,image/*"
+                className="hidden"
+                onChange={(e) => handleFileSelect(e.target.files?.[0])}
+              />
+            </div>
+
+            {/* Report name */}
+            <div>
+              <FieldLabel htmlFor="report-name">Report name</FieldLabel>
+              <input
+                id="report-name"
+                type="text"
+                value={reportName}
+                onChange={(e) => setReportName(e.target.value)}
+                placeholder="Name this report"
+                className="upload-field-input"
+              />
+            </div>
+
+            {/* Date of report */}
+            <div>
+              <FieldLabel htmlFor="report-date">Date of report</FieldLabel>
+              <div className="relative">
+                <input
+                  id="report-date"
+                  type="text"
+                  inputMode="numeric"
+                  value={reportDateText}
+                  onChange={(e) => setReportDateText(e.target.value)}
+                  placeholder="dd/mm/yyyy"
+                  className="upload-field-input pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={openDatePicker}
+                  aria-label="Open calendar"
+                  className="absolute right-1 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-[10px] text-[#5b7f8a] transition active:bg-[rgba(26,160,140,0.08)]"
+                >
+                  <Calendar className="size-[18px]" strokeWidth={1.75} />
+                </button>
+                <input
+                  ref={datePickerRef}
+                  type="date"
+                  value={parsedDate || ""}
+                  onChange={(e) => handleDatePickerChange(e.target.value)}
+                  className="pointer-events-none absolute h-0 w-0 opacity-0"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+              </div>
+            </div>
+
+            {/* Requested by */}
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a9e9a]">
+                Requested by
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                {REQUESTED_BY_OPTIONS.map((source) => {
+                  const isActive = requestedBySource === source;
+                  return (
+                    <button
+                      key={source}
+                      type="button"
+                      onClick={() => setRequestedBySource(source)}
+                      className={[
+                        "upload-toggle-btn squircle-inner px-3 py-3 text-[13px] font-semibold transition",
+                        isActive ? "upload-toggle-btn-active" : "upload-toggle-btn-inactive",
+                      ].join(" ")}
+                    >
+                      {source}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <input
+                type="text"
+                value={requestedByName}
+                onChange={(e) => setRequestedByName(e.target.value)}
+                placeholder={DOCTOR_NAME_PLACEHOLDER[requestedBySource]}
+                className="upload-field-input mt-3"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-5 pt-1">
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="upload-submit-btn rounded-full bg-ocs-orange px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Upload Report
+              </button>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="text-[14px] font-medium text-[#5b7f8a] transition active:text-[#1a5c52]"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

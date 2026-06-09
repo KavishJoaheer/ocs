@@ -474,6 +474,51 @@ table {
   transform: scale(0.98);
 }
 
+/* ─── Upload report bottom sheet ──────────────────────────────────────────── */
+
+.upload-sheet-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+.upload-dropzone {
+  background: rgba(65, 200, 198, 0.08);
+}
+
+.upload-field-input {
+  width: 100%;
+  border-radius: var(--native-radius-inner);
+  border: 1px solid transparent;
+  background: rgba(65, 200, 198, 0.08);
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a5c52;
+  outline: none;
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.upload-field-input::placeholder {
+  color: #8a9ea3;
+  font-weight: 400;
+}
+
+.upload-field-input:focus {
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(45, 143, 152, 0.28);
+}
+
+.upload-toggle-btn-active {
+  border: 1.5px solid #1a5c52;
+  color: #1a5c52;
+  background: rgba(26, 160, 140, 0.06);
+}
+
+.upload-toggle-btn-inactive {
+  border: 1.5px solid rgba(138, 158, 154, 0.35);
+  color: #8a9e9a;
+  background: #fff;
+}
+
 @supports (corner-shape: squircle) {
   .native-action-btn {
     corner-shape: squircle;
