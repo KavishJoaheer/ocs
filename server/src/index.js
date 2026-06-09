@@ -76,10 +76,20 @@ if (isEnvTrue("SEED_DOCTOR_STOCK_FROM_OCS")) {
   }
 }
 
-const app = createApp();
+let app;
+
+try {
+  app = createApp();
+} catch (error) {
+  console.error("[fatal] Failed to create API app:", error?.stack || error);
+  process.exit(1);
+}
 
 app.listen(PORT, HOST, () => {
   const dbPath = process.env.DB_PATH || "server/data/clinic.db";
   console.log(`OCS API (SQLite, full billing + inventory) on http://${HOST}:${PORT}`);
   console.log(`[db] ${dbPath}`);
+}).on("error", (error) => {
+  console.error("[fatal] Failed to bind HTTP port:", error?.stack || error);
+  process.exit(1);
 });

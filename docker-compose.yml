@@ -13,8 +13,6 @@ services:
       DB_PATH: /data/clinic.db
       # Full billing + inventory integration requires SQLite (createApp). Do not set DATABASE_URL here.
       USE_POSTGRES: "false"
-      CLIENT_ORIGINS: ${CLIENT_ORIGINS:-}
-      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@ocs.local}
