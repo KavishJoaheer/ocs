@@ -1,37 +1,6 @@
-import dayjs from "dayjs";
 import { Link } from "react-router-dom";
 import { FolderHeart } from "lucide-react";
-import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
-
-function ConsultationCard({ consultation }) {
-  const dateLabel = dayjs(consultation.date).isValid()
-    ? dayjs(consultation.date).format("D MMMM YYYY")
-    : consultation.date;
-
-  return (
-    <article
-      className="squircle-outer ocs-elevate bg-white"
-      style={{ padding: "var(--native-pad-card)" }}
-    >
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="native-display text-[15px] text-[#1a5c52]">{dateLabel}</p>
-        {consultation.time ? (
-          <p className="shrink-0 text-[12px] text-[#8a9e9a]">{consultation.time}</p>
-        ) : null}
-      </div>
-
-      <p className="native-display mt-3 text-[17px] leading-snug text-[#22485b]">
-        {formatDoctorName(consultation.doctor_name)}
-      </p>
-
-      {consultation.diagnosis ? (
-        <span className="squircle-inner mt-4 inline-flex bg-[rgba(26,160,140,0.1)] px-3.5 py-1.5 text-[13px] font-medium text-[#2d8f98]">
-          {consultation.diagnosis}
-        </span>
-      ) : null}
-    </article>
-  );
-}
+import ConsultationCard from "./ConsultationCard.jsx";
 
 function ConsultationsEmptyState() {
   return (

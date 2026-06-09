@@ -371,9 +371,49 @@ table {
   right: -1px;
 }
 
-/* Care Timeline cards — diffused lift shadow */
+/* Care Timeline & consultation cards — diffused lift shadow */
 .ocs-elevate-timeline {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+}
+
+/* Consultation card — premium pressable list item */
+.consultation-card-pressable {
+  display: block;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.consultation-card-pressable:active {
+  transform: scale(0.985);
+  opacity: 0.94;
+}
+
+.consultation-visit-badge {
+  border-radius: 999px;
+  background: rgba(66, 133, 244, 0.12);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3b7dd8;
+  letter-spacing: 0.02em;
+}
+
+.consultation-micro-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a9e9a;
+}
+
+.consultation-card-divider {
+  height: 1px;
+  margin-left: 20px;
+  margin-right: 20px;
+  background: rgba(138, 158, 154, 0.2);
 }
 
 /* Hero CTA arrow — perfect white circle, orange icon */

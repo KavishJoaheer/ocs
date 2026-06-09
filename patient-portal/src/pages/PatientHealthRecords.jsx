@@ -49,7 +49,10 @@ function PatientHealthRecords() {
           date: c.date,
           time: c.time || null,
           doctor_name: c.doctor_name,
+          doctor_specialty: c.doctor_specialty || "General Practitioner",
+          visit_type: c.visit_type || "Home Visit",
           diagnosis: c.diagnosis,
+          plain_summary: c.plain_summary || c.note_preview || null,
         }));
 
         const apiReports = (data.reports || []).map((report) => ({

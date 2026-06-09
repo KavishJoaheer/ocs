@@ -3,24 +3,34 @@
 export const MOCK_CONSULTATIONS = [
   {
     id: 1,
-    date: "2026-05-12",
+    date: "2026-06-09",
     time: "10:30 AM",
-    doctor_name: "Keith Smith",
-    diagnosis: "Acute Pharyngitis",
+    doctor_name: "Shravan Joaheer",
+    doctor_specialty: "General Practitioner",
+    visit_type: "Home Visit",
+    diagnosis: "URTI",
+    plain_summary:
+      "Mild upper respiratory symptoms assessed at home. Rest, fluids, and symptomatic treatment advised.",
   },
   {
     id: 2,
     date: "2026-03-28",
     time: "2:15 PM",
     doctor_name: "Marie Dubois",
+    doctor_specialty: "General Practitioner",
+    visit_type: "Home Visit",
     diagnosis: "Seasonal Allergic Rhinitis",
+    plain_summary: "Seasonal allergy flare managed with antihistamine guidance and follow-up if needed.",
   },
   {
     id: 3,
     date: "2026-01-14",
     time: "9:00 AM",
     doctor_name: "Keith Smith",
-    diagnosis: "Upper Respiratory Tract Infection",
+    doctor_specialty: "General Practitioner",
+    visit_type: "Home Visit",
+    diagnosis: "Acute Pharyngitis",
+    plain_summary: "Sore throat and mild fever reviewed. Throat swab not required; recovery expected within 5–7 days.",
   },
 ];
 
