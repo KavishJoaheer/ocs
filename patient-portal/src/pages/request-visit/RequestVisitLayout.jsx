@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { api } from "../../lib/api.js";
+import { VISIT_DRAFT_KEY } from "../../components/request-visit/RequestDoctorSheet.jsx";
 
 const INITIAL_DRAFT = {
   visitFor: "myself",
@@ -15,6 +16,20 @@ function RequestVisitLayout() {
 
   const updateDraft = useCallback((patch) => {
     setDraft((current) => ({ ...current, ...patch }));
+  }, []);
+
+  useEffect(() => {
+    const storedDraft = sessionStorage.getItem(VISIT_DRAFT_KEY);
+    if (storedDraft) {
+      try {
+        const parsed = JSON.parse(storedDraft);
+        setDraft((current) => ({ ...current, ...parsed }));
+      } catch {
+        // Ignore malformed wizard handoff data.
+      } finally {
+        sessionStorage.removeItem(VISIT_DRAFT_KEY);
+      }
+    }
   }, []);
 
   useEffect(() => {

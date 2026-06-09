@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, ArrowRight, FileText, Pill, FlaskConical } from "lucide-react";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
+import RequestDoctorSheet from "../request-visit/RequestDoctorSheet.jsx";
 
 // ─── Mock care timeline cards ─────────────────────────────────────────────────
 
@@ -134,6 +136,8 @@ function TimelineCard({ card }) {
 function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
   const { activeProfile } = useFamilyProfile();
   const greeting = getGreeting();
+  const [requestSheetOpen, setRequestSheetOpen] = useState(false);
+
   return (
     <div className="native-dashboard -mx-4 min-h-full bg-[#f4f7f7]">
       {/* ── 1. Welcome Zone — respects notch / punch-hole via --native-safe-top ─ */}
@@ -172,10 +176,11 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
         </div>
       </header>
 
-      {/* ── 2. Hero Dispatch — outer squircle 24px, inner icon well 14px ───── */}
-      <Link
-        to="/request-visit"
-        className="dashboard-hero-press squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 flex w-full items-center justify-between bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] text-white"
+      {/* ── 2. Hero Dispatch — opens progressive request wizard bottom sheet ── */}
+      <button
+        type="button"
+        onClick={() => setRequestSheetOpen(true)}
+        className="dashboard-hero-press squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 flex w-full items-center justify-between bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] text-left text-white"
       >
         <div className="pr-4">
           <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-white/80">
@@ -188,7 +193,9 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
         <div className="dashboard-hero-arrow-btn">
           <ArrowRight className="size-6 text-ocs-orange" strokeWidth={2.5} />
         </div>
-      </Link>
+      </button>
+
+      <RequestDoctorSheet open={requestSheetOpen} onClose={() => setRequestSheetOpen(false)} />
 
       {/* ── 3. Care Timeline — carousel with scroll padding & bottom clearance ─ */}
       <section className="animate-fade-in-up stagger-2" aria-label="Care timeline">
