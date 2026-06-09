@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapPin, Phone, Stethoscope, Clock, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  MapPin,
+  Phone,
+  Stethoscope,
+  Clock,
+  RefreshCw,
+  GripVertical,
+  Timer,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -19,11 +27,28 @@ const STATUS_OPTIONS = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+// Columns shown on the live dispatch board (the active pipeline).
+const BOARD_COLUMNS = [
+  { status: "pending", label: "Pending", accent: "#e2574c" },
+  { status: "acknowledged", label: "Acknowledged", accent: "#e8a020" },
+  { status: "assigned", label: "Assigned", accent: "#2d8f98" },
+  { status: "en_route", label: "En route", accent: "#2d8f98" },
+  { status: "arrived", label: "Arrived", accent: "#1a7f4b" },
+];
+
 const URGENCY_STYLES = {
   routine: "bg-[rgba(45,143,152,0.12)] text-[#23767f]",
   urgent: "bg-[rgba(232,160,32,0.15)] text-[#a86c08]",
   emergency: "bg-[rgba(226,87,76,0.14)] text-[#c23a2f]",
 };
+
+const URGENCY_DOT = {
+  routine: "#2d8f98",
+  urgent: "#e8a020",
+  emergency: "#e2574c",
+};
+
+const POLL_INTERVAL_MS = 15000;
 
 function UrgencyBadge({ urgency }) {
   return (
@@ -35,6 +60,252 @@ function UrgencyBadge({ urgency }) {
     >
       {urgency}
     </span>
+  );
+}
+
+// SQLite timestamps come back as "YYYY-MM-DD HH:MM:SS" in UTC with no zone.
+function parseTimestamp(value) {
+  if (!value) return null;
+  const text = String(value);
+  const normalized = /[zZ]|[+-]\d\d:?\d\d$/.test(text)
+    ? text
+    : `${text.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function waitingMinutes(createdAt, now) {
+  const created = parseTimestamp(createdAt);
+  if (!created) return 0;
+  return Math.max(0, Math.floor((now - created.getTime()) / 60000));
+}
+
+function SlaChip({ createdAt, now, escalate }) {
+  const mins = waitingMinutes(createdAt, now);
+  const tone = !escalate
+    ? "bg-slate-100 text-slate-500"
+    : mins >= 30
+      ? "bg-[rgba(226,87,76,0.14)] text-[#c23a2f]"
+      : mins >= 10
+        ? "bg-[rgba(232,160,32,0.15)] text-[#a86c08]"
+        : "bg-[rgba(26,127,75,0.12)] text-[#1a7f4b]";
+  const label = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold",
+        tone,
+      )}
+      title="Time since the patient requested this visit"
+    >
+      <Timer className="size-3" />
+      {label}
+    </span>
+  );
+}
+
+function nextStatus(status) {
+  const order = ["pending", "acknowledged", "assigned", "en_route", "arrived"];
+  const idx = order.indexOf(status);
+  return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+}
+
+function BoardCard({ request, doctors, onUpdate, now, onDragStart, onDragEnd }) {
+  const [eta, setEta] = useState(request.eta_minutes != null ? String(request.eta_minutes) : "");
+  // Re-sync the editable ETA when the server value changes (React's recommended
+  // "adjust state during render" pattern, no effect needed).
+  const [syncedEta, setSyncedEta] = useState(request.eta_minutes);
+  if (request.eta_minutes !== syncedEta) {
+    setSyncedEta(request.eta_minutes);
+    setEta(request.eta_minutes != null ? String(request.eta_minutes) : "");
+  }
+
+  const escalate = request.status === "pending" || request.status === "acknowledged";
+  const advance = nextStatus(request.status);
+
+  function update(payload) {
+    onUpdate(request.id, payload).catch((error) =>
+      toast.error(error?.message || "Could not update the visit request."),
+    );
+  }
+
+  return (
+    <div
+      draggable
+      onDragStart={(event) => onDragStart(event, request.id)}
+      onDragEnd={onDragEnd}
+      className="group cursor-grab rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white p-3 shadow-sm transition hover:shadow-md active:cursor-grabbing"
+    >
+      <div className="flex items-start gap-2">
+        <GripVertical className="mt-0.5 size-4 shrink-0 text-slate-300 group-hover:text-slate-400" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: URGENCY_DOT[request.urgency] || URGENCY_DOT.routine }}
+            />
+            <p className="truncate text-sm font-semibold text-slate-950">{request.patient_name}</p>
+            <SlaChip createdAt={request.created_at} now={now} escalate={escalate} />
+          </div>
+          <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+            {request.reason || "No reason provided"}
+          </p>
+          <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+            <MapPin className="size-3 shrink-0" />
+            <span className="truncate">{request.address || "No address"}</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <select
+          value={request.assigned_doctor_id ? String(request.assigned_doctor_id) : ""}
+          onChange={(event) =>
+            update({
+              assigned_doctor_id: event.target.value === "" ? null : Number(event.target.value),
+              ...(request.status === "pending" || request.status === "acknowledged"
+                ? { status: "assigned" }
+                : {}),
+            })
+          }
+          className="w-full rounded-lg border border-[rgba(65,200,198,0.25)] bg-white px-2 py-1.5 text-xs text-slate-900 outline-none focus:border-[#2d8f98]"
+        >
+          <option value="">Unassigned</option>
+          {doctors.map((doctor) => (
+            <option key={doctor.id} value={String(doctor.id)}>
+              {doctor.full_name}
+            </option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Clock className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-[#6e949b]" />
+            <input
+              type="number"
+              min="0"
+              value={eta}
+              onChange={(event) => setEta(event.target.value)}
+              onBlur={() => {
+                const next = eta === "" ? null : Number(eta);
+                if (next !== (request.eta_minutes ?? null)) update({ eta_minutes: next });
+              }}
+              placeholder="ETA"
+              className="w-full rounded-lg border border-[rgba(65,200,198,0.25)] bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none focus:border-[#2d8f98]"
+            />
+          </div>
+          {request.patient_contact_number ? (
+            <a
+              href={`tel:${request.patient_contact_number}`}
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
+              title={`Call ${request.patient_contact_number}`}
+            >
+              <Phone className="size-4" />
+            </a>
+          ) : null}
+        </div>
+
+        {advance ? (
+          <button
+            type="button"
+            onClick={() => update({ status: advance })}
+            className="w-full rounded-lg bg-[#2d8f98] px-2 py-1.5 text-xs font-semibold text-white transition hover:brightness-105 active:scale-95"
+          >
+            Move to {STATUS_OPTIONS.find((option) => option.value === advance)?.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DispatchBoard({ requests, doctors, onUpdate, now }) {
+  const [dragId, setDragId] = useState(null);
+  const [overColumn, setOverColumn] = useState(null);
+
+  const grouped = useMemo(() => {
+    const map = Object.fromEntries(BOARD_COLUMNS.map((column) => [column.status, []]));
+    requests.forEach((request) => {
+      if (map[request.status]) map[request.status].push(request);
+    });
+    return map;
+  }, [requests]);
+
+  function handleDragStart(event, id) {
+    setDragId(id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(id));
+  }
+
+  function handleDrop(status) {
+    setOverColumn(null);
+    const id = dragId;
+    setDragId(null);
+    if (!id) return;
+    const request = requests.find((item) => item.id === id);
+    if (!request || request.status === status) return;
+    onUpdate(id, { status }).catch((error) =>
+      toast.error(error?.message || "Could not move the visit request."),
+    );
+  }
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-5">
+      {BOARD_COLUMNS.map((column) => {
+        const items = grouped[column.status] || [];
+        const isOver = overColumn === column.status;
+        return (
+          <div
+            key={column.status}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (overColumn !== column.status) setOverColumn(column.status);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setOverColumn(null);
+            }}
+            onDrop={() => handleDrop(column.status)}
+            className={cx(
+              "flex min-h-[120px] flex-col rounded-2xl border bg-slate-50/60 p-2.5 transition",
+              isOver
+                ? "border-[#2d8f98] bg-[rgba(45,143,152,0.06)] ring-2 ring-[#2d8f98]/30"
+                : "border-slate-200/70",
+            )}
+          >
+            <div className="mb-2 flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <span className="size-2 rounded-full" style={{ background: column.accent }} />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  {column.label}
+                </span>
+              </div>
+              <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500">
+                {items.length}
+              </span>
+            </div>
+            <div className="flex flex-1 flex-col gap-2">
+              {items.map((request) => (
+                <BoardCard
+                  key={request.id}
+                  request={request}
+                  doctors={doctors}
+                  onUpdate={onUpdate}
+                  now={now}
+                  onDragStart={handleDragStart}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setOverColumn(null);
+                  }}
+                />
+              ))}
+              {items.length === 0 ? (
+                <p className="px-1 py-6 text-center text-xs text-slate-300">Drop here</p>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -183,6 +454,8 @@ export default function VisitRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("active");
+  const [now, setNow] = useState(() => Date.now());
+  const loadRef = useRef(null);
 
   const loadRequests = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
@@ -190,12 +463,14 @@ export default function VisitRequestsPage() {
       const data = await api.get(`/visit-requests?status=${statusFilter}`);
       setRequests(data.visit_requests || []);
     } catch (error) {
-      toast.error(error?.message || "Could not load visit requests.");
+      if (!silent) toast.error(error?.message || "Could not load visit requests.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [statusFilter]);
+
+  loadRef.current = loadRequests;
 
   useEffect(() => {
     let ignore = false;
@@ -218,6 +493,16 @@ export default function VisitRequestsPage() {
     loadRequests();
   }, [loadRequests]);
 
+  // Keep the board live: poll quietly and tick the SLA timers every second.
+  useEffect(() => {
+    const poll = setInterval(() => loadRef.current?.({ silent: true }), POLL_INTERVAL_MS);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+    };
+  }, []);
+
   const handleUpdate = useCallback(async (id, payload) => {
     // Optimistic: reflect the change in the UI immediately, then reconcile with
     // the server (and roll back to server truth if the request fails).
@@ -238,12 +523,14 @@ export default function VisitRequestsPage() {
     [doctors],
   );
 
+  const isBoard = statusFilter === "active";
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Dispatch desk"
         title="Visit requests"
-        description="Home-visit requests raised by patients from the patient portal. Acknowledge, assign a doctor, and keep the patient's live tracker up to date."
+        description="Home-visit requests raised by patients from the patient portal. Drag a card between columns to update its status, assign a doctor, and the patient's live tracker updates instantly."
         actions={
           <button
             type="button"
@@ -258,7 +545,7 @@ export default function VisitRequestsPage() {
 
       <div className="flex flex-wrap gap-2">
         {[
-          { value: "active", label: "Active" },
+          { value: "active", label: "Live board" },
           { value: "all", label: "All" },
           { value: "completed", label: "Completed" },
           { value: "cancelled", label: "Cancelled" },
@@ -285,6 +572,13 @@ export default function VisitRequestsPage() {
         <EmptyState
           title="No visit requests"
           description="When a patient requests a home visit from the patient portal, it will appear here for the team to action."
+        />
+      ) : isBoard ? (
+        <DispatchBoard
+          requests={requests}
+          doctors={activeDoctors}
+          onUpdate={handleUpdate}
+          now={now}
         />
       ) : (
         <SectionCard title={`${requests.length} request${requests.length === 1 ? "" : "s"}`}>
