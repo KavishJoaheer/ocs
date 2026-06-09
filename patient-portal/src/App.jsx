@@ -1,22 +1,34 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import HomeGate from "./components/HomeGate.jsx";
 import AppShell from "./layouts/AppShell.jsx";
 import PatientLoginPage from "./pages/PatientLoginPage.jsx";
 import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
-import PatientDashboard from "./pages/PatientDashboard.jsx";
-import PatientAppointments from "./pages/PatientAppointments.jsx";
-import PatientHealthRecords from "./pages/PatientHealthRecords.jsx";
-import PatientBilling from "./pages/PatientBilling.jsx";
-import PatientProfile from "./pages/PatientProfile.jsx";
-import RequestVisitLayout from "./pages/request-visit/RequestVisitLayout.jsx";
-import RequestVisitForm from "./pages/request-visit/RequestVisitForm.jsx";
-import RequestVisitReview from "./pages/request-visit/RequestVisitReview.jsx";
-import RequestVisitAwaiting from "./pages/request-visit/RequestVisitAwaiting.jsx";
-import RequestVisitTracking from "./pages/request-visit/RequestVisitTracking.jsx";
+
+// Lazy-load the in-app screens so the first paint (login/register) stays light.
+const PatientDashboard = lazy(() => import("./pages/PatientDashboard.jsx"));
+const PatientAppointments = lazy(() => import("./pages/PatientAppointments.jsx"));
+const PatientHealthRecords = lazy(() => import("./pages/PatientHealthRecords.jsx"));
+const PatientBilling = lazy(() => import("./pages/PatientBilling.jsx"));
+const PatientProfile = lazy(() => import("./pages/PatientProfile.jsx"));
+const RequestVisitLayout = lazy(() => import("./pages/request-visit/RequestVisitLayout.jsx"));
+const RequestVisitForm = lazy(() => import("./pages/request-visit/RequestVisitForm.jsx"));
+const RequestVisitReview = lazy(() => import("./pages/request-visit/RequestVisitReview.jsx"));
+const RequestVisitAwaiting = lazy(() => import("./pages/request-visit/RequestVisitAwaiting.jsx"));
+const RequestVisitTracking = lazy(() => import("./pages/request-visit/RequestVisitTracking.jsx"));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-svh w-full items-center justify-center bg-white">
+      <span className="size-8 animate-spin rounded-full border-2 border-[#d6ebea] border-t-[#065a60]" />
+    </div>
+  );
+}
 
 function App() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       <Route path="/" element={<HomeGate />} />
       <Route path="/welcome" element={<Navigate to="/" replace />} />
@@ -44,6 +56,7 @@ function App() {
         <Route path="profile" element={<PatientProfile />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 

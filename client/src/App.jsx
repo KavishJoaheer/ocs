@@ -1,32 +1,46 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AppShell from "./layouts/AppShell.jsx";
-import AppointmentsPage from "./pages/AppointmentsPage.jsx";
-import BillingPage from "./pages/BillingPage.jsx";
-import ConsultationDetailPage from "./pages/ConsultationDetailPage.jsx";
-import ConsultationsPage from "./pages/ConsultationsPage.jsx";
-import AdminRosterPage from "./pages/AdminRosterPage.jsx";
-import DashboardPage from "./pages/DashboardPage.jsx";
-import DoctorWorkspacePage from "./pages/DoctorWorkspacePage.jsx";
-import DoctorsPage from "./pages/DoctorsPage.jsx";
-import HcmNewsPage from "./pages/HcmNewsPage.jsx";
-import InventoryPage from "./pages/InventoryPage.jsx";
-import SupplyRequestsPage from "./pages/SupplyRequestsPage.jsx";
-import LabWorkspacePage from "./pages/LabWorkspacePage.jsx";
-import LiveReportPage from "./pages/LiveReportPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
-import OperatorBillingStatusPage from "./pages/OperatorBillingStatusPage.jsx";
-import OperatorWorkspacePage from "./pages/OperatorWorkspacePage.jsx";
-import LongTermReviewQueuePage from "./pages/LongTermReviewQueuePage.jsx";
-import PatientProfilePage from "./pages/PatientProfilePage.jsx";
-import PatientAddPage from "./pages/PatientAddPage.jsx";
-import PatientsPage from "./pages/PatientsPage.jsx";
-import StockActivityPage from "./pages/StockActivityPage.jsx";
-import VisitRequestsPage from "./pages/VisitRequestsPage.jsx";
+
+// Route-level code splitting: each page becomes its own chunk that loads on
+// demand, so the initial staff-portal bundle stays small and the app feels
+// instant. Login + the layout shell stay eager for an immediate first paint.
+const AppointmentsPage = lazy(() => import("./pages/AppointmentsPage.jsx"));
+const BillingPage = lazy(() => import("./pages/BillingPage.jsx"));
+const ConsultationDetailPage = lazy(() => import("./pages/ConsultationDetailPage.jsx"));
+const ConsultationsPage = lazy(() => import("./pages/ConsultationsPage.jsx"));
+const AdminRosterPage = lazy(() => import("./pages/AdminRosterPage.jsx"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
+const DoctorWorkspacePage = lazy(() => import("./pages/DoctorWorkspacePage.jsx"));
+const DoctorsPage = lazy(() => import("./pages/DoctorsPage.jsx"));
+const HcmNewsPage = lazy(() => import("./pages/HcmNewsPage.jsx"));
+const InventoryPage = lazy(() => import("./pages/InventoryPage.jsx"));
+const SupplyRequestsPage = lazy(() => import("./pages/SupplyRequestsPage.jsx"));
+const LabWorkspacePage = lazy(() => import("./pages/LabWorkspacePage.jsx"));
+const LiveReportPage = lazy(() => import("./pages/LiveReportPage.jsx"));
+const OperatorBillingStatusPage = lazy(() => import("./pages/OperatorBillingStatusPage.jsx"));
+const OperatorWorkspacePage = lazy(() => import("./pages/OperatorWorkspacePage.jsx"));
+const LongTermReviewQueuePage = lazy(() => import("./pages/LongTermReviewQueuePage.jsx"));
+const PatientProfilePage = lazy(() => import("./pages/PatientProfilePage.jsx"));
+const PatientAddPage = lazy(() => import("./pages/PatientAddPage.jsx"));
+const PatientsPage = lazy(() => import("./pages/PatientsPage.jsx"));
+const StockActivityPage = lazy(() => import("./pages/StockActivityPage.jsx"));
+const VisitRequestsPage = lazy(() => import("./pages/VisitRequestsPage.jsx"));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[60vh] w-full items-center justify-center">
+      <span className="size-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-500" />
+    </div>
+  );
+}
 
 function App() {
   return (
     <div className="min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none">
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
@@ -147,6 +161,7 @@ function App() {
         </Route>
       </Route>
     </Routes>
+      </Suspense>
     </div>
   );
 }

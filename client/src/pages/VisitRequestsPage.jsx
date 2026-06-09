@@ -219,7 +219,17 @@ export default function VisitRequestsPage() {
   }, [loadRequests]);
 
   const handleUpdate = useCallback(async (id, payload) => {
-    await api.patch(`/visit-requests/${id}`, payload);
+    // Optimistic: reflect the change in the UI immediately, then reconcile with
+    // the server (and roll back to server truth if the request fails).
+    setRequests((current) =>
+      current.map((request) => (request.id === id ? { ...request, ...payload } : request)),
+    );
+    try {
+      await api.patch(`/visit-requests/${id}`, payload);
+    } catch (error) {
+      await loadRequests({ silent: true });
+      throw error;
+    }
     await loadRequests({ silent: true });
   }, [loadRequests]);
 
