@@ -1,15 +1,6 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import {
-  CalendarClock,
-  HousePlus,
-  MessageCircle,
-  Moon,
-  Phone,
-  Pill,
-  Sun,
-  Sunset,
-} from "lucide-react";
+import { HousePlus, MessageCircle, Moon, Phone, Sun, Sunset } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 const OCS_CARE_TEL = "52522234";
@@ -83,24 +74,6 @@ function DesktopConciergeCard() {
   );
 }
 
-function DesktopQuickActionsCard() {
-  return (
-    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-3">
-      <p className="desktop-section-label">Quick Actions</p>
-      <div className="desktop-quick-actions mt-5">
-        <Link to="/health-records" className="desktop-quick-action-pill">
-          <Pill className="size-4 shrink-0" strokeWidth={1.75} />
-          <span>Request Prescription Refill</span>
-        </Link>
-        <Link to="/appointments" className="desktop-quick-action-pill">
-          <CalendarClock className="size-4 shrink-0" strokeWidth={1.75} />
-          <span>Book a Follow-up</span>
-        </Link>
-      </div>
-    </section>
-  );
-}
-
 function DesktopLastVisitCard({ consultation }) {
   const doctorName = formatDoctorName(consultation.doctor_name);
   const dateLabel = dayjs(consultation.date).isValid()
@@ -111,7 +84,7 @@ function DesktopLastVisitCard({ consultation }) {
     : "/health-records";
 
   return (
-    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-2">
+    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-1">
       <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
 
       <div className="mt-6 flex items-center justify-between gap-3">
@@ -176,16 +149,16 @@ function DesktopDashboardHome({
         <p className="mt-2 max-w-xl pl-[42px] text-base leading-relaxed text-[#5b7f8a]">{subline}</p>
       </header>
 
+      {activeVisitSlot ? (
+        <div className="desktop-active-visit mb-6 animate-fade-in-up">{activeVisitSlot}</div>
+      ) : null}
+
       <div className="desktop-dashboard-grid">
         <div className="desktop-dashboard-col">
-          {activeVisitSlot ? (
-            <div className="animate-fade-in-up stagger-1">{activeVisitSlot}</div>
-          ) : null}
-
           {profileLastConsultation ? (
             <DesktopLastVisitCard consultation={profileLastConsultation} />
           ) : (
-            <section className="desktop-card">
+            <section className="desktop-card animate-fade-in-up stagger-1">
               <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
               <div className="mt-6 flex items-center gap-4">
                 <div className="flex size-11 items-center justify-center rounded-[12px] bg-[rgba(26,160,140,0.06)]">
@@ -200,8 +173,6 @@ function DesktopDashboardHome({
               </div>
             </section>
           )}
-
-          <DesktopQuickActionsCard />
         </div>
 
         <div className="desktop-dashboard-col">

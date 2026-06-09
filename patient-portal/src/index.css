@@ -798,6 +798,7 @@ table {
 
 .desktop-dashboard-grid {
   display: grid;
+  align-items: start;
   gap: 32px;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
 }
@@ -805,6 +806,7 @@ table {
 .desktop-dashboard-col {
   display: flex;
   flex-direction: column;
+  align-self: start;
   gap: 24px;
 }
 
@@ -956,34 +958,6 @@ table {
   border-radius: 50%;
   border: 2px solid #fff;
   background: #34c759;
-}
-
-.desktop-quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.desktop-quick-action-pill {
-  display: inline-flex;
-  flex: 1 1 calc(50% - 8px);
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: min(100%, 200px);
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(26, 92, 82, 0.05);
-  font-size: 13px;
-  font-weight: 600;
-  color: #1a5c52;
-  text-decoration: none;
-  text-align: center;
-  transition: background 200ms ease;
-}
-
-.desktop-quick-action-pill:hover {
-  background: rgba(26, 92, 82, 0.09);
 }
 
 .desktop-visit-badge {
