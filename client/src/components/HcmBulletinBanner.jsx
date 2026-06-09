@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { cx } from "../lib/utils.js";
 
@@ -11,17 +11,11 @@ function isBulletinDismissed(postId) {
 }
 
 function HcmBulletinBanner({ post }) {
-  const [visible, setVisible] = useState(false);
+  const [dismissedId, setDismissedId] = useState(null);
   const [isClosing, setIsClosing] = useState(false);
 
-  useEffect(() => {
-    if (!post?.id) {
-      setVisible(false);
-      return;
-    }
-
-    setVisible(!isBulletinDismissed(post.id));
-  }, [post?.id]);
+  const visible =
+    Boolean(post?.id) && dismissedId !== post.id && !isBulletinDismissed(post.id);
 
   if (!visible || !post) {
     return null;
@@ -31,7 +25,7 @@ function HcmBulletinBanner({ post }) {
     setIsClosing(true);
     window.setTimeout(() => {
       window.localStorage.setItem(getDismissKey(post.id), "1");
-      setVisible(false);
+      setDismissedId(post.id);
       setIsClosing(false);
     }, 280);
   }
@@ -79,22 +73,3 @@ function HcmBulletinBanner({ post }) {
 }
 
 export default HcmBulletinBanner;
-
-export function isHcmPostWithinBulletinWindow(post) {
-  if (!post?.id) {
-    return false;
-  }
-
-  const timestamp = post.created_at || post.updated_at;
-  if (!timestamp) {
-    return false;
-  }
-
-  const createdMs = new Date(timestamp).getTime();
-  if (Number.isNaN(createdMs)) {
-    return false;
-  }
-
-  const hoursSince = (Date.now() - createdMs) / (1000 * 60 * 60);
-  return hoursSince <= 48;
-}

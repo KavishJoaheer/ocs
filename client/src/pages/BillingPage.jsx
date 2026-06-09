@@ -342,28 +342,28 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [items, setItems] = useState([createEmptyLineItem()]);
+  const [syncedDeps, setSyncedDeps] = useState({ open, bill });
 
-  useEffect(() => {
-    if (!open || !bill) {
-      return;
+  if (syncedDeps.open !== open || syncedDeps.bill !== bill) {
+    setSyncedDeps({ open, bill });
+    if (open && bill) {
+      setStatus(bill.status);
+      setPaymentMethod(bill.payment_method || "");
+      setPaymentDate(bill.payment_date || "");
+      setItems(
+        bill.items.length
+          ? bill.items.map((item) => ({
+              description: item.description,
+              amount: String(item.amount),
+              type: item.type || "Sale",
+              quantity: Number(item.quantity || 0) || 0,
+              inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
+              emergency_override: Boolean(item.emergency_override),
+            }))
+          : [createEmptyLineItem()],
+      );
     }
-
-    setStatus(bill.status);
-    setPaymentMethod(bill.payment_method || "");
-    setPaymentDate(bill.payment_date || "");
-    setItems(
-      bill.items.length
-        ? bill.items.map((item) => ({
-            description: item.description,
-            amount: String(item.amount),
-            type: item.type || "Sale",
-            quantity: Number(item.quantity || 0) || 0,
-            inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
-            emergency_override: Boolean(item.emergency_override),
-          }))
-        : [createEmptyLineItem()],
-    );
-  }, [open, bill]);
+  }
 
   const total = useMemo(
     () =>

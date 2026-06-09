@@ -60,22 +60,24 @@ function AppointmentFormModal({
   isSaving,
 }) {
   const [form, setForm] = useState(emptyAppointment);
+  const [syncedDeps, setSyncedDeps] = useState({ open, appointment });
 
-  useEffect(() => {
-    if (!open) return;
-
-    setForm(
-      appointment
-        ? {
-            patient_id: String(appointment.patient_id),
-            doctor_id: String(appointment.doctor_id),
-            appointment_date: appointment.appointment_date,
-            appointment_time: appointment.appointment_time,
-            status: appointment.status,
-          }
-        : emptyAppointment,
-    );
-  }, [open, appointment]);
+  if (syncedDeps.open !== open || syncedDeps.appointment !== appointment) {
+    setSyncedDeps({ open, appointment });
+    if (open) {
+      setForm(
+        appointment
+          ? {
+              patient_id: String(appointment.patient_id),
+              doctor_id: String(appointment.doctor_id),
+              appointment_date: appointment.appointment_date,
+              appointment_time: appointment.appointment_time,
+              status: appointment.status,
+            }
+          : emptyAppointment,
+      );
+    }
+  }
 
   function handleSubmit(event) {
     event.preventDefault();

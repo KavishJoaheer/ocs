@@ -137,7 +137,7 @@ self.addEventListener("pushsubscriptionchange", (event) => {
             applicationServerKey: urlBase64ToUint8Array(publicKey),
           });
           nextSubscriptionJson = subscription.toJSON();
-        } catch (error) {
+        } catch {
           // Re-subscribe can fail (no permission, gateway error). The page
           // path will retry next time the PWA opens.
         }

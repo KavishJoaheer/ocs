@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
@@ -21,31 +21,39 @@ export default function RestockRequestModal({
 
   const collectionOptions = useMemo(() => getValidCollectionDays(4), [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    setSearchQuery("");
-    setSuggestionsOpen(false);
+  const [syncedDeps, setSyncedDeps] = useState({ open, editingRequest, collectionOptions });
 
-    if (editingRequest) {
-      setItems(
-        (editingRequest.items || []).map((row) => ({
-          inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
-          item_name: row.item_name,
-          quantity: Number(row.quantity || 1),
-          ocs_available: row.inventory_quantity ?? null,
-        })),
-      );
-      setNote(String(editingRequest.note || ""));
-      const existingDate = String(editingRequest.collection_date || "");
-      const stillValid = collectionOptions.some((option) => option.iso === existingDate);
-      setCollectionDate(stillValid ? existingDate : collectionOptions[0]?.iso || "");
-      return;
+  if (
+    syncedDeps.open !== open ||
+    syncedDeps.editingRequest !== editingRequest ||
+    syncedDeps.collectionOptions !== collectionOptions
+  ) {
+    setSyncedDeps({ open, editingRequest, collectionOptions });
+
+    if (open) {
+      setSearchQuery("");
+      setSuggestionsOpen(false);
+
+      if (editingRequest) {
+        setItems(
+          (editingRequest.items || []).map((row) => ({
+            inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
+            item_name: row.item_name,
+            quantity: Number(row.quantity || 1),
+            ocs_available: row.inventory_quantity ?? null,
+          })),
+        );
+        setNote(String(editingRequest.note || ""));
+        const existingDate = String(editingRequest.collection_date || "");
+        const stillValid = collectionOptions.some((option) => option.iso === existingDate);
+        setCollectionDate(stillValid ? existingDate : collectionOptions[0]?.iso || "");
+      } else {
+        setItems([]);
+        setNote("");
+        setCollectionDate(collectionOptions[0]?.iso || "");
+      }
     }
-
-    setItems([]);
-    setNote("");
-    setCollectionDate(collectionOptions[0]?.iso || "");
-  }, [open, editingRequest, collectionOptions]);
+  }
 
   const selectedKeys = useMemo(
     () =>

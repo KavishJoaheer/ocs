@@ -52,20 +52,22 @@ function ConsultationModal({
   isSaving,
 }) {
   const [form, setForm] = useState(emptyConsultation);
+  const [syncedDeps, setSyncedDeps] = useState({ open, consultation });
 
-  useEffect(() => {
-    if (!open) return;
-
-    setForm(
-      consultation
-        ? {
-            appointment_id: String(consultation.appointment_id),
-            consultation_date: consultation.consultation_date,
-            doctor_notes: consultation.doctor_notes,
-          }
-        : emptyConsultation,
-    );
-  }, [open, consultation]);
+  if (syncedDeps.open !== open || syncedDeps.consultation !== consultation) {
+    setSyncedDeps({ open, consultation });
+    if (open) {
+      setForm(
+        consultation
+          ? {
+              appointment_id: String(consultation.appointment_id),
+              consultation_date: consultation.consultation_date,
+              doctor_notes: consultation.doctor_notes,
+            }
+          : emptyConsultation,
+      );
+    }
+  }
 
   const selectedAppointment = useMemo(() => {
     if (!form.appointment_id) return null;

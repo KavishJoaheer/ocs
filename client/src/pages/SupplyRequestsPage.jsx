@@ -26,7 +26,7 @@ export default function SupplyRequestsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
 
-  const { displayableRequests, loading, error, reload, dismissRequest } =
+  const { displayableRequests, loading, error, dismissRequest } =
     useDoctorSupplyRequests({ refreshKey });
 
   useEffect(() => {

@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
 import LinkhamSidebar from "./LinkhamSidebar.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
-import { bottomNavItems, linkhamBottomNavItems } from "./BottomNav.jsx";
+import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
@@ -183,6 +183,13 @@ function Sidebar() {
   const { logout, user, hcmUnreadCount } = useAuth();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const locationKey = `${location.pathname}${location.search}`;
+  const [lastLocationKey, setLastLocationKey] = useState(locationKey);
+
+  if (locationKey !== lastLocationKey) {
+    setLastLocationKey(locationKey);
+    setDrawerOpen(false);
+  }
 
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => item.roles.includes(user.role)),
@@ -203,10 +210,6 @@ function Sidebar() {
     () => visibleNavItems.filter((item) => !bottomPaths.has(item.to) && !desktopOnlyPaths.has(item.to)),
     [visibleNavItems, bottomPaths],
   );
-
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (drawerOpen) {

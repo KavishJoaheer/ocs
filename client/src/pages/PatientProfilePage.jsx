@@ -116,13 +116,15 @@ function ScheduledReviewIndicator({ dueDate }) {
 function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
   const [dueDate, setDueDate] = useState(defaultReviewDueDateInputValue);
   const [note, setNote] = useState("");
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setDueDate(defaultReviewDueDateInputValue());
       setNote("");
     }
-  }, [open]);
+  }
 
   return (
     <Modal
@@ -559,24 +561,28 @@ function LabReportModal({
   const [form, setForm] = useState(getEmptyLabReport());
   const [selectedFiles, setSelectedFiles] = useState([]);
   const isEditing = Boolean(report?.id);
+  const [syncedDeps, setSyncedDeps] = useState({ open, report, isEditing });
 
-  useEffect(() => {
-    if (!open) {
-      return;
+  if (
+    syncedDeps.open !== open ||
+    syncedDeps.report !== report ||
+    syncedDeps.isEditing !== isEditing
+  ) {
+    setSyncedDeps({ open, report, isEditing });
+    if (open) {
+      setForm(
+        isEditing
+          ? {
+              consultation_id: report.consultation_id ? String(report.consultation_id) : "",
+              report_title: report.report_title ?? "",
+              report_date: report.report_date ?? dayjs().format("YYYY-MM-DD"),
+              report_details: report.report_details ?? "",
+            }
+          : getEmptyLabReport(),
+      );
+      setSelectedFiles([]);
     }
-
-    setForm(
-      isEditing
-        ? {
-            consultation_id: report.consultation_id ? String(report.consultation_id) : "",
-            report_title: report.report_title ?? "",
-            report_date: report.report_date ?? dayjs().format("YYYY-MM-DD"),
-            report_details: report.report_details ?? "",
-          }
-        : getEmptyLabReport(),
-    );
-    setSelectedFiles([]);
-  }, [isEditing, open, report]);
+  }
 
   const selectedConsultation = form.consultation_id
     ? consultations.find((consultation) => consultation.id === Number(form.consultation_id)) || null
@@ -784,14 +790,14 @@ function ConsultationCreateModal({
 }) {
   const [form, setForm] = useState(getEmptyConsultationEntry(user));
   const isAdmin = user.role === "admin";
+  const [syncedDeps, setSyncedDeps] = useState({ open, user });
 
-  useEffect(() => {
-    if (!open) {
-      return;
+  if (syncedDeps.open !== open || syncedDeps.user !== user) {
+    setSyncedDeps({ open, user });
+    if (open) {
+      setForm(getEmptyConsultationEntry(user));
     }
-
-    setForm(getEmptyConsultationEntry(user));
-  }, [open, user]);
+  }
 
   function handleSubmit(event) {
     event.preventDefault();

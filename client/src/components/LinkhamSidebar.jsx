@@ -102,10 +102,12 @@ export default function LinkhamSidebar() {
   const { logout, user } = useAuth();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [lastPathname, setLastPathname] = useState(location.pathname);
 
-  useEffect(() => {
+  if (location.pathname !== lastPathname) {
+    setLastPathname(location.pathname);
     setDrawerOpen(false);
-  }, [location.pathname]);
+  }
 
   useEffect(() => {
     if (drawerOpen) {
@@ -212,5 +214,3 @@ export default function LinkhamSidebar() {
     </div>
   );
 }
-
-export { linkhamNavItems };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { cx } from "../lib/utils.js";
 import {
   calculateAgeFromDobMask,
@@ -41,25 +41,22 @@ function PatientDateOfBirthInput({
     "border border-emerald-200/60 bg-emerald-50/40 font-bold text-emerald-900",
   );
 
-  useEffect(() => {
-    if (!open || lockedFromNic) {
-      return;
+  const [syncedDeps, setSyncedDeps] = useState({ open, resetKey, value, lockedFromNic });
+
+  if (
+    syncedDeps.open !== open ||
+    syncedDeps.resetKey !== resetKey ||
+    syncedDeps.value !== value ||
+    syncedDeps.lockedFromNic !== lockedFromNic
+  ) {
+    setSyncedDeps({ open, resetKey, value, lockedFromNic });
+
+    if (open && !lockedFromNic) {
+      const masked = isoToDobDisplayMask(value);
+      setRawDobInput((current) => (current === masked ? current : masked));
+      setCalculatedAge(masked.length === 10 ? calculateAgeFromDobMask(masked) : null);
     }
-
-    const masked = isoToDobDisplayMask(value);
-    setRawDobInput(masked);
-    setCalculatedAge(masked.length === 10 ? calculateAgeFromDobMask(masked) : null);
-  }, [open, resetKey, lockedFromNic]);
-
-  useEffect(() => {
-    if (!open || !value || lockedFromNic) {
-      return;
-    }
-
-    const masked = isoToDobDisplayMask(value);
-    setRawDobInput((current) => (current === masked ? current : masked));
-    setCalculatedAge(calculateAgeFromDobMask(masked));
-  }, [open, value, lockedFromNic]);
+  }
 
   function handleDobMasking(event) {
     if (lockedFromNic) {

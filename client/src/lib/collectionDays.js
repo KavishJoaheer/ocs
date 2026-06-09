@@ -13,7 +13,7 @@ function toIsoDate(date) {
 function formatCollectionLabel(date) {
   try {
     return date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-  } catch (_error) {
+  } catch {
     return toIsoDate(date);
   }
 }

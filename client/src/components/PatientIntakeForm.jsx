@@ -198,8 +198,15 @@ function PatientFormModal({
   const [desktopWizardStep, setDesktopWizardStep] = useState(0);
   const firstNameRef = useRef(null);
   const stepFirstInputRef = useRef(null);
-  const draftRestoreToastShownRef = useRef(false);
   const isPageLayout = layout === "page";
+
+  function clearDraft() {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
 
   const { handleNationalIdChange, isDobLockedFromNic, nicParsed } = useMauritianNicPatientAutofill({
     nationalId: form.patient_id_number,
@@ -208,31 +215,42 @@ function PatientFormModal({
     enabled: open,
   });
 
-  useEffect(() => {
-    if (!open) {
-      draftRestoreToastShownRef.current = false;
-      return;
-    }
+  const [resetSyncDeps, setResetSyncDeps] = useState({ open, patient, mode });
+  const [draftRestoreSignal, setDraftRestoreSignal] = useState(0);
 
-    setWizardStep(0);
-    setDesktopWizardStep(0);
-    draftRestoreToastShownRef.current = false;
+  if (
+    resetSyncDeps.open !== open ||
+    resetSyncDeps.patient !== patient ||
+    resetSyncDeps.mode !== mode
+  ) {
+    setResetSyncDeps({ open, patient, mode });
 
-    if (mode !== "edit") {
-      const savedDraft = readPatientDraft();
-      if (savedDraft) {
-        setForm(savedDraft);
-        if (!draftRestoreToastShownRef.current) {
-          draftRestoreToastShownRef.current = true;
-          toast("Draft restored", { id: "patient-draft-restored", icon: "\u{1F4CB}" });
+    if (open) {
+      setWizardStep(0);
+      setDesktopWizardStep(0);
+
+      let restoredDraft = null;
+      if (mode !== "edit") {
+        restoredDraft = readPatientDraft();
+        if (!restoredDraft) {
+          clearDraft();
         }
-        return;
       }
-      clearDraft();
-    }
 
-    setForm(toPatientFormState(patient));
-  }, [open, patient, mode]);
+      if (restoredDraft) {
+        setForm(restoredDraft);
+        setDraftRestoreSignal((signal) => signal + 1);
+      } else {
+        setForm(toPatientFormState(patient));
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (draftRestoreSignal > 0) {
+      toast("Draft restored", { id: "patient-draft-restored", icon: "\u{1F4CB}" });
+    }
+  }, [draftRestoreSignal]);
 
   useEffect(() => {
     if (!open || mode === "edit") return;
@@ -268,14 +286,6 @@ function PatientFormModal({
       [name]: type === "checkbox" ? checked : value,
       ...(name === "status" && value === "discharged" ? { ongoing_treatment: "" } : {}),
     }));
-  }
-
-  function clearDraft() {
-    try {
-      localStorage.removeItem(DRAFT_KEY);
-    } catch {
-      /* ignore */
-    }
   }
 
   function handleCancel() {

@@ -57,23 +57,23 @@ function TeamMemberFormModal({ open, role, member, onClose, onSubmit, isSaving }
   const [form, setForm] = useState(getEmptyMember(role));
   const isEditing = Boolean(member?.id);
   const activeTab = getRoleTab(role);
+  const [syncedDeps, setSyncedDeps] = useState({ open, member, role });
 
-  useEffect(() => {
-    if (!open) {
-      return;
+  if (syncedDeps.open !== open || syncedDeps.member !== member || syncedDeps.role !== role) {
+    setSyncedDeps({ open, member, role });
+    if (open) {
+      setForm(
+        member
+          ? {
+              full_name: member.full_name ?? "",
+              username: member.username ?? "",
+              password: "",
+              specialization: member.specialization ?? (role === "doctor" ? "General Practitioner" : ""),
+            }
+          : getEmptyMember(role),
+      );
     }
-
-    setForm(
-      member
-        ? {
-            full_name: member.full_name ?? "",
-            username: member.username ?? "",
-            password: "",
-            specialization: member.specialization ?? (role === "doctor" ? "General Practitioner" : ""),
-          }
-        : getEmptyMember(role),
-    );
-  }, [member, open, role]);
+  }
 
   function handleSubmit(event) {
     event.preventDefault();

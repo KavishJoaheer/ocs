@@ -3,7 +3,7 @@ import {
   resolveInsuranceProviderFromTags,
 } from "../lib/insuranceProvider.js";
 
-export function resolvePatientInsuranceProvider(patient) {
+function resolvePatientInsuranceProvider(patient) {
   return (
     patient?.insurance_provider ||
     resolveInsuranceProviderFromTags(patient?.location_tags || [])

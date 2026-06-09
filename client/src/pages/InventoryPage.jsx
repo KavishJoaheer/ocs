@@ -26,7 +26,7 @@ import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -479,15 +479,17 @@ function ActionModal({ open, item, type, isSaving, onClose, onSubmit }) {
   const [note, setNote] = useState("");
   const [patientId, setPatientId] = useState("");
   const [consultationId, setConsultationId] = useState("");
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setQuantity("1");
       setNote("");
       setPatientId("");
       setConsultationId("");
     }
-  }, [open]);
+  }
 
   const isSell = type === "sell";
   const title = type === "add" ? "Add Stock" : isSell ? "Sell Item" : "Remove Stock";
@@ -539,13 +541,16 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [expiryDate, setExpiryDate] = useState("");
   const [costPrice, setCostPrice] = useState("0.00");
+  const [syncedDeps, setSyncedDeps] = useState({ open, item });
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity("1");
-    setExpiryDate("");
-    setCostPrice(String(item?.cost_price ?? 0));
-  }, [open, item]);
+  if (syncedDeps.open !== open || syncedDeps.item !== item) {
+    setSyncedDeps({ open, item });
+    if (open) {
+      setQuantity("1");
+      setExpiryDate("");
+      setCostPrice(String(item?.cost_price ?? 0));
+    }
+  }
 
   return (
     <Modal
@@ -621,12 +626,15 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
 function RemoveStockModal({ open, item, isSaving, isDoctorBag, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Expired");
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity("1");
-    setReason("Expired");
-  }, [open]);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setQuantity("1");
+      setReason("Expired");
+    }
+  }
 
   return (
     <Modal open={open} onClose={onClose} title={`Remove Stock${item ? ` - ${item.item_name}` : ""}`} description={isDoctorBag ? "Write off quantity from the doctor medical bag." : "Write off inventory using FEFO batch deduction."}>
@@ -680,14 +688,20 @@ function RestockModal({ open, doctors, item, presetDoctorId = null, presetDoctor
   const [doctorQuery, setDoctorQuery] = useState("");
   const [quantity, setQuantity] = useState("1");
   const doctorLocked = Boolean(presetDoctorId);
+  const [syncedDeps, setSyncedDeps] = useState({ open, presetDoctorId, presetDoctorName });
 
-  useEffect(() => {
+  if (
+    syncedDeps.open !== open ||
+    syncedDeps.presetDoctorId !== presetDoctorId ||
+    syncedDeps.presetDoctorName !== presetDoctorName
+  ) {
+    setSyncedDeps({ open, presetDoctorId, presetDoctorName });
     if (open) {
       setDoctorId(presetDoctorId ? String(presetDoctorId) : "");
       setDoctorQuery(presetDoctorName || "");
       setQuantity("1");
     }
-  }, [open, presetDoctorId, presetDoctorName]);
+  }
 
   const doctorOptions = useMemo(() => {
     const q = doctorQuery.trim().toLowerCase();
@@ -776,12 +790,15 @@ function RestockModal({ open, doctors, item, presetDoctorId = null, presetDoctor
 function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [expiryDate, setExpiryDate] = useState("");
+  const [syncedDeps, setSyncedDeps] = useState({ open, item });
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity("1");
-    setExpiryDate("");
-  }, [open, item]);
+  if (syncedDeps.open !== open || syncedDeps.item !== item) {
+    setSyncedDeps({ open, item });
+    if (open) {
+      setQuantity("1");
+      setExpiryDate("");
+    }
+  }
 
   const available = Number(item?.ocs_available || 0);
 
@@ -868,14 +885,17 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
   const [reason, setReason] = useState("Wasted");
   const [note, setNote] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [syncedDeps, setSyncedDeps] = useState({ open, item });
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity("1");
-    setReason("Wasted");
-    setNote("");
-    setSelectedPatientId("");
-  }, [open, item]);
+  if (syncedDeps.open !== open || syncedDeps.item !== item) {
+    setSyncedDeps({ open, item });
+    if (open) {
+      setQuantity("1");
+      setReason("Wasted");
+      setNote("");
+      setSelectedPatientId("");
+    }
+  }
 
   const available = Number(item?.quantity || 0);
   const isSale = reason === "Sale";
@@ -1960,10 +1980,17 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  const [syncedDeps, setSyncedDeps] = useState({ open, activeFolderId });
+
+  if (syncedDeps.open !== open || syncedDeps.activeFolderId !== activeFolderId) {
+    setSyncedDeps({ open, activeFolderId });
+    if (open) {
+      setForm(operatorItemFormState(activeFolderId));
+    }
+  }
+
   useEffect(() => {
     if (!open) return undefined;
-
-    setForm(operatorItemFormState(activeFolderId));
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -2409,11 +2436,14 @@ function MobileQuickQuantitySheet({
   const [quantity, setQuantity] = useState(1);
   const max = Math.max(0, Number(maxQuantity || 0));
   const atMax = quantity >= max;
+  const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity(1);
-  }, [open, item?.id]);
+  if (syncedDeps.open !== open || syncedDeps.itemId !== item?.id) {
+    setSyncedDeps({ open, itemId: item?.id });
+    if (open) {
+      setQuantity(1);
+    }
+  }
 
   if (!open) return null;
 
@@ -2477,12 +2507,23 @@ const MOBILE_DEDUCT_REASONS = [
 function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [expiryDate, setExpiryDate] = useState("");
+  const [syncedDeps, setSyncedDeps] = useState({
+    open,
+    itemId: item?.id,
+    ocsItemId: item?.ocs_item_id,
+  });
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity("1");
-    setExpiryDate("");
-  }, [open, item?.id, item?.ocs_item_id]);
+  if (
+    syncedDeps.open !== open ||
+    syncedDeps.itemId !== item?.id ||
+    syncedDeps.ocsItemId !== item?.ocs_item_id
+  ) {
+    setSyncedDeps({ open, itemId: item?.id, ocsItemId: item?.ocs_item_id });
+    if (open) {
+      setQuantity("1");
+      setExpiryDate("");
+    }
+  }
 
   if (!open || !item) return null;
 
@@ -2567,13 +2608,16 @@ function MobileDoctorDeductSheet({
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Damage");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
-  useEffect(() => {
-    if (!open) return;
-    setQuantity("1");
-    setReason("Damage");
-    setSelectedPatientId("");
-  }, [open, item?.id]);
+  if (syncedDeps.open !== open || syncedDeps.itemId !== item?.id) {
+    setSyncedDeps({ open, itemId: item?.id });
+    if (open) {
+      setQuantity("1");
+      setReason("Damage");
+      setSelectedPatientId("");
+    }
+  }
 
   if (!open || !item) return null;
 
@@ -2975,7 +3019,6 @@ function MobileDoctorBagLayout({
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2987,13 +3030,12 @@ export default function InventoryPage() {
   const [selectedContextDoctorId, setSelectedContextDoctorId] = useState("");
   const [doctorContext, setDoctorContext] = useState("my");
   const [contextSearch, setContextSearch] = useState("OCS Stock");
-  const [contextOpen, setContextOpen] = useState(false);
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [doctorRestockItem, setDoctorRestockItem] = useState(null);
-  const [restockRequestsRefreshKey, setRestockRequestsRefreshKey] = useState(0);
+  const [restockRequestsRefreshKey] = useState(0);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
   const [addStock, setAddStock] = useState(null);
@@ -3690,16 +3732,6 @@ export default function InventoryPage() {
     toast.success("Receipt generated successfully.");
   }
 
-  async function reprintByTransactionId(transactionId) {
-    if (!transactionId) return;
-    try {
-      const receipt = await api.get(`/inventory/receipts/${encodeURIComponent(transactionId)}`);
-      printReceipt(receipt);
-    } catch (error) {
-      toast.error(error.message);
-    }
-  }
-
   async function saveAddStock(payload) {
     if (!addStock?.item) return;
     const quantity = Number(payload?.quantity || 0);
@@ -4328,7 +4360,6 @@ export default function InventoryPage() {
                       const batches = batchMap[item.id] || [];
                       const parLevel = Number(item.minimum_quantity || 0);
                       const quantity = Number(item.quantity || 0);
-                      const ratio = parLevel > 0 ? quantity / parLevel : 1;
                       const trafficTone =
                         quantity <= 0
                           ? "critical"

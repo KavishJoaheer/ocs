@@ -40,12 +40,6 @@ function getTodayInputValue() {
   return local.toISOString().slice(0, 10);
 }
 
-function formatInteger(value) {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-}
-
 /** Title-case first letter of each word (billing status / payment method). */
 function titleCaseWords(value) {
   if (value == null || value === "") return "";

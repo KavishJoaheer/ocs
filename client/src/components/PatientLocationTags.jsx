@@ -18,16 +18,25 @@ const TOWN_NAMES = Object.keys(TOWNS);
 
 function SearchableOverlay({ open, title, items, onSelect, onClose }) {
   const [query, setQuery] = useState("");
+  const [prevOpen, setPrevOpen] = useState(open);
   const inputRef = useRef(null);
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setQuery("");
-      document.body.style.overflow = "hidden";
-      setTimeout(() => inputRef.current?.focus(), 80);
     }
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    document.body.style.overflow = "hidden";
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 80);
     return () => {
       document.body.style.overflow = "";
+      clearTimeout(focusTimer);
     };
   }, [open]);
 

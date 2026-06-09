@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import "./index.css";
 import App from "./App.jsx";
-import { AuthProvider } from "./hooks/useAuth.jsx";
+import { AuthProvider } from "./hooks/AuthProvider.jsx";
 import {
   drainPendingServiceWorkerSubscription,
   fetchPushConfiguration,

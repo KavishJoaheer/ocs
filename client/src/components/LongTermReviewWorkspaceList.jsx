@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -69,15 +69,15 @@ function LongTermReviewQuickActionsModal({ open, patient, onClose, onChangeDueDa
 
 function LongTermReviewDueDateModal({ open, patient, onClose, onSubmit, isSaving }) {
   const [dueDate, setDueDate] = useState("");
+  const [syncedDeps, setSyncedDeps] = useState({ open, patient });
 
-  useEffect(() => {
-    if (!open || !patient) {
-      return;
+  if (syncedDeps.open !== open || syncedDeps.patient !== patient) {
+    setSyncedDeps({ open, patient });
+    if (open && patient) {
+      const raw = String(patient.review_due_date || "").trim();
+      setDueDate(raw.length >= 10 ? raw.slice(0, 10) : "");
     }
-
-    const raw = String(patient.review_due_date || "").trim();
-    setDueDate(raw.length >= 10 ? raw.slice(0, 10) : "");
-  }, [open, patient]);
+  }
 
   if (!patient) {
     return null;

@@ -59,16 +59,23 @@ function toDisplayAuthorName(name) {
 function NewsPostCard({ post, user, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
+  const [prevExpanded, setPrevExpanded] = useState(expanded);
   const bodyRef = useRef(null);
   const isNew = isPostNew(post);
 
-  useLayoutEffect(() => {
-    const el = bodyRef.current;
-    if (!el) {
-      return undefined;
-    }
+  if (expanded !== prevExpanded) {
+    setPrevExpanded(expanded);
     if (expanded) {
       setIsTruncated(false);
+    }
+  }
+
+  useLayoutEffect(() => {
+    if (expanded) {
+      return undefined;
+    }
+    const el = bodyRef.current;
+    if (!el) {
       return undefined;
     }
     const id = requestAnimationFrame(() => {

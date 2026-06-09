@@ -194,15 +194,6 @@ function OperatorWorkspacePage({ workspaceKey }) {
     };
   }, []);
 
-  async function reloadWorkspace() {
-    try {
-      const payload = await api.get("/dashboard/operator-workspace");
-      setData(payload);
-    } catch (error) {
-      toast.error(error.message);
-    }
-  }
-
   const title = useMemo(() => (meta ? meta.title(data) : "Operator workspace"), [data, meta]);
 
   if (!meta) {

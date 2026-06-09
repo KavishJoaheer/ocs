@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import {
   Activity,
@@ -22,7 +22,8 @@ import { Link, useNavigate } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import LowStockBanner from "../components/LowStockBanner.jsx";
 import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.jsx";
-import HcmBulletinBanner, { isHcmPostWithinBulletinWindow } from "../components/HcmBulletinBanner.jsx";
+import HcmBulletinBanner from "../components/HcmBulletinBanner.jsx";
+import { isHcmPostWithinBulletinWindow } from "../lib/hcmBulletin.js";
 import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
 import { prefetchPatientOfflineDirectory } from "../lib/patientOfflineSync.js";
 import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
@@ -148,7 +149,6 @@ function MobileLauncher({
   dashboard,
   operatorMetrics,
   latestHcmPost = null,
-  onOpenRosterPdf,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const isDoctor = user.role === "doctor";
@@ -1007,7 +1007,7 @@ function DoctorDashboardView({
   );
 }
 
-function OperatorDashboardView({ user, dashboard, operatorMetrics, onStatusChange, isSavingStatus, onOpenRosterPdf }) {
+function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSavingStatus }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (

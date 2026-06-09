@@ -16,13 +16,10 @@ export function useOperatorDashboardMetrics(enabled) {
 
   useEffect(() => {
     if (!enabled) {
-      setMetrics(null);
-      setLoading(false);
       return undefined;
     }
 
     let ignore = false;
-    setLoading(true);
 
     async function fetchMetrics() {
       try {
@@ -47,5 +44,9 @@ export function useOperatorDashboardMetrics(enabled) {
     };
   }, [enabled]);
 
-  return { metrics, loading, refresh };
+  return {
+    metrics: enabled ? metrics : null,
+    loading: enabled ? loading : false,
+    refresh,
+  };
 }

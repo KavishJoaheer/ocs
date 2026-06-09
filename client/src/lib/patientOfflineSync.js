@@ -17,7 +17,7 @@ function dispatchCacheUpdated(detail = {}) {
 }
 
 export function mapOfflineRecordToPatient(record) {
-  const [agePart, genderPart] = String(record.age_gender || "")
+  const [, genderPart] = String(record.age_gender || "")
     .split(",")
     .map((part) => part.trim());
 
