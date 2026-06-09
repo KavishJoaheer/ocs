@@ -12,6 +12,10 @@
   --ocs-teal: #41c8c6;
   --ocs-teal-soft: #70ddd2;
   --ocs-gold: #f2c14d;
+  --ocs-orange: #e8a020;
+  --ocs-orange-rgb: 232, 160, 32;
+  --ocs-orange-soft: rgba(232, 160, 32, 0.1);
+  --ocs-orange-muted: rgba(232, 160, 32, 0.14);
   --ocs-ink: #22485b;
   /* Native dashboard tokens — squircle radii, spacing, elevation, safe areas */
   --native-radius-outer: 24px;
@@ -340,6 +344,31 @@ table {
   transform: scale(0.95);
 }
 
+/* Profile avatar — soft orange well, solid orange initials */
+.native-avatar-btn {
+  background: var(--ocs-orange-soft) !important;
+  color: var(--ocs-orange) !important;
+  font-weight: 600;
+}
+
+/* Notification unread dot — solid orange with white ring */
+.native-notification-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ocs-orange);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(var(--ocs-orange-rgb), 0.35);
+}
+
+.text-ocs-orange {
+  color: var(--ocs-orange);
+}
+
+.bg-ocs-orange {
+  background-color: var(--ocs-orange);
+}
+
 /* Display typography — explicit weight for SF Pro / Roboto parity */
 .native-display {
   font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Inter", "Roboto", sans-serif;
@@ -375,14 +404,25 @@ table {
   border-radius: var(--native-radius-inner);
   font-size: 13px;
   font-weight: 700;
-  color: #2d8f98;
+  color: #1a5c52;
   background: rgba(26, 160, 140, 0.08);
   transition: gap 160ms ease, background 160ms ease;
+}
+
+.native-action-btn svg {
+  color: var(--ocs-orange);
 }
 
 .native-action-btn:active {
   background: rgba(26, 160, 140, 0.14);
   gap: 8px;
+}
+
+/* Health Records segmented control — orange active state */
+.health-records-tab-active {
+  background: var(--ocs-orange);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(var(--ocs-orange-rgb), 0.3);
 }
 
 @supports (corner-shape: squircle) {

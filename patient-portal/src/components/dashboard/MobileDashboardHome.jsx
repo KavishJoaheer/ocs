@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { Bell, ArrowRight, FileText, Pill, FlaskConical } from "lucide-react";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
-import { AVATAR_STYLES } from "../../lib/familyProfiles.js";
 
 // ─── Mock care timeline cards ─────────────────────────────────────────────────
 
@@ -135,8 +134,6 @@ function TimelineCard({ card }) {
 function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
   const { activeProfile } = useFamilyProfile();
   const greeting = getGreeting();
-  const avatarColor = AVATAR_STYLES[activeProfile.avatarVariant] || "bg-[#2d8f98] text-white";
-
   return (
     <div className="native-dashboard -mx-4 min-h-full bg-[#f4f7f7]">
       {/* ── 1. Welcome Zone — respects notch / punch-hole via --native-safe-top ─ */}
@@ -144,7 +141,7 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
         <div className="min-w-0 flex-1 pr-2">
           <h1 className="native-display text-[28px] leading-tight text-[#1a5c52]">
             {greeting},{" "}
-            <span className="text-[#2d8f98]">{firstName || "there"}</span>
+            <span className="text-ocs-orange">{firstName || "there"}</span>
           </h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[#5b7f8a]">
             Your health, cared for around the clock.
@@ -159,17 +156,17 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
           >
             <Bell className="size-[20px] text-[#5b7f8a]" strokeWidth={1.75} />
             {unreadNotifications > 0 ? (
-              <span className="absolute right-2 top-2 flex size-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#e8a020] opacity-60" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-[#e8a020] shadow-[0_0_8px_rgba(232,160,32,0.5)]" />
-              </span>
+              <span
+                className="native-notification-dot absolute -right-0.5 -top-0.5"
+                aria-hidden="true"
+              />
             ) : null}
           </button>
 
           <Link
             to="/profile"
             aria-label="Your profile"
-            className={`native-header-btn ${avatarColor} text-[14px] font-semibold`}
+            className="native-header-btn native-avatar-btn text-[14px]"
           >
             {activeProfile.initials}
           </Link>
@@ -189,8 +186,8 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
             Request a Home Doctor
           </p>
         </div>
-        <div className="squircle-inner flex size-12 shrink-0 items-center justify-center bg-white/20 backdrop-blur-sm">
-          <ArrowRight className="size-6" strokeWidth={2.5} />
+        <div className="squircle-inner flex size-12 shrink-0 items-center justify-center bg-ocs-orange shadow-[0_4px_12px_rgba(232,160,32,0.35)]">
+          <ArrowRight className="size-6 text-white" strokeWidth={2.5} />
         </div>
       </Link>
 
