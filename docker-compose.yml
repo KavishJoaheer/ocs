@@ -1,6 +1,6 @@
 services:
   app:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:latest
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:${APP_IMAGE_TAG:-latest}
     container_name: clinicflow-app
     restart: unless-stopped
     env_file:
@@ -41,7 +41,7 @@ services:
       - clinicflow-public
 
   patient-portal:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:latest
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:${APP_IMAGE_TAG:-latest}
     container_name: clinicflow-patient-portal
     restart: unless-stopped
     depends_on:
@@ -52,7 +52,7 @@ services:
       - clinicflow-public
 
   linkham-portal:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:latest
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:${APP_IMAGE_TAG:-latest}
     container_name: clinicflow-linkham-portal
     restart: unless-stopped
     depends_on:

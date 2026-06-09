@@ -22,9 +22,8 @@ RUN npm ci --omit=dev
 
 COPY server ./
 
-# Guard against shipping an API image that references modules missing from the build context.
-RUN test -f src/lib/patientBilling.js \
-  && node -e "require('./src/lib/patientBilling'); require('./src/app');"
+# Guard against shipping an API image that cannot boot the patient portal routes.
+RUN node -e "const u=require('./src/lib/utils'); if(typeof u.serializePatientBillingRows!=='function')process.exit(1); require('./src/app');"
 
 
 FROM node:22-bookworm-slim

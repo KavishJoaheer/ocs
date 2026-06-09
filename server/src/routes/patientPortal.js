@@ -19,7 +19,7 @@ const {
   buildHealthRecordsPayload,
   extractDiagnosisFromNotes,
 } = require("../lib/healthRecords");
-const { serializePatientBillingRows } = require("../lib/patientBilling");
+const { serializePatientBillingRows } = require("../lib/utils");
 
 const router = express.Router();
 
