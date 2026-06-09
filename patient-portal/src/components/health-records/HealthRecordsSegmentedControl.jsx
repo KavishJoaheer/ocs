@@ -4,13 +4,11 @@ const TABS = [
   { id: "clinical", label: "Clinical History" },
 ];
 
-/**
- * Three-option segmented control — brand orange active state, squircle inner wells.
- */
+/** iOS-style segmented control — muted gray track, white pill active state. */
 function HealthRecordsSegmentedControl({ activeTab, onChange }) {
   return (
     <div
-      className="squircle-inner flex gap-1 bg-[rgba(26,160,140,0.08)] p-1"
+      className="health-records-segment flex gap-0.5 rounded-[10px] bg-[#F0F1F3] p-[3px]"
       role="tablist"
       aria-label="Health records sections"
     >
@@ -24,8 +22,10 @@ function HealthRecordsSegmentedControl({ activeTab, onChange }) {
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={[
-              "native-label relative flex-1 rounded-[12px] px-2 py-2.5 text-[13px] leading-tight transition-all duration-200",
-              isActive ? "health-records-tab-active" : "text-[#5b7f8a]",
+              "relative flex-1 rounded-[8px] px-2 py-2.5 text-[13px] leading-tight transition-all duration-200",
+              isActive
+                ? "health-records-tab-active font-bold text-[#1a5c52]"
+                : "font-medium text-[#8a9e9a]",
             ].join(" ")}
           >
             {tab.label}

@@ -91,7 +91,7 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-screen mx-auto max-w-[720px]">
+    <div className="native-screen mx-auto w-full max-w-[720px] lg:max-w-4xl">
       {/* Page header */}
       <header className="animate-fade-in-up pb-6 max-md:pb-5">
         <div className="flex items-center gap-2 max-md:hidden">

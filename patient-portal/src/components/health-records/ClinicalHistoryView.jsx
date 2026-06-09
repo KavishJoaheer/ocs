@@ -1,44 +1,37 @@
-import { formatIsoDatesInText, isNilAllergyValue } from "../../lib/healthRecordsDisplay.js";
+import {
+  filterClinicalItems,
+  formatIsoDatesInText,
+  getClinicalEmptyMessage,
+  isNilAllergyValue,
+} from "../../lib/healthRecordsDisplay.js";
 
 const SECTIONS = [
-  {
-    key: "medical_history",
-    title: "Past Medical History",
-    empty: "No medical history recorded.",
-  },
-  {
-    key: "surgical_history",
-    title: "Past Surgical History",
-    empty: "No surgical history recorded.",
-  },
-  {
-    key: "drug_history",
-    title: "Drug History",
-    empty: "No drug history recorded.",
-  },
-  {
-    key: "allergy_history",
-    title: "Allergy History",
-    empty: "No known allergies.",
-    isAllergy: true,
-  },
+  { key: "medical_history", title: "Past Medical History" },
+  { key: "surgical_history", title: "Past Surgical History" },
+  { key: "drug_history", title: "Drug History" },
+  { key: "allergy_history", title: "Allergy History", isAllergy: true },
 ];
 
-function ClinicalBlock({ section, items }) {
+const CELL_BORDERS = [
+  "border-b border-[rgba(0,0,0,0.05)] lg:border-b lg:border-r lg:border-[rgba(0,0,0,0.05)]",
+  "border-b border-[rgba(0,0,0,0.05)] lg:border-b lg:border-[rgba(0,0,0,0.05)]",
+  "border-b border-[rgba(0,0,0,0.05)] lg:border-b-0 lg:border-r lg:border-[rgba(0,0,0,0.05)]",
+  "",
+];
+
+function DossierSection({ section, items, borderClass }) {
   const isAllergy = section.isAllergy;
+  const visibleItems = filterClinicalItems(items);
 
   return (
-    <article
-      className="squircle-outer ocs-elevate bg-white"
-      style={{ padding: "var(--native-pad-card)" }}
-    >
-      <h3 className="native-label text-[13px] uppercase tracking-[0.06em] text-[#8a9e9a]">
+    <section className={["clinical-dossier-cell px-6 py-6 lg:px-7 lg:py-7", borderClass].join(" ")}>
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8a9e9a]">
         {section.title}
       </h3>
 
-      {items.length > 0 ? (
+      {visibleItems.length > 0 ? (
         <ul className="mt-4 space-y-3">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const isWarning = isAllergy && !isNilAllergyValue(item.name);
             return (
               <li key={item.id} className="flex flex-col gap-0.5">
@@ -65,24 +58,39 @@ function ClinicalBlock({ section, items }) {
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-[14px] italic text-[#8a9e9a]">{section.empty}</p>
+        <p className="mt-3 text-[14px] italic text-[#a8b5b2]">
+          {getClinicalEmptyMessage(section.key)}
+        </p>
       )}
-    </article>
+    </section>
   );
 }
 
-/** Static four-block clinical background summary. */
+/** Unified clinical dossier — four history sections in one premium card. */
 function ClinicalHistoryView({ clinicalHistory }) {
   return (
-    <div className="space-y-4" aria-label="Clinical history">
-      <p className="text-right text-[12px] italic text-[#8a9e9a]">
+    <div aria-label="Clinical history">
+      <p className="mb-4 text-right text-[12px] italic text-[#8a9e9a]">
         Read only · Maintained by your OCS doctor
       </p>
-      {SECTIONS.map((section, idx) => (
-        <div key={section.key} className={`animate-fade-in-up stagger-${Math.min(idx + 1, 6)}`}>
-          <ClinicalBlock section={section} items={clinicalHistory[section.key] ?? []} />
+
+      <article className="health-records-crafted-card animate-fade-in-up overflow-hidden bg-white max-lg:squircle-outer max-lg:ocs-elevate">
+        <header className="border-b border-[rgba(0,0,0,0.05)] px-6 py-5 lg:px-7">
+          <h2 className="native-display text-[17px] text-[#1a5c52]">Clinical Dossier</h2>
+          <p className="mt-1 text-[13px] text-[#8a9e9a]">Your medical background at a glance</p>
+        </header>
+
+        <div className="clinical-dossier-grid grid grid-cols-1 lg:grid-cols-2">
+          {SECTIONS.map((section, idx) => (
+            <DossierSection
+              key={section.key}
+              section={section}
+              items={clinicalHistory[section.key] ?? []}
+              borderClass={CELL_BORDERS[idx]}
+            />
+          ))}
         </div>
-      ))}
+      </article>
     </div>
   );
 }

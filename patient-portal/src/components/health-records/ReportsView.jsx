@@ -1,4 +1,4 @@
-import { Download, Eye, FileUp } from "lucide-react";
+import { Download, Eye, FileUp, FolderHeart } from "lucide-react";
 import { formatHealthDate } from "../../lib/healthRecordsDisplay.js";
 
 function RequestedByBadge({ source }) {
@@ -8,7 +8,7 @@ function RequestedByBadge({ source }) {
       className={[
         "squircle-inner inline-flex px-2.5 py-1 text-[11px] font-semibold",
         isOcs
-          ? "bg-[rgba(66,133,244,0.12)] text-[#3b7dd8]"
+          ? "bg-[rgba(59,125,216,0.12)] text-[#3b7dd8]"
           : "bg-[rgba(138,158,154,0.14)] text-[#6e7f7c]",
       ].join(" ")}
     >
@@ -24,7 +24,7 @@ function ReportCard({ report }) {
 
   return (
     <article
-      className="squircle-outer ocs-elevate bg-white"
+      className="health-records-crafted-card w-full bg-white max-lg:squircle-outer max-lg:ocs-elevate"
       style={{ padding: "var(--native-pad-card)" }}
     >
       <div className="flex items-start justify-between gap-4">
@@ -63,10 +63,13 @@ function ReportCard({ report }) {
 function ReportsEmptyState({ onUpload }) {
   return (
     <div className="flex flex-col items-center px-4 py-16 text-center">
-      <FileUp className="size-11 text-[rgba(26,160,140,0.35)]" strokeWidth={1.5} />
-      <h2 className="native-display mt-5 text-[20px] text-[#1a5c52]">
-        Your reports live here
-      </h2>
+      <div
+        className="flex size-[104px] items-center justify-center rounded-full bg-[rgba(45,143,152,0.08)]"
+        aria-hidden="true"
+      >
+        <FolderHeart className="size-14 text-[#6B9E95]" strokeWidth={1.25} />
+      </div>
+      <h2 className="native-display mt-6 text-[20px] text-[#1a5c52]">Your reports live here</h2>
       <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#8a9e9a]">
         OCS care team reports appear automatically. You can also upload your own.
       </p>
@@ -96,7 +99,7 @@ function ReportsView({ reports, onUpload }) {
           <button
             type="button"
             onClick={onUpload}
-            className="squircle-inner flex items-center gap-2 bg-[#2d8f98] px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-105 active:scale-[0.98]"
+            className="squircle-inner flex items-center gap-2 bg-[#e8a020] px-5 py-2.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.22)] transition hover:brightness-105 active:scale-[0.98]"
           >
             <FileUp className="size-4" strokeWidth={2} />
             Upload Report

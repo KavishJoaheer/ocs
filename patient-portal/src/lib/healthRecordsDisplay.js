@@ -67,6 +67,32 @@ export function isNilAllergyValue(name) {
   );
 }
 
+export function isNilClinicalValue(name) {
+  const normalized = String(name || "").trim().toUpperCase();
+  return (
+    isNilAllergyValue(name) ||
+    normalized === "NO" ||
+    normalized === "NIL HX" ||
+    normalized === "NO HX" ||
+    normalized === "NOT APPLICABLE"
+  );
+}
+
+const CLINICAL_EMPTY_MESSAGES = {
+  medical_history: "None reported",
+  surgical_history: "No known history",
+  drug_history: "None reported",
+  allergy_history: "No known history",
+};
+
+export function getClinicalEmptyMessage(sectionKey) {
+  return CLINICAL_EMPTY_MESSAGES[sectionKey] || "None reported";
+}
+
+export function filterClinicalItems(items) {
+  return (items || []).filter((item) => !isNilClinicalValue(item.name));
+}
+
 export function shouldShowPlainSummary(diagnosis, plainSummary) {
   const summary = String(plainSummary || "").trim();
   if (!summary) return false;

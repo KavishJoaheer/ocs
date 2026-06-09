@@ -24,7 +24,7 @@ function ConsultationCard({ consultation }) {
 
   return (
     <article
-      className="squircle-outer ocs-elevate-timeline w-full bg-white"
+      className="health-records-crafted-card w-full bg-white max-lg:squircle-outer max-lg:ocs-elevate-timeline"
       style={{ padding: "var(--native-pad-card)" }}
     >
       {/* Top row — date/time + visit badge */}
@@ -33,29 +33,30 @@ function ConsultationCard({ consultation }) {
         <span className="consultation-visit-badge shrink-0">{visitType}</span>
       </div>
 
-      {/* Doctor row — avatar + name + role */}
-      <div className="mt-4 flex items-center gap-3">
-        <div
-          className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(45,143,152,0.2)]"
-          aria-hidden="true"
-        >
-          {doctorInitials(consultation.doctor_name)}
+      {/* Doctor + diagnosis — horizontal on desktop */}
+      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(45,143,152,0.2)]"
+            aria-hidden="true"
+          >
+            {doctorInitials(consultation.doctor_name)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="native-display text-[16px] leading-snug text-[#1a5c52]">{doctorName}</p>
+            <p className="mt-0.5 text-[13px] text-[#8a9e9a]">{specialty}</p>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="native-display text-[16px] leading-snug text-[#1a5c52]">{doctorName}</p>
-          <p className="mt-0.5 text-[13px] text-[#8a9e9a]">{specialty}</p>
-        </div>
-      </div>
 
-      {/* Diagnosis */}
-      {consultation.diagnosis ? (
-        <div className="mt-5">
-          <p className="consultation-micro-label">Diagnosis</p>
-          <span className="squircle-inner mt-2 inline-flex bg-[rgba(26,160,140,0.1)] px-3.5 py-1.5 text-[13px] font-medium text-[#2d8f98]">
-            {consultation.diagnosis}
-          </span>
-        </div>
-      ) : null}
+        {consultation.diagnosis ? (
+          <div className="lg:shrink-0 lg:text-right">
+            <p className="consultation-micro-label">Diagnosis</p>
+            <span className="squircle-inner mt-2 inline-flex bg-[rgba(26,160,140,0.1)] px-3.5 py-1.5 text-[13px] font-medium text-[#2d8f98]">
+              {consultation.diagnosis}
+            </span>
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }

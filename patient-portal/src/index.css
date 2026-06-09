@@ -1019,11 +1019,22 @@ table {
   gap: 8px;
 }
 
-/* Health Records segmented control — orange active state */
+/* Health Records — crafted card + iOS segmented control */
+@media (min-width: 1024px) {
+  .health-records-crafted-card {
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  }
+}
+
 .health-records-tab-active {
-  background: var(--ocs-orange);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(var(--ocs-orange-rgb), 0.3);
+  background: #fff;
+  color: #1a5c52;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.08),
+    0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 /* ─── Profile screen — premium concierge hub ──────────────────────────────── */
@@ -1389,14 +1400,35 @@ table {
   animation: wizardStepInForward 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
-/* ─── Upload report bottom sheet ──────────────────────────────────────────── */
+/* ─── Upload report — mobile sheet + desktop drawer ───────────────────────── */
 
-.upload-sheet-scroll {
+.upload-sheet-scroll,
+.upload-drawer-scroll {
   -webkit-overflow-scrolling: touch;
 }
 
 .upload-dropzone {
   background: rgba(65, 200, 198, 0.08);
+}
+
+@media (min-width: 1024px) {
+  .upload-dropzone {
+    background: linear-gradient(180deg, rgba(107, 158, 149, 0.07) 0%, rgba(240, 241, 243, 0.9) 100%);
+    border: 1px dashed rgba(45, 143, 152, 0.22);
+  }
+}
+
+@keyframes drawerSlideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-drawer-slide-in {
+  animation: drawerSlideIn 320ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .upload-field-input {
