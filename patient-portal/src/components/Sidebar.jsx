@@ -55,7 +55,8 @@ function Sidebar() {
   const { pathname } = useLocation();
   const isNativeDashboard = pathname === "/dashboard";
   const isVisitSummary = pathname.startsWith("/health-records/visits/");
-  const hideMobileTopBar = isNativeDashboard || isVisitSummary;
+  const isVisitStatus = pathname === "/request-visit/tracking";
+  const hideMobileTopBar = isNativeDashboard || isVisitSummary || isVisitStatus;
 
   return (
     <>

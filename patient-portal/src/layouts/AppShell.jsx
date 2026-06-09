@@ -7,7 +7,8 @@ function AppShellContent() {
   const { pathname } = useLocation();
   const isNativeDashboard = pathname === "/dashboard";
   const isVisitSummary = pathname.startsWith("/health-records/visits/");
-  const isFullBleedMobile = isNativeDashboard || isVisitSummary;
+  const isVisitStatus = pathname === "/request-visit/tracking";
+  const isFullBleedMobile = isNativeDashboard || isVisitSummary || isVisitStatus;
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
