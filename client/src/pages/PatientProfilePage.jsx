@@ -9,6 +9,7 @@ import {
   Download,
   FileText,
   FlaskConical,
+  GitMerge,
   History,
   HeartPulse,
   LockKeyhole,
@@ -16,7 +17,9 @@ import {
   Phone,
   Pill,
   Plus,
+  Search,
   ShieldAlert,
+  ShieldCheck,
   SquarePen,
   Trash2,
   UserRound,
@@ -911,6 +914,201 @@ function ConsultationCreateModal({
   );
 }
 
+const LINK_STATUS_BADGES = {
+  self_registered: {
+    label: "Self-registered",
+    className: "bg-[rgba(232,160,32,0.15)] text-[#a86c08]",
+  },
+  pending_review: {
+    label: "Pending link review",
+    className: "bg-[rgba(232,160,32,0.15)] text-[#a86c08]",
+  },
+};
+
+function LinkStatusBadge({ status }) {
+  const badge = LINK_STATUS_BADGES[status];
+  if (!badge) return null;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold",
+        badge.className,
+      )}
+    >
+      <ShieldAlert className="size-3.5" />
+      {badge.label}
+    </span>
+  );
+}
+
+// Lets admin/operator confirm a self-registered patient's portal link, or merge
+// the record into the canonical chart it duplicates.
+function AccountLinkReview({ patient, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [mergingId, setMergingId] = useState(null);
+
+  const needsReview =
+    patient?.link_status === "self_registered" || patient?.link_status === "pending_review";
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const term = query.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return undefined;
+    }
+    let ignore = false;
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await api.get(`/patients?search=${encodeURIComponent(term)}&limit=8`);
+        if (!ignore) {
+          setResults((data.items || []).filter((item) => item.id !== patient.id));
+        }
+      } catch {
+        if (!ignore) setResults([]);
+      } finally {
+        if (!ignore) setSearching(false);
+      }
+    }, 300);
+    return () => {
+      ignore = true;
+      clearTimeout(timer);
+    };
+  }, [open, query, patient?.id]);
+
+  if (!needsReview) return null;
+
+  async function handleVerify() {
+    setVerifying(true);
+    try {
+      await api.patch(`/patients/${patient.id}/verify-link`, { verified: true });
+      toast.success("Account link verified.");
+      setOpen(false);
+      await onChanged?.();
+    } catch (error) {
+      toast.error(error?.message || "Could not verify the account link.");
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleMerge(target) {
+    if (
+      !window.confirm(
+        `Merge "${patient.full_name}" into "${target.full_name}" (${target.patient_identifier || "no OCS no."})? ` +
+          "All visits, consultations, bills and records will move to the canonical record and this duplicate will be archived.",
+      )
+    ) {
+      return;
+    }
+    setMergingId(target.id);
+    try {
+      await api.post(`/patients/${target.id}/merge`, { source_id: patient.id });
+      toast.success("Records merged into the canonical patient.");
+      window.location.assign(`/patients/${target.id}`);
+    } catch (error) {
+      toast.error(error?.message || "Could not merge the records.");
+      setMergingId(null);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(232,160,32,0.4)] bg-[rgba(232,160,32,0.08)] px-4 py-3 text-sm font-semibold text-[#a86c08] transition hover:bg-[rgba(232,160,32,0.16)]"
+      >
+        <ShieldAlert className="size-4" />
+        Review account link
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Review patient account link"
+        description="This patient registered themselves on the portal. Confirm the record is correct, or merge it into the existing chart it duplicates."
+        size="md"
+      >
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white/70 p-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-5 text-[#2d8f98]" />
+              <p className="text-sm font-semibold text-slate-900">This is a genuine, separate patient</p>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              Mark the account as verified and keep this record as-is.
+            </p>
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={verifying}
+              className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-105 active:scale-95 disabled:opacity-50"
+            >
+              {verifying ? "Verifying…" : "Mark verified"}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white/70 p-4">
+            <div className="flex items-center gap-2">
+              <GitMerge className="size-5 text-[#a86c08]" />
+              <p className="text-sm font-semibold text-slate-900">This duplicates an existing chart</p>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              Search for the canonical record. Merging moves all visits, consultations, bills and
+              records onto it and archives this duplicate.
+            </p>
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#6e949b]" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by name, OCS number, national ID, phone…"
+                className="w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
+              />
+            </div>
+            <div className="mt-3 space-y-2">
+              {searching ? (
+                <p className="px-1 py-2 text-sm text-slate-400">Searching…</p>
+              ) : results.length === 0 && query.trim().length >= 2 ? (
+                <p className="px-1 py-2 text-sm text-slate-400">No matching records.</p>
+              ) : (
+                results.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{item.full_name}</p>
+                      <p className="truncate text-xs text-slate-400">
+                        {item.patient_identifier || "No OCS no."}
+                        {item.patient_id_number ? ` · ${item.patient_id_number}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleMerge(item)}
+                      disabled={mergingId === item.id}
+                      className="shrink-0 rounded-xl border border-[rgba(232,160,32,0.4)] bg-[rgba(232,160,32,0.08)] px-3 py-1.5 text-xs font-semibold text-[#a86c08] transition hover:bg-[rgba(232,160,32,0.16)] disabled:opacity-50"
+                    >
+                      {mergingId === item.id ? "Merging…" : "Merge into this"}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 function PatientProfilePage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1504,6 +1702,7 @@ function PatientProfilePage() {
                   {data.patient.patient_identifier || "No OCS care number"}
                 </span>
                 <PatientLinkhamPolicyBadge patient={data.patient} />
+                <LinkStatusBadge status={data.patient.link_status} />
               </div>
               {isPatientSubscribed(data.patient) ? (
                 <HealthPlanBadge className="ml-0" />
@@ -1515,6 +1714,9 @@ function PatientProfilePage() {
           }
           actions={(
             <div className="flex flex-row flex-wrap items-center justify-end gap-3">
+              {canFlagLongTermReview ? (
+                <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
+              ) : null}
               {canFlagLongTermReview ? (
                 <LongTermReviewFlagButton
                   patient={data.patient}
@@ -1597,6 +1799,9 @@ function PatientProfilePage() {
             </div>
           </div>
           <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+            {canFlagLongTermReview ? (
+              <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
+            ) : null}
             {canFlagLongTermReview ? (
               <LongTermReviewFlagButton
                 patient={data.patient}

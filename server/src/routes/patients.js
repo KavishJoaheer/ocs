@@ -1172,6 +1172,80 @@ router.patch("/:id/verify-link", (req, res) => {
   );
 });
 
+// Tables that reference a patient and must be moved when merging a duplicate
+// record into the canonical one. patient_locations has a composite PK so it
+// needs conflict-tolerant handling.
+const PATIENT_CHILD_TABLES = [
+  "appointments",
+  "consultations",
+  "billing",
+  "lab_reports",
+  "lab_report_attachments",
+  "patient_revisions",
+  "patient_operator_access",
+  "visit_requests",
+  "patient_users",
+];
+
+// Merge a duplicate patient record (source) into the canonical one (target).
+// Reassigns all child rows, then soft-deletes the source.
+router.post("/:id/merge", (req, res) => {
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can merge patient records.",
+    });
+  }
+
+  const targetId = Number(req.params.id);
+  const sourceId = Number(req.body.source_id);
+
+  if (!Number.isInteger(sourceId) || sourceId <= 0) {
+    return res.status(400).json({ error: "A valid source_id is required." });
+  }
+
+  if (sourceId === targetId) {
+    return res.status(400).json({ error: "A patient cannot be merged into itself." });
+  }
+
+  const target = getPatientById(targetId);
+  const source = getPatientById(sourceId);
+
+  if (!target) {
+    return res.status(404).json({ error: "Target patient not found." });
+  }
+
+  if (!source) {
+    return res.status(404).json({ error: "Source (duplicate) patient not found." });
+  }
+
+  const merge = db.transaction(() => {
+    for (const table of PATIENT_CHILD_TABLES) {
+      db.prepare(`UPDATE ${table} SET patient_id = ? WHERE patient_id = ?`).run(targetId, sourceId);
+    }
+
+    // Composite PK: move tags that the target doesn't already have, drop the rest.
+    db.prepare(
+      "UPDATE OR IGNORE patient_locations SET patient_id = ? WHERE patient_id = ?",
+    ).run(targetId, sourceId);
+    db.prepare("DELETE FROM patient_locations WHERE patient_id = ?").run(sourceId);
+
+    // Soft-delete the duplicate and mark the surviving record as verified.
+    db.prepare(
+      "UPDATE patients SET deleted_at = datetime('now'), link_status = 'merged' WHERE id = ?",
+    ).run(sourceId);
+    db.prepare("UPDATE patients SET link_status = 'verified' WHERE id = ?").run(targetId);
+  });
+
+  merge();
+
+  res.json(
+    formatPatientRecord({
+      ...getPatientById(targetId),
+      location_tags: getPatientLocationTags(targetId),
+    }),
+  );
+});
+
 router.patch("/:id/long-term-review", (req, res) => {
   if (!["admin", "operator", "doctor"].includes(req.auth.role)) {
     return res.status(403).json({

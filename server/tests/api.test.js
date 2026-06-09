@@ -201,6 +201,74 @@ test("self-registration links to an existing staff record via national ID", asyn
   assert.equal(verified.data.link_status, "verified");
 });
 
+test("staff can merge a duplicate patient into the canonical record", async () => {
+  // Canonical staff record.
+  const targetInsert = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, patient_id_number,
+        age, date_of_birth, gender, contact_number, patient_contact_number,
+        address, link_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+    `)
+    .run(
+      "Merge Target",
+      "Merge",
+      "Target",
+      `OCS-MERGE-${Date.now()}`,
+      `NID-TARGET-${Date.now()}`,
+      50,
+      "1974-01-01",
+      "F",
+      "57001111",
+      "57001111",
+      "Real Chart Address",
+    );
+  const targetId = Number(targetInsert.lastInsertRowid);
+
+  // A self-registered duplicate (separate patient + portal account).
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("dup"),
+      password: "secret123",
+      full_name: "Merge Target",
+      phone: "57002222",
+      date_of_birth: "1974-01-01",
+      gender: "F",
+    },
+  });
+  const dupToken = reg.data.token;
+  const dupProfile = await api("GET", "/api/patient-portal/profile", { token: dupToken });
+  const sourceId = dupProfile.data.profile.id;
+  assert.notEqual(sourceId, targetId);
+
+  const merged = await api("POST", `/api/patients/${targetId}/merge`, {
+    token: adminToken,
+    body: { source_id: sourceId },
+  });
+  assert.equal(merged.status, 200, JSON.stringify(merged.data));
+  assert.equal(merged.data.link_status, "verified");
+
+  // Source is soft-deleted and flagged merged.
+  const sourceRow = db
+    .prepare("SELECT deleted_at, link_status FROM patients WHERE id = ?")
+    .get(sourceId);
+  assert.ok(sourceRow.deleted_at, "source should be soft-deleted");
+  assert.equal(sourceRow.link_status, "merged");
+
+  // The duplicate's portal account now resolves to the canonical chart.
+  const after = await api("GET", "/api/patient-portal/profile", { token: dupToken });
+  assert.equal(after.data.profile.id, targetId);
+  assert.equal(after.data.profile.address, "Real Chart Address");
+
+  // Merging into self is rejected.
+  const selfMerge = await api("POST", `/api/patients/${targetId}/merge`, {
+    token: adminToken,
+    body: { source_id: targetId },
+  });
+  assert.equal(selfMerge.status, 400);
+});
+
 test("home-visit request flows patient -> staff -> patient", async () => {
   const reg = await api("POST", "/api/patient-auth/register", {
     body: {
