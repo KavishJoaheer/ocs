@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -278,8 +278,7 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
                 </p>
               ) : null}
               <p className="mt-3 text-[11px] font-light text-[#8a9ea3]">
-                Uploaded by you on{" "}
-                {dayjs(report.uploaded_at).format("D MMMM YYYY")}
+                Added on {dayjs(report.uploaded_at).format("D MMMM YYYY")}
               </p>
             </div>
           ) : null}
@@ -289,209 +288,7 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
   );
 }
 
-function UploadModal({ open, onClose, onUpload }) {
-  const fileInputRef = useRef(null);
-  const [reportName, setReportName] = useState("");
-  const [reportDate, setReportDate] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [requestedBySource, setRequestedBySource] = useState("OCS Doctor");
-  const [requestedByName, setRequestedByName] = useState("");
-
-  if (!open) return null;
-
-  function resetForm() {
-    setReportName("");
-    setReportDate("");
-    setSelectedFile(null);
-    setDragOver(false);
-    setRequestedBySource("OCS Doctor");
-    setRequestedByName("");
-  }
-
-  function handleClose() {
-    resetForm();
-    onClose();
-  }
-
-  function handleFileSelect(file) {
-    if (!file) return;
-    const isPdf = file.type === "application/pdf";
-    const isImage = file.type.startsWith("image/");
-    if (!isPdf && !isImage) return;
-    setSelectedFile(file);
-    if (!reportName) {
-      setReportName(file.name.replace(/\.[^.]+$/, ""));
-    }
-  }
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!selectedFile || !reportName.trim() || !reportDate) return;
-
-    const isPdf = selectedFile.type === "application/pdf";
-    onUpload({
-      name: reportName.trim(),
-      report_date: reportDate,
-      uploaded_at: dayjs().format("YYYY-MM-DD"),
-      file_type: isPdf ? "PDF" : "Image",
-      url: URL.createObjectURL(selectedFile),
-      requested_by_source: requestedBySource,
-      requested_by: requestedByName.trim(),
-    });
-    resetForm();
-    onClose();
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(34,72,91,0.25)] p-4 backdrop-blur-sm"
-      onClick={handleClose}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border border-[rgba(26,160,140,0.12)] bg-white p-10 shadow-[0_24px_64px_rgba(34,72,91,0.12)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="font-display text-xl font-semibold text-[#22485b]">
-          Upload a Medical Report
-        </h2>
-        <p className="mt-2 text-sm font-light text-[#6e949b]">
-          Add test results, specialist reports or any health documents to your
-          personal records.
-        </p>
-
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <div
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              handleFileSelect(e.dataTransfer.files[0]);
-            }}
-            className={`cursor-pointer rounded-xl border border-transparent px-4 py-8 text-center transition-colors duration-200 active:scale-[0.99] ${
-              dragOver
-                ? "bg-[rgba(26,160,140,0.14)]"
-                : "bg-[rgba(65,200,198,0.08)]"
-            }`}
-          >
-            <FileUp className="mx-auto size-8 text-[#2d8f98]" strokeWidth={1.5} />
-            <p className="mt-3 text-sm text-[#5b7f8a]">
-              {selectedFile
-                ? selectedFile.name
-                : "Tap to scan or upload document"}
-            </p>
-            <p className="mt-1 text-xs font-light text-[#8a9ea3]">
-              PDF and image files only
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,image/*"
-              className="hidden"
-              onChange={(e) => handleFileSelect(e.target.files?.[0])}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="report-name"
-              className="text-xs font-semibold uppercase tracking-[0.15em] text-[#6e949b]"
-            >
-              Report name
-            </label>
-            <input
-              id="report-name"
-              type="text"
-              value={reportName}
-              onChange={(e) => setReportName(e.target.value)}
-              placeholder="Name this report"
-              className="mt-1.5 w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="report-date"
-              className="text-xs font-semibold uppercase tracking-[0.15em] text-[#6e949b]"
-            >
-              Date of report
-            </label>
-            <input
-              id="report-date"
-              type="date"
-              value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
-            />
-          </div>
-
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[#6e949b]">
-              Requested by
-            </span>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              {["OCS Doctor", "External Doctor"].map((source) => (
-                <button
-                  key={source}
-                  type="button"
-                  onClick={() => setRequestedBySource(source)}
-                  className={`rounded-xl border px-4 py-2.5 text-sm transition ${
-                    requestedBySource === source
-                      ? "border-[#2d8f98] bg-[rgba(26,160,140,0.08)] font-medium text-[#1a5c52]"
-                      : "border-[rgba(26,160,140,0.2)] bg-white font-normal text-[#5b7f8a] hover:border-[#2d8f98]"
-                  }`}
-                >
-                  {source}
-                </button>
-              ))}
-            </div>
-            <input
-              id="requested-by-name"
-              type="text"
-              value={requestedByName}
-              onChange={(e) => setRequestedByName(e.target.value)}
-              placeholder={
-                requestedBySource === "OCS Doctor"
-                  ? "Name of OCS doctor who requested this"
-                  : "Name of doctor who requested this"
-              }
-              className="mt-2 w-full rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-2.5 text-sm text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
-            />
-          </div>
-
-          <div className="flex items-center gap-4 pt-2">
-            <button
-              type="submit"
-              disabled={!selectedFile || !reportName.trim() || !reportDate}
-              className="rounded-full bg-[#E8A020] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:active:scale-100"
-            >
-              Upload Report
-            </button>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="text-sm text-[#5b7f8a] transition hover:text-[#2d8f98]"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function MedicalReportsTab({ reports, onUploadClick }) {
+function MedicalReportsTab({ reports }) {
   const [expandedIds, setExpandedIds] = useState(new Set());
 
   function toggleExpanded(id) {
@@ -519,30 +316,19 @@ function MedicalReportsTab({ reports, onUploadClick }) {
             strokeWidth={1.5}
           />
           <h2 className="mt-6 font-display text-2xl font-semibold tracking-tight text-[#22485b]">
-            Your personal health documents live here.
+            Your medical and lab reports live here.
           </h2>
           <p className="mt-3 max-w-md text-sm font-light leading-relaxed text-[#6e949b]">
-            Upload test results, specialist reports or any health records you
-            want to keep safe and accessible.
+            Reports added by your OCS care team after visits and lab work will
+            appear here automatically.
           </p>
-          <button
-            type="button"
-            onClick={onUploadClick}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#e8a020] px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
-          >
-            + Upload Your First Report
-          </button>
         </div>
       ) : (
         <>
           <div className="mb-4 flex justify-end">
-            <button
-              type="button"
-              onClick={onUploadClick}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8a020] px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
-            >
-              + Upload a Report
-            </button>
+            <p className="text-[11px] font-light italic text-[#8a9ea3]">
+              Read only · Added by your OCS care team
+            </p>
           </div>
           <div className="relative">
             <div
@@ -661,7 +447,6 @@ function TabContent({
   summary,
   timeline,
   vitalsTrends,
-  onUploadClick,
   onExport,
   exporting,
 }) {
@@ -681,11 +466,7 @@ function TabContent({
   }
   if (activeTab === "reports") {
     return (
-      <MedicalReportsTab
-        key="reports"
-        reports={medicalReports}
-        onUploadClick={onUploadClick}
-      />
+      <MedicalReportsTab key="reports" reports={medicalReports} />
     );
   }
   return <ClinicalHistoryTab key="clinical" clinicalHistory={clinicalHistory} />;
@@ -696,7 +477,6 @@ function PatientHealthRecords() {
   const [activeTab, setActiveTab] = useState("overview");
   const [displayedTab, setDisplayedTab] = useState("overview");
   const [tabFading, setTabFading] = useState(false);
-  const [uploadOpen, setUploadOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [medicalReports, setMedicalReports] = useState([]);
   const [consultations, setConsultations] = useState([]);
@@ -768,13 +548,6 @@ function PatientHealthRecords() {
     }, 200);
     return () => clearTimeout(timer);
   }, [tabFading, activeTab]);
-
-  function handleUpload(report) {
-    setMedicalReports((prev) => [
-      { ...report, id: Date.now() },
-      ...prev,
-    ]);
-  }
 
   function handleExportPdf() {
     try {
@@ -869,18 +642,11 @@ function PatientHealthRecords() {
             summary={summary}
             timeline={timeline}
             vitalsTrends={vitalsTrends}
-            onUploadClick={() => setUploadOpen(true)}
             onExport={handleExportPdf}
             exporting={exporting}
           />
         )}
       </div>
-
-      <UploadModal
-        open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        onUpload={handleUpload}
-      />
     </div>
   );
 }

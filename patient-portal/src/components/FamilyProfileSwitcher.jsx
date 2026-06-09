@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { AVATAR_STYLES } from "../lib/familyProfiles.js";
 
@@ -21,7 +20,6 @@ function ProfileAvatar({ profile, size = "md" }) {
   );
 }
 
-/* Native bottom sheet used on mobile when the header avatar is tapped. */
 function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -51,7 +49,6 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles
       />
 
       <div className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-[24px] bg-white pb-[max(env(safe-area-inset-bottom),16px)] shadow-[0_-8px_40px_rgba(13,42,46,0.18)]">
-        {/* Drag handle */}
         <div className="flex justify-center pt-3">
           <span className="h-[5px] w-[40px] rounded-full bg-[rgba(13,42,46,0.18)]" aria-hidden="true" />
         </div>
@@ -88,19 +85,6 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles
             );
           })}
         </div>
-
-        <div className="mx-5 border-t border-[rgba(26,160,140,0.1)]" />
-
-        <Link
-          to="/profile/add-dependent"
-          onClick={onClose}
-          className="mx-3 flex min-h-[56px] items-center gap-4 rounded-2xl px-3 text-[#2d8f98] transition active:bg-[rgba(26,160,140,0.08)]"
-        >
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-dashed border-[rgba(45,143,152,0.4)]">
-            <Plus className="size-5" strokeWidth={2} />
-          </span>
-          <span className="text-[16px] font-medium">Add Family Member</span>
-        </Link>
       </div>
     </div>
   );
@@ -111,9 +95,10 @@ function FamilyProfileSwitcher({ variant = "default" }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const isAvatar = variant === "avatar";
+  const canSwitch = profiles.length > 1;
 
   useEffect(() => {
-    if (!open || isAvatar) return undefined;
+    if (!open || isAvatar || !canSwitch) return undefined;
 
     function handlePointerDown(event) {
       if (rootRef.current && !rootRef.current.contains(event.target)) {
@@ -133,14 +118,32 @@ function FamilyProfileSwitcher({ variant = "default" }) {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, isAvatar]);
+  }, [open, isAvatar, canSwitch]);
 
   function handleSelect(profileId) {
     setActiveProfile(profileId);
     setOpen(false);
   }
 
-  // ─── Mobile: avatar trigger + native bottom sheet ───
+  if (!canSwitch) {
+    if (isAvatar) {
+      return (
+        <div className="flex size-11 items-center justify-center" aria-hidden="true">
+          <ProfileAvatar profile={activeProfile} size="header" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1 py-1">
+        <ProfileAvatar profile={activeProfile} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-light text-[#6e949b]">{activeProfile.relationship}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (isAvatar) {
     return (
       <>
@@ -165,7 +168,6 @@ function FamilyProfileSwitcher({ variant = "default" }) {
     );
   }
 
-  // ─── Desktop: inline dropdown ───
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1">
       <button
@@ -218,15 +220,6 @@ function FamilyProfileSwitcher({ variant = "default" }) {
               </div>
             );
           })}
-
-          <div className="mx-4 border-t border-[rgba(26,160,140,0.08)]" />
-          <Link
-            to="/profile/add-dependent"
-            onClick={() => setOpen(false)}
-            className="block px-4 py-3 text-[13px] font-normal text-[#5f9aa0] transition hover:text-[#2d8f98]"
-          >
-            + Add Family Member
-          </Link>
         </div>
       ) : null}
     </div>
