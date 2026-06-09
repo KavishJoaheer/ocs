@@ -25,7 +25,7 @@ function toPoint(value, index, count, scale, innerWidth, innerHeight) {
 }
 
 function formatDateLabel(date) {
-  return dayjs(date).format("D MMM");
+  return dayjs(date).format("D MMMM YYYY");
 }
 
 function EmptyTrendState({ label }) {

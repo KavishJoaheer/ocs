@@ -1,4 +1,10 @@
 import { Activity, AlertTriangle, CalendarDays, Download, HeartPulse } from "lucide-react";
+import { Fragment } from "react";
+import {
+  countVitalsDataPoints,
+  formatHealthDate,
+  formatHealthRecordsText,
+} from "../../lib/healthRecordsDisplay.js";
 import {
   BloodPressureTrendChart,
   SingleMetricTrendChart,
@@ -29,7 +35,7 @@ export function HealthSummaryCard({ summary, onExport, exporting }) {
             Your health summary
           </p>
           <h2 className="mt-2 font-display text-xl font-semibold tracking-tight text-[#22485b] sm:text-2xl">
-            {summary.headline}
+            {formatHealthRecordsText(summary.headline)}
           </h2>
         </div>
         <button
@@ -48,7 +54,7 @@ export function HealthSummaryCard({ summary, onExport, exporting }) {
           {summary.bullets.map((bullet) => (
             <li key={bullet} className="flex gap-3 text-sm leading-relaxed text-[#5b7f8a]">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#2d8f98]" />
-              <span>{bullet}</span>
+              <span>{formatHealthRecordsText(bullet)}</span>
             </li>
           ))}
         </ul>
@@ -75,7 +81,72 @@ export function HealthSummaryCard({ summary, onExport, exporting }) {
   );
 }
 
+export function MobileHealthSummaryCard({ summary, onExport, exporting }) {
+  if (!summary) {
+    return null;
+  }
+
+  const lastSeenLabel = summary.last_visit_date
+    ? `Last seen ${formatHealthDate(summary.last_visit_date)}`
+    : "No visits recorded yet";
+
+  return (
+    <section
+      className="relative rounded-[16px] p-5 shadow-[0_2px_12px_rgba(26,160,140,0.08)]"
+      style={{
+        background: "linear-gradient(135deg, #1a5c52 0%, #0D9E8A 100%)",
+      }}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-white/70">
+        Your Health Summary
+      </p>
+      <p className="mt-2 text-[14px] font-normal leading-[1.5] text-white/85">{lastSeenLabel}</p>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={exporting}
+          className="inline-flex h-9 items-center gap-1.5 rounded-[20px] bg-white px-4 text-[13px] font-semibold text-[#1a5c52] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Download className="size-3.5" strokeWidth={1.75} />
+          {exporting ? "Preparing…" : "Download PDF"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function MobileHealthStatsRow({ summary }) {
+  if (!summary) return null;
+
+  const items = [
+    { label: "Visits", value: summary.consultation_count ?? 0 },
+    { label: "Conditions", value: summary.medical_history_count ?? 0 },
+    { label: "Allergies", value: summary.allergy_count ?? 0 },
+  ];
+
+  return (
+    <section className="flex items-center justify-around rounded-[12px] bg-white px-4 py-3.5 shadow-[0_2px_12px_rgba(26,160,140,0.08)]">
+      {items.map((item, index) => (
+        <Fragment key={item.label}>
+          {index > 0 ? (
+            <div className="h-8 w-px shrink-0 bg-[rgba(26,160,140,0.1)]" aria-hidden="true" />
+          ) : null}
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-[22px] font-bold leading-[1.5] text-[#1a5c52]">{item.value}</p>
+            <p className="text-[10px] leading-[1.5] text-[#5b7f8a]">{item.label}</p>
+          </div>
+        </Fragment>
+      ))}
+    </section>
+  );
+}
+
 export function VitalsTrendsPanel({ vitalsTrends }) {
+  if (countVitalsDataPoints(vitalsTrends) < 3) {
+    return null;
+  }
+
   const glucoseUnit =
     vitalsTrends?.glucose?.find((item) => item.unit)?.unit || "mmol/L";
 
