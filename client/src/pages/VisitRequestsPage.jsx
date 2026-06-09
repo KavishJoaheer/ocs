@@ -17,6 +17,7 @@ import { api } from "../lib/api.js";
 import { formatDate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
@@ -487,6 +488,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
 
 export default function VisitRequestsPage() {
   const { user } = useAuth();
+  const refreshKey = useLiveRefreshKey();
   const isDoctor = user?.role === "doctor";
   const canAssignDoctor = !isDoctor;
   const boardColumns = isDoctor ? DOCTOR_BOARD_COLUMNS : DISPATCH_BOARD_COLUMNS;
@@ -538,7 +540,7 @@ export default function VisitRequestsPage() {
   useEffect(() => {
     setLoading(true);
     loadRequests();
-  }, [loadRequests]);
+  }, [loadRequests, refreshKey]);
 
   // Keep the board live: poll quietly and tick the SLA timers every second.
   useEffect(() => {

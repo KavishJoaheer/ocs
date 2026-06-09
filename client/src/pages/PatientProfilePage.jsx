@@ -2152,7 +2152,7 @@ function PatientProfilePage() {
                                       View only
                                     </span>
                                   ) : null}
-                                  {canModifyClinicalData && canEditRow ? (
+                                  {user.role === "admin" && canEditRow ? (
                                     <button
                                       type="button"
                                       onClick={() => setConsultationToDelete(consultation)}
@@ -2664,7 +2664,7 @@ function PatientProfilePage() {
                                       View only
                                     </span>
                                   ) : null}
-                                  {canModifyClinicalData && canEditRow ? (
+                                  {user.role === "admin" && canEditRow ? (
                                     <button
                                       type="button"
                                       onClick={() => setConsultationToDelete(consultation)}

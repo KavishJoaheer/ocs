@@ -97,7 +97,7 @@ router.get("/dashboard", (req, res) => {
     `)
     .get(patientId);
 
-  const nextAppointment = db
+  const nextAppointmentRow = db
     .prepare(`
       SELECT
         a.*,
@@ -111,6 +111,16 @@ router.get("/dashboard", (req, res) => {
       LIMIT 1
     `)
     .get(patientId);
+
+  const nextAppointment = nextAppointmentRow
+    ? {
+        id: nextAppointmentRow.id,
+        date: nextAppointmentRow.appointment_date,
+        time: nextAppointmentRow.appointment_time,
+        doctor_name: nextAppointmentRow.doctor_name,
+        status: nextAppointmentRow.status,
+      }
+    : null;
 
   const lastConsultationRow = db
     .prepare(`

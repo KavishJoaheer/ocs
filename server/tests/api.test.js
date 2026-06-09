@@ -524,6 +524,10 @@ test("patient dashboard returns stats and recent activity", async () => {
   assert.ok(Array.isArray(dashboard.data.recent_activity));
   assert.equal(dashboard.data.recent_activity.length, 1);
   assert.match(dashboard.data.recent_activity[0].description, /Seasonal allergy/i);
+  assert.ok(dashboard.data.next_appointment);
+  assert.ok(dashboard.data.next_appointment.date);
+  assert.equal(dashboard.data.next_appointment.time, "11:00");
+  assert.ok(dashboard.data.next_appointment.doctor_name);
 });
 
 test("patient billing returns bills and summary totals", async () => {
