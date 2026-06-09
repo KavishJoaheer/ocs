@@ -23,6 +23,8 @@ import ProfileHeader from "../components/profile/ProfileHeader.jsx";
 import ProfileListCard from "../components/profile/ProfileListCard.jsx";
 import ProfileListRow from "../components/profile/ProfileListRow.jsx";
 import ProfileCardAction from "../components/profile/ProfileCardAction.jsx";
+import ProfileSectionHeader from "../components/profile/ProfileSectionHeader.jsx";
+import ProfilePrimaryCareCard from "../components/profile/ProfilePrimaryCareCard.jsx";
 
 function InlineInput({ value, onChange, placeholder, type = "text" }) {
   return (
@@ -158,22 +160,25 @@ function PatientProfile() {
 
   if (loading) {
     return (
-      <div className="native-screen space-y-4">
-        <div className="squircle-outer mx-auto h-24 w-24 animate-pulse bg-white/70" />
-        <div className="squircle-outer h-48 animate-pulse bg-white/70" />
-        <div className="squircle-outer h-40 animate-pulse bg-white/70" />
+      <div className="profile-screen native-screen">
+        <div className="profile-teal-band animate-pulse" aria-hidden="true" />
+        <div className="profile-content space-y-4">
+          <div className="profile-concierge-avatar mx-auto animate-pulse bg-white/80" />
+          <div className="profile-card-elevate h-48 animate-pulse rounded-[18px] bg-white/70" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="native-screen mx-auto max-w-[720px] space-y-5 pb-4">
+    <div className="profile-screen native-screen mx-auto max-w-[720px]">
       <ProfileHeader
         fullName={user?.full_name}
         initials={initials}
         ocsCareNumber={profile?.ocs_care_number}
       />
 
+      <div className="profile-content space-y-5">
       {/* Card 1 — Personal Information */}
       <ProfileListCard title="Personal Information">
         <ProfileListRow icon={UserCircle} label="Full Name" value={formatDisplayName(user?.full_name)} />
@@ -187,6 +192,12 @@ function PatientProfile() {
         />
         <ProfileListRow icon={Heart} label="Gender" value={genderLabel} isLast />
       </ProfileListCard>
+
+      {/* Primary Care Provider */}
+      <div>
+        <ProfileSectionHeader title="Primary Care Provider" subtitle="Managed by OCS" />
+        <ProfilePrimaryCareCard doctorName={profile?.assigned_doctor_name} />
+      </div>
 
       {/* Card 2 — Contact Details */}
       <ProfileListCard
@@ -255,7 +266,7 @@ function PatientProfile() {
           ) : (
             <p
               className={[
-                "mt-0.5 text-[15px] font-medium",
+                "mt-0.5 text-[15px] font-semibold",
                 billingForm.insurance_provider ? "text-[#1a5c52]" : "text-[#8a9e9a]",
               ].join(" ")}
             >
@@ -275,7 +286,7 @@ function PatientProfile() {
           ) : (
             <p
               className={[
-                "mt-0.5 text-[15px] font-medium",
+                "mt-0.5 text-[15px] font-semibold",
                 billingForm.insurance_policy_number ? "text-[#1a5c52]" : "text-[#8a9e9a]",
               ].join(" ")}
             >
@@ -305,11 +316,12 @@ function PatientProfile() {
       <button
         type="button"
         onClick={() => logout()}
-        className="profile-sign-out-btn mt-2 flex w-full items-center justify-center gap-2 lg:hidden"
+        className="profile-sign-out-btn mt-4 flex w-full items-center justify-center gap-2 lg:hidden"
       >
         <LogOut className="size-4" strokeWidth={1.75} />
         Sign Out
       </button>
+      </div>
     </div>
   );
 }

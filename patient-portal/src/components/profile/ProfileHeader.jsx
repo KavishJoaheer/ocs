@@ -12,17 +12,16 @@ function ProfileHeader({ fullName, initials, ocsCareNumber }) {
   const idLabel = formatOcsId(ocsCareNumber);
 
   return (
-    <header className="flex flex-col items-center pb-2 pt-2 text-center">
-      <div className="native-avatar-btn flex size-20 items-center justify-center rounded-full text-[22px] shadow-[var(--native-shadow-ambient)]">
-        {initials}
-      </div>
-      <h1 className="native-display mt-4 text-[24px] leading-tight text-[#1a5c52]">
-        {formatDisplayName(fullName)}
-      </h1>
-      {idLabel ? (
-        <span className="profile-id-badge mt-3">{idLabel}</span>
-      ) : null}
-    </header>
+    <>
+      <div className="profile-teal-band" aria-hidden="true" />
+      <header className="profile-identity-header">
+        <div className="profile-concierge-avatar">{initials}</div>
+        <h1 className="native-display mt-4 text-[24px] leading-tight text-[#1a5c52]">
+          {formatDisplayName(fullName)}
+        </h1>
+        {idLabel ? <span className="profile-id-badge mt-3">{idLabel}</span> : null}
+      </header>
+    </>
   );
 }
 
