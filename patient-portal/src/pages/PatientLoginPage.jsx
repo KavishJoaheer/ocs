@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { formatDisplayName } from "../lib/formatDisplayName.js";
 
 const STAFF_PORTAL_URL =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
@@ -26,7 +27,7 @@ function PatientLoginPage() {
 
     login(form)
       .then((signedInUser) => {
-        toast.success(`Welcome back, ${signedInUser.full_name}!`);
+        toast.success(`Welcome back, ${formatDisplayName(signedInUser.full_name)}!`);
         navigate(location.state?.from?.pathname || "/dashboard", { replace: true });
       })
       .catch((error) => {

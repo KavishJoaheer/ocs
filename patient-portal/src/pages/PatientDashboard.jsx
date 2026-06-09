@@ -7,7 +7,6 @@ import {
   TrendingUp,
   ArrowRight,
   CalendarCheck,
-  History,
   Sparkles,
   HousePlus,
   Clock,
@@ -54,13 +53,11 @@ function StatCard({ icon: Icon, label, value, color, delay }) {
 
 function NoActiveVisit() {
   return (
-    <div className="flex flex-col items-start py-6">
-      <HousePlus className="size-8 text-[#7fd1ca]" strokeWidth={1.5} />
-      <h3 className="mt-6 font-display text-xl font-semibold tracking-tight text-[#22485b]">
-        No active visit
-      </h3>
-      <p className="mt-3 max-w-sm text-sm leading-relaxed text-[#5b7f8a]">
-        Your next home visit will appear here once confirmed.
+    <div className="flex h-14 max-h-14 items-center gap-3 rounded-[10px] bg-[rgba(26,160,140,0.04)] px-5">
+      <HousePlus className="size-5 shrink-0 text-[#2d8f98]" strokeWidth={1.5} />
+      <p className="shrink-0 text-sm font-bold text-[#1a5c52]">No active visit</p>
+      <p className="text-[13px] text-[#5b7f8a]">
+        Request a visit and your doctor&apos;s details will appear here.
       </p>
     </div>
   );
@@ -316,7 +313,6 @@ function PatientDashboard() {
   const { activeProfile, activeProfileId } = useFamilyProfile();
   const [stats, setStats] = useState(null);
   const [nextAppointment, setNextAppointment] = useState(null);
-  const [recentActivity, setRecentActivity] = useState([]);
   const [lastConsultation, setLastConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeVisit, setActiveVisit] = useState(null);
@@ -334,7 +330,6 @@ function PatientDashboard() {
         if (!ignore) {
           setStats(data.stats || { upcoming_appointments: 0, pending_bills: 0, total_visits: 0 });
           setNextAppointment(data.next_appointment || null);
-          setRecentActivity(data.recent_activity || []);
           setLastConsultation(data.last_consultation || null);
           setActiveVisit(visitData.visit_request || null);
         }
@@ -342,7 +337,6 @@ function PatientDashboard() {
         if (!ignore) {
           setStats({ upcoming_appointments: 0, pending_bills: 0, total_visits: 0 });
           setNextAppointment(null);
-          setRecentActivity([]);
           setLastConsultation(null);
           setActiveVisit(null);
         }
@@ -387,9 +381,6 @@ function PatientDashboard() {
   const profileNextAppointment = isPrimaryProfile
     ? nextAppointment
     : dependentDashboard?.nextAppointment ?? null;
-  const profileRecentActivity = isPrimaryProfile
-    ? recentActivity
-    : dependentDashboard?.recentActivity ?? [];
   const profileLastConsultation = isPrimaryProfile
     ? lastConsultation
     : dependentDashboard?.lastConsultation ?? null;
@@ -439,7 +430,7 @@ function PatientDashboard() {
   return (
     <>
     {/* ───────── Desktop dashboard ───────── */}
-    <div className="space-y-12 max-md:hidden">
+    <div className="space-y-5 max-md:hidden">
       {/* Welcome header */}
       <div className="relative -mx-6 px-6 pt-12 sm:-mx-10 sm:px-10 lg:-mx-12 lg:px-12">
         <div
@@ -466,85 +457,54 @@ function PatientDashboard() {
         </div>
       </div>
 
-      <div key={activeProfileId} className="dashboard-profile-transition space-y-12">
-      {/* Stats cards — only shown when at least one value is greater than zero */}
+      <div key={activeProfileId} className="dashboard-profile-transition space-y-5">
+      {/* Stats cards — only shown when value is greater than zero */}
       {hasStats && (
         <div className="grid gap-5 sm:grid-cols-3">
-          <StatCard
-            icon={CalendarCheck}
-            label="Upcoming"
-            value={profileStats?.upcoming_appointments ?? 0}
-            color="linear-gradient(135deg, #41c8c6, #2d8f98)"
-            delay={1}
-          />
-          <StatCard
-            icon={CreditCard}
-            label="Pending Bills"
-            value={profileStats?.pending_bills ?? 0}
-            color="linear-gradient(135deg, #f2c14d, #e6a817)"
-            delay={2}
-          />
-          <StatCard
-            icon={TrendingUp}
-            label="Total Visits"
-            value={profileStats?.total_visits ?? 0}
-            color="linear-gradient(135deg, #70ddd2, #41c8c6)"
-            delay={3}
-          />
+          {(profileStats?.upcoming_appointments ?? 0) > 0 ? (
+            <StatCard
+              icon={CalendarCheck}
+              label="Upcoming"
+              value={profileStats.upcoming_appointments}
+              color="linear-gradient(135deg, #41c8c6, #2d8f98)"
+              delay={1}
+            />
+          ) : null}
+          {(profileStats?.pending_bills ?? 0) > 0 ? (
+            <StatCard
+              icon={CreditCard}
+              label="Pending Bills"
+              value={profileStats.pending_bills}
+              color="linear-gradient(135deg, #f2c14d, #e6a817)"
+              delay={2}
+            />
+          ) : null}
+          {(profileStats?.total_visits ?? 0) > 0 ? (
+            <StatCard
+              icon={TrendingUp}
+              label="Total Visits"
+              value={profileStats.total_visits}
+              color="linear-gradient(135deg, #70ddd2, #41c8c6)"
+              delay={3}
+            />
+          ) : null}
         </div>
       )}
 
       {loading && isPrimaryProfile ? (
-        <div className="h-44 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+        <div className="h-14 animate-pulse rounded-[10px] bg-[rgba(65,200,198,0.06)]" />
       ) : (
         <>
           <section className="animate-fade-in-up stagger-4">
             {profileActiveVisit ? (
               <ActiveVisitCard visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
             ) : (
-              <div className="rounded-2xl bg-[rgba(26,160,140,0.05)] p-10">
-                <NoActiveVisit />
-              </div>
+              <NoActiveVisit />
             )}
           </section>
 
           {profileLastConsultation ? (
             <LastConsultationCard consultation={profileLastConsultation} />
-          ) : null}
-
-          {profileRecentActivity.length > 0 ? (
-            <section className="animate-fade-in-up stagger-6 py-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <History className="size-4 text-[#2d8f98]" />
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-                    Past Consultations
-                  </h2>
-                </div>
-                <Link
-                  to="/consultations"
-                  className="flex items-center gap-1 text-xs font-semibold text-[#2d8f98] transition hover:text-[#277f88]"
-                >
-                  View all <ArrowRight className="size-3" />
-                </Link>
-              </div>
-              <div className="mt-5 space-y-3">
-                {profileRecentActivity.slice(0, 5).map((activity, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-3 rounded-2xl border border-[rgba(65,200,198,0.1)] bg-white/70 px-4 py-3"
-                  >
-                    <div className="h-2 w-2 rounded-full bg-[#41c8c6]" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-[#22485b]">{activity.description}</p>
-                      <p className="text-xs text-[#6e949b]">
-                        {dayjs(activity.date).format("MMM D, YYYY")}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
           ) : null}
         </>
       )}

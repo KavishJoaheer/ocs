@@ -12,6 +12,7 @@ import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { exportHealthRecordsPdf } from "../lib/healthRecordsExport.js";
+import { formatDisplayName } from "../lib/formatDisplayName.js";
 import {
   HealthSummaryCard,
   VitalsTrendsPanel,
@@ -553,7 +554,7 @@ function PatientHealthRecords() {
     try {
       setExporting(true);
       exportHealthRecordsPdf({
-        patientName: user?.full_name || "Patient",
+        patientName: formatDisplayName(user?.full_name) || "Patient",
         summary,
         clinical: clinicalHistory,
         consultations,

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
 import { api } from "../../lib/api.js";
+import { formatDisplayName } from "../../lib/formatDisplayName.js";
 import { URGENCY_META } from "./urgency.js";
 
 function SummaryRow({ label, children }) {
@@ -24,7 +25,7 @@ function RequestVisitReview() {
   const [submitting, setSubmitting] = useState(false);
 
   const visitForName =
-    draft.visitFor === "myself" ? user?.full_name || "Myself" : "A dependent";
+    draft.visitFor === "myself" ? formatDisplayName(user?.full_name) || "Myself" : "A dependent";
   const urgency = URGENCY_META[draft.urgency] || URGENCY_META.routine;
 
   async function handleConfirm() {

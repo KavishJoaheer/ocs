@@ -17,6 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { formatDisplayName } from "../lib/formatDisplayName.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 
@@ -129,7 +130,7 @@ function PatientProfile() {
           </div>
           <div className="text-center sm:text-left">
             <h1 className="font-display text-2xl tracking-tight text-slate-950 sm:text-3xl">
-              {user?.full_name}
+              {formatDisplayName(user?.full_name)}
             </h1>
             <p className="mt-1 text-sm text-[#5b7f8a]">{user?.email}</p>
             {profile?.ocs_care_number && (
@@ -157,7 +158,7 @@ function PatientProfile() {
         </p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <ReadOnlyField icon={UserCircle} label="Full Name" value={user?.full_name} />
+          <ReadOnlyField icon={UserCircle} label="Full Name" value={formatDisplayName(user?.full_name)} />
           <ReadOnlyField icon={Mail} label="Email" value={user?.email} />
           <ReadOnlyField
             icon={Calendar}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { formatDisplayName } from "../lib/formatDisplayName.js";
 
 const STAFF_PORTAL_URL =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
@@ -71,7 +72,7 @@ function PatientRegisterPage() {
       password: form.password,
     })
       .then((newUser) => {
-        toast.success(`Welcome, ${newUser.full_name}! Your account has been created.`);
+        toast.success(`Welcome, ${formatDisplayName(newUser.full_name)}! Your account has been created.`);
         navigate("/dashboard", { replace: true });
       })
       .catch((error) => {

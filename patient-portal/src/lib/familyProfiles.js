@@ -1,3 +1,5 @@
+import { formatDisplayName } from "./formatDisplayName.js";
+
 export const AVATAR_STYLES = {
   teal: "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white",
   amber: "bg-[#e8a020] text-white",
@@ -13,7 +15,8 @@ export const PRIMARY_PROFILE_ID = "primary";
  * yet, so the only profile is the authenticated patient themselves.
  */
 export function buildPrimaryProfile(user) {
-  const name = String(user?.full_name || "Your Account").trim() || "Your Account";
+  const rawName = String(user?.full_name || "Your Account").trim() || "Your Account";
+  const name = formatDisplayName(rawName);
   const parts = name.split(/\s+/).filter(Boolean);
   const firstName = parts[0] || "You";
   const initials = (
