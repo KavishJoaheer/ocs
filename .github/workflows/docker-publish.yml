@@ -43,6 +43,23 @@ jobs:
             --push \
             .
 
+      - name: Smoke test published main image boots
+        env:
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/clinicflow:latest
+        run: |
+          docker pull "${IMAGE}"
+          cid="$(docker run -d --rm -e NODE_ENV=production -e DB_PATH=/tmp/smoke.db "${IMAGE}")"
+          trap 'docker stop "${cid}" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec "${cid}" node -e "fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::API did not become healthy after image pull"
+          docker logs "${cid}" || true
+          exit 1
+
       - name: Build and push patient portal image
         env:
           IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/clinicflow-patient-portal

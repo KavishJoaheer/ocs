@@ -22,6 +22,10 @@ RUN npm ci --omit=dev
 
 COPY server ./
 
+# Guard against shipping an API image that references modules missing from the build context.
+RUN test -f src/lib/patientBilling.js \
+  && node -e "require('./src/lib/patientBilling'); require('./src/app');"
+
 
 FROM node:22-bookworm-slim
 
