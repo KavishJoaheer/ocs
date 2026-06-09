@@ -1,15 +1,10 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import {
-  CreditCard,
-  Headset,
-  HousePlus,
-  Moon,
-  Sun,
-  Sunset,
-  TrendingUp,
-} from "lucide-react";
+import { HousePlus, MessageCircle, Moon, Phone, Sun, Sunset } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
+
+const OCS_CARE_TEL = "52522234";
+const OCS_CARE_DISPLAY = "52 52 22 34";
 
 function doctorInitials(name) {
   const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
@@ -26,43 +21,59 @@ function getTimeOfDayIcon() {
   return Moon;
 }
 
-function DesktopStatWidget({ label, value, icon: Icon, tone }) {
+function DesktopCareTeamCard({ doctorName }) {
+  const displayName = doctorName ? formatDoctorName(doctorName) : "Your OCS care team";
+  const isAssigned = Boolean(doctorName);
+
   return (
-    <div className="desktop-stat-widget">
-      <div className={`desktop-stat-icon desktop-stat-icon--${tone}`}>
-        <Icon className="size-5" strokeWidth={1.75} />
+    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-1">
+      <p className="desktop-section-label">Your Care Team</p>
+
+      <div className="mt-5 flex items-center gap-4">
+        <div className="relative shrink-0">
+          <div
+            className="flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-base font-bold text-white"
+            aria-hidden="true"
+          >
+            {doctorInitials(doctorName || "Care Team")}
+          </div>
+          <span
+            className="absolute bottom-0.5 right-0.5 size-3.5 rounded-full border-2 border-white bg-[#34c759]"
+            aria-label="Available"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base font-bold leading-snug text-[#1a5c52]">
+            {displayName}
+          </p>
+          <p className="mt-0.5 text-sm text-[#8a9e9a]">
+            {isAssigned ? "Primary Care Physician" : "Assigning your physician shortly"}
+          </p>
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="desktop-stat-label">{label}</p>
-        <p className="desktop-stat-value">{value}</p>
-      </div>
-    </div>
+
+      <a href={`tel:${OCS_CARE_TEL}`} className="desktop-care-team-action">
+        <MessageCircle className="size-4 shrink-0" strokeWidth={1.75} />
+        Message Care Team
+      </a>
+    </section>
   );
 }
 
-function DesktopHelpCard() {
+function DesktopConciergeCard() {
   return (
-    <section className="desktop-support-card desktop-card-hover animate-fade-in-up stagger-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a9e9a]">
-        Need help?
+    <section className="desktop-concierge-card desktop-concierge-card-hover animate-fade-in-up stagger-2">
+      <p className="font-display text-sm font-semibold text-ocs-orange">We&apos;re here for you.</p>
+      <h2 className="mt-3 font-display text-2xl font-bold leading-tight tracking-tight text-white">
+        24/7 Medical Concierge
+      </h2>
+      <p className="mt-2 text-sm leading-relaxed text-white/70">
+        Immediate support for your health, day or night.
       </p>
-      <p className="mt-3 font-display text-base font-bold text-[#1a5c52]">
-        Your dedicated care concierge
-      </p>
-      <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
-        Priority support for appointments, billing, and clinical questions — any time.
-      </p>
-      <div className="mt-6 flex items-center gap-4">
-        <div className="desktop-support-phone-icon" aria-hidden="true">
-          <Headset className="size-5 text-ocs-orange" strokeWidth={1.75} />
-        </div>
-        <a
-          href="tel:52522234"
-          className="desktop-support-phone transition hover:text-[#2d8f98]"
-        >
-          52 52 22 34
-        </a>
-      </div>
+      <a href={`tel:${OCS_CARE_TEL}`} className="desktop-concierge-dial mt-7">
+        <Phone className="size-5 shrink-0 text-white" strokeWidth={2} />
+        <span>{OCS_CARE_DISPLAY}</span>
+      </a>
     </section>
   );
 }
@@ -121,14 +132,11 @@ function DesktopLastVisitCard({ consultation }) {
 
 function DesktopDashboardHome({
   subline,
-  isPrimaryProfile,
-  profileStats,
   profileLastConsultation,
   activeVisitSlot,
   headline,
+  careTeamDoctorName,
 }) {
-  const pendingBills = profileStats?.pending_bills ?? 0;
-  const totalVisits = profileStats?.total_visits ?? 0;
   const TimeIcon = getTimeOfDayIcon();
 
   return (
@@ -172,26 +180,8 @@ function DesktopDashboardHome({
         </div>
 
         <div className="desktop-dashboard-col">
-          {isPrimaryProfile ? (
-            <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-1">
-              <div className="flex flex-col gap-7">
-                <DesktopStatWidget
-                  label="Pending Bills"
-                  value={pendingBills}
-                  icon={CreditCard}
-                  tone="orange"
-                />
-                <DesktopStatWidget
-                  label="Total Visits"
-                  value={totalVisits}
-                  icon={TrendingUp}
-                  tone="teal"
-                />
-              </div>
-            </section>
-          ) : null}
-
-          <DesktopHelpCard />
+          <DesktopCareTeamCard doctorName={careTeamDoctorName} />
+          <DesktopConciergeCard />
         </div>
       </div>
     </div>

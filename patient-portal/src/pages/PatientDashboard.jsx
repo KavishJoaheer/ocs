@@ -211,7 +211,7 @@ function MobileActiveVisit({ visit, onCancelled }) {
 
 function PatientDashboard() {
   const { activeProfile, activeProfileId } = useFamilyProfile();
-  const [stats, setStats] = useState(null);
+  const [patient, setPatient] = useState(null);
   const [nextAppointment, setNextAppointment] = useState(null);
   const [lastConsultation, setLastConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -232,7 +232,7 @@ function PatientDashboard() {
           api.get("/patient-portal/visit-requests/active").catch(() => ({ visit_request: null })),
         ]);
         if (!ignore) {
-          setStats(data.stats || { upcoming_appointments: 0, pending_bills: 0, total_visits: 0 });
+          setPatient(data.patient || null);
           setNextAppointment(data.next_appointment || null);
           setLastConsultation(data.last_consultation || null);
           setActiveVisit(visitData.visit_request || null);
@@ -284,13 +284,15 @@ function PatientDashboard() {
   const dependentDashboard = DEPENDENT_DASHBOARD[activeProfileId];
   const isPrimaryProfile = activeProfile.isPrimary;
 
-  const profileStats = isPrimaryProfile ? stats : dependentDashboard?.stats ?? null;
   const profileNextAppointment = isPrimaryProfile
     ? nextAppointment
     : dependentDashboard?.nextAppointment ?? null;
   const profileLastConsultation = isPrimaryProfile
     ? lastConsultation
     : dependentDashboard?.lastConsultation ?? null;
+  const careTeamDoctorName = isPrimaryProfile
+    ? patient?.assigned_doctor_name || profileLastConsultation?.doctor_name || null
+    : dependentDashboard?.careTeamDoctorName ?? profileLastConsultation?.doctor_name ?? null;
   const profileActiveVisit = isPrimaryProfile
     ? primaryActiveVisit
     : dependentDashboard?.activeVisit ?? null;
@@ -342,8 +344,8 @@ function PatientDashboard() {
           <div className="desktop-dashboard-grid">
             <div className="desktop-card h-56 animate-pulse" />
             <div className="desktop-dashboard-col">
-              <div className="desktop-card h-32 animate-pulse" />
               <div className="desktop-card h-44 animate-pulse" />
+              <div className="desktop-concierge-card h-52 animate-pulse opacity-80" />
             </div>
           </div>
         </div>
@@ -356,8 +358,7 @@ function PatientDashboard() {
           <DesktopDashboardHome
             headline={headline}
             subline={subline}
-            isPrimaryProfile={isPrimaryProfile}
-            profileStats={profileStats}
+            careTeamDoctorName={careTeamDoctorName}
             profileLastConsultation={profileLastConsultation}
             activeVisitSlot={
               profileActiveVisit ? (

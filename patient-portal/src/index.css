@@ -805,7 +805,15 @@ table {
 .desktop-dashboard-col {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
+}
+
+.desktop-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #8a9e9a;
 }
 
 @media (max-width: 1280px) {
@@ -833,76 +841,89 @@ table {
   box-shadow: var(--desktop-card-shadow-hover);
 }
 
-.desktop-stat-widget {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.desktop-stat-icon {
+.desktop-care-team-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
+  gap: 8px;
+  width: 100%;
+  margin-top: 20px;
+  padding: 13px 16px;
   border-radius: 12px;
-}
-
-.desktop-stat-icon--teal {
-  background: rgba(26, 160, 140, 0.1);
-  color: #2d8f98;
-}
-
-.desktop-stat-icon--orange {
-  background: rgba(232, 160, 32, 0.12);
-  color: #c88710;
-}
-
-.desktop-stat-label {
-  font-size: 10px;
+  background: rgba(26, 92, 82, 0.05);
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #8a9e9a;
-}
-
-.desktop-stat-value {
-  margin-top: 4px;
-  font-family: var(--font-display);
-  font-size: 2.5rem;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  color: #1a5c52;
-}
-
-.desktop-support-card {
-  border-radius: var(--desktop-card-radius);
-  padding: 32px;
-  border: var(--desktop-card-border);
-  background: linear-gradient(135deg, #ffffff 0%, #f0f7f7 100%);
-  box-shadow: var(--desktop-card-shadow);
-}
-
-.desktop-support-phone-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: rgba(232, 160, 32, 0.14);
-}
-
-.desktop-support-phone {
-  font-family: var(--font-display);
-  font-size: 1.75rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
   color: #1a5c52;
   text-decoration: none;
+  transition:
+    background 200ms ease,
+    color 200ms ease;
+}
+
+.desktop-care-team-action:hover {
+  background: rgba(26, 92, 82, 0.09);
+  color: #134e4f;
+}
+
+.desktop-concierge-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--desktop-card-radius);
+  padding: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(145deg, #0f4548 0%, #1a5c52 52%, #134e4f 100%);
+  box-shadow: 0 12px 40px rgba(15, 69, 72, 0.22);
+}
+
+.desktop-concierge-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 88% 12%, rgba(65, 200, 198, 0.18), transparent 42%);
+  pointer-events: none;
+}
+
+.desktop-concierge-card > * {
+  position: relative;
+}
+
+.desktop-concierge-card-hover {
+  transition:
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.desktop-concierge-card-hover:hover {
+  box-shadow: 0 16px 48px rgba(15, 69, 72, 0.28);
+  transform: translateY(-1px);
+}
+
+.desktop-concierge-dial {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+  padding: 14px 20px;
+  border-radius: 999px;
+  background: var(--ocs-orange);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(232, 160, 32, 0.35);
+  transition:
+    background 200ms ease,
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.desktop-concierge-dial:hover {
+  background: #d99212;
+  box-shadow: 0 10px 28px rgba(232, 160, 32, 0.42);
+  transform: translateY(-1px);
 }
 
 .desktop-visit-badge {
