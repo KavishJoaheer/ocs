@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
@@ -10,6 +10,9 @@ import {
   Sparkles,
   HousePlus,
   Clock,
+  Home,
+  HeartPulse,
+  ReceiptText,
 } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
@@ -211,50 +214,97 @@ function LastConsultationCard({ consultation }) {
   );
 }
 
-function MobileLastVisit({ consultation }) {
+function MobileGreetingBand({ greeting, firstName, subline, isPrimaryProfile }) {
   return (
-    <section className="animate-fade-in-up rounded-[12px] border border-[rgba(26,160,140,0.12)] bg-white p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#2d8f98]">
-          Your Last Visit
-        </p>
-        <Link
-          to="/health-records"
-          className="shrink-0 text-[12px] font-medium text-[#5f9aa0] transition active:text-[#2d8f98]"
-        >
-          View timeline →
-        </Link>
-      </div>
-
-      <p className="mt-3 text-[15px] font-bold text-[#1a5c52]">
-        {formatDoctorName(consultation.doctor_name)}
-      </p>
-      <p className="mt-0.5 text-[13px] font-light text-[#5b7f8a]">
-        {dayjs(consultation.date).format("D MMMM YYYY")}
-      </p>
-      {consultation.diagnosis ? (
-        <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
-          {consultation.diagnosis}
-        </span>
-      ) : null}
-
-      <Link
-        to="/consultations"
-        className="mt-4 block text-[12px] font-normal text-[#2d8f98] transition active:text-[#23767f]"
-      >
-        View full record →
-      </Link>
-    </section>
+    <div
+      className="-mx-4 mb-3 px-5"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(26, 160, 140, 0.08) 0%, rgba(26, 160, 140, 0) 100%)",
+        minHeight: "120px",
+      }}
+    >
+      {isPrimaryProfile ? (
+        <>
+          <p className="text-[14px] font-light leading-[1.5] text-[#5b7f8a]">{greeting},</p>
+          <h1 className="mt-0.5 text-[32px] font-bold leading-[1.5] text-[#1a4a42]">{firstName}</h1>
+        </>
+      ) : (
+        <>
+          <p className="text-[14px] font-light leading-[1.5] text-[#5b7f8a]">Managing care for</p>
+          <h1 className="mt-0.5 text-[32px] font-bold leading-[1.5] text-[#1a4a42]">{firstName}</h1>
+        </>
+      )}
+      <p className="mt-1 text-[13px] font-light leading-[1.5] text-[#5f9aa0]">{subline}</p>
+    </div>
   );
 }
 
-function MobileActiveVisit({ visit, onCancelled }) {
-  const doctor = formatDoctorSurname(visit.doctor);
-  const eta = extractEtaMinutes(visit);
-  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
+function MobilePrimaryAction() {
+  return (
+    <Link
+      to="/request-visit"
+      className="mb-3 flex h-[54px] items-center justify-between rounded-[14px] bg-[#E8A020] px-5 text-white shadow-[0_4px_16px_rgba(232,160,32,0.35)] transition active:scale-[0.98] active:brightness-105"
+    >
+      <Home className="size-4 shrink-0" strokeWidth={2} />
+      <span className="text-[15px] font-semibold leading-[1.5]">Request a Home Visit</span>
+      <ArrowRight className="size-4 shrink-0" strokeWidth={2} />
+    </Link>
+  );
+}
+
+function MobileStatsStrip({ stats }) {
+  const items = [];
+
+  if ((stats?.upcoming_appointments ?? 0) > 0) {
+    items.push({
+      value: stats.upcoming_appointments,
+      label:
+        stats.upcoming_appointments === 1 ? "Upcoming Appt" : "Upcoming Appts",
+    });
+  }
+  if ((stats?.pending_bills ?? 0) > 0) {
+    items.push({
+      value: stats.pending_bills,
+      label: stats.pending_bills === 1 ? "Pending Bill" : "Pending Bills",
+    });
+  }
+  if ((stats?.total_visits ?? 0) > 0) {
+    items.push({
+      value: stats.total_visits,
+      label: stats.total_visits === 1 ? "Total Visit" : "Total Visits",
+    });
+  }
+
+  if (items.length === 0) return null;
 
   return (
-    <div className="mb-5 animate-fade-in-up">
+    <div className="mb-3 flex items-center rounded-[12px] bg-white px-5 py-3.5 shadow-[0_2px_12px_rgba(26,160,140,0.06)]">
+      {items.map((item, index) => (
+        <Fragment key={item.label}>
+          {index > 0 ? (
+            <div className="h-8 w-px shrink-0 bg-[rgba(26,160,140,0.12)]" aria-hidden="true" />
+          ) : null}
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-[18px] font-bold leading-[1.5] text-[#1a4a42]">{item.value}</p>
+            <p className="text-[10px] leading-[1.5] text-[#5b7f8a]">{item.label}</p>
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+function MobileActiveVisitCard({ visit }) {
+  const doctor = formatDoctorName(visit.doctor);
+  const eta = extractEtaMinutes(visit);
+  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
+  const statusLine =
+    visit.statusText ||
+    `En route · ${eta} min away`;
+
+  return (
+    <div className="mb-3 rounded-[16px] bg-white p-4 shadow-[0_2px_12px_rgba(26,160,140,0.08)]">
       <div className="flex items-center gap-2">
         <span className="relative flex size-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
@@ -265,46 +315,109 @@ function MobileActiveVisit({ visit, onCancelled }) {
         </p>
       </div>
 
-      <p className="mt-2 font-display text-[22px] font-bold leading-tight tracking-tight text-[#1a5c52]">
-        {doctor} is on the way.
-      </p>
-      <p className="mt-1 text-[13px] font-light text-[#5b7f8a]">
-        Estimated arrival: {eta} minutes
-      </p>
+      <p className="mt-3 text-[17px] font-bold leading-[1.5] text-[#1a4a42]">{doctor}</p>
+      <p className="mt-0.5 text-[13px] font-light leading-[1.5] text-[#5b7f8a]">{statusLine}</p>
 
-      <div className="mt-5 grid grid-cols-4 gap-1.5">
+      <div className="mt-4 flex gap-1">
         {VISIT_STEPS.map((step, i) => (
           <span
             key={step}
-            className={`h-[6px] rounded-full ${
+            className={`h-1 flex-1 rounded-full ${
               i <= activeStepIndex ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
             }`}
           />
         ))}
       </div>
 
-      <div className="mt-5 space-y-3">
+      <div className="mt-4 flex items-center justify-between gap-4">
         <Link
           to="/request-visit/tracking"
-          className="flex h-[48px] w-full items-center justify-center rounded-[14px] border border-[#2d8f98] text-sm font-bold text-[#2d8f98] transition active:scale-95 active:bg-[rgba(26,160,140,0.06)]"
+          className="text-[13px] font-medium leading-[1.5] text-[#2d8f98] transition active:text-[#23767f]"
         >
-          View Live Tracking →
+          Track →
         </Link>
         <a
           href="tel:52522234"
-          className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-[#E8A020] text-sm font-bold text-white shadow-sm transition active:scale-95 active:brightness-105"
+          className="text-[13px] font-medium leading-[1.5] text-[#E8A020] transition active:brightness-110"
         >
-          Call {doctor}
+          Call Doctor →
         </a>
       </div>
+    </div>
+  );
+}
 
-      <VisitCancelPrompt
-        visitId={visit.id}
-        visitStatus={visit.status}
-        onCancelled={onCancelled}
-        className="mt-3 text-center"
-        buttonClassName="text-xs font-medium text-[#cf8079] transition active:text-[#cf5b50]"
-      />
+function MobileNoActiveVisit() {
+  return (
+    <p className="mb-3 text-center text-[12px] font-light leading-[1.5] text-[#5b7f8a]">
+      No active visit ·{" "}
+      <Link to="/request-visit" className="font-normal text-[#2d8f98] transition active:text-[#23767f]">
+        Request one now →
+      </Link>
+    </p>
+  );
+}
+
+function MobileLastVisit({ consultation }) {
+  return (
+    <section className="mb-3 rounded-[16px] bg-white px-5 py-4 shadow-[0_2px_12px_rgba(26,160,140,0.06)]">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#5b7f8a]">
+          Your Last Visit
+        </p>
+        <Link
+          to="/health-records"
+          className="shrink-0 text-[12px] font-medium leading-[1.5] text-[#2d8f98] transition active:text-[#23767f]"
+        >
+          Timeline →
+        </Link>
+      </div>
+
+      <p className="mt-3 text-[16px] font-bold leading-[1.5] text-[#1a4a42]">
+        {formatDoctorName(consultation.doctor_name)}
+      </p>
+      <p className="mt-0.5 text-[13px] font-light leading-[1.5] text-[#5b7f8a]">
+        {dayjs(consultation.date).format("D MMMM YYYY")}
+      </p>
+      {consultation.diagnosis ? (
+        <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] leading-[1.5] text-[#2d8f98]">
+          {consultation.diagnosis}
+        </span>
+      ) : null}
+
+      <div className="mt-4 border-t border-[rgba(26,160,140,0.12)] pt-4">
+        <Link
+          to="/consultations"
+          className="text-[12px] font-normal leading-[1.5] text-[#2d8f98] transition active:text-[#23767f]"
+        >
+          View full record →
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+const MOBILE_QUICK_ACTIONS = [
+  { to: "/health-records", label: "Health Records", icon: HeartPulse },
+  { to: "/appointments", label: "Appointments", icon: CalendarCheck },
+  { to: "/billing", label: "Billing", icon: ReceiptText },
+];
+
+function MobileQuickActions() {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {MOBILE_QUICK_ACTIONS.map(({ to, label, icon: Icon }) => (
+        <Link
+          key={to}
+          to={to}
+          className="flex flex-col items-center rounded-[12px] bg-white px-2 py-3 shadow-[0_2px_8px_rgba(26,160,140,0.06)] transition active:scale-[0.98]"
+        >
+          <Icon className="size-[18px] text-[#2d8f98]" strokeWidth={1.5} />
+          <span className="mt-2 text-center text-[11px] font-medium leading-[1.5] text-[#1a4a42]">
+            {label}
+          </span>
+        </Link>
+      ))}
     </div>
   );
 }
@@ -408,6 +521,14 @@ function PatientDashboard() {
       return `Your next visit with ${doctor} is confirmed for ${dateLabel} at ${time}.`;
     }
     return "A doctor is one tap away, any time of day.";
+  })();
+
+  const mobileSubline = (() => {
+    if (loading && isPrimaryProfile) return "Loading your health portal\u2026";
+    if (!isPrimaryProfile) {
+      return `You're viewing ${activeProfile.firstName}'s health space. All records and visits shown are ${activeProfile.possessive}.`;
+    }
+    return "A doctor is one tap away.";
   })();
 
   const hasStats =
@@ -514,41 +635,35 @@ function PatientDashboard() {
     {/* ───────── Mobile dashboard ───────── */}
     <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-md:block">
       {loading && isPrimaryProfile ? (
-        <div className="space-y-4">
-          <div className="h-24 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-          <div className="h-40 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+        <div className="space-y-3">
+          <div className="h-[120px] animate-pulse rounded-none bg-[rgba(65,200,198,0.06)]" />
+          <div className="h-[54px] animate-pulse rounded-[14px] bg-[rgba(65,200,198,0.06)]" />
+          <div className="h-16 animate-pulse rounded-[12px] bg-[rgba(65,200,198,0.06)]" />
         </div>
       ) : (
         <>
-          {profileActiveVisit ? (
-            <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
-          ) : (
-            <>
-              <div className="mb-5 animate-fade-in-up">
-                <h1 className="font-display text-[26px] font-bold leading-tight tracking-tight text-[#1a5c52]">
-                  {headline}
-                </h1>
-                <p className="mt-2 text-[13px] font-light leading-relaxed text-[#5b7f8a]">
-                  {subline}
-                </p>
-              </div>
+          <MobileGreetingBand
+            greeting={greeting}
+            firstName={firstName}
+            subline={mobileSubline}
+            isPrimaryProfile={isPrimaryProfile}
+          />
 
-              <Link
-                to="/request-visit"
-                className="mb-5 flex h-[52px] w-full items-center justify-between rounded-[14px] bg-[#E8A020] px-5 text-white shadow-sm transition active:scale-95 active:brightness-105"
-              >
-                <span className="flex items-center gap-2 text-sm font-bold">
-                  <HousePlus className="size-5" strokeWidth={2} />
-                  Request a Home Visit
-                </span>
-                <ArrowRight className="size-5" strokeWidth={2} />
-              </Link>
-            </>
+          <MobilePrimaryAction />
+
+          {hasStats ? <MobileStatsStrip stats={profileStats} /> : null}
+
+          {profileActiveVisit ? (
+            <MobileActiveVisitCard visit={profileActiveVisit} />
+          ) : (
+            <MobileNoActiveVisit />
           )}
 
           {profileLastConsultation ? (
             <MobileLastVisit consultation={profileLastConsultation} />
           ) : null}
+
+          <MobileQuickActions />
         </>
       )}
     </div>

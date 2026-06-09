@@ -55,23 +55,29 @@ function Sidebar() {
   return (
     <>
       {/* ─── Mobile top bar ─── */}
-      <div className="relative flex h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden">
+      <div className="relative flex h-14 shrink-0 items-center justify-between border-b border-[rgba(26,160,140,0.08)] bg-white px-4 lg:hidden">
         <img
           src="/ocs-medecins-mark.png"
           alt="OCS Care"
-          className="h-8 w-8 shrink-0 object-contain"
+          className="size-7 shrink-0 object-contain"
         />
-        <p className="absolute left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-[2px] text-[#2d8f98]">
+        <p className="absolute left-1/2 -translate-x-1/2 text-[12px] font-medium tracking-[2px] text-[#1a5c52]">
           OCS Care
         </p>
         <FamilyProfileSwitcher variant="avatar" />
       </div>
 
       {/* ─── Mobile bottom navigation ─── */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 bg-white/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
-        <div className="mx-auto flex h-[68px] max-w-md items-stretch justify-around px-2">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[rgba(26,160,140,0.08)] bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
+        <div className="mx-auto flex h-[68px] max-w-md items-stretch justify-around px-1">
           {navItems.map((item) => {
             const Icon = item.icon;
+            const shortLabel =
+              item.to === "/health-records"
+                ? "Records"
+                : item.to === "/appointments"
+                  ? "Appts"
+                  : item.label.split(" ")[0];
             return (
               <NavLink
                 key={item.to}
@@ -79,19 +85,21 @@ function Sidebar() {
                 to={item.to}
                 className={({ isActive }) =>
                   [
-                    "flex min-h-[44px] min-w-[56px] flex-1 flex-col items-center justify-center gap-1 text-[10px] tracking-[0.2px] transition-colors active:opacity-60",
-                    isActive ? "font-semibold text-[#1a5c52]" : "font-normal text-[#8a9e9a]",
+                    "relative flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors active:opacity-60",
+                    isActive ? "text-[#1a5c52]" : "text-[#9ab0ab]",
                   ].join(" ")
                 }
               >
                 {({ isActive }) => (
                   <>
-                    <Icon
-                      className="size-[24px]"
-                      strokeWidth={1.6}
-                      fill={isActive ? "currentColor" : "none"}
-                    />
-                    <span className="leading-none">{item.label.split(" ")[0]}</span>
+                    {isActive ? (
+                      <span
+                        className="absolute top-1.5 h-4 w-[3px] rounded-full bg-[#1a5c52]"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <Icon className="size-[22px]" strokeWidth={1.5} />
+                    <span className="leading-none">{shortLabel}</span>
                   </>
                 )}
               </NavLink>

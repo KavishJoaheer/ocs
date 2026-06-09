@@ -9,7 +9,7 @@ function AppShell() {
       <div className="flex min-h-screen flex-col lg:flex-row">
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl px-6 pb-36 pt-6 max-md:px-4 sm:px-10 lg:px-12 lg:pb-10 lg:pt-10">
+          <div className="mx-auto max-w-6xl px-6 pb-36 pt-6 max-md:px-4 max-md:pt-0 sm:px-10 lg:px-12 lg:pb-10 lg:pt-10">
             <PushNotificationBanner className="mb-5" />
             <Outlet />
           </div>

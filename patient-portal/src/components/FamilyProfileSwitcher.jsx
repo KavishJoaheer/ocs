@@ -6,14 +6,16 @@ import { AVATAR_STYLES } from "../lib/familyProfiles.js";
 function ProfileAvatar({ profile, size = "md" }) {
   const sizeClass =
     size === "header"
-      ? "size-8 text-xs"
+      ? "size-[34px] bg-[#1a5c52] text-[13px] font-semibold text-white shadow-none"
       : size === "sm"
         ? "size-9 text-sm"
         : "size-12 text-base";
 
+  const colorClass = size === "header" ? "" : AVATAR_STYLES[profile.avatarVariant];
+
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-full font-medium shadow-lg shadow-[rgba(45,143,152,0.12)] ${sizeClass} ${AVATAR_STYLES[profile.avatarVariant]}`}
+      className={`flex shrink-0 items-center justify-center rounded-full font-medium shadow-lg shadow-[rgba(45,143,152,0.12)] ${sizeClass} ${colorClass}`}
     >
       {profile.initials}
     </div>
@@ -128,7 +130,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
   if (!canSwitch) {
     if (isAvatar) {
       return (
-        <div className="flex size-11 items-center justify-center" aria-hidden="true">
+        <div className="flex size-[34px] items-center justify-center" aria-hidden="true">
           <ProfileAvatar profile={activeProfile} size="header" />
         </div>
       );
@@ -153,7 +155,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label="Switch family profile"
-          className="flex size-11 items-center justify-center rounded-full transition active:scale-95"
+          className="flex size-[34px] items-center justify-center rounded-full transition active:scale-95"
         >
           <ProfileAvatar profile={activeProfile} size="header" />
         </button>
