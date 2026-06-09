@@ -15,58 +15,12 @@ const {
   getActiveVisitRequestForPatient,
   getVisitRequestById,
 } = require("../lib/visitRequests");
+const {
+  buildHealthRecordsPayload,
+  extractDiagnosisFromNotes,
+} = require("../lib/healthRecords");
 
 const router = express.Router();
-
-/** Split a free-text clinical field into list items for the records UI. */
-function splitClinicalField(text) {
-  return String(text || "")
-    .split(/[\n;]+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => ({ id: index + 1, name: line }));
-}
-
-function fileTypeFromMime(mime) {
-  const value = String(mime || "").toLowerCase();
-  if (value === "application/pdf") return "PDF";
-  if (value.startsWith("image/")) return "Image";
-  return "Document";
-}
-
-const DIAGNOSIS_PREFIX_REGEX = /^(imp(ression)?\s*:|dx\s*-\s*|dx\s*:|diagnosis\s*:)/i;
-
-function extractDiagnosisFromNotes(notes) {
-  const rawText = String(notes || "").trim();
-  if (!rawText) {
-    return "General Assessment";
-  }
-
-  for (const line of rawText.split("\n")) {
-    const cleanLine = String(line || "").trim();
-    if (!cleanLine || !DIAGNOSIS_PREFIX_REGEX.test(cleanLine)) {
-      continue;
-    }
-
-    let diagnosis = cleanLine
-      .replace(/^imp(ression)?\s*:/i, "")
-      .replace(/^dx\s*-\s*/i, "")
-      .replace(/^dx\s*:/i, "")
-      .replace(/^diagnosis\s*:/i, "")
-      .trim()
-      .replace(/\bday\s*\d+\b.*$/i, "")
-      .trim();
-
-    if (diagnosis.length > 140) {
-      diagnosis = `${diagnosis.slice(0, 140).trim()}…`;
-    }
-
-    return diagnosis || "General Assessment";
-  }
-
-  const fallback = rawText.length > 80 ? `${rawText.slice(0, 80).trim()}…` : rawText;
-  return fallback || "General Assessment";
-}
 
 // Normalize a raw patients row (DB column names) into the shape the patient
 // portal UI consumes (phone, ocs_care_number, next_of_kin_phone, review, ...).
@@ -285,7 +239,14 @@ router.get("/health-records", (req, res) => {
   const patientId = req.patientAuth.patient_id;
 
   if (!patientId) {
-    return res.json({ consultations: [], reports: [], clinical: {} });
+    return res.json({
+      consultations: [],
+      reports: [],
+      clinical: {},
+      summary: null,
+      timeline: [],
+      vitals_trends: { blood_pressure: [], glucose: [], hba1c: [] },
+    });
   }
 
   const patient = db
@@ -293,7 +254,14 @@ router.get("/health-records", (req, res) => {
     .get(patientId);
 
   if (!patient) {
-    return res.json({ consultations: [], reports: [], clinical: {} });
+    return res.json({
+      consultations: [],
+      reports: [],
+      clinical: {},
+      summary: null,
+      timeline: [],
+      vitals_trends: { blood_pressure: [], glucose: [], hba1c: [] },
+    });
   }
 
   const consultationRows = db
@@ -306,12 +274,20 @@ router.get("/health-records", (req, res) => {
     `)
     .all(patientId);
 
-  // All of this patient's report attachments, joined to their parent report and
-  // the staff member who created it.
+  const labReportRows = db
+    .prepare(`
+      SELECT id, report_date, report_details
+      FROM lab_reports
+      WHERE patient_id = ?
+      ORDER BY report_date DESC, id DESC
+    `)
+    .all(patientId);
+
   const attachmentRows = db
     .prepare(`
       SELECT
         a.id,
+        a.report_id,
         a.consultation_id,
         a.original_name,
         a.mime_type,
@@ -327,40 +303,14 @@ router.get("/health-records", (req, res) => {
     `)
     .all(patientId);
 
-  const attachmentsByConsultation = new Map();
-  for (const row of attachmentRows) {
-    if (!row.consultation_id) continue;
-    const list = attachmentsByConsultation.get(row.consultation_id) || [];
-    list.push({ id: row.id, name: row.original_name || row.report_title || "Report" });
-    attachmentsByConsultation.set(row.consultation_id, list);
-  }
-
-  const consultations = consultationRows.map((row) => ({
-    id: row.id,
-    date: row.consultation_date,
-    doctor_name: row.doctor_name,
-    diagnosis: extractDiagnosisFromNotes(row.doctor_notes),
-    reports: attachmentsByConsultation.get(row.id) || [],
-  }));
-
-  const reports = attachmentRows.map((row) => ({
-    id: row.id,
-    name: row.original_name || row.report_title || "Report",
-    report_date: row.report_date || row.created_at,
-    uploaded_at: row.created_at,
-    file_type: fileTypeFromMime(row.mime_type),
-    requested_by: row.created_by_name || "",
-    requested_by_source: row.created_by_name ? "OCS Doctor" : "",
-  }));
-
-  const clinical = {
-    medical_history: splitClinicalField(patient.past_medical_history),
-    surgical_history: splitClinicalField(patient.past_surgical_history),
-    allergy_history: splitClinicalField(patient.drug_allergy_history),
-    drug_history: splitClinicalField(patient.drug_history),
-  };
-
-  return res.json({ consultations, reports, clinical });
+  return res.json(
+    buildHealthRecordsPayload({
+      patient,
+      consultationRows,
+      attachmentRows,
+      labReportRows,
+    }),
+  );
 });
 
 function applyProfileUpdate(req, res) {

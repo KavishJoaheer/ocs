@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   FolderHeart,
   ChevronRight,
@@ -9,12 +10,21 @@ import {
 } from "lucide-react";
 import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { exportHealthRecordsPdf } from "../lib/healthRecordsExport.js";
+import {
+  HealthSummaryCard,
+  VitalsTrendsPanel,
+} from "../components/health-records/HealthOverview.jsx";
+import { UnifiedTimeline } from "../components/health-records/UnifiedTimeline.jsx";
 
 function reportUrl(attachmentId) {
   return buildAuthedFileUrl(`/patient-portal/reports/attachments/${attachmentId}/download`);
 }
 
 const TABS = [
+  { id: "overview", label: "Overview", shortLabel: "Overview" },
+  { id: "timeline", label: "Care Timeline", shortLabel: "Timeline" },
   { id: "consultations", label: "Consultation History", shortLabel: "Consultations" },
   { id: "reports", label: "Medical & Lab Reports", shortLabel: "Reports" },
   { id: "clinical", label: "Clinical History", shortLabel: "Clinical" },
@@ -66,6 +76,12 @@ function ConsultationTimelineNode({ consultation, expanded, onToggle }) {
               <span className="mt-2 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
                 {consultation.diagnosis}
               </span>
+
+              {consultation.plain_summary ? (
+                <p className="mt-4 text-[13px] font-light leading-relaxed text-[#5b7f8a]">
+                  {consultation.plain_summary}
+                </p>
+              ) : null}
 
               <div className="mt-5">
                 <SectionLabel>Medical &amp; Lab Reports</SectionLabel>
@@ -223,6 +239,11 @@ function ReportTimelineNode({ report, expanded, onToggle }) {
               <span className="inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
                 {report.file_type}
               </span>
+              {report.details_preview ? (
+                <p className="mt-4 text-[13px] font-light leading-relaxed text-[#5b7f8a]">
+                  {report.details_preview}
+                </p>
+              ) : null}
               <div className="mt-4 flex items-center gap-5">
                 <a
                   href={report.url}
@@ -632,7 +653,29 @@ function ClinicalHistoryTab({ clinicalHistory }) {
   );
 }
 
-function TabContent({ activeTab, consultations, medicalReports, clinicalHistory, onUploadClick }) {
+function TabContent({
+  activeTab,
+  consultations,
+  medicalReports,
+  clinicalHistory,
+  summary,
+  timeline,
+  vitalsTrends,
+  onUploadClick,
+  onExport,
+  exporting,
+}) {
+  if (activeTab === "overview") {
+    return (
+      <div className="space-y-6">
+        <HealthSummaryCard summary={summary} onExport={onExport} exporting={exporting} />
+        <VitalsTrendsPanel vitalsTrends={vitalsTrends} />
+      </div>
+    );
+  }
+  if (activeTab === "timeline") {
+    return <UnifiedTimeline timeline={timeline} reportUrlBuilder={reportUrl} />;
+  }
   if (activeTab === "consultations") {
     return <ConsultationHistoryTab key="consultations" consultations={consultations} />;
   }
@@ -649,13 +692,22 @@ function TabContent({ activeTab, consultations, medicalReports, clinicalHistory,
 }
 
 function PatientHealthRecords() {
-  const [activeTab, setActiveTab] = useState("consultations");
-  const [displayedTab, setDisplayedTab] = useState("consultations");
+  const { user } = usePatientAuth();
+  const [activeTab, setActiveTab] = useState("overview");
+  const [displayedTab, setDisplayedTab] = useState("overview");
   const [tabFading, setTabFading] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [medicalReports, setMedicalReports] = useState([]);
   const [consultations, setConsultations] = useState([]);
   const [clinicalHistory, setClinicalHistory] = useState({});
+  const [summary, setSummary] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+  const [vitalsTrends, setVitalsTrends] = useState({
+    blood_pressure: [],
+    glucose: [],
+    hba1c: [],
+  });
   const [loading, setLoading] = useState(true);
   const refreshKey = useLiveRefreshKey();
 
@@ -679,11 +731,19 @@ function PatientHealthRecords() {
           (data.reports || []).map((report) => ({ ...report, url: reportUrl(report.id) })),
         );
         setClinicalHistory(data.clinical || {});
+        setSummary(data.summary || null);
+        setTimeline(data.timeline || []);
+        setVitalsTrends(
+          data.vitals_trends || { blood_pressure: [], glucose: [], hba1c: [] },
+        );
       } catch {
         if (!ignore) {
           setConsultations([]);
           setMedicalReports([]);
           setClinicalHistory({});
+          setSummary(null);
+          setTimeline([]);
+          setVitalsTrends({ blood_pressure: [], glucose: [], hba1c: [] });
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -714,6 +774,23 @@ function PatientHealthRecords() {
       { ...report, id: Date.now() },
       ...prev,
     ]);
+  }
+
+  function handleExportPdf() {
+    try {
+      setExporting(true);
+      exportHealthRecordsPdf({
+        patientName: user?.full_name || "Patient",
+        summary,
+        clinical: clinicalHistory,
+        consultations,
+        timeline,
+      });
+    } catch (error) {
+      toast.error(error.message || "Could not open the PDF export.");
+    } finally {
+      window.setTimeout(() => setExporting(false), 600);
+    }
   }
 
   return (
@@ -756,18 +833,7 @@ function PatientHealthRecords() {
 
       {/* Mobile — iOS-style segmented control */}
       <div className="animate-fade-in-up stagger-1 hidden max-md:block">
-        <div className="relative flex rounded-[10px] bg-[rgba(118,118,128,0.12)] p-[3px]">
-          <span
-            aria-hidden="true"
-            className="absolute bottom-[3px] left-[3px] top-[3px] rounded-[8px] bg-white shadow-[0_3px_8px_rgba(13,42,46,0.12),0_1px_1px_rgba(13,42,46,0.04)] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
-            style={{
-              width: "calc((100% - 6px) / 3)",
-              transform: `translateX(${Math.max(
-                0,
-                TABS.findIndex((tab) => tab.id === activeTab),
-              ) * 100}%)`,
-            }}
-          />
+        <div className="relative flex overflow-x-auto rounded-[10px] bg-[rgba(118,118,128,0.12)] p-[3px]">
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -775,7 +841,7 @@ function PatientHealthRecords() {
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
-                className={`relative z-10 flex h-11 flex-1 items-center justify-center text-[13px] transition-colors duration-200 ${
+                className={`relative z-10 flex h-11 min-w-[88px] flex-1 items-center justify-center px-2 text-[12px] transition-colors duration-200 ${
                   isActive ? "font-semibold text-[#1a5c52]" : "font-medium text-[#5b7f8a]"
                 }`}
               >
@@ -800,7 +866,12 @@ function PatientHealthRecords() {
             consultations={consultations}
             medicalReports={medicalReports}
             clinicalHistory={clinicalHistory}
+            summary={summary}
+            timeline={timeline}
+            vitalsTrends={vitalsTrends}
             onUploadClick={() => setUploadOpen(true)}
+            onExport={handleExportPdf}
+            exporting={exporting}
           />
         )}
       </div>
