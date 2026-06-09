@@ -29,10 +29,10 @@ function SidebarLink({ item }) {
       to={item.to}
       className={({ isActive }) =>
         [
-          "group flex min-h-[44px] items-center gap-3 rounded-[16px] px-4 text-sm transition-all",
+          "group -mx-6 flex min-h-[44px] items-center gap-3 border-l-[3px] px-6 text-sm transition-colors",
           isActive
-            ? "border-l-[3px] border-[#e8a020] bg-[rgba(26,92,82,0.05)] font-semibold text-[#1a5c52]"
-            : "border-l-[3px] border-transparent font-normal text-[#2a6a5e] hover:bg-[rgba(26,92,82,0.04)]",
+            ? "border-[#e8a020] bg-[rgba(26,160,140,0.08)] font-semibold text-[#1a5c52]"
+            : "border-transparent font-normal text-[#2a6a5e] hover:bg-[rgba(26,160,140,0.04)]",
         ].join(" ")
       }
     >
@@ -120,7 +120,7 @@ function Sidebar() {
             <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
               Navigation
             </p>
-            <nav className="mt-4 space-y-[26px]">
+            <nav className="mt-4 space-y-0.5">
               {navItems.map((item) => (
                 <SidebarLink key={item.to} item={item} />
               ))}

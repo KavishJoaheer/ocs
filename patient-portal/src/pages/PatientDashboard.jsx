@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
-import { ArrowRight, HousePlus } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
@@ -40,18 +40,6 @@ function DashboardErrorState({ message, onRetry, className = "" }) {
       <button type="button" onClick={onRetry} className="request-wizard-primary-btn mt-6 w-full max-w-[280px]">
         Try Again
       </button>
-    </div>
-  );
-}
-
-function NoActiveVisit() {
-  return (
-    <div className="desktop-card flex items-center gap-3 px-6 py-4">
-      <HousePlus className="size-5 shrink-0 text-[#2d8f98]" strokeWidth={1.5} />
-      <p className="shrink-0 text-sm font-bold text-[#1a5c52]">No active visit</p>
-      <p className="text-[13px] text-[#5b7f8a]">
-        Request a visit and your doctor&apos;s details will appear here.
-      </p>
     </div>
   );
 }
@@ -346,13 +334,18 @@ function PatientDashboard() {
     {/* ───────── Desktop dashboard ───────── */}
     <div className="max-lg:hidden">
       {loading && isPrimaryProfile ? (
-        <div className="desktop-dashboard space-y-8">
-          <div className="desktop-hero h-48 animate-pulse opacity-60" />
-          <div className="desktop-dashboard-grid">
-            <div className="desktop-card h-56 animate-pulse" />
-            <div className="space-y-5">
-              <div className="desktop-card h-32 animate-pulse" />
-              <div className="desktop-support-card h-48 animate-pulse" />
+        <div className="desktop-dashboard">
+          <div className="desktop-dashboard-teal-band h-52 animate-pulse opacity-60" />
+          <div className="desktop-dashboard-lower pt-16">
+            <div className="desktop-dashboard-inner">
+              <div className="desktop-dispatch-card h-28 animate-pulse opacity-70" />
+              <div className="desktop-dashboard-grid mt-8">
+                <div className="desktop-card h-56 animate-pulse" />
+                <div className="desktop-dashboard-col gap-8">
+                  <div className="desktop-card h-32 animate-pulse" />
+                  <div className="desktop-card h-48 animate-pulse" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -373,9 +366,7 @@ function PatientDashboard() {
             activeVisitSlot={
               profileActiveVisit ? (
                 <ActiveVisitCard visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
-              ) : (
-                <NoActiveVisit />
-              )
+              ) : null
             }
           />
         </div>

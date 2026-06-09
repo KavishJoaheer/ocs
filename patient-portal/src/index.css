@@ -33,8 +33,9 @@
   /* Desktop dashboard — luxury concierge canvas */
   --desktop-canvas: #f4f6f8;
   --desktop-card-radius: 18px;
-  --desktop-card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.06);
-  --desktop-card-shadow-hover: 0 14px 44px -10px rgba(0, 0, 0, 0.09);
+  --desktop-card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
+  --desktop-card-shadow-hover: 0 24px 48px -10px rgba(0, 0, 0, 0.1);
+  --desktop-dispatch-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
   --ocs-teal-dark: #1a5c52;
   color-scheme: light;
   font-synthesis: none;
@@ -783,10 +784,70 @@ table {
 
 /* ─── Desktop dashboard — premium concierge layout ─── */
 
+.desktop-dashboard-inner {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 3rem;
+}
+
+.desktop-dashboard-teal-band {
+  min-height: clamp(200px, 28vh, 280px);
+  padding-top: 2.5rem;
+  padding-bottom: 5.5rem;
+  background: linear-gradient(180deg, #0f4548 0%, #134e4f 42%, #1a5c52 100%);
+}
+
+.desktop-dashboard-lower {
+  background: var(--desktop-canvas);
+  padding-bottom: 2.5rem;
+}
+
+.desktop-dispatch-card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -3.25rem;
+  padding: 1.75rem 2rem;
+  border-radius: var(--desktop-card-radius);
+  background: #fff;
+  box-shadow: var(--desktop-dispatch-shadow);
+  text-decoration: none;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.desktop-dispatch-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 48px -10px rgba(0, 0, 0, 0.1);
+}
+
+.desktop-dispatch-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
 .desktop-dashboard-grid {
   display: grid;
-  gap: 24px;
+  gap: 32px;
+  margin-top: 32px;
   grid-template-columns: minmax(0, 1.86fr) minmax(0, 1fr);
+}
+
+.desktop-dashboard-col {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
 
 @media (max-width: 1280px) {
@@ -799,6 +860,7 @@ table {
   border-radius: var(--desktop-card-radius);
   background: #fff;
   box-shadow: var(--desktop-card-shadow);
+  border: none;
 }
 
 .desktop-card-hover {
@@ -812,52 +874,8 @@ table {
   box-shadow: var(--desktop-card-shadow-hover);
 }
 
-.desktop-hero {
-  position: relative;
-  overflow: hidden;
-  border-radius: var(--desktop-card-radius);
-  background: linear-gradient(135deg, #134e4f 0%, #1a6b72 38%, #2d8f98 72%, #26717c 100%);
-  box-shadow: 0 16px 48px -12px rgba(19, 78, 79, 0.35);
-  padding: 36px 36px 28px;
-}
-
-.desktop-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.12), transparent 42%),
-    radial-gradient(circle at 10% 90%, rgba(65, 200, 198, 0.18), transparent 38%);
-  pointer-events: none;
-}
-
-.desktop-hero-content {
-  position: relative;
-}
-
-.desktop-hero-cta {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 28px;
-  padding: 22px 24px;
-  border-radius: var(--desktop-card-radius);
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.14);
-  text-decoration: none;
-  transition:
-    transform 200ms ease,
-    box-shadow 200ms ease;
-}
-
-.desktop-hero-cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.18);
-}
-
 .desktop-stat-widget {
-  padding: 8px 4px;
+  padding: 4px 2px;
 }
 
 .desktop-stat-label {
@@ -869,24 +887,13 @@ table {
 }
 
 .desktop-stat-value {
-  margin-top: 8px;
+  margin-top: 10px;
   font-family: var(--font-display);
-  font-size: 2.75rem;
+  font-size: 3.25rem;
   font-weight: 800;
   line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--ocs-ink);
-}
-
-.desktop-support-card {
-  border-radius: var(--desktop-card-radius);
-  background: rgba(26, 160, 140, 0.06);
-  padding: 24px;
-  transition: background 200ms ease;
-}
-
-.desktop-support-card:hover {
-  background: rgba(26, 160, 140, 0.09);
+  letter-spacing: -0.04em;
+  color: #1a2e38;
 }
 
 /* Display typography — explicit weight for SF Pro / Roboto parity */

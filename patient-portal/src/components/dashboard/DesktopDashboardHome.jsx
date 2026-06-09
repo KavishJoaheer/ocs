@@ -22,7 +22,7 @@ function DesktopStatWidget({ label, value }) {
 
 function DesktopHelpCard() {
   return (
-    <section className="desktop-support-card animate-fade-in-up stagger-4">
+    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-4 p-6">
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
         Need help?
       </p>
@@ -30,7 +30,7 @@ function DesktopHelpCard() {
       <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
         Reach out any time for appointment changes, billing questions, or medical inquiries.
       </p>
-      <div className="mt-4 rounded-[16px] bg-white/70 px-4 py-3 transition hover:bg-white/90">
+      <div className="mt-4 rounded-[16px] bg-[rgba(26,160,140,0.06)] px-4 py-3 transition hover:bg-[rgba(26,160,140,0.09)]">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
           Hotline
         </p>
@@ -56,7 +56,9 @@ function DesktopLastVisitCard({ consultation }) {
 
   return (
     <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-3 p-6">
-      <div className="flex items-center justify-between gap-3">
+      <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
+
+      <div className="mt-5 flex items-center justify-between gap-3">
         <p className="text-[13px] font-medium text-[#5b7f8a]">{dateLabel}</p>
         <span className="consultation-visit-badge shrink-0">Home Visit</span>
       </div>
@@ -83,7 +85,7 @@ function DesktopLastVisitCard({ consultation }) {
         </div>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-center gap-4 border-t border-[rgba(26,160,140,0.1)] pt-5">
+      <div className="mt-6 flex flex-wrap items-center gap-4 pt-1">
         <Link
           to="/health-records"
           className="text-[13px] font-medium text-[#5f9aa0] transition hover:text-[#2d8f98]"
@@ -115,11 +117,11 @@ function DesktopDashboardHome({
   const totalVisits = profileStats?.total_visits ?? 0;
 
   return (
-    <div className="desktop-dashboard space-y-8">
-      {/* Hero banner */}
-      <section className="desktop-hero animate-fade-in-up">
-        <div className="desktop-hero-content">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">
+    <div className="desktop-dashboard">
+      {/* Edge-to-edge teal header band */}
+      <header className="desktop-dashboard-teal-band animate-fade-in-up">
+        <div className="desktop-dashboard-inner">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/65">
             OCS Virtual Practice
           </p>
           <h1 className="mt-3 font-display text-3xl tracking-tight text-white sm:text-[2.5rem]">
@@ -130,74 +132,69 @@ function DesktopDashboardHome({
               </>
             )}
           </h1>
-          <p className="mt-3 max-w-xl text-base leading-relaxed text-white/80">{subline}</p>
+          <p className="mt-3 max-w-xl text-base leading-relaxed text-white/75">{subline}</p>
         </div>
+      </header>
 
-        <Link
-          to="/request-visit"
-          className="desktop-hero-cta group"
-        >
-          <div className="min-w-0 flex-1 pr-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#1a5c52]/70">
-              24/7 Concierge Care
-            </p>
-            <p className="mt-2 font-display text-xl font-bold leading-tight text-[#1a5c52] sm:text-[22px]">
-              Request a Doctor to Your Home
-            </p>
-            <p className="mt-1.5 text-sm text-[#5b7f8a]">
-              A licensed physician at your door — typically within the hour.
-            </p>
-          </div>
-          <div className="dashboard-hero-arrow-btn transition group-hover:scale-105">
-            <ArrowRight className="size-6 text-ocs-orange" strokeWidth={2.5} />
-          </div>
-        </Link>
-      </section>
-
-      {/* Two-column grid */}
-      <div className="desktop-dashboard-grid">
-        {/* Left column — care timeline */}
-        <div className="space-y-5">
-          {activeVisitSlot ? (
-            <div className="animate-fade-in-up stagger-2">{activeVisitSlot}</div>
-          ) : null}
-
-          {profileLastConsultation ? (
-            <div>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
-              </div>
-              <DesktopLastVisitCard consultation={profileLastConsultation} />
+      {/* Soft canvas body + floating dispatch card + grid */}
+      <div className="desktop-dashboard-lower">
+        <div className="desktop-dashboard-inner">
+          <Link to="/request-visit" className="desktop-dispatch-card group animate-fade-in-up stagger-1">
+            <div className="min-w-0 flex-1 pr-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6e949b]">
+                24/7 Concierge Care
+              </p>
+              <p className="mt-2.5 font-display text-xl font-bold leading-tight text-[#1a5c52] sm:text-[22px]">
+                Request a Doctor to Your Home
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-[#5b7f8a]">
+                A licensed physician at your door — typically within the hour.
+              </p>
             </div>
-          ) : (
-            <section className="desktop-card p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex size-11 items-center justify-center rounded-[14px] bg-[rgba(26,160,140,0.08)]">
-                  <HousePlus className="size-5 text-[#2d8f98]" strokeWidth={1.5} />
-                </div>
-                <div>
-                  <p className="font-display text-base font-bold text-[#1a5c52]">No visits yet</p>
-                  <p className="mt-0.5 text-sm text-[#5b7f8a]">
-                    Your care timeline will appear here after your first home visit.
-                  </p>
-                </div>
-              </div>
-            </section>
-          )}
-        </div>
+            <div className="desktop-dispatch-arrow transition group-hover:scale-105">
+              <ArrowRight className="size-6 text-ocs-orange" strokeWidth={2.5} />
+            </div>
+          </Link>
 
-        {/* Right column — stats & support */}
-        <div className="space-y-5">
-          {isPrimaryProfile ? (
-            <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-2 p-6">
-              <div className="grid grid-cols-2 gap-4">
-                <DesktopStatWidget label="Pending Bills" value={pendingBills} />
-                <DesktopStatWidget label="Total Visits" value={totalVisits} />
-              </div>
-            </section>
-          ) : null}
+          <div className="desktop-dashboard-grid">
+            <div className="desktop-dashboard-col">
+              {activeVisitSlot ? (
+                <div className="animate-fade-in-up stagger-2">{activeVisitSlot}</div>
+              ) : null}
 
-          <DesktopHelpCard />
+              {profileLastConsultation ? (
+                <DesktopLastVisitCard consultation={profileLastConsultation} />
+              ) : (
+                <section className="desktop-card p-6">
+                  <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
+                  <div className="mt-5 flex items-center gap-4">
+                    <div className="flex size-11 items-center justify-center rounded-[14px] bg-[rgba(26,160,140,0.08)]">
+                      <HousePlus className="size-5 text-[#2d8f98]" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <p className="font-display text-base font-bold text-[#1a5c52]">No visits yet</p>
+                      <p className="mt-0.5 text-sm text-[#5b7f8a]">
+                        Your care timeline will appear here after your first home visit.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              )}
+            </div>
+
+            <div className="desktop-dashboard-col">
+              {isPrimaryProfile ? (
+                <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-2 p-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    <DesktopStatWidget label="Pending Bills" value={pendingBills} />
+                    <DesktopStatWidget label="Total Visits" value={totalVisits} />
+                  </div>
+                </section>
+              ) : null}
+
+              <DesktopHelpCard />
+            </div>
+          </div>
         </div>
       </div>
     </div>
