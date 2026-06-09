@@ -257,7 +257,23 @@ table {
   animation: fadeIn 0.2s ease both;
 }
 
-/* ─── Native mobile dashboard ─────────────────────────────────────────────── */
+/* ─── Native mobile screens (dashboard, health records, etc.) ─────────────── */
+
+.native-screen {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 1023px) {
+  .native-screen {
+    margin-left: calc(-1 * var(--native-pad-screen));
+    margin-right: calc(-1 * var(--native-pad-screen));
+    padding-left: var(--native-pad-screen);
+    padding-right: var(--native-pad-screen);
+    padding-bottom: var(--native-nav-clearance);
+    background: #f4f7f7;
+    min-height: 100%;
+  }
+}
 
 .native-dashboard {
   -webkit-tap-highlight-color: transparent;
