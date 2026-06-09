@@ -38,6 +38,10 @@ function buildPatientVisitPayload(visit, { previousStatus } = {}) {
       title: "Doctor arrived",
       body: `${doctorName} has arrived at your location.`,
     },
+    in_consultation: {
+      title: "Consultation started",
+      body: `${doctorName} has started your consultation.`,
+    },
     completed: {
       title: "Visit completed",
       body: "Your home visit is complete. Thank you for choosing OCS.",

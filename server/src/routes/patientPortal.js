@@ -11,7 +11,7 @@ const {
 } = require("../lib/push");
 const { notifyStaffNewVisitRequest } = require("../lib/visitRequestNotifications");
 const {
-  ACTIVE_VISIT_STATUSES,
+  PATIENT_CANCELLABLE_STATUSES,
   getActiveVisitRequestForPatient,
   getVisitRequestById,
 } = require("../lib/visitRequests");
@@ -19,6 +19,7 @@ const {
   buildHealthRecordsPayload,
   extractDiagnosisFromNotes,
 } = require("../lib/healthRecords");
+const { serializePatientBillingRows } = require("../lib/patientBilling");
 
 const router = express.Router();
 
@@ -60,9 +61,12 @@ router.get("/dashboard", (req, res) => {
   if (!patientId) {
     return res.json({
       patient: null,
+      stats: { upcoming_appointments: 0, pending_bills: 0, total_visits: 0 },
+      recent_activity: [],
       upcoming_appointments_count: 0,
       pending_bills_count: 0,
       next_appointment: null,
+      last_consultation: null,
     });
   }
 
@@ -132,10 +136,43 @@ router.get("/dashboard", (req, res) => {
       }
     : null;
 
+  const totalVisits = db
+    .prepare("SELECT COUNT(*) AS count FROM consultations WHERE patient_id = ?")
+    .get(patientId);
+
+  const recentConsultationRows = db
+    .prepare(`
+      SELECT c.consultation_date, c.doctor_notes, d.full_name AS doctor_name
+      FROM consultations c
+      JOIN doctors d ON d.id = c.doctor_id
+      WHERE c.patient_id = ?
+      ORDER BY c.consultation_date DESC, c.id DESC
+      LIMIT 5
+    `)
+    .all(patientId);
+
+  const recent_activity = recentConsultationRows.map((row) => {
+    const diagnosis = extractDiagnosisFromNotes(row.doctor_notes);
+    const doctorName = String(row.doctor_name || "Your doctor").trim();
+    return {
+      date: row.consultation_date,
+      description: `${diagnosis} — ${doctorName}`,
+    };
+  });
+
+  const upcomingAppointments = upcomingCount?.count || 0;
+  const pendingBillsCount = pendingBills?.count || 0;
+
   return res.json({
     patient: patient || null,
-    upcoming_appointments_count: upcomingCount?.count || 0,
-    pending_bills_count: pendingBills?.count || 0,
+    stats: {
+      upcoming_appointments: upcomingAppointments,
+      pending_bills: pendingBillsCount,
+      total_visits: totalVisits?.count || 0,
+    },
+    recent_activity,
+    upcoming_appointments_count: upcomingAppointments,
+    pending_bills_count: pendingBillsCount,
     next_appointment: nextAppointment || null,
     last_consultation: lastConsultation,
   });
@@ -193,10 +230,14 @@ router.get("/billing", (req, res) => {
   const patientId = req.patientAuth.patient_id;
 
   if (!patientId) {
-    return res.json({ billing: [] });
+    return res.json({
+      bills: [],
+      summary: { total_billed: 0, total_paid: 0, outstanding: 0 },
+      billing: [],
+    });
   }
 
-  const billing = db
+  const rows = db
     .prepare(`
       SELECT
         b.*,
@@ -211,7 +252,7 @@ router.get("/billing", (req, res) => {
     `)
     .all(patientId);
 
-  return res.json({ billing });
+  return res.json(serializePatientBillingRows(rows));
 });
 
 router.get("/profile", (req, res) => {
@@ -517,7 +558,7 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
     return res.status(404).json({ error: "Visit request not found." });
   }
 
-  if (!ACTIVE_VISIT_STATUSES.includes(existing.status)) {
+  if (!PATIENT_CANCELLABLE_STATUSES.includes(existing.status)) {
     return res.status(400).json({ error: "This visit request can no longer be cancelled." });
   }
 

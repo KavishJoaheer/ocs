@@ -13,6 +13,7 @@ const STEP_FLOW = [
   { key: "assigned", label: "Doctor assigned" },
   { key: "en_route", label: "Doctor en route" },
   { key: "arrived", label: "Doctor arrived" },
+  { key: "in_consultation", label: "Consultation in progress" },
 ];
 
 const PREP = [
@@ -103,7 +104,12 @@ function RequestVisitTracking() {
 
   // Anchor an ETA countdown each time staff set/changes the ETA.
   useEffect(() => {
-    if (!visit || visit.eta_minutes == null || visit.status === "arrived") {
+    if (
+      !visit ||
+      visit.eta_minutes == null ||
+      visit.status === "arrived" ||
+      visit.status === "in_consultation"
+    ) {
       etaDeadlineRef.current = null;
       etaKeyRef.current = null;
       return;
@@ -169,14 +175,25 @@ function RequestVisitTracking() {
       ? formatCountdown(etaDeadlineRef.current - nowTick)
       : null;
   const etaText =
-    visit.eta_minutes != null ? `Estimated arrival: ${visit.eta_minutes} minutes` : visit.status_label;
+    visit.status === "arrived" || visit.status === "in_consultation"
+      ? visit.status_label
+      : visit.eta_minutes != null
+        ? `Estimated arrival: ${visit.eta_minutes} minutes`
+        : visit.status_label;
+
+  const headerText =
+    visit.status === "in_consultation"
+      ? "Your consultation is in progress."
+      : visit.status === "arrived"
+        ? "Your doctor has arrived."
+        : "Your doctor is on the way.";
 
   return (
     <div className="mx-auto max-w-[560px] animate-fade-in-fast">
       {/* Header */}
       <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
         <span className="bg-[linear-gradient(90deg,#1a5c52_0%,#0d9e8a_60%,#12bfa8_100%)] bg-clip-text text-transparent">
-          {visit.status === "arrived" ? "Your doctor has arrived." : "Your doctor is on the way."}
+          {headerText}
         </span>
       </h1>
       <p className="mt-3 text-sm text-[#5b7f8a]">
@@ -184,7 +201,7 @@ function RequestVisitTracking() {
       </p>
 
       {/* Live ETA countdown */}
-      {countdown && visit.status !== "arrived" && (
+      {countdown && visit.status !== "arrived" && visit.status !== "in_consultation" && (
         <div className="mt-6 flex items-center gap-4 rounded-2xl border border-[rgba(45,143,152,0.18)] bg-[linear-gradient(135deg,rgba(65,200,198,0.12),rgba(45,143,152,0.06))] p-5">
           <div className="flex flex-col">
             <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
@@ -252,23 +269,24 @@ function RequestVisitTracking() {
         </ol>
       </div>
 
-      {/* Pre-visit preparation */}
-      <div className="mt-6 rounded-2xl border border-[rgba(232,160,32,0.18)] bg-[rgba(232,160,32,0.07)] p-6">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="size-4 text-[#b5760a]" />
-          <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-[#a86c08]">
-            Before your doctor arrives
-          </h2>
+      {visit.status !== "in_consultation" ? (
+        <div className="mt-6 rounded-2xl border border-[rgba(232,160,32,0.18)] bg-[rgba(232,160,32,0.07)] p-6">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="size-4 text-[#b5760a]" />
+            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-[#a86c08]">
+              Before your doctor arrives
+            </h2>
+          </div>
+          <ul className="mt-4 space-y-3">
+            {PREP.map((item) => (
+              <li key={item} className="flex items-start gap-3">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#e8a020]" />
+                <span className="text-sm leading-6 text-[#5b6b6b]">{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul className="mt-4 space-y-3">
-          {PREP.map((item) => (
-            <li key={item} className="flex items-start gap-3">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#e8a020]" />
-              <span className="text-sm leading-6 text-[#5b6b6b]">{item}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      ) : null}
 
       {/* Bottom actions */}
       <div className="mt-8">

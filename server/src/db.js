@@ -376,7 +376,7 @@ function createVisitRequestsTable() {
       urgency TEXT NOT NULL DEFAULT 'routine'
         CHECK (urgency IN ('routine', 'urgent', 'emergency')),
       status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'acknowledged', 'assigned', 'en_route', 'arrived', 'completed', 'cancelled')),
+        CHECK (status IN ('pending', 'acknowledged', 'assigned', 'en_route', 'arrived', 'in_consultation', 'completed', 'cancelled')),
       assigned_doctor_id INTEGER,
       eta_minutes INTEGER,
       staff_notes TEXT NOT NULL DEFAULT '',
@@ -388,6 +388,85 @@ function createVisitRequestsTable() {
       FOREIGN KEY (assigned_doctor_id) REFERENCES doctors(id) ON DELETE SET NULL
     );
   `);
+}
+
+function migrateVisitRequestsConsultationStatusIfNeeded() {
+  const tableSql = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'visit_requests'")
+    .get()?.sql;
+
+  if (!tableSql || /in_consultation/.test(tableSql)) {
+    return;
+  }
+
+  db.pragma("foreign_keys = OFF");
+  try {
+    const migrate = db.transaction(() => {
+      db.exec("ALTER TABLE visit_requests RENAME TO visit_requests_legacy");
+      db.exec(`
+        CREATE TABLE visit_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          patient_id INTEGER NOT NULL,
+          patient_user_id INTEGER,
+          visit_for TEXT NOT NULL DEFAULT 'myself',
+          address TEXT NOT NULL DEFAULT '',
+          reason TEXT NOT NULL DEFAULT '',
+          urgency TEXT NOT NULL DEFAULT 'routine'
+            CHECK (urgency IN ('routine', 'urgent', 'emergency')),
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'acknowledged', 'assigned', 'en_route', 'arrived', 'in_consultation', 'completed', 'cancelled')),
+          assigned_doctor_id INTEGER,
+          eta_minutes INTEGER,
+          staff_notes TEXT NOT NULL DEFAULT '',
+          cancelled_by TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+          FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE SET NULL,
+          FOREIGN KEY (assigned_doctor_id) REFERENCES doctors(id) ON DELETE SET NULL
+        );
+      `);
+      db.exec(`
+        INSERT INTO visit_requests (
+          id,
+          patient_id,
+          patient_user_id,
+          visit_for,
+          address,
+          reason,
+          urgency,
+          status,
+          assigned_doctor_id,
+          eta_minutes,
+          staff_notes,
+          cancelled_by,
+          created_at,
+          updated_at
+        )
+        SELECT
+          id,
+          patient_id,
+          patient_user_id,
+          visit_for,
+          address,
+          reason,
+          urgency,
+          status,
+          assigned_doctor_id,
+          eta_minutes,
+          staff_notes,
+          cancelled_by,
+          created_at,
+          updated_at
+        FROM visit_requests_legacy
+      `);
+      db.exec("DROP TABLE visit_requests_legacy");
+    });
+
+    migrate();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
 }
 
 function createInventoryFoldersTable() {
@@ -773,6 +852,7 @@ function initializeDatabase() {
   createPatientAuthSessionsTable();
   createPatientPushSubscriptionsTable();
   createVisitRequestsTable();
+  migrateVisitRequestsConsultationStatusIfNeeded();
   createRestockRequestsTable();
 
   ensurePatientColumns();

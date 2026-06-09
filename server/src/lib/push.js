@@ -1078,6 +1078,7 @@ module.exports = {
   clearPatientPushSubscription,
   clearUserPushSubscription,
   dispatchLowStockAlert,
+  getDoctorUserId,
   getVapidPublicKey,
   isPushConfigured,
   listPushSubscriptionStatus,

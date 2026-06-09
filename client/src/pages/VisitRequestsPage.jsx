@@ -16,6 +16,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import { api } from "../lib/api.js";
 import { formatDate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
+import { useAuth } from "../hooks/useAuth.jsx";
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
@@ -23,17 +24,27 @@ const STATUS_OPTIONS = [
   { value: "assigned", label: "Doctor assigned" },
   { value: "en_route", label: "Doctor en route" },
   { value: "arrived", label: "Doctor arrived" },
+  { value: "in_consultation", label: "Consultation in progress" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
 ];
 
-// Columns shown on the live dispatch board (the active pipeline).
-const BOARD_COLUMNS = [
+// Dispatch desk sees the full pipeline from patient intake through consultation.
+const DISPATCH_BOARD_COLUMNS = [
   { status: "pending", label: "Pending", accent: "#e2574c" },
   { status: "acknowledged", label: "Acknowledged", accent: "#e8a020" },
   { status: "assigned", label: "Assigned", accent: "#2d8f98" },
   { status: "en_route", label: "En route", accent: "#2d8f98" },
   { status: "arrived", label: "Arrived", accent: "#1a7f4b" },
+  { status: "in_consultation", label: "In consultation", accent: "#1a7f4b" },
+];
+
+// Doctors only see visits once dispatch has assigned them.
+const DOCTOR_BOARD_COLUMNS = [
+  { status: "assigned", label: "Assigned", accent: "#2d8f98" },
+  { status: "en_route", label: "En route", accent: "#2d8f98" },
+  { status: "arrived", label: "Arrived", accent: "#1a7f4b" },
+  { status: "in_consultation", label: "In consultation", accent: "#1a7f4b" },
 ];
 
 const URGENCY_STYLES = {
@@ -104,13 +115,30 @@ function SlaChip({ createdAt, now, escalate }) {
   );
 }
 
-function nextStatus(status) {
-  const order = ["pending", "acknowledged", "assigned", "en_route", "arrived"];
+function nextStatus(status, { isDoctor = false } = {}) {
+  const order = isDoctor
+    ? ["assigned", "en_route", "arrived", "in_consultation", "completed"]
+    : ["pending", "acknowledged", "assigned", "en_route", "arrived", "in_consultation", "completed"];
   const idx = order.indexOf(status);
   return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
 }
 
-function BoardCard({ request, doctors, onUpdate, now, onDragStart, onDragEnd }) {
+function advanceActionLabel(status, next) {
+  if (status === "arrived" && next === "in_consultation") return "Start consultation";
+  if (status === "in_consultation" && next === "completed") return "Consultation done";
+  return `Move to ${STATUS_OPTIONS.find((option) => option.value === next)?.label || next}`;
+}
+
+function BoardCard({
+  request,
+  doctors,
+  onUpdate,
+  now,
+  onDragStart,
+  onDragEnd,
+  canAssignDoctor = true,
+  isDoctor = false,
+}) {
   const [eta, setEta] = useState(request.eta_minutes != null ? String(request.eta_minutes) : "");
   // Re-sync the editable ETA when the server value changes (React's recommended
   // "adjust state during render" pattern, no effect needed).
@@ -121,7 +149,7 @@ function BoardCard({ request, doctors, onUpdate, now, onDragStart, onDragEnd }) 
   }
 
   const escalate = request.status === "pending" || request.status === "acknowledged";
-  const advance = nextStatus(request.status);
+  const advance = nextStatus(request.status, { isDoctor });
 
   function update(payload) {
     onUpdate(request.id, payload).catch((error) =>
@@ -158,25 +186,27 @@ function BoardCard({ request, doctors, onUpdate, now, onDragStart, onDragEnd }) 
       </div>
 
       <div className="mt-3 space-y-2">
-        <select
-          value={request.assigned_doctor_id ? String(request.assigned_doctor_id) : ""}
-          onChange={(event) =>
-            update({
-              assigned_doctor_id: event.target.value === "" ? null : Number(event.target.value),
-              ...(request.status === "pending" || request.status === "acknowledged"
-                ? { status: "assigned" }
-                : {}),
-            })
-          }
-          className="w-full rounded-lg border border-[rgba(65,200,198,0.25)] bg-white px-2 py-1.5 text-xs text-slate-900 outline-none focus:border-[#2d8f98]"
-        >
-          <option value="">Unassigned</option>
-          {doctors.map((doctor) => (
-            <option key={doctor.id} value={String(doctor.id)}>
-              {doctor.full_name}
-            </option>
-          ))}
-        </select>
+        {canAssignDoctor ? (
+          <select
+            value={request.assigned_doctor_id ? String(request.assigned_doctor_id) : ""}
+            onChange={(event) =>
+              update({
+                assigned_doctor_id: event.target.value === "" ? null : Number(event.target.value),
+                ...(request.status === "pending" || request.status === "acknowledged"
+                  ? { status: "assigned" }
+                  : {}),
+              })
+            }
+            className="w-full rounded-lg border border-[rgba(65,200,198,0.25)] bg-white px-2 py-1.5 text-xs text-slate-900 outline-none focus:border-[#2d8f98]"
+          >
+            <option value="">Unassigned</option>
+            {doctors.map((doctor) => (
+              <option key={doctor.id} value={String(doctor.id)}>
+                {doctor.full_name}
+              </option>
+            ))}
+          </select>
+        ) : null}
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -211,7 +241,7 @@ function BoardCard({ request, doctors, onUpdate, now, onDragStart, onDragEnd }) 
             onClick={() => update({ status: advance })}
             className="w-full rounded-lg bg-[#2d8f98] px-2 py-1.5 text-xs font-semibold text-white transition hover:brightness-105 active:scale-95"
           >
-            Move to {STATUS_OPTIONS.find((option) => option.value === advance)?.label}
+            {advanceActionLabel(request.status, advance)}
           </button>
         ) : null}
       </div>
@@ -219,17 +249,17 @@ function BoardCard({ request, doctors, onUpdate, now, onDragStart, onDragEnd }) 
   );
 }
 
-function DispatchBoard({ requests, doctors, onUpdate, now }) {
+function DispatchBoard({ requests, doctors, onUpdate, now, columns, canAssignDoctor, isDoctor }) {
   const [dragId, setDragId] = useState(null);
   const [overColumn, setOverColumn] = useState(null);
 
   const grouped = useMemo(() => {
-    const map = Object.fromEntries(BOARD_COLUMNS.map((column) => [column.status, []]));
+    const map = Object.fromEntries(columns.map((column) => [column.status, []]));
     requests.forEach((request) => {
       if (map[request.status]) map[request.status].push(request);
     });
     return map;
-  }, [requests]);
+  }, [columns, requests]);
 
   function handleDragStart(event, id) {
     setDragId(id);
@@ -249,9 +279,12 @@ function DispatchBoard({ requests, doctors, onUpdate, now }) {
     );
   }
 
+  const columnClass =
+    columns.length >= 6 ? "lg:grid-cols-6" : columns.length === 4 ? "lg:grid-cols-4" : "lg:grid-cols-5";
+
   return (
-    <div className="grid gap-3 lg:grid-cols-5">
-      {BOARD_COLUMNS.map((column) => {
+    <div className={cx("grid gap-3", columnClass)}>
+      {columns.map((column) => {
         const items = grouped[column.status] || [];
         const isOver = overColumn === column.status;
         return (
@@ -296,6 +329,8 @@ function DispatchBoard({ requests, doctors, onUpdate, now }) {
                     setDragId(null);
                     setOverColumn(null);
                   }}
+                  canAssignDoctor={canAssignDoctor}
+                  isDoctor={isDoctor}
                 />
               ))}
               {items.length === 0 ? (
@@ -309,7 +344,7 @@ function DispatchBoard({ requests, doctors, onUpdate, now }) {
   );
 }
 
-function VisitRequestCard({ request, doctors, onUpdate }) {
+function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }) {
   const [draft, setDraft] = useState({
     status: request.status,
     assigned_doctor_id: request.assigned_doctor_id ? String(request.assigned_doctor_id) : "",
@@ -391,21 +426,23 @@ function VisitRequestCard({ request, doctors, onUpdate }) {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Doctor</span>
-          <select
-            value={draft.assigned_doctor_id}
-            onChange={(e) => setDraft((c) => ({ ...c, assigned_doctor_id: e.target.value }))}
-            className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
-          >
-            <option value="">Unassigned</option>
-            {doctors.map((doctor) => (
-              <option key={doctor.id} value={String(doctor.id)}>
-                {doctor.full_name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {canAssignDoctor ? (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Doctor</span>
+            <select
+              value={draft.assigned_doctor_id}
+              onChange={(e) => setDraft((c) => ({ ...c, assigned_doctor_id: e.target.value }))}
+              className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
+            >
+              <option value="">Unassigned</option>
+              {doctors.map((doctor) => (
+                <option key={doctor.id} value={String(doctor.id)}>
+                  {doctor.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">ETA (mins)</span>
@@ -449,6 +486,11 @@ function VisitRequestCard({ request, doctors, onUpdate }) {
 }
 
 export default function VisitRequestsPage() {
+  const { user } = useAuth();
+  const isDoctor = user?.role === "doctor";
+  const canAssignDoctor = !isDoctor;
+  const boardColumns = isDoctor ? DOCTOR_BOARD_COLUMNS : DISPATCH_BOARD_COLUMNS;
+
   const [requests, setRequests] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -473,6 +515,11 @@ export default function VisitRequestsPage() {
   loadRef.current = loadRequests;
 
   useEffect(() => {
+    if (!canAssignDoctor) {
+      setDoctors([]);
+      return undefined;
+    }
+
     let ignore = false;
 
     async function loadDoctors() {
@@ -486,7 +533,7 @@ export default function VisitRequestsPage() {
 
     loadDoctors();
     return () => { ignore = true; };
-  }, []);
+  }, [canAssignDoctor]);
 
   useEffect(() => {
     setLoading(true);
@@ -528,9 +575,13 @@ export default function VisitRequestsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Dispatch desk"
+        eyebrow={isDoctor ? "My visits" : "Dispatch desk"}
         title="Visit requests"
-        description="Home-visit requests raised by patients from the patient portal. Drag a card between columns to update its status, assign a doctor, and the patient's live tracker updates instantly."
+        description={
+          isDoctor
+            ? "Home visits assigned to you. Update your ETA, start the consultation when you arrive, and mark it done when finished."
+            : "Home-visit requests raised by patients from the patient portal. Review new requests, assign a doctor, and track the visit through to completion."
+        }
         actions={
           <button
             type="button"
@@ -571,7 +622,11 @@ export default function VisitRequestsPage() {
       ) : requests.length === 0 ? (
         <EmptyState
           title="No visit requests"
-          description="When a patient requests a home visit from the patient portal, it will appear here for the team to action."
+          description={
+            isDoctor
+              ? "When dispatch assigns you a home visit, it will appear here."
+              : "When a patient requests a home visit from the patient portal, it will appear here for the team to action."
+          }
         />
       ) : isBoard ? (
         <DispatchBoard
@@ -579,6 +634,9 @@ export default function VisitRequestsPage() {
           doctors={activeDoctors}
           onUpdate={handleUpdate}
           now={now}
+          columns={boardColumns}
+          canAssignDoctor={canAssignDoctor}
+          isDoctor={isDoctor}
         />
       ) : (
         <SectionCard title={`${requests.length} request${requests.length === 1 ? "" : "s"}`}>
@@ -589,6 +647,7 @@ export default function VisitRequestsPage() {
                 request={request}
                 doctors={activeDoctors}
                 onUpdate={handleUpdate}
+                canAssignDoctor={canAssignDoctor}
               />
             ))}
           </div>

@@ -3,8 +3,21 @@ const { db } = require("../db");
 // Statuses that mean the request is still live (not yet closed out). These are
 // what the patient portal treats as an "active visit" and what the staff inbox
 // surfaces as actionable.
-const ACTIVE_VISIT_STATUSES = ["pending", "acknowledged", "assigned", "en_route", "arrived"];
+const ACTIVE_VISIT_STATUSES = [
+  "pending",
+  "acknowledged",
+  "assigned",
+  "en_route",
+  "arrived",
+  "in_consultation",
+];
 const ALL_VISIT_STATUSES = [...ACTIVE_VISIT_STATUSES, "completed", "cancelled"];
+
+// Patients may cancel while dispatch is still coordinating; once the doctor has
+// arrived the visit is too far along to cancel from the portal.
+const PATIENT_CANCELLABLE_STATUSES = ["pending", "acknowledged", "assigned", "en_route"];
+
+const DOCTOR_VISIBLE_STATUSES = ["assigned", "en_route", "arrived", "in_consultation"];
 
 const STATUS_LABELS = {
   pending: "Request received",
@@ -12,6 +25,7 @@ const STATUS_LABELS = {
   assigned: "Doctor assigned",
   en_route: "Doctor en route",
   arrived: "Doctor arrived",
+  in_consultation: "Consultation in progress",
   completed: "Visit completed",
   cancelled: "Cancelled",
 };
@@ -80,6 +94,8 @@ function getActiveVisitRequestForPatient(patientId) {
 module.exports = {
   ACTIVE_VISIT_STATUSES,
   ALL_VISIT_STATUSES,
+  PATIENT_CANCELLABLE_STATUSES,
+  DOCTOR_VISIBLE_STATUSES,
   STATUS_LABELS,
   VISIT_REQUEST_SELECT,
   getStatusLabel,

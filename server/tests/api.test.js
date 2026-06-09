@@ -321,6 +321,80 @@ test("home-visit request flows patient -> staff -> patient", async () => {
   assert.ok(active.data.visit_request.doctor_name);
 });
 
+test("doctors only see assigned visit requests and can complete consultation", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("doctor-visit"),
+      password: "secret123",
+      full_name: "Doctor Visit Tester",
+      phone: "57009999",
+      date_of_birth: "1988-08-08",
+      gender: "M",
+    },
+  });
+  const patientToken = reg.data.token;
+
+  const created = await api("POST", "/api/patient-portal/visit-requests", {
+    token: patientToken,
+    body: { address: "12 Home Lane", reason: "Cough", urgency: "routine" },
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.data.visit_request.id;
+
+  const doctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "arun.dharee", password: "Welcome@123" },
+  });
+  assert.equal(doctorLogin.status, 200);
+  const doctorToken = doctorLogin.data.token;
+
+  const doctorBeforeAssign = await api("GET", "/api/visit-requests?status=active", {
+    token: doctorToken,
+  });
+  assert.equal(doctorBeforeAssign.status, 200);
+  assert.equal(
+    doctorBeforeAssign.data.visit_requests.some((row) => row.id === requestId),
+    false,
+    "unassigned requests must not appear for doctors",
+  );
+
+  const doctors = await api("GET", "/api/doctors", { token: adminToken });
+  const doctorId = (doctors.data.doctors || doctors.data).find(
+    (doctor) => doctor.full_name === "Arun Dharee",
+  )?.id;
+  assert.ok(doctorId);
+
+  const assigned = await api("PATCH", `/api/visit-requests/${requestId}`, {
+    token: adminToken,
+    body: { status: "arrived", assigned_doctor_id: doctorId },
+  });
+  assert.equal(assigned.status, 200);
+
+  const doctorAfterAssign = await api("GET", "/api/visit-requests?status=active", {
+    token: doctorToken,
+  });
+  assert.ok(doctorAfterAssign.data.visit_requests.some((row) => row.id === requestId));
+
+  const deniedReassign = await api("PATCH", `/api/visit-requests/${requestId}`, {
+    token: doctorToken,
+    body: { assigned_doctor_id: doctorId },
+  });
+  assert.equal(deniedReassign.status, 403);
+
+  const started = await api("PATCH", `/api/visit-requests/${requestId}`, {
+    token: doctorToken,
+    body: { status: "in_consultation" },
+  });
+  assert.equal(started.status, 200);
+  assert.equal(started.data.visit_request.status, "in_consultation");
+
+  const completed = await api("PATCH", `/api/visit-requests/${requestId}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.data.visit_request.status, "completed");
+});
+
 test("staff long-term review surfaces as an upcoming patient appointment", async () => {
   const reg = await api("POST", "/api/patient-auth/register", {
     body: {
@@ -350,4 +424,98 @@ test("staff long-term review surfaces as an upcoming patient appointment", async
   assert.ok(review, "expected a review item in appointments");
   assert.equal(review.appointment_date, "2026-07-19");
   assert.equal(review.status, "scheduled");
+});
+
+test("patient dashboard returns stats and recent activity", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("dashboard"),
+      password: "secret123",
+      full_name: "Dashboard Tester",
+      phone: "57005555",
+      date_of_birth: "1985-04-04",
+      gender: "F",
+    },
+  });
+  const token = reg.data.token;
+  const patientId = (await api("GET", "/api/patient-portal/profile", { token })).data.profile.id;
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now', '+3 day'), '11:00', 'scheduled')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, date('now', '-1 day'), 'Patient improving.\nImp: Seasonal allergy')
+  `).run(appointmentId, patientId, doctorId);
+
+  const dashboard = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.data));
+  assert.equal(dashboard.data.stats.upcoming_appointments, 1);
+  assert.equal(dashboard.data.stats.total_visits, 1);
+  assert.ok(Array.isArray(dashboard.data.recent_activity));
+  assert.equal(dashboard.data.recent_activity.length, 1);
+  assert.match(dashboard.data.recent_activity[0].description, /Seasonal allergy/i);
+});
+
+test("patient billing returns bills and summary totals", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("billing"),
+      password: "secret123",
+      full_name: "Billing Tester",
+      phone: "57006666",
+      date_of_birth: "1983-02-02",
+      gender: "M",
+    },
+  });
+  const token = reg.data.token;
+  const patientId = (await api("GET", "/api/patient-portal/profile", { token })).data.profile.id;
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now', '-2 day'), '09:00', 'completed')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  const consultationId = db
+    .prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, date('now', '-2 day'), 'Routine review')
+    `)
+    .run(appointmentId, patientId, doctorId).lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, payment_date)
+    VALUES (?, ?, ?, ?, 'paid', 'cash', date('now', '-2 day'))
+  `).run(
+    consultationId,
+    patientId,
+    JSON.stringify([{ description: "General Consultation", amount: 95 }]),
+    95,
+  );
+
+  db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+    VALUES (?, ?, ?, ?, 'unpaid')
+  `).run(
+    consultationId,
+    patientId,
+    JSON.stringify([{ description: "Lab coordination", amount: 35 }]),
+    35,
+  );
+
+  const billing = await api("GET", "/api/patient-portal/billing", { token });
+  assert.equal(billing.status, 200, JSON.stringify(billing.data));
+  assert.equal(billing.data.bills.length, 2);
+  assert.equal(billing.data.summary.total_billed, 130);
+  assert.equal(billing.data.summary.total_paid, 95);
+  assert.equal(billing.data.summary.outstanding, 35);
+  assert.match(billing.data.bills[0].items_summary, /Consultation|Lab/i);
 });
