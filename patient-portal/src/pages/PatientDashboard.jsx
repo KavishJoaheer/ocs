@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
@@ -15,6 +15,7 @@ import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
 import VisitCancelPrompt from "../components/VisitCancelPrompt.jsx";
+import MobileDashboardHome from "../components/dashboard/MobileDashboardHome.jsx";
 
 // Map a backend visit-request status onto the dashboard's 4-step mini tracker.
 const VISIT_STATUS_STEP_INDEX = {
@@ -211,85 +212,6 @@ function LastConsultationCard({ consultation }) {
   );
 }
 
-function MobileStatsStrip({ stats }) {
-  const items = [];
-
-  if ((stats?.upcoming_appointments ?? 0) > 0) {
-    items.push({
-      value: stats.upcoming_appointments,
-      label:
-        stats.upcoming_appointments === 1 ? "Upcoming Appt" : "Upcoming Appts",
-    });
-  }
-  if ((stats?.pending_bills ?? 0) > 0) {
-    items.push({
-      value: stats.pending_bills,
-      label: stats.pending_bills === 1 ? "Pending Bill" : "Pending Bills",
-    });
-  }
-  if ((stats?.total_visits ?? 0) > 0) {
-    items.push({
-      value: stats.total_visits,
-      label: stats.total_visits === 1 ? "Total Visit" : "Total Visits",
-    });
-  }
-
-  if (items.length === 0) return null;
-
-  return (
-    <div className="mb-3 flex items-center rounded-[12px] bg-white px-5 py-3.5 shadow-[0_2px_12px_rgba(26,160,140,0.06)]">
-      {items.map((item, index) => (
-        <Fragment key={item.label}>
-          {index > 0 ? (
-            <div className="h-8 w-px shrink-0 bg-[rgba(26,160,140,0.12)]" aria-hidden="true" />
-          ) : null}
-          <div className="min-w-0 flex-1 text-center">
-            <p className="text-[18px] font-bold leading-[1.5] text-[#1a4a42]">{item.value}</p>
-            <p className="text-[10px] leading-[1.5] text-[#5b7f8a]">{item.label}</p>
-          </div>
-        </Fragment>
-      ))}
-    </div>
-  );
-}
-
-function MobileLastVisit({ consultation }) {
-  return (
-    <section className="animate-fade-in-up rounded-[12px] border border-[rgba(26,160,140,0.12)] bg-white p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#2d8f98]">
-          Your Last Visit
-        </p>
-        <Link
-          to="/health-records"
-          className="shrink-0 text-[12px] font-medium text-[#5f9aa0] transition active:text-[#2d8f98]"
-        >
-          View timeline →
-        </Link>
-      </div>
-
-      <p className="mt-3 text-[15px] font-bold text-[#1a5c52]">
-        {formatDoctorName(consultation.doctor_name)}
-      </p>
-      <p className="mt-0.5 text-[13px] font-light text-[#5b7f8a]">
-        {dayjs(consultation.date).format("D MMMM YYYY")}
-      </p>
-      {consultation.diagnosis ? (
-        <span className="mt-3 inline-flex rounded-[20px] bg-[rgba(26,160,140,0.1)] px-4 py-1 text-[13px] text-[#2d8f98]">
-          {consultation.diagnosis}
-        </span>
-      ) : null}
-
-      <Link
-        to="/consultations"
-        className="mt-4 block text-[12px] font-normal text-[#2d8f98] transition active:text-[#23767f]"
-      >
-        View full record →
-      </Link>
-    </section>
-  );
-}
-
 function MobileActiveVisit({ visit, onCancelled }) {
   const doctor = formatDoctorSurname(visit.doctor);
   const eta = extractEtaMinutes(visit);
@@ -452,14 +374,6 @@ function PatientDashboard() {
     return "A doctor is one tap away, any time of day.";
   })();
 
-  const mobileSubline = (() => {
-    if (loading && isPrimaryProfile) return "Loading your health portal\u2026";
-    if (!isPrimaryProfile) {
-      return `You're viewing ${activeProfile.firstName}'s health space. All records and visits shown are ${activeProfile.possessive}.`;
-    }
-    return "A doctor is one tap away.";
-  })();
-
   const hasStats =
     !loading &&
     isPrimaryProfile &&
@@ -561,53 +475,19 @@ function PatientDashboard() {
       </div>
     </div>
 
-    {/* ───────── Mobile dashboard ───────── */}
+    {/* ───────── Mobile dashboard — native home experience ───────── */}
     <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-md:block">
       {loading && isPrimaryProfile ? (
-        <div className="space-y-4">
-          <div className="h-24 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
-          <div className="h-40 animate-pulse rounded-2xl bg-[rgba(65,200,198,0.06)]" />
+        <div className="native-dashboard -mx-4 space-y-4 bg-[#f4f7f7] px-4 pt-[max(env(safe-area-inset-top),12px)]">
+          <div className="h-20 animate-pulse rounded-2xl bg-white/60" />
+          <div className="h-28 animate-pulse rounded-[24px] bg-white/60" />
+        </div>
+      ) : profileActiveVisit ? (
+        <div className="px-0 pt-[max(env(safe-area-inset-top),12px)]">
+          <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
         </div>
       ) : (
-        <>
-          {profileActiveVisit ? (
-            <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
-          ) : (
-            <>
-              <div className="mb-5 animate-fade-in-up">
-                <h1 className="text-[24px] font-bold leading-tight text-[#1a5c52]">
-                  {isPrimaryProfile ? (
-                    <>
-                      {greeting}, <span className="text-[#0D9E8A]">{firstName}</span>
-                    </>
-                  ) : (
-                    <>
-                      Managing care for <span className="text-[#0D9E8A]">{firstName}</span>.
-                    </>
-                  )}
-                </h1>
-                <p className="mt-2 text-[13px] font-light text-[#5b7f8a]">{mobileSubline}</p>
-              </div>
-
-              <Link
-                to="/request-visit"
-                className="mb-5 flex h-[52px] w-full items-center justify-between rounded-[14px] bg-[#E8A020] px-5 text-white shadow-sm transition active:scale-95 active:brightness-105"
-              >
-                <span className="flex items-center gap-2 text-sm font-bold">
-                  <HousePlus className="size-5" strokeWidth={2} />
-                  Request a Home Visit
-                </span>
-                <ArrowRight className="size-5" strokeWidth={2} />
-              </Link>
-            </>
-          )}
-
-          {hasStats ? <MobileStatsStrip stats={profileStats} /> : null}
-
-          {profileLastConsultation ? (
-            <MobileLastVisit consultation={profileLastConsultation} />
-          ) : null}
-        </>
+        <MobileDashboardHome firstName={isPrimaryProfile ? firstName : activeProfile.firstName} />
       )}
     </div>
     </>

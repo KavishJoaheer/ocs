@@ -1,0 +1,62 @@
+import { Home, FileText, Users, CircleUserRound } from "lucide-react";
+import { NavLink } from "react-router-dom";
+
+/** Premium floating pill bottom navigation for the native mobile experience. */
+const navItems = [
+  { to: "/dashboard", label: "Home", icon: Home, end: true },
+  { to: "/health-records", label: "Records", icon: FileText },
+  { to: "/appointments", label: "Care Team", icon: Users },
+  { to: "/profile", label: "Profile", icon: CircleUserRound },
+];
+
+function MobileBottomNav() {
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-2 lg:hidden"
+      aria-label="Main navigation"
+    >
+      <div className="mobile-nav-pill mx-auto flex max-w-md items-center justify-around rounded-full border border-white/60 bg-white/75 px-2 py-2 shadow-[0_8px_32px_rgba(34,72,91,0.12)] backdrop-blur-xl">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              end={item.end}
+              to={item.to}
+              className="flex min-h-[44px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full transition-all"
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={[
+                      "flex size-9 items-center justify-center rounded-full transition-all",
+                      isActive
+                        ? "bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-white shadow-[0_4px_16px_rgba(45,143,152,0.35)]"
+                        : "text-[#8a9e9a]",
+                    ].join(" ")}
+                  >
+                    <Icon
+                      className="size-[18px]"
+                      strokeWidth={isActive ? 2.25 : 1.75}
+                      fill={isActive ? "currentColor" : "none"}
+                    />
+                  </span>
+                  <span
+                    className={[
+                      "text-[10px] leading-none tracking-wide",
+                      isActive ? "font-bold text-[#1a5c52]" : "font-medium text-[#8a9e9a]",
+                    ].join(" ")}
+                  >
+                    {item.label}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+export default MobileBottomNav;

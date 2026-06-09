@@ -8,9 +8,10 @@ import {
   CalendarCheck,
   ReceiptText,
 } from "lucide-react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
+import MobileBottomNav from "./MobileBottomNav.jsx";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -51,11 +52,13 @@ function SidebarLink({ item }) {
 
 function Sidebar() {
   const { logout } = usePatientAuth();
+  const { pathname } = useLocation();
+  const isNativeDashboard = pathname === "/dashboard";
 
   return (
     <>
-      {/* ─── Mobile top bar ─── */}
-      <div className="relative flex h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden">
+      {/* ─── Mobile top bar (hidden on native dashboard — header is in-page) ─── */}
+      <div className={`relative flex h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden ${isNativeDashboard ? "hidden" : ""}`}>
         <img
           src="/ocs-medecins-mark.png"
           alt="OCS Care"
@@ -67,39 +70,8 @@ function Sidebar() {
         <FamilyProfileSwitcher variant="avatar" />
       </div>
 
-      {/* ─── Mobile bottom navigation ─── */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 bg-white/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
-        <div className="mx-auto flex h-[68px] max-w-md items-stretch justify-around px-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const mobileLabel = item.label.split(" ")[0];
-            return (
-              <NavLink
-                key={item.to}
-                end={item.end}
-                to={item.to}
-                className={({ isActive }) =>
-                  [
-                    "flex min-h-[44px] min-w-[56px] flex-1 flex-col items-center justify-center gap-1 text-[10px] tracking-[0.2px] transition-colors active:opacity-60",
-                    isActive ? "font-semibold text-[#1a5c52]" : "font-normal text-[#8a9e9a]",
-                  ].join(" ")
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon
-                      className="size-[20px]"
-                      strokeWidth={1.6}
-                      fill={isActive ? "currentColor" : "none"}
-                    />
-                    <span className="leading-none">{mobileLabel}</span>
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
-        </div>
-      </nav>
+      {/* ─── Mobile bottom navigation — floating pill bar ─── */}
+      <MobileBottomNav />
 
       {/* ─── Desktop sidebar ─── */}
       <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] lg:flex lg:flex-col">
