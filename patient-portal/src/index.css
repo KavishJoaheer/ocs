@@ -789,6 +789,12 @@ table {
   grid-template-columns: minmax(0, 1.86fr) minmax(0, 1fr);
 }
 
+@media (max-width: 1280px) {
+  .desktop-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .desktop-card {
   border-radius: var(--desktop-card-radius);
   background: #fff;

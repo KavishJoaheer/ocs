@@ -75,21 +75,47 @@ export async function fetchPushConfiguration() {
 }
 
 export async function getPushServiceWorkerRegistration() {
-  if (!isPushSupported()) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return null;
   }
 
-  const existing = await navigator.serviceWorker.getRegistration();
-  if (existing) {
-    return existing;
+  const registration = await navigator.serviceWorker.register(SW_PATH);
+  try {
+    await registration.update();
+  } catch {
+    // Offline or transient failure — keep using the current registration.
   }
-
-  await navigator.serviceWorker.register(SW_PATH);
-  return navigator.serviceWorker.ready;
+  return registration;
 }
 
 export async function registerServiceWorker() {
-  return getPushServiceWorkerRegistration();
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return null;
+  }
+
+  const registration = await navigator.serviceWorker.register(SW_PATH);
+  try {
+    await registration.update();
+  } catch {
+    // Offline or transient failure — keep using the current registration.
+  }
+
+  // Reload once when a waiting worker takes control so precached assets refresh.
+  if (!window.__ocsSwReloadListener) {
+    window.__ocsSwReloadListener = true;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
+  }
+
+  if (registration?.waiting && navigator.serviceWorker.controller) {
+    registration.waiting.postMessage({ type: "SKIP_WAITING" });
+  }
+
+  return registration;
 }
 
 export async function persistPushSubscriptionPayload(subscriptionJson) {
