@@ -30,6 +30,12 @@
   --native-shadow-ambient: 0 4px 15px rgba(34, 72, 91, 0.04);
   --native-shadow-lift: 0 4px 15px rgba(34, 72, 91, 0.04), 0 1px 2px rgba(34, 72, 91, 0.03);
   --native-shadow-hero: 0 8px 24px rgba(45, 143, 152, 0.12), 0 2px 6px rgba(34, 72, 91, 0.04);
+  /* Desktop dashboard — luxury concierge canvas */
+  --desktop-canvas: #f4f6f8;
+  --desktop-card-radius: 18px;
+  --desktop-card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.06);
+  --desktop-card-shadow-hover: 0 14px 44px -10px rgba(0, 0, 0, 0.09);
+  --ocs-teal-dark: #1a5c52;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -773,6 +779,108 @@ table {
 
 .bg-ocs-orange {
   background-color: var(--ocs-orange);
+}
+
+/* ─── Desktop dashboard — premium concierge layout ─── */
+
+.desktop-dashboard-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.86fr) minmax(0, 1fr);
+}
+
+.desktop-card {
+  border-radius: var(--desktop-card-radius);
+  background: #fff;
+  box-shadow: var(--desktop-card-shadow);
+}
+
+.desktop-card-hover {
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.desktop-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--desktop-card-shadow-hover);
+}
+
+.desktop-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--desktop-card-radius);
+  background: linear-gradient(135deg, #134e4f 0%, #1a6b72 38%, #2d8f98 72%, #26717c 100%);
+  box-shadow: 0 16px 48px -12px rgba(19, 78, 79, 0.35);
+  padding: 36px 36px 28px;
+}
+
+.desktop-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.12), transparent 42%),
+    radial-gradient(circle at 10% 90%, rgba(65, 200, 198, 0.18), transparent 38%);
+  pointer-events: none;
+}
+
+.desktop-hero-content {
+  position: relative;
+}
+
+.desktop-hero-cta {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 28px;
+  padding: 22px 24px;
+  border-radius: var(--desktop-card-radius);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.14);
+  text-decoration: none;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.desktop-hero-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.18);
+}
+
+.desktop-stat-widget {
+  padding: 8px 4px;
+}
+
+.desktop-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a9e9a;
+}
+
+.desktop-stat-value {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ocs-ink);
+}
+
+.desktop-support-card {
+  border-radius: var(--desktop-card-radius);
+  background: rgba(26, 160, 140, 0.06);
+  padding: 24px;
+  transition: background 200ms ease;
+}
+
+.desktop-support-card:hover {
+  background: rgba(26, 160, 140, 0.09);
 }
 
 /* Display typography — explicit weight for SF Pro / Roboto parity */

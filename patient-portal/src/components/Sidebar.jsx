@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   LogOut,
   CircleUserRound,
-  Heart,
   HousePlus,
   HeartPulse,
   CalendarCheck,
@@ -30,17 +29,17 @@ function SidebarLink({ item }) {
       to={item.to}
       className={({ isActive }) =>
         [
-          "group flex min-h-[44px] items-center gap-3 rounded-2xl px-4 text-sm transition-all",
+          "group flex min-h-[44px] items-center gap-3 rounded-[16px] px-4 text-sm transition-all",
           isActive
-            ? "border-l-[3px] border-[#1a5c52] bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] font-medium text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"
-            : "border-l-[3px] border-transparent font-normal text-[#2a6a5e] hover:bg-white/70",
+            ? "border-l-[3px] border-[#e8a020] bg-[rgba(26,92,82,0.05)] font-semibold text-[#1a5c52]"
+            : "border-l-[3px] border-transparent font-normal text-[#2a6a5e] hover:bg-[rgba(26,92,82,0.04)]",
         ].join(" ")
       }
     >
       {({ isActive }) => (
         <>
           <Icon
-            className={`size-[18px] shrink-0 ${isActive ? "text-white" : "text-[#6B9E95]"}`}
+            className={`size-[18px] shrink-0 ${isActive ? "text-[#2d8f98]" : "text-[#6B9E95]"}`}
             strokeWidth={1.5}
           />
           <span>{item.label}</span>
@@ -80,7 +79,7 @@ function Sidebar() {
       <MobileBottomNav />
 
       {/* ─── Desktop sidebar ─── */}
-      <aside className="hidden w-80 shrink-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] lg:flex lg:flex-col">
+      <aside className="hidden w-80 shrink-0 border-r border-[rgba(0,0,0,0.06)] bg-white shadow-[4px_0_24px_-8px_rgba(0,0,0,0.04)] lg:flex lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-8">
           {/* Brand */}
           <div className="flex flex-col items-start gap-2">
@@ -101,7 +100,7 @@ function Sidebar() {
               type="button"
               onClick={() => logout()}
               aria-label="Sign out"
-              className="inline-flex shrink-0 items-center justify-center rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] p-2 text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
+              className="inline-flex shrink-0 items-center justify-center rounded-[16px] border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] p-2 text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
             >
               <LogOut className="size-4" />
             </button>
@@ -110,7 +109,7 @@ function Sidebar() {
           {/* Request a home visit — primary action */}
           <Link
             to="/request-visit"
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(232,160,32,0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(232,160,32,0.5)] active:scale-[0.98]"
           >
             <HousePlus className="size-5" />
             Request a Home Visit
@@ -128,27 +127,7 @@ function Sidebar() {
             </nav>
           </div>
 
-          {/* Bottom card */}
-          <div className="mt-auto rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
-              Need help?
-            </p>
-            <p className="mt-3 text-sm font-semibold text-[#22485b]">Contact our care team</p>
-            <p className="mt-2 text-sm leading-6 text-[#5b7f8a]">
-              Reach out any time for appointment changes, billing questions, or medical inquiries.
-            </p>
-            <div className="mt-4 rounded-[24px] bg-[rgba(65,200,198,0.10)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
-                Hotline
-              </p>
-              <div className="mt-1 flex items-center gap-3">
-                <Heart className="size-4 shrink-0 text-[#f2c14d]" />
-                <p className="pl-1 text-xl font-bold tracking-tight text-[#22485b]">
-                  52 52 22 34
-                </p>
-              </div>
-            </div>
-          </div>
+          <div className="mt-auto" aria-hidden="true" />
         </div>
       </aside>
     </>
