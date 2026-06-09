@@ -15,3 +15,6 @@ server/ocs.db-wal
 server/src/data/vapid.json
 data/vapid.json
 dist
+test-results/
+playwright-report/
+blob-report/

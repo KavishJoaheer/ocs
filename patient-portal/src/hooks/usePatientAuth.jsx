@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
 import { startPatientRealtime, stopPatientRealtime } from "../lib/realtime.js";
+import { syncPushSubscriptionIfGranted } from "../lib/pushNotifications.js";
 
 const AuthContext = createContext(null);
 
@@ -38,6 +39,7 @@ export function AuthProvider({ children }) {
     setStoredAuthToken(payload.token);
     setToken(payload.token);
     setUser(payload.user);
+    void syncPushSubscriptionIfGranted();
 
     return payload.user;
   }, []);
@@ -52,6 +54,7 @@ export function AuthProvider({ children }) {
     setStoredAuthToken(payload.token);
     setToken(payload.token);
     setUser(payload.user);
+    void syncPushSubscriptionIfGranted();
 
     return payload.user;
   }, []);

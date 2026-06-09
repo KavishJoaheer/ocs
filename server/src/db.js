@@ -346,6 +346,22 @@ function createPatientAuthSessionsTable() {
   `);
 }
 
+function createPatientPushSubscriptionsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_push_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_user_id INTEGER NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      subscription_json TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE CASCADE
+    );
+  `);
+}
+
 function createVisitRequestsTable() {
   // Home-visit requests raised from the patient portal. This is the bridge that
   // lets a patient-initiated request surface on the staff dispatch board.
@@ -755,6 +771,7 @@ function initializeDatabase() {
   createInventoryMovementsTable();
   createPatientUsersTable();
   createPatientAuthSessionsTable();
+  createPatientPushSubscriptionsTable();
   createVisitRequestsTable();
   createRestockRequestsTable();
 
@@ -835,6 +852,8 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_patient_users_patient_id ON patient_users(patient_id);
     CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_user ON patient_auth_sessions(patient_user_id);
     CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_expires ON patient_auth_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_patient_push_subscriptions_user
+      ON patient_push_subscriptions(patient_user_id);
     CREATE INDEX IF NOT EXISTS idx_visit_requests_patient ON visit_requests(patient_id);
     CREATE INDEX IF NOT EXISTS idx_visit_requests_status ON visit_requests(status);
     CREATE INDEX IF NOT EXISTS idx_visit_requests_created_at ON visit_requests(created_at);

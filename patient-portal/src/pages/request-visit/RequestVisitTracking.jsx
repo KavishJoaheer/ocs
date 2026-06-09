@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Check, ClipboardList, Phone } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
+import VisitLocationMap from "../../components/VisitLocationMap.jsx";
 
 // Ordered milestones a live request moves through. The patient tracker derives
 // each step's state from the request's current backend status.
@@ -199,6 +200,8 @@ function RequestVisitTracking() {
           </span>
         </div>
       )}
+
+      <VisitLocationMap address={visit.address} className="mt-6" />
 
       {/* Doctor card */}
       <div className="mt-8 flex items-center gap-4 rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/85 p-6">

@@ -28,6 +28,7 @@ function serializeVisitRequest(row) {
   return {
     id: Number(row.id),
     patient_id: row.patient_id ? Number(row.patient_id) : null,
+    patient_user_id: row.patient_user_id ? Number(row.patient_user_id) : null,
     patient_name: row.patient_name || null,
     patient_identifier: row.patient_identifier || null,
     patient_contact_number: row.patient_contact_number || null,

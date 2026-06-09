@@ -11,6 +11,9 @@
     "dev:linkham-portal": "npm run dev --prefix linkham-portal",
     "build": "npm run build --prefix client",
     "build:patient-portal": "npm run build --prefix patient-portal",
+    "build:e2e": "npm run build --prefix client && npm run build --prefix patient-portal",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "start": "npm run start --prefix server",
     "docker:build": "docker compose -f docker-compose.local.yml build",
     "docker:up": "docker compose -f docker-compose.local.yml up -d --build",
@@ -21,6 +24,7 @@
     "deploy:nas:hub": "bash scripts/nas-deploy.sh hub"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "concurrently": "^9.2.1"
   }
 }

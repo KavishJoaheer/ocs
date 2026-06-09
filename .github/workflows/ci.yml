@@ -63,3 +63,35 @@ jobs:
       - name: Build
         working-directory: patient-portal
         run: npm run build
+
+  e2e-smoke:
+    name: Playwright smoke tests
+    runs-on: ubuntu-latest
+    needs: [server-tests, client-build, patient-portal-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+            patient-portal/package-lock.json
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install workspace dependencies
+        run: |
+          npm ci --prefix server
+          npm ci --prefix client
+          npm ci --prefix patient-portal
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+      - name: Build frontends for preview
+        run: npm run build:e2e
+      - name: Run Playwright smoke tests
+        run: npm run test:e2e
+        env:
+          CI: "true"
+          E2E_DB_PATH: /tmp/ocs-e2e-ci.db

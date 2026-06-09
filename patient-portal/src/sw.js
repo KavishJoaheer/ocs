@@ -1,8 +1,20 @@
-const DEFAULT_ICON = "/icon-192.png";
-const DEFAULT_BADGE = "/icon-192.png";
-const PUSH_CONFIG_CACHE = "ocs-push-config-v1";
-const VAPID_KEY_REQUEST = "/__ocs_vapid_public_key__";
-const PENDING_SUBSCRIPTION_REQUEST = "/__ocs_pending_push_subscription__";
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
+
+precacheAndRoute(self.__WB_MANIFEST);
+cleanupOutdatedCaches();
+
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL("/index.html"), {
+    denylist: [/^\/api/],
+  }),
+);
+
+const DEFAULT_ICON = "/pwa-192.png";
+const DEFAULT_BADGE = "/pwa-192.png";
+const PUSH_CONFIG_CACHE = "ocs-patient-push-config-v1";
+const VAPID_KEY_REQUEST = "/__ocs_patient_vapid_public_key__";
+const PENDING_SUBSCRIPTION_REQUEST = "/__ocs_patient_pending_push_subscription__";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -28,7 +40,7 @@ async function cachePut(key, value) {
     const cache = await caches.open(PUSH_CONFIG_CACHE);
     await cache.put(key, new Response(value));
   } catch {
-    // Cache API can be unavailable in private modes; nothing we can do here.
+    // ignore
   }
 }
 
@@ -54,12 +66,12 @@ async function cacheDelete(key) {
 
 function buildNotificationPayload(raw = {}) {
   return {
-    title: raw.title || "OCS Update",
+    title: raw.title || "OCS Patient Update",
     body: raw.body || "You have a new notification.",
-    url: raw.url || "/",
+    url: raw.url || "/dashboard",
     icon: raw.icon || DEFAULT_ICON,
     badge: raw.badge || DEFAULT_BADGE,
-    tag: raw.tag || "ocs-alert",
+    tag: raw.tag || "ocs-patient-alert",
     requireInteraction: raw.requireInteraction !== false,
   };
 }
@@ -74,17 +86,12 @@ self.addEventListener("push", (event) => {
       try {
         alertData = buildNotificationPayload({ body: event.data.text() });
       } catch {
-        // Keep default payload when push body is unreadable.
+        // Keep default payload.
       }
     }
   }
 
-  // Even when the gateway delivers a wake-only push with no data, surface a
-  // generic notification rather than silently dropping it — otherwise the
-  // browser may eventually revoke our push permission for not honouring
-  // `userVisibleOnly: true`.
-
-  const targetUrl = alertData.url || "/";
+  const targetUrl = alertData.url || "/dashboard";
 
   event.waitUntil(
     self.registration.showNotification(alertData.title, {
@@ -104,53 +111,36 @@ self.addEventListener("push", (event) => {
   );
 });
 
-async function notifyClientsOfSubscriptionChange(subscriptionJson) {
-  const windowClients = await self.clients.matchAll({
-    type: "window",
-    includeUncontrolled: true,
-  });
-
-  windowClients.forEach((client) => {
-    client.postMessage({
-      type: "ocs:push-subscription-change",
-      subscription: subscriptionJson,
-    });
-  });
-
-  return windowClients.length;
-}
-
 self.addEventListener("pushsubscriptionchange", (event) => {
   event.waitUntil(
     (async () => {
-      let nextSubscriptionJson = null;
-
-      // Try to re-subscribe inside the SW itself using the cached VAPID key.
-      // This is the recommended path because the browser may invalidate the
-      // subscription while the PWA is closed (common on iOS); without an
-      // in-SW recovery the user loses push until they manually toggle it.
       const publicKey = await cacheGetText(VAPID_KEY_REQUEST);
-      if (publicKey) {
-        try {
-          const subscription = await self.registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(publicKey),
-          });
-          nextSubscriptionJson = subscription.toJSON();
-        } catch {
-          // Re-subscribe can fail (no permission, gateway error). The page
-          // path will retry next time the PWA opens.
+      if (!publicKey) return;
+
+      try {
+        const subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+        const subscriptionJson = subscription.toJSON();
+        const windowClients = await self.clients.matchAll({
+          type: "window",
+          includeUncontrolled: true,
+        });
+
+        if (windowClients.length === 0) {
+          await cachePut(PENDING_SUBSCRIPTION_REQUEST, JSON.stringify(subscriptionJson));
+          return;
         }
-      }
 
-      const clientCount = await notifyClientsOfSubscriptionChange(nextSubscriptionJson);
-
-      if (nextSubscriptionJson && clientCount === 0) {
-        // No window is alive to POST the new subscription to the server.
-        // Stash it so the next page load can pick it up and sync.
-        await cachePut(PENDING_SUBSCRIPTION_REQUEST, JSON.stringify(nextSubscriptionJson));
-      } else if (nextSubscriptionJson) {
-        await cacheDelete(PENDING_SUBSCRIPTION_REQUEST);
+        windowClients.forEach((client) => {
+          client.postMessage({
+            type: "ocs:push-subscription-change",
+            subscription: subscriptionJson,
+          });
+        });
+      } catch {
+        // Page retries on next open.
       }
     })(),
   );
@@ -187,44 +177,33 @@ self.addEventListener("message", (event) => {
         await cacheDelete(PENDING_SUBSCRIPTION_REQUEST);
       })(),
     );
-    return;
-  }
-
-  if (data.type === "ocs:clear-vapid-key") {
-    event.waitUntil(
-      Promise.all([cacheDelete(VAPID_KEY_REQUEST), cacheDelete(PENDING_SUBSCRIPTION_REQUEST)]),
-    );
   }
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const relativeUrl = event.notification?.data?.url || "/";
+  const relativeUrl = event.notification?.data?.url || "/dashboard";
   const targetUrl = new URL(relativeUrl, self.location.origin).href;
 
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
       const existing = windowClients.find((client) => client.url.includes(self.location.origin));
 
       if (existing) {
         const focusPromise = existing.focus();
-
         if ("navigate" in existing) {
           return Promise.resolve(focusPromise)
             .then(() => existing.navigate(targetUrl))
             .catch(() => {
-              // Older Chromium WebViews disallow cross-origin navigate; fall
-              // back to messaging the page so the SPA router can handle it.
               existing.postMessage({ type: "ocs:navigate", url: relativeUrl });
             });
         }
-
         existing.postMessage({ type: "ocs:navigate", url: relativeUrl });
         return undefined;
       }
 
-      return clients.openWindow(targetUrl);
+      return self.clients.openWindow(targetUrl);
     }),
   );
 });

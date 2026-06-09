@@ -2,6 +2,10 @@ const express = require("express");
 const { db } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
+  notifyStaffNewVisitRequest,
+  notifyVisitRequestUpdated,
+} = require("../lib/visitRequestNotifications");
+const {
   ACTIVE_VISIT_STATUSES,
   ALL_VISIT_STATUSES,
   VISIT_REQUEST_SELECT,
@@ -130,7 +134,12 @@ router.patch("/:id", (req, res) => {
   // instant staff assign a doctor or move the status.
   publishPatientDataChange(existing.patient_id, { reason: "visit_request" });
 
-  return res.json({ visit_request: getVisitRequestById(requestId) });
+  const updated = getVisitRequestById(requestId);
+  void notifyVisitRequestUpdated(updated, { before: existing }).catch((error) => {
+    console.warn("[push] visit request update notification failed:", error?.message || error);
+  });
+
+  return res.json({ visit_request: updated });
 });
 
 module.exports = router;

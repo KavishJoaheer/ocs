@@ -8,8 +8,11 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
-      includeAssets: ["favicon.png", "ocs-medecins-mark.png"],
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+      injectRegister: false,
+      includeAssets: ["favicon.png", "ocs-medecins-mark.png", "pwa-192.png", "pwa-512.png"],
       manifest: {
         name: "OCS Médecins — Patient Portal",
         short_name: "OCS Patient",
@@ -32,12 +35,12 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        // Offline app shell, but never short-circuit API calls or the SSE
-        // stream — those must always hit the network.
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api/],
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
+      },
+      devOptions: {
+        enabled: true,
+        type: "module",
       },
     }),
   ],
@@ -47,6 +50,13 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": "http://localhost:3001",
+    },
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 4174,
+    proxy: {
+      "/api": "http://127.0.0.1:3001",
     },
   },
 });

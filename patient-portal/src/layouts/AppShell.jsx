@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
+import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
 
 function AppShell() {
@@ -9,6 +10,7 @@ function AppShell() {
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-6xl px-6 pb-36 pt-6 max-md:px-4 sm:px-10 lg:px-12 lg:pb-10 lg:pt-10">
+            <PushNotificationBanner className="mb-5" />
             <Outlet />
           </div>
         </main>

@@ -4,6 +4,13 @@ const express = require("express");
 const { db, labReportAttachmentsDir } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
+  getVapidPublicKey,
+  isPushConfigured,
+  savePatientPushSubscription,
+  clearPatientPushSubscription,
+} = require("../lib/push");
+const { notifyStaffNewVisitRequest } = require("../lib/visitRequestNotifications");
+const {
   ACTIVE_VISIT_STATUSES,
   getActiveVisitRequestForPatient,
   getVisitRequestById,
@@ -538,7 +545,12 @@ router.post("/visit-requests", (req, res) => {
 
   publishPatientDataChange(patientId, { reason: "visit_request" });
 
-  return res.status(201).json({ visit_request: getVisitRequestById(result.lastInsertRowid) });
+  const visitRequest = getVisitRequestById(result.lastInsertRowid);
+  void notifyStaffNewVisitRequest(visitRequest).catch((error) => {
+    console.warn("[push] new visit request notification failed:", error?.message || error);
+  });
+
+  return res.status(201).json({ visit_request: visitRequest });
 });
 
 router.patch("/visit-requests/:id/cancel", (req, res) => {
@@ -571,5 +583,38 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
 });
 
 router.handleReportAttachmentDownload = handleReportAttachmentDownload;
+
+router.get("/push/vapid-public-key", (_req, res) => {
+  const configured = isPushConfigured();
+  res.json({
+    configured,
+    publicKey: configured ? getVapidPublicKey() : null,
+  });
+});
+
+router.post("/push/subscribe", (req, res) => {
+  const subscription = req.body?.subscription;
+
+  if (!subscription?.endpoint) {
+    return res.status(400).json({ error: "A valid push subscription payload is required." });
+  }
+
+  if (!isPushConfigured()) {
+    return res.status(503).json({ error: "Web push is not configured on this server." });
+  }
+
+  const userAgent = req.headers["user-agent"] || null;
+  const result = savePatientPushSubscription(req.patientAuth.id, subscription, userAgent);
+  res.json({ ok: result?.ok !== false, endpoint: result?.endpoint || subscription.endpoint });
+});
+
+router.delete("/push/subscribe", (req, res) => {
+  const endpoint = req.body?.endpoint || req.query?.endpoint || null;
+  clearPatientPushSubscription(
+    req.patientAuth.id,
+    endpoint ? { endpoint: String(endpoint) } : {},
+  );
+  res.json({ ok: true });
+});
 
 module.exports = router;

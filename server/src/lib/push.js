@@ -180,6 +180,7 @@ function clearPushSubscriptionByEndpoint(endpoint) {
   }
 
   db.prepare("DELETE FROM user_push_subscriptions WHERE endpoint = ?").run(endpoint);
+  db.prepare("DELETE FROM patient_push_subscriptions WHERE endpoint = ?").run(endpoint);
 }
 
 function saveUserPushSubscription(userId, subscription, userAgent = null) {
@@ -217,6 +218,80 @@ function clearUserPushSubscription(userId, { endpoint = null } = {}) {
   }
 
   db.prepare("DELETE FROM user_push_subscriptions WHERE user_id = ?").run(userId);
+}
+
+function savePatientPushSubscription(patientUserId, subscription, userAgent = null) {
+  const endpoint = subscription?.endpoint && String(subscription.endpoint).trim();
+  if (!endpoint) {
+    return { ok: false, reason: "missing_endpoint" };
+  }
+
+  const serialized = JSON.stringify(subscription);
+
+  db.prepare(`
+    INSERT INTO patient_push_subscriptions
+      (patient_user_id, endpoint, subscription_json, user_agent, last_seen_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      patient_user_id = excluded.patient_user_id,
+      subscription_json = excluded.subscription_json,
+      user_agent = COALESCE(excluded.user_agent, patient_push_subscriptions.user_agent),
+      updated_at = CURRENT_TIMESTAMP,
+      last_seen_at = CURRENT_TIMESTAMP
+  `).run(patientUserId, endpoint, serialized, userAgent ? String(userAgent).slice(0, 255) : null);
+
+  return { ok: true, endpoint };
+}
+
+function clearPatientPushSubscription(patientUserId, { endpoint = null } = {}) {
+  if (endpoint) {
+    db.prepare(
+      "DELETE FROM patient_push_subscriptions WHERE patient_user_id = ? AND endpoint = ?",
+    ).run(patientUserId, endpoint);
+    return;
+  }
+
+  db.prepare("DELETE FROM patient_push_subscriptions WHERE patient_user_id = ?").run(patientUserId);
+}
+
+function getPatientPushSubscriptions(patientUserId) {
+  return db
+    .prepare(`
+      SELECT s.subscription_json
+      FROM patient_push_subscriptions s
+      JOIN patient_users u ON u.id = s.patient_user_id
+      WHERE s.patient_user_id = ?
+        AND u.is_active = 1
+    `)
+    .all(patientUserId)
+    .map((row) => row.subscription_json)
+    .filter(Boolean);
+}
+
+async function sendPushToPatientUser(patientUserId, payload) {
+  const normalizedUserId = Number(patientUserId || 0);
+  if (!normalizedUserId) {
+    return { ok: false, skipped: true, reason: "missing_patient_user_id" };
+  }
+
+  const subscriptions = getPatientPushSubscriptions(normalizedUserId);
+  if (!subscriptions.length) {
+    return { ok: false, skipped: true, reason: "no_subscription", patientUserId: normalizedUserId };
+  }
+
+  const results = await Promise.allSettled(
+    subscriptions.map((subscription) => sendNotification(subscription, payload)),
+  );
+
+  const delivered = results.some(
+    (entry) => entry.status === "fulfilled" && entry.value?.ok,
+  );
+
+  return {
+    ok: delivered,
+    patientUserId: normalizedUserId,
+    endpoints: subscriptions.length,
+  };
 }
 
 const LOW_STOCK_DOCTOR_NOTIFICATION_KEY = "low_stock";
@@ -1000,6 +1075,7 @@ configureWebPush();
 
 module.exports = {
   broadcastHcmNewsToDoctors,
+  clearPatientPushSubscription,
   clearUserPushSubscription,
   dispatchLowStockAlert,
   getVapidPublicKey,
@@ -1012,8 +1088,10 @@ module.exports = {
   notifyMasterWarehouseLowStock,
   notifyOcsLowStockSubscribers,
   resolveLowStockAlertDestinations,
+  savePatientPushSubscription,
   saveUserPushSubscription,
   sendNotification,
+  sendPushToPatientUser,
   sendPushToRole,
   sendPushToUser,
   validateLowStockAlertDestinations,

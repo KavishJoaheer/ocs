@@ -5,6 +5,11 @@ import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "./hooks/usePatientAuth.jsx";
 import App from "./App.jsx";
 import "./index.css";
+import { registerServiceWorker, syncPushSubscriptionIfGranted } from "./lib/pushNotifications.js";
+
+registerServiceWorker()
+  .then(() => syncPushSubscriptionIfGranted())
+  .catch(() => {});
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
