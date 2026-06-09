@@ -342,7 +342,10 @@ function PatientDashboard() {
             <div className="mt-3 h-5 w-96 animate-pulse rounded-lg bg-[rgba(0,0,0,0.03)]" />
           </div>
           <div className="desktop-dashboard-grid">
-            <div className="desktop-card h-56 animate-pulse" />
+            <div className="desktop-dashboard-col">
+              <div className="desktop-card h-56 animate-pulse" />
+              <div className="desktop-card h-28 animate-pulse" />
+            </div>
             <div className="desktop-dashboard-col">
               <div className="desktop-card h-44 animate-pulse" />
               <div className="desktop-concierge-card h-52 animate-pulse opacity-80" />

@@ -1,6 +1,15 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { HousePlus, MessageCircle, Moon, Phone, Sun, Sunset } from "lucide-react";
+import {
+  CalendarClock,
+  HousePlus,
+  MessageCircle,
+  Moon,
+  Phone,
+  Pill,
+  Sun,
+  Sunset,
+} from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 const OCS_CARE_TEL = "52522234";
@@ -30,17 +39,13 @@ function DesktopCareTeamCard({ doctorName }) {
       <p className="desktop-section-label">Your Care Team</p>
 
       <div className="mt-5 flex items-center gap-4">
-        <div className="relative shrink-0">
-          <div
-            className="flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-base font-bold text-white"
-            aria-hidden="true"
-          >
-            {doctorInitials(doctorName || "Care Team")}
+        <div className="desktop-care-team-avatar-wrap shrink-0">
+          <div className="desktop-care-team-avatar-ring">
+            <div className="desktop-care-team-avatar" aria-hidden="true">
+              {doctorInitials(doctorName || "Care Team")}
+            </div>
           </div>
-          <span
-            className="absolute bottom-0.5 right-0.5 size-3.5 rounded-full border-2 border-white bg-[#34c759]"
-            aria-label="Available"
-          />
+          <span className="desktop-care-team-status" aria-label="Available" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-display text-base font-bold leading-snug text-[#1a5c52]">
@@ -74,6 +79,24 @@ function DesktopConciergeCard() {
         <Phone className="size-5 shrink-0 text-white" strokeWidth={2} />
         <span>{OCS_CARE_DISPLAY}</span>
       </a>
+    </section>
+  );
+}
+
+function DesktopQuickActionsCard() {
+  return (
+    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-3">
+      <p className="desktop-section-label">Quick Actions</p>
+      <div className="desktop-quick-actions mt-5">
+        <Link to="/health-records" className="desktop-quick-action-pill">
+          <Pill className="size-4 shrink-0" strokeWidth={1.75} />
+          <span>Request Prescription Refill</span>
+        </Link>
+        <Link to="/appointments" className="desktop-quick-action-pill">
+          <CalendarClock className="size-4 shrink-0" strokeWidth={1.75} />
+          <span>Book a Follow-up</span>
+        </Link>
+      </div>
     </section>
   );
 }
@@ -177,6 +200,8 @@ function DesktopDashboardHome({
               </div>
             </section>
           )}
+
+          <DesktopQuickActionsCard />
         </div>
 
         <div className="desktop-dashboard-col">

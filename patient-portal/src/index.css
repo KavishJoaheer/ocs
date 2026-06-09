@@ -913,17 +913,77 @@ table {
   letter-spacing: 0.02em;
   color: #fff;
   text-decoration: none;
-  box-shadow: 0 8px 24px rgba(232, 160, 32, 0.35);
-  transition:
-    background 200ms ease,
-    box-shadow 200ms ease,
-    transform 200ms ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: background 200ms ease;
 }
 
 .desktop-concierge-dial:hover {
   background: #d99212;
-  box-shadow: 0 10px 28px rgba(232, 160, 32, 0.42);
-  transform: translateY(-1px);
+}
+
+.desktop-care-team-avatar-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+
+.desktop-care-team-avatar-ring {
+  padding: 2px;
+  border: 2px solid rgba(232, 160, 32, 0.85);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.desktop-care-team-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2d8f98 0%, #41c8c6 100%);
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.desktop-care-team-status {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #34c759;
+}
+
+.desktop-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.desktop-quick-action-pill {
+  display: inline-flex;
+  flex: 1 1 calc(50% - 8px);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: min(100%, 200px);
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(26, 92, 82, 0.05);
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a5c52;
+  text-decoration: none;
+  text-align: center;
+  transition: background 200ms ease;
+}
+
+.desktop-quick-action-pill:hover {
+  background: rgba(26, 92, 82, 0.09);
 }
 
 .desktop-visit-badge {
