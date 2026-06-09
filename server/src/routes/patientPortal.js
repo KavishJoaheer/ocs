@@ -201,9 +201,11 @@ router.get("/appointments", (req, res) => {
     .prepare(`
       SELECT
         a.*,
-        d.full_name AS doctor_name
+        d.full_name AS doctor_name,
+        c.id AS consultation_id
       FROM appointments a
       JOIN doctors d ON d.id = a.doctor_id
+      LEFT JOIN consultations c ON c.appointment_id = a.id
       WHERE a.patient_id = ?
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `)

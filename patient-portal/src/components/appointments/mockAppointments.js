@@ -1,0 +1,40 @@
+/** Mock appointments for UI preview when API returns empty. */
+
+export const MOCK_APPOINTMENTS = [
+  {
+    id: "mock-upcoming-1",
+    date: "2026-07-19",
+    time: "10:00",
+    time_window: "10:00 AM - 11:30 AM",
+    type: "Scheduled Review",
+    doctor_name: "Dr. Shravan Joaheer",
+    status: "scheduled",
+    kind: "review",
+    note: null,
+    consultation_id: null,
+  },
+  {
+    id: "mock-past-1",
+    date: "2026-06-09",
+    time: "10:30",
+    time_window: "10:30 AM - 11:30 AM",
+    type: "Consultation",
+    doctor_name: "Dr. Shravan Joaheer",
+    status: "completed",
+    kind: null,
+    note: null,
+    consultation_id: 1,
+  },
+  {
+    id: "mock-past-2",
+    date: "2026-03-28",
+    time: "14:15",
+    time_window: "2:15 PM - 3:15 PM",
+    type: "Consultation",
+    doctor_name: "Dr. Marie Dubois",
+    status: "completed",
+    kind: null,
+    note: null,
+    consultation_id: 2,
+  },
+];

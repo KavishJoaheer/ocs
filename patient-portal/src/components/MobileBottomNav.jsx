@@ -1,11 +1,11 @@
-import { Home, FileText, Users, CircleUserRound } from "lucide-react";
+import { Home, FileText, Calendar, CircleUserRound } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 /** Premium floating pill bottom navigation for the native mobile experience. */
 const navItems = [
   { to: "/dashboard", label: "Home", icon: Home, end: true },
   { to: "/health-records", label: "Records", icon: FileText },
-  { to: "/appointments", label: "Care Team", icon: Users },
+  { to: "/appointments", label: "Visits", icon: Calendar },
   { to: "/profile", label: "Profile", icon: CircleUserRound },
 ];
 

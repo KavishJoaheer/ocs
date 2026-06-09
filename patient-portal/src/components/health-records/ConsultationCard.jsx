@@ -1,6 +1,4 @@
 import dayjs from "dayjs";
-import { useNavigate } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 function doctorInitials(name) {
@@ -17,28 +15,26 @@ function formatConsultationDateTime(date, time) {
   return `${dateLabel} • ${time}`;
 }
 
+/** Static, read-only consultation summary card for the Health Records feed. */
 function ConsultationCard({ consultation }) {
-  const navigate = useNavigate();
-
   const doctorName = formatDoctorName(consultation.doctor_name);
   const specialty = consultation.doctor_specialty || "General Practitioner";
   const visitType = consultation.visit_type || "Home Visit";
   const dateTimeLabel = formatConsultationDateTime(consultation.date, consultation.time);
 
   return (
-    <button
-      type="button"
-      onClick={() => navigate(`/health-records/visits/${consultation.id}`)}
-      className="consultation-card-pressable squircle-outer ocs-elevate-timeline w-full bg-white text-left"
+    <article
+      className="squircle-outer ocs-elevate-timeline w-full bg-white"
+      style={{ padding: "var(--native-pad-card)" }}
     >
       {/* Top row — date/time + visit badge */}
-      <div className="flex items-center justify-between gap-3 px-5 pt-5">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-[13px] font-medium text-[#5b7f8a]">{dateTimeLabel}</p>
         <span className="consultation-visit-badge shrink-0">{visitType}</span>
       </div>
 
       {/* Doctor row — avatar + name + role */}
-      <div className="mt-4 flex items-center gap-3 px-5">
+      <div className="mt-4 flex items-center gap-3">
         <div
           className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(45,143,152,0.2)]"
           aria-hidden="true"
@@ -53,21 +49,14 @@ function ConsultationCard({ consultation }) {
 
       {/* Diagnosis */}
       {consultation.diagnosis ? (
-        <div className="mt-5 px-5">
+        <div className="mt-5">
           <p className="consultation-micro-label">Diagnosis</p>
           <span className="squircle-inner mt-2 inline-flex bg-[rgba(26,160,140,0.1)] px-3.5 py-1.5 text-[13px] font-medium text-[#2d8f98]">
             {consultation.diagnosis}
           </span>
         </div>
       ) : null}
-
-      {/* Footer CTA */}
-      <div className="consultation-card-divider mt-5" aria-hidden="true" />
-      <div className="flex items-center justify-between px-5 py-4">
-        <span className="text-[14px] font-semibold text-[#1a5c52]">View Full Report</span>
-        <ChevronRight className="size-[18px] text-ocs-orange" strokeWidth={2.25} />
-      </div>
-    </button>
+    </article>
   );
 }
 
