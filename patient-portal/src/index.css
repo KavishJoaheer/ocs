@@ -31,11 +31,10 @@
   --native-shadow-lift: 0 4px 15px rgba(34, 72, 91, 0.04), 0 1px 2px rgba(34, 72, 91, 0.03);
   --native-shadow-hero: 0 8px 24px rgba(45, 143, 152, 0.12), 0 2px 6px rgba(34, 72, 91, 0.04);
   /* Desktop dashboard — luxury concierge canvas */
-  --desktop-canvas: #f4f6f8;
+  --desktop-canvas: #fafafc;
   --desktop-card-radius: 18px;
-  --desktop-card-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
-  --desktop-card-shadow-hover: 0 24px 48px -10px rgba(0, 0, 0, 0.1);
-  --desktop-dispatch-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
+  --desktop-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --desktop-card-shadow-hover: 0 6px 28px rgba(0, 0, 0, 0.06);
   --ocs-teal-dark: #1a5c52;
   color-scheme: light;
   font-synthesis: none;
@@ -782,66 +781,16 @@ table {
   background-color: var(--ocs-orange);
 }
 
-/* ─── Desktop dashboard — premium concierge layout ─── */
+/* ─── Desktop dashboard — ultra-minimal concierge layout ─── */
 
-.desktop-dashboard-inner {
-  width: 100%;
-  max-width: 72rem;
-  margin-inline: auto;
-  padding-inline: 3rem;
-}
-
-.desktop-dashboard-teal-band {
-  min-height: clamp(200px, 28vh, 280px);
-  padding-top: 2.5rem;
-  padding-bottom: 5.5rem;
-  background: linear-gradient(180deg, #0f4548 0%, #134e4f 42%, #1a5c52 100%);
-}
-
-.desktop-dashboard-lower {
-  background: var(--desktop-canvas);
-  padding-bottom: 2.5rem;
-}
-
-.desktop-dispatch-card {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: -3.25rem;
-  padding: 1.75rem 2rem;
-  border-radius: var(--desktop-card-radius);
-  background: #fff;
-  box-shadow: var(--desktop-dispatch-shadow);
-  text-decoration: none;
-  transition:
-    transform 200ms ease,
-    box-shadow 200ms ease;
-}
-
-.desktop-dispatch-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 24px 48px -10px rgba(0, 0, 0, 0.1);
-}
-
-.desktop-dispatch-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+.desktop-dashboard-greeting {
+  margin-bottom: 40px;
 }
 
 .desktop-dashboard-grid {
   display: grid;
   gap: 32px;
-  margin-top: 32px;
-  grid-template-columns: minmax(0, 1.86fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
 }
 
 .desktop-dashboard-col {
@@ -859,23 +808,21 @@ table {
 .desktop-card {
   border-radius: var(--desktop-card-radius);
   background: #fff;
+  padding: 32px;
   box-shadow: var(--desktop-card-shadow);
   border: none;
 }
 
 .desktop-card-hover {
-  transition:
-    transform 200ms ease,
-    box-shadow 200ms ease;
+  transition: box-shadow 200ms ease;
 }
 
 .desktop-card-hover:hover {
-  transform: translateY(-2px);
   box-shadow: var(--desktop-card-shadow-hover);
 }
 
 .desktop-stat-widget {
-  padding: 4px 2px;
+  padding: 2px 0;
 }
 
 .desktop-stat-label {
@@ -889,7 +836,7 @@ table {
 .desktop-stat-value {
   margin-top: 10px;
   font-family: var(--font-display);
-  font-size: 3.25rem;
+  font-size: 3rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;

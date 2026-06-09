@@ -79,7 +79,7 @@ function Sidebar() {
       <MobileBottomNav />
 
       {/* ─── Desktop sidebar ─── */}
-      <aside className="hidden w-80 shrink-0 border-r border-[rgba(0,0,0,0.06)] bg-white shadow-[4px_0_24px_-8px_rgba(0,0,0,0.04)] lg:flex lg:flex-col">
+      <aside className="hidden w-80 shrink-0 border-r border-[rgba(0,0,0,0.04)] bg-white shadow-[2px_0_20px_-6px_rgba(0,0,0,0.03)] lg:flex lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-8">
           {/* Brand */}
           <div className="flex flex-col items-start gap-2">

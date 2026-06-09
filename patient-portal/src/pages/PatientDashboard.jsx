@@ -48,7 +48,7 @@ function ActiveVisitCard({ visit, onCancelled }) {
   const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
 
   return (
-    <div className="desktop-card desktop-card-hover p-6">
+    <div className="desktop-card desktop-card-hover">
       <div className="flex items-center gap-2">
         <span className="relative flex size-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
@@ -335,17 +335,15 @@ function PatientDashboard() {
     <div className="max-lg:hidden">
       {loading && isPrimaryProfile ? (
         <div className="desktop-dashboard">
-          <div className="desktop-dashboard-teal-band h-52 animate-pulse opacity-60" />
-          <div className="desktop-dashboard-lower pt-16">
-            <div className="desktop-dashboard-inner">
-              <div className="desktop-dispatch-card h-28 animate-pulse opacity-70" />
-              <div className="desktop-dashboard-grid mt-8">
-                <div className="desktop-card h-56 animate-pulse" />
-                <div className="desktop-dashboard-col gap-8">
-                  <div className="desktop-card h-32 animate-pulse" />
-                  <div className="desktop-card h-48 animate-pulse" />
-                </div>
-              </div>
+          <div className="desktop-dashboard-greeting mb-10">
+            <div className="h-10 w-72 animate-pulse rounded-lg bg-[rgba(0,0,0,0.04)]" />
+            <div className="mt-3 h-5 w-96 animate-pulse rounded-lg bg-[rgba(0,0,0,0.03)]" />
+          </div>
+          <div className="desktop-dashboard-grid">
+            <div className="desktop-card h-56 animate-pulse" />
+            <div className="desktop-dashboard-col">
+              <div className="desktop-card h-32 animate-pulse" />
+              <div className="desktop-card h-44 animate-pulse" />
             </div>
           </div>
         </div>
@@ -356,8 +354,6 @@ function PatientDashboard() {
       ) : (
         <div key={activeProfileId} className="dashboard-profile-transition">
           <DesktopDashboardHome
-            greeting={greeting}
-            firstName={firstName}
             headline={headline}
             subline={subline}
             isPrimaryProfile={isPrimaryProfile}
