@@ -74,7 +74,7 @@ function TimelineCard({ card }) {
   return (
     <article
       className={[
-        "squircle-outer ocs-elevate flex w-[288px] shrink-0 snap-start flex-col bg-white",
+        "squircle-outer ocs-elevate-timeline flex w-[288px] shrink-0 snap-start flex-col bg-white",
         card.muted ? "opacity-75" : "",
       ].join(" ")}
       style={{ padding: "var(--native-pad-card)" }}
@@ -137,7 +137,7 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
   return (
     <div className="native-dashboard -mx-4 min-h-full bg-[#f4f7f7]">
       {/* ── 1. Welcome Zone — respects notch / punch-hole via --native-safe-top ─ */}
-      <header className="animate-fade-in-up flex items-center justify-between gap-4 pb-7">
+      <header className="animate-fade-in-up flex items-center justify-between gap-4 pb-10">
         <div className="min-w-0 flex-1 pr-2">
           <h1 className="native-display text-[28px] leading-tight text-[#1a5c52]">
             {greeting},{" "}
@@ -152,21 +152,20 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
           <button
             type="button"
             aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
-            className="native-header-btn relative"
+            className="native-header-btn"
           >
-            <Bell className="size-[20px] text-[#5b7f8a]" strokeWidth={1.75} />
-            {unreadNotifications > 0 ? (
-              <span
-                className="native-notification-dot absolute -right-0.5 -top-0.5"
-                aria-hidden="true"
-              />
-            ) : null}
+            <span className="relative inline-flex">
+              <Bell className="size-[20px] text-[#5b7f8a]" strokeWidth={1.75} />
+              {unreadNotifications > 0 ? (
+                <span className="native-notification-dot" aria-hidden="true" />
+              ) : null}
+            </span>
           </button>
 
           <Link
             to="/profile"
             aria-label="Your profile"
-            className="native-header-btn native-avatar-btn text-[14px]"
+            className="native-header-btn dashboard-header-avatar text-[14px]"
           >
             {activeProfile.initials}
           </Link>
@@ -186,8 +185,8 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
             Request a Home Doctor
           </p>
         </div>
-        <div className="squircle-inner flex size-12 shrink-0 items-center justify-center bg-ocs-orange shadow-[0_4px_12px_rgba(232,160,32,0.35)]">
-          <ArrowRight className="size-6 text-white" strokeWidth={2.5} />
+        <div className="dashboard-hero-arrow-btn">
+          <ArrowRight className="size-6 text-ocs-orange" strokeWidth={2.5} />
         </div>
       </Link>
 

@@ -344,21 +344,49 @@ table {
   transform: scale(0.95);
 }
 
-/* Profile avatar — soft orange well, solid orange initials */
+/* Profile page avatar — soft orange well, solid orange initials */
 .native-avatar-btn {
   background: var(--ocs-orange-soft) !important;
   color: var(--ocs-orange) !important;
   font-weight: 600;
 }
 
-/* Notification unread dot — solid orange with white ring */
+/* Dashboard header avatar — dark teal circle, white initials */
+.dashboard-header-avatar {
+  background: var(--ocs-teal-strong) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
+/* Notification unread dot — overlaps bell top-right curve */
 .native-notification-dot {
+  position: absolute;
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--ocs-orange);
   border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(var(--ocs-orange-rgb), 0.35);
+  box-shadow: 0 1px 3px rgba(var(--ocs-orange-rgb), 0.4);
+  top: -1px;
+  right: -1px;
+}
+
+/* Care Timeline cards — diffused lift shadow */
+.ocs-elevate-timeline {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+}
+
+/* Hero CTA arrow — perfect white circle, orange icon */
+.dashboard-hero-arrow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .text-ocs-orange {
