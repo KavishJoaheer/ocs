@@ -25,6 +25,7 @@ function PatientRegisterPage() {
     full_name: "",
     email: "",
     phone: "",
+    national_id: "",
     date_of_birth: "",
     gender: "",
     password: "",
@@ -64,6 +65,7 @@ function PatientRegisterPage() {
       full_name: form.full_name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
+      national_id: form.national_id.trim(),
       date_of_birth: form.date_of_birth,
       gender: form.gender,
       password: form.password,
@@ -202,6 +204,19 @@ function PatientRegisterPage() {
                     {errors.phone && (
                       <p className="mt-1.5 text-xs font-medium text-red-500">{errors.phone}</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="register-national-id" className={LABEL_CLASS}>
+                      National ID <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      id="register-national-id"
+                      value={form.national_id}
+                      onChange={setField("national_id")}
+                      placeholder="Links your account to your clinic record"
+                      className={INPUT_CLASS}
+                    />
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">

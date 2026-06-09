@@ -984,6 +984,15 @@ function ensurePatientColumns() {
       name: "insurance_policy_number",
       sql: "ALTER TABLE patients ADD COLUMN insurance_policy_number TEXT NOT NULL DEFAULT ''",
     },
+    {
+      // How a patient record came to exist and whether its portal link is
+      // trusted: 'staff_created' (default), 'self_registered' (new self-signup,
+      // no staff record), 'pending_review' (self-signup auto-linked to an
+      // existing staff record via national ID, awaiting staff confirmation),
+      // 'verified' (staff confirmed the link).
+      name: "link_status",
+      sql: "ALTER TABLE patients ADD COLUMN link_status TEXT NOT NULL DEFAULT 'staff_created'",
+    },
   ];
 
   requiredColumns.forEach((column) => {

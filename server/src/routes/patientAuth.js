@@ -42,6 +42,9 @@ router.post("/register", (req, res) => {
   const phone = String(req.body.phone ?? "").trim();
   const dateOfBirth = String(req.body.date_of_birth ?? "").trim();
   const gender = String(req.body.gender ?? "").trim().toUpperCase();
+  // National ID is the strong identifier we use to link a self-signup to an
+  // existing staff-managed patient record (optional, but prevents duplicates).
+  const nationalId = String(req.body.national_id ?? req.body.patient_id_number ?? "").trim();
 
   if (!email || !password || !fullName || !phone || !dateOfBirth || !gender) {
     return res
@@ -70,20 +73,67 @@ router.post("/register", (req, res) => {
   const lastName = nameParts.slice(1).join(" ") || "";
 
   const register = db.transaction(() => {
-    const patientIdentifier = generatePatientIdentifier();
+    let patientId;
 
-    const patientResult = db
-      .prepare(`
-        INSERT INTO patients (
-          full_name, first_name, last_name, patient_identifier,
-          age, date_of_birth, gender, patient_contact_number,
-          contact_number, address, assigned_doctor_id
-        )
-        VALUES (?, ?, ?, ?, 0, ?, ?, ?, '', '', NULL)
-      `)
-      .run(fullName, firstName, lastName, patientIdentifier, dateOfBirth, gender, phone);
+    // Strong-match an existing staff record by national ID so a patient who
+    // signs up themselves is linked to their real chart instead of spawning a
+    // duplicate.
+    const existingPatient = nationalId
+      ? db
+          .prepare(
+            "SELECT id FROM patients WHERE patient_id_number = ? AND deleted_at IS NULL",
+          )
+          .get(nationalId)
+      : null;
 
-    const patientId = patientResult.lastInsertRowid;
+    if (existingPatient) {
+      const alreadyLinked = db
+        .prepare("SELECT id FROM patient_users WHERE patient_id = ?")
+        .get(existingPatient.id);
+
+      if (alreadyLinked) {
+        const error = new Error("ALREADY_LINKED");
+        error.code = "ALREADY_LINKED";
+        throw error;
+      }
+
+      patientId = existingPatient.id;
+
+      // Keep staff-entered data authoritative; only backfill an empty phone, and
+      // flag the link for staff to confirm.
+      db.prepare(`
+        UPDATE patients
+        SET patient_contact_number = CASE
+              WHEN patient_contact_number IS NULL OR patient_contact_number = ''
+              THEN ? ELSE patient_contact_number END,
+            link_status = 'pending_review'
+        WHERE id = ?
+      `).run(phone, patientId);
+    } else {
+      const patientIdentifier = generatePatientIdentifier();
+
+      const patientResult = db
+        .prepare(`
+          INSERT INTO patients (
+            full_name, first_name, last_name, patient_identifier, patient_id_number,
+            age, date_of_birth, gender, patient_contact_number,
+            contact_number, address, assigned_doctor_id, link_status
+          )
+          VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, '', '', NULL, 'self_registered')
+        `)
+        .run(
+          fullName,
+          firstName,
+          lastName,
+          patientIdentifier,
+          nationalId,
+          dateOfBirth,
+          gender,
+          phone,
+        );
+
+      patientId = patientResult.lastInsertRowid;
+    }
 
     const userResult = db
       .prepare(`
@@ -116,6 +166,20 @@ router.post("/register", (req, res) => {
       user: serializePatientUser(user),
     });
   } catch (error) {
+    if (error.code === "ALREADY_LINKED") {
+      return res.status(409).json({
+        error:
+          "A patient account is already linked to this record. Please contact the clinic for help.",
+      });
+    }
+
+    if (error.message && error.message.includes("patient_id_number")) {
+      // Race or stale duplicate on the national ID unique index.
+      return res.status(409).json({
+        error: "A patient with this national ID already exists. Please contact the clinic.",
+      });
+    }
+
     if (error.message && error.message.includes("UNIQUE constraint failed")) {
       return res.status(409).json({ error: "An account with this email already exists." });
     }

@@ -139,6 +139,7 @@ function formatPatientRecord(patient) {
     is_under_review: parseBooleanField(patient.is_under_review),
     review_reason_note: reviewNote || null,
     review_due_date: String(patient.review_due_date ?? "").trim() || null,
+    link_status: String(patient.link_status ?? "staff_created").trim() || "staff_created",
   };
 }
 
@@ -1141,6 +1142,34 @@ router.get("/:id", (req, res) => {
     operatorOptions,
     operator_can_edit: req.auth.role === "operator",
   });
+});
+
+// Confirm (or reset) the portal-account link for a self-registered patient.
+router.patch("/:id/verify-link", (req, res) => {
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can verify patient account links.",
+    });
+  }
+
+  const patientId = Number(req.params.id);
+  const existing = getPatientById(patientId);
+
+  if (!existing) {
+    return res.status(404).json({ error: "Patient not found." });
+  }
+
+  const verified = req.body.verified === undefined ? true : parseBooleanField(req.body.verified);
+  const nextStatus = verified ? "verified" : "pending_review";
+
+  db.prepare("UPDATE patients SET link_status = ? WHERE id = ?").run(nextStatus, patientId);
+
+  res.json(
+    formatPatientRecord({
+      ...getPatientById(patientId),
+      location_tags: getPatientLocationTags(patientId),
+    }),
+  );
 });
 
 router.patch("/:id/long-term-review", (req, res) => {

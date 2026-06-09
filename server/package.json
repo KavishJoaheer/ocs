@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "test": "node --test \"tests/**/*.test.js\"",
     "generate-vapid": "node -e \"const webpush=require('web-push'); const keys=webpush.generateVAPIDKeys(); console.log('VAPID_PUBLIC_KEY='+keys.publicKey); console.log('VAPID_PRIVATE_KEY='+keys.privateKey);\"",
     "seed:ocs-stock": "node src/scripts/seedOcsMasterStock.js",
     "seed:ocs-consumables": "node src/scripts/seedOcsConsumablesExtension.js",
