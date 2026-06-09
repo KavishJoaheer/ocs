@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Check, ClipboardList, Phone } from "lucide-react";
 import { api } from "../../lib/api.js";
+import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 
 // Ordered milestones a live request moves through. The patient tracker derives
 // each step's state from the request's current backend status.
@@ -55,9 +56,23 @@ function StepMarker({ state }) {
   );
 }
 
+function formatCountdown(ms) {
+  if (ms <= 0) return "Arriving now";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function RequestVisitTracking() {
   const [visit, setVisit] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  // Live: re-fetch whenever the patient stream reports a change (staff assigning
+  // a doctor, moving the status, updating the ETA, etc.).
+  const refreshKey = useLiveRefreshKey();
+  const etaDeadlineRef = useRef(null);
+  const etaKeyRef = useRef(null);
 
   useEffect(() => {
     let ignore = false;
@@ -83,6 +98,25 @@ function RequestVisitTracking() {
     return () => {
       ignore = true;
     };
+  }, [refreshKey]);
+
+  // Anchor an ETA countdown each time staff set/changes the ETA.
+  useEffect(() => {
+    if (!visit || visit.eta_minutes == null || visit.status === "arrived") {
+      etaDeadlineRef.current = null;
+      etaKeyRef.current = null;
+      return;
+    }
+    const key = `${visit.id}:${visit.updated_at}:${visit.eta_minutes}`;
+    if (etaKeyRef.current !== key) {
+      etaKeyRef.current = key;
+      etaDeadlineRef.current = Date.now() + visit.eta_minutes * 60000;
+    }
+  }, [visit]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   if (loading) {
@@ -129,6 +163,10 @@ function RequestVisitTracking() {
   });
 
   const doctorName = visit.doctor_name || "Awaiting assignment";
+  const countdown =
+    etaDeadlineRef.current != null
+      ? formatCountdown(etaDeadlineRef.current - nowTick)
+      : null;
   const etaText =
     visit.eta_minutes != null ? `Estimated arrival: ${visit.eta_minutes} minutes` : visit.status_label;
 
@@ -143,6 +181,24 @@ function RequestVisitTracking() {
       <p className="mt-3 text-sm text-[#5b7f8a]">
         {doctorName} · {etaText}
       </p>
+
+      {/* Live ETA countdown */}
+      {countdown && visit.status !== "arrived" && (
+        <div className="mt-6 flex items-center gap-4 rounded-2xl border border-[rgba(45,143,152,0.18)] bg-[linear-gradient(135deg,rgba(65,200,198,0.12),rgba(45,143,152,0.06))] p-5">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2d8f98]">
+              Arriving in
+            </span>
+            <span className="font-display text-4xl font-black leading-none tracking-tight text-[#1a5c52] tabular-nums">
+              {countdown}
+            </span>
+          </div>
+          <span className="relative ml-auto flex size-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
+            <span className="relative inline-flex size-3 rounded-full bg-[#34c759]" />
+          </span>
+        </div>
+      )}
 
       {/* Doctor card */}
       <div className="mt-8 flex items-center gap-4 rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/85 p-6">

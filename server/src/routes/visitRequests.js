@@ -1,5 +1,6 @@
 const express = require("express");
 const { db } = require("../db");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
   ACTIVE_VISIT_STATUSES,
   ALL_VISIT_STATUSES,
@@ -124,6 +125,10 @@ router.patch("/:id", (req, res) => {
   params.push(requestId);
 
   db.prepare(`UPDATE visit_requests SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+
+  // Push the change to the patient's live stream so their tracker updates the
+  // instant staff assign a doctor or move the status.
+  publishPatientDataChange(existing.patient_id, { reason: "visit_request" });
 
   return res.json({ visit_request: getVisitRequestById(requestId) });
 });

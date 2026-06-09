@@ -5,7 +5,6 @@ import AppShell from "./layouts/AppShell.jsx";
 import PatientLoginPage from "./pages/PatientLoginPage.jsx";
 import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
-import PatientActiveVisit from "./pages/PatientActiveVisit.jsx";
 import PatientAppointments from "./pages/PatientAppointments.jsx";
 import PatientHealthRecords from "./pages/PatientHealthRecords.jsx";
 import PatientBilling from "./pages/PatientBilling.jsx";
@@ -31,7 +30,7 @@ function App() {
         }
       >
         <Route path="dashboard" element={<PatientDashboard />} />
-        <Route path="active-visit" element={<PatientActiveVisit />} />
+        <Route path="active-visit" element={<Navigate to="/request-visit/tracking" replace />} />
         <Route path="request-visit" element={<RequestVisitLayout />}>
           <Route index element={<RequestVisitForm />} />
           <Route path="review" element={<RequestVisitReview />} />

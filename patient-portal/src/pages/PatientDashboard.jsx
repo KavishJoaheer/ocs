@@ -14,8 +14,16 @@ import {
 } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
-import { getActiveVisit } from "../lib/activeVisit.js";
 import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
+
+// Map a backend visit-request status onto the dashboard's 4-step mini tracker.
+const VISIT_STATUS_STEP_INDEX = {
+  pending: 0,
+  acknowledged: 0,
+  assigned: 1,
+  en_route: 2,
+  arrived: 3,
+};
 
 const VISIT_STEPS = [
   "Request received",
@@ -59,6 +67,7 @@ function NoActiveVisit() {
 
 function ActiveVisitCard({ visit }) {
   const [showCancel, setShowCancel] = useState(false);
+  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
 
   return (
     <div className="rounded-2xl bg-[rgba(26,160,140,0.04)] p-6">
@@ -105,7 +114,7 @@ function ActiveVisitCard({ visit }) {
         {VISIT_STEPS.map((step, i) => (
           <div key={step} className="flex flex-col gap-2">
             <div className="flex h-[6px] items-center">
-              {i === ACTIVE_STEP_INDEX ? (
+              {i === activeStepIndex ? (
                 <span className="size-2 rounded-full bg-[#1a5c52] animate-visit-step-pulse" />
               ) : (
                 <span className="size-2 rounded-full bg-transparent" aria-hidden="true" />
@@ -113,14 +122,14 @@ function ActiveVisitCard({ visit }) {
             </div>
             <span
               className={`h-[6px] rounded-full ${
-                i <= ACTIVE_STEP_INDEX ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
+                i <= activeStepIndex ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
               }`}
             />
             <span
               className={`text-[0.55rem] leading-tight ${
-                i === ACTIVE_STEP_INDEX
+                i === activeStepIndex
                   ? "font-semibold text-[#1a5c52]"
-                  : i < ACTIVE_STEP_INDEX
+                  : i < activeStepIndex
                     ? "text-[#5b7f8a]"
                     : "text-[#94a9ad]"
               }`}
@@ -357,7 +366,7 @@ function PatientDashboard() {
   const [recentActivity, setRecentActivity] = useState([]);
   const [lastConsultation, setLastConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [primaryActiveVisit] = useState(() => getActiveVisit());
+  const [activeVisit, setActiveVisit] = useState(null);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
@@ -365,12 +374,16 @@ function PatientDashboard() {
 
     async function fetchDashboard() {
       try {
-        const data = await api.get("/patient-portal/dashboard");
+        const [data, visitData] = await Promise.all([
+          api.get("/patient-portal/dashboard"),
+          api.get("/patient-portal/visit-requests/active").catch(() => ({ visit_request: null })),
+        ]);
         if (!ignore) {
           setStats(data.stats || { upcoming_appointments: 0, pending_bills: 0, total_visits: 0 });
           setNextAppointment(data.next_appointment || null);
           setRecentActivity(data.recent_activity || []);
           setLastConsultation(data.last_consultation || null);
+          setActiveVisit(visitData.visit_request || null);
         }
       } catch {
         if (!ignore) {
@@ -378,6 +391,7 @@ function PatientDashboard() {
           setNextAppointment(null);
           setRecentActivity([]);
           setLastConsultation(null);
+          setActiveVisit(null);
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -387,6 +401,17 @@ function PatientDashboard() {
     fetchDashboard();
     return () => { ignore = true; };
   }, [refreshKey]);
+
+  const primaryActiveVisit = activeVisit
+    ? {
+        doctor: activeVisit.doctor_name ? formatDoctorName(activeVisit.doctor_name) : "Your doctor",
+        status:
+          activeVisit.eta_minutes != null
+            ? `${activeVisit.status_label} · Est. arrival ${activeVisit.eta_minutes} min`
+            : activeVisit.status_label,
+        stepIndex: VISIT_STATUS_STEP_INDEX[activeVisit.status] ?? 0,
+      }
+    : null;
 
   const greeting = (() => {
     const hour = new Date().getHours();
