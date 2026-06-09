@@ -66,7 +66,7 @@ function UploadFormFields({
         }}
         className={[
           "upload-dropzone squircle-inner cursor-pointer px-4 py-9 text-center transition active:scale-[0.99] lg:py-10",
-          dragOver ? "bg-[rgba(26,160,140,0.12)]" : "",
+          dragOver ? "upload-dropzone--active max-lg:bg-[rgba(26,160,140,0.12)]" : "",
         ].join(" ")}
       >
         <FileUp className="mx-auto size-9 text-[#2d8f98]" strokeWidth={1.5} />
@@ -374,20 +374,20 @@ function UploadReportModal({ open, onClose, onUpload }) {
             </div>
           </div>
 
-          <footer className="flex shrink-0 items-center gap-4 border-t border-[rgba(0,0,0,0.06)] px-6 py-4">
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="min-h-[44px] flex-1 rounded-full bg-ocs-orange px-6 py-3 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Upload
-            </button>
+          <footer className="upload-drawer-footer flex shrink-0 items-center justify-between">
             <button
               type="button"
               onClick={handleClose}
-              className="inline-flex min-h-[44px] items-center px-3 text-[14px] font-medium text-[#5b7f8a] transition hover:text-[#1a5c52]"
+              className="inline-flex min-h-[44px] items-center text-[14px] font-medium text-[#8a9e9a] transition hover:text-[#5b7f8a]"
             >
               Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="min-h-[44px] rounded-full bg-ocs-orange px-7 py-3 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Upload
             </button>
           </footer>
         </form>
