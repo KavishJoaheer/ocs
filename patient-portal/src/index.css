@@ -1180,9 +1180,14 @@ table {
   width: 100%;
 }
 
-.profile-desktop-grid {
+.profile-desktop-columns {
   width: 100%;
   margin-top: 0;
+}
+
+.profile-desktop-col-left,
+.profile-desktop-col-right {
+  min-width: 0;
 }
 
 .profile-section-header {
