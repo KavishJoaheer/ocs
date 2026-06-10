@@ -112,8 +112,8 @@ function PatientAppointments() {
     .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
-    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] px-[var(--native-pad-screen)] font-sans lg:max-w-3xl lg:px-0">
-      <div className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] flex min-h-12 items-center justify-between border-b border-teal-500/10 bg-white/90 px-[var(--native-pad-screen)] pt-safe backdrop-blur-md lg:hidden">
+    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] px-4 font-sans lg:max-w-3xl lg:px-0">
+      <div className="sticky top-0 z-40 -mx-4 flex min-h-12 items-center justify-between border-b border-teal-500/10 bg-white/90 px-4 pt-safe backdrop-blur-md lg:hidden">
         <img
           src="/ocs-medecins-mark.png"
           alt="OCS Care"
@@ -135,9 +135,9 @@ function PatientAppointments() {
       </header>
 
       {loading ? (
-        <div className="mt-6 space-y-4 lg:mt-8">
-          <div className="h-40 animate-pulse rounded-3xl border border-teal-100 bg-white/70 max-lg:shadow-sm lg:visits-card" />
-          <div className="h-28 animate-pulse rounded-2xl bg-white/70 lg:visits-card" />
+        <div className="mt-6 flex flex-col gap-4 lg:mt-8">
+          <div className="h-40 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
+          <div className="h-28 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
         </div>
       ) : loadError ? (
         <div className="mt-8 flex flex-col items-center px-4 py-16 text-center">
@@ -153,14 +153,14 @@ function PatientAppointments() {
         </div>
       ) : (
         <>
-          <section className="animate-fade-in-up stagger-1 mt-6 space-y-3 lg:mt-8 lg:space-y-4">
+          <section className="animate-fade-in-up stagger-1 mt-6 lg:mt-8">
             <SectionLabel>Upcoming</SectionLabel>
             {upcoming.length === 0 ? (
               <p className="text-[14px] italic text-[#8a9e9a]">
                 No upcoming appointments. Your OCS care team will schedule these for you.
               </p>
             ) : (
-              <div className="space-y-3 lg:space-y-4">
+              <div className="mt-4 flex flex-col gap-4">
                 {upcoming.map((appointment, idx) => (
                   <div
                     key={appointment.id}
@@ -177,7 +177,7 @@ function PatientAppointments() {
           </section>
 
           <section
-            className={`animate-fade-in-up mt-10 space-y-3 lg:mt-12 lg:space-y-4 ${
+            className={`animate-fade-in-up mt-10 lg:mt-12 ${
               upcoming.length > 0 ? `stagger-${Math.min(upcoming.length + 2, 6)}` : "stagger-2"
             }`}
           >
@@ -185,16 +185,13 @@ function PatientAppointments() {
             {past.length === 0 ? (
               <p className="text-[14px] italic text-[#8a9e9a]">No past appointments yet.</p>
             ) : (
-              <div className="visits-timeline max-lg:space-y-5 lg:space-y-4">
+              <div className="mt-4 flex flex-col gap-4">
                 {past.map((appointment, idx) => (
                   <div
                     key={appointment.id}
                     className={`animate-fade-in-up stagger-${Math.min(idx + 3, 6)}`}
                   >
-                    <PastAppointmentCard
-                      appointment={appointment}
-                      isLast={idx === past.length - 1}
-                    />
+                    <PastAppointmentCard appointment={appointment} />
                   </div>
                 ))}
               </div>

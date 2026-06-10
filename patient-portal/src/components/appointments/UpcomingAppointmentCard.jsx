@@ -28,51 +28,52 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
   }
 
   return (
-    <article className="visits-featured-card visits-crafted-card visits-card max-lg:overflow-hidden max-lg:rounded-3xl max-lg:border max-lg:border-teal-100 max-lg:bg-white max-lg:shadow-sm lg:bg-white">
-      {/* ── Mobile: featured card ── */}
-      <div className="lg:hidden">
-        <div className="p-5">
-          <div className="flex gap-4">
-            <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-teal-50 text-teal-900">
-              <span className="text-xl font-bold leading-none">{date.format("D")}</span>
-              <span className="mt-0.5 text-[10px] font-bold tracking-wide">
-                {date.format("MMM").toUpperCase()}
-              </span>
+    <article className="visits-featured-card visits-crafted-card visits-card overflow-hidden rounded-2xl border border-teal-500/10 bg-white shadow-sm lg:rounded-[18px] lg:border-0 lg:shadow-none">
+      {/* ── Mobile ── */}
+      <div className="flex flex-col p-5 lg:hidden">
+        <div className="flex gap-4">
+          <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-teal-50 text-teal-900">
+            <span className="text-xl font-bold leading-none">{date.format("D")}</span>
+            <span className="mt-0.5 text-[10px] font-bold tracking-wide">
+              {date.format("MMM").toUpperCase()}
+            </span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[17px] font-bold leading-snug text-teal-900">{appointment.type}</p>
+              <VisitStatusBadge>{isNextVisit ? "Next Visit" : "Upcoming"}</VisitStatusBadge>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-[15px] font-bold leading-snug text-teal-900">{appointment.type}</p>
-                <VisitStatusBadge>{isNextVisit ? "Next Visit" : "Upcoming"}</VisitStatusBadge>
+            <p className="mt-1 text-[15px] font-medium text-gray-800">{appointment.doctor_name}</p>
+
+            {appointment.time_window ? (
+              <div className="mt-1 flex items-center gap-1.5 text-[13px] text-gray-500">
+                <Clock className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                <span>{appointment.time_window}</span>
               </div>
+            ) : null}
 
-              <p className="text-[14px] font-semibold text-gray-800">{appointment.doctor_name}</p>
-
-              {appointment.time_window ? (
-                <div className="mt-1 flex items-center gap-1.5 text-[13px] text-gray-500">
-                  <Clock className="size-3.5 shrink-0 translate-y-px" strokeWidth={1.5} aria-hidden="true" />
-                  <span>{appointment.time_window}</span>
-                </div>
-              ) : null}
-
-              {appointment.note ? (
-                <p className="mt-2 text-[13px] leading-relaxed text-gray-400">{appointment.note}</p>
-              ) : null}
-            </div>
+            {appointment.note ? (
+              <p className="mt-1.5 text-[13px] leading-snug text-gray-500">{appointment.note}</p>
+            ) : null}
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleAddToCalendar}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 border-t border-teal-50 py-3.5 text-[14px] font-semibold text-brand-orange transition-colors duration-200 active:bg-teal-50/40"
-        >
-          <CalendarPlus className="size-4 shrink-0 translate-y-px" strokeWidth={1.5} aria-hidden="true" />
-          Add to Calendar
-        </button>
+        <div className="mt-4 flex gap-4 border-t border-teal-500/10 pt-4">
+          <div className="w-16 shrink-0" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={handleAddToCalendar}
+            className="flex min-h-[44px] items-center gap-2 text-[15px] font-semibold text-brand-orange transition-colors active:opacity-80"
+          >
+            <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+            Add to Calendar
+          </button>
+        </div>
       </div>
 
-      {/* ── Desktop: itinerary card ── */}
+      {/* ── Desktop ── */}
       <div className="hidden flex-col gap-4 p-5 lg:flex lg:flex-row lg:items-center lg:gap-6">
         <div className="visits-date-block visits-date-block-upcoming shrink-0">
           <span className="visits-date-day">{date.format("D")}</span>
@@ -90,7 +91,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
               <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
               {appointment.time_window ? (
                 <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5b7f8a]">
-                  <Clock className="size-3.5 shrink-0 translate-y-px text-[#6b9e95]" strokeWidth={1.5} />
+                  <Clock className="size-3.5 shrink-0 text-[#6b9e95]" strokeWidth={1.5} />
                   <span>{appointment.time_window}</span>
                 </div>
               ) : null}
@@ -116,7 +117,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           onClick={handleAddToCalendar}
           className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-brand-orange transition-colors duration-200 hover:text-[#c88710]"
         >
-          <CalendarPlus className="size-4 shrink-0 translate-y-px" strokeWidth={1.5} aria-hidden="true" />
+          <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
           Add to Calendar
         </button>
       </div>

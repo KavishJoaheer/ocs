@@ -11,7 +11,7 @@ function VisitStatusBadge({ children }) {
   );
 }
 
-function PastAppointmentCard({ appointment, isLast = false }) {
+function PastAppointmentCard({ appointment }) {
   const date = dayjs(appointment.date);
   const dateTimeLabel = appointment.time_window
     ? `${date.format("D MMMM YYYY")} · ${appointment.time_window}`
@@ -24,89 +24,90 @@ function PastAppointmentCard({ appointment, isLast = false }) {
   const statusLabel = appointment.status === "cancelled" ? "Cancelled" : "Completed";
 
   return (
-    <div className="visits-timeline-item relative max-lg:pl-7 lg:pl-0">
-      {!isLast ? (
-        <span
-          className="absolute top-8 bottom-0 left-[5px] w-px bg-teal-100 lg:hidden"
-          aria-hidden="true"
-        />
-      ) : null}
-      <span
-        className="absolute top-6 left-0 z-[1] size-2.5 rounded-full border-2 border-teal-300 bg-white lg:hidden"
-        aria-hidden="true"
-      />
-
-      <article className="visits-crafted-card visits-card max-lg:rounded-2xl max-lg:border-0 max-lg:bg-white max-lg:p-4 max-lg:shadow-none lg:bg-white">
-        {/* ── Mobile: compact timeline card ── */}
-        <div className="lg:hidden">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-bold leading-snug text-teal-900">{appointment.type}</p>
-              <p className="mt-1 text-[13px] font-semibold text-gray-700">{appointment.doctor_name}</p>
-              <div className="mt-1 flex items-center gap-1.5 text-[12px] text-gray-400">
-                <Clock className="size-3.5 shrink-0 translate-y-px" strokeWidth={1.5} aria-hidden="true" />
-                <span>{dateTimeLabel}</span>
-              </div>
-            </div>
-            <VisitStatusBadge>{statusLabel}</VisitStatusBadge>
-          </div>
-
-          {appointment.status !== "cancelled" ? (
-            <Link
-              to={summaryPath}
-              className="mt-3 inline-flex items-center gap-0.5 text-[13px] font-medium text-brand-orange no-underline transition-opacity active:opacity-70"
-            >
-              <span>View Visit Summary</span>
-              <ChevronRight className="size-3.5 shrink-0 translate-y-px" strokeWidth={1.75} aria-hidden="true" />
-            </Link>
-          ) : null}
-        </div>
-
-        {/* ── Desktop: itinerary card ── */}
-        <div className="hidden flex-col gap-4 p-5 lg:flex lg:flex-row lg:items-center lg:gap-6">
-          <div className="visits-date-block visits-date-block-past shrink-0">
-            <span className="visits-date-day visits-date-day--past">{date.format("D")}</span>
-            <span className="visits-date-month visits-date-month--past">
+    <article className="visits-crafted-card visits-card overflow-hidden rounded-2xl border border-teal-500/10 bg-white shadow-sm lg:rounded-[18px] lg:border-0 lg:shadow-none">
+      {/* ── Mobile ── */}
+      <div className="flex flex-col p-5 lg:hidden">
+        <div className="flex gap-4">
+          <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-gray-50 text-gray-600">
+            <span className="text-xl font-bold leading-none">{date.format("D")}</span>
+            <span className="mt-0.5 text-[10px] font-bold tracking-wide">
               {date.format("MMM").toUpperCase()}
             </span>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="native-display text-[17px] font-bold leading-snug text-[#1a5c52]">
-              {appointment.type}
-            </p>
-
-            <div className="mt-2.5 flex items-center gap-2.5">
-              <DoctorAvatar name={appointment.doctor_name} size="md" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5b7f8a]">
-                  <Clock className="size-3.5 shrink-0 translate-y-px text-[#6b9e95]" strokeWidth={1.5} />
-                  <span>{dateTimeLabel}</span>
-                </div>
-              </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[17px] font-bold leading-snug text-teal-900">{appointment.type}</p>
+              <VisitStatusBadge>{statusLabel}</VisitStatusBadge>
             </div>
-          </div>
 
-          <div className="flex shrink-0 items-center justify-end self-stretch lg:items-center">
-            <VisitStatusBadge>{statusLabel}</VisitStatusBadge>
+            <p className="mt-1 text-[15px] font-medium text-gray-800">{appointment.doctor_name}</p>
+
+            <div className="mt-1 flex items-center gap-1.5 text-[13px] text-gray-500">
+              <Clock className="size-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+              <span>{dateTimeLabel}</span>
+            </div>
           </div>
         </div>
 
         {appointment.status !== "cancelled" ? (
-          <>
-            <div className="visits-card-footer-divider hidden lg:block" aria-hidden="true" />
-            <Link to={summaryPath} className="visits-summary-link group hidden text-brand-orange lg:flex">
+          <div className="mt-4 flex gap-4 border-t border-teal-500/10 pt-4">
+            <div className="w-16 shrink-0" aria-hidden="true" />
+            <Link
+              to={summaryPath}
+              className="flex min-h-[44px] items-center gap-0.5 text-[15px] font-semibold text-brand-orange no-underline transition-opacity active:opacity-80"
+            >
               <span>View Visit Summary</span>
-              <ChevronRight
-                className="visits-summary-arrow size-[18px] shrink-0 text-brand-orange"
-                strokeWidth={1.75}
-              />
+              <ChevronRight className="size-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             </Link>
-          </>
+          </div>
         ) : null}
-      </article>
-    </div>
+      </div>
+
+      {/* ── Desktop ── */}
+      <div className="hidden flex-col gap-4 p-5 lg:flex lg:flex-row lg:items-center lg:gap-6">
+        <div className="visits-date-block visits-date-block-past shrink-0">
+          <span className="visits-date-day visits-date-day--past">{date.format("D")}</span>
+          <span className="visits-date-month visits-date-month--past">
+            {date.format("MMM").toUpperCase()}
+          </span>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="native-display text-[17px] font-bold leading-snug text-[#1a5c52]">
+            {appointment.type}
+          </p>
+
+          <div className="mt-2.5 flex items-center gap-2.5">
+            <DoctorAvatar name={appointment.doctor_name} size="md" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5b7f8a]">
+                <Clock className="size-3.5 shrink-0 text-[#6b9e95]" strokeWidth={1.5} />
+                <span>{dateTimeLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end self-stretch lg:items-center">
+          <VisitStatusBadge>{statusLabel}</VisitStatusBadge>
+        </div>
+      </div>
+
+      {appointment.status !== "cancelled" ? (
+        <>
+          <div className="visits-card-footer-divider hidden lg:block" aria-hidden="true" />
+          <Link to={summaryPath} className="visits-summary-link group hidden text-brand-orange lg:flex">
+            <span>View Visit Summary</span>
+            <ChevronRight
+              className="visits-summary-arrow size-[18px] shrink-0 text-brand-orange"
+              strokeWidth={1.75}
+            />
+          </Link>
+        </>
+      ) : null}
+    </article>
   );
 }
 
