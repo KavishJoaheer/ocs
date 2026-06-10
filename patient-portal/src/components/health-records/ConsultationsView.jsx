@@ -5,12 +5,14 @@ import ConsultationCard from "./ConsultationCard.jsx";
 function ConsultationsEmptyState() {
   return (
     <div className="flex flex-col items-center px-4 py-14 text-center">
-      <FolderHeart className="size-10 text-gray-300" strokeWidth={1.5} />
-      <h2 className="mt-4 text-[17px] font-semibold text-gray-900">No consultations yet</h2>
-      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-gray-500">
+      <div className="squircle-inner flex size-14 items-center justify-center bg-teal-100 text-[#2d8f98]">
+        <FolderHeart className="size-7" strokeWidth={1.75} />
+      </div>
+      <h2 className="native-display mt-4 text-[18px] text-[#1a5c52]">No consultations yet</h2>
+      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-[#5b7f8a]">
         After your first home visit, your consultation history will appear here.
       </p>
-      <RequestVisitCta className="mt-6 rounded-xl bg-[#e8a020] px-6 py-3 text-[15px] font-semibold text-white transition active:opacity-90">
+      <RequestVisitCta className="squircle-inner mt-6 bg-brand-orange px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]">
         Request a Home Visit
       </RequestVisitCta>
     </div>

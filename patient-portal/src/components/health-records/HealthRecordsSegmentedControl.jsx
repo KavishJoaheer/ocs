@@ -24,10 +24,10 @@ function HealthRecordsSegmentedControl({ activeTab, onChange, layout = "mobile" 
               aria-selected={isActive}
               onClick={() => onChange(tab.id)}
               className={[
-                "cursor-pointer shrink-0 rounded-full border-0 px-4 py-2.5 text-[13px] transition-all duration-200 outline-none",
+                "cursor-pointer shrink-0 rounded-full border-2 px-4 py-2.5 text-[13px] transition-all duration-200 outline-none",
                 isActive
-                  ? "bg-[#e8a020] font-semibold text-white shadow-[0_2px_10px_rgba(232,160,32,0.35)]"
-                  : "bg-white font-medium text-gray-600 shadow-sm ring-1 ring-black/[0.06] hover:bg-gray-50 hover:text-gray-800",
+                  ? "border-teal-500 bg-teal-500/10 font-bold text-teal-800 shadow-sm"
+                  : "border-transparent bg-white font-medium text-gray-600 shadow-sm ring-1 ring-black/[0.06] hover:bg-teal-50/40 hover:text-teal-900",
               ].join(" ")}
             >
               <span className="whitespace-nowrap">{tab.label}</span>
@@ -40,7 +40,7 @@ function HealthRecordsSegmentedControl({ activeTab, onChange, layout = "mobile" 
 
   return (
     <div
-      className="mb-4 flex w-full items-center rounded-xl bg-gray-100 p-1"
+      className="mb-4 flex w-full items-center rounded-xl border border-teal-500/10 bg-white/80 p-1 shadow-sm backdrop-blur-sm"
       role="tablist"
       aria-label="Health records sections"
     >
@@ -54,10 +54,10 @@ function HealthRecordsSegmentedControl({ activeTab, onChange, layout = "mobile" 
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={[
-              "flex-1 rounded-lg border-0 py-2.5 text-center text-[12px] transition-all duration-200 outline-none",
+              "flex-1 rounded-lg border-2 py-2.5 text-center text-[12px] transition-all duration-200 outline-none",
               isActive
-                ? "bg-white font-semibold text-teal-900 shadow-sm"
-                : "bg-transparent font-medium text-gray-500",
+                ? "border-teal-500 bg-teal-500/10 font-bold text-teal-800"
+                : "border-transparent bg-transparent font-medium text-gray-500",
             ].join(" ")}
           >
             <span className="whitespace-nowrap">{tab.mobileLabel}</span>

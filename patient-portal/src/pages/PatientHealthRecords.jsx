@@ -128,21 +128,22 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:pt-10">
-      <header className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] px-[var(--native-pad-screen)] pt-safe max-lg:static max-lg:border-0 max-lg:bg-transparent max-lg:pb-0 max-lg:shadow-none max-lg:backdrop-filter-none lg:animate-fade-in-up lg:mx-0 lg:p-0">
+    <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:bg-transparent lg:pt-10">
+      <header className="animate-fade-in-up pb-6 lg:animate-fade-in-up lg:pb-0">
         <div className="hidden items-center gap-2 lg:flex">
-          <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.5} />
+          <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.75} />
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
             Health Records
           </p>
         </div>
-        <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 max-lg:font-sans lg:mt-0 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
-          Health Records
+        <h1 className="native-display text-[28px] leading-tight lg:mt-0 lg:text-4xl">
+          <span className="text-[#52C4B9]">Health</span>{" "}
+          <span className="text-brand-orange">Records</span>
         </h1>
         <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
           Your health journey, securely organised.
         </p>
-        <div className="mt-3 lg:hidden">
+        <div className="mt-5 lg:hidden">
           <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
         </div>
       </header>
@@ -159,8 +160,8 @@ function PatientHealthRecords() {
         {loading ? (
           <>
             <div className="flex flex-col gap-4 lg:hidden">
-              <div className="h-36 animate-pulse rounded-2xl border border-gray-100 bg-white shadow-sm" />
-              <div className="h-36 animate-pulse rounded-2xl border border-gray-100 bg-white shadow-sm" />
+              <div className="ocs-surface-card h-36 animate-pulse bg-white/80" />
+              <div className="ocs-surface-card h-36 animate-pulse bg-white/80" />
             </div>
             <div className="hidden space-y-4 lg:block">
               <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
