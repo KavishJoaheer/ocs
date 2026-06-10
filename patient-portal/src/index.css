@@ -1296,7 +1296,7 @@ table {
 .visits-section-label {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -1309,6 +1309,18 @@ table {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
+.visits-crafted-card {
+  background: #fff;
+}
+
+@media (min-width: 1024px) {
+  .visits-crafted-card {
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  }
+}
+
 .visits-date-block {
   display: flex;
   flex-direction: column;
@@ -1317,16 +1329,24 @@ table {
   width: 56px;
   height: 56px;
   flex-shrink: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   text-align: center;
 }
 
+@media (min-width: 1024px) {
+  .visits-date-block {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+  }
+}
+
 .visits-date-block-upcoming {
-  background: rgba(232, 160, 32, 0.12);
+  background: rgba(232, 160, 32, 0.1);
 }
 
 .visits-date-block-past {
-  background: rgba(138, 158, 154, 0.14);
+  background: rgba(138, 158, 154, 0.12);
 }
 
 .visits-date-day {
@@ -1336,12 +1356,24 @@ table {
   color: #1a5c52;
 }
 
+@media (min-width: 1024px) {
+  .visits-date-day {
+    font-size: 22px;
+  }
+}
+
 .visits-date-month {
   margin-top: 2px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: #5b7f8a;
+}
+
+@media (min-width: 1024px) {
+  .visits-date-month {
+    letter-spacing: 0.16em;
+  }
 }
 
 .visits-badge-teal {
@@ -1368,7 +1400,7 @@ table {
 
 .visits-badge-muted {
   border-radius: 999px;
-  background: rgba(138, 158, 154, 0.14);
+  background: rgba(138, 158, 154, 0.12);
   padding: 4px 10px;
   font-size: 10px;
   font-weight: 600;
@@ -1383,24 +1415,31 @@ table {
   gap: 6px;
   border: none;
   background: transparent;
-  padding: 6px 0;
+  padding: 6px 8px;
+  border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
-  color: #5b7f8a;
+  font-weight: 500;
+  color: #8a9e9a;
   cursor: pointer;
-  transition: color 160ms ease, opacity 160ms ease;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.visits-calendar-btn:hover {
+  color: #1a5c52;
+  background: rgba(26, 92, 82, 0.04);
 }
 
 .visits-calendar-btn:active {
-  color: var(--ocs-orange);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .visits-card-footer-divider {
   height: 1px;
   margin-left: 20px;
   margin-right: 20px;
-  background: rgba(138, 158, 154, 0.18);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .visits-summary-link {
@@ -1409,10 +1448,22 @@ table {
   justify-content: space-between;
   padding: 14px 20px 16px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #1a5c52;
   text-decoration: none;
   transition: background 160ms ease;
+}
+
+.visits-summary-arrow {
+  transition: transform 180ms ease;
+}
+
+.visits-summary-link:hover {
+  background: rgba(26, 92, 82, 0.03);
+}
+
+.visits-summary-link:hover .visits-summary-arrow {
+  transform: translateX(3px);
 }
 
 .visits-summary-link:active {

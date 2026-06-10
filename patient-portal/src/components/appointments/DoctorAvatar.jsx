@@ -7,7 +7,8 @@ function doctorInitials(name) {
 }
 
 function DoctorAvatar({ name, size = "sm" }) {
-  const sizeClass = size === "sm" ? "size-7 text-[10px]" : "size-10 text-[12px]";
+  const sizeClass =
+    size === "md" ? "size-8 text-[11px]" : size === "lg" ? "size-10 text-[12px]" : "size-7 text-[10px]";
 
   return (
     <div
