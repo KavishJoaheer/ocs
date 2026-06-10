@@ -42,7 +42,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-row items-center justify-between gap-3 lg:flex-col lg:items-end lg:justify-start">
+        <div className="flex shrink-0 flex-row items-center justify-between gap-3 max-lg:items-center lg:flex-col lg:items-end lg:justify-start">
           {isNextVisit ? (
             <span className="visits-badge-teal inline-flex shrink-0 items-center">Next Visit</span>
           ) : (
