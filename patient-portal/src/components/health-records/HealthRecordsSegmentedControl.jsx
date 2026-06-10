@@ -31,7 +31,7 @@ function HealthRecordsSegmentedControl({ activeTab, onChange, layout = "mobile" 
               "native-segment-btn rounded-lg py-2 text-center text-[13px] whitespace-nowrap transition-all duration-150",
               isDesktop ? "px-4" : "flex-1",
               isActive
-                ? "bg-white font-semibold text-teal-900 shadow-sm"
+                ? "bg-ocs-orange font-semibold text-white shadow-[0_2px_8px_rgba(232,160,32,0.3)]"
                 : "font-medium text-gray-500",
             ].join(" ")}
           >
