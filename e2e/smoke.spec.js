@@ -180,7 +180,7 @@ test.describe("OCS smoke", () => {
     await expect(page.getByRole("heading", { name: /^health records$/i })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole("tab", { name: /^consultations$/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^consultation history$/i })).toBeVisible();
     await expect(
       page.getByText(/no consultations yet|health story starts here|your health summary/i).first(),
     ).toBeVisible();
