@@ -178,9 +178,9 @@ function MobileDashboardHome({
     <div className="native-dashboard min-h-full bg-[#F2F2F7]">
       <header className="animate-fade-in-up flex items-center justify-between gap-4 pb-10">
         <div className="min-w-0 flex-1 pr-2">
-          <h1 className="native-display text-[28px] leading-tight text-[#1a5c52]">
-            {greeting},{" "}
-            <span className="text-[#0D9E8A]">{firstName || "there"}</span>
+          <h1 className="native-display text-[28px] leading-tight">
+            <span className="text-teal-900">{greeting},</span>{" "}
+            <span className="text-ocs-orange">{firstName || "there"}</span>
           </h1>
           <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
             Your health. Unwavering care. Accessed effortlessly, managed securely.

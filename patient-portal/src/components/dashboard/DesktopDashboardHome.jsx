@@ -126,7 +126,7 @@ function DesktopDashboardHome({
   return (
     <div className="desktop-dashboard">
       <header className="desktop-dashboard-greeting animate-fade-in-up">
-        <h1 className="font-display text-[2rem] tracking-tight text-[#1a5c52] sm:text-4xl">
+        <h1 className="font-display text-[2rem] tracking-tight sm:text-4xl">
           {headline}
         </h1>
         <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-gray-500">
