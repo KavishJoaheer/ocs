@@ -19,7 +19,7 @@ function AppShellContent() {
       <Sidebar />
       <main
         id="app-main-scroll"
-        className="min-h-0 flex-1 overflow-y-auto max-lg:bg-[#F2F2F7] max-lg:pb-[100px] lg:bg-[var(--desktop-canvas)]"
+        className="min-h-0 flex-1 overflow-y-auto max-lg:bg-[#F2F2F7] max-lg:pb-[var(--native-nav-clearance)] lg:bg-[var(--desktop-canvas)]"
       >
         <div
           className={
