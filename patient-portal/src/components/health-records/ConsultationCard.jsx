@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { ChevronRight } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
@@ -65,10 +64,9 @@ function ConsultationCard({ consultation, isLast = false }) {
       </NativeGroupedRow>
 
       {/* Desktop — clinical summary card */}
-      <Link
-        to={visitPath}
+      <article
         className={[
-          "group hidden w-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md lg:block",
+          "hidden w-full cursor-default overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:block",
           isLast ? "" : "mb-4",
         ].join(" ")}
       >
@@ -117,7 +115,7 @@ function ConsultationCard({ consultation, isLast = false }) {
             <p className="text-[14px] font-medium text-gray-800">{prescriptionSummary}</p>
           </div>
         </div>
-      </Link>
+      </article>
     </>
   );
 }
