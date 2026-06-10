@@ -14,15 +14,21 @@ function SidebarLink({ item }) {
       to={item.to}
       className={({ isActive }) =>
         [
-          "sidebar-nav-link group -mx-6 flex min-h-[44px] items-center gap-3 px-6 text-sm outline-none transition-colors focus:outline-none focus-visible:outline-none",
+          "sidebar-nav-link group relative -mx-6 flex min-h-[44px] items-center gap-3 px-6 text-sm outline-none transition-colors focus:outline-none focus-visible:outline-none",
           isActive
             ? "sidebar-nav-link-active font-semibold text-[#1a5c52]"
-            : "border-l-[3px] border-transparent font-normal text-[#2a6a5e] hover:bg-[rgba(26,92,82,0.04)]",
+            : "font-normal text-[#2a6a5e] hover:bg-[rgba(26,92,82,0.04)]",
         ].join(" ")
       }
     >
       {({ isActive }) => (
         <>
+          {isActive ? (
+            <span
+              className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.6)]"
+              aria-hidden="true"
+            />
+          ) : null}
           <Icon
             className={`size-[18px] shrink-0 ${isActive ? "text-[#2d8f98]" : "text-[#6B9E95]"}`}
             strokeWidth={1.5}

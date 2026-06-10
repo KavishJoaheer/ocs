@@ -1124,10 +1124,6 @@ button.native-grouped-row {
 
 .sidebar-nav-link-active {
   border: none;
-  border-top: none;
-  border-right: none;
-  border-bottom: none;
-  border-left: 3px solid #1a5c52;
   background: rgba(var(--ocs-teal-dark-rgb), 0.05);
   outline: none;
   box-shadow: none;
@@ -1136,10 +1132,6 @@ button.native-grouped-row {
 .sidebar-nav-link-active:focus,
 .sidebar-nav-link-active:focus-visible {
   outline: none;
-  border-top: none;
-  border-right: none;
-  border-bottom: none;
-  border-left: 3px solid #1a5c52;
   box-shadow: none;
 }
 
