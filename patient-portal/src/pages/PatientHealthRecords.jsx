@@ -139,8 +139,8 @@ function PatientHealthRecords() {
         <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 lg:mt-0 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
           Health Records
         </h1>
-        <p className="mt-2 hidden text-[14px] leading-relaxed text-[#8a9e9a] lg:block">
-          Consultations, reports, and clinical background — in one calm place.
+        <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
+          Your health journey, securely organised.
         </p>
         <div className="max-lg:pb-3 lg:hidden">
           <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
