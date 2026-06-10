@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 
+const ZERO_INSET = { bottom: 0, top: 0 };
+
 /** Tracks virtual-keyboard inset for fixed bottom sheets on mobile browsers. */
 export function useKeyboardOffset(enabled) {
-  const [inset, setInset] = useState({ bottom: 0, top: 0 });
+  const [inset, setInset] = useState(ZERO_INSET);
 
   useEffect(() => {
     if (!enabled) {
-      setInset({ bottom: 0, top: 0 });
       return undefined;
     }
 
@@ -31,5 +32,5 @@ export function useKeyboardOffset(enabled) {
     };
   }, [enabled]);
 
-  return inset;
+  return enabled ? inset : ZERO_INSET;
 }
