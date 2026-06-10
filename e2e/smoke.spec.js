@@ -177,11 +177,13 @@ test.describe("OCS smoke", () => {
     await injectPatientSession(page, token);
 
     await page.goto(`${PATIENT_BASE}/health-records`);
-    await expect(page.getByRole("heading", { name: /your health records/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /^health records$/i })).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole("tab", { name: /^consultations$/i })).toBeVisible();
-    await expect(page.getByText(/health story starts here|your health summary/i).first()).toBeVisible();
+    await expect(
+      page.getByText(/no consultations yet|health story starts here|your health summary/i).first(),
+    ).toBeVisible();
   });
 
   test("patient billing page loads", async ({ page, request }) => {
