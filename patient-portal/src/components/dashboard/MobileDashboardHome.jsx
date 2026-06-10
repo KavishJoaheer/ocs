@@ -175,7 +175,7 @@ function MobileDashboardHome({
   });
 
   return (
-    <div className="native-dashboard min-h-full bg-[#f4f7f7]">
+    <div className="native-dashboard min-h-full bg-[#F2F2F7]">
       <header className="animate-fade-in-up flex items-center justify-between gap-4 pb-10">
         <div className="min-w-0 flex-1 pr-2">
           <h1 className="native-display text-[28px] leading-tight text-[#1a5c52]">

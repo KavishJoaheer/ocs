@@ -25,10 +25,12 @@
   --native-safe-top: max(env(safe-area-inset-top, 0px), 16px);
   --native-safe-bottom: env(safe-area-inset-bottom, 0px);
   --native-nav-height: 72px;
-  --native-nav-clearance: calc(128px + var(--native-safe-bottom));
-  /* Teal-tinted ambient shadow — reads soft on iOS Safari and Android Chrome */
-  --native-shadow-ambient: 0 4px 15px rgba(34, 72, 91, 0.04);
-  --native-shadow-lift: 0 4px 15px rgba(34, 72, 91, 0.04), 0 1px 2px rgba(34, 72, 91, 0.03);
+  --native-nav-clearance: calc(76px + max(env(safe-area-inset-bottom, 0px), 12px));
+  --native-canvas: #f2f2f7;
+  /* Physical card depth — iOS-style layered shadow on gray canvas */
+  --native-shadow-ambient: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --native-shadow-lift: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 15px -5px rgba(0, 0, 0, 0.03);
+  --native-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 15px -5px rgba(0, 0, 0, 0.03);
   --native-shadow-hero: 0 8px 24px rgba(45, 143, 152, 0.12), 0 2px 6px rgba(34, 72, 91, 0.04);
   /* Desktop dashboard — luxury concierge canvas */
   --desktop-canvas: linear-gradient(135deg, #f0faf8 0%, #e8f5f2 100%);
@@ -291,13 +293,19 @@ table {
   -webkit-tap-highlight-color: transparent;
 }
 
+@media (max-width: 1023px) {
+  body {
+    background: var(--native-canvas);
+  }
+}
+
 @media (max-width: 767px) {
   .native-screen {
     margin-left: calc(-1 * var(--native-pad-screen));
     margin-right: calc(-1 * var(--native-pad-screen));
     padding-left: var(--native-pad-screen);
     padding-right: var(--native-pad-screen);
-    background: #f4f7f7;
+    background: var(--native-canvas);
     min-height: 100%;
   }
 }
@@ -407,9 +415,9 @@ table {
   right: -1px;
 }
 
-/* Care Timeline & consultation cards — diffused lift shadow */
+/* Care Timeline & consultation cards — physical lift on native canvas */
 .ocs-elevate-timeline {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--native-card-shadow);
 }
 
 /* Consultation card — premium pressable list item */
@@ -456,7 +464,7 @@ table {
 
 .visit-summary-screen {
   min-height: 100%;
-  background: #f4f6f8;
+  background: var(--native-canvas);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -551,7 +559,7 @@ table {
 
 .visit-status-screen {
   min-height: 100%;
-  background: #f4f6f8;
+  background: var(--native-canvas);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1125,7 +1133,7 @@ table {
 
 .profile-screen {
   position: relative;
-  background: #f4f6f8;
+  background: var(--native-canvas);
 }
 
 .profile-teal-band {
@@ -1150,7 +1158,7 @@ table {
     margin-right: 0;
     padding-left: var(--native-pad-screen);
     padding-right: var(--native-pad-screen);
-    background: #f4f6f8;
+    background: var(--native-canvas);
   }
 }
 
@@ -1244,8 +1252,9 @@ table {
 }
 
 .profile-crafted-card {
+  background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.04);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--native-card-shadow);
 }
 
 @media (min-width: 1024px) {
@@ -1300,26 +1309,28 @@ table {
 }
 
 .profile-sign-out-btn {
+  display: flex;
+  width: 100%;
   min-height: 48px;
   margin-bottom: 48px;
   border-radius: 14px;
-  border: 1px solid rgba(207, 91, 80, 0.22);
-  background: rgba(207, 91, 80, 0.06);
+  border: 1px solid rgb(229 231 235);
+  background: #fff;
   font-size: 15px;
-  font-weight: 600;
-  color: #cf5b50;
+  font-weight: 500;
+  color: rgb(239 68 68);
   transition: background 160ms ease, transform 160ms ease;
 }
 
 .profile-sign-out-btn:active {
-  background: rgba(207, 91, 80, 0.12);
+  background: rgb(254 242 242);
   transform: scale(0.98);
 }
 
 /* ─── Visits / Appointments itinerary ─────────────────────────────────────── */
 
 .visits-screen {
-  background: #f4f6f8;
+  background: var(--native-canvas);
 }
 
 @media (min-width: 1024px) {
@@ -1351,7 +1362,7 @@ table {
 }
 
 .visits-card-elevate {
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--native-card-shadow);
 }
 
 .visits-crafted-card {
@@ -1763,6 +1774,7 @@ table {
 
 .upload-field-input {
   width: 100%;
+  min-height: 44px;
   border-radius: var(--native-radius-inner);
   border: 1px solid transparent;
   background: rgba(65, 200, 198, 0.08);
@@ -1772,6 +1784,18 @@ table {
   color: #1a5c52;
   outline: none;
   transition: background 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.upload-sheet .upload-field-input {
+  border-radius: 0.75rem;
+  border: 1px solid rgb(229 231 235);
+  background: #fff;
+}
+
+.upload-sheet .upload-field-input:focus {
+  border-color: rgb(209 213 219);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+  outline: none;
 }
 
 .upload-field-input::placeholder {
@@ -1856,20 +1880,26 @@ table {
   display: none;
 }
 
-/* Floating bottom nav — soft ambient elevation, no harsh border */
-.mobile-nav-pill {
-  box-shadow: var(--native-shadow-lift);
-  border: none;
-}
-
-.mobile-nav-pill .squircle-inner-active {
+/* Edge-to-edge native tab bar — frosted glass, flush to screen edges */
+.mobile-nav-bar .squircle-inner-active {
   border-radius: var(--native-radius-inner);
   box-shadow: 0 4px 12px rgba(45, 143, 152, 0.18);
 }
 
 @supports (corner-shape: squircle) {
-  .mobile-nav-pill .squircle-inner-active {
+  .mobile-nav-bar .squircle-inner-active {
     corner-shape: squircle;
+  }
+}
+
+@media (max-width: 1023px) {
+  .health-records-crafted-card {
+    background: #fff;
+    box-shadow: var(--native-card-shadow);
+  }
+
+  .profile-list-card-tinted {
+    background: #fff;
   }
 }
 

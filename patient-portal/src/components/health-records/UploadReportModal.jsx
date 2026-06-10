@@ -315,20 +315,21 @@ function UploadReportModal({ open, onClose, onUpload }) {
         className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px] disabled:pointer-events-none"
       />
 
-      {/* Mobile — bottom sheet */}
+      {/* Mobile — native bottom sheet */}
       <div
-        className="upload-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[min(92dvh,100dvh-env(safe-area-inset-bottom,0px))] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)] lg:hidden"
+        className="upload-sheet animate-sheet-up absolute bottom-0 left-0 right-0 flex max-h-[min(92dvh,100dvh-env(safe-area-inset-bottom,0px))] w-full flex-col rounded-t-3xl rounded-b-none bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)] lg:hidden"
         style={{
           paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardInset.bottom}px)`,
           transform: keyboardInset.top ? `translateY(-${keyboardInset.top}px)` : undefined,
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-3">
-          <span className="h-[5px] w-[40px] rounded-full bg-[rgba(13,42,46,0.14)]" aria-hidden="true" />
-        </div>
+        <span
+          className="mx-auto mt-4 mb-2 block h-1.5 w-12 rounded-full bg-gray-300"
+          aria-hidden="true"
+        />
 
-        <div className="upload-sheet-scroll flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-4">
+        <div className="upload-sheet-scroll flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-2">
           <h2 className="native-display text-left text-[20px] text-[#1a5c52]">
             Upload a Medical Report
           </h2>

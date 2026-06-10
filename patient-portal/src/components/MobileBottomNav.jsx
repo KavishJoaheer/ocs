@@ -1,14 +1,14 @@
 import { NavLink } from "react-router-dom";
 import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 
-/** Premium floating pill bottom navigation for the native mobile experience. */
+/** Edge-to-edge native tab bar for the mobile web experience. */
 function MobileBottomNav() {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] px-[var(--native-pad-screen)] pb-[max(env(safe-area-inset-bottom,0px),12px)] pt-2 lg:hidden"
+      className="mobile-nav-bar fixed bottom-0 left-0 right-0 z-[var(--z-nav)] w-full border-t border-gray-200 bg-white/90 backdrop-blur-md lg:hidden"
       aria-label="Main navigation"
     >
-      <div className="mobile-nav-pill mx-auto flex max-w-md items-center justify-around rounded-full bg-white/80 px-2 py-2 backdrop-blur-xl">
+      <div className="flex w-full items-stretch justify-around px-1 pt-2 pb-[max(env(safe-area-inset-bottom,0px),12px)]">
         {PATIENT_NAV_ITEMS.map((item) => {
           const Icon = item.mobileIcon;
           return (
@@ -16,7 +16,7 @@ function MobileBottomNav() {
               key={item.to}
               end={item.end}
               to={item.to}
-              className="flex min-h-[44px] min-w-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-full transition-all"
+              className="flex min-h-[44px] min-w-[52px] flex-1 flex-col items-center justify-center gap-1 transition-all"
             >
               {({ isActive }) => (
                 <>

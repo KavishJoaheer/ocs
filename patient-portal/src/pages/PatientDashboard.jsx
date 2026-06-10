@@ -375,12 +375,12 @@ function PatientDashboard() {
     {/* ───────── Mobile dashboard — native home experience ───────── */}
     <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-lg:block">
       {loading && isPrimaryProfile ? (
-        <div className="native-dashboard space-y-5 bg-[#f4f7f7]">
+        <div className="native-dashboard space-y-5 bg-[#F2F2F7]">
           <div className="squircle-outer h-20 animate-pulse bg-white/60" />
           <div className="squircle-outer h-32 animate-pulse bg-white/60" />
         </div>
       ) : loadError && isPrimaryProfile ? (
-        <div className="native-dashboard min-h-full bg-[#f4f7f7]">
+        <div className="native-dashboard min-h-full bg-[#F2F2F7]">
           <DashboardErrorState message={loadError} onRetry={handleRetryDashboard} className="min-h-[60vh]" />
         </div>
       ) : profileActiveVisit ? (
