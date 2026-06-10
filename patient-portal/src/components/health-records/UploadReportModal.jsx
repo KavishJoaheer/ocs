@@ -16,11 +16,18 @@ const DOCTOR_NAME_PLACEHOLDER = {
   "External Doctor": "Name of doctor who requested this",
 };
 
-function FieldLabel({ htmlFor, children }) {
+const MOBILE_INPUT_CLASS =
+  "h-14 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[15px] font-medium text-gray-900 outline-none transition focus:border-teal-500 focus:ring-1 focus:ring-teal-500";
+
+function FieldLabel({ htmlFor, children, mobile = false }) {
   return (
     <label
       htmlFor={htmlFor}
-      className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a9e9a]"
+      className={
+        mobile
+          ? "mb-2 block text-[14px] font-bold text-gray-900"
+          : "mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a9e9a]"
+      }
     >
       {children}
     </label>
@@ -28,6 +35,7 @@ function FieldLabel({ htmlFor, children }) {
 }
 
 function UploadFormFields({
+  layout = "desktop",
   reportName,
   setReportName,
   reportDateText,
@@ -46,6 +54,8 @@ function UploadFormFields({
   openDatePicker,
   handleDatePickerChange,
 }) {
+  const isMobile = layout === "mobile";
+
   return (
     <>
       <div
@@ -65,16 +75,34 @@ function UploadFormFields({
           setDragOver(false);
           handleFileSelect(e.dataTransfer.files[0]);
         }}
-        className={[
-          "upload-dropzone squircle-inner cursor-pointer border-none px-4 py-9 text-center transition active:scale-[0.99] max-lg:rounded-lg max-lg:border max-lg:border-gray-100 max-lg:bg-gray-50 lg:rounded-[14px] lg:py-10",
-          dragOver ? "upload-dropzone--active max-lg:bg-gray-100" : "",
-        ].join(" ")}
+        className={
+          isMobile
+            ? [
+                "flex w-full cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50 p-8 transition active:scale-[0.99]",
+                dragOver ? "border-teal-400 bg-teal-100/80" : "",
+              ].join(" ")
+            : [
+                "upload-dropzone squircle-inner cursor-pointer border-none px-4 py-9 text-center transition active:scale-[0.99] lg:rounded-[14px] lg:py-10",
+                dragOver ? "upload-dropzone--active" : "",
+              ].join(" ")
+        }
       >
-        <FileUp className="mx-auto size-9 text-[#2d8f98]" strokeWidth={1.5} />
-        <p className="mt-3 text-[15px] font-medium text-[#5b7f8a]">
+        <FileUp
+          className={isMobile ? "size-12 text-teal-600" : "mx-auto size-9 text-[#2d8f98]"}
+          strokeWidth={isMobile ? 1.75 : 1.5}
+        />
+        <p
+          className={
+            isMobile
+              ? "text-center text-[16px] font-semibold text-teal-900"
+              : "mt-3 text-[15px] font-medium text-[#5b7f8a]"
+          }
+        >
           {selectedFile ? selectedFile.name : "Tap to scan or upload document"}
         </p>
-        <p className="mt-1 text-[12px] text-[#8a9ea3]">PDF and image files only</p>
+        <p className={isMobile ? "text-[13px] text-teal-700/70" : "mt-1 text-[12px] text-[#8a9ea3]"}>
+          PDF and image files only
+        </p>
         <input
           ref={fileInputRef}
           type="file"
@@ -85,34 +113,42 @@ function UploadFormFields({
       </div>
 
       <div>
-        <FieldLabel htmlFor="report-name">Report name</FieldLabel>
+        <FieldLabel htmlFor={`report-name-${layout}`} mobile={isMobile}>
+          Report name
+        </FieldLabel>
         <input
-          id="report-name"
+          id={`report-name-${layout}`}
           type="text"
           value={reportName}
           onChange={(e) => setReportName(e.target.value)}
           placeholder="Name this report"
-          className="upload-field-input"
+          className={isMobile ? MOBILE_INPUT_CLASS : "upload-field-input"}
         />
       </div>
 
       <div>
-        <FieldLabel htmlFor="report-date">Date of report</FieldLabel>
+        <FieldLabel htmlFor={`report-date-${layout}`} mobile={isMobile}>
+          Date of report
+        </FieldLabel>
         <div className="relative">
           <input
-            id="report-date"
+            id={`report-date-${layout}`}
             type="text"
             inputMode="numeric"
             value={reportDateText}
             onChange={(e) => setReportDateText(e.target.value)}
             placeholder="dd/mm/yyyy"
-            className="upload-field-input pr-12"
+            className={isMobile ? `${MOBILE_INPUT_CLASS} pr-14` : "upload-field-input pr-12"}
           />
           <button
             type="button"
             onClick={openDatePicker}
             aria-label="Open calendar"
-            className="absolute right-1 top-1/2 flex size-11 min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center rounded-[10px] text-[#5b7f8a] transition active:bg-[rgba(26,160,140,0.08)]"
+            className={
+              isMobile
+                ? "absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition active:bg-teal-50"
+                : "absolute right-1 top-1/2 flex size-11 min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center rounded-[10px] text-[#5b7f8a] transition active:bg-[rgba(26,160,140,0.08)]"
+            }
           >
             <Calendar className="size-[18px]" strokeWidth={1.75} />
           </button>
@@ -129,9 +165,13 @@ function UploadFormFields({
       </div>
 
       <div>
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a9e9a]">
-          Requested by
-        </span>
+        {isMobile ? (
+          <p className="mb-2 text-[14px] font-bold text-gray-900">Requested by</p>
+        ) : (
+          <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a9e9a]">
+            Requested by
+          </span>
+        )}
         <div className="grid grid-cols-2 gap-3">
           {REQUESTED_BY_OPTIONS.map((source) => {
             const isActive = requestedBySource === source;
@@ -140,10 +180,19 @@ function UploadFormFields({
                 key={source}
                 type="button"
                 onClick={() => setRequestedBySource(source)}
-                className={[
-                  "upload-toggle-btn squircle-inner px-3 py-3 text-[13px] font-semibold transition",
-                  isActive ? "upload-toggle-btn-active" : "upload-toggle-btn-inactive",
-                ].join(" ")}
+                className={
+                  isMobile
+                    ? [
+                        "h-14 rounded-xl border px-3 text-[14px] font-semibold transition",
+                        isActive
+                          ? "border-teal-500 bg-teal-500/10 text-teal-800"
+                          : "border-gray-200 bg-gray-50 text-gray-600",
+                      ].join(" ")
+                    : [
+                        "upload-toggle-btn squircle-inner px-3 py-3 text-[13px] font-semibold transition",
+                        isActive ? "upload-toggle-btn-active" : "upload-toggle-btn-inactive",
+                      ].join(" ")
+                }
               >
                 {source}
               </button>
@@ -156,7 +205,7 @@ function UploadFormFields({
           value={requestedByName}
           onChange={(e) => setRequestedByName(e.target.value)}
           placeholder={DOCTOR_NAME_PLACEHOLDER[requestedBySource]}
-          className="upload-field-input mt-3"
+          className={isMobile ? `${MOBILE_INPUT_CLASS} mt-3` : "upload-field-input mt-3"}
         />
       </div>
     </>
@@ -299,6 +348,10 @@ function UploadReportModal({ open, onClose, onUpload }) {
 
   if (!open) return null;
 
+  const mobileSheetPaddingBottom = keyboardInset.bottom
+    ? `calc(max(env(safe-area-inset-bottom, 0px), 12px) + ${keyboardInset.bottom}px)`
+    : undefined;
+
   return (
     <div
       ref={modalRef}
@@ -315,52 +368,63 @@ function UploadReportModal({ open, onClose, onUpload }) {
         className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px] disabled:pointer-events-none"
       />
 
-      {/* Mobile — native bottom sheet */}
+      {/* Mobile — immersive bottom sheet */}
       <div
-        className="upload-sheet animate-sheet-up relative w-full rounded-t-3xl rounded-b-none bg-white px-6 pt-6 pb-safe lg:hidden"
+        className="upload-sheet animate-sheet-up relative flex max-h-[min(92dvh,100dvh-env(safe-area-inset-bottom,0px))] w-full flex-col rounded-t-3xl bg-white lg:hidden"
         style={{
-          paddingBottom: keyboardInset.bottom
-            ? `calc(max(env(safe-area-inset-bottom, 0px), 12px) + ${keyboardInset.bottom}px)`
-            : undefined,
           transform: keyboardInset.top ? `translateY(-${keyboardInset.top}px)` : undefined,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <span
-          className="mx-auto mb-5 block h-1 w-10 rounded-full bg-gray-300"
+          className="mx-auto my-3 block h-1.5 w-12 shrink-0 rounded-full bg-gray-300"
           aria-hidden="true"
         />
 
-        <div className="upload-sheet-scroll max-h-[min(80dvh,100dvh-env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-contain">
-          <h2 className="text-left text-[20px] font-bold text-[#1a5c52]">
-            Upload a Medical Report
-          </h2>
-          <p className="mt-2 text-left text-[14px] leading-relaxed text-[#8a9e9a]">
-            Add test results, specialist reports or any health documents to your personal records.
-          </p>
-
-          <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
-            <UploadFormFields {...formFieldsProps} />
-
-            <div className="flex items-center gap-5 pt-1 pb-2">
-              <button
-                type="submit"
-                disabled={!canSubmit || isUploading}
-                className="upload-submit-btn min-h-[44px] rounded-full bg-ocs-orange px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isUploading ? "Uploading…" : "Upload Report"}
-              </button>
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={isUploading}
-                className="inline-flex min-h-[44px] items-center px-2 text-[14px] font-medium text-[#5b7f8a] transition active:text-[#1a5c52] disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+        <div className="flex shrink-0 items-center justify-between px-6 pb-4">
+          <h2 className="text-[20px] font-bold text-gray-900">Upload Medical Report</h2>
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isUploading}
+            aria-label="Close upload sheet"
+            className="flex size-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-gray-400 transition active:bg-gray-100 active:text-gray-700 disabled:opacity-50"
+          >
+            <X className="size-5" strokeWidth={1.75} />
+          </button>
         </div>
+
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={handleSubmit}
+        >
+          <div className="upload-sheet-scroll flex-1 overflow-y-auto overscroll-contain px-6 pb-4">
+            <div className="space-y-5">
+              <UploadFormFields layout="mobile" {...formFieldsProps} />
+            </div>
+          </div>
+
+          <div
+            className="shrink-0 border-t border-gray-100 px-6 pt-4 pb-safe"
+            style={mobileSheetPaddingBottom ? { paddingBottom: mobileSheetPaddingBottom } : undefined}
+          >
+            <button
+              type="submit"
+              disabled={!canSubmit || isUploading}
+              className="flex h-14 w-full items-center justify-center rounded-xl bg-brand-orange text-[16px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isUploading ? "Uploading…" : "Upload Report"}
+            </button>
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={isUploading}
+              className="mt-3 flex h-12 w-full items-center justify-center text-[15px] font-medium text-gray-500 transition active:text-gray-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Desktop — right slide-over drawer */}
@@ -388,7 +452,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
           <div className="upload-drawer-scroll flex-1 overflow-y-auto overscroll-contain px-6 py-5">
             <div className="space-y-5">
-              <UploadFormFields {...formFieldsProps} />
+              <UploadFormFields layout="desktop" {...formFieldsProps} />
             </div>
           </div>
 
