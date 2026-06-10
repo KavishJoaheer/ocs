@@ -37,6 +37,7 @@
   --desktop-card-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
   --desktop-card-shadow-hover: 0 10px 36px rgba(0, 0, 0, 0.06);
   --ocs-teal-dark: #1a5c52;
+  --ocs-teal-dark-rgb: 26, 92, 82;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -1044,17 +1045,18 @@ table {
 
 .health-records-tab-active {
   background: #fff;
-  color: #1a5c52;
+  color: var(--ocs-teal-dark);
   border: none;
   outline: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .health-records-segment .health-records-tab-active:focus,
 .health-records-segment .health-records-tab-active:focus-visible {
   outline: none;
   border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .ocs-primary-action-btn {
@@ -1592,25 +1594,98 @@ table {
 .upload-drawer .upload-dropzone {
   border: none;
   border-radius: 14px;
-  background: rgba(26, 92, 82, 0.03);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.03);
   transition: background 160ms ease;
 }
 
 .upload-drawer .upload-dropzone:hover {
-  background: rgba(26, 92, 82, 0.05);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.05);
 }
 
 .upload-drawer .upload-dropzone--active {
-  background: rgba(26, 92, 82, 0.06);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.06);
 }
 
 .upload-drawer-footer {
   position: sticky;
   bottom: 0;
   z-index: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   background: #fff;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   padding: 24px;
+}
+
+.upload-drawer-cancel-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8a9e9a;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.upload-drawer-cancel-btn:hover {
+  color: #5b7f8a;
+}
+
+.upload-drawer-upload-btn {
+  border-radius: 9999px;
+  background: var(--ocs-orange);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(var(--ocs-orange-rgb), 0.3);
+  transition:
+    filter 200ms ease,
+    box-shadow 200ms ease,
+    transform 180ms ease;
+}
+
+.upload-drawer-upload-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.upload-drawer-upload-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.upload-drawer-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (min-width: 1024px) {
+  .clinical-dossier-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8a9e9a;
+  }
+
+  .clinical-dossier-value {
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--ocs-teal-dark);
+  }
+
+  .clinical-dossier-value--muted {
+    font-size: 15px;
+    line-height: 1.55;
+    color: #a8b5b2;
+    font-style: italic;
+  }
+
+  .clinical-dossier-detail {
+    font-size: 15px;
+    line-height: 1.55;
+    color: #5b7f8a;
+  }
 }
 
 @keyframes drawerSlideIn {

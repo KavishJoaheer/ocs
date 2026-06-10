@@ -65,7 +65,7 @@ function UploadFormFields({
           handleFileSelect(e.dataTransfer.files[0]);
         }}
         className={[
-          "upload-dropzone squircle-inner cursor-pointer px-4 py-9 text-center transition active:scale-[0.99] lg:py-10",
+          "upload-dropzone squircle-inner cursor-pointer border-none px-4 py-9 text-center transition active:scale-[0.99] lg:rounded-[14px] lg:py-10",
           dragOver ? "upload-dropzone--active max-lg:bg-[rgba(26,160,140,0.12)]" : "",
         ].join(" ")}
       >
@@ -374,18 +374,14 @@ function UploadReportModal({ open, onClose, onUpload }) {
             </div>
           </div>
 
-          <footer className="upload-drawer-footer flex shrink-0 items-center justify-between">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="inline-flex min-h-[44px] items-center text-[14px] font-medium text-[#8a9e9a] transition hover:text-[#5b7f8a]"
-            >
+          <footer className="upload-drawer-footer shrink-0">
+            <button type="button" onClick={handleClose} className="upload-drawer-cancel-btn min-h-[44px]">
               Cancel
             </button>
             <button
               type="submit"
               disabled={!canSubmit}
-              className="ocs-primary-action-btn min-h-[44px] rounded-[16px] px-7 py-3 text-[14px] text-white"
+              className="upload-drawer-upload-btn min-h-[44px] px-7 py-3 text-[14px]"
             >
               Upload
             </button>

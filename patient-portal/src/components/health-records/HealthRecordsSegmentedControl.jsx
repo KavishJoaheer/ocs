@@ -8,7 +8,7 @@ const TABS = [
 function HealthRecordsSegmentedControl({ activeTab, onChange }) {
   return (
     <div
-      className="health-records-segment flex gap-1 overflow-hidden rounded-full bg-[#F0F1F3] p-1"
+      className="health-records-segment flex gap-1 rounded-full bg-[#F0F1F3] p-1"
       role="tablist"
       aria-label="Health records sections"
     >
@@ -25,7 +25,7 @@ function HealthRecordsSegmentedControl({ activeTab, onChange }) {
               "health-records-tab relative flex-1 rounded-full border-none px-2 py-2 text-[13px] leading-none whitespace-nowrap outline-none ring-0 transition-all duration-200 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 max-sm:px-1.5 max-sm:text-xs",
               isActive
                 ? "health-records-tab-active font-semibold text-[#1a5c52]"
-                : "cursor-pointer bg-transparent font-medium text-[#8a9e9a] hover:bg-white/60 hover:text-[#1a5c52]",
+                : "cursor-pointer bg-transparent font-medium text-[#8a9e9a] hover:text-[#6e7f7c]",
             ].join(" ")}
           >
             {tab.label}

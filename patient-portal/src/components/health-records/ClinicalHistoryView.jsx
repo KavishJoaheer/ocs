@@ -25,19 +25,19 @@ function DossierSection({ section, items, borderClass }) {
 
   return (
     <section className={["clinical-dossier-cell px-6 py-6 lg:px-7 lg:py-7", borderClass].join(" ")}>
-      <h3 className="clinical-dossier-label text-[11px] font-semibold uppercase tracking-wider text-[#a8b5b2]">
+      <h3 className="clinical-dossier-label text-[11px] font-semibold uppercase tracking-wider text-[#8a9e9a] lg:tracking-widest">
         {section.title}
       </h3>
 
       {visibleItems.length > 0 ? (
-        <ul className="mt-3.5 space-y-3.5">
+        <ul className="mt-3.5 space-y-3.5 lg:mt-4 lg:space-y-4">
           {visibleItems.map((item) => {
             const isWarning = isAllergy && !isNilAllergyValue(item.name);
             return (
               <li key={item.id} className="flex flex-col gap-1">
                 <p
                   className={[
-                    "text-[16px] font-medium leading-relaxed",
+                    "clinical-dossier-value text-[15px] font-medium leading-relaxed lg:text-[16px] lg:leading-[1.55]",
                     isWarning ? "text-[#c45c3e]" : "text-[#1a5c52]",
                   ].join(" ")}
                 >
@@ -49,7 +49,7 @@ function DossierSection({ section, items, borderClass }) {
                   ) : null}
                 </p>
                 {item.detail ? (
-                  <p className="text-[15px] leading-relaxed text-[#5b7f8a]">
+                  <p className="clinical-dossier-detail text-[14px] leading-relaxed text-[#5b7f8a] lg:text-[15px] lg:leading-[1.55]">
                     {formatIsoDatesInText(item.detail)}
                   </p>
                 ) : null}
@@ -58,7 +58,7 @@ function DossierSection({ section, items, borderClass }) {
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-[15px] italic leading-relaxed text-[#a8b5b2]">
+        <p className="clinical-dossier-value--muted mt-3 text-[15px] italic leading-relaxed text-[#a8b5b2] lg:mt-4">
           {getClinicalEmptyMessage(section.key)}
         </p>
       )}
