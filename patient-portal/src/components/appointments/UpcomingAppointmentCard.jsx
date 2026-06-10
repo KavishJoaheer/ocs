@@ -1,9 +1,14 @@
 import dayjs from "dayjs";
-import { Clock } from "lucide-react";
+import { CalendarPlus, Clock } from "lucide-react";
+import { downloadAppointmentIcs } from "../../lib/calendarExport.js";
 import DoctorAvatar from "./DoctorAvatar.jsx";
 
 function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
   const date = dayjs(appointment.date);
+
+  function handleAddToCalendar() {
+    downloadAppointmentIcs(appointment);
+  }
 
   return (
     <article className="visits-crafted-card visits-card max-lg:visits-card-elevate bg-white">
@@ -46,6 +51,18 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
             <span className="visits-badge-teal-muted">Upcoming</span>
           )}
         </div>
+      </div>
+
+      <div className="border-t border-gray-100" aria-hidden="true" />
+      <div className="flex items-center justify-end px-5 py-[14px] pb-4">
+        <button
+          type="button"
+          onClick={handleAddToCalendar}
+          className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-teal-800 transition-colors duration-200 hover:text-[#e8a020]"
+        >
+          <CalendarPlus className="size-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+          Add to Calendar
+        </button>
       </div>
     </article>
   );
