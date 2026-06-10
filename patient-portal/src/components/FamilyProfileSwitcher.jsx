@@ -45,7 +45,7 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles
   return (
     <div
       ref={sheetRef}
-      className="fixed inset-0 z-[60] lg:hidden"
+      className="fixed inset-0 z-[var(--z-sheet)] lg:hidden"
       role="dialog"
       aria-modal="true"
       aria-label="Switch family profile"
@@ -57,7 +57,7 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles
         className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.5)]"
       />
 
-      <div className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-[24px] bg-white pb-[max(env(safe-area-inset-bottom),16px)] shadow-[0_-8px_40px_rgba(13,42,46,0.18)]">
+      <div className="animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[min(85dvh,100dvh-env(safe-area-inset-bottom,0px))] flex-col rounded-t-[24px] bg-white pb-[max(env(safe-area-inset-bottom),16px)] shadow-[0_-8px_40px_rgba(13,42,46,0.18)]">
         <div className="flex justify-center pt-3">
           <span className="h-[5px] w-[40px] rounded-full bg-[rgba(13,42,46,0.18)]" aria-hidden="true" />
         </div>
@@ -66,7 +66,7 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles
           Switch Profile
         </p>
 
-        <div className="mt-2 px-3 pb-2">
+        <div className="mt-2 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
           {profiles.map((profile) => {
             const isActive = profile.id === activeProfileId;
             return (
@@ -162,7 +162,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label="Switch family profile"
-          className="flex size-[34px] items-center justify-center rounded-full transition active:scale-95"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition active:scale-95"
         >
           <ProfileAvatar profile={activeProfile} size="header" />
         </button>

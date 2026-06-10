@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import { FolderHeart } from "lucide-react";
+import RequestVisitCta from "../request-visit/RequestVisitCta.jsx";
 import ConsultationCard from "./ConsultationCard.jsx";
 
 function ConsultationsEmptyState() {
@@ -12,12 +12,9 @@ function ConsultationsEmptyState() {
       <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#8a9e9a]">
         After your first home visit, consultation history will appear here.
       </p>
-      <Link
-        to="/request-visit"
-        className="squircle-inner mt-6 bg-[#e8a020] px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]"
-      >
+      <RequestVisitCta className="squircle-inner mt-6 items-center justify-center bg-[#e8a020] px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]">
         Request a Home Visit
-      </Link>
+      </RequestVisitCta>
     </div>
   );
 }

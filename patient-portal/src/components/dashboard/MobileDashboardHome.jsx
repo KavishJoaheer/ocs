@@ -1,40 +1,9 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell, ArrowRight, FileText, Pill, FlaskConical } from "lucide-react";
+import dayjs from "dayjs";
+import { ArrowRight, FileText, Pill, FlaskConical, Calendar } from "lucide-react";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
-import RequestDoctorSheet from "../request-visit/RequestDoctorSheet.jsx";
-
-// ─── Mock care timeline cards ─────────────────────────────────────────────────
-
-const MOCK_TIMELINE = [
-  {
-    id: "visit",
-    type: "visit",
-    title: "Recent Visit Summary",
-    subtitle: "Dr. Smith",
-    detail: "Upper respiratory review · 3 days ago",
-    action: { label: "View Notes", to: "/health-records" },
-    muted: false,
-  },
-  {
-    id: "rx",
-    type: "prescription",
-    title: "Active Prescription",
-    subtitle: "Amoxicillin 500mg",
-    detail: "Take twice daily with food",
-    daysLeft: 5,
-    daysTotal: 10,
-    muted: false,
-  },
-  {
-    id: "labs",
-    type: "labs",
-    title: "Pending Lab Results",
-    subtitle: "Complete Blood Count",
-    detail: "Processing at OCS Lab · Est. 1–2 days",
-    muted: true,
-  },
-];
+import { useRequestVisit } from "../../hooks/useRequestVisit.jsx";
+import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +12,60 @@ function getGreeting() {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function buildCareTimeline({ lastConsultation, nextAppointment, careTeamDoctorName }) {
+  const cards = [];
+
+  if (lastConsultation) {
+    const dateLabel = dayjs(lastConsultation.date).isValid()
+      ? dayjs(lastConsultation.date).format("D MMMM YYYY")
+      : lastConsultation.date;
+    cards.push({
+      id: "visit",
+      type: "visit",
+      title: "Recent Visit Summary",
+      subtitle: formatDoctorName(lastConsultation.doctor_name),
+      detail: `${lastConsultation.diagnosis || lastConsultation.visit_type || "Home Visit"} · ${dateLabel}`,
+      action: {
+        label: "View Notes",
+        to: lastConsultation.id
+          ? `/health-records/visits/${lastConsultation.id}`
+          : "/health-records",
+      },
+      muted: false,
+    });
+  }
+
+  if (nextAppointment) {
+    const dateLabel = dayjs(nextAppointment.date).isValid()
+      ? dayjs(nextAppointment.date).format("D MMMM YYYY")
+      : nextAppointment.date;
+    const time = nextAppointment.time || "";
+    cards.push({
+      id: "appointment",
+      type: "appointment",
+      title: "Upcoming Visit",
+      subtitle: formatDoctorName(nextAppointment.doctor_name),
+      detail: `${dateLabel}${time ? ` at ${time}` : ""}`,
+      action: { label: "View Appointments", to: "/appointments" },
+      muted: false,
+    });
+  }
+
+  if (careTeamDoctorName) {
+    cards.push({
+      id: "care-team",
+      type: "care-team",
+      title: "Your Care Team",
+      subtitle: formatDoctorName(careTeamDoctorName),
+      detail: "Primary care physician assigned to you",
+      action: { label: "View Profile", to: "/profile" },
+      muted: false,
+    });
+  }
+
+  return cards;
 }
 
 /** Prescription progress bar showing days remaining. */
@@ -70,13 +93,15 @@ function TimelineCard({ card }) {
     visit: FileText,
     prescription: Pill,
     labs: FlaskConical,
+    appointment: Calendar,
+    "care-team": FileText,
   };
   const Icon = icons[card.type] || FileText;
 
   return (
     <article
       className={[
-        "squircle-outer ocs-elevate-timeline flex w-[288px] shrink-0 snap-start flex-col bg-white",
+        "squircle-outer ocs-elevate-timeline flex w-[min(288px,calc(100vw-2*var(--native-pad-screen)-1rem))] shrink-0 snap-start flex-col bg-white",
         card.muted ? "opacity-75" : "",
       ].join(" ")}
       style={{ padding: "var(--native-pad-card)" }}
@@ -133,14 +158,24 @@ function TimelineCard({ card }) {
 
 // ─── Main dashboard view ──────────────────────────────────────────────────────
 
-function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
+function MobileDashboardHome({
+  firstName,
+  lastConsultation = null,
+  nextAppointment = null,
+  careTeamDoctorName = null,
+}) {
   const { activeProfile } = useFamilyProfile();
+  const { openRequestSheet } = useRequestVisit();
   const greeting = getGreeting();
-  const [requestSheetOpen, setRequestSheetOpen] = useState(false);
+
+  const timelineCards = buildCareTimeline({
+    lastConsultation,
+    nextAppointment,
+    careTeamDoctorName,
+  });
 
   return (
     <div className="native-dashboard min-h-full bg-[#f4f7f7]">
-      {/* ── 1. Welcome Zone — respects notch / punch-hole via --native-safe-top ─ */}
       <header className="animate-fade-in-up flex items-center justify-between gap-4 pb-10">
         <div className="min-w-0 flex-1 pr-2">
           <h1 className="native-display text-[28px] leading-tight text-[#1a5c52]">
@@ -152,34 +187,18 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <button
-            type="button"
-            aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
-            className="native-header-btn"
-          >
-            <span className="relative inline-flex">
-              <Bell className="size-[20px] text-[#5b7f8a]" strokeWidth={1.75} />
-              {unreadNotifications > 0 ? (
-                <span className="native-notification-dot" aria-hidden="true" />
-              ) : null}
-            </span>
-          </button>
-
-          <Link
-            to="/profile"
-            aria-label="Your profile"
-            className="native-header-btn dashboard-header-avatar text-[14px]"
-          >
-            {activeProfile.initials}
-          </Link>
-        </div>
+        <Link
+          to="/profile"
+          aria-label="Your profile"
+          className="native-header-btn dashboard-header-avatar shrink-0 text-[14px]"
+        >
+          {activeProfile.initials}
+        </Link>
       </header>
 
-      {/* ── 2. Hero Dispatch — opens progressive request wizard bottom sheet ── */}
       <button
         type="button"
-        onClick={() => setRequestSheetOpen(true)}
+        onClick={() => openRequestSheet()}
         className="dashboard-hero-press squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 flex w-full items-center justify-between bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] text-left text-white"
       >
         <div className="pr-4">
@@ -195,22 +214,35 @@ function MobileDashboardHome({ firstName, unreadNotifications = 2 }) {
         </div>
       </button>
 
-      <RequestDoctorSheet open={requestSheetOpen} onClose={() => setRequestSheetOpen(false)} />
-
-      {/* ── 3. Care Timeline — carousel with scroll padding & bottom clearance ─ */}
       <section className="animate-fade-in-up stagger-2" aria-label="Care timeline">
         <div className="mb-5">
           <h2 className="native-display text-[18px] text-[#1a5c52]">Your Care Timeline</h2>
-          <p className="mt-1 text-[14px] text-[#8a9e9a]">Swipe for recent activity</p>
+          <p className="mt-1 text-[14px] text-[#8a9e9a]">
+            {timelineCards.length ? "Swipe for recent activity" : "Your activity will appear here"}
+          </p>
         </div>
 
-        <div className="native-carousel -mx-[var(--native-pad-screen)] flex gap-4 overflow-x-auto px-[var(--native-pad-screen)] snap-x snap-mandatory">
-          {MOCK_TIMELINE.map((card) => (
-            <TimelineCard key={card.id} card={card} />
-          ))}
-          {/* Trailing spacer so the last card clears the screen edge */}
-          <div className="w-1 shrink-0 snap-end" aria-hidden="true" />
-        </div>
+        {timelineCards.length ? (
+          <div className="native-carousel -mx-[var(--native-pad-screen)] flex gap-4 overflow-x-auto px-[var(--native-pad-screen)] snap-x snap-mandatory">
+            {timelineCards.map((card) => (
+              <TimelineCard key={card.id} card={card} />
+            ))}
+            <div className="w-1 shrink-0 snap-end" aria-hidden="true" />
+          </div>
+        ) : (
+          <div className="squircle-outer bg-white px-5 py-8 text-center">
+            <p className="text-[14px] leading-relaxed text-[#8a9e9a]">
+              After your first home visit, your care timeline will appear here.
+            </p>
+            <button
+              type="button"
+              onClick={() => openRequestSheet()}
+              className="squircle-inner mt-5 bg-[#e8a020] px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]"
+            >
+              Request a Home Visit
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );

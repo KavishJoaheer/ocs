@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { ChevronLeft, Download, FileText, Pill, FlaskConical } from "lucide-react";
 import { api } from "../lib/api.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatDoctorName } from "../lib/healthRecordsDisplay.js";
-import { getMockVisitSummary, enrichConsultationForSummary } from "../components/health-records/mockVisitSummaries.js";
+import { buildVisitSummary } from "../lib/visitSummary.js";
 
 function doctorInitials(name) {
   const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
@@ -39,9 +40,16 @@ function VisitSummaryPage() {
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
+    setLoadError(null);
+    setNotFound(false);
 
     async function loadSummary() {
       try {
@@ -53,18 +61,19 @@ function VisitSummaryPage() {
         );
 
         if (match) {
-          setSummary(
-            enrichConsultationForSummary({
-              ...match,
-              doctor_specialty: match.doctor_specialty || "General Practitioner",
-              visit_type: match.visit_type || "Home Visit",
-            }),
-          );
+          setSummary(buildVisitSummary(match));
+          setNotFound(false);
         } else {
-          setSummary(getMockVisitSummary(consultationId));
+          setSummary(null);
+          setNotFound(true);
         }
-      } catch {
-        if (!ignore) setSummary(getMockVisitSummary(consultationId));
+      } catch (error) {
+        if (!ignore) {
+          setSummary(null);
+          setLoadError(
+            error?.message || "We couldn't load this visit summary. Check your connection and try again.",
+          );
+        }
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -74,7 +83,7 @@ function VisitSummaryPage() {
     return () => {
       ignore = true;
     };
-  }, [consultationId]);
+  }, [consultationId, refreshKey, retryToken]);
 
   if (loading) {
     return (
@@ -92,7 +101,26 @@ function VisitSummaryPage() {
     );
   }
 
-  if (!summary) {
+  if (loadError) {
+    return (
+      <div className="visit-summary-screen flex flex-col items-center justify-center px-6 py-16 text-center">
+        <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load visit summary</p>
+        <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryToken((token) => token + 1)}
+          className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
+        >
+          Try Again
+        </button>
+        <Link to="/health-records" className="mt-4 text-[14px] font-semibold text-ocs-orange">
+          Back to Health Records
+        </Link>
+      </div>
+    );
+  }
+
+  if (notFound || !summary) {
     return (
       <div className="visit-summary-screen flex flex-col items-center justify-center px-6 text-center">
         <p className="text-[15px] text-[#5b7f8a]">Visit summary not found.</p>
@@ -108,7 +136,6 @@ function VisitSummaryPage() {
 
   return (
     <div className="visit-summary-screen">
-      {/* Sticky native header */}
       <header className="visit-summary-header">
         <button
           type="button"
@@ -123,7 +150,6 @@ function VisitSummaryPage() {
       </header>
 
       <div className="visit-summary-content">
-        {/* Hero — doctor context & diagnosis */}
         <article className="visit-summary-card">
           <div className="flex flex-col items-center px-5 pb-5 pt-6 text-center">
             <div className="visit-summary-hero-avatar">
@@ -147,7 +173,6 @@ function VisitSummaryPage() {
           ) : null}
         </article>
 
-        {/* Treatment plan */}
         {summary.prescriptions?.length > 0 ? (
           <section className="mt-6">
             <SectionTitle>Treatment Plan</SectionTitle>
@@ -171,7 +196,6 @@ function VisitSummaryPage() {
           </section>
         ) : null}
 
-        {/* Documents */}
         {summary.documents?.length > 0 ? (
           <section className="mt-6">
             <SectionTitle>Documents</SectionTitle>
@@ -189,7 +213,7 @@ function VisitSummaryPage() {
                       href={doc.url}
                       download
                       aria-label={`Download ${doc.name}`}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-ocs-orange transition active:scale-95 active:bg-[rgba(232,160,32,0.1)]"
+                      className="flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-ocs-orange transition active:scale-95 active:bg-[rgba(232,160,32,0.1)]"
                     >
                       <Download className="size-[20px]" strokeWidth={2} />
                     </a>

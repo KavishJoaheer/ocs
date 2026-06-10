@@ -25,10 +25,14 @@ function PatientBilling() {
   const [bills, setBills] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retryToken, setRetryToken] = useState(0);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
+    setLoadError(null);
 
     async function fetchBilling() {
       try {
@@ -37,10 +41,11 @@ function PatientBilling() {
           setBills(data.bills || []);
           setSummary(data.summary || { total_billed: 0, total_paid: 0, outstanding: 0 });
         }
-      } catch {
+      } catch (error) {
         if (!ignore) {
-          setBills([]);
-          setSummary({ total_billed: 0, total_paid: 0, outstanding: 0 });
+          setLoadError(
+            error?.message || "We couldn't load your billing records. Check your connection and try again.",
+          );
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -49,7 +54,7 @@ function PatientBilling() {
 
     fetchBilling();
     return () => { ignore = true; };
-  }, [refreshKey]);
+  }, [refreshKey, retryToken]);
 
   return (
     <div className="space-y-8">
@@ -70,14 +75,28 @@ function PatientBilling() {
         </div>
       </div>
 
+      {loadError && !loading ? (
+        <div className="flex flex-col items-center rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white px-6 py-16 text-center">
+          <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load billing</p>
+          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryToken((token) => token + 1)}
+            className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : null}
+
       {/* Summary cards */}
-      {loading ? (
+      {!loadError && loading ? (
         <div className="grid gap-4 sm:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-24 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.08)]" />
           ))}
         </div>
-      ) : (
+      ) : !loadError ? (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="animate-fade-in-up stagger-1 rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
             <div className="flex items-center gap-3">
@@ -121,16 +140,16 @@ function PatientBilling() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Bills list */}
-      {loading ? (
+      {!loadError && loading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-20 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.06)]" />
           ))}
         </div>
-      ) : bills.length === 0 ? (
+      ) : !loadError && bills.length === 0 ? (
         <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-dashed border-[rgba(65,200,198,0.25)] bg-[rgba(65,200,198,0.04)] p-12 text-center">
           <Receipt className="mx-auto size-14 text-[rgba(65,200,198,0.3)]" />
           <h3 className="mt-4 font-display text-xl font-semibold text-[#22485b]">
@@ -140,7 +159,7 @@ function PatientBilling() {
             Your billing records will appear here after your appointments.
           </p>
         </div>
-      ) : (
+      ) : !loadError ? (
         <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
           <div className="p-5 sm:p-6">
             <div className="flex items-center gap-2">
@@ -195,7 +214,7 @@ function PatientBilling() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

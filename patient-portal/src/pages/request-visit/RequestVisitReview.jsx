@@ -5,6 +5,8 @@ import toast from "react-hot-toast";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
 import { api } from "../../lib/api.js";
 import { formatDisplayName } from "../../lib/formatDisplayName.js";
+import { dispatchPatientDataChange } from "../../lib/patientDataSync.js";
+import { clearVisitDraft } from "../../lib/visitDraftStorage.js";
 import { URGENCY_META } from "./urgency.js";
 
 function SummaryRow({ label, children }) {
@@ -20,7 +22,7 @@ function SummaryRow({ label, children }) {
 
 function RequestVisitReview() {
   const navigate = useNavigate();
-  const { draft, updateDraft } = useOutletContext();
+  const { draft, updateDraft, storageKey } = useOutletContext();
   const { user } = usePatientAuth();
   const [submitting, setSubmitting] = useState(false);
 
@@ -49,6 +51,8 @@ function RequestVisitReview() {
         urgency: draft.urgency,
       });
       updateDraft({ submittedAt: new Date().toISOString() });
+      clearVisitDraft(storageKey);
+      dispatchPatientDataChange();
       navigate("/request-visit/awaiting");
     } catch (error) {
       // A 409 means there's already an active request — send them to tracking.

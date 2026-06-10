@@ -4,7 +4,6 @@ import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
-import { MOCK_APPOINTMENTS } from "../components/appointments/mockAppointments.js";
 
 function withDoctorPrefix(name) {
   const value = String(name || "").trim();
@@ -60,10 +59,14 @@ function SectionLabel({ children }) {
 function PatientAppointments() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retryToken, setRetryToken] = useState(0);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
+    setLoadError(null);
 
     async function fetchAppointments() {
       try {
@@ -71,8 +74,12 @@ function PatientAppointments() {
         if (!ignore) {
           setAppointments((data.appointments || []).map(mapAppointment));
         }
-      } catch {
-        if (!ignore) setAppointments(MOCK_APPOINTMENTS);
+      } catch (error) {
+        if (!ignore) {
+          setLoadError(
+            error?.message || "We couldn't load your appointments. Check your connection and try again.",
+          );
+        }
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -82,7 +89,7 @@ function PatientAppointments() {
     return () => {
       ignore = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, retryToken]);
 
   const today = dayjs().format("YYYY-MM-DD");
   const upcoming = appointments
@@ -107,6 +114,18 @@ function PatientAppointments() {
         <div className="mt-8 space-y-4">
           <div className="visits-card h-36 animate-pulse bg-white/70" />
           <div className="visits-card h-36 animate-pulse bg-white/70" />
+        </div>
+      ) : loadError ? (
+        <div className="mt-8 flex flex-col items-center px-4 py-16 text-center">
+          <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load appointments</p>
+          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryToken((token) => token + 1)}
+            className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
+          >
+            Try Again
+          </button>
         </div>
       ) : (
         <>

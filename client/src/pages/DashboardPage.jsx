@@ -346,6 +346,7 @@ function DoctorDashboardTile({
     "group flex w-full rounded-[30px] border transition duration-200",
     sizeClasses,
     locked && "cursor-not-allowed opacity-50",
+    !locked && (to || onClick) && "cursor-pointer",
     flat
       ? dark
         ? "border-white/25 bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white hover:border-white/35"
@@ -708,7 +709,7 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
     accent
       ? "bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))]"
       : "bg-white",
-    to ? "block hover:border-gray-300" : "",
+    to ? "block cursor-pointer hover:border-gray-300" : "",
   );
 
   const content = (

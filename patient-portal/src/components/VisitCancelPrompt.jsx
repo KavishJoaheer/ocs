@@ -7,7 +7,7 @@ function VisitCancelPrompt({
   visitStatus,
   onCancelled,
   className = "",
-  buttonClassName = "text-xs font-medium text-[#cf8079] transition hover:text-[#cf5b50]",
+  buttonClassName = "inline-flex min-h-[44px] items-center text-xs font-medium text-[#cf8079] transition hover:text-[#cf5b50]",
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);

@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
+import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
 
 function AppShellContent() {
   const { pathname } = useLocation();
@@ -40,7 +41,9 @@ function AppShellContent() {
 function AppShell() {
   return (
     <FamilyProfileProvider>
-      <AppShellContent />
+      <RequestVisitProvider>
+        <AppShellContent />
+      </RequestVisitProvider>
     </FamilyProfileProvider>
   );
 }

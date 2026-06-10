@@ -12,6 +12,7 @@ import {
   syncInsuranceSelection,
 } from "../lib/insuranceProvider.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useKeyboardOffset } from "../hooks/useKeyboardOffset.js";
 import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientAutofill.js";
 import { cx } from "../lib/utils.js";
 
@@ -193,6 +194,7 @@ function PatientFormModal({
   isSaving,
 }) {
   const isMobile = useIsMobile();
+  const keyboardInset = useKeyboardOffset(isMobile && open);
   const [form, setForm] = useState(emptyPatient);
   const [wizardStep, setWizardStep] = useState(0);
   const [desktopWizardStep, setDesktopWizardStep] = useState(0);
@@ -708,7 +710,9 @@ function PatientFormModal({
 
           <div
             className="mt-auto shrink-0 border-t border-slate-100 bg-white px-4 pt-6"
-            style={{ paddingBottom: "max(var(--sab), 12px)" }}
+            style={{
+              paddingBottom: `max(var(--sab), calc(12px + ${keyboardInset.bottom}px))`,
+            }}
           >
             <div className="flex items-center justify-between gap-3">
               <button

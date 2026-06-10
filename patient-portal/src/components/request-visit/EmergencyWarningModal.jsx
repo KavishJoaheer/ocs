@@ -4,8 +4,8 @@ function EmergencyWarningModal({ open, onAcknowledge, variant = "sheet" }) {
 
   const overlayClass =
     variant === "page"
-      ? "request-emergency-overlay fixed inset-0 z-[80] flex items-center justify-center p-5"
-      : "request-emergency-overlay absolute inset-0 z-20 flex items-center justify-center rounded-t-[24px] p-5";
+      ? "request-emergency-overlay fixed inset-0 z-[var(--z-emergency)] flex items-center justify-center p-5"
+      : "request-emergency-overlay absolute inset-0 z-[var(--z-emergency)] flex items-center justify-center rounded-t-[24px] p-5";
 
   return (
     <div

@@ -117,7 +117,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
     : "MISSING POLICY ID";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-[var(--z-drawer)] flex justify-end">
       <button
         type="button"
         aria-label="Close patient details"
@@ -125,7 +125,13 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
         onClick={onClose}
       />
 
-      <aside className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-gray-100 bg-white shadow-2xl">
+      <aside
+        className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-gray-100 bg-white shadow-2xl"
+        style={{
+          paddingTop: "max(0px, var(--sat))",
+          paddingBottom: "max(0px, var(--sab))",
+        }}
+      >
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <div>
             <p className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">

@@ -393,7 +393,12 @@ function PatientDashboard() {
           <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
         </div>
       ) : (
-        <MobileDashboardHome firstName={isPrimaryProfile ? firstName : activeProfile.firstName} />
+        <MobileDashboardHome
+          firstName={isPrimaryProfile ? firstName : activeProfile.firstName}
+          lastConsultation={profileLastConsultation}
+          nextAppointment={profileNextAppointment}
+          careTeamDoctorName={careTeamDoctorName}
+        />
       )}
     </div>
     </>

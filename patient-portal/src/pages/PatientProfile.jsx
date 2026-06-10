@@ -19,6 +19,7 @@ import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { formatDisplayName } from "../lib/formatDisplayName.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
+import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import ProfileHeader from "../components/profile/ProfileHeader.jsx";
 import ProfileListCard from "../components/profile/ProfileListCard.jsx";
 import ProfileListRow from "../components/profile/ProfileListRow.jsx";
@@ -137,6 +138,7 @@ function PatientProfile() {
       onSuccess?.();
       toast.success("Profile updated successfully.");
       if (data.user) updateUser(data.user);
+      dispatchPatientDataChange();
     } catch (error) {
       toast.error(error.message);
     } finally {

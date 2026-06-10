@@ -41,7 +41,7 @@ function Modal({
   }[size];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-x-hidden overscroll-x-none p-4 sm:items-center sm:py-10">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-x-hidden overscroll-x-none p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:items-center sm:py-10">
       <button
         aria-label="Close modal"
         className="absolute inset-0 bg-[rgba(34,72,91,0.42)] backdrop-blur-sm"

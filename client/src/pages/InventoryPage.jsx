@@ -2012,7 +2012,7 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
     "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-teal-500 focus:bg-white";
 
   return (
-    <div className="fixed inset-0 z-[70] flex justify-end">
+    <div className="fixed inset-0 z-[var(--z-modal)] flex justify-end">
       <button
         type="button"
         aria-label="Close add item panel"
@@ -2021,7 +2021,10 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
       />
       <aside
         className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-slate-200/80 bg-white shadow-[-12px_0_40px_rgba(15,23,42,0.12)]"
-        style={{ paddingTop: "max(0px, var(--sat))" }}
+        style={{
+          paddingTop: "max(0px, var(--sat))",
+          paddingBottom: "max(0px, var(--sab))",
+        }}
       >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
@@ -2119,7 +2122,10 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
               </select>
             </label>
           </div>
-          <div className="flex shrink-0 gap-3 border-t border-slate-100 px-5 py-4">
+          <div
+            className="flex shrink-0 gap-3 border-t border-slate-100 px-5 py-4"
+            style={{ paddingBottom: "max(1rem, var(--sab))" }}
+          >
             <button
               type="button"
               onClick={onClose}

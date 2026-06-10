@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api.js";
-
-const INITIAL_DRAFT = {
-  visitFor: "myself",
-  address: "",
-  reason: "",
-  urgency: "routine",
-  submittedAt: null,
-};
+import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
+import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
+import {
+  INITIAL_DRAFT,
+  clearVisitDraft,
+  getVisitDraftStorageKey,
+  readVisitDraft,
+  writeVisitDraft,
+} from "../../lib/visitDraftStorage.js";
 
 function RequestVisitLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = usePatientAuth();
+  const refreshKey = useLiveRefreshKey();
+  const storageKey = getVisitDraftStorageKey(user);
+
   const [draft, setDraft] = useState(() => {
     const handoff = location.state?.wizardDraft;
-    return handoff ? { ...INITIAL_DRAFT, ...handoff } : INITIAL_DRAFT;
+    return handoff ? { ...INITIAL_DRAFT, ...handoff } : readVisitDraft(storageKey);
   });
 
   const updateDraft = useCallback((patch) => {
@@ -23,8 +28,18 @@ function RequestVisitLayout() {
   }, []);
 
   const resetDraft = useCallback(() => {
-    setDraft(INITIAL_DRAFT);
-  }, []);
+    setDraft({ ...INITIAL_DRAFT });
+    clearVisitDraft(storageKey);
+  }, [storageKey]);
+
+  useEffect(() => {
+    writeVisitDraft(storageKey, draft);
+  }, [draft, storageKey]);
+
+  useEffect(() => {
+    if (location.state?.wizardDraft) return;
+    setDraft(readVisitDraft(storageKey));
+  }, [storageKey, location.state?.wizardDraft]);
 
   useEffect(() => {
     if (location.state?.wizardDraft) {
@@ -37,9 +52,9 @@ function RequestVisitLayout() {
       (location.pathname === "/request-visit" || location.pathname === "/request-visit/") &&
       draft.submittedAt
     ) {
-      setDraft(INITIAL_DRAFT);
+      resetDraft();
     }
-  }, [location.pathname, draft.submittedAt]);
+  }, [location.pathname, draft.submittedAt, resetDraft]);
 
   useEffect(() => {
     const isRequestForm =
@@ -84,9 +99,9 @@ function RequestVisitLayout() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [refreshKey]);
 
-  return <Outlet context={{ draft, updateDraft, resetDraft }} />;
+  return <Outlet context={{ draft, updateDraft, resetDraft, storageKey }} />;
 }
 
 export default RequestVisitLayout;

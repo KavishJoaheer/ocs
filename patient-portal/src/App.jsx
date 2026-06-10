@@ -14,7 +14,7 @@ const VisitSummaryPage = lazy(() => import("./pages/VisitSummaryPage.jsx"));
 const PatientBilling = lazy(() => import("./pages/PatientBilling.jsx"));
 const PatientProfile = lazy(() => import("./pages/PatientProfile.jsx"));
 const RequestVisitLayout = lazy(() => import("./pages/request-visit/RequestVisitLayout.jsx"));
-const RequestVisitForm = lazy(() => import("./pages/request-visit/RequestVisitForm.jsx"));
+const RequestVisitFormGate = lazy(() => import("./pages/request-visit/RequestVisitFormGate.jsx"));
 const RequestVisitReview = lazy(() => import("./pages/request-visit/RequestVisitReview.jsx"));
 const RequestVisitAwaiting = lazy(() => import("./pages/request-visit/RequestVisitAwaiting.jsx"));
 const RequestVisitTracking = lazy(() => import("./pages/request-visit/RequestVisitTracking.jsx"));
@@ -45,7 +45,7 @@ function App() {
         <Route path="dashboard" element={<PatientDashboard />} />
         <Route path="active-visit" element={<Navigate to="/request-visit/tracking" replace />} />
         <Route path="request-visit" element={<RequestVisitLayout />}>
-          <Route index element={<RequestVisitForm />} />
+          <Route index element={<RequestVisitFormGate />} />
           <Route path="review" element={<RequestVisitReview />} />
           <Route path="awaiting" element={<RequestVisitAwaiting />} />
           <Route path="tracking" element={<RequestVisitTracking />} />

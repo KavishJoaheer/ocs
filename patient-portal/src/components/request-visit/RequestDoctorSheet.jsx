@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, MapPin, User, Users } from "lucide-react";
 import { api } from "../../lib/api.js";
 import EmergencyWarningModal from "./EmergencyWarningModal.jsx";
+import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
+import { readVisitDraft, getVisitDraftStorageKey } from "../../lib/visitDraftStorage.js";
 import { useKeyboardOffset } from "../../hooks/useKeyboardOffset.js";
 import { useScrollLock } from "../../hooks/useScrollLock.js";
+import { URGENCY_LEVELS, URGENCY_META, URGENCY_UNSELECTED } from "../../pages/request-visit/urgency.js";
 
 function MiniMapPreview() {
   return (
@@ -44,6 +47,7 @@ function StepBackButton({ onClick }) {
 
 function RequestDoctorSheet({ open, onClose }) {
   const navigate = useNavigate();
+  const { user } = usePatientAuth();
   const modalRef = useRef(null);
   const keyboardInset = useKeyboardOffset(open);
   useScrollLock(open);
@@ -56,12 +60,12 @@ function RequestDoctorSheet({ open, onClose }) {
   const [stepDirection, setStepDirection] = useState("forward");
   const [visitFor, setVisitFor] = useState(null);
   const [pendingPatient, setPendingPatient] = useState(null);
-  const [address, setAddress] = useState("Sky Garden");
+  const [address, setAddress] = useState("");
   const [reason, setReason] = useState("");
   const [urgency, setUrgency] = useState("routine");
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
 
-  function resetWizard() {
+  const resetWizard = useCallback(() => {
     clearTimeout(patientSelectTimerRef.current);
     patientSelectTimerRef.current = null;
     addressHydratedRef.current = false;
@@ -69,16 +73,16 @@ function RequestDoctorSheet({ open, onClose }) {
     setStepDirection("forward");
     setVisitFor(null);
     setPendingPatient(null);
-    setAddress("Sky Garden");
+    setAddress("");
     setReason("");
     setUrgency("routine");
     setEmergencyModalOpen(false);
-  }
+  }, []);
 
-  function handleClose() {
+  const handleClose = useCallback(() => {
     resetWizard();
     onClose();
-  }
+  }, [onClose, resetWizard]);
 
   function goToStep(step) {
     setStepDirection(step < currentStep ? "back" : "forward");
@@ -128,6 +132,28 @@ function RequestDoctorSheet({ open, onClose }) {
     let ignore = false;
     addressHydratedRef.current = false;
 
+    const storedDraft = readVisitDraft(getVisitDraftStorageKey(user));
+    if (storedDraft.visitFor) {
+      setVisitFor(storedDraft.visitFor);
+    }
+    if (storedDraft.address) {
+      setAddress(storedDraft.address);
+      addressHydratedRef.current = true;
+    }
+    if (storedDraft.reason) {
+      setReason(storedDraft.reason);
+    }
+    if (storedDraft.urgency) {
+      setUrgency(storedDraft.urgency);
+    }
+    if (storedDraft.reason && storedDraft.address && storedDraft.visitFor) {
+      setCurrentStep(3);
+    } else if (storedDraft.address && storedDraft.visitFor) {
+      setCurrentStep(2);
+    } else if (storedDraft.visitFor) {
+      setCurrentStep(2);
+    }
+
     async function loadAddress() {
       try {
         const data = await api.get("/patient-portal/profile");
@@ -137,7 +163,7 @@ function RequestDoctorSheet({ open, onClose }) {
           addressHydratedRef.current = true;
         }
       } catch {
-        // Keep placeholder address when profile is unavailable.
+        // Patient can still type an address manually.
       }
     }
 
@@ -147,7 +173,7 @@ function RequestDoctorSheet({ open, onClose }) {
       ignore = true;
       clearTimeout(patientSelectTimerRef.current);
     };
-  }, [open]);
+  }, [open, user]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -163,7 +189,7 @@ function RequestDoctorSheet({ open, onClose }) {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, emergencyModalOpen]);
+  }, [open, emergencyModalOpen, handleClose]);
 
   if (!open) return null;
 
@@ -181,7 +207,7 @@ function RequestDoctorSheet({ open, onClose }) {
   return (
     <div
       ref={modalRef}
-      className="app-modal-root fixed inset-0 z-[70]"
+      className="app-modal-root fixed inset-0 z-[var(--z-modal)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="request-doctor-title"
@@ -198,7 +224,7 @@ function RequestDoctorSheet({ open, onClose }) {
       />
 
       <div
-        className="request-doctor-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)]"
+        className="request-doctor-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[min(92dvh,100dvh-env(safe-area-inset-bottom,0px))] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)]"
         style={sheetStyle}
         onClick={(e) => e.stopPropagation()}
       >
@@ -311,26 +337,20 @@ function RequestDoctorSheet({ open, onClose }) {
                   />
                 </div>
 
-                <div className="mt-5 grid grid-cols-3 gap-2.5">
-                  {[
-                    { value: "routine", label: "Routine" },
-                    { value: "urgent", label: "Urgent" },
-                    { value: "emergency", label: "Emergency" },
-                  ].map((level) => {
-                    const isActive = urgency === level.value;
+                <div className="mt-5 grid grid-cols-1 gap-2.5 min-[360px]:grid-cols-3">
+                  {URGENCY_LEVELS.map((level) => {
+                    const isActive = urgency === level;
                     return (
                       <button
-                        key={level.value}
+                        key={level}
                         type="button"
-                        onClick={() => handleUrgencySelect(level.value)}
+                        onClick={() => handleUrgencySelect(level)}
                         className={[
                           "request-wizard-urgency-pill squircle-inner px-2 py-3 text-[12px] font-bold transition",
-                          isActive
-                            ? "request-wizard-urgency-active"
-                            : "request-wizard-urgency-inactive",
+                          isActive ? URGENCY_META[level].selected : URGENCY_UNSELECTED,
                         ].join(" ")}
                       >
-                        {level.label}
+                        {URGENCY_META[level].label}
                       </button>
                     );
                   })}

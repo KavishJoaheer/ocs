@@ -1,24 +1,9 @@
-import {
-  LayoutDashboard,
-  LogOut,
-  CircleUserRound,
-  HousePlus,
-  HeartPulse,
-  CalendarCheck,
-  ReceiptText,
-} from "lucide-react";
+import { LogOut, HousePlus } from "lucide-react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 import MobileBottomNav from "./MobileBottomNav.jsx";
-
-const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/health-records", label: "Health Records", icon: HeartPulse },
-  { to: "/appointments", label: "Review Appointments", icon: CalendarCheck },
-  { to: "/billing", label: "Billing", icon: ReceiptText },
-  { to: "/profile", label: "Profile", icon: CircleUserRound },
-];
 
 function SidebarLink({ item }) {
   const Icon = item.icon;
@@ -100,7 +85,7 @@ function Sidebar() {
               type="button"
               onClick={() => logout()}
               aria-label="Sign out"
-              className="inline-flex shrink-0 items-center justify-center rounded-[16px] border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] p-2 text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
+              className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-[16px] border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] p-2 text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
             >
               <LogOut className="size-4" />
             </button>
@@ -121,7 +106,7 @@ function Sidebar() {
               Navigation
             </p>
             <nav className="mt-4 space-y-0.5">
-              {navItems.map((item) => (
+              {PATIENT_NAV_ITEMS.map((item) => (
                 <SidebarLink key={item.to} item={item} />
               ))}
             </nav>

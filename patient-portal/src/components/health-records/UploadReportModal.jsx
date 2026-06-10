@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
+import toast from "react-hot-toast";
 import { Calendar, FileUp, X } from "lucide-react";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 import { useKeyboardOffset } from "../../hooks/useKeyboardOffset.js";
@@ -172,6 +173,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
   const [dragOver, setDragOver] = useState(false);
   const [requestedBySource, setRequestedBySource] = useState("OCS Doctor");
   const [requestedByName, setRequestedByName] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const keyboardInset = useKeyboardOffset(open);
   useScrollLock(open);
   useFocusTrap(open, modalRef);
@@ -185,16 +187,20 @@ function UploadReportModal({ open, onClose, onUpload }) {
     setRequestedByName("");
   }
 
-  function handleClose() {
+  const handleClose = useCallback(() => {
+    if (isUploading) return;
     resetForm();
     onClose();
-  }
+  }, [isUploading, onClose]);
 
   function handleFileSelect(file) {
     if (!file) return;
     const isPdf = file.type === "application/pdf";
     const isImage = file.type.startsWith("image/");
-    if (!isPdf && !isImage) return;
+    if (!isPdf && !isImage) {
+      toast.error("PDF and image files only.");
+      return;
+    }
     setSelectedFile(file);
     if (!reportName) {
       setReportName(file.name.replace(/\.[^.]+$/, ""));
@@ -230,24 +236,31 @@ function UploadReportModal({ open, onClose, onUpload }) {
     }
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     const reportDate = parseReportDate();
-    if (!selectedFile || !reportName.trim() || !reportDate) return;
+    if (!selectedFile || !reportName.trim() || !reportDate || isUploading) return;
 
     const isPdf = selectedFile.type === "application/pdf";
-    onUpload({
-      name: reportName.trim(),
-      report_date: reportDate,
-      uploaded_at: dayjs().format("YYYY-MM-DD"),
-      file_type: isPdf ? "PDF" : "Image",
-      file: selectedFile,
-      requested_by_source: requestedBySource,
-      requested_by: requestedByName.trim(),
-      patient_uploaded: true,
-    });
-    resetForm();
-    onClose();
+    setIsUploading(true);
+    try {
+      await onUpload({
+        name: reportName.trim(),
+        report_date: reportDate,
+        uploaded_at: dayjs().format("YYYY-MM-DD"),
+        file_type: isPdf ? "PDF" : "Image",
+        file: selectedFile,
+        requested_by_source: requestedBySource,
+        requested_by: requestedByName.trim(),
+        patient_uploaded: true,
+      });
+      resetForm();
+      onClose();
+    } catch {
+      // Parent surfaces toast; keep modal open for retry.
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   const parsedDate = parseReportDate();
@@ -282,14 +295,14 @@ function UploadReportModal({ open, onClose, onUpload }) {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
+  }, [open, handleClose]);
 
   if (!open) return null;
 
   return (
     <div
       ref={modalRef}
-      className="app-modal-root fixed inset-0 z-[70]"
+      className="app-modal-root fixed inset-0 z-[var(--z-modal)]"
       role="dialog"
       aria-modal="true"
       aria-label="Upload medical report"
@@ -298,12 +311,13 @@ function UploadReportModal({ open, onClose, onUpload }) {
         type="button"
         aria-label="Close upload dialog"
         onClick={handleClose}
-        className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px]"
+        disabled={isUploading}
+        className="animate-sheet-overlay absolute inset-0 bg-[rgba(13,42,46,0.45)] backdrop-blur-[2px] disabled:pointer-events-none"
       />
 
       {/* Mobile — bottom sheet */}
       <div
-        className="upload-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)] lg:hidden"
+        className="upload-sheet animate-sheet-up absolute inset-x-0 bottom-0 flex max-h-[min(92dvh,100dvh-env(safe-area-inset-bottom,0px))] flex-col rounded-t-[24px] bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)] lg:hidden"
         style={{
           paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardInset.bottom}px)`,
           transform: keyboardInset.top ? `translateY(-${keyboardInset.top}px)` : undefined,
@@ -328,15 +342,16 @@ function UploadReportModal({ open, onClose, onUpload }) {
             <div className="flex items-center gap-5 pt-1">
               <button
                 type="submit"
-                disabled={!canSubmit}
+                disabled={!canSubmit || isUploading}
                 className="upload-submit-btn min-h-[44px] rounded-full bg-ocs-orange px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Upload Report
+                {isUploading ? "Uploading…" : "Upload Report"}
               </button>
               <button
                 type="button"
                 onClick={handleClose}
-                className="inline-flex min-h-[44px] items-center px-2 text-[14px] font-medium text-[#5b7f8a] transition active:text-[#1a5c52]"
+                disabled={isUploading}
+                className="inline-flex min-h-[44px] items-center px-2 text-[14px] font-medium text-[#5b7f8a] transition active:text-[#1a5c52] disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -361,7 +376,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
             type="button"
             onClick={handleClose}
             aria-label="Close upload drawer"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-[#8a9e9a] transition hover:bg-[rgba(0,0,0,0.04)] hover:text-[#1a5c52]"
+            className="flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-[#8a9e9a] transition hover:bg-[rgba(0,0,0,0.04)] hover:text-[#1a5c52]"
           >
             <X className="size-5" strokeWidth={1.75} />
           </button>
@@ -375,15 +390,20 @@ function UploadReportModal({ open, onClose, onUpload }) {
           </div>
 
           <footer className="upload-drawer-footer shrink-0">
-            <button type="button" onClick={handleClose} className="upload-drawer-cancel-btn min-h-[44px]">
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={isUploading}
+              className="upload-drawer-cancel-btn min-h-[44px] disabled:opacity-50"
+            >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={!canSubmit}
-              className="upload-drawer-upload-btn min-h-[44px] px-7 py-3 text-[14px]"
+              disabled={!canSubmit || isUploading}
+              className="upload-drawer-upload-btn min-h-[44px] px-7 py-3 text-[14px] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Upload
+              {isUploading ? "Uploading…" : "Upload"}
             </button>
           </footer>
         </form>

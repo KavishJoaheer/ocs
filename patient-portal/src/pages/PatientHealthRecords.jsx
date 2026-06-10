@@ -2,17 +2,13 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { FolderHeart } from "lucide-react";
 import { api, buildAuthedFileUrl } from "../lib/api.js";
+import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import HealthRecordsSegmentedControl from "../components/health-records/HealthRecordsSegmentedControl.jsx";
 import ConsultationsView from "../components/health-records/ConsultationsView.jsx";
 import ReportsView from "../components/health-records/ReportsView.jsx";
 import ClinicalHistoryView from "../components/health-records/ClinicalHistoryView.jsx";
 import UploadReportModal from "../components/health-records/UploadReportModal.jsx";
-import {
-  MOCK_CLINICAL,
-  MOCK_CONSULTATIONS,
-  MOCK_REPORTS,
-} from "../components/health-records/mockHealthRecordsData.js";
 
 function reportUrl(attachmentId) {
   return buildAuthedFileUrl(`/patient-portal/reports/attachments/${attachmentId}/download`);
@@ -35,10 +31,14 @@ function PatientHealthRecords() {
   const [medicalReports, setMedicalReports] = useState([]);
   const [clinicalHistory, setClinicalHistory] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retryToken, setRetryToken] = useState(0);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
+    setLoadError(null);
 
     async function loadRecords() {
       try {
@@ -68,12 +68,11 @@ function PatientHealthRecords() {
         setConsultations(apiConsultations);
         setMedicalReports(apiReports);
         setClinicalHistory(data.clinical || {});
-      } catch {
+      } catch (error) {
         if (!ignore) {
-          // Mock data keeps the UI fully renderable when the API is unavailable.
-          setConsultations(MOCK_CONSULTATIONS);
-          setMedicalReports(MOCK_REPORTS);
-          setClinicalHistory(MOCK_CLINICAL);
+          setLoadError(
+            error?.message || "We couldn't load your health records. Check your connection and try again.",
+          );
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -84,7 +83,7 @@ function PatientHealthRecords() {
     return () => {
       ignore = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, retryToken]);
 
   async function reloadReports() {
     const data = await api.get("/patient-portal/health-records");
@@ -102,7 +101,7 @@ function PatientHealthRecords() {
   async function handleUpload(report) {
     if (!report.file) {
       toast.error("Please choose a file to upload.");
-      return;
+      throw new Error("No file selected");
     }
 
     const formData = new FormData();
@@ -117,9 +116,15 @@ function PatientHealthRecords() {
       await reloadReports();
       setActiveTab("reports");
       toast.success("Report uploaded to your health records.");
+      dispatchPatientDataChange();
     } catch (error) {
       toast.error(error?.message || "Could not upload this report.");
+      throw error;
     }
+  }
+
+  function handleRetry() {
+    setRetryToken((token) => token + 1);
   }
 
   return (
@@ -155,6 +160,18 @@ function PatientHealthRecords() {
           <div className="space-y-4">
             <div className="squircle-outer h-28 animate-pulse bg-white/70" />
             <div className="squircle-outer h-28 animate-pulse bg-white/70" />
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center px-4 py-16 text-center">
+            <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load health records</p>
+            <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
+            >
+              Try Again
+            </button>
           </div>
         ) : (
           <HealthRecordsTabPanel

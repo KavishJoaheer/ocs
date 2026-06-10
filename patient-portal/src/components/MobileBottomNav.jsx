@@ -1,24 +1,16 @@
-import { Home, FileText, Calendar, CircleUserRound, ReceiptText } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 
 /** Premium floating pill bottom navigation for the native mobile experience. */
-const navItems = [
-  { to: "/dashboard", label: "Home", icon: Home, end: true },
-  { to: "/health-records", label: "Records", icon: FileText },
-  { to: "/appointments", label: "Visits", icon: Calendar },
-  { to: "/billing", label: "Billing", icon: ReceiptText },
-  { to: "/profile", label: "Profile", icon: CircleUserRound },
-];
-
 function MobileBottomNav() {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 px-[var(--native-pad-screen)] pb-[max(env(safe-area-inset-bottom,0px),12px)] pt-2 lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] px-[var(--native-pad-screen)] pb-[max(env(safe-area-inset-bottom,0px),12px)] pt-2 lg:hidden"
       aria-label="Main navigation"
     >
       <div className="mobile-nav-pill mx-auto flex max-w-md items-center justify-around rounded-full bg-white/80 px-2 py-2 backdrop-blur-xl">
-        {navItems.map((item) => {
-          const Icon = item.icon;
+        {PATIENT_NAV_ITEMS.map((item) => {
+          const Icon = item.mobileIcon;
           return (
             <NavLink
               key={item.to}
@@ -48,7 +40,7 @@ function MobileBottomNav() {
                       isActive ? "native-label text-[#1a5c52]" : "font-medium text-[#8a9e9a]",
                     ].join(" ")}
                   >
-                    {item.label}
+                    {item.mobileLabel}
                   </span>
                 </>
               )}

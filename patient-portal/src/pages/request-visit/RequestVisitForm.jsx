@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { ArrowLeft, ArrowRight, MapPin } from "lucide-react";
 import EmergencyWarningModal from "../../components/request-visit/EmergencyWarningModal.jsx";
+import { useKeyboardOffset } from "../../hooks/useKeyboardOffset.js";
 import { URGENCY_LEVELS, URGENCY_META, URGENCY_UNSELECTED } from "./urgency.js";
 
 const SECTION_LABEL =
@@ -12,6 +13,7 @@ function RequestVisitForm() {
   const { draft, updateDraft } = useOutletContext();
   const addressRef = useRef(null);
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
+  const keyboardInset = useKeyboardOffset(true);
 
   function handleDifferentAddress() {
     updateDraft({ address: "" });
@@ -35,7 +37,10 @@ function RequestVisitForm() {
     draft.address.trim().length > 0 && draft.reason.trim().length > 0;
 
   return (
-    <div className="mx-auto max-w-[560px] animate-fade-in-fast">
+    <div
+      className="mx-auto max-w-[560px] animate-fade-in-fast"
+      style={{ paddingBottom: keyboardInset.bottom }}
+    >
       <EmergencyWarningModal
         open={emergencyModalOpen}
         onAcknowledge={() => setEmergencyModalOpen(false)}
@@ -113,7 +118,7 @@ function RequestVisitForm() {
             className="mt-3 w-full resize-none rounded-xl border border-transparent bg-[rgba(65,200,198,0.08)] px-4 py-3.5 text-sm leading-relaxed text-[#22485b] outline-none transition focus:border-[rgba(65,200,198,0.45)] focus:bg-white"
           />
 
-          <div className="mt-3 grid grid-cols-3 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
             {URGENCY_LEVELS.map((level) => {
               const active = draft.urgency === level;
               return (

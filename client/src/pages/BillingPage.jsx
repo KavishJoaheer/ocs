@@ -1604,8 +1604,11 @@ function CreateBillingModal({
             <>
               {patientPickerOpen ? (
                 <div
-                  className="fixed inset-0 z-[60] flex flex-col bg-white"
-                  style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+                  className="fixed inset-0 z-[var(--z-sheet)] flex flex-col bg-white"
+                  style={{
+                    paddingTop: "max(0px, env(safe-area-inset-top, 0px))",
+                    paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))",
+                  }}
                 >
                   <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 px-2">
                     <button
@@ -1659,8 +1662,11 @@ function CreateBillingModal({
               ) : null}
               {inventoryOverlayOpen ? (
                 <div
-                  className="fixed inset-0 z-[60] flex flex-col bg-white"
-                  style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+                  className="fixed inset-0 z-[var(--z-sheet)] flex flex-col bg-white"
+                  style={{
+                    paddingTop: "max(0px, env(safe-area-inset-top, 0px))",
+                    paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))",
+                  }}
                 >
                   <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-slate-200 px-2">
                     <button
