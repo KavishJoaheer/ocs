@@ -54,7 +54,7 @@ function mapAppointment(row) {
 }
 
 function SectionLabel({ children }) {
-  return <p className="visits-section-label mb-4 tracking-wider text-[#a8b5b2]">{children}</p>;
+  return <p className="visits-section-label">{children}</p>;
 }
 
 function PatientAppointments() {
@@ -93,7 +93,7 @@ function PatientAppointments() {
     .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
-    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] lg:max-w-4xl">
+    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] lg:max-w-3xl">
       <header className="animate-fade-in-up pb-2">
         <h1 className="native-display text-[28px] leading-tight text-[#1a5c52] lg:text-4xl">
           Your Appointments.

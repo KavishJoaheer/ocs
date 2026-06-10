@@ -17,21 +17,22 @@ function PastAppointmentCard({ appointment }) {
 
   return (
     <article className="visits-crafted-card visits-card max-lg:visits-card-elevate bg-white">
-      <div className="flex items-start gap-4 p-5">
+      <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:gap-6">
+        {/* Left — date block */}
         <div className="visits-date-block visits-date-block-past shrink-0">
-          <span className="visits-date-day">{date.format("D")}</span>
-          <span className="visits-date-month">{date.format("MMM").toUpperCase()}</span>
+          <span className="visits-date-day visits-date-day--past">{date.format("D")}</span>
+          <span className="visits-date-month visits-date-month--past">
+            {date.format("MMM").toUpperCase()}
+          </span>
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col items-start">
-          <div className="flex w-full items-start justify-between gap-3">
-            <p className="native-display text-[16px] font-bold leading-snug text-[#1a5c52]">
-              {appointment.type}
-            </p>
-            <span className="visits-badge-muted shrink-0">{statusLabel}</span>
-          </div>
+        {/* Center — visit context */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="native-display text-[16px] font-bold leading-snug text-[#1a5c52] lg:text-[17px]">
+            {appointment.type}
+          </p>
 
-          <div className="mt-2.5 flex w-full items-start gap-2.5">
+          <div className="mt-2.5 flex items-center gap-2.5">
             <DoctorAvatar name={appointment.doctor_name} size="md" />
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
@@ -42,13 +43,18 @@ function PastAppointmentCard({ appointment }) {
             </div>
           </div>
         </div>
+
+        {/* Right — status badge */}
+        <div className="flex shrink-0 items-center justify-end lg:self-stretch lg:items-center">
+          <span className="visits-badge-muted">{statusLabel}</span>
+        </div>
       </div>
 
       {appointment.status !== "cancelled" ? (
         <>
           <div className="visits-card-footer-divider" aria-hidden="true" />
-          <Link to={summaryPath} className="visits-summary-link group flex items-center justify-between">
-            <span className="leading-none">View Visit Summary</span>
+          <Link to={summaryPath} className="visits-summary-link group">
+            <span>View Visit Summary</span>
             <ChevronRight
               className="visits-summary-arrow size-[18px] shrink-0 text-[#e8a020]"
               strokeWidth={2.25}

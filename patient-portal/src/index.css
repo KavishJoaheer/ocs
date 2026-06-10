@@ -276,6 +276,13 @@ table {
 
 /* ─── Native mobile screens (dashboard, health records, etc.) ─────────────── */
 
+@media (max-width: 1023px) {
+  #app-main-scroll {
+    padding-bottom: var(--native-nav-clearance);
+    scroll-padding-bottom: var(--native-nav-clearance);
+  }
+}
+
 .native-screen {
   -webkit-tap-highlight-color: transparent;
 }
@@ -1030,6 +1037,7 @@ table {
 
 .health-records-segment {
   padding: 4px;
+  overflow: hidden;
 }
 
 .health-records-segment .health-records-tab {
@@ -1049,14 +1057,14 @@ table {
   border: none;
   outline: none;
   border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 .health-records-segment .health-records-tab-active:focus,
 .health-records-segment .health-records-tab-active:focus-visible {
   outline: none;
   border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 .ocs-primary-action-btn {
@@ -1088,8 +1096,11 @@ table {
 
 .sidebar-nav-link-active {
   border: none;
-  border-left: 3px solid #e8a020;
-  background: rgba(26, 92, 82, 0.05);
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-left: 3px solid var(--ocs-orange);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.05);
   outline: none;
   box-shadow: none;
 }
@@ -1097,7 +1108,10 @@ table {
 .sidebar-nav-link-active:focus,
 .sidebar-nav-link-active:focus-visible {
   outline: none;
-  border-left: 3px solid #e8a020;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-left: 3px solid var(--ocs-orange);
   box-shadow: none;
 }
 
@@ -1302,11 +1316,27 @@ table {
   background: #f4f6f8;
 }
 
+@media (min-width: 1024px) {
+  .visits-screen {
+    background: transparent;
+  }
+}
+
 .visits-section-label {
+  margin-bottom: 20px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  color: #8a9e9a;
+}
+
+@media (min-width: 1024px) {
+  .visits-section-label {
+    margin-bottom: 24px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+  }
 }
 
 .visits-card {
@@ -1345,78 +1375,101 @@ table {
 
 @media (min-width: 1024px) {
   .visits-date-block {
-    width: 64px;
+    width: 68px;
     padding: 14px 0;
-    border-radius: 12px;
+    border-radius: 14px;
   }
 }
 
 .visits-date-block-upcoming {
-  background: rgba(232, 160, 32, 0.1);
+  background: rgba(var(--ocs-orange-rgb), 0.1);
 }
 
 .visits-date-block-past {
-  background: rgba(138, 158, 154, 0.12);
+  background: rgba(138, 158, 154, 0.1);
 }
 
 .visits-date-day {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
-  color: #1a5c52;
+  color: var(--ocs-teal-dark);
 }
 
 @media (min-width: 1024px) {
   .visits-date-day {
-    font-size: 22px;
+    font-size: 24px;
   }
 }
 
+.visits-date-day--past {
+  color: #5b7f8a;
+}
+
 .visits-date-month {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: #5b7f8a;
 }
 
 @media (min-width: 1024px) {
   .visits-date-month {
-    letter-spacing: 0.16em;
+    margin-top: 4px;
+    font-size: 10px;
+    letter-spacing: 0.18em;
   }
 }
 
+.visits-date-month--past {
+  color: #8a9e9a;
+}
+
 .visits-badge-teal {
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
-  background: rgba(26, 160, 140, 0.12);
-  padding: 4px 10px;
+  background: rgba(var(--ocs-teal-dark-rgb), 0.08);
+  padding: 5px 11px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #1a5c52;
+  color: var(--ocs-teal-dark);
+  white-space: nowrap;
 }
 
 .visits-badge-teal-muted {
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
-  background: rgba(26, 160, 140, 0.08);
-  padding: 4px 10px;
+  background: rgba(var(--ocs-teal-dark-rgb), 0.06);
+  padding: 5px 11px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #2d8f98;
+  white-space: nowrap;
 }
 
 .visits-badge-muted {
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
-  background: rgba(138, 158, 154, 0.12);
-  padding: 4px 10px;
+  background: #f3f4f6;
+  padding: 5px 11px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6e7f7c;
+  color: #6b7280;
+  white-space: nowrap;
 }
 
 .visits-calendar-btn {
@@ -1425,20 +1478,22 @@ table {
   gap: 6px;
   border: none;
   background: transparent;
-  padding: 6px 8px;
+  padding: 6px 4px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1;
   color: #8a9e9a;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     color 160ms ease,
     background 160ms ease;
 }
 
 .visits-calendar-btn:hover {
-  color: #1a5c52;
-  background: rgba(26, 92, 82, 0.04);
+  color: var(--ocs-teal-dark);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.04);
 }
 
 .visits-calendar-btn:active {
@@ -1447,9 +1502,8 @@ table {
 
 .visits-card-footer-divider {
   height: 1px;
-  margin-left: 20px;
-  margin-right: 20px;
-  background: rgba(0, 0, 0, 0.04);
+  margin: 0 20px;
+  background: #f3f4f6;
 }
 
 .visits-summary-link {
@@ -1459,25 +1513,25 @@ table {
   padding: 14px 20px 16px;
   font-size: 14px;
   font-weight: 500;
-  color: #1a5c52;
+  color: #22485b;
   text-decoration: none;
   transition: background 160ms ease;
 }
 
 .visits-summary-arrow {
-  transition: transform 180ms ease;
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .visits-summary-link:hover {
-  background: rgba(26, 92, 82, 0.03);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.03);
 }
 
 .visits-summary-link:hover .visits-summary-arrow {
-  transform: translateX(3px);
+  transform: translateX(4px);
 }
 
 .visits-summary-link:active {
-  background: rgba(26, 160, 140, 0.04);
+  background: rgba(var(--ocs-teal-dark-rgb), 0.05);
 }
 
 /* ─── Request doctor bottom sheet wizard ─────────────────────────────────── */
