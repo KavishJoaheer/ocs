@@ -44,14 +44,14 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
 
         <div className="flex shrink-0 flex-row items-center justify-between gap-3 lg:flex-col lg:items-end lg:justify-start">
           {isNextVisit ? (
-            <span className="visits-badge-teal shrink-0">Next Visit</span>
+            <span className="visits-badge-teal inline-flex shrink-0 items-center">Next Visit</span>
           ) : (
-            <span className="visits-badge-teal-muted shrink-0">Upcoming</span>
+            <span className="visits-badge-teal-muted inline-flex shrink-0 items-center">Upcoming</span>
           )}
           <button
             type="button"
             onClick={() => downloadAppointmentIcs(appointment)}
-            className="visits-calendar-btn"
+            className="visits-calendar-btn inline-flex items-center"
           >
             <CalendarPlus className="size-4" strokeWidth={1.75} />
             Add to Calendar
