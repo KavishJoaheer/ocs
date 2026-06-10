@@ -18,7 +18,11 @@ function ProfileHeader({ fullName, initials, ocsCareNumber }) {
       <h1 className="native-display mt-4 text-[24px] leading-tight text-[#1a5c52]">
         {formatDisplayName(fullName)}
       </h1>
-      {idLabel ? <span className="profile-id-badge mt-3">{idLabel}</span> : null}
+      {idLabel ? (
+        <span className="mt-3 inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-bold tracking-wide text-white">
+          {idLabel}
+        </span>
+      ) : null}
     </header>
   );
 }

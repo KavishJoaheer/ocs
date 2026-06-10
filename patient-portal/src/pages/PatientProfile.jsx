@@ -273,39 +273,39 @@ function PatientProfile() {
             }
             placeholder="Policy number"
           />
+        ) : billingForm.insurance_policy_number ? (
+          <span className="mt-0.5 inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-bold tracking-wide text-white">
+            {billingForm.insurance_policy_number}
+          </span>
         ) : (
-          <p
-            className={[
-              "mt-0.5 text-[15px] font-semibold",
-              billingForm.insurance_policy_number ? "text-[#1a5c52]" : "text-[#8a9e9a]",
-            ].join(" ")}
-          >
-            {billingForm.insurance_policy_number || "Add policy number"}
-          </p>
+          <p className="mt-0.5 text-[15px] font-semibold text-[#8a9e9a]">Add policy number</p>
         )}
       </ProfileListRow>
     </ProfileListCard>
   );
 
   const emergencyCard = (
-    <ProfileListCard title="Emergency Contact">
+    <ProfileListCard title="Emergency Contact" variant="emergency">
       <ProfileListRow
         icon={UserCircle}
         label="Name"
         value={profile?.next_of_kin_name}
         emptyLabel="Not yet added"
+        tone="onDark"
       />
       <ProfileListRow
         icon={Phone}
         label="Phone"
         value={profile?.next_of_kin_phone}
         emptyLabel="Not yet added"
+        tone="onDark"
       />
       <ProfileListRow
         icon={Users}
         label="Relationship"
         value={profile?.next_of_kin_relationship}
         emptyLabel="Not yet added"
+        tone="onDark"
         isLast
       />
     </ProfileListCard>
