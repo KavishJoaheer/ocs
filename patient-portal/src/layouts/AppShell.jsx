@@ -10,6 +10,9 @@ function AppShellContent() {
   const isVisitStatus = pathname === "/request-visit/tracking";
   const isProfile = pathname === "/profile";
   const isFullBleedMobile = isNativeDashboard || isVisitSummary || isVisitStatus || isProfile;
+  const needsNavClearance =
+    pathname === "/billing" || pathname.startsWith("/request-visit");
+
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
       <Sidebar />
@@ -20,12 +23,15 @@ function AppShellContent() {
         <div
           className={
             isProfile
-              ? "w-full max-md:px-0 max-md:pb-0 max-md:pt-0 lg:pb-10 lg:pt-0"
+              ? "w-full max-lg:px-0 max-lg:pb-0 max-lg:pt-0 lg:pb-10 lg:pt-0"
               : [
                   "mx-auto max-w-6xl sm:px-10 lg:px-12 lg:pb-10 lg:pt-8",
                   isFullBleedMobile
-                    ? "max-md:px-0 max-md:pb-0 max-md:pt-0"
-                    : "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pb-0 max-md:pt-0",
+                    ? "max-lg:px-0 max-lg:pb-0 max-lg:pt-0"
+                    : [
+                        "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pb-0 max-md:pt-0",
+                        needsNavClearance ? "max-lg:pb-[var(--native-nav-clearance)]" : "",
+                      ].join(" "),
                 ].join(" ")
           }
         >

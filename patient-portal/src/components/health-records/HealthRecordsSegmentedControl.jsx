@@ -25,7 +25,7 @@ function HealthRecordsSegmentedControl({ activeTab, onChange }) {
               "health-records-tab relative flex-1 rounded-full border-none px-3 py-2.5 text-[13px] leading-tight outline-none ring-0 transition-all duration-200 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",
               isActive
                 ? "health-records-tab-active font-semibold text-[#1a5c52]"
-                : "bg-transparent font-medium text-[#8a9e9a]",
+                : "cursor-pointer bg-transparent font-medium text-[#8a9e9a] hover:bg-white/60 hover:text-[#1a5c52]",
             ].join(" ")}
           >
             {tab.label}

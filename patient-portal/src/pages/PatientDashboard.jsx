@@ -48,7 +48,7 @@ function ActiveVisitCard({ visit, onCancelled }) {
   const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
 
   return (
-    <div className="desktop-card desktop-card-hover">
+    <div className="desktop-card">
       <div className="flex items-center gap-2">
         <span className="relative flex size-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />

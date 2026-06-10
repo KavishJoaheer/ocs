@@ -13,7 +13,10 @@ function RequestVisitAwaiting() {
   const urgencyLabel = (URGENCY_META[draft.urgency] || URGENCY_META.routine).label;
 
   useEffect(() => {
-    if (!draft.submittedAt) return undefined;
+    if (!draft.submittedAt) {
+      navigate("/request-visit", { replace: true });
+      return undefined;
+    }
 
     const timer = window.setTimeout(async () => {
       try {

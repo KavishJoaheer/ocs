@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
+const multer = require("multer");
 const { db, labReportAttachmentsDir } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
@@ -22,6 +24,46 @@ const {
 const { serializePatientBillingRows } = require("../lib/utils");
 
 const router = express.Router();
+
+const PATIENT_REPORT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+function sanitizeReportFileName(value) {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
+}
+
+const patientReportUpload = multer({
+  storage: multer.diskStorage({
+    destination(_req, _file, callback) {
+      fs.mkdirSync(labReportAttachmentsDir, { recursive: true });
+      callback(null, labReportAttachmentsDir);
+    },
+    filename(_req, file, callback) {
+      const extension = path.extname(file.originalname || "").toLowerCase();
+      const safeBaseName = sanitizeReportFileName(
+        path.basename(file.originalname || "report", extension),
+      );
+      const uniquePrefix = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+      callback(null, `${uniquePrefix}-${safeBaseName || "report"}${extension}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter(_req, file, callback) {
+    if (!PATIENT_REPORT_TYPES.has(file.mimetype)) {
+      callback(new Error("Only PDF and image files are allowed."));
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 // Normalize a raw patients row (DB column names) into the shape the patient
 // portal UI consumes (phone, ocs_care_number, next_of_kin_phone, review, ...).
@@ -288,6 +330,118 @@ router.get("/profile", (req, res) => {
   // Return both the normalized profile (what the UI reads) and the raw row for
   // any older callers.
   return res.json({ profile: serializePatientProfile(patient), patient: patient || null });
+});
+
+router.post("/reports", (req, res, next) => {
+  patientReportUpload.single("file")(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || "Upload failed." });
+    }
+    return next();
+  });
+}, (req, res) => {
+  const patientId = req.patientAuth?.patient_id;
+
+  if (!patientId) {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    return res.status(404).json({ error: "Patient record not found." });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: "A report file is required." });
+  }
+
+  const reportTitle = String(req.body.name || req.body.report_title || req.file.originalname || "").trim();
+  const reportDate = String(req.body.report_date || "").trim();
+  const requestedBySource = String(req.body.requested_by_source || "OCS Doctor").trim();
+  const requestedBy = String(req.body.requested_by || "").trim();
+
+  if (!reportTitle) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: "Report name is required." });
+  }
+
+  if (!reportDate) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: "Report date is required." });
+  }
+
+  const reportDetails = JSON.stringify({
+    patient_uploaded: true,
+    requested_by_source: requestedBySource,
+    requested_by: requestedBy,
+  });
+
+  try {
+    const reportId = db.transaction(() => {
+      const reportResult = db
+        .prepare(`
+          INSERT INTO lab_reports (
+            patient_id,
+            consultation_id,
+            report_title,
+            report_date,
+            report_details,
+            created_by_user_id
+          )
+          VALUES (?, NULL, ?, ?, ?, NULL)
+        `)
+        .run(patientId, reportTitle, reportDate, reportDetails);
+
+      const createdReportId = reportResult.lastInsertRowid;
+
+      db.prepare(`
+        INSERT INTO lab_report_attachments (
+          report_id,
+          patient_id,
+          consultation_id,
+          original_name,
+          stored_name,
+          mime_type,
+          file_size,
+          relative_path,
+          uploaded_by_user_id
+        )
+        VALUES (?, ?, NULL, ?, ?, ?, ?, ?, NULL)
+      `).run(
+        createdReportId,
+        patientId,
+        req.file.originalname,
+        req.file.filename,
+        req.file.mimetype,
+        req.file.size,
+        req.file.filename,
+      );
+
+      return createdReportId;
+    })();
+
+    publishPatientDataChange(patientId, { reason: "lab_report" });
+
+    const attachment = db
+      .prepare(
+        "SELECT id, created_at FROM lab_report_attachments WHERE report_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get(reportId);
+
+    return res.status(201).json({
+      report: {
+        id: attachment?.id,
+        name: reportTitle,
+        report_date: reportDate,
+        uploaded_at: attachment?.created_at || new Date().toISOString(),
+        requested_by_source: requestedBySource,
+        requested_by: requestedBy,
+      },
+    });
+  } catch (error) {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    throw error;
+  }
 });
 
 router.get("/health-records", (req, res) => {

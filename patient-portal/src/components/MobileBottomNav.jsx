@@ -1,4 +1,4 @@
-import { Home, FileText, Calendar, CircleUserRound } from "lucide-react";
+import { Home, FileText, Calendar, CircleUserRound, ReceiptText } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 /** Premium floating pill bottom navigation for the native mobile experience. */
@@ -6,6 +6,7 @@ const navItems = [
   { to: "/dashboard", label: "Home", icon: Home, end: true },
   { to: "/health-records", label: "Records", icon: FileText },
   { to: "/appointments", label: "Visits", icon: Calendar },
+  { to: "/billing", label: "Billing", icon: ReceiptText },
   { to: "/profile", label: "Profile", icon: CircleUserRound },
 ];
 
@@ -23,7 +24,7 @@ function MobileBottomNav() {
               key={item.to}
               end={item.end}
               to={item.to}
-              className="flex min-h-[44px] min-w-[64px] flex-1 flex-col items-center justify-center gap-1 rounded-full transition-all"
+              className="flex min-h-[44px] min-w-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-full transition-all"
             >
               {({ isActive }) => (
                 <>

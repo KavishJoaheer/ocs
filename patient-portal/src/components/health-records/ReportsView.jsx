@@ -42,7 +42,7 @@ function ReportCard({ report }) {
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`View ${report.name}`}
-            className="squircle-inner flex size-10 items-center justify-center bg-[rgba(26,160,140,0.08)] text-[#2d8f98] transition active:scale-95"
+            className="squircle-inner flex size-11 min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center bg-[rgba(26,160,140,0.08)] text-[#2d8f98] transition hover:bg-[rgba(26,160,140,0.14)] active:scale-95"
           >
             <Eye className="size-[18px]" strokeWidth={1.75} />
           </a>
@@ -50,7 +50,7 @@ function ReportCard({ report }) {
             href={report.url}
             download
             aria-label={`Download ${report.name}`}
-            className="squircle-inner flex size-10 items-center justify-center bg-[rgba(26,160,140,0.08)] text-[#2d8f98] transition active:scale-95"
+            className="squircle-inner flex size-11 min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center bg-[rgba(26,160,140,0.08)] text-[#2d8f98] transition hover:bg-[rgba(26,160,140,0.14)] active:scale-95"
           >
             <Download className="size-[18px]" strokeWidth={1.75} />
           </a>

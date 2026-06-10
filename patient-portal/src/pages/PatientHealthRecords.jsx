@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import { FolderHeart } from "lucide-react";
 import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
@@ -85,9 +86,40 @@ function PatientHealthRecords() {
     };
   }, [refreshKey]);
 
-  function handleUpload(report) {
-    setMedicalReports((prev) => [{ ...report, id: Date.now() }, ...prev]);
-    setActiveTab("reports");
+  async function reloadReports() {
+    const data = await api.get("/patient-portal/health-records");
+    const apiReports = (data.reports || []).map((report) => ({
+      id: report.id,
+      name: report.name,
+      report_date: report.report_date || report.uploaded_at,
+      uploaded_at: report.uploaded_at,
+      requested_by_source: report.requested_by_source || "OCS Doctor",
+      url: reportUrl(report.id),
+    }));
+    setMedicalReports(apiReports);
+  }
+
+  async function handleUpload(report) {
+    if (!report.file) {
+      toast.error("Please choose a file to upload.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", report.file);
+    formData.append("name", report.name);
+    formData.append("report_date", report.report_date);
+    formData.append("requested_by_source", report.requested_by_source || "OCS Doctor");
+    formData.append("requested_by", report.requested_by || "");
+
+    try {
+      await api.postForm("/patient-portal/reports", formData);
+      await reloadReports();
+      setActiveTab("reports");
+      toast.success("Report uploaded to your health records.");
+    } catch (error) {
+      toast.error(error?.message || "Could not upload this report.");
+    }
   }
 
   return (

@@ -26,7 +26,7 @@ function DesktopCareTeamCard({ doctorName }) {
   const isAssigned = Boolean(doctorName);
 
   return (
-    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-1">
+    <section className="desktop-card animate-fade-in-up stagger-1">
       <p className="desktop-section-label">Your Care Team</p>
 
       <div className="mt-5 flex items-center gap-4">
@@ -84,7 +84,7 @@ function DesktopLastVisitCard({ consultation }) {
     : "/health-records";
 
   return (
-    <section className="desktop-card desktop-card-hover animate-fade-in-up stagger-1">
+    <section className="desktop-card animate-fade-in-up stagger-1">
       <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
 
       <div className="mt-6 flex items-center justify-between gap-3">
@@ -153,6 +153,7 @@ function DesktopDashboardHome({
         <div className="desktop-active-visit mb-6 animate-fade-in-up">{activeVisitSlot}</div>
       ) : null}
 
+      <div className="desktop-dashboard-shell">
       <div className="desktop-dashboard-grid">
         <div className="desktop-dashboard-col">
           {profileLastConsultation ? (
@@ -179,6 +180,7 @@ function DesktopDashboardHome({
           <DesktopCareTeamCard doctorName={careTeamDoctorName} />
           <DesktopConciergeCard />
         </div>
+      </div>
       </div>
     </div>
   );

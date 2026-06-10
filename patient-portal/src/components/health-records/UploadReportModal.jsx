@@ -241,7 +241,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
       report_date: reportDate,
       uploaded_at: dayjs().format("YYYY-MM-DD"),
       file_type: isPdf ? "PDF" : "Image",
-      url: URL.createObjectURL(selectedFile),
+      file: selectedFile,
       requested_by_source: requestedBySource,
       requested_by: requestedByName.trim(),
       patient_uploaded: true,

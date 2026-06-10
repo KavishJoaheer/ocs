@@ -1,5 +1,23 @@
 const DIAGNOSIS_PREFIX_REGEX = /^(imp(ression)?\s*:|dx\s*-\s*|dx\s*:|diagnosis\s*:)/i;
 
+function parsePatientReportMeta(details) {
+  const trimmed = String(details || "").trim();
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && parsed.patient_uploaded) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function extractDiagnosisFromNotes(notes) {
   const rawText = String(notes || "").trim();
   if (!rawText) {
@@ -262,15 +280,21 @@ function buildHealthRecordsPayload({
   const reports = attachmentRows.map((row) => {
     const parentReport = labReportById.get(row.report_id);
     const details = parentReport?.report_details || "";
+    const meta = parsePatientReportMeta(details);
     return {
       id: row.id,
       name: row.original_name || row.report_title || "Report",
       report_date: row.report_date || row.created_at,
       uploaded_at: row.created_at,
       file_type: fileTypeFromMime(row.mime_type),
-      requested_by: row.created_by_name || "",
-      requested_by_source: row.created_by_name ? "OCS Doctor" : "",
-      details_preview: details.length > 180 ? `${details.slice(0, 180).trim()}…` : details,
+      requested_by: meta?.requested_by || row.created_by_name || "",
+      requested_by_source:
+        meta?.requested_by_source || (row.created_by_name ? "OCS Doctor" : "Patient Upload"),
+      details_preview: meta
+        ? `Uploaded by patient${meta.requested_by ? ` · ${meta.requested_by}` : ""}`
+        : details.length > 180
+          ? `${details.slice(0, 180).trim()}…`
+          : details,
     };
   });
 

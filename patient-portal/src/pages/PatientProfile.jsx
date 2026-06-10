@@ -40,7 +40,11 @@ function InlineInput({ value, onChange, placeholder, type = "text" }) {
 function EditActions({ onCancel, onSave, saving }) {
   return (
     <div className="flex gap-3">
-      <button type="button" onClick={onCancel} className="flex items-center gap-1 text-[13px] text-[#8a9e9a]">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex min-h-[44px] items-center gap-1 px-1 text-[13px] text-[#8a9e9a] transition hover:text-[#5b7f8a]"
+      >
         <X className="size-3.5" />
         Cancel
       </button>
@@ -48,7 +52,7 @@ function EditActions({ onCancel, onSave, saving }) {
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="flex items-center gap-1 text-[13px] font-semibold text-ocs-orange disabled:opacity-50"
+        className="flex min-h-[44px] items-center gap-1 px-1 text-[13px] font-semibold text-ocs-orange transition hover:text-[#c88710] disabled:opacity-50"
       >
         {saving ? (
           <span className="size-3.5 animate-spin rounded-full border-2 border-[rgba(232,160,32,0.3)] border-t-[var(--ocs-orange)]" />
@@ -65,6 +69,8 @@ function PatientProfile() {
   const { user, updateUser, logout } = usePatientAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retryToken, setRetryToken] = useState(0);
   const [saving, setSaving] = useState(false);
   const [editingContact, setEditingContact] = useState(false);
   const [editingBilling, setEditingBilling] = useState(false);
@@ -79,6 +85,7 @@ function PatientProfile() {
     let ignore = false;
 
     async function fetchProfile() {
+      setLoadError(null);
       try {
         const data = await api.get("/patient-portal/profile");
         if (ignore) return;
@@ -93,18 +100,22 @@ function PatientProfile() {
           insurance_policy_number:
             p.insurance_policy_number || data.patient?.insurance_policy_number || "",
         });
-      } catch {
-        if (!ignore) setProfile(null);
+      } catch (error) {
+        if (!ignore) {
+          setProfile(null);
+          setLoadError(error?.message || "Could not load your profile.");
+        }
       } finally {
         if (!ignore) setLoading(false);
       }
     }
 
+    setLoading(true);
     fetchProfile();
     return () => {
       ignore = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, retryToken]);
 
   const initials = user?.full_name
     ? user.full_name
@@ -295,6 +306,25 @@ function PatientProfile() {
         <div className="profile-hub mx-auto w-full max-w-4xl space-y-4 px-[var(--native-pad-screen)] lg:px-6">
           <div className="profile-concierge-avatar mx-auto animate-pulse bg-white/80" />
           <div className="profile-crafted-card h-48 animate-pulse bg-white/70" />
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="profile-screen native-screen w-full">
+        <div className="profile-teal-band" aria-hidden="true" />
+        <div className="profile-hub mx-auto flex w-full max-w-4xl flex-col items-center px-[var(--native-pad-screen)] py-16 text-center lg:px-6">
+          <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load your profile</p>
+          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryToken((token) => token + 1)}
+            className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );

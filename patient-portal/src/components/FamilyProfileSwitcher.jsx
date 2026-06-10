@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
+import { useFocusTrap } from "../hooks/useFocusTrap.js";
+import { useScrollLock } from "../hooks/useScrollLock.js";
 import { AVATAR_STYLES } from "../lib/familyProfiles.js";
 
 function ProfileAvatar({ profile, size = "md" }) {
@@ -23,6 +25,10 @@ function ProfileAvatar({ profile, size = "md" }) {
 }
 
 function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles }) {
+  const sheetRef = useRef(null);
+  useScrollLock(open);
+  useFocusTrap(open, sheetRef);
+
   useEffect(() => {
     if (!open) return undefined;
 
@@ -30,19 +36,20 @@ function ProfileBottomSheet({ open, onClose, activeProfileId, onSelect, profiles
       if (event.key === "Escape") onClose();
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Switch family profile">
+    <div
+      ref={sheetRef}
+      className="fixed inset-0 z-[60] lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Switch family profile"
+    >
       <button
         type="button"
         aria-label="Close"

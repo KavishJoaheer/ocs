@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { ArrowLeft, ArrowRight, MapPin } from "lucide-react";
+import EmergencyWarningModal from "../../components/request-visit/EmergencyWarningModal.jsx";
 import { URGENCY_LEVELS, URGENCY_META, URGENCY_UNSELECTED } from "./urgency.js";
 
 const SECTION_LABEL =
@@ -10,6 +11,7 @@ function RequestVisitForm() {
   const navigate = useNavigate();
   const { draft, updateDraft } = useOutletContext();
   const addressRef = useRef(null);
+  const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
 
   function handleDifferentAddress() {
     updateDraft({ address: "" });
@@ -20,12 +22,26 @@ function RequestVisitForm() {
     navigate("/request-visit/review");
   }
 
+  function handleUrgencySelect(level) {
+    if (level === "emergency") {
+      updateDraft({ urgency: "emergency" });
+      setEmergencyModalOpen(true);
+      return;
+    }
+    updateDraft({ urgency: level });
+  }
+
   const canReview =
     draft.address.trim().length > 0 && draft.reason.trim().length > 0;
 
   return (
     <div className="mx-auto max-w-[560px] animate-fade-in-fast">
-      {/* Header */}
+      <EmergencyWarningModal
+        open={emergencyModalOpen}
+        onAcknowledge={() => setEmergencyModalOpen(false)}
+        variant="page"
+      />
+
       <Link
         to="/dashboard"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-[#5b7f8a] transition hover:text-[#2d8f98]"
@@ -39,7 +55,6 @@ function RequestVisitForm() {
       </h1>
 
       <div className="mt-10 space-y-9">
-        {/* Section 1 — Who is this visit for? */}
         <section>
           <p className={SECTION_LABEL}>Visit For</p>
           <div className="mt-3 grid grid-cols-2 gap-3">
@@ -67,7 +82,6 @@ function RequestVisitForm() {
           </div>
         </section>
 
-        {/* Section 2 — Location */}
         <section>
           <p className={SECTION_LABEL}>Visiting Address</p>
           <div className="relative mt-3">
@@ -89,7 +103,6 @@ function RequestVisitForm() {
           </button>
         </section>
 
-        {/* Section 3 — Reason & Urgency */}
         <section>
           <p className={SECTION_LABEL}>Reason For Visit</p>
           <textarea
@@ -107,7 +120,7 @@ function RequestVisitForm() {
                 <button
                   key={level}
                   type="button"
-                  onClick={() => updateDraft({ urgency: level })}
+                  onClick={() => handleUrgencySelect(level)}
                   className={[
                     "flex h-[52px] items-center justify-center rounded-full text-sm font-bold transition",
                     active ? URGENCY_META[level].selected : URGENCY_UNSELECTED,
@@ -124,7 +137,6 @@ function RequestVisitForm() {
         </section>
       </div>
 
-      {/* Bottom action */}
       <div className="mt-10">
         <button
           type="button"

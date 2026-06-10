@@ -68,9 +68,35 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+async function apiFormRequest(path, formData, options = {}) {
+  const authToken = getStoredAuthToken();
+  const headers = { ...(options.headers || {}) };
+
+  if (!options.skipAuth && authToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    throw new Error(data?.error || "Something went wrong.");
+  }
+
+  return data;
+}
+
 export const api = {
   get: (path) => apiRequest(path),
   post: (path, body, options = {}) => apiRequest(path, { ...options, method: "POST", body }),
+  postForm: (path, formData, options = {}) => apiFormRequest(path, formData, options),
   put: (path, body, options = {}) => apiRequest(path, { ...options, method: "PUT", body }),
   patch: (path, body, options = {}) => apiRequest(path, { ...options, method: "PATCH", body }),
   delete: (path, options = {}) => apiRequest(path, { ...options, method: "DELETE" }),

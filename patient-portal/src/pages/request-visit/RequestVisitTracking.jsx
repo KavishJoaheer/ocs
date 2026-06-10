@@ -141,7 +141,7 @@ function RequestVisitTracking() {
     <div className="visit-status-screen flex min-h-full flex-col">
       <VisitStatusHeader onBack={() => navigate("/dashboard")} />
 
-      <div className="visit-status-content flex flex-1 flex-col">
+      <div className="visit-status-content visit-status-content--padded flex flex-1 flex-col">
         {/* Hero progression bar */}
         <section className="visit-status-hero" aria-label="Visit progress tracker">
           <VisitProgressTracker activeStepIndex={activeStepIndex} />
