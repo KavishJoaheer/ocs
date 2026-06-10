@@ -1039,7 +1039,53 @@ table {
   gap: 8px;
 }
 
-/* Health Records — crafted card + iOS segmented control */
+/* iOS inset grouped list — flat white block on gray canvas (no floating cards) */
+.native-grouped-list {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 1023px) {
+  .native-grouped-list {
+    box-shadow: none;
+    border: none;
+  }
+}
+
+.native-grouped-row {
+  -webkit-tap-highlight-color: transparent;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+button.native-grouped-row {
+  font: inherit;
+  color: inherit;
+}
+
+.native-grouped-footer {
+  font-family: inherit;
+}
+
+/* iOS segmented control — reset browser button chrome */
+.native-segment-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.native-segment-btn:focus,
+.native-segment-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Health Records — desktop crafted cards */
 @media (min-width: 1024px) {
   .health-records-crafted-card {
     border-radius: 16px;
@@ -1810,11 +1856,6 @@ table {
 }
 
 @media (max-width: 1023px) {
-  .health-records-crafted-card {
-    background: #fff;
-    box-shadow: var(--native-card-shadow);
-  }
-
   .profile-list-card-tinted {
     background: #fff;
   }

@@ -5,6 +5,7 @@ import {
   getClinicalEmptyMessage,
   isNilAllergyValue,
 } from "../../lib/healthRecordsDisplay.js";
+import { NativeGroupedFooter, NativeGroupedList } from "../native/NativeGroupedList.jsx";
 
 const SECTIONS = [
   { key: "medical_history", title: "Past Medical History" },
@@ -41,25 +42,24 @@ function formatSectionValue(section, items) {
 function ClinicalHistoryView({ clinicalHistory }) {
   return (
     <div aria-label="Clinical history">
-      <p className="mb-4 block w-full text-left text-[12px] italic text-gray-500">
-        Read only · Maintained by your OCS doctor
-      </p>
-
-      <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-        {SECTIONS.map((section) => {
+      <NativeGroupedList>
+        {SECTIONS.map((section, idx) => {
           const value = formatSectionValue(section, clinicalHistory[section.key] ?? []);
 
           return (
             <div
               key={section.key}
-              className="p-4 border-b border-gray-100 last:border-b-0"
+              className={[
+                "px-4 py-3",
+                idx < SECTIONS.length - 1 ? "border-b border-gray-100" : "",
+              ].join(" ")}
             >
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                 {section.title}
               </p>
               <p
                 className={[
-                  "text-[15px]",
+                  "mt-1 text-[15px] leading-snug",
                   value.isEmpty
                     ? "italic text-gray-400"
                     : value.hasAllergyWarning
@@ -77,7 +77,11 @@ function ClinicalHistoryView({ clinicalHistory }) {
             </div>
           );
         })}
-      </div>
+      </NativeGroupedList>
+
+      <NativeGroupedFooter>
+        Read only · Maintained by your OCS doctor
+      </NativeGroupedFooter>
     </div>
   );
 }

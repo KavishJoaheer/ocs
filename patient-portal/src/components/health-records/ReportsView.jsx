@@ -1,82 +1,69 @@
-import { Download, Eye, FileUp, FolderHeart } from "lucide-react";
+import { ChevronRight, FileUp, FolderHeart } from "lucide-react";
 import { formatHealthDate } from "../../lib/healthRecordsDisplay.js";
+import { NativeGroupedFooter, NativeGroupedList, NativeGroupedRow } from "../native/NativeGroupedList.jsx";
 
-function RequestedByBadge({ source }) {
-  const isOcs = source === "OCS Doctor";
-  return (
-    <span
-      className={[
-        "squircle-inner inline-flex px-2.5 py-1 text-[11px] font-semibold",
-        isOcs
-          ? "bg-[rgba(59,125,216,0.12)] text-[#3b7dd8]"
-          : "bg-[rgba(138,158,154,0.14)] text-[#6e7f7c]",
-      ].join(" ")}
-    >
-      Requested by: {source}
-    </span>
-  );
-}
-
-function ReportCard({ report }) {
+function ReportRow({ report, isLast = false }) {
   const dateLabel = report.report_date
     ? formatHealthDate(report.report_date)
     : formatHealthDate(report.uploaded_at);
+  const source = report.requested_by_source || "OCS Doctor";
 
   return (
-    <article
-      className="health-records-crafted-card w-full bg-white max-lg:squircle-outer max-lg:ocs-elevate"
-      style={{ padding: "var(--native-pad-card)" }}
-    >
-      <div className="flex items-start justify-between gap-4">
+    <>
+      <NativeGroupedRow
+        href={report.url}
+        isLast={isLast}
+        ariaLabel={`View ${report.name}`}
+        className="lg:hidden"
+      >
         <div className="min-w-0 flex-1">
-          <p className="native-display text-[16px] leading-snug text-[#1a5c52]">{report.name}</p>
-          <p className="mt-1.5 text-[13px] text-[#8a9e9a]">{dateLabel}</p>
-          <div className="mt-3">
-            <RequestedByBadge source={report.requested_by_source || "OCS Doctor"} />
-          </div>
+          <p className="truncate text-[17px] leading-snug text-gray-900">{report.name}</p>
+          <p className="mt-0.5 truncate text-[15px] text-gray-500">
+            {dateLabel} · {source}
+          </p>
         </div>
+        <ChevronRight className="size-[17px] shrink-0 text-gray-300" strokeWidth={2} aria-hidden="true" />
+      </NativeGroupedRow>
 
-        <div className="flex shrink-0 gap-2">
+      <article
+        className={[
+          "health-records-crafted-card hidden w-full bg-white lg:block",
+          isLast ? "" : "mb-4",
+        ].join(" ")}
+        style={{ padding: "var(--native-pad-card)" }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="native-display text-[16px] leading-snug text-[#1a5c52]">{report.name}</p>
+            <p className="mt-1.5 text-[13px] text-[#8a9e9a]">{dateLabel}</p>
+            <p className="mt-1 text-[13px] text-gray-500">{source}</p>
+          </div>
           <a
             href={report.url}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`View ${report.name}`}
-            className="squircle-inner flex size-11 min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center bg-[rgba(26,160,140,0.08)] text-[#2d8f98] transition hover:bg-[rgba(26,160,140,0.14)] active:scale-95"
+            className="shrink-0 text-[15px] font-medium text-[#0D9E8A]"
           >
-            <Eye className="size-[18px]" strokeWidth={1.75} />
-          </a>
-          <a
-            href={report.url}
-            download
-            aria-label={`Download ${report.name}`}
-            className="squircle-inner flex size-11 min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center bg-[rgba(26,160,140,0.08)] text-[#2d8f98] transition hover:bg-[rgba(26,160,140,0.14)] active:scale-95"
-          >
-            <Download className="size-[18px]" strokeWidth={1.75} />
+            View
           </a>
         </div>
-      </div>
-    </article>
+      </article>
+    </>
   );
 }
 
 function ReportsEmptyState({ onUpload }) {
   return (
-    <div className="flex flex-col items-center px-4 py-16 text-center">
-      <div
-        className="flex size-[104px] items-center justify-center rounded-full bg-[rgba(45,143,152,0.08)]"
-        aria-hidden="true"
-      >
-        <FolderHeart className="size-14 text-[#6B9E95]" strokeWidth={1.25} />
-      </div>
-      <h2 className="native-display mt-6 text-[20px] text-[#1a5c52]">Your reports live here</h2>
-      <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#8a9e9a]">
+    <div className="flex flex-col items-center px-4 py-14 text-center">
+      <FolderHeart className="size-10 text-gray-300" strokeWidth={1.25} />
+      <h2 className="mt-4 text-[17px] font-semibold text-gray-900">No reports yet</h2>
+      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-gray-500">
         OCS care team reports appear automatically. You can also upload your own.
       </p>
       <button
         type="button"
         onClick={onUpload}
-        className="squircle-inner mt-6 bg-[#e8a020] px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]"
+        className="mt-6 rounded-xl bg-[#e8a020] px-6 py-3 text-[15px] font-semibold text-white transition active:opacity-90"
       >
         Upload Report
       </button>
@@ -84,7 +71,6 @@ function ReportsEmptyState({ onUpload }) {
   );
 }
 
-/** Medical & lab reports list with optional FAB upload trigger. */
 function ReportsView({ reports, onUpload }) {
   const sorted = [...reports].sort((a, b) => {
     const dateA = a.report_date || a.uploaded_at;
@@ -93,13 +79,13 @@ function ReportsView({ reports, onUpload }) {
   });
 
   return (
-    <div className="relative">
+    <div className="relative" aria-label="Medical and lab reports">
       {sorted.length > 0 ? (
         <div className="mb-4 hidden justify-end lg:flex">
           <button
             type="button"
             onClick={onUpload}
-            className="squircle-inner flex items-center gap-2 bg-[#e8a020] px-5 py-2.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.22)] transition hover:brightness-105 active:scale-[0.98]"
+            className="flex items-center gap-2 rounded-xl bg-[#e8a020] px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-105 active:scale-[0.98]"
           >
             <FileUp className="size-4" strokeWidth={2} />
             Upload Report
@@ -110,26 +96,40 @@ function ReportsView({ reports, onUpload }) {
       {sorted.length === 0 ? (
         <ReportsEmptyState onUpload={onUpload} />
       ) : (
-        <ul className="space-y-4" aria-label="Medical and lab reports">
-          {sorted.map((report, idx) => (
-            <li key={report.id} className={`animate-fade-in-up stagger-${Math.min(idx + 1, 6)}`}>
-              <ReportCard report={report} />
-            </li>
-          ))}
-        </ul>
-      )}
+        <>
+          <NativeGroupedList className="lg:hidden">
+            {sorted.map((report, idx) => (
+              <ReportRow
+                key={report.id}
+                report={report}
+                isLast={idx === sorted.length - 1}
+              />
+            ))}
+          </NativeGroupedList>
 
-      {sorted.length > 0 ? (
-        <button
-          type="button"
-          onClick={onUpload}
-          aria-label="Upload report"
-          className="fixed bottom-[calc(var(--native-nav-height)+var(--native-safe-bottom)+16px)] right-[var(--native-pad-screen)] z-30 flex items-center gap-2 rounded-full bg-[#2d8f98] px-5 py-3.5 text-[14px] font-bold text-white shadow-[0_8px_24px_rgba(45,143,152,0.35)] transition active:scale-[0.97] lg:hidden"
-        >
-          <FileUp className="size-[18px]" strokeWidth={2} />
-          Upload Report
-        </button>
-      ) : null}
+          <div className="hidden lg:block">
+            {sorted.map((report, idx) => (
+              <ReportRow
+                key={report.id}
+                report={report}
+                isLast={idx === sorted.length - 1}
+              />
+            ))}
+          </div>
+
+          <div className="mt-6 lg:hidden">
+            <NativeGroupedList>
+              <NativeGroupedRow onClick={onUpload} isLast ariaLabel="Upload report">
+                <FileUp className="size-[18px] shrink-0 text-[#0D9E8A]" strokeWidth={2} />
+                <span className="text-[17px] text-[#0D9E8A]">Upload Report</span>
+              </NativeGroupedRow>
+            </NativeGroupedList>
+            <NativeGroupedFooter>
+              Tap a report to view it. PDFs open in a new tab.
+            </NativeGroupedFooter>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,25 +1,23 @@
 import { FolderHeart } from "lucide-react";
 import RequestVisitCta from "../request-visit/RequestVisitCta.jsx";
+import { NativeGroupedList } from "../native/NativeGroupedList.jsx";
 import ConsultationCard from "./ConsultationCard.jsx";
 
 function ConsultationsEmptyState() {
   return (
-    <div className="flex flex-col items-center px-4 py-16 text-center">
-      <FolderHeart className="size-11 text-[rgba(26,160,140,0.35)]" strokeWidth={1.5} />
-      <h2 className="native-display mt-5 text-[20px] text-[#1a5c52]">
-        Your health story starts here
-      </h2>
-      <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#8a9e9a]">
-        After your first home visit, consultation history will appear here.
+    <div className="flex flex-col items-center px-4 py-14 text-center">
+      <FolderHeart className="size-10 text-gray-300" strokeWidth={1.5} />
+      <h2 className="mt-4 text-[17px] font-semibold text-gray-900">No consultations yet</h2>
+      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-gray-500">
+        After your first home visit, your consultation history will appear here.
       </p>
-      <RequestVisitCta className="squircle-inner mt-6 items-center justify-center bg-[#e8a020] px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]">
+      <RequestVisitCta className="mt-6 rounded-xl bg-[#e8a020] px-6 py-3 text-[15px] font-semibold text-white transition active:opacity-90">
         Request a Home Visit
       </RequestVisitCta>
     </div>
   );
 }
 
-/** Chronological consultation list — newest first. */
 function ConsultationsView({ consultations }) {
   const sorted = [...consultations].sort(
     (a, b) => new Date(b.date) - new Date(a.date),
@@ -30,13 +28,27 @@ function ConsultationsView({ consultations }) {
   }
 
   return (
-    <ul className="space-y-4" aria-label="Consultation history">
-      {sorted.map((consultation, idx) => (
-        <li key={consultation.id} className={`animate-fade-in-up stagger-${Math.min(idx + 1, 6)}`}>
-          <ConsultationCard consultation={consultation} />
-        </li>
-      ))}
-    </ul>
+    <div aria-label="Consultation history">
+      <NativeGroupedList className="lg:hidden">
+        {sorted.map((consultation, idx) => (
+          <ConsultationCard
+            key={consultation.id}
+            consultation={consultation}
+            isLast={idx === sorted.length - 1}
+          />
+        ))}
+      </NativeGroupedList>
+
+      <div className="hidden lg:block">
+        {sorted.map((consultation, idx) => (
+          <ConsultationCard
+            key={consultation.id}
+            consultation={consultation}
+            isLast={idx === sorted.length - 1}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 

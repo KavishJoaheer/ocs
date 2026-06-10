@@ -129,35 +129,40 @@ function PatientHealthRecords() {
 
   return (
     <div className="native-screen mx-auto w-full max-w-[720px] lg:max-w-4xl">
-      {/* Mobile: compact sticky native header */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pb-3 pt-safe max-lg:-mx-[var(--native-pad-screen)] max-lg:px-[var(--native-pad-screen)] lg:animate-fade-in-up lg:pb-6">
+      <header className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] border-b border-gray-200/60 bg-[rgba(242,242,247,0.92)] px-[var(--native-pad-screen)] pt-safe backdrop-blur-xl backdrop-saturate-150 max-lg:pb-0 lg:animate-fade-in-up lg:mx-0 lg:border-0 lg:bg-transparent lg:pb-6 lg:backdrop-filter-none">
         <div className="hidden items-center gap-2 lg:flex">
           <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.5} />
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
             Health Records
           </p>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900 lg:mt-2 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
-          Your Health Records.
+        <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 lg:mt-2 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
+          Health Records
         </h1>
         <p className="mt-2 hidden text-[14px] leading-relaxed text-[#8a9e9a] lg:block">
           Consultations, reports, and clinical background — in one calm place.
         </p>
+        <div className="max-lg:pb-3 lg:hidden">
+          <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+        </div>
       </header>
 
-      <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+      <div className="hidden lg:block">
+        <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+      </div>
 
-      {/* Active view */}
-      <div
-        className="animate-fade-in-up stagger-2 min-h-[40vh] transition-opacity duration-200"
-        role="tabpanel"
-        aria-label={activeTab}
-      >
+      <div className="min-h-[40vh]" role="tabpanel" aria-label={activeTab}>
         {loading ? (
-          <div className="space-y-4">
-            <div className="squircle-outer h-28 animate-pulse bg-white/70" />
-            <div className="squircle-outer h-28 animate-pulse bg-white/70" />
-          </div>
+          <>
+            <div className="native-grouped-list overflow-hidden rounded-2xl bg-white lg:hidden">
+              <div className="h-[72px] animate-pulse border-b border-gray-100 bg-gray-50/80" />
+              <div className="h-[72px] animate-pulse bg-gray-50/60" />
+            </div>
+            <div className="hidden space-y-4 lg:block">
+              <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
+              <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
+            </div>
+          </>
         ) : loadError ? (
           <div className="flex flex-col items-center px-4 py-16 text-center">
             <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load health records</p>

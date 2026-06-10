@@ -1,65 +1,69 @@
+import { Link } from "react-router-dom";
 import dayjs from "dayjs";
+import { ChevronRight } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
-
-function doctorInitials(name) {
-  const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "DR";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
+import { NativeGroupedRow } from "../native/NativeGroupedList.jsx";
 
 function formatConsultationDateTime(date, time) {
   const dateLabel = dayjs(date).isValid() ? dayjs(date).format("D MMMM YYYY") : date;
   if (!time) return dateLabel;
-  return `${dateLabel} • ${time}`;
+  return `${dateLabel} · ${time}`;
 }
 
-/** Static, read-only consultation summary card for the Health Records feed. */
-function ConsultationCard({ consultation }) {
+function ConsultationCard({ consultation, isLast = false }) {
   const doctorName = formatDoctorName(consultation.doctor_name);
   const specialty = consultation.doctor_specialty || "General Practitioner";
   const visitType = consultation.visit_type || "Home Visit";
   const dateTimeLabel = formatConsultationDateTime(consultation.date, consultation.time);
+  const visitPath = consultation.id
+    ? `/health-records/visits/${consultation.id}`
+    : "/health-records";
 
   return (
-    <article
-      className="health-records-crafted-card w-full bg-white max-lg:squircle-outer max-lg:ocs-elevate-timeline"
-      style={{ padding: "var(--native-pad-card)" }}
-    >
-      {/* Top row — date/time + visit badge */}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] font-medium leading-none text-[#5b7f8a]">{dateTimeLabel}</p>
-        <span className="consultation-visit-badge inline-flex shrink-0 items-center leading-none">
-          {visitType}
-        </span>
-      </div>
+    <>
+      {/* Mobile — native grouped row */}
+      <NativeGroupedRow
+        to={visitPath}
+        isLast={isLast}
+        ariaLabel={`${doctorName}, ${dateTimeLabel}`}
+        className="lg:hidden"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[17px] leading-snug text-gray-900">{doctorName}</p>
+          <p className="mt-0.5 truncate text-[15px] text-gray-500">
+            {dateTimeLabel} · {visitType}
+          </p>
+          {consultation.diagnosis ? (
+            <p className="mt-0.5 truncate text-[15px] text-gray-500">{consultation.diagnosis}</p>
+          ) : null}
+        </div>
+        <ChevronRight className="size-[17px] shrink-0 text-gray-300" strokeWidth={2} aria-hidden="true" />
+      </NativeGroupedRow>
 
-      {/* Doctor + diagnosis — horizontal on desktop */}
-      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(45,143,152,0.2)]"
-            aria-hidden="true"
-          >
-            {doctorInitials(consultation.doctor_name)}
-          </div>
-          <div className="min-w-0 flex-1">
+      {/* Desktop — card layout */}
+      <Link
+        to={visitPath}
+        className={[
+          "health-records-crafted-card hidden w-full bg-white transition hover:brightness-[1.01] lg:block",
+          isLast ? "" : "mb-4",
+        ].join(" ")}
+        style={{ padding: "var(--native-pad-card)" }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[13px] font-medium leading-none text-[#5b7f8a]">{dateTimeLabel}</p>
+          <span className="text-[12px] font-medium text-gray-500">{visitType}</span>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-6">
+          <div className="min-w-0">
             <p className="native-display text-[16px] leading-snug text-[#1a5c52]">{doctorName}</p>
             <p className="mt-0.5 text-[13px] text-[#8a9e9a]">{specialty}</p>
           </div>
+          {consultation.diagnosis ? (
+            <p className="shrink-0 text-[15px] text-gray-700">{consultation.diagnosis}</p>
+          ) : null}
         </div>
-
-        {consultation.diagnosis ? (
-          <div className="lg:shrink-0 lg:text-right">
-            <p className="consultation-micro-label">Diagnosis</p>
-            <span className="squircle-inner mt-2 inline-flex bg-[rgba(26,160,140,0.1)] px-3.5 py-1.5 text-[13px] font-medium text-[#2d8f98]">
-              {consultation.diagnosis}
-            </span>
-          </div>
-        ) : null}
-      </div>
-    </article>
+      </Link>
+    </>
   );
 }
 

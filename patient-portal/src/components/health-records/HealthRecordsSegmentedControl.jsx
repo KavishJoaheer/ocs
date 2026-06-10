@@ -1,13 +1,13 @@
 const TABS = [
-  { id: "consultations", label: "Consultations" },
-  { id: "reports", label: "Reports" },
-  { id: "clinical", label: "Clinical History" },
+  { id: "consultations", label: "Consultations", mobileLabel: "Consultations" },
+  { id: "reports", label: "Reports", mobileLabel: "Reports" },
+  { id: "clinical", label: "Clinical History", mobileLabel: "Clinical" },
 ];
 
 function HealthRecordsSegmentedControl({ activeTab, onChange }) {
   return (
     <div
-      className="flex p-1 bg-gray-100 rounded-xl w-full max-w-sm mx-auto mb-6"
+      className="native-segment flex w-full gap-0 rounded-xl bg-gray-100 p-1 mb-5"
       role="tablist"
       aria-label="Health records sections"
     >
@@ -20,13 +20,15 @@ function HealthRecordsSegmentedControl({ activeTab, onChange }) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
-            className={
+            className={[
+              "native-segment-btn flex-1 rounded-lg py-2 text-center text-[13px] whitespace-nowrap transition-all duration-150",
               isActive
-                ? "flex-1 py-1.5 bg-white rounded-lg shadow-sm text-[13px] font-semibold text-center text-teal-900 whitespace-nowrap"
-                : "flex-1 py-1.5 text-[13px] font-medium text-center text-gray-500 whitespace-nowrap"
-            }
+                ? "bg-white font-semibold text-teal-900 shadow-sm"
+                : "font-medium text-gray-500",
+            ].join(" ")}
           >
-            {tab.label}
+            <span className="lg:hidden">{tab.mobileLabel}</span>
+            <span className="hidden lg:inline">{tab.label}</span>
           </button>
         );
       })}
