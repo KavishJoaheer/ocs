@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import FamilyProfileSwitcher from "../components/FamilyProfileSwitcher.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
 
@@ -111,20 +112,32 @@ function PatientAppointments() {
     .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
-    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] lg:max-w-3xl">
-      <header className="animate-fade-in-up pb-2">
-        <h1 className="native-display text-[28px] leading-tight text-[#1a5c52] lg:text-4xl">
+    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] px-[var(--native-pad-screen)] font-sans lg:max-w-3xl lg:px-0">
+      <div className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] flex min-h-12 items-center justify-between border-b border-teal-500/10 bg-white/90 px-[var(--native-pad-screen)] pt-safe backdrop-blur-md lg:hidden">
+        <img
+          src="/ocs-medecins-mark.png"
+          alt="OCS Care"
+          className="h-7 w-7 shrink-0 object-contain"
+        />
+        <p className="absolute left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-[2px] text-[#2d8f98]">
+          OCS Care
+        </p>
+        <FamilyProfileSwitcher variant="avatar" />
+      </div>
+
+      <header className="animate-fade-in-up pb-2 pt-3 lg:pt-0">
+        <h1 className="native-display text-[26px] leading-tight text-[#1a5c52] lg:text-4xl">
           Your Appointments.
         </h1>
-        <p className="mt-2 text-[15px] leading-relaxed text-[#5b7f8a]">
+        <p className="mt-1.5 text-[15px] leading-relaxed text-[#5b7f8a]">
           Scheduled by your OCS care team.
         </p>
       </header>
 
       {loading ? (
-        <div className="mt-8 space-y-4">
-          <div className="visits-card h-36 animate-pulse bg-white/70" />
-          <div className="visits-card h-36 animate-pulse bg-white/70" />
+        <div className="mt-6 space-y-4 lg:mt-8">
+          <div className="h-40 animate-pulse rounded-3xl border border-teal-100 bg-white/70 max-lg:shadow-sm lg:visits-card" />
+          <div className="h-28 animate-pulse rounded-2xl bg-white/70 lg:visits-card" />
         </div>
       ) : loadError ? (
         <div className="mt-8 flex flex-col items-center px-4 py-16 text-center">
@@ -140,14 +153,14 @@ function PatientAppointments() {
         </div>
       ) : (
         <>
-          <section className="animate-fade-in-up stagger-1 mt-8 space-y-4">
+          <section className="animate-fade-in-up stagger-1 mt-6 space-y-3 lg:mt-8 lg:space-y-4">
             <SectionLabel>Upcoming</SectionLabel>
             {upcoming.length === 0 ? (
               <p className="text-[14px] italic text-[#8a9e9a]">
                 No upcoming appointments. Your OCS care team will schedule these for you.
               </p>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3 lg:space-y-4">
                 {upcoming.map((appointment, idx) => (
                   <div
                     key={appointment.id}
@@ -164,7 +177,7 @@ function PatientAppointments() {
           </section>
 
           <section
-            className={`animate-fade-in-up mt-12 space-y-4 ${
+            className={`animate-fade-in-up mt-10 space-y-3 lg:mt-12 lg:space-y-4 ${
               upcoming.length > 0 ? `stagger-${Math.min(upcoming.length + 2, 6)}` : "stagger-2"
             }`}
           >
@@ -172,13 +185,16 @@ function PatientAppointments() {
             {past.length === 0 ? (
               <p className="text-[14px] italic text-[#8a9e9a]">No past appointments yet.</p>
             ) : (
-              <div className="space-y-4">
+              <div className="visits-timeline max-lg:space-y-5 lg:space-y-4">
                 {past.map((appointment, idx) => (
                   <div
                     key={appointment.id}
                     className={`animate-fade-in-up stagger-${Math.min(idx + 3, 6)}`}
                   >
-                    <PastAppointmentCard appointment={appointment} />
+                    <PastAppointmentCard
+                      appointment={appointment}
+                      isLast={idx === past.length - 1}
+                    />
                   </div>
                 ))}
               </div>
