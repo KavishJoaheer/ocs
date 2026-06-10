@@ -1,6 +1,5 @@
 import dayjs from "dayjs";
-import { CalendarPlus, Clock } from "lucide-react";
-import { downloadAppointmentIcs } from "../../lib/calendarExport.js";
+import { Clock } from "lucide-react";
 import DoctorAvatar from "./DoctorAvatar.jsx";
 
 function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
@@ -39,21 +38,13 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           ) : null}
         </div>
 
-        {/* Right — badge & calendar action */}
-        <div className="flex shrink-0 flex-row items-center justify-between gap-3 border-t border-[rgba(0,0,0,0.04)] pt-4 lg:flex-col lg:items-end lg:justify-center lg:self-stretch lg:border-t-0 lg:pt-0">
+        {/* Right — badge */}
+        <div className="flex shrink-0 flex-row items-center justify-end gap-3 border-t border-[rgba(0,0,0,0.04)] pt-4 lg:flex-col lg:items-end lg:justify-center lg:self-stretch lg:border-t-0 lg:pt-0">
           {isNextVisit ? (
             <span className="visits-badge-teal">Next Visit</span>
           ) : (
             <span className="visits-badge-teal-muted">Upcoming</span>
           )}
-          <button
-            type="button"
-            onClick={() => downloadAppointmentIcs(appointment)}
-            className="visits-calendar-btn"
-          >
-            <CalendarPlus className="size-4" strokeWidth={1.75} />
-            Add to Calendar
-          </button>
         </div>
       </div>
     </article>

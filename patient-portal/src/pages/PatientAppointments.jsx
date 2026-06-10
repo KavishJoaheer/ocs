@@ -28,15 +28,26 @@ function formatTimeWindow(time, kind) {
 }
 
 function typeLabel(status, kind) {
-  if (kind === "review") return "Scheduled Review";
-  if (status === "completed") return "Consultation";
+  if (kind === "review") return "Follow-up Review";
+  if (status === "completed") return "Home Visit Consultation";
   if (status === "cancelled") return "Cancelled";
   return "Scheduled Visit";
+}
+
+function formatAppointmentNote(row, doctorName, kind) {
+  if (kind === "review" && doctorName) {
+    return `Follow-up check-up with ${doctorName}.`;
+  }
+
+  const raw = String(row.reason || "").trim();
+  if (!raw) return null;
+  return raw.endsWith(".") ? raw : `${raw}.`;
 }
 
 function mapAppointment(row) {
   const time = formatTime(row.appointment_time);
   const kind = row.kind || null;
+  const doctorName = withDoctorPrefix(row.doctor_name);
 
   return {
     id: row.id,
@@ -44,10 +55,10 @@ function mapAppointment(row) {
     time: row.appointment_time || time,
     time_window: row.time_window || formatTimeWindow(row.appointment_time, kind),
     type: typeLabel(row.status, kind),
-    doctor_name: withDoctorPrefix(row.doctor_name),
+    doctor_name: doctorName,
     status: row.status,
     kind,
-    note: row.reason || null,
+    note: formatAppointmentNote(row, doctorName, kind),
     consultation_id: row.consultation_id || null,
   };
 }

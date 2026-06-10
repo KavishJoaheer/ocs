@@ -261,7 +261,7 @@ function PatientProfile() {
               billingForm.insurance_provider ? "text-[#1a5c52]" : "text-[#8a9e9a]",
             ].join(" ")}
           >
-            {billingForm.insurance_provider || "Tap to add provider"}
+            {billingForm.insurance_provider || "Add provider"}
           </p>
         )}
       </ProfileListRow>
@@ -281,7 +281,7 @@ function PatientProfile() {
               billingForm.insurance_policy_number ? "text-[#1a5c52]" : "text-[#8a9e9a]",
             ].join(" ")}
           >
-            {billingForm.insurance_policy_number || "Tap to add policy number"}
+            {billingForm.insurance_policy_number || "Add policy number"}
           </p>
         )}
       </ProfileListRow>
@@ -290,12 +290,23 @@ function PatientProfile() {
 
   const emergencyCard = (
     <ProfileListCard title="Emergency Contact">
-      <ProfileListRow icon={UserCircle} label="Name" value={profile?.next_of_kin_name} />
-      <ProfileListRow icon={Phone} label="Phone" value={profile?.next_of_kin_phone} />
+      <ProfileListRow
+        icon={UserCircle}
+        label="Name"
+        value={profile?.next_of_kin_name}
+        emptyLabel="Not yet added"
+      />
+      <ProfileListRow
+        icon={Phone}
+        label="Phone"
+        value={profile?.next_of_kin_phone}
+        emptyLabel="Not yet added"
+      />
       <ProfileListRow
         icon={Users}
         label="Relationship"
         value={profile?.next_of_kin_relationship}
+        emptyLabel="Not yet added"
         isLast
       />
     </ProfileListCard>

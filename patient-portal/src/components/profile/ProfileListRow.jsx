@@ -1,5 +1,16 @@
 /** Single row inside a native-style list card. */
-function ProfileListRow({ icon: Icon, label, value, isLast = false, children, valueClassName = "" }) {
+function ProfileListRow({
+  icon: Icon,
+  label,
+  value,
+  isLast = false,
+  children,
+  valueClassName = "",
+  emptyLabel = "—",
+  emptyValueClassName = "",
+}) {
+  const isEmpty = value == null || String(value).trim() === "";
+
   return (
     <>
       <div className="flex items-center gap-3 px-5 py-3.5">
@@ -11,11 +22,13 @@ function ProfileListRow({ icon: Icon, label, value, isLast = false, children, va
           {children ?? (
             <p
               className={[
-                "mt-0.5 text-[15px] font-semibold leading-snug text-[#1a5c52]",
-                valueClassName,
+                "mt-0.5 text-[15px] leading-snug",
+                isEmpty
+                  ? ["font-light italic text-[#9ab0ab]", emptyValueClassName].join(" ")
+                  : ["font-semibold text-[#1a5c52]", valueClassName].join(" "),
               ].join(" ")}
             >
-              {value || "—"}
+              {isEmpty ? emptyLabel : value}
             </p>
           )}
         </div>

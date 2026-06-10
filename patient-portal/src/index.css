@@ -1133,7 +1133,7 @@ table {
   margin-left: calc(-1 * var(--native-pad-screen));
   margin-right: calc(-1 * var(--native-pad-screen));
   padding-top: env(safe-area-inset-top, 0px);
-  background: var(--ocs-teal-strong);
+  background: linear-gradient(135deg, #1a5c52 0%, #0d9e8a 100%);
 }
 
 @media (min-width: 1024px) {
