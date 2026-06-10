@@ -128,21 +128,21 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-screen mx-auto flex w-full max-w-[720px] flex-col lg:max-w-4xl lg:pt-10">
-      <header className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] border-b border-gray-200/60 bg-[rgba(242,242,247,0.92)] px-[var(--native-pad-screen)] pt-safe backdrop-blur-xl backdrop-saturate-150 max-lg:pb-0 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:backdrop-filter-none lg:animate-fade-in-up">
+    <div className="native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:pt-10">
+      <header className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] px-[var(--native-pad-screen)] pt-safe max-lg:static max-lg:border-0 max-lg:bg-transparent max-lg:pb-0 max-lg:shadow-none max-lg:backdrop-filter-none lg:animate-fade-in-up lg:mx-0 lg:p-0">
         <div className="hidden items-center gap-2 lg:flex">
           <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.5} />
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
             Health Records
           </p>
         </div>
-        <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 lg:mt-0 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
+        <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 max-lg:font-sans lg:mt-0 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
           Health Records
         </h1>
         <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
           Your health journey, securely organised.
         </p>
-        <div className="max-lg:pb-3 lg:hidden">
+        <div className="mt-3 lg:hidden">
           <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
         </div>
       </header>
@@ -155,12 +155,12 @@ function PatientHealthRecords() {
         />
       </div>
 
-      <div className="min-h-[40vh] w-full" role="tabpanel" aria-label={activeTab}>
+      <div className="min-h-[40vh] w-full max-lg:pt-2" role="tabpanel" aria-label={activeTab}>
         {loading ? (
           <>
-            <div className="native-grouped-list overflow-hidden rounded-2xl bg-white lg:hidden">
-              <div className="h-[72px] animate-pulse border-b border-gray-100 bg-gray-50/80" />
-              <div className="h-[72px] animate-pulse bg-gray-50/60" />
+            <div className="flex flex-col gap-4 lg:hidden">
+              <div className="h-36 animate-pulse rounded-2xl border border-gray-100 bg-white shadow-sm" />
+              <div className="h-36 animate-pulse rounded-2xl border border-gray-100 bg-white shadow-sm" />
             </div>
             <div className="hidden space-y-4 lg:block">
               <div className="h-28 animate-pulse rounded-2xl bg-white/70" />

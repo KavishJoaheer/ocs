@@ -60,33 +60,32 @@ function ClinicalHistoryTile({ section, value }) {
   const Icon = section.icon;
 
   return (
-    <article className="flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-      <div>
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-teal-600">
-            <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
-          </div>
-          <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+    <article className="mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm last:mb-0 lg:mb-0 lg:p-6">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-600 lg:h-10 lg:w-10">
+          <Icon className="size-[17px] lg:size-[18px]" strokeWidth={1.75} aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 lg:text-[11px]">
             {section.title}
           </p>
-        </div>
-
-        <p
-          className={[
-            value.isEmpty
-              ? "text-[15px] font-normal italic leading-relaxed text-gray-400"
-              : "text-[16px] font-medium leading-relaxed text-gray-900",
-            !value.isEmpty && value.hasAllergyWarning ? "text-[#c45c3e]" : "",
-          ].join(" ")}
-        >
-          {value.primary}
-        </p>
-
-        {value.details.length > 0 ? (
-          <p className="mt-2 text-[13px] leading-relaxed text-gray-500">
-            {value.details.join(" · ")}
+          <p
+            className={[
+              "mt-2 text-[15px] font-medium leading-relaxed lg:mt-3 lg:text-[16px]",
+              value.isEmpty
+                ? "font-normal italic text-gray-400"
+                : "text-gray-900",
+              !value.isEmpty && value.hasAllergyWarning ? "text-[#c45c3e]" : "",
+            ].join(" ")}
+          >
+            {value.primary}
           </p>
-        ) : null}
+          {value.details.length > 0 ? (
+            <p className="mt-2 text-[13px] leading-relaxed text-gray-500">
+              {value.details.join(" · ")}
+            </p>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -94,15 +93,15 @@ function ClinicalHistoryTile({ section, value }) {
 
 function ClinicalHistoryView({ clinicalHistory }) {
   return (
-    <div aria-label="Clinical history">
-      <div className="mb-4 flex justify-end lg:mb-6">
-        <p className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400">
-          <Lock className="size-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+    <div className="font-sans" aria-label="Clinical history">
+      <div className="mb-4 flex justify-start lg:mb-6 lg:justify-end">
+        <p className="flex items-center gap-1 text-[11px] italic text-gray-400 lg:not-italic lg:font-medium lg:text-[12px]">
+          <Lock className="size-3 shrink-0" strokeWidth={2} aria-hidden="true" />
           Read only · Maintained by your OCS doctor
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
+      <div className="flex flex-col lg:grid lg:grid-cols-2 lg:gap-6">
         {SECTIONS.map((section) => (
           <ClinicalHistoryTile
             key={section.key}

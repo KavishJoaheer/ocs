@@ -66,8 +66,8 @@ function UploadFormFields({
           handleFileSelect(e.dataTransfer.files[0]);
         }}
         className={[
-          "upload-dropzone squircle-inner cursor-pointer border-none px-4 py-9 text-center transition active:scale-[0.99] lg:rounded-[14px] lg:py-10",
-          dragOver ? "upload-dropzone--active max-lg:bg-[rgba(26,160,140,0.12)]" : "",
+          "upload-dropzone squircle-inner cursor-pointer border-none px-4 py-9 text-center transition active:scale-[0.99] max-lg:rounded-lg max-lg:border max-lg:border-gray-100 max-lg:bg-gray-50 lg:rounded-[14px] lg:py-10",
+          dragOver ? "upload-dropzone--active max-lg:bg-gray-100" : "",
         ].join(" ")}
       >
         <FileUp className="mx-auto size-9 text-[#2d8f98]" strokeWidth={1.5} />
@@ -327,12 +327,12 @@ function UploadReportModal({ open, onClose, onUpload }) {
         onClick={(e) => e.stopPropagation()}
       >
         <span
-          className="mx-auto mb-4 block h-1.5 w-12 rounded-full bg-gray-300"
+          className="mx-auto mb-5 block h-1 w-10 rounded-full bg-gray-300"
           aria-hidden="true"
         />
 
         <div className="upload-sheet-scroll max-h-[min(80dvh,100dvh-env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-contain">
-          <h2 className="native-display text-left text-[20px] text-[#1a5c52]">
+          <h2 className="text-left text-[20px] font-bold text-[#1a5c52]">
             Upload a Medical Report
           </h2>
           <p className="mt-2 text-left text-[14px] leading-relaxed text-[#8a9e9a]">

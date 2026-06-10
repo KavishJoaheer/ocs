@@ -27,7 +27,7 @@ function ConsultationsView({ consultations }) {
   }
 
   return (
-    <div className="flex flex-col gap-4" aria-label="Consultation history">
+    <div className="flex flex-col gap-4 font-sans" aria-label="Consultation history">
       {sorted.map((consultation) => (
         <ConsultationCard key={consultation.id} consultation={consultation} />
       ))}
