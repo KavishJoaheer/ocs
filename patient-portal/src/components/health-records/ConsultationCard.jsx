@@ -1,7 +1,5 @@
 import dayjs from "dayjs";
-import { ChevronRight } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
-import { NativeGroupedRow } from "../native/NativeGroupedList.jsx";
 
 function doctorInitials(name) {
   const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
@@ -9,12 +7,6 @@ function doctorInitials(name) {
   if (parts.length === 0) return "DR";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
-
-function formatConsultationDateTime(date, time) {
-  const dateLabel = dayjs(date).isValid() ? dayjs(date).format("D MMMM YYYY") : date;
-  if (!time) return dateLabel;
-  return `${dateLabel} · ${time}`;
 }
 
 function formatConsultationDate(date) {
@@ -31,92 +23,61 @@ function formatPrescriptionSummary(consultation) {
   return "Amoxicillin 500mg, Paracetamol";
 }
 
-function ConsultationCard({ consultation, isLast = false }) {
+function ConsultationCard({ consultation }) {
   const doctorName = formatDoctorName(consultation.doctor_name);
   const specialty = consultation.doctor_specialty || "General Practitioner";
   const visitType = consultation.visit_type || "Home Visit";
-  const dateTimeLabel = formatConsultationDateTime(consultation.date, consultation.time);
   const dateLabel = formatConsultationDate(consultation.date);
   const prescriptionSummary = formatPrescriptionSummary(consultation);
-  const visitPath = consultation.id
-    ? `/health-records/visits/${consultation.id}`
-    : "/health-records";
 
   return (
-    <>
-      {/* Mobile — native grouped row */}
-      <NativeGroupedRow
-        to={visitPath}
-        isLast={isLast}
-        ariaLabel={`${doctorName}, ${dateTimeLabel}`}
-        className="lg:hidden"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[17px] leading-snug text-gray-900">{doctorName}</p>
-          <p className="mt-0.5 truncate text-[15px] text-gray-500">
-            {dateTimeLabel} · {visitType}
+    <article className="w-full cursor-default overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex items-start justify-between p-5 lg:p-6">
+        <div className="flex min-w-0 items-start gap-4">
+          <div
+            className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[13px] font-bold text-white"
+            aria-hidden="true"
+          >
+            {doctorInitials(consultation.doctor_name)}
+          </div>
+          <div className="min-w-0">
+            <p className="font-display text-[16px] font-semibold leading-snug text-[#1a5c52]">
+              {doctorName}
+            </p>
+            <p className="mt-0.5 text-[13px] text-gray-500">{specialty}</p>
+          </div>
+        </div>
+
+        <div className="ml-4 shrink-0 text-right">
+          <p className="text-[13px] font-medium text-gray-600">{dateLabel}</p>
+          <span className="desktop-visit-badge mt-2 inline-flex">{visitType}</span>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100" aria-hidden="true" />
+
+      <div className="grid grid-cols-2 gap-4 bg-gray-50 p-5 lg:gap-6 lg:p-6">
+        <div>
+          <p className="mb-2 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+            Diagnosis
           </p>
           {consultation.diagnosis ? (
-            <p className="mt-0.5 truncate text-[15px] text-gray-500">{consultation.diagnosis}</p>
-          ) : null}
-        </div>
-        <ChevronRight className="size-[17px] shrink-0 text-gray-300" strokeWidth={2} aria-hidden="true" />
-      </NativeGroupedRow>
-
-      {/* Desktop — clinical summary card */}
-      <article
-        className={[
-          "hidden w-full cursor-default overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:block",
-          isLast ? "" : "mb-4",
-        ].join(" ")}
-      >
-        <div className="flex items-start justify-between p-6">
-          <div className="flex min-w-0 items-start gap-4">
-            <div
-              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[13px] font-bold text-white"
-              aria-hidden="true"
-            >
-              {doctorInitials(consultation.doctor_name)}
-            </div>
-            <div className="min-w-0">
-              <p className="font-display text-[16px] font-semibold leading-snug text-[#1a5c52]">
-                {doctorName}
-              </p>
-              <p className="mt-0.5 text-[13px] text-gray-500">{specialty}</p>
-            </div>
-          </div>
-
-          <div className="ml-4 shrink-0 text-right">
-            <p className="text-[13px] font-medium text-gray-600">{dateLabel}</p>
-            <span className="desktop-visit-badge mt-2 inline-flex">{visitType}</span>
-          </div>
+            <span className="inline-flex rounded-[14px] bg-[rgba(26,160,140,0.1)] px-3 py-1.5 text-[13px] font-medium text-[#2d8f98]">
+              {consultation.diagnosis}
+            </span>
+          ) : (
+            <p className="text-[14px] font-medium text-gray-400">Not recorded</p>
+          )}
         </div>
 
-        <div className="border-t border-gray-100" aria-hidden="true" />
-
-        <div className="grid grid-cols-2 gap-6 bg-[#FAFAFC] p-6">
-          <div>
-            <p className="mb-2 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
-              Diagnosis
-            </p>
-            {consultation.diagnosis ? (
-              <span className="inline-flex rounded-[14px] bg-[rgba(26,160,140,0.1)] px-3 py-1.5 text-[13px] font-medium text-[#2d8f98]">
-                {consultation.diagnosis}
-              </span>
-            ) : (
-              <p className="text-[14px] font-medium text-gray-400">Not recorded</p>
-            )}
-          </div>
-
-          <div>
-            <p className="mb-2 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
-              Prescription
-            </p>
-            <p className="text-[14px] font-medium text-gray-800">{prescriptionSummary}</p>
-          </div>
+        <div>
+          <p className="mb-2 text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+            Prescription
+          </p>
+          <p className="text-[14px] font-medium text-gray-800">{prescriptionSummary}</p>
         </div>
-      </article>
-    </>
+      </div>
+    </article>
   );
 }
 

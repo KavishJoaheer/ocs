@@ -4,7 +4,7 @@ import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 function MobileBottomNav() {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 m-0 flex w-full items-center justify-between rounded-none border-t border-gray-200/80 bg-[rgba(255,255,255,0.92)] px-5 pt-1.5 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl backdrop-saturate-150 lg:hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 m-0 flex w-full items-center justify-between rounded-none border-t border-gray-200 bg-white px-5 pt-1.5 pb-[env(safe-area-inset-bottom)] lg:hidden"
       aria-label="Main navigation"
     >
       {PATIENT_NAV_ITEMS.map((item) => {

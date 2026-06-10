@@ -1,6 +1,5 @@
 import { FolderHeart } from "lucide-react";
 import RequestVisitCta from "../request-visit/RequestVisitCta.jsx";
-import { NativeGroupedList } from "../native/NativeGroupedList.jsx";
 import ConsultationCard from "./ConsultationCard.jsx";
 
 function ConsultationsEmptyState() {
@@ -28,26 +27,10 @@ function ConsultationsView({ consultations }) {
   }
 
   return (
-    <div aria-label="Consultation history">
-      <NativeGroupedList className="lg:hidden">
-        {sorted.map((consultation, idx) => (
-          <ConsultationCard
-            key={consultation.id}
-            consultation={consultation}
-            isLast={idx === sorted.length - 1}
-          />
-        ))}
-      </NativeGroupedList>
-
-      <div className="hidden lg:block">
-        {sorted.map((consultation, idx) => (
-          <ConsultationCard
-            key={consultation.id}
-            consultation={consultation}
-            isLast={idx === sorted.length - 1}
-          />
-        ))}
-      </div>
+    <div className="flex flex-col gap-4" aria-label="Consultation history">
+      {sorted.map((consultation) => (
+        <ConsultationCard key={consultation.id} consultation={consultation} />
+      ))}
     </div>
   );
 }

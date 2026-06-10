@@ -1025,17 +1025,17 @@ table {
   border-radius: var(--native-radius-inner);
   font-size: 13px;
   font-weight: 700;
-  color: #1a5c52;
-  background: rgba(26, 160, 140, 0.08);
+  color: #f97316;
+  background: rgba(var(--ocs-orange-rgb), 0.1);
   transition: gap 160ms ease, background 160ms ease;
 }
 
 .native-action-btn svg {
-  color: var(--ocs-orange);
+  color: #f97316;
 }
 
 .native-action-btn:active {
-  background: rgba(26, 160, 140, 0.14);
+  background: rgba(var(--ocs-orange-rgb), 0.16);
   gap: 8px;
 }
 

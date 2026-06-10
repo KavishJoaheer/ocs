@@ -6,7 +6,6 @@ import {
   getClinicalEmptyMessage,
   isNilAllergyValue,
 } from "../../lib/healthRecordsDisplay.js";
-import { NativeGroupedFooter, NativeGroupedList } from "../native/NativeGroupedList.jsx";
 
 const SECTIONS = [
   {
@@ -61,7 +60,7 @@ function ClinicalHistoryTile({ section, value }) {
   const Icon = section.icon;
 
   return (
-    <article className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+    <article className="flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
       <div>
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-teal-600">
@@ -96,66 +95,21 @@ function ClinicalHistoryTile({ section, value }) {
 function ClinicalHistoryView({ clinicalHistory }) {
   return (
     <div aria-label="Clinical history">
-      <div className="lg:hidden">
-        <NativeGroupedList>
-          {SECTIONS.map((section, idx) => {
-            const value = formatSectionValue(section, clinicalHistory[section.key] ?? []);
-
-            return (
-              <div
-                key={section.key}
-                className={[
-                  "px-4 py-3",
-                  idx < SECTIONS.length - 1 ? "border-b border-gray-100" : "",
-                ].join(" ")}
-              >
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                  {section.title}
-                </p>
-                <p
-                  className={[
-                    "mt-1 text-[15px] leading-snug",
-                    value.isEmpty
-                      ? "italic text-gray-400"
-                      : value.hasAllergyWarning
-                        ? "text-[#c45c3e]"
-                        : "text-gray-900",
-                  ].join(" ")}
-                >
-                  {value.primary}
-                </p>
-                {value.details.length > 0 ? (
-                  <p className="mt-1 text-[13px] leading-relaxed text-gray-500">
-                    {value.details.join(" · ")}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
-        </NativeGroupedList>
-
-        <NativeGroupedFooter>
+      <div className="mb-4 flex justify-end lg:mb-6">
+        <p className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400">
+          <Lock className="size-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
           Read only · Maintained by your OCS doctor
-        </NativeGroupedFooter>
+        </p>
       </div>
 
-      <div className="hidden lg:block">
-        <div className="mb-6 flex justify-end">
-          <p className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400">
-            <Lock className="size-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
-            Read only · Maintained by your OCS doctor
-          </p>
-        </div>
-
-        <div className="grid w-full grid-cols-2 gap-6">
-          {SECTIONS.map((section) => (
-            <ClinicalHistoryTile
-              key={section.key}
-              section={section}
-              value={formatSectionValue(section, clinicalHistory[section.key] ?? [])}
-            />
-          ))}
-        </div>
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-6">
+        {SECTIONS.map((section) => (
+          <ClinicalHistoryTile
+            key={section.key}
+            section={section}
+            value={formatSectionValue(section, clinicalHistory[section.key] ?? [])}
+          />
+        ))}
       </div>
     </div>
   );
