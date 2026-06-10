@@ -182,8 +182,8 @@ function MobileDashboardHome({
             {greeting},{" "}
             <span className="text-[#0D9E8A]">{firstName || "there"}</span>
           </h1>
-          <p className="mt-2 text-[15px] leading-relaxed text-[#5b7f8a]">
-            Your health, cared for around the clock.
+          <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
+            Your health. Unwavering care. Accessed effortlessly, managed securely.
           </p>
         </div>
 

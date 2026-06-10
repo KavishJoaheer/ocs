@@ -118,7 +118,6 @@ function DesktopLastVisitCard({ consultation }) {
 }
 
 function DesktopDashboardHome({
-  subline,
   profileLastConsultation,
   activeVisitSlot,
   headline,
@@ -130,7 +129,9 @@ function DesktopDashboardHome({
         <h1 className="font-display text-[2rem] tracking-tight text-[#1a5c52] sm:text-4xl">
           {headline}
         </h1>
-        <p className="mt-2 max-w-xl text-base leading-relaxed text-[#5b7f8a]">{subline}</p>
+        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-gray-500">
+          Your health. Unwavering care. Accessed effortlessly, managed securely.
+        </p>
       </header>
 
       {activeVisitSlot ? (

@@ -137,17 +137,6 @@ function extractEtaMinutes(visit) {
   return 25;
 }
 
-function isAppointmentWithin24Hours(appointment) {
-  if (!appointment?.date) return false;
-  let appointmentAt = dayjs(appointment.date);
-  if (appointment.time) {
-    const withTime = dayjs(`${appointment.date} ${appointment.time}`, "YYYY-MM-DD h:mm A");
-    if (withTime.isValid()) appointmentAt = withTime;
-  }
-  const hoursUntil = appointmentAt.diff(dayjs(), "hour", true);
-  return hoursUntil >= 0 && hoursUntil < 24;
-}
-
 function MobileActiveVisit({ visit, onCancelled }) {
   const doctor = formatDoctorSurname(visit.doctor);
   const eta = extractEtaMinutes(visit);
@@ -297,29 +286,6 @@ function PatientDashboard() {
     ? primaryActiveVisit
     : dependentDashboard?.activeVisit ?? null;
 
-  const subline = (() => {
-    if (loadError && isPrimaryProfile) return "We couldn't refresh your dashboard data.";
-    if (loading && isPrimaryProfile) return "Loading your health portal\u2026";
-    if (!isPrimaryProfile) {
-      return `You're viewing ${activeProfile.firstName}'s health space. All records and visits shown are ${activeProfile.possessive}.`;
-    }
-    if (profileActiveVisit) {
-      const doctor = formatDoctorSurname(profileActiveVisit.doctor);
-      const eta = extractEtaMinutes(profileActiveVisit);
-      return `${doctor} is on the way. Estimated arrival in ${eta} minutes.`;
-    }
-    if (profileNextAppointment) {
-      const doctor = formatDoctorName(profileNextAppointment.doctor_name);
-      const time = profileNextAppointment.time || "";
-      if (isAppointmentWithin24Hours(profileNextAppointment)) {
-        return `Your visit with ${doctor} is confirmed for today at ${time}.`;
-      }
-      const dateLabel = dayjs(profileNextAppointment.date).format("D MMMM");
-      return `Your next visit with ${doctor} is confirmed for ${dateLabel} at ${time}.`;
-    }
-    return "A doctor is one tap away, any time of day.";
-  })();
-
   const headline = isPrimaryProfile ? (
     <>
       {greeting},{" "}
@@ -359,7 +325,6 @@ function PatientDashboard() {
         <div key={activeProfileId} className="dashboard-profile-transition">
           <DesktopDashboardHome
             headline={headline}
-            subline={subline}
             careTeamDoctorName={careTeamDoctorName}
             profileLastConsultation={profileLastConsultation}
             activeVisitSlot={
