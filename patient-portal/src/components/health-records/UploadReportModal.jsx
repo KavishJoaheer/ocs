@@ -302,7 +302,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
   return (
     <div
       ref={modalRef}
-      className="app-modal-root fixed inset-0 z-[var(--z-modal)]"
+      className="app-modal-root fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end lg:block"
       role="dialog"
       aria-modal="true"
       aria-label="Upload medical report"
@@ -317,19 +317,21 @@ function UploadReportModal({ open, onClose, onUpload }) {
 
       {/* Mobile — native bottom sheet */}
       <div
-        className="upload-sheet animate-sheet-up absolute bottom-0 left-0 right-0 flex max-h-[min(92dvh,100dvh-env(safe-area-inset-bottom,0px))] w-full flex-col rounded-t-3xl rounded-b-none bg-white shadow-[0_-12px_48px_rgba(13,42,46,0.16)] lg:hidden"
+        className="upload-sheet animate-sheet-up relative w-full rounded-t-3xl rounded-b-none bg-white px-6 pt-6 pb-safe lg:hidden"
         style={{
-          paddingBottom: `calc(max(env(safe-area-inset-bottom, 0px), 16px) + ${keyboardInset.bottom}px)`,
+          paddingBottom: keyboardInset.bottom
+            ? `calc(max(env(safe-area-inset-bottom, 0px), 12px) + ${keyboardInset.bottom}px)`
+            : undefined,
           transform: keyboardInset.top ? `translateY(-${keyboardInset.top}px)` : undefined,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <span
-          className="mx-auto mt-4 mb-2 block h-1.5 w-12 rounded-full bg-gray-300"
+          className="mx-auto mb-4 block h-1.5 w-12 rounded-full bg-gray-300"
           aria-hidden="true"
         />
 
-        <div className="upload-sheet-scroll flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-2">
+        <div className="upload-sheet-scroll max-h-[min(80dvh,100dvh-env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-contain">
           <h2 className="native-display text-left text-[20px] text-[#1a5c52]">
             Upload a Medical Report
           </h2>
@@ -340,7 +342,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
           <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
             <UploadFormFields {...formFieldsProps} />
 
-            <div className="flex items-center gap-5 pt-1">
+            <div className="flex items-center gap-5 pt-1 pb-2">
               <button
                 type="submit"
                 disabled={!canSubmit || isUploading}

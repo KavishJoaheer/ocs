@@ -11,7 +11,6 @@ import {
   Heart,
   Shield,
   FileText,
-  LogOut,
   Save,
   X,
 } from "lucide-react";
@@ -366,9 +365,8 @@ function PatientProfile() {
           <button
             type="button"
             onClick={() => logout()}
-            className="profile-sign-out-btn mt-4 flex w-full items-center justify-center gap-2"
+            className="mt-6 block w-full rounded-xl border border-red-200 bg-white py-4 text-center text-[15px] font-semibold text-red-500"
           >
-            <LogOut className="size-4" strokeWidth={1.75} />
             Sign Out
           </button>
         </div>

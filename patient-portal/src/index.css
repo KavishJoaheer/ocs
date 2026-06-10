@@ -1308,25 +1308,6 @@ table {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.profile-sign-out-btn {
-  display: flex;
-  width: 100%;
-  min-height: 48px;
-  margin-bottom: 48px;
-  border-radius: 14px;
-  border: 1px solid rgb(229 231 235);
-  background: #fff;
-  font-size: 15px;
-  font-weight: 500;
-  color: rgb(239 68 68);
-  transition: background 160ms ease, transform 160ms ease;
-}
-
-.profile-sign-out-btn:active {
-  background: rgb(254 242 242);
-  transform: scale(0.98);
-}
-
 /* ─── Visits / Appointments itinerary ─────────────────────────────────────── */
 
 .visits-screen {
@@ -1880,16 +1861,9 @@ table {
   display: none;
 }
 
-/* Edge-to-edge native tab bar — frosted glass, flush to screen edges */
-.mobile-nav-bar .squircle-inner-active {
-  border-radius: var(--native-radius-inner);
-  box-shadow: 0 4px 12px rgba(45, 143, 152, 0.18);
-}
-
-@supports (corner-shape: squircle) {
-  .mobile-nav-bar .squircle-inner-active {
-    corner-shape: squircle;
-  }
+/* iOS safe-area inset utility */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
 }
 
 @media (max-width: 1023px) {
