@@ -1,3 +1,4 @@
+import { Lock, Pill, Scissors, ShieldAlert, Stethoscope } from "lucide-react";
 import {
   filterClinicalItems,
   formatIsoDatesInText,
@@ -8,10 +9,27 @@ import {
 import { NativeGroupedFooter, NativeGroupedList } from "../native/NativeGroupedList.jsx";
 
 const SECTIONS = [
-  { key: "medical_history", title: "Past Medical History" },
-  { key: "surgical_history", title: "Past Surgical History" },
-  { key: "drug_history", title: "Drug History" },
-  { key: "allergy_history", title: "Allergy History", isAllergy: true },
+  {
+    key: "medical_history",
+    title: "Past Medical History",
+    icon: Stethoscope,
+  },
+  {
+    key: "surgical_history",
+    title: "Past Surgical History",
+    icon: Scissors,
+  },
+  {
+    key: "drug_history",
+    title: "Drug History",
+    icon: Pill,
+  },
+  {
+    key: "allergy_history",
+    title: "Allergy History",
+    icon: ShieldAlert,
+    isAllergy: true,
+  },
 ];
 
 function formatSectionValue(section, items) {
@@ -30,7 +48,7 @@ function formatSectionValue(section, items) {
     section.isAllergy && visibleItems.some((item) => !isNilAllergyValue(item.name));
 
   return {
-    primary: visibleItems.map((item) => formatMedicalConditionName(item.name)).join(", "),
+    primary: visibleItems.map((item) => formatMedicalConditionName(item.name)).join(" · "),
     details: visibleItems
       .map((item) => (item.detail ? formatIsoDatesInText(item.detail) : null))
       .filter(Boolean),
@@ -39,49 +57,106 @@ function formatSectionValue(section, items) {
   };
 }
 
+function ClinicalHistoryTile({ section, value }) {
+  const Icon = section.icon;
+
+  return (
+    <article className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+      <div>
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+            <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
+          </div>
+          <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">
+            {section.title}
+          </p>
+        </div>
+
+        <p
+          className={[
+            value.isEmpty
+              ? "text-[15px] font-normal italic leading-relaxed text-gray-400"
+              : "text-[16px] font-medium leading-relaxed text-gray-900",
+            !value.isEmpty && value.hasAllergyWarning ? "text-[#c45c3e]" : "",
+          ].join(" ")}
+        >
+          {value.primary}
+        </p>
+
+        {value.details.length > 0 ? (
+          <p className="mt-2 text-[13px] leading-relaxed text-gray-500">
+            {value.details.join(" · ")}
+          </p>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 function ClinicalHistoryView({ clinicalHistory }) {
   return (
     <div aria-label="Clinical history">
-      <NativeGroupedList>
-        {SECTIONS.map((section, idx) => {
-          const value = formatSectionValue(section, clinicalHistory[section.key] ?? []);
+      <div className="lg:hidden">
+        <NativeGroupedList>
+          {SECTIONS.map((section, idx) => {
+            const value = formatSectionValue(section, clinicalHistory[section.key] ?? []);
 
-          return (
-            <div
-              key={section.key}
-              className={[
-                "px-4 py-3",
-                idx < SECTIONS.length - 1 ? "border-b border-gray-100" : "",
-              ].join(" ")}
-            >
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                {section.title}
-              </p>
-              <p
+            return (
+              <div
+                key={section.key}
                 className={[
-                  "mt-1 text-[15px] leading-snug",
-                  value.isEmpty
-                    ? "italic text-gray-400"
-                    : value.hasAllergyWarning
-                      ? "text-[#c45c3e]"
-                      : "text-gray-900",
+                  "px-4 py-3",
+                  idx < SECTIONS.length - 1 ? "border-b border-gray-100" : "",
                 ].join(" ")}
               >
-                {value.primary}
-              </p>
-              {value.details.length > 0 ? (
-                <p className="mt-1 text-[13px] leading-relaxed text-gray-500">
-                  {value.details.join(" · ")}
+                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                  {section.title}
                 </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </NativeGroupedList>
+                <p
+                  className={[
+                    "mt-1 text-[15px] leading-snug",
+                    value.isEmpty
+                      ? "italic text-gray-400"
+                      : value.hasAllergyWarning
+                        ? "text-[#c45c3e]"
+                        : "text-gray-900",
+                  ].join(" ")}
+                >
+                  {value.primary}
+                </p>
+                {value.details.length > 0 ? (
+                  <p className="mt-1 text-[13px] leading-relaxed text-gray-500">
+                    {value.details.join(" · ")}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </NativeGroupedList>
 
-      <NativeGroupedFooter>
-        Read only · Maintained by your OCS doctor
-      </NativeGroupedFooter>
+        <NativeGroupedFooter>
+          Read only · Maintained by your OCS doctor
+        </NativeGroupedFooter>
+      </div>
+
+      <div className="hidden lg:block">
+        <div className="mb-6 flex justify-end">
+          <p className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400">
+            <Lock className="size-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+            Read only · Maintained by your OCS doctor
+          </p>
+        </div>
+
+        <div className="grid w-full grid-cols-2 gap-6">
+          {SECTIONS.map((section) => (
+            <ClinicalHistoryTile
+              key={section.key}
+              section={section}
+              value={formatSectionValue(section, clinicalHistory[section.key] ?? [])}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
