@@ -128,10 +128,11 @@ test.describe("OCS smoke", () => {
     });
 
     await page.goto(`${PATIENT_BASE}/request-visit/tracking`);
-    await expect(page.getByText(/request received|care team|doctor|on the way/i).first()).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Visit Status" })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByText(/visit location/i)).toBeVisible();
+    await expect(page.getByText(/we're reviewing your request|your doctor is preparing|on the way|has arrived/i).first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "Visit progress tracker" })).toBeVisible();
   });
 
   test("patient can cancel an active visit from tracking", async ({ page, request }) => {
@@ -176,11 +177,11 @@ test.describe("OCS smoke", () => {
     await injectPatientSession(page, token);
 
     await page.goto(`${PATIENT_BASE}/health-records`);
-    await expect(page.getByRole("heading", { name: "Your Health Records.", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Health Records", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole("button", { name: /^overview$/i })).toBeVisible();
-    await expect(page.getByText(/your health summary|health story starts here/i).first()).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^consultations$/i })).toBeVisible();
+    await expect(page.getByText(/health story starts here|your health summary/i).first()).toBeVisible();
   });
 
   test("patient billing page loads", async ({ page, request }) => {
