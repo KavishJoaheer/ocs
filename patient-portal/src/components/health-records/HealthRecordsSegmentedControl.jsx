@@ -4,10 +4,17 @@ const TABS = [
   { id: "clinical", label: "Clinical History", mobileLabel: "Clinical" },
 ];
 
-function HealthRecordsSegmentedControl({ activeTab, onChange }) {
+function HealthRecordsSegmentedControl({ activeTab, onChange, layout = "mobile" }) {
+  const isDesktop = layout === "desktop";
+
   return (
     <div
-      className="native-segment flex w-full gap-0 rounded-xl bg-gray-100 p-1 mb-5"
+      className={[
+        "native-segment flex gap-0 rounded-xl p-1",
+        isDesktop
+          ? "inline-flex w-auto bg-gray-100/80"
+          : "native-segment mb-5 w-full bg-gray-100",
+      ].join(" ")}
       role="tablist"
       aria-label="Health records sections"
     >
@@ -21,14 +28,14 @@ function HealthRecordsSegmentedControl({ activeTab, onChange }) {
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={[
-              "native-segment-btn flex-1 rounded-lg py-2 text-center text-[13px] whitespace-nowrap transition-all duration-150",
+              "native-segment-btn rounded-lg py-2 text-center text-[13px] whitespace-nowrap transition-all duration-150",
+              isDesktop ? "px-4" : "flex-1",
               isActive
                 ? "bg-white font-semibold text-teal-900 shadow-sm"
                 : "font-medium text-gray-500",
             ].join(" ")}
           >
-            <span className="lg:hidden">{tab.mobileLabel}</span>
-            <span className="hidden lg:inline">{tab.label}</span>
+            {isDesktop ? tab.label : tab.mobileLabel}
           </button>
         );
       })}

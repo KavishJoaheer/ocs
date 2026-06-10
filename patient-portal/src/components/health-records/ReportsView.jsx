@@ -27,7 +27,7 @@ function ReportRow({ report, isLast = false }) {
 
       <article
         className={[
-          "health-records-crafted-card hidden w-full bg-white lg:block",
+          "hidden w-full rounded-2xl border border-black/5 bg-white shadow-md lg:block",
           isLast ? "" : "mb-4",
         ].join(" ")}
         style={{ padding: "var(--native-pad-card)" }}

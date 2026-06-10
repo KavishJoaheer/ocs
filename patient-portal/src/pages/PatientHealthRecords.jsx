@@ -128,15 +128,15 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-screen mx-auto w-full max-w-[720px] lg:max-w-4xl">
-      <header className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] border-b border-gray-200/60 bg-[rgba(242,242,247,0.92)] px-[var(--native-pad-screen)] pt-safe backdrop-blur-xl backdrop-saturate-150 max-lg:pb-0 lg:animate-fade-in-up lg:mx-0 lg:border-0 lg:bg-transparent lg:pb-6 lg:backdrop-filter-none">
+    <div className="native-screen mx-auto flex w-full max-w-[720px] flex-col lg:max-w-4xl lg:pt-10">
+      <header className="sticky top-0 z-40 -mx-[var(--native-pad-screen)] border-b border-gray-200/60 bg-[rgba(242,242,247,0.92)] px-[var(--native-pad-screen)] pt-safe backdrop-blur-xl backdrop-saturate-150 max-lg:pb-0 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:backdrop-filter-none lg:animate-fade-in-up">
         <div className="hidden items-center gap-2 lg:flex">
           <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.5} />
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
             Health Records
           </p>
         </div>
-        <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 lg:mt-2 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
+        <h1 className="py-2 text-[22px] font-bold tracking-tight text-gray-900 lg:mt-0 lg:py-0 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
           Health Records
         </h1>
         <p className="mt-2 hidden text-[14px] leading-relaxed text-[#8a9e9a] lg:block">
@@ -147,11 +147,15 @@ function PatientHealthRecords() {
         </div>
       </header>
 
-      <div className="hidden lg:block">
-        <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+      <div className="hidden lg:mt-8 lg:mb-8 lg:block">
+        <HealthRecordsSegmentedControl
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          layout="desktop"
+        />
       </div>
 
-      <div className="min-h-[40vh]" role="tabpanel" aria-label={activeTab}>
+      <div className="min-h-[40vh] w-full" role="tabpanel" aria-label={activeTab}>
         {loading ? (
           <>
             <div className="native-grouped-list overflow-hidden rounded-2xl bg-white lg:hidden">

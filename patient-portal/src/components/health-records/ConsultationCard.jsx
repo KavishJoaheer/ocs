@@ -44,7 +44,7 @@ function ConsultationCard({ consultation, isLast = false }) {
       <Link
         to={visitPath}
         className={[
-          "health-records-crafted-card hidden w-full bg-white transition hover:brightness-[1.01] lg:block",
+          "hidden w-full rounded-2xl border border-black/5 bg-white shadow-md transition hover:brightness-[1.01] lg:block",
           isLast ? "" : "mb-4",
         ].join(" ")}
         style={{ padding: "var(--native-pad-card)" }}
