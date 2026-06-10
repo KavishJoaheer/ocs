@@ -177,7 +177,7 @@ test.describe("OCS smoke", () => {
     await injectPatientSession(page, token);
 
     await page.goto(`${PATIENT_BASE}/health-records`);
-    await expect(page.getByRole("heading", { name: "Health Records", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /your health records/i })).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole("tab", { name: /^consultations$/i })).toBeVisible();
