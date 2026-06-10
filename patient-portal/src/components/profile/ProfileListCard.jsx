@@ -1,5 +1,15 @@
 /** Unified white card with optional header action (Edit / Add). */
-function ProfileListCard({ title, subtitle, action, children, variant = "default", bodyClassName = "" }) {
+function ProfileListCard({
+  title,
+  subtitle,
+  subtitleLayout = "inline",
+  action,
+  children,
+  variant = "default",
+  bodyClassName = "",
+}) {
+  const stackedSubtitle = subtitle && subtitleLayout === "stacked";
+
   return (
     <section
       className={[
@@ -9,8 +19,13 @@ function ProfileListCard({ title, subtitle, action, children, variant = "default
     >
       <div className="flex items-start justify-between gap-3 px-5 pt-5">
         <div className="min-w-0">
-          <h2 className="profile-section-title">{title}</h2>
-          {subtitle ? <p className="profile-card-subtitle mt-1">{subtitle}</p> : null}
+          <h2 className="profile-section-title tracking-wider">{title}</h2>
+          {stackedSubtitle ? (
+            <p className="profile-card-subtitle-stacked mt-1.5">{subtitle}</p>
+          ) : null}
+          {subtitle && !stackedSubtitle ? (
+            <p className="profile-card-subtitle mt-1">{subtitle}</p>
+          ) : null}
         </div>
         {action ? <div className="ml-auto shrink-0 text-right">{action}</div> : null}
       </div>

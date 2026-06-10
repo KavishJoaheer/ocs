@@ -1176,8 +1176,13 @@ table {
   z-index: 1;
 }
 
+.profile-identity-zone {
+  width: 100%;
+}
+
 .profile-desktop-grid {
   width: 100%;
+  margin-top: 0;
 }
 
 .profile-section-header {
@@ -1194,6 +1199,15 @@ table {
   font-size: 11px;
   font-weight: 500;
   color: #8a9e9a;
+}
+
+.profile-card-subtitle-stacked {
+  display: block;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #a8b5b2;
 }
 
 .profile-list-card {
