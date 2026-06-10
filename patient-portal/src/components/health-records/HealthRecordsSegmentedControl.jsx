@@ -4,11 +4,10 @@ const TABS = [
   { id: "clinical", label: "Clinical History" },
 ];
 
-/** iOS-style segmented control — muted gray track, white pill active state. */
 function HealthRecordsSegmentedControl({ activeTab, onChange }) {
   return (
     <div
-      className="health-records-segment flex gap-1 overflow-hidden rounded-full bg-[#F0F1F3] p-1"
+      className="flex p-1 bg-gray-100 rounded-xl w-full max-w-sm mx-auto mb-6"
       role="tablist"
       aria-label="Health records sections"
     >
@@ -21,12 +20,11 @@ function HealthRecordsSegmentedControl({ activeTab, onChange }) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
-            className={[
-              "health-records-tab relative flex min-h-[44px] flex-1 items-center justify-center rounded-full border-none px-2 py-2 text-[13px] leading-none whitespace-nowrap outline-none ring-0 transition-all duration-200 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 max-sm:px-1.5 max-sm:text-xs",
+            className={
               isActive
-                ? "health-records-tab-active w-full font-semibold text-[#1a5c52]"
-                : "w-full cursor-pointer bg-transparent font-medium text-[#8a9e9a] hover:text-[#6e7f7c]",
-            ].join(" ")}
+                ? "flex-1 py-1.5 bg-white rounded-lg shadow-sm text-[13px] font-semibold text-center text-teal-900 whitespace-nowrap"
+                : "flex-1 py-1.5 text-[13px] font-medium text-center text-gray-500 whitespace-nowrap"
+            }
           >
             {tab.label}
           </button>

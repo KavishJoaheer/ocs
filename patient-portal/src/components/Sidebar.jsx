@@ -41,7 +41,8 @@ function Sidebar() {
   const isVisitSummary = pathname.startsWith("/health-records/visits/");
   const isVisitStatus = pathname === "/request-visit/tracking";
   const isProfile = pathname === "/profile";
-  const hideMobileTopBar = isNativeDashboard || isVisitSummary || isVisitStatus || isProfile;
+  const isHealthRecords = pathname === "/health-records";
+  const hideMobileTopBar = isNativeDashboard || isVisitSummary || isVisitStatus || isProfile || isHealthRecords;
 
   return (
     <>

@@ -129,26 +129,23 @@ function PatientHealthRecords() {
 
   return (
     <div className="native-screen mx-auto w-full max-w-[720px] lg:max-w-4xl">
-      {/* Page header */}
-      <header className="animate-fade-in-up pb-6 max-md:pb-5">
-        <div className="flex items-center gap-2 max-md:hidden">
+      {/* Mobile: compact sticky native header */}
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pb-3 pt-safe max-lg:-mx-[var(--native-pad-screen)] max-lg:px-[var(--native-pad-screen)] lg:animate-fade-in-up lg:pb-6">
+        <div className="hidden items-center gap-2 lg:flex">
           <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.5} />
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
             Health Records
           </p>
         </div>
-        <h1 className="native-display mt-2 text-[28px] leading-tight text-[#1a5c52] max-md:mt-0 max-md:text-[26px] lg:text-4xl">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900 lg:mt-2 lg:font-[family-name:var(--font-display)] lg:text-4xl lg:leading-tight lg:text-[#1a5c52]">
           Your Health Records.
         </h1>
-        <p className="mt-2 text-[14px] leading-relaxed text-[#8a9e9a] max-md:hidden">
+        <p className="mt-2 hidden text-[14px] leading-relaxed text-[#8a9e9a] lg:block">
           Consultations, reports, and clinical background — in one calm place.
         </p>
       </header>
 
-      {/* Segmented control */}
-      <div className="animate-fade-in-up stagger-1 mb-6">
-        <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
-      </div>
+      <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
 
       {/* Active view */}
       <div
