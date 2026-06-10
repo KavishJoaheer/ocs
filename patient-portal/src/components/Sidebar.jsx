@@ -67,7 +67,7 @@ function Sidebar() {
         <FamilyProfileSwitcher variant="avatar" />
       </div>
 
-      {/* ─── Mobile bottom navigation — floating pill bar ─── */}
+      {/* ─── Mobile bottom navigation — command center bar ─── */}
       <MobileBottomNav />
 
       {/* ─── Desktop sidebar ─── */}

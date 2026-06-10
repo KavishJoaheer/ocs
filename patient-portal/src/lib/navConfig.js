@@ -7,6 +7,7 @@ import {
   Home,
   FileText,
   Calendar,
+  User,
 } from "lucide-react";
 
 export const PATIENT_NAV_ITEMS = [
@@ -16,6 +17,7 @@ export const PATIENT_NAV_ITEMS = [
     mobileLabel: "Home",
     icon: LayoutDashboard,
     mobileIcon: Home,
+    mobileIconActive: Home,
     end: true,
   },
   {
@@ -24,6 +26,7 @@ export const PATIENT_NAV_ITEMS = [
     mobileLabel: "Records",
     icon: HeartPulse,
     mobileIcon: FileText,
+    mobileIconActive: FileText,
   },
   {
     to: "/appointments",
@@ -31,6 +34,7 @@ export const PATIENT_NAV_ITEMS = [
     mobileLabel: "Visits",
     icon: CalendarCheck,
     mobileIcon: Calendar,
+    mobileIconActive: CalendarCheck,
   },
   {
     to: "/billing",
@@ -38,6 +42,7 @@ export const PATIENT_NAV_ITEMS = [
     mobileLabel: "Billing",
     icon: ReceiptText,
     mobileIcon: ReceiptText,
+    mobileIconActive: ReceiptText,
   },
   {
     to: "/profile",
@@ -45,5 +50,6 @@ export const PATIENT_NAV_ITEMS = [
     mobileLabel: "Profile",
     icon: CircleUserRound,
     mobileIcon: CircleUserRound,
+    mobileIconActive: User,
   },
 ];
