@@ -79,14 +79,14 @@ export function isNilClinicalValue(name) {
 }
 
 const CLINICAL_EMPTY_MESSAGES = {
-  medical_history: "None reported",
-  surgical_history: "No known history",
-  drug_history: "None reported",
-  allergy_history: "No known history",
+  medical_history: "None recorded",
+  surgical_history: "None recorded",
+  drug_history: "None recorded",
+  allergy_history: "None recorded",
 };
 
 export function getClinicalEmptyMessage(sectionKey) {
-  return CLINICAL_EMPTY_MESSAGES[sectionKey] || "None reported";
+  return CLINICAL_EMPTY_MESSAGES[sectionKey] || "None recorded";
 }
 
 export function filterClinicalItems(items) {

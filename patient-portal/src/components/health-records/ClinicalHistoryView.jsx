@@ -1,6 +1,7 @@
 import {
   filterClinicalItems,
   formatIsoDatesInText,
+  formatMedicalConditionName,
   getClinicalEmptyMessage,
   isNilAllergyValue,
 } from "../../lib/healthRecordsDisplay.js";
@@ -41,7 +42,7 @@ function DossierSection({ section, items, borderClass }) {
                     isWarning ? "text-[#c45c3e]" : "text-[#1a5c52]",
                   ].join(" ")}
                 >
-                  {item.name}
+                  {formatMedicalConditionName(item.name)}
                   {isWarning ? (
                     <span className="squircle-inner ml-2 inline-flex bg-[rgba(196,92,62,0.12)] px-2 py-0.5 text-[11px] font-semibold text-[#c45c3e]">
                       Allergy
@@ -74,7 +75,7 @@ function ClinicalHistoryView({ clinicalHistory }) {
         Read only · Maintained by your OCS doctor
       </p>
 
-      <article className="health-records-crafted-card animate-fade-in-up overflow-hidden bg-white max-lg:squircle-outer max-lg:ocs-elevate">
+      <article className="health-records-crafted-card animate-fade-in-up overflow-hidden bg-[rgba(26,160,140,0.02)] max-lg:squircle-outer max-lg:ocs-elevate">
         <header className="border-b border-[rgba(0,0,0,0.03)] px-6 py-5 lg:px-7">
           <h2 className="native-display text-[17px] text-[#1a5c52]">Clinical Dossier</h2>
           <p className="mt-1 text-[13px] text-[#8a9e9a]">Your medical background at a glance</p>

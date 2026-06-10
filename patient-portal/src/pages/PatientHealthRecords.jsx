@@ -138,7 +138,7 @@ function PatientHealthRecords() {
           </p>
         </div>
         <h1 className="native-display mt-2 text-[28px] leading-tight text-[#1a5c52] max-md:mt-0 max-md:text-[26px] lg:text-4xl">
-          Health Records
+          Your Health Records.
         </h1>
         <p className="mt-2 text-[14px] leading-relaxed text-[#8a9e9a] max-md:hidden">
           Consultations, reports, and clinical background — in one calm place.

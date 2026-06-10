@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { HousePlus, MessageCircle, Moon, Phone, Sun, Sunset } from "lucide-react";
+import { HousePlus, Phone } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 const OCS_CARE_TEL = "52522234";
@@ -12,13 +12,6 @@ function doctorInitials(name) {
   if (parts.length === 0) return "DR";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
-
-function getTimeOfDayIcon() {
-  const hour = new Date().getHours();
-  if (hour < 12) return Sun;
-  if (hour < 17) return Sunset;
-  return Moon;
 }
 
 function DesktopCareTeamCard({ doctorName }) {
@@ -45,13 +38,11 @@ function DesktopCareTeamCard({ doctorName }) {
           <p className="mt-0.5 text-sm text-[#8a9e9a]">
             {isAssigned ? "Primary Care Physician" : "Assigning your physician shortly"}
           </p>
+          {isAssigned ? (
+            <p className="mt-1 text-xs text-[#8a9e9a]">Your assigned OCS doctor</p>
+          ) : null}
         </div>
       </div>
-
-      <a href={`tel:${OCS_CARE_TEL}`} className="desktop-care-team-action">
-        <MessageCircle className="size-4 shrink-0" strokeWidth={1.75} />
-        Message Care Team
-      </a>
     </section>
   );
 }
@@ -133,20 +124,13 @@ function DesktopDashboardHome({
   headline,
   careTeamDoctorName,
 }) {
-  const TimeIcon = getTimeOfDayIcon();
-
   return (
     <div className="desktop-dashboard">
       <header className="desktop-dashboard-greeting animate-fade-in-up">
-        <div className="flex items-center gap-3.5">
-          <span className="desktop-greeting-icon" aria-hidden="true">
-            <TimeIcon className="size-6" strokeWidth={1.75} />
-          </span>
-          <h1 className="font-display text-[2rem] tracking-tight text-[#1a5c52] sm:text-4xl">
-            {headline}
-          </h1>
-        </div>
-        <p className="mt-2 max-w-xl pl-[42px] text-base leading-relaxed text-[#5b7f8a]">{subline}</p>
+        <h1 className="font-display text-[2rem] tracking-tight text-[#1a5c52] sm:text-4xl">
+          {headline}
+        </h1>
+        <p className="mt-2 max-w-xl text-base leading-relaxed text-[#5b7f8a]">{subline}</p>
       </header>
 
       {activeVisitSlot ? (

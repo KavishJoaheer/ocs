@@ -362,7 +362,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
 
       {/* Desktop — right slide-over drawer */}
       <aside
-        className="upload-drawer animate-drawer-slide-in absolute inset-y-0 right-0 hidden w-full max-w-[480px] flex-col bg-white shadow-[-8px_0_40px_rgba(13,42,46,0.12)] lg:flex"
+        className="upload-drawer animate-drawer-slide-in absolute inset-y-0 right-0 hidden w-full max-w-[420px] flex-col bg-white shadow-[-8px_0_40px_rgba(13,42,46,0.12)] lg:flex"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[rgba(0,0,0,0.06)] px-6 py-5">
