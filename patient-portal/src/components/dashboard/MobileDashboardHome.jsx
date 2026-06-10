@@ -180,7 +180,7 @@ function MobileDashboardHome({
         <div className="min-w-0 flex-1 pr-2">
           <h1 className="native-display text-[28px] leading-tight text-[#1a5c52]">
             {greeting},{" "}
-            <span className="text-ocs-orange">{firstName || "there"}</span>
+            <span className="text-[#0D9E8A]">{firstName || "there"}</span>
           </h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[#5b7f8a]">
             Your health, cared for around the clock.
