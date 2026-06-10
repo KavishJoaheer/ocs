@@ -29,8 +29,10 @@ function ConsultationCard({ consultation }) {
     >
       {/* Top row — date/time + visit badge */}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] font-medium text-[#5b7f8a]">{dateTimeLabel}</p>
-        <span className="consultation-visit-badge shrink-0">{visitType}</span>
+        <p className="text-[13px] font-medium leading-none text-[#5b7f8a]">{dateTimeLabel}</p>
+        <span className="consultation-visit-badge inline-flex shrink-0 items-center leading-none">
+          {visitType}
+        </span>
       </div>
 
       {/* Doctor + diagnosis — horizontal on desktop */}

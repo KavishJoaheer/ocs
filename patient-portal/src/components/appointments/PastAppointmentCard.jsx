@@ -18,22 +18,22 @@ function PastAppointmentCard({ appointment }) {
   return (
     <article className="visits-crafted-card visits-card max-lg:visits-card-elevate bg-white">
       <div className="flex items-start gap-4 p-5">
-        <div className="visits-date-block visits-date-block-past">
+        <div className="visits-date-block visits-date-block-past shrink-0">
           <span className="visits-date-day">{date.format("D")}</span>
           <span className="visits-date-month">{date.format("MMM").toUpperCase()}</span>
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-col items-start">
+          <div className="flex w-full items-start justify-between gap-3">
             <p className="native-display text-[16px] font-bold leading-snug text-[#1a5c52]">
               {appointment.type}
             </p>
             <span className="visits-badge-muted shrink-0">{statusLabel}</span>
           </div>
 
-          <div className="mt-2.5 flex items-center gap-2.5">
+          <div className="mt-2.5 flex w-full items-start gap-2.5">
             <DoctorAvatar name={appointment.doctor_name} size="md" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
               <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5b7f8a]">
                 <Clock className="size-3.5 shrink-0 text-[#6b9e95]" strokeWidth={1.75} />
@@ -47,10 +47,10 @@ function PastAppointmentCard({ appointment }) {
       {appointment.status !== "cancelled" ? (
         <>
           <div className="visits-card-footer-divider" aria-hidden="true" />
-          <Link to={summaryPath} className="visits-summary-link group">
-            <span>View Visit Summary</span>
+          <Link to={summaryPath} className="visits-summary-link group flex items-center justify-between">
+            <span className="leading-none">View Visit Summary</span>
             <ChevronRight
-              className="visits-summary-arrow size-[18px] text-[#e8a020]"
+              className="visits-summary-arrow size-[18px] shrink-0 text-[#e8a020]"
               strokeWidth={2.25}
             />
           </Link>

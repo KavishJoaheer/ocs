@@ -70,7 +70,7 @@ function DossierSection({ section, items, borderClass }) {
 function ClinicalHistoryView({ clinicalHistory }) {
   return (
     <div aria-label="Clinical history">
-      <p className="mb-4 text-right text-[12px] italic text-[#6b7280]">
+      <p className="mb-4 text-left text-[12px] italic text-gray-400">
         Read only · Maintained by your OCS doctor
       </p>
 

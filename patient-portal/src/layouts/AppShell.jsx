@@ -11,21 +11,21 @@ function AppShellContent() {
   const isProfile = pathname === "/profile";
   const isFullBleedMobile = isNativeDashboard || isVisitSummary || isVisitStatus || isProfile;
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
+    <div className="flex h-dvh min-h-0 flex-col lg:h-auto lg:min-h-screen lg:flex-row">
       <Sidebar />
       <main
         id="app-main-scroll"
-        className="flex-1 overflow-y-auto max-md:bg-transparent lg:bg-[var(--desktop-canvas)]"
+        className="min-h-0 flex-1 overflow-y-auto max-lg:pb-32 max-md:bg-transparent lg:bg-[var(--desktop-canvas)]"
       >
         <div
           className={
             isProfile
-              ? "w-full max-lg:px-0 max-lg:pb-[120px] max-lg:pt-0 lg:pb-10 lg:pt-0"
+              ? "w-full max-lg:px-0 max-lg:pt-0 lg:pb-10 lg:pt-0"
               : [
                   "mx-auto max-w-6xl sm:px-10 lg:px-12 lg:pb-10 lg:pt-8",
                   isFullBleedMobile
-                    ? "max-lg:px-0 max-lg:pb-[120px] max-lg:pt-0"
-                    : "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pt-0 max-lg:pb-[120px]",
+                    ? "max-lg:px-0 max-lg:pt-0"
+                    : "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pt-0",
                 ].join(" ")
           }
         >
