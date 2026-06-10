@@ -20,7 +20,7 @@ function ProfilePrimaryCareContent({ doctorName }) {
         {doctorName ? (
           <a
             href={`tel:${OCS_CARE_TEL}`}
-            className="text-[15px] font-bold text-orange-500 transition hover:text-orange-600 active:opacity-70"
+            className="text-[15px] font-bold text-brand-orange transition hover:text-[#c88710] active:opacity-70"
           >
             {OCS_CARE_DISPLAY}
           </a>

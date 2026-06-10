@@ -5,6 +5,7 @@
   --font-sans: "Nunito Sans", "Segoe UI", sans-serif;
   --font-display: "Poppins", "Segoe UI", sans-serif;
   --font-serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --color-brand-orange: #e8a020;
 }
 
 :root {
@@ -1025,13 +1026,13 @@ table {
   border-radius: var(--native-radius-inner);
   font-size: 13px;
   font-weight: 700;
-  color: #f97316;
+  color: var(--ocs-orange);
   background: rgba(var(--ocs-orange-rgb), 0.1);
   transition: gap 160ms ease, background 160ms ease;
 }
 
 .native-action-btn svg {
-  color: #f97316;
+  color: var(--ocs-orange);
 }
 
 .native-action-btn:active {

@@ -289,12 +289,12 @@ function PatientDashboard() {
   const headline = isPrimaryProfile ? (
     <>
       <span className="text-[#52C4B9]">{greeting},</span>{" "}
-      <span className="text-orange-500">{firstName}</span>
+      <span className="text-brand-orange">{firstName}</span>
     </>
   ) : (
     <>
       <span className="text-[#52C4B9]">Managing care for</span>{" "}
-      <span className="text-orange-500">{firstName}</span>.
+      <span className="text-brand-orange">{firstName}</span>.
     </>
   );
 

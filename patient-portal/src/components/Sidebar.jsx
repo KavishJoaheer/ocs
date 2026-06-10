@@ -25,7 +25,7 @@ function SidebarLink({ item }) {
         <>
           {isActive ? (
             <span
-              className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.6)]"
+              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-orange shadow-[0_0_12px_rgba(232,160,32,0.6)]"
               aria-hidden="true"
             />
           ) : null}

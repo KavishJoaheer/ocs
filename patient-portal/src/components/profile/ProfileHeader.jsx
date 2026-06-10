@@ -19,7 +19,7 @@ function ProfileHeader({ fullName, initials, ocsCareNumber }) {
         {formatDisplayName(fullName)}
       </h1>
       {idLabel ? (
-        <span className="mt-3 inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-bold tracking-wide text-white">
+        <span className="mt-3 inline-flex rounded-full bg-brand-orange px-3 py-1 text-xs font-bold tracking-wide text-white">
           {idLabel}
         </span>
       ) : null}
