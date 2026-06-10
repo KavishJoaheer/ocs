@@ -4,7 +4,7 @@ function ProfileCardAction({ label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="text-[13px] font-semibold text-ocs-orange transition active:opacity-70"
+      className="text-[13px] font-semibold text-[#e8a020] transition hover:text-[#c88710] active:opacity-70"
     >
       {label}
     </button>

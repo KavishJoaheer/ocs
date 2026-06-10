@@ -18,12 +18,16 @@ function AppShellContent() {
         className="flex-1 overflow-y-auto max-md:bg-transparent lg:bg-[var(--desktop-canvas)]"
       >
         <div
-          className={[
-            "mx-auto max-w-6xl sm:px-10 lg:px-12 lg:pb-10 lg:pt-8",
-            isFullBleedMobile
-              ? "max-md:px-0 max-md:pb-0 max-md:pt-0"
-              : "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pb-0 max-md:pt-0",
-          ].join(" ")}
+          className={
+            isProfile
+              ? "w-full max-md:px-0 max-md:pb-0 max-md:pt-0 lg:pb-10 lg:pt-0"
+              : [
+                  "mx-auto max-w-6xl sm:px-10 lg:px-12 lg:pb-10 lg:pt-8",
+                  isFullBleedMobile
+                    ? "max-md:px-0 max-md:pb-0 max-md:pt-0"
+                    : "px-6 pt-6 max-md:px-[var(--native-pad-screen)] max-md:pb-0 max-md:pt-0",
+                ].join(" ")
+          }
         >
           {!isFullBleedMobile ? <PushNotificationBanner className="mb-5" /> : null}
           <Outlet />

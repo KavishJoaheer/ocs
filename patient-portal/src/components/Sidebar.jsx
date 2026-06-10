@@ -29,10 +29,10 @@ function SidebarLink({ item }) {
       to={item.to}
       className={({ isActive }) =>
         [
-          "group -mx-6 flex min-h-[44px] items-center gap-3 border-l-[3px] px-6 text-sm transition-colors",
+          "sidebar-nav-link group -mx-6 flex min-h-[44px] items-center gap-3 px-6 text-sm outline-none transition-colors focus:outline-none focus-visible:outline-none",
           isActive
-            ? "border-[#e8a020] bg-[rgba(26,160,140,0.08)] font-semibold text-[#1a5c52]"
-            : "border-transparent font-normal text-[#2a6a5e] hover:bg-[rgba(26,160,140,0.04)]",
+            ? "sidebar-nav-link-active font-semibold text-[#1a5c52]"
+            : "border-l-[3px] border-transparent font-normal text-[#2a6a5e] hover:bg-[rgba(26,92,82,0.04)]",
         ].join(" ")
       }
     >

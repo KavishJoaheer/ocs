@@ -1080,6 +1080,23 @@ table {
   cursor: not-allowed;
 }
 
+/* ─── Sidebar nav — premium active state ──────────────────────────────────── */
+
+.sidebar-nav-link-active {
+  border: none;
+  border-left: 3px solid #e8a020;
+  background: rgba(26, 92, 82, 0.05);
+  outline: none;
+  box-shadow: none;
+}
+
+.sidebar-nav-link-active:focus,
+.sidebar-nav-link-active:focus-visible {
+  outline: none;
+  border-left: 3px solid #e8a020;
+  box-shadow: none;
+}
+
 /* ─── Profile screen — premium concierge hub ──────────────────────────────── */
 
 .profile-screen {
@@ -1093,6 +1110,14 @@ table {
   margin-right: calc(-1 * var(--native-pad-screen));
   padding-top: env(safe-area-inset-top, 0px);
   background: var(--ocs-teal-strong);
+}
+
+@media (min-width: 1024px) {
+  .profile-teal-band {
+    height: 180px;
+    margin-left: 0;
+    margin-right: 0;
+  }
 }
 
 @media (max-width: 1023px) {
@@ -1116,6 +1141,13 @@ table {
   text-align: center;
 }
 
+@media (min-width: 1024px) {
+  .profile-identity-header {
+    margin-top: -48px;
+    padding-bottom: 32px;
+  }
+}
+
 .profile-concierge-avatar {
   display: flex;
   align-items: center;
@@ -1127,12 +1159,26 @@ table {
   font-size: 22px;
   font-weight: 700;
   color: var(--ocs-teal-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+@media (min-width: 1024px) {
+  .profile-concierge-avatar {
+    width: 96px;
+    height: 96px;
+    font-size: 26px;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.12);
+  }
 }
 
 .profile-content {
   position: relative;
   z-index: 1;
+}
+
+.profile-desktop-grid {
+  display: grid;
+  grid-template-columns: 1fr;
 }
 
 .profile-section-header {
@@ -1154,12 +1200,28 @@ table {
   border-radius: 18px;
 }
 
+.profile-crafted-card {
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+}
+
+@media (min-width: 1024px) {
+  .profile-list-card,
+  .profile-crafted-card {
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  }
+}
+
 .profile-list-card-tinted {
   background: rgba(45, 143, 152, 0.03);
 }
 
-.profile-card-elevate {
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+@media (min-width: 1024px) {
+  .profile-list-card-tinted {
+    background: rgba(26, 92, 82, 0.03);
+  }
 }
 
 .profile-section-title {
@@ -1171,7 +1233,7 @@ table {
 }
 
 .profile-row-icon {
-  color: rgba(45, 143, 152, 0.55);
+  color: #6b9e95;
 }
 
 .profile-list-divider {

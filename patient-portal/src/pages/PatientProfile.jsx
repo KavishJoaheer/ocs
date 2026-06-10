@@ -160,167 +160,171 @@ function PatientProfile() {
 
   if (loading) {
     return (
-      <div className="profile-screen native-screen">
+      <div className="profile-screen native-screen w-full">
         <div className="profile-teal-band animate-pulse" aria-hidden="true" />
-        <div className="profile-content space-y-4">
+        <div className="profile-content mx-auto max-w-5xl space-y-4 px-[var(--native-pad-screen)] lg:px-8">
           <div className="profile-concierge-avatar mx-auto animate-pulse bg-white/80" />
-          <div className="profile-card-elevate h-48 animate-pulse rounded-[18px] bg-white/70" />
+          <div className="profile-crafted-card h-48 animate-pulse bg-white/70" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="profile-screen native-screen mx-auto max-w-[720px]">
+    <div className="profile-screen native-screen w-full">
       <ProfileHeader
         fullName={user?.full_name}
         initials={initials}
         ocsCareNumber={profile?.ocs_care_number}
       />
 
-      <div className="profile-content space-y-5">
-      {/* Card 1 — Personal Information */}
-      <ProfileListCard title="Personal Information">
-        <ProfileListRow icon={UserCircle} label="Full Name" value={formatDisplayName(user?.full_name)} />
-        <ProfileListRow icon={Mail} label="Email" value={user?.email} />
-        <ProfileListRow
-          icon={Calendar}
-          label="Date of Birth"
-          value={
-            profile?.date_of_birth ? dayjs(profile.date_of_birth).format("MMMM D, YYYY") : null
-          }
-        />
-        <ProfileListRow icon={Heart} label="Gender" value={genderLabel} isLast />
-      </ProfileListCard>
-
-      {/* Primary Care Provider */}
-      <div>
-        <ProfileSectionHeader title="Primary Care Provider" subtitle="Managed by OCS" />
-        <ProfilePrimaryCareCard doctorName={profile?.assigned_doctor_name} />
-      </div>
-
-      {/* Card 2 — Contact Details */}
-      <ProfileListCard
-        title="Contact Details"
-        action={
-          editingContact ? (
-            <EditActions onCancel={handleCancelContact} onSave={handleSaveContact} saving={saving} />
-          ) : (
-            <ProfileCardAction label="Edit" onClick={() => setEditingContact(true)} />
-          )
-        }
-      >
-        <ProfileListRow
-          icon={Phone}
-          label="Phone"
-          value={editingContact ? undefined : contactForm.phone}
-          isLast={false}
-        >
-          {editingContact ? (
-            <InlineInput
-              value={contactForm.phone}
-              onChange={(e) => setContactForm((c) => ({ ...c, phone: e.target.value }))}
-              placeholder="Phone number"
-            />
-          ) : null}
-        </ProfileListRow>
-        <ProfileListRow
-          icon={MapPin}
-          label="Address"
-          value={editingContact ? undefined : contactForm.address}
-          isLast
-        >
-          {editingContact ? (
-            <InlineInput
-              value={contactForm.address}
-              onChange={(e) => setContactForm((c) => ({ ...c, address: e.target.value }))}
-              placeholder="Your address"
-            />
-          ) : null}
-        </ProfileListRow>
-      </ProfileListCard>
-
-      {/* Card 3 — Billing & Insurance */}
-      <ProfileListCard
-        title="Billing & Insurance"
-        action={
-          editingBilling ? (
-            <EditActions onCancel={handleCancelBilling} onSave={handleSaveBilling} saving={saving} />
-          ) : (
-            <ProfileCardAction
-              label={billingActionLabel}
-              onClick={() => setEditingBilling(true)}
-            />
-          )
-        }
-      >
-        <ProfileListRow icon={Shield} label="Insurance Provider" isLast={false}>
-          {editingBilling ? (
-            <InlineInput
-              value={billingForm.insurance_provider}
-              onChange={(e) =>
-                setBillingForm((c) => ({ ...c, insurance_provider: e.target.value }))
+      <div className="profile-content profile-desktop-grid mx-auto max-w-5xl px-[var(--native-pad-screen)] pb-8 lg:grid lg:grid-cols-12 lg:gap-8 lg:px-8 lg:pb-12">
+        {/* Personal Information — left col on desktop */}
+        <div className="order-1 lg:col-span-7 lg:col-start-1 lg:row-start-1">
+          <ProfileListCard title="Personal Information">
+            <ProfileListRow icon={UserCircle} label="Full Name" value={formatDisplayName(user?.full_name)} />
+            <ProfileListRow icon={Mail} label="Email" value={user?.email} />
+            <ProfileListRow
+              icon={Calendar}
+              label="Date of Birth"
+              value={
+                profile?.date_of_birth ? dayjs(profile.date_of_birth).format("MMMM D, YYYY") : null
               }
-              placeholder="Insurance provider"
             />
-          ) : (
-            <p
-              className={[
-                "mt-0.5 text-[15px] font-semibold",
-                billingForm.insurance_provider ? "text-[#1a5c52]" : "text-[#8a9e9a]",
-              ].join(" ")}
+            <ProfileListRow icon={Heart} label="Gender" value={genderLabel} isLast />
+          </ProfileListCard>
+        </div>
+
+        {/* Primary Care Provider — right col on desktop */}
+        <div className="order-2 mt-5 lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:mt-0">
+          <ProfileSectionHeader title="Primary Care Provider" subtitle="Managed by OCS" />
+          <ProfilePrimaryCareCard doctorName={profile?.assigned_doctor_name} />
+        </div>
+
+        {/* Contact Details — left col */}
+        <div className="order-3 mt-5 lg:col-span-7 lg:col-start-1 lg:row-start-2 lg:mt-0">
+          <ProfileListCard
+            title="Contact Details"
+            action={
+              editingContact ? (
+                <EditActions onCancel={handleCancelContact} onSave={handleSaveContact} saving={saving} />
+              ) : (
+                <ProfileCardAction label="Edit" onClick={() => setEditingContact(true)} />
+              )
+            }
+          >
+            <ProfileListRow
+              icon={Phone}
+              label="Phone"
+              value={editingContact ? undefined : contactForm.phone}
+              isLast={false}
             >
-              {billingForm.insurance_provider || "Tap to add provider"}
-            </p>
-          )}
-        </ProfileListRow>
-        <ProfileListRow icon={FileText} label="Policy Number" isLast>
-          {editingBilling ? (
-            <InlineInput
-              value={billingForm.insurance_policy_number}
-              onChange={(e) =>
-                setBillingForm((c) => ({ ...c, insurance_policy_number: e.target.value }))
-              }
-              placeholder="Policy number"
+              {editingContact ? (
+                <InlineInput
+                  value={contactForm.phone}
+                  onChange={(e) => setContactForm((c) => ({ ...c, phone: e.target.value }))}
+                  placeholder="Phone number"
+                />
+              ) : null}
+            </ProfileListRow>
+            <ProfileListRow
+              icon={MapPin}
+              label="Address"
+              value={editingContact ? undefined : contactForm.address}
+              isLast
+            >
+              {editingContact ? (
+                <InlineInput
+                  value={contactForm.address}
+                  onChange={(e) => setContactForm((c) => ({ ...c, address: e.target.value }))}
+                  placeholder="Your address"
+                />
+              ) : null}
+            </ProfileListRow>
+          </ProfileListCard>
+        </div>
+
+        {/* Billing & Insurance — right col */}
+        <div className="order-4 mt-5 lg:col-span-5 lg:col-start-8 lg:row-start-2 lg:mt-0">
+          <ProfileListCard
+            title="Billing & Insurance"
+            action={
+              editingBilling ? (
+                <EditActions onCancel={handleCancelBilling} onSave={handleSaveBilling} saving={saving} />
+              ) : (
+                <ProfileCardAction
+                  label={billingActionLabel}
+                  onClick={() => setEditingBilling(true)}
+                />
+              )
+            }
+          >
+            <ProfileListRow icon={Shield} label="Insurance Provider" isLast={false}>
+              {editingBilling ? (
+                <InlineInput
+                  value={billingForm.insurance_provider}
+                  onChange={(e) =>
+                    setBillingForm((c) => ({ ...c, insurance_provider: e.target.value }))
+                  }
+                  placeholder="Insurance provider"
+                />
+              ) : (
+                <p
+                  className={[
+                    "mt-0.5 text-[15px] font-semibold",
+                    billingForm.insurance_provider ? "text-[#1a5c52]" : "text-[#8a9e9a]",
+                  ].join(" ")}
+                >
+                  {billingForm.insurance_provider || "Tap to add provider"}
+                </p>
+              )}
+            </ProfileListRow>
+            <ProfileListRow icon={FileText} label="Policy Number" isLast>
+              {editingBilling ? (
+                <InlineInput
+                  value={billingForm.insurance_policy_number}
+                  onChange={(e) =>
+                    setBillingForm((c) => ({ ...c, insurance_policy_number: e.target.value }))
+                  }
+                  placeholder="Policy number"
+                />
+              ) : (
+                <p
+                  className={[
+                    "mt-0.5 text-[15px] font-semibold",
+                    billingForm.insurance_policy_number ? "text-[#1a5c52]" : "text-[#8a9e9a]",
+                  ].join(" ")}
+                >
+                  {billingForm.insurance_policy_number || "Tap to add policy number"}
+                </p>
+              )}
+            </ProfileListRow>
+          </ProfileListCard>
+        </div>
+
+        {/* Emergency Contact — left col */}
+        <div className="order-5 mt-5 lg:col-span-7 lg:col-start-1 lg:row-start-3 lg:mt-0">
+          <ProfileListCard title="Emergency Contact">
+            <ProfileListRow icon={UserCircle} label="Name" value={profile?.next_of_kin_name} />
+            <ProfileListRow icon={Phone} label="Phone" value={profile?.next_of_kin_phone} />
+            <ProfileListRow
+              icon={Users}
+              label="Relationship"
+              value={profile?.next_of_kin_relationship}
+              isLast
             />
-          ) : (
-            <p
-              className={[
-                "mt-0.5 text-[15px] font-semibold",
-                billingForm.insurance_policy_number ? "text-[#1a5c52]" : "text-[#8a9e9a]",
-              ].join(" ")}
-            >
-              {billingForm.insurance_policy_number || "Tap to add policy number"}
-            </p>
-          )}
-        </ProfileListRow>
-      </ProfileListCard>
+          </ProfileListCard>
+        </div>
 
-      {/* Card 4 — Emergency Contact */}
-      <ProfileListCard title="Emergency Contact">
-        <ProfileListRow
-          icon={UserCircle}
-          label="Name"
-          value={profile?.next_of_kin_name}
-        />
-        <ProfileListRow icon={Phone} label="Phone" value={profile?.next_of_kin_phone} />
-        <ProfileListRow
-          icon={Users}
-          label="Relationship"
-          value={profile?.next_of_kin_relationship}
-          isLast
-        />
-      </ProfileListCard>
-
-      {/* Sign out — mobile */}
-      <button
-        type="button"
-        onClick={() => logout()}
-        className="profile-sign-out-btn mt-4 flex w-full items-center justify-center gap-2 lg:hidden"
-      >
-        <LogOut className="size-4" strokeWidth={1.75} />
-        Sign Out
-      </button>
+        {/* Sign out — mobile only */}
+        <button
+          type="button"
+          onClick={() => logout()}
+          className="profile-sign-out-btn order-6 mt-4 flex w-full items-center justify-center gap-2 lg:hidden"
+        >
+          <LogOut className="size-4" strokeWidth={1.75} />
+          Sign Out
+        </button>
       </div>
     </div>
   );
