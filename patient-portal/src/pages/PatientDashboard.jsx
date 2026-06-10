@@ -388,7 +388,6 @@ function PatientDashboard() {
           className="px-[var(--native-pad-screen)]"
           style={{
             paddingTop: "var(--native-safe-top)",
-            paddingBottom: "var(--native-nav-clearance)",
           }}
         >
           <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />

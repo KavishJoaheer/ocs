@@ -94,7 +94,7 @@ function VisitSummaryPage() {
 
   if (!summary) {
     return (
-      <div className="visit-summary-screen flex flex-col items-center justify-center px-6 pb-[var(--native-nav-clearance)] text-center">
+      <div className="visit-summary-screen flex flex-col items-center justify-center px-6 text-center">
         <p className="text-[15px] text-[#5b7f8a]">Visit summary not found.</p>
         <Link to="/health-records" className="mt-4 text-[14px] font-semibold text-ocs-orange">
           Back to Health Records

@@ -25,7 +25,7 @@
   --native-safe-top: max(env(safe-area-inset-top, 0px), 16px);
   --native-safe-bottom: env(safe-area-inset-bottom, 0px);
   --native-nav-height: 72px;
-  --native-nav-clearance: calc(var(--native-nav-height) + var(--native-safe-bottom) + 20px);
+  --native-nav-clearance: calc(110px + var(--native-safe-bottom));
   /* Teal-tinted ambient shadow — reads soft on iOS Safari and Android Chrome */
   --native-shadow-ambient: 0 4px 15px rgba(34, 72, 91, 0.04);
   --native-shadow-lift: 0 4px 15px rgba(34, 72, 91, 0.04), 0 1px 2px rgba(34, 72, 91, 0.03);
@@ -285,7 +285,6 @@ table {
     margin-right: calc(-1 * var(--native-pad-screen));
     padding-left: var(--native-pad-screen);
     padding-right: var(--native-pad-screen);
-    padding-bottom: var(--native-nav-clearance);
     background: #f4f7f7;
     min-height: 100%;
   }
@@ -294,7 +293,6 @@ table {
 .native-dashboard {
   -webkit-tap-highlight-color: transparent;
   padding-top: var(--native-safe-top);
-  padding-bottom: var(--native-nav-clearance);
   padding-left: var(--native-pad-screen);
   padding-right: var(--native-pad-screen);
   /* System-adjacent stack for weight parity across iOS (SF) and Android (Roboto) */
@@ -491,7 +489,7 @@ table {
 }
 
 .visit-summary-content {
-  padding: 20px var(--native-pad-screen) var(--native-nav-clearance);
+  padding: 20px var(--native-pad-screen);
 }
 
 .visit-summary-card {
@@ -587,11 +585,6 @@ table {
 
 .visit-status-content {
   padding: 0 var(--native-pad-screen);
-  padding-bottom: var(--native-nav-clearance);
-}
-
-.visit-status-content--padded {
-  padding-bottom: var(--native-nav-clearance);
 }
 
 .visit-status-hero {
@@ -641,7 +634,7 @@ table {
 
 .visit-status-footer {
   margin-top: auto;
-  padding: 24px var(--native-pad-screen) max(env(safe-area-inset-bottom, 0px), var(--native-nav-clearance));
+  padding: 24px var(--native-pad-screen) env(safe-area-inset-bottom, 0px);
 }
 
 /* Horizontal hero progression tracker */
@@ -1050,14 +1043,14 @@ table {
   color: #1a5c52;
   border: none;
   outline: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .health-records-segment .health-records-tab-active:focus,
 .health-records-segment .health-records-tab-active:focus-visible {
   outline: none;
   border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .ocs-primary-action-btn {
@@ -1337,8 +1330,9 @@ table {
   align-items: center;
   justify-content: center;
   width: 56px;
-  height: 56px;
   flex-shrink: 0;
+  padding: 12px 0;
+  aspect-ratio: 1;
   border-radius: 12px;
   text-align: center;
 }
@@ -1346,7 +1340,7 @@ table {
 @media (min-width: 1024px) {
   .visits-date-block {
     width: 64px;
-    height: 64px;
+    padding: 14px 0;
     border-radius: 12px;
   }
 }
