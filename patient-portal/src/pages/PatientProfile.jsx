@@ -23,8 +23,7 @@ import ProfileHeader from "../components/profile/ProfileHeader.jsx";
 import ProfileListCard from "../components/profile/ProfileListCard.jsx";
 import ProfileListRow from "../components/profile/ProfileListRow.jsx";
 import ProfileCardAction from "../components/profile/ProfileCardAction.jsx";
-import ProfileSectionHeader from "../components/profile/ProfileSectionHeader.jsx";
-import ProfilePrimaryCareCard from "../components/profile/ProfilePrimaryCareCard.jsx";
+import ProfilePrimaryCareContent from "../components/profile/ProfilePrimaryCareCard.jsx";
 
 function InlineInput({ value, onChange, placeholder, type = "text" }) {
   return (
@@ -162,7 +161,7 @@ function PatientProfile() {
     return (
       <div className="profile-screen native-screen w-full">
         <div className="profile-teal-band animate-pulse" aria-hidden="true" />
-        <div className="profile-content mx-auto max-w-5xl space-y-4 px-[var(--native-pad-screen)] lg:px-8">
+        <div className="profile-hub mx-auto w-full max-w-4xl space-y-4 px-[var(--native-pad-screen)] lg:px-6">
           <div className="profile-concierge-avatar mx-auto animate-pulse bg-white/80" />
           <div className="profile-crafted-card h-48 animate-pulse bg-white/70" />
         </div>
@@ -172,15 +171,18 @@ function PatientProfile() {
 
   return (
     <div className="profile-screen native-screen w-full">
-      <ProfileHeader
-        fullName={user?.full_name}
-        initials={initials}
-        ocsCareNumber={profile?.ocs_care_number}
-      />
+      <div className="profile-teal-band" aria-hidden="true" />
 
-      <div className="profile-content profile-desktop-grid mx-auto max-w-5xl px-[var(--native-pad-screen)] pb-8 lg:grid lg:grid-cols-12 lg:gap-8 lg:px-8 lg:pb-12">
+      <div className="profile-hub mx-auto w-full max-w-4xl px-[var(--native-pad-screen)] pb-8 lg:px-6 lg:pb-12">
+        <ProfileHeader
+          fullName={user?.full_name}
+          initials={initials}
+          ocsCareNumber={profile?.ocs_care_number}
+        />
+
+        <div className="profile-desktop-grid grid grid-cols-1 gap-5 lg:grid-cols-[3fr_2fr] lg:items-start lg:gap-8">
         {/* Personal Information — left col on desktop */}
-        <div className="order-1 lg:col-span-7 lg:col-start-1 lg:row-start-1">
+        <div className="order-1 lg:col-start-1 lg:row-start-1">
           <ProfileListCard title="Personal Information">
             <ProfileListRow icon={UserCircle} label="Full Name" value={formatDisplayName(user?.full_name)} />
             <ProfileListRow icon={Mail} label="Email" value={user?.email} />
@@ -196,13 +198,18 @@ function PatientProfile() {
         </div>
 
         {/* Primary Care Provider — right col on desktop */}
-        <div className="order-2 mt-5 lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:mt-0">
-          <ProfileSectionHeader title="Primary Care Provider" subtitle="Managed by OCS" />
-          <ProfilePrimaryCareCard doctorName={profile?.assigned_doctor_name} />
+        <div className="order-2 lg:col-start-2 lg:row-start-1">
+          <ProfileListCard
+            title="Primary Care Provider"
+            subtitle="Managed by OCS"
+            variant="teal"
+          >
+            <ProfilePrimaryCareContent doctorName={profile?.assigned_doctor_name} />
+          </ProfileListCard>
         </div>
 
         {/* Contact Details — left col */}
-        <div className="order-3 mt-5 lg:col-span-7 lg:col-start-1 lg:row-start-2 lg:mt-0">
+        <div className="order-3 lg:col-start-1 lg:row-start-2">
           <ProfileListCard
             title="Contact Details"
             action={
@@ -245,7 +252,7 @@ function PatientProfile() {
         </div>
 
         {/* Billing & Insurance — right col */}
-        <div className="order-4 mt-5 lg:col-span-5 lg:col-start-8 lg:row-start-2 lg:mt-0">
+        <div className="order-4 lg:col-start-2 lg:row-start-2">
           <ProfileListCard
             title="Billing & Insurance"
             action={
@@ -303,7 +310,7 @@ function PatientProfile() {
         </div>
 
         {/* Emergency Contact — left col */}
-        <div className="order-5 mt-5 lg:col-span-7 lg:col-start-1 lg:row-start-3 lg:mt-0">
+        <div className="order-5 lg:col-start-1 lg:row-start-3">
           <ProfileListCard title="Emergency Contact">
             <ProfileListRow icon={UserCircle} label="Name" value={profile?.next_of_kin_name} />
             <ProfileListRow icon={Phone} label="Phone" value={profile?.next_of_kin_phone} />
@@ -325,6 +332,7 @@ function PatientProfile() {
           <LogOut className="size-4" strokeWidth={1.75} />
           Sign Out
         </button>
+        </div>
       </div>
     </div>
   );
