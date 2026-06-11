@@ -128,10 +128,10 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:bg-transparent lg:pt-10">
+    <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:bg-transparent">
       <PageHeroHeader
-        accent="Health"
-        title="Records"
+        primaryText="Health"
+        secondaryText="Records"
         subtitle="Your health journey, securely organised."
       />
 

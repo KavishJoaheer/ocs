@@ -1,10 +1,14 @@
-function PageHeroHeader({ accent, title, subtitle, className = "" }) {
+function PageHeroHeader({ primaryText, secondaryText, subtitle, className = "" }) {
   return (
-    <header className={`pb-8 pt-6 ${className}`.trim()}>
-      <h1 className="text-3xl font-bold leading-tight">
-        {accent ? <span className="text-brand-orange">{accent}</span> : null}
-        {accent && title ? " " : null}
-        <span className="text-teal-900">{title}</span>
+    <header className={`page-hero-header pb-8 pt-6 ${className}`.trim()}>
+      <h1 className="native-display text-3xl font-bold leading-tight tracking-tight">
+        <span className="text-teal-900">{primaryText}</span>
+        {secondaryText ? (
+          <>
+            {" "}
+            <span className="text-brand-orange">{secondaryText}</span>
+          </>
+        ) : null}
       </h1>
       {subtitle ? <p className="mt-1 text-[14px] text-gray-500">{subtitle}</p> : null}
     </header>

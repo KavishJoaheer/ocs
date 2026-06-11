@@ -127,8 +127,8 @@ function PatientAppointments() {
       </div>
 
       <PageHeroHeader
-        accent="Your"
-        title="Appointments."
+        primaryText="Your"
+        secondaryText="Appointments."
         subtitle="Scheduled by your OCS care team."
         className="animate-fade-in-up"
       />

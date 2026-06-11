@@ -60,8 +60,8 @@ function PatientBilling() {
   return (
     <div className="font-sans">
       <PageHeroHeader
-        accent="Billing"
-        title="& Payments"
+        primaryText="Billing &"
+        secondaryText="Payments"
         subtitle="Review your bills, payments, and outstanding balances."
         className="animate-fade-in-up"
       />
