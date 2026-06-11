@@ -50,7 +50,7 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
   return (
     <Link
       to={to}
-      className="group relative flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-ocs-teal/20 bg-ocs-teal p-4 text-left text-white shadow-sm transition active:scale-[0.99] active:bg-ocs-teal/90"
+      className="group relative flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] active:bg-slate-50/80"
     >
       {showLowStockLed ? (
         <span
@@ -58,13 +58,13 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
           aria-label="Low stock alert"
         />
       ) : null}
-      <div className="flex size-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white">
+      <div className="flex size-10 items-center justify-center rounded-xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal">
         <Icon className="size-5" strokeWidth={2.25} />
       </div>
       <div className="mt-3 min-w-0">
-        <p className="text-[15px] font-bold leading-snug tracking-tight text-white">{label}</p>
+        <p className="text-[15px] font-bold leading-snug tracking-tight text-slate-800">{label}</p>
       </div>
-      <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-white/80" strokeWidth={2} />
+      <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-ocs-teal/60" strokeWidth={2} />
     </Link>
   );
 }
@@ -73,21 +73,21 @@ function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
   return (
     <Link
       to="/supply-requests"
-      className="relative flex min-h-[110px] cursor-pointer flex-col justify-between rounded-2xl border border-ocs-teal/20 bg-ocs-teal p-4 text-white shadow-sm transition-all active:scale-[0.98] active:bg-ocs-teal/90"
+      className="relative flex min-h-[110px] cursor-pointer flex-col justify-between rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all active:scale-[0.98] active:bg-slate-50/80"
     >
       <div className="flex items-start justify-between">
         <span className="text-xl" aria-hidden="true">
           📋
         </span>
         {pendingCount > 0 ? (
-          <span className="rounded-full border border-ocs-yellow/30 bg-ocs-yellow/10 px-2 py-0.5 text-[10px] font-extrabold text-ocs-yellow-dark">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-extrabold text-slate-600">
             {pendingCount} Pending
           </span>
         ) : null}
       </div>
       <div className="mt-4">
-        <p className="text-sm font-bold text-white">Supply Requests</p>
-        <p className="text-[11px] font-semibold text-white/70">Track, edit or cancel orders</p>
+        <p className="text-sm font-bold text-slate-800">Supply Requests</p>
+        <p className="text-[11px] font-semibold text-ocs-grey">Track, edit or cancel orders</p>
       </div>
     </Link>
   );
@@ -131,13 +131,13 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
 
         <Link
           to="/patients/add"
-          className="group mt-4 flex w-full items-center gap-4 rounded-2xl border border-ocs-teal/20 bg-ocs-teal px-4 py-3.5 text-left text-white shadow-sm transition active:scale-[0.99] active:bg-ocs-teal/90"
+          className="group mt-4 flex w-full items-center gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left shadow-sm transition active:scale-[0.99] active:bg-slate-50/80"
         >
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal">
             <UserPlus className="size-5" strokeWidth={2.25} />
           </div>
-          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-white">Add Patient</p>
-          <ArrowUpRight className="size-4 shrink-0 text-white/80" strokeWidth={2} />
+          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-slate-800">Add Patient</p>
+          <ArrowUpRight className="size-4 shrink-0 text-ocs-teal/60" strokeWidth={2} />
         </Link>
       </nav>
     </div>
@@ -283,20 +283,20 @@ function MobileLauncher({
             <Link
               key={card.label}
               to={card.to}
-              className="group flex w-full items-center gap-5 rounded-[24px] border border-ocs-teal/20 bg-ocs-teal px-5 py-6 text-white shadow-sm transition duration-150 active:scale-[0.97] active:bg-ocs-teal/90"
+              className="group flex w-full items-center gap-5 rounded-[24px] border border-slate-100 bg-white px-5 py-6 shadow-sm transition duration-150 active:scale-[0.97] active:bg-slate-50/80"
             >
-              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-sm">
+              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal shadow-sm">
                 <Icon className="size-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[1.05rem] font-bold tracking-tight text-white">
+                <p className="text-[1.05rem] font-bold tracking-tight text-slate-800">
                   {card.label}
                 </p>
-                <p className="mt-0.5 text-sm leading-6 text-white/70">
+                <p className="mt-0.5 text-sm leading-6 text-ocs-grey">
                   {card.description}
                 </p>
               </div>
-              <ArrowUpRight className="size-5 shrink-0 text-white/80 transition group-active:translate-x-0.5 group-active:-translate-y-0.5" />
+              <ArrowUpRight className="size-5 shrink-0 text-ocs-teal/60 transition group-active:translate-x-0.5 group-active:-translate-y-0.5" />
             </Link>
           );
         })}

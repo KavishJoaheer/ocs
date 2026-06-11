@@ -225,13 +225,13 @@ function Sidebar() {
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
-        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-white/10 bg-ocs-slate px-4 shadow-md md:hidden"
+        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-slate-100 bg-white px-4 md:hidden"
         style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="rounded-xl p-2 text-white transition hover:bg-white/10 active:bg-white/10"
+          className="rounded-xl p-2 text-ocs-slate transition hover:bg-slate-50 active:bg-slate-50"
           aria-label="Open menu"
         >
           <Menu className="h-6 w-6" strokeWidth={2.25} />
@@ -244,7 +244,7 @@ function Sidebar() {
         {location.pathname !== "/" ? (
           <Link
             to="/"
-            className="rounded-xl p-2 text-white transition hover:bg-white/10 active:bg-white/10"
+            className="rounded-xl p-2 text-ocs-slate transition hover:bg-slate-50 active:bg-slate-50"
             aria-label="Home"
           >
             <Home className="h-7 w-7" strokeWidth={2.25} />
@@ -321,7 +321,7 @@ function Sidebar() {
           <button
             type="button"
             onClick={() => logout()}
-            className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-center text-sm font-semibold text-white transition-all hover:bg-rose-600 active:scale-[0.98]"
+            className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-ocs-slate px-4 py-3 text-center text-sm font-semibold text-white transition-all hover:bg-ocs-slate/90 active:scale-[0.98]"
           >
             <LogOut className="size-4 shrink-0" />
             Sign out

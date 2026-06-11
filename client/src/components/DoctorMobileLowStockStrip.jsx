@@ -8,18 +8,18 @@ export default function DoctorMobileLowStockStrip({ lowStockCount }) {
   return (
     <Link
       to="/inventory?context=my"
-      className="animate-fade-in mb-4 flex w-full items-center gap-3 rounded-2xl border border-ocs-yellow/30 bg-ocs-yellow/10 p-3.5 shadow-sm transition active:scale-[0.99]"
+      className="animate-fade-in mb-4 flex w-full items-center gap-3 rounded-2xl border border-slate-100 border-l-4 border-l-ocs-yellow bg-white p-3.5 shadow-sm transition active:scale-[0.99]"
     >
       <div className="relative flex h-2.5 w-2.5 shrink-0">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ocs-yellow opacity-75" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-ocs-yellow shadow-[0_0_8px_rgba(247,186,36,0.5)]" />
       </div>
 
       <div className="flex w-full items-center justify-between gap-3">
-        <span className="text-xs font-bold tracking-wide text-ocs-yellow-dark">
+        <span className="text-xs font-bold tracking-wide text-slate-700">
           {lowStockCount} items are currently low in your bag.
         </span>
-        <span className="shrink-0 rounded-lg border border-ocs-yellow/30 bg-ocs-yellow/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-ocs-yellow-dark">
+        <span className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
           Action Needed
         </span>
       </div>
