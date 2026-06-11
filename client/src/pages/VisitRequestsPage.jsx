@@ -17,6 +17,7 @@ import { api } from "../lib/api.js";
 import { formatDate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 
 const STATUS_OPTIONS = [
@@ -488,6 +489,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
 
 export default function VisitRequestsPage() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const refreshKey = useLiveRefreshKey();
   const isDoctor = user?.role === "doctor";
   const canAssignDoctor = !isDoctor;
@@ -580,9 +582,11 @@ export default function VisitRequestsPage() {
         eyebrow={isDoctor ? "My visits" : "Dispatch desk"}
         title="Visit requests"
         description={
-          isDoctor
-            ? "Home visits assigned to you. Update your ETA, start the consultation when you arrive, and mark it done when finished."
-            : "Home-visit requests raised by patients from the patient portal. Review new requests, assign a doctor, and track the visit through to completion."
+          isMobile && isDoctor
+            ? undefined
+            : isDoctor
+              ? "Home visits assigned to you. Update your ETA, start the consultation when you arrive, and mark it done when finished."
+              : "Home-visit requests raised by patients from the patient portal. Review new requests, assign a doctor, and track the visit through to completion."
         }
         actions={
           <button

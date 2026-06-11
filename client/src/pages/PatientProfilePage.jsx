@@ -406,6 +406,12 @@ function hasMeaningfulPatientField(value) {
   return true;
 }
 
+function formatMobileDoctorName(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return "";
+  return /^dr\.?\s/i.test(trimmed) ? trimmed : `Dr ${trimmed}`;
+}
+
 const MOBILE_TABS = [
   { key: "summary", label: "Summary" },
   { key: "notes", label: "Notes" },
@@ -2026,7 +2032,7 @@ function PatientProfilePage() {
                             {formatDate(consultation.consultation_date)}
                           </span>
                           <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-slate-900">
-                            {consultation.doctor_name}
+                            {formatMobileDoctorName(consultation.doctor_name)}
                           </span>
                           {isExpanded ? (
                             <ChevronUp className="size-4 shrink-0 text-slate-400" />

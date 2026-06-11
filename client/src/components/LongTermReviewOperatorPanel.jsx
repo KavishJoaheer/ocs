@@ -51,7 +51,7 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
           </span>
           <div className="flex flex-col">
             <h2 className="text-lg font-extrabold tracking-wide text-gray-800">Review Appointments</h2>
-            <span className="text-xs font-medium text-gray-400">
+            <span className="hidden text-xs font-medium text-gray-400 md:inline">
               Pending chronic care and medical re-evaluations
             </span>
           </div>

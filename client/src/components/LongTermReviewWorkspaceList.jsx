@@ -6,6 +6,7 @@ import EmptyState from "./EmptyState.jsx";
 import Modal from "./Modal.jsx";
 import StatusBadge from "./StatusBadge.jsx";
 import { api } from "../lib/api.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { formatDate, truncate } from "../lib/format.js";
 import { formatScheduledReviewDate } from "../lib/patientReview.js";
 
@@ -33,6 +34,15 @@ function formatAssignedDoctorLine(patient) {
   }
 
   return patient.assigned_doctor_name;
+}
+
+function formatMobileAssignedDoctorLine(patient) {
+  if (!patient.assigned_doctor_name) {
+    return "Not assigned";
+  }
+
+  const name = String(patient.assigned_doctor_name).trim();
+  return /^dr\.?\s/i.test(name) ? name : `Dr ${name}`;
 }
 
 function LongTermReviewQuickActionsModal({ open, patient, onClose, onChangeDueDate, onResolve }) {
@@ -134,6 +144,7 @@ function LongTermReviewWorkspaceList({
   emptyTitle = "No long term review patients",
   emptyDescription = "Patients flagged by the operator desk for long term review will appear here.",
 }) {
+  const isMobile = useIsMobile();
   const [quickActionPatient, setQuickActionPatient] = useState(null);
   const [dueDatePatient, setDueDatePatient] = useState(null);
   const [resolvePatient, setResolvePatient] = useState(null);
@@ -212,7 +223,9 @@ function LongTermReviewWorkspaceList({
                 </div>
 
                 <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-semibold text-slate-800">{formatAssignedDoctorLine(patient)}</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {isMobile ? formatMobileAssignedDoctorLine(patient) : formatAssignedDoctorLine(patient)}
+                  </p>
                   <p className="text-sm text-slate-500">
                     Last consultation:{" "}
                     {patient.last_consultation_date
