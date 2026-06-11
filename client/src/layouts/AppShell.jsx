@@ -168,10 +168,22 @@ function AppShell() {
   const isLongTermReview = /^\/(doctor|operator|admin)\/long-term-review$/.test(location.pathname);
   const isAppointments = location.pathname === "/appointments";
   const isHcmNews = location.pathname === "/hcm-news";
-  const hidePatientProfileDesktopHeader = isPatientProfile && !isMobile;
-  const hidePatientsDirectoryDesktopHeader = isPatientsDirectory && !isMobile;
-  const hideStaffViewsDesktopHeader =
-    !isMobile && (isLongTermReview || isAppointments || isHcmNews);
+  const isBilling =
+    location.pathname === "/billing" || location.pathname === "/admin/finance";
+  const isLiveReport = location.pathname === "/live-report";
+  const isVisitRequests = location.pathname === "/visit-requests";
+  const hideDesktopTopHeader =
+    !isMobile &&
+    (isPatientProfile ||
+      isPatientsDirectory ||
+      isLongTermReview ||
+      isAppointments ||
+      isHcmNews ||
+      isBilling ||
+      isLiveReport ||
+      isInventory ||
+      isVisitRequests);
+  const usesCompactDesktopPagePadding = alwaysHideTopHeader || hideDesktopTopHeader;
 
   const dashboardMetaByRole = {
     doctor: {
@@ -242,7 +254,7 @@ function AppShell() {
         <Sidebar />
 
         <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
-          {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hidePatientProfileDesktopHeader && !hidePatientsDirectoryDesktopHeader && !hideStaffViewsDesktopHeader ? (
+          {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hideDesktopTopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}
@@ -274,7 +286,7 @@ function AppShell() {
           ) : null}
 
           <div
-            className={`ocs-page w-full min-w-0 max-w-full overflow-x-hidden overscroll-x-none px-4 py-3 sm:px-6 md:px-5 md:py-6 lg:px-8 ${alwaysHideTopHeader ? "lg:py-6" : "lg:py-8"}`}
+            className={`ocs-page w-full min-w-0 max-w-full overflow-x-hidden overscroll-x-none px-4 py-3 sm:px-6 md:px-5 md:py-6 lg:px-8 ${usesCompactDesktopPagePadding ? "lg:py-6" : "lg:py-8"}`}
             style={{
               paddingBottom: `max(1.5rem, var(--sab))`,
               paddingLeft: `max(1rem, var(--sal))`,
