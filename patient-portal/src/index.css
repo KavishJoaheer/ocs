@@ -895,6 +895,14 @@ table {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+.text-brand-dark-grey {
+  color: var(--brand-dark-grey);
+}
+
+.text-brand-teal {
+  color: var(--brand-teal);
+}
+
 .text-ocs-orange,
 .text-brand-gold {
   color: var(--ocs-brand-gold);
@@ -902,6 +910,10 @@ table {
 
 .text-brand-gold-dark {
   color: var(--ocs-brand-gold-dark);
+}
+
+.bg-brand-dark-grey {
+  background-color: var(--brand-dark-grey);
 }
 
 .bg-ocs-orange,
@@ -920,7 +932,7 @@ table {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #d4a03a;
+  color: var(--brand-gold);
 }
 
 .desktop-dashboard-shell {
@@ -1239,7 +1251,7 @@ button.native-grouped-row {
 
 .ocs-primary-action-btn {
   background: var(--ocs-brand-gold);
-  color: #fff;
+  color: var(--brand-dark-grey);
   font-weight: 700;
   box-shadow: 0 8px 24px -6px rgba(var(--ocs-brand-gold-rgb), 0.45);
   transition:
@@ -1448,13 +1460,13 @@ button.native-grouped-row {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--ocs-brand-gold);
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--ocs-orange);
+  color: var(--brand-dark-grey);
   letter-spacing: 0.02em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px rgba(var(--ocs-brand-gold-rgb), 0.25);
 }
 
 /* ─── Visits / Appointments itinerary ─────────────────────────────────────── */
@@ -1759,10 +1771,10 @@ button.native-grouped-row {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--ocs-orange);
+  background: var(--ocs-brand-gold);
   font-size: 14px;
   font-weight: 700;
-  color: #fff;
+  color: var(--brand-dark-grey);
   box-shadow: 0 4px 16px rgba(var(--ocs-brand-gold-rgb), 0.3);
   transition: transform 160ms ease, opacity 160ms ease;
 }

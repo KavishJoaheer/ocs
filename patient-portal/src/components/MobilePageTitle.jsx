@@ -1,9 +1,9 @@
-/** Page task title below the identity strip — teal + orange split. Mobile only. */
+/** Page task title below the identity strip — dark teal-grey + gold split. Mobile only. */
 function MobilePageTitle({ primaryText, secondaryText, subtitle, children, className = "" }) {
   return (
     <div className={["px-4 pb-4 pt-4 lg:hidden", className].filter(Boolean).join(" ")}>
       <h1 className="text-[26px] font-bold leading-[1.2] tracking-tight">
-        <span className="text-teal-900">{primaryText}</span>
+        <span className="text-brand-dark-grey">{primaryText}</span>
         {secondaryText ? (
           <>
             {" "}

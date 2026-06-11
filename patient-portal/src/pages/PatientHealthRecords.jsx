@@ -171,7 +171,7 @@ function PatientHealthRecords() {
             </>
           ) : loadError ? (
             <div className="flex flex-col items-center px-4 py-16 text-center">
-              <p className="text-[20px] font-bold text-teal-900 lg:text-brand-dark-grey">Couldn&apos;t load health records</p>
+              <p className="text-[20px] font-bold text-brand-dark-grey">Couldn&apos;t load health records</p>
               <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500 lg:text-brand-cool-grey">{loadError}</p>
               <button
                 type="button"

@@ -12,7 +12,7 @@ function ConsultationsEmptyState() {
       <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-[#5b7f8a] lg:text-brand-cool-grey">
         After your first home visit, your consultation history will appear here.
       </p>
-      <RequestVisitCta className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98] lg:text-brand-dark-grey">
+      <RequestVisitCta className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-brand-dark-grey shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98]">
         Request a Home Visit
       </RequestVisitCta>
     </div>

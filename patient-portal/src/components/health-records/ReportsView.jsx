@@ -91,7 +91,7 @@ function ReportsEmptyState({ onUpload }) {
       <button
         type="button"
         onClick={onUpload}
-        className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98] lg:text-brand-dark-grey"
+        className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-brand-dark-grey shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98]"
       >
         Upload Report
       </button>
@@ -113,7 +113,7 @@ function ReportsView({ reports, onUpload }) {
           <button
             type="button"
             onClick={onUpload}
-            className="flex items-center gap-2 rounded-xl bg-brand-gold px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-105 active:scale-[0.98]"
+            className="flex items-center gap-2 rounded-xl bg-brand-gold px-5 py-2.5 text-[14px] font-bold text-brand-dark-grey transition hover:brightness-105 active:scale-[0.98]"
           >
             <FileUp className="size-4 translate-y-px" strokeWidth={1.75} />
             Upload Report

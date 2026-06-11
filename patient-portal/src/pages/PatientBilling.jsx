@@ -83,7 +83,7 @@ function PatientBilling() {
       <DesktopPageBody className="mt-5 space-y-8 lg:mt-6">
       {loadError && !loading ? (
         <div className="flex flex-col items-center rounded-[24px] border border-teal-500/10 bg-white px-6 py-16 text-center lg:border-brand-teal/20">
-          <p className="text-[20px] font-bold text-teal-900 lg:text-brand-dark-grey">Couldn&apos;t load billing</p>
+          <p className="text-[20px] font-bold text-brand-dark-grey">Couldn&apos;t load billing</p>
           <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500 lg:text-brand-cool-grey">{loadError}</p>
           <button
             type="button"
@@ -208,12 +208,16 @@ function PatientBilling() {
                     {formatCurrency(bill.amount)}
                   </p>
                   <span
-                    className="inline-flex items-center gap-1.5 rounded-full border border-brand-teal/20 bg-brand-teal/10 px-3 py-1 text-xs font-bold text-brand-dark-grey"
+                    className={
+                      bill.status === "paid"
+                        ? "inline-flex items-center gap-1.5 rounded-full border border-brand-teal/20 bg-brand-teal/10 px-3 py-1 text-xs font-bold text-brand-dark-grey"
+                        : "inline-flex items-center gap-1.5 rounded-full border border-brand-gold/40 bg-brand-gold/15 px-3 py-1 text-xs font-bold text-brand-dark-grey"
+                    }
                   >
                     {bill.status === "paid" ? (
                       <CheckCircle2 className="size-3" />
                     ) : (
-                      <AlertCircle className="size-3" />
+                      <AlertCircle className="size-3 text-brand-gold" />
                     )}
                     {bill.status === "paid" ? "Paid" : "Unpaid"}
                   </span>

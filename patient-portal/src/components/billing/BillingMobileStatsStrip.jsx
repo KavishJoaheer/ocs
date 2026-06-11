@@ -1,7 +1,7 @@
 function StatCell({ label, amount, className = "" }) {
   return (
     <div className={`min-w-0 flex-1 text-center ${className}`.trim()}>
-      <p className="text-[18px] font-bold leading-tight text-teal-900">{amount}</p>
+      <p className="text-[18px] font-bold leading-tight text-brand-dark-grey">{amount}</p>
       <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
         {label}
       </p>
