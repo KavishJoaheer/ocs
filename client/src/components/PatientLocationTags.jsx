@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Search, X, MapPin } from "lucide-react";
 import { MAURITIUS_LOCATION_OPTIONS } from "../lib/mauritiusLocations.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";

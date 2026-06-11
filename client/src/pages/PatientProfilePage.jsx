@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
-  Download,
   FileText,
   FlaskConical,
   GitMerge,

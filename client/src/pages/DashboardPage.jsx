@@ -9,7 +9,6 @@ import {
   CreditCard,
   DollarSign,
   Package,
-  PhoneCall,
   Search,
   ShieldCheck,
   Stethoscope,

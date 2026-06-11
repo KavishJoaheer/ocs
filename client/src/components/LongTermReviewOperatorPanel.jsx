@@ -49,9 +49,7 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
           <span className="text-4xl font-black tracking-tight text-gray-900 tabular-nums">
             {filteredReviewList.length}
           </span>
-          <div className="flex flex-col">
-            <h2 className="text-lg font-extrabold tracking-wide text-gray-800">Review Appointments</h2>
-          </div>
+          <h2 className="text-lg font-extrabold tracking-wide text-gray-800">Review Appointments</h2>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-4">
