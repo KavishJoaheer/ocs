@@ -4,6 +4,7 @@ import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
+import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
 
@@ -113,16 +114,18 @@ function PatientAppointments() {
     .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
-    <div className="visits-screen native-screen mx-auto w-full max-w-[720px] px-4 font-sans lg:max-w-3xl lg:px-0">
-      <MobileBrandHeader />
+    <DesktopPageFrame className="visits-screen native-screen font-sans">
+      <div className="px-4 lg:px-0">
+        <MobileBrandHeader />
+        <PageHeroHeader
+          primaryText="Your"
+          secondaryText="Appointments"
+          subtitle="Scheduled by your OCS care team."
+          className="max-lg:mt-3 max-lg:pt-0"
+        />
+      </div>
 
-      <PageHeroHeader
-        primaryText="Your"
-        secondaryText="Appointments."
-        subtitle="Scheduled by your OCS care team."
-        className="animate-fade-in-up max-lg:mt-3 max-lg:pt-0"
-      />
-
+      <DesktopPageBody>
       {loading ? (
         <div className="mt-6 flex flex-col gap-4">
           <div className="h-40 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
@@ -188,7 +191,8 @@ function PatientAppointments() {
           </section>
         </>
       )}
-    </div>
+      </DesktopPageBody>
+    </DesktopPageFrame>
   );
 }
 

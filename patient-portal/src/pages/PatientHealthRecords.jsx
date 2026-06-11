@@ -5,6 +5,7 @@ import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
+import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import HealthRecordsSegmentedControl from "../components/health-records/HealthRecordsSegmentedControl.jsx";
 import ConsultationsView from "../components/health-records/ConsultationsView.jsx";
 import ReportsView from "../components/health-records/ReportsView.jsx";
@@ -129,29 +130,31 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col px-4 font-sans lg:max-w-4xl lg:bg-transparent lg:px-0">
-      <MobileBrandHeader />
-
-      <PageHeroHeader
-        primaryText="Health"
-        secondaryText="Records"
-        subtitle="Your health journey, securely organised."
-        className="max-lg:mt-3 max-lg:pt-0"
-      />
-
-      <div className="mt-6 lg:hidden">
-        <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
-      </div>
-
-      <div className="mt-6 hidden lg:block">
-        <HealthRecordsSegmentedControl
-          activeTab={activeTab}
-          onChange={setActiveTab}
-          layout="desktop"
+    <DesktopPageFrame className="native-health-records native-screen flex flex-col font-sans lg:bg-transparent">
+      <div className="px-4 lg:px-0">
+        <MobileBrandHeader />
+        <PageHeroHeader
+          primaryText="Health"
+          secondaryText="Records"
+          subtitle="Your health journey, securely organised."
+          className="max-lg:mt-3 max-lg:pt-0"
         />
       </div>
 
-      <div className="min-h-[40vh] w-full" role="tabpanel" aria-label={activeTab}>
+      <DesktopPageBody>
+        <div className="mt-6 lg:hidden">
+          <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+        </div>
+
+        <div className="mt-6 hidden lg:block">
+          <HealthRecordsSegmentedControl
+            activeTab={activeTab}
+            onChange={setActiveTab}
+            layout="desktop"
+          />
+        </div>
+
+        <div className="min-h-[40vh] w-full" role="tabpanel" aria-label={activeTab}>
         {loading ? (
           <>
             <div className="flex flex-col gap-4 lg:hidden">
@@ -184,14 +187,15 @@ function PatientHealthRecords() {
             onUpload={() => setUploadOpen(true)}
           />
         )}
-      </div>
+        </div>
+      </DesktopPageBody>
 
       <UploadReportModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onUpload={handleUpload}
       />
-    </div>
+    </DesktopPageFrame>
   );
 }
 

@@ -13,6 +13,7 @@ import {
 import { api } from "../lib/api.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
+import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-MU", {
@@ -59,17 +60,18 @@ function PatientBilling() {
   }, [refreshKey, retryToken]);
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 font-sans lg:max-w-3xl lg:px-0">
-      <MobileBrandHeader />
+    <DesktopPageFrame className="font-sans">
+      <div className="px-4 lg:px-0">
+        <MobileBrandHeader />
+        <PageHeroHeader
+          primaryText="Billing"
+          secondaryText="& Payments"
+          subtitle="Review your bills, payments, and outstanding balances."
+          className="max-lg:mt-3 max-lg:pt-0"
+        />
+      </div>
 
-      <PageHeroHeader
-        primaryText="Billing &"
-        secondaryText="Payments"
-        subtitle="Review your bills, payments, and outstanding balances."
-        className="animate-fade-in-up max-lg:mt-3 max-lg:pt-0"
-      />
-
-      <div className="mt-6 space-y-8">
+      <DesktopPageBody className="mt-6 space-y-8">
       {loadError && !loading ? (
         <div className="flex flex-col items-center rounded-[24px] border border-teal-500/10 bg-white px-6 py-16 text-center">
           <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load billing</p>
@@ -210,8 +212,8 @@ function PatientBilling() {
           </div>
         </div>
       ) : null}
-      </div>
-    </div>
+      </DesktopPageBody>
+    </DesktopPageFrame>
   );
 }
 
