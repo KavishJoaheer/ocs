@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { FolderHeart } from "lucide-react";
 import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import HealthRecordsSegmentedControl from "../components/health-records/HealthRecordsSegmentedControl.jsx";
 import ConsultationsView from "../components/health-records/ConsultationsView.jsx";
 import ReportsView from "../components/health-records/ReportsView.jsx";
@@ -129,26 +129,17 @@ function PatientHealthRecords() {
 
   return (
     <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:bg-transparent lg:pt-10">
-      <header className="animate-fade-in-up pb-6 lg:animate-fade-in-up lg:pb-0">
-        <div className="hidden items-center gap-2 lg:flex">
-          <FolderHeart className="size-[18px] shrink-0 text-[#6B9E95]" strokeWidth={1.75} />
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
-            Health Records
-          </p>
-        </div>
-        <h1 className="native-display text-[28px] leading-tight lg:mt-0 lg:text-4xl">
-          <span className="text-[#52C4B9]">Health</span>{" "}
-          <span className="text-brand-orange">Records</span>
-        </h1>
-        <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
-          Your health journey, securely organised.
-        </p>
-        <div className="mt-5 lg:hidden">
-          <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
-        </div>
-      </header>
+      <PageHeroHeader
+        accent="Health"
+        title="Records"
+        subtitle="Your health journey, securely organised."
+      />
 
-      <div className="hidden lg:mt-8 lg:mb-8 lg:block">
+      <div className="mt-6 lg:hidden">
+        <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+      </div>
+
+      <div className="mt-6 hidden lg:block">
         <HealthRecordsSegmentedControl
           activeTab={activeTab}
           onChange={setActiveTab}
@@ -156,7 +147,7 @@ function PatientHealthRecords() {
         />
       </div>
 
-      <div className="min-h-[40vh] w-full max-lg:pt-2" role="tabpanel" aria-label={activeTab}>
+      <div className="min-h-[40vh] w-full" role="tabpanel" aria-label={activeTab}>
         {loading ? (
           <>
             <div className="flex flex-col gap-4 lg:hidden">
@@ -170,8 +161,8 @@ function PatientHealthRecords() {
           </>
         ) : loadError ? (
           <div className="flex flex-col items-center px-4 py-16 text-center">
-            <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load health records</p>
-            <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+            <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load health records</p>
+            <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500">{loadError}</p>
             <button
               type="button"
               onClick={handleRetry}

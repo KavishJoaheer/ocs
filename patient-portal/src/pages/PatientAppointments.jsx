@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import FamilyProfileSwitcher from "../components/FamilyProfileSwitcher.jsx";
+import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
 
@@ -125,17 +126,15 @@ function PatientAppointments() {
         <FamilyProfileSwitcher variant="avatar" />
       </div>
 
-      <header className="animate-fade-in-up pb-2 pt-3 lg:pt-0">
-        <h1 className="native-display text-[26px] leading-tight text-[#1a5c52] lg:text-4xl">
-          Your Appointments.
-        </h1>
-        <p className="mt-1.5 text-[15px] leading-relaxed text-[#5b7f8a]">
-          Scheduled by your OCS care team.
-        </p>
-      </header>
+      <PageHeroHeader
+        accent="Your"
+        title="Appointments."
+        subtitle="Scheduled by your OCS care team."
+        className="animate-fade-in-up"
+      />
 
       {loading ? (
-        <div className="mt-6 flex flex-col gap-4 lg:mt-8">
+        <div className="mt-6 flex flex-col gap-4">
           <div className="h-40 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
           <div className="h-28 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
         </div>
@@ -153,7 +152,7 @@ function PatientAppointments() {
         </div>
       ) : (
         <>
-          <section className="animate-fade-in-up stagger-1 mt-6 lg:mt-8">
+          <section className="animate-fade-in-up stagger-1 mt-6">
             <SectionLabel>Upcoming</SectionLabel>
             {upcoming.length === 0 ? (
               <p className="text-[14px] italic text-[#8a9e9a]">

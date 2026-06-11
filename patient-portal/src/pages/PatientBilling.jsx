@@ -11,6 +11,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { api } from "../lib/api.js";
+import PageHeroHeader from "../components/PageHeroHeader.jsx";
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-MU", {
@@ -57,28 +58,19 @@ function PatientBilling() {
   }, [refreshKey, retryToken]);
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="animate-fade-in-up">
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] p-2.5 shadow-lg shadow-[rgba(45,143,152,0.22)]">
-            <CreditCard className="size-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-display text-2xl tracking-tight text-slate-950 sm:text-3xl">
-              Billing &amp; Payments
-            </h1>
-            <p className="mt-1 text-sm text-[#5b7f8a]">
-              Review your bills, payments, and outstanding balances.
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="font-sans">
+      <PageHeroHeader
+        accent="Billing"
+        title="& Payments"
+        subtitle="Review your bills, payments, and outstanding balances."
+        className="animate-fade-in-up"
+      />
 
+      <div className="mt-6 space-y-8">
       {loadError && !loading ? (
-        <div className="flex flex-col items-center rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-white px-6 py-16 text-center">
-          <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load billing</p>
-          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+        <div className="flex flex-col items-center rounded-[24px] border border-teal-500/10 bg-white px-6 py-16 text-center">
+          <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load billing</p>
+          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500">{loadError}</p>
           <button
             type="button"
             onClick={() => setRetryToken((token) => token + 1)}
@@ -215,6 +207,7 @@ function PatientBilling() {
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
