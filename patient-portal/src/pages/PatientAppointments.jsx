@@ -135,8 +135,8 @@ function PatientAppointments() {
         </div>
       ) : loadError ? (
         <div className="mt-8 flex flex-col items-center px-4 py-16 text-center">
-          <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load appointments</p>
-          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
+          <p className="native-display text-[20px] text-[#1a5c52] lg:text-brand-dark-grey">Couldn&apos;t load appointments</p>
+          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a] lg:text-brand-cool-grey">{loadError}</p>
           <button
             type="button"
             onClick={() => setRetryToken((token) => token + 1)}

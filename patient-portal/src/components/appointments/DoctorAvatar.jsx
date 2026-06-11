@@ -12,7 +12,7 @@ function DoctorAvatar({ name, size = "sm" }) {
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] font-bold text-white ${sizeClass}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] font-bold text-white lg:from-brand-teal lg:to-[#5ed9d2] ${sizeClass}`}
       aria-hidden="true"
     >
       {doctorInitials(name)}

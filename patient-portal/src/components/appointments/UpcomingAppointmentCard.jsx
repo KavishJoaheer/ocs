@@ -8,8 +8,8 @@ function VisitStatusBadge({ children, tone = "teal" }) {
     tone === "muted"
       ? "bg-gray-100 text-gray-500"
       : tone === "teal-muted"
-        ? "bg-teal-50/80 text-teal-700"
-        : "bg-teal-50 text-teal-800";
+        ? "bg-teal-50/80 text-teal-700 lg:bg-brand-teal/10 lg:text-brand-dark-grey"
+        : "bg-teal-50 text-teal-800 lg:bg-brand-teal/10 lg:text-brand-dark-grey";
 
   return (
     <span
@@ -81,17 +81,17 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <p className="native-display text-[17px] font-bold leading-snug text-[#1a5c52]">
+          <p className="native-display text-[17px] font-bold leading-snug text-brand-dark-grey">
             {appointment.type}
           </p>
 
           <div className="mt-2.5 flex items-center gap-2.5">
             <DoctorAvatar name={appointment.doctor_name} size="md" />
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
+              <p className="text-[14px] font-semibold text-brand-dark-grey">{appointment.doctor_name}</p>
               {appointment.time_window ? (
-                <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5b7f8a]">
-                  <Clock className="size-3.5 shrink-0 text-[#6b9e95]" strokeWidth={1.5} />
+                <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-brand-cool-grey">
+                  <Clock className="size-3.5 shrink-0 text-brand-teal" strokeWidth={1.5} />
                   <span>{appointment.time_window}</span>
                 </div>
               ) : null}
@@ -99,7 +99,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           </div>
 
           {appointment.note ? (
-            <p className="mt-2 text-[13px] leading-relaxed text-[#8a9e9a]">{appointment.note}</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-brand-cool-grey">{appointment.note}</p>
           ) : null}
         </div>
 
@@ -110,7 +110,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
         </div>
       </div>
 
-      <div className="hidden border-t border-gray-100 lg:block" aria-hidden="true" />
+      <div className="hidden border-t border-brand-teal/20 lg:block" aria-hidden="true" />
       <div className="hidden items-center justify-end px-5 py-[14px] pb-4 lg:flex">
         <button
           type="button"

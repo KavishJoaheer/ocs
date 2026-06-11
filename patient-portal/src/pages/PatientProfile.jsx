@@ -328,7 +328,7 @@ function PatientProfile() {
       <div className="profile-screen native-screen w-full">
         <div className="profile-teal-band" aria-hidden="true" />
         <div className="profile-hub mx-auto flex w-full max-w-4xl flex-col items-center px-[var(--native-pad-screen)] py-16 text-center lg:px-6">
-          <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load your profile</p>
+          <p className="native-display text-[20px] text-[#1a5c52] lg:text-brand-dark-grey">Couldn&apos;t load your profile</p>
           <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{loadError}</p>
           <button
             type="button"

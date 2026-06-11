@@ -82,9 +82,9 @@ function PatientBilling() {
 
       <DesktopPageBody className="mt-5 space-y-8 lg:mt-6">
       {loadError && !loading ? (
-        <div className="flex flex-col items-center rounded-[24px] border border-teal-500/10 bg-white px-6 py-16 text-center">
-          <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load billing</p>
-          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500">{loadError}</p>
+        <div className="flex flex-col items-center rounded-[24px] border border-teal-500/10 bg-white px-6 py-16 text-center lg:border-brand-teal/20">
+          <p className="text-[20px] font-bold text-teal-900 lg:text-brand-dark-grey">Couldn&apos;t load billing</p>
+          <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500 lg:text-brand-cool-grey">{loadError}</p>
           <button
             type="button"
             onClick={() => setRetryToken((token) => token + 1)}
@@ -109,42 +109,42 @@ function PatientBilling() {
         <>
           <BillingMobileStatsStrip summary={summary} formatCurrency={formatCurrency} />
           <div className="hidden gap-4 sm:grid-cols-3 lg:grid">
-          <div className="animate-fade-in-up stagger-1 rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
+          <div className="animate-fade-in-up stagger-1 rounded-[24px] border border-brand-teal/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] p-2.5">
+              <div className="rounded-2xl bg-[linear-gradient(135deg,#5ed9d2,var(--brand-teal))] p-2.5">
                 <Banknote className="size-5 text-white" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6e949b]">Total Billed</p>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-[#22485b]">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cool-grey">Total Billed</p>
+                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey">
                   {formatCurrency(summary?.total_billed)}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="animate-fade-in-up stagger-2 rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
+          <div className="animate-fade-in-up stagger-2 rounded-[24px] border border-brand-teal/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-[linear-gradient(135deg,#34d399,#10b981)] p-2.5">
+              <div className="rounded-2xl bg-[linear-gradient(135deg,#5ed9d2,var(--brand-teal))] p-2.5">
                 <TrendingUp className="size-5 text-white" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6e949b]">Total Paid</p>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-emerald-700">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cool-grey">Total Paid</p>
+                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey">
                   {formatCurrency(summary?.total_paid)}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="animate-fade-in-up stagger-3 rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
+          <div className="animate-fade-in-up stagger-3 rounded-[24px] border border-brand-teal/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-[linear-gradient(135deg,#f2c14d,#e6a817)] p-2.5">
-                <Wallet className="size-5 text-white" />
+              <div className="rounded-2xl bg-brand-gold p-2.5">
+                <Wallet className="size-5 text-brand-dark-grey" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6e949b]">Outstanding</p>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-[#22485b]">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cool-grey">Outstanding</p>
+                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey">
                   {formatCurrency(summary?.outstanding)}
                 </p>
               </div>
@@ -162,41 +162,41 @@ function PatientBilling() {
           ))}
         </div>
       ) : !loadError && bills.length === 0 ? (
-        <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-dashed border-[rgba(65,200,198,0.25)] bg-[rgba(65,200,198,0.04)] p-12 text-center">
-          <Receipt className="mx-auto size-14 text-[rgba(65,200,198,0.3)]" />
-          <h3 className="mt-4 font-display text-xl font-semibold text-[#22485b]">
+        <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-dashed border-brand-teal/20 bg-brand-teal/5 p-12 text-center">
+          <Receipt className="mx-auto size-14 text-brand-teal/30" />
+          <h3 className="mt-4 font-display text-xl font-semibold text-brand-dark-grey">
             No bills found
           </h3>
-          <p className="mt-2 text-sm text-[#6e949b]">
+          <p className="mt-2 text-sm text-brand-cool-grey">
             Your billing records will appear here after your appointments.
           </p>
         </div>
       ) : !loadError ? (
-        <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+        <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-brand-teal/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
           <div className="p-5 sm:p-6">
             <div className="flex items-center gap-2">
-              <Receipt className="size-4 text-[#2d8f98]" />
-              <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+              <Receipt className="size-4 text-brand-teal" />
+              <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-dark-grey">
                 Bill History
               </h2>
             </div>
           </div>
 
-          <div className="divide-y divide-[rgba(65,200,198,0.1)]">
+          <div className="divide-y divide-brand-teal/20">
             {bills.map((bill, idx) => (
               <div
                 key={bill.id || idx}
-                className="flex flex-col gap-3 px-5 py-4 transition hover:bg-[rgba(65,200,198,0.04)] sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                className="flex flex-col gap-3 px-5 py-4 transition hover:bg-brand-teal/5 sm:flex-row sm:items-center sm:justify-between sm:px-6"
               >
                 <div className="flex items-start gap-4">
-                  <div className="rounded-2xl bg-[rgba(65,200,198,0.1)] p-2.5">
-                    <CreditCard className="size-4 text-[#2d8f98]" />
+                  <div className="rounded-2xl bg-brand-teal/10 p-2.5">
+                    <CreditCard className="size-4 text-brand-teal" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-[#22485b]">
+                    <p className="text-sm font-semibold text-brand-dark-grey">
                       {bill.items_summary || bill.description || "Medical service"}
                     </p>
-                    <p className="mt-0.5 text-xs text-[#6e949b]">
+                    <p className="mt-0.5 text-xs text-brand-cool-grey">
                       {dayjs(bill.date).format("MMM D, YYYY")}
                       {bill.payment_method && ` · ${bill.payment_method}`}
                     </p>
@@ -204,15 +204,11 @@ function PatientBilling() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                  <p className="font-display text-lg font-bold text-[#22485b]">
+                  <p className="font-display text-lg font-bold text-brand-dark-grey">
                     {formatCurrency(bill.amount)}
                   </p>
                   <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
-                      bill.status === "paid"
-                        ? "border-emerald-200 bg-[rgba(34,197,94,0.1)] text-emerald-700"
-                        : "border-amber-200 bg-[rgba(242,193,77,0.12)] text-amber-700"
-                    }`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-brand-teal/20 bg-brand-teal/10 px-3 py-1 text-xs font-bold text-brand-dark-grey"
                   >
                     {bill.status === "paid" ? (
                       <CheckCircle2 className="size-3" />

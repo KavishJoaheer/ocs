@@ -16,8 +16,8 @@ function SidebarLink({ item }) {
         [
           "sidebar-nav-link group relative -mx-6 flex min-h-[44px] items-center gap-3 px-6 text-sm outline-none transition-colors focus:outline-none focus-visible:outline-none",
           isActive
-            ? "sidebar-nav-link-active font-semibold text-[#1a5c52]"
-            : "font-normal text-[#2a6a5e] hover:bg-[rgba(26,92,82,0.04)]",
+            ? "sidebar-nav-link-active font-semibold text-brand-teal"
+            : "font-normal text-brand-cool-grey hover:bg-[rgba(43,204,196,0.06)]",
         ].join(" ")
       }
     >
@@ -25,12 +25,12 @@ function SidebarLink({ item }) {
         <>
           {isActive ? (
             <span
-              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-gold shadow-[0_0_12px_rgba(var(--ocs-brand-gold-rgb),0.6)]"
+              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-teal shadow-[0_0_12px_rgba(43,204,196,0.45)]"
               aria-hidden="true"
             />
           ) : null}
           <Icon
-            className={`size-[18px] shrink-0 ${isActive ? "text-[#2d8f98]" : "text-[#6B9E95]"}`}
+            className={`size-[18px] shrink-0 ${isActive ? "text-brand-teal" : "text-brand-cool-grey"}`}
             strokeWidth={1.5}
           />
           <span>{item.label}</span>
@@ -58,7 +58,7 @@ function Sidebar() {
               alt="OCS Médecins"
               className="h-11 w-auto drop-shadow-[0_8px_24px_rgba(34,72,91,0.08)]"
             />
-            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-[#2d8f98]">
+            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-brand-teal">
               OCS Care
             </p>
           </div>
@@ -70,7 +70,7 @@ function Sidebar() {
               type="button"
               onClick={() => logout()}
               aria-label="Sign out"
-              className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-[16px] border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] p-2 text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.16)]"
+              className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-[16px] border border-brand-teal/20 bg-brand-teal/10 p-2 text-brand-teal transition hover:bg-brand-teal/20"
             >
               <LogOut className="size-4" />
             </button>
@@ -79,7 +79,7 @@ function Sidebar() {
           {/* Request a home visit — primary action */}
           <Link
             to="/request-visit"
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98]"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-brand-dark-grey shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98]"
           >
             <HousePlus className="size-5" />
             Request a Home Visit
@@ -87,7 +87,7 @@ function Sidebar() {
 
           {/* Nav links */}
           <div className="mt-9">
-            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
+            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-brand-cool-grey">
               Navigation
             </p>
             <nav className="mt-4 space-y-0.5">

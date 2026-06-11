@@ -54,15 +54,15 @@ function ActiveVisitCard({ visit, onCancelled }) {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
           <span className="relative inline-flex size-2.5 rounded-full bg-[#34c759]" />
         </span>
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#2d8f98]">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-teal">
           Active Visit
         </p>
       </div>
 
-      <p className="mt-3 font-display text-lg font-bold tracking-tight text-[#1a5c52]">
+      <p className="mt-3 font-display text-lg font-bold tracking-tight text-brand-dark-grey">
         {visit.doctor || "Your doctor"}
       </p>
-      <p className="mt-1 text-sm text-[#5b7f8a]">
+      <p className="mt-1 text-sm text-brand-cool-grey">
         {visit.statusText || "Doctor en route · Est. arrival 25 min"}
       </p>
 
@@ -72,23 +72,23 @@ function ActiveVisitCard({ visit, onCancelled }) {
           <div key={step} className="flex flex-col gap-2">
             <div className="flex h-[6px] items-center">
               {i === activeStepIndex ? (
-                <span className="size-2 rounded-full bg-[#1a5c52] animate-visit-step-pulse" />
+                <span className="size-2 rounded-full bg-brand-dark-grey animate-visit-step-pulse" />
               ) : (
                 <span className="size-2 rounded-full bg-transparent" aria-hidden="true" />
               )}
             </div>
             <span
               className={`h-[6px] rounded-full ${
-                i <= activeStepIndex ? "bg-[#2d8f98]" : "bg-[rgba(100,116,139,0.2)]"
+                i <= activeStepIndex ? "bg-brand-teal" : "bg-[rgba(100,116,139,0.2)]"
               }`}
             />
             <span
               className={`text-[0.55rem] leading-tight ${
                 i === activeStepIndex
-                  ? "font-semibold text-[#1a5c52]"
+                  ? "font-semibold text-brand-dark-grey"
                   : i < activeStepIndex
-                    ? "text-[#5b7f8a]"
-                    : "text-[#94a9ad]"
+                    ? "text-brand-cool-grey"
+                    : "text-brand-cool-grey/60"
               }`}
             >
               {step}
@@ -99,7 +99,7 @@ function ActiveVisitCard({ visit, onCancelled }) {
 
       <Link
         to="/request-visit/tracking"
-        className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-[#2d8f98] transition hover:gap-2 hover:text-[#23767f]"
+        className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-brand-teal transition hover:gap-2 hover:text-brand-dark-grey"
       >
         View Live Tracking <ArrowRight className="size-4" />
       </Link>
@@ -288,12 +288,12 @@ function PatientDashboard() {
 
   const headline = isPrimaryProfile ? (
     <>
-      <span className="text-[#52C4B9]">{greeting},</span>{" "}
+      <span className="text-brand-dark-grey">{greeting},</span>{" "}
       <span className="text-brand-gold">{firstName}</span>
     </>
   ) : (
     <>
-      <span className="text-[#52C4B9]">Managing care for</span>{" "}
+      <span className="text-brand-dark-grey">Managing care for</span>{" "}
       <span className="text-brand-gold">{firstName}</span>.
     </>
   );

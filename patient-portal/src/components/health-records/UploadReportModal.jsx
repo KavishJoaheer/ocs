@@ -88,7 +88,7 @@ function UploadFormFields({
         }
       >
         <FileUp
-          className={isMobile ? "size-12 text-teal-600" : "mx-auto size-9 text-[#2d8f98]"}
+          className={isMobile ? "size-12 text-teal-600" : "mx-auto size-9 text-brand-teal"}
           strokeWidth={isMobile ? 1.75 : 1.5}
         />
         <p
@@ -432,10 +432,10 @@ function UploadReportModal({ open, onClose, onUpload }) {
         className="upload-drawer animate-drawer-slide-in absolute inset-y-0 right-0 hidden w-full max-w-[420px] flex-col bg-white shadow-[-8px_0_40px_rgba(13,42,46,0.12)] lg:flex"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[rgba(0,0,0,0.06)] px-6 py-5">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-brand-teal/20 px-6 py-5">
           <div>
-            <h2 className="native-display text-[20px] text-[#1a5c52]">Upload Medical Report</h2>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-[#8a9e9a]">
+            <h2 className="native-display text-[20px] text-brand-dark-grey">Upload Medical Report</h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-brand-cool-grey">
               Add test results or specialist documents to your records.
             </p>
           </div>
@@ -443,7 +443,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
             type="button"
             onClick={handleClose}
             aria-label="Close upload drawer"
-            className="flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-[#8a9e9a] transition hover:bg-[rgba(0,0,0,0.04)] hover:text-[#1a5c52]"
+            className="flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-brand-cool-grey transition hover:bg-brand-teal/10 hover:text-brand-dark-grey"
           >
             <X className="size-5" strokeWidth={1.75} />
           </button>

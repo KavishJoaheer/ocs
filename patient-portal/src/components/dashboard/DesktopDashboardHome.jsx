@@ -32,14 +32,14 @@ function DesktopCareTeamCard({ doctorName }) {
           <span className="desktop-care-team-status" aria-label="Available" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-base font-bold leading-snug text-[#1a5c52]">
+          <p className="font-display text-base font-bold leading-snug text-brand-dark-grey">
             {displayName}
           </p>
-          <p className="mt-0.5 text-sm text-[#8a9e9a]">
+          <p className="mt-0.5 text-sm text-brand-cool-grey">
             {isAssigned ? "Primary Care Physician" : "Assigning your physician shortly"}
           </p>
           {isAssigned ? (
-            <p className="mt-1 text-xs text-[#8a9e9a]">Your assigned OCS doctor</p>
+            <p className="mt-1 text-xs text-brand-cool-grey">Your assigned OCS doctor</p>
           ) : null}
         </div>
       </div>
@@ -76,30 +76,30 @@ function DesktopLastVisitCard({ consultation }) {
 
   return (
     <section className="desktop-card animate-fade-in-up stagger-1">
-      <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
+      <h2 className="font-display text-lg font-bold text-brand-dark-grey">Your Last Visit</h2>
 
       <div className="mt-6 flex items-center justify-between gap-3">
-        <p className="text-[13px] font-medium text-[#5b7f8a]">{dateLabel}</p>
+        <p className="text-[13px] font-medium text-brand-cool-grey">{dateLabel}</p>
         <span className="desktop-visit-badge shrink-0">Home Visit</span>
       </div>
 
       <div className="mt-5 flex items-center gap-4">
         <div
-          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[15px] font-bold text-white"
+          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-teal to-[#5ed9d2] text-[15px] font-bold text-white"
           aria-hidden="true"
         >
           {doctorInitials(consultation.doctor_name)}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-lg font-bold leading-snug text-[#1a5c52]">{doctorName}</p>
-          <p className="mt-0.5 text-sm text-[#8a9e9a]">General Practitioner</p>
+          <p className="font-display text-lg font-bold leading-snug text-brand-dark-grey">{doctorName}</p>
+          <p className="mt-0.5 text-sm text-brand-cool-grey">General Practitioner</p>
         </div>
       </div>
 
       {consultation.diagnosis ? (
         <div className="mt-6">
           <p className="consultation-micro-label">Diagnosis</p>
-          <span className="mt-2 inline-flex rounded-[14px] bg-[rgba(26,160,140,0.1)] px-4 py-1.5 text-[13px] font-medium text-[#2d8f98]">
+          <span className="mt-2 inline-flex rounded-[14px] bg-brand-teal/10 px-4 py-1.5 text-[13px] font-medium text-brand-dark-grey">
             {consultation.diagnosis}
           </span>
         </div>
@@ -129,7 +129,7 @@ function DesktopDashboardHome({
         <h1 className="font-display text-[2rem] tracking-tight sm:text-4xl">
           {headline}
         </h1>
-        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-gray-500">
+        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-brand-cool-grey">
           Your health. Unwavering care. Accessed effortlessly, managed securely.
         </p>
       </header>
@@ -145,14 +145,14 @@ function DesktopDashboardHome({
             <DesktopLastVisitCard consultation={profileLastConsultation} />
           ) : (
             <section className="desktop-card animate-fade-in-up stagger-1">
-              <h2 className="font-display text-lg font-bold text-[#1a5c52]">Your Last Visit</h2>
+              <h2 className="font-display text-lg font-bold text-brand-dark-grey">Your Last Visit</h2>
               <div className="mt-6 flex items-center gap-4">
-                <div className="flex size-11 items-center justify-center rounded-[12px] bg-[rgba(26,160,140,0.06)]">
-                  <HousePlus className="size-5 text-[#2d8f98]" strokeWidth={1.5} />
+                <div className="flex size-11 items-center justify-center rounded-[12px] bg-brand-teal/10">
+                  <HousePlus className="size-5 text-brand-teal" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <p className="font-display text-base font-bold text-[#1a5c52]">No visits yet</p>
-                  <p className="mt-0.5 text-sm text-[#5b7f8a]">
+                  <p className="font-display text-base font-bold text-brand-dark-grey">No visits yet</p>
+                  <p className="mt-0.5 text-sm text-brand-cool-grey">
                     Your care timeline will appear here after your first home visit.
                   </p>
                 </div>

@@ -8,7 +8,7 @@ import { AVATAR_STYLES } from "../lib/familyProfiles.js";
 function ProfileAvatar({ profile, size = "md" }) {
   const sizeClass =
     size === "header"
-      ? "size-[34px] bg-[#1a5c52] text-[13px] font-semibold text-white shadow-none"
+      ? "size-[34px] bg-brand-dark-grey text-[13px] font-semibold text-white shadow-none"
       : size === "sm"
         ? "size-9 text-sm"
         : "size-12 text-base";
@@ -147,7 +147,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
       <div className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1 py-1">
         <ProfileAvatar profile={activeProfile} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-light text-[#6e949b]">{activeProfile.relationship}</p>
+          <p className="truncate text-xs font-light text-brand-cool-grey">{activeProfile.relationship}</p>
         </div>
       </div>
     );
@@ -188,10 +188,10 @@ function FamilyProfileSwitcher({ variant = "default" }) {
       >
         <ProfileAvatar profile={activeProfile} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-light text-[#6e949b]">{activeProfile.relationship}</p>
+          <p className="truncate text-xs font-light text-brand-cool-grey">{activeProfile.relationship}</p>
         </div>
         <ChevronDown
-          className={`size-4 shrink-0 text-[#6e949b] transition-transform duration-200 ease-out ${
+          className={`size-4 shrink-0 text-brand-cool-grey transition-transform duration-200 ease-out ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -201,30 +201,30 @@ function FamilyProfileSwitcher({ variant = "default" }) {
         <div
           role="listbox"
           aria-label="Family profiles"
-          className="profile-dropdown absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-[rgba(26,160,140,0.15)] bg-[rgba(255,255,255,0.92)] shadow-[0_8px_32px_rgba(26,160,140,0.12)] backdrop-blur-[12px]"
+          className="profile-dropdown absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-brand-teal/20 bg-[rgba(255,255,255,0.92)] shadow-[0_8px_32px_rgba(43,204,196,0.12)] backdrop-blur-[12px]"
         >
           {profiles.map((profile, index) => {
             const isActive = profile.id === activeProfileId;
             return (
               <div key={profile.id}>
                 {index > 0 ? (
-                  <div className="mx-4 border-t border-[rgba(26,160,140,0.08)]" />
+                  <div className="mx-4 border-t border-brand-teal/20" />
                 ) : null}
                 <button
                   type="button"
                   role="option"
                   aria-selected={isActive}
                   onClick={() => handleSelect(profile.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-[rgba(26,160,140,0.06)]"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-brand-teal/10"
                 >
                   <ProfileAvatar profile={profile} size="sm" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[#1a5c52]">{profile.name}</p>
-                    <p className="truncate text-xs font-light text-[#6e949b]">
+                    <p className="truncate text-sm font-medium text-brand-dark-grey">{profile.name}</p>
+                    <p className="truncate text-xs font-light text-brand-cool-grey">
                       {profile.relationship}
                     </p>
                   </div>
-                  {isActive ? <Check className="size-4 shrink-0 text-[#2d8f98]" strokeWidth={2.5} /> : null}
+                  {isActive ? <Check className="size-4 shrink-0 text-brand-teal" strokeWidth={2.5} /> : null}
                 </button>
               </div>
             );

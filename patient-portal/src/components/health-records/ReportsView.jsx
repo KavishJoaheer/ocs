@@ -56,13 +56,13 @@ function ReportRowDesktop({ report, isLast = false }) {
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-4">
-          <div className="squircle-inner flex size-11 shrink-0 items-center justify-center bg-teal-100 text-[#2d8f98]">
+          <div className="squircle-inner flex size-11 shrink-0 items-center justify-center bg-brand-teal/10 text-brand-dark-grey">
             <FileText className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1 pt-0.5">
-            <p className="native-display text-[16px] leading-snug text-[#1a5c52]">{report.name}</p>
-            <p className="native-label mt-1 text-[13px] text-[#5b7f8a]">{dateLabel}</p>
-            <p className="mt-0.5 text-[13px] text-[#8a9e9a]">{source}</p>
+            <p className="native-display text-[16px] leading-snug text-brand-dark-grey">{report.name}</p>
+            <p className="native-label mt-1 text-[13px] text-brand-cool-grey">{dateLabel}</p>
+            <p className="mt-0.5 text-[13px] text-brand-cool-grey">{source}</p>
           </div>
         </div>
         <a
@@ -84,14 +84,14 @@ function ReportsEmptyState({ onUpload }) {
       <div className="squircle-inner flex size-14 items-center justify-center bg-teal-100 text-[#2d8f98]">
         <FolderHeart className="size-7" strokeWidth={1.75} />
       </div>
-      <h2 className="native-display mt-4 text-[18px] text-[#1a5c52]">No reports yet</h2>
-      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-[#5b7f8a]">
+      <h2 className="native-display mt-4 text-[18px] text-[#1a5c52] lg:text-brand-dark-grey">No reports yet</h2>
+      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-[#5b7f8a] lg:text-brand-cool-grey">
         OCS care team reports appear automatically. You can also upload your own.
       </p>
       <button
         type="button"
         onClick={onUpload}
-        className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98]"
+        className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98] lg:text-brand-dark-grey"
       >
         Upload Report
       </button>

@@ -74,16 +74,16 @@ function PastAppointmentCard({ appointment }) {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <p className="native-display text-[17px] font-bold leading-snug text-[#1a5c52]">
+          <p className="native-display text-[17px] font-bold leading-snug text-brand-dark-grey">
             {appointment.type}
           </p>
 
           <div className="mt-2.5 flex items-center gap-2.5">
             <DoctorAvatar name={appointment.doctor_name} size="md" />
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-semibold text-[#22485b]">{appointment.doctor_name}</p>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5b7f8a]">
-                <Clock className="size-3.5 shrink-0 text-[#6b9e95]" strokeWidth={1.5} />
+              <p className="text-[14px] font-semibold text-brand-dark-grey">{appointment.doctor_name}</p>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-brand-cool-grey">
+                <Clock className="size-3.5 shrink-0 text-brand-teal" strokeWidth={1.5} />
                 <span>{dateTimeLabel}</span>
               </div>
             </div>

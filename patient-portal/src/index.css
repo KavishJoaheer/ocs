@@ -5,25 +5,35 @@
   --font-sans: "Nunito Sans", "Segoe UI", sans-serif;
   --font-display: "Poppins", "Segoe UI", sans-serif;
   --font-serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  --color-brand-gold: #d97706;
-  --color-brand-gold-dark: #b45309;
-  --color-brand-teal: #2d8f98;
+  /* Official OCS Médecins brand palette */
+  --color-brand-teal: #2bccc4;
+  --color-brand-gold: #f7ba24;
+  --color-brand-dark-grey: #3b595c;
+  --color-brand-cool-grey: #7a7a7a;
+  --color-brand-gold-dark: #db9f10;
 }
 
 :root {
-  --ocs-teal-strong: #2d8f98;
-  --ocs-teal: #41c8c6;
+  /* Official OCS Médecins brand palette */
+  --brand-teal: #2bccc4;
+  --brand-teal-rgb: 43, 204, 196;
+  --brand-gold: #f7ba24;
+  --brand-gold-rgb: 247, 186, 36;
+  --brand-dark-grey: #3b595c;
+  --brand-dark-grey-rgb: 59, 89, 92;
+  --brand-cool-grey: #7a7a7a;
+  --ocs-teal-strong: #2bccc4;
+  --ocs-teal: #2bccc4;
   --ocs-teal-soft: #70ddd2;
-  --ocs-gold: #f2c14d;
-  /* Official OCS brand gold-orange — single source of truth */
-  --ocs-brand-gold: #d97706;
-  --ocs-brand-gold-rgb: 217, 119, 6;
-  --ocs-brand-gold-soft: rgba(217, 119, 6, 0.1);
-  --ocs-brand-gold-muted: rgba(217, 119, 6, 0.14);
-  --ocs-brand-gold-dark: #b45309;
+  --ocs-gold: #f7ba24;
+  --ocs-brand-gold: #f7ba24;
+  --ocs-brand-gold-rgb: 247, 186, 36;
+  --ocs-brand-gold-soft: rgba(247, 186, 36, 0.1);
+  --ocs-brand-gold-muted: rgba(247, 186, 36, 0.14);
+  --ocs-brand-gold-dark: #db9f10;
   /* Legacy aliases — point to brand-gold */
   --ocs-orange: var(--ocs-brand-gold);
-  --ocs-orange-rgb: 217, 119, 6;
+  --ocs-orange-rgb: 247, 186, 36;
   --ocs-orange-soft: var(--ocs-brand-gold-soft);
   --ocs-orange-muted: var(--ocs-brand-gold-muted);
   --ocs-ink: #22485b;
@@ -45,7 +55,7 @@
   /* Desktop dashboard — luxury concierge canvas */
   --desktop-canvas: linear-gradient(135deg, #f0faf8 0%, #e8f5f2 100%);
   --desktop-card-radius: 18px;
-  --desktop-card-border: 1px solid rgba(0, 0, 0, 0.04);
+  --desktop-card-border: 1px solid rgba(var(--brand-teal-rgb), 0.2);
   --desktop-card-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
   --desktop-card-shadow-hover: 0 10px 36px rgba(0, 0, 0, 0.06);
   --z-nav: 40;
@@ -534,6 +544,13 @@ table {
   letter-spacing: 0.02em;
 }
 
+@media (min-width: 1024px) {
+  .consultation-visit-badge {
+    background: rgba(var(--brand-teal-rgb), 0.1);
+    color: var(--brand-dark-grey);
+  }
+}
+
 .consultation-micro-label {
   font-size: 10px;
   font-weight: 600;
@@ -929,7 +946,7 @@ table {
   font-weight: 600;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #8a9e9a;
+  color: var(--brand-cool-grey);
 }
 
 @container (max-width: 880px) {
@@ -1034,7 +1051,7 @@ table {
 }
 
 .desktop-concierge-dial:hover {
-  background: #d99212;
+  background: var(--ocs-brand-gold-dark);
 }
 
 .desktop-care-team-avatar-wrap {
@@ -1057,7 +1074,7 @@ table {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2d8f98 0%, #41c8c6 100%);
+  background: linear-gradient(135deg, var(--brand-teal) 0%, #5ed9d2 100%);
   font-size: 1rem;
   font-weight: 700;
   color: #fff;
@@ -1076,12 +1093,12 @@ table {
 
 .desktop-visit-badge {
   border-radius: 999px;
-  background: rgba(59, 125, 216, 0.1);
+  background: rgba(var(--brand-teal-rgb), 0.1);
   padding: 5px 12px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #1e4d8c;
+  color: var(--brand-dark-grey);
 }
 
 /* Display typography — explicit weight for SF Pro / Roboto parity */
@@ -1215,7 +1232,7 @@ button.native-grouped-row {
   .health-records-crafted-card {
     border-radius: 16px;
     background: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(var(--brand-teal-rgb), 0.2);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
   }
 }
@@ -1249,7 +1266,8 @@ button.native-grouped-row {
 
 .sidebar-nav-link-active {
   border: none;
-  background: rgba(var(--ocs-teal-dark-rgb), 0.05);
+  background: rgba(var(--brand-teal-rgb), 0.08);
+  color: var(--brand-teal);
   outline: none;
   box-shadow: none;
 }
@@ -1504,7 +1522,7 @@ button.native-grouped-row {
 @media (min-width: 1024px) {
   .visits-crafted-card {
     border-radius: 16px;
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(var(--brand-teal-rgb), 0.2);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
   }
 }
@@ -1840,9 +1858,9 @@ button.native-grouped-row {
 .upload-drawer-upload-btn {
   border-radius: 9999px;
   background: var(--ocs-brand-gold);
-  color: #fff;
+  color: var(--brand-dark-grey);
   font-weight: 700;
-  box-shadow: 0 4px 16px rgba(var(--ocs-orange-rgb), 0.3);
+  box-shadow: 0 4px 16px rgba(var(--ocs-brand-gold-rgb), 0.35);
   transition:
     filter 200ms ease,
     box-shadow 200ms ease,
@@ -2453,4 +2471,111 @@ button.native-grouped-row {
     0 16px 40px 8px rgba(247, 186, 36, 0.5),
     0 24px 60px 15px rgba(247, 186, 36, 0.3);
   transform: translateY(-1px);
+}
+
+/* ─── Desktop brand identity — OCS Médecins palette mapping ─────────────── */
+
+@media (min-width: 1024px) {
+  .ocs-status-pill-teal {
+    background: rgba(var(--brand-teal-rgb), 0.1);
+    color: var(--brand-dark-grey);
+  }
+
+  .ocs-status-pill-diagnosis {
+    background: rgba(var(--brand-teal-rgb), 0.1);
+    color: var(--brand-dark-grey);
+  }
+
+  .consultation-micro-label {
+    color: var(--brand-cool-grey);
+  }
+
+  .consultation-card-divider {
+    background: rgba(var(--brand-teal-rgb), 0.2);
+  }
+
+  .profile-section-title,
+  .profile-card-subtitle,
+  .profile-card-subtitle-stacked {
+    color: var(--brand-cool-grey);
+  }
+
+  .profile-row-icon {
+    color: var(--brand-teal);
+  }
+
+  .profile-list-divider {
+    background: rgba(var(--brand-teal-rgb), 0.2);
+  }
+
+  .profile-crafted-card,
+  .profile-list-card {
+    border-color: rgba(var(--brand-teal-rgb), 0.2);
+  }
+
+  .profile-list-card-tinted {
+    background: rgba(var(--brand-teal-rgb), 0.04);
+  }
+
+  .profile-card-action {
+    color: var(--brand-teal);
+  }
+
+  .profile-card-action:hover {
+    background: rgba(var(--brand-teal-rgb), 0.08);
+    color: var(--brand-teal);
+  }
+
+  .profile-concierge-avatar {
+    color: var(--brand-teal);
+  }
+
+  .visits-section-label {
+    color: var(--brand-cool-grey);
+  }
+
+  .visits-date-block-upcoming {
+    background: rgba(var(--brand-teal-rgb), 0.1);
+  }
+
+  .visits-date-day {
+    color: var(--brand-dark-grey);
+  }
+
+  .visits-date-month {
+    color: var(--brand-cool-grey);
+  }
+
+  .visits-badge-teal,
+  .visits-badge-teal-muted {
+    background: rgba(var(--brand-teal-rgb), 0.1);
+    color: var(--brand-dark-grey);
+  }
+
+  .visits-card-footer-divider {
+    background: rgba(var(--brand-teal-rgb), 0.2);
+  }
+
+  .desktop-care-team-action {
+    background: rgba(var(--brand-teal-rgb), 0.08);
+    color: var(--brand-dark-grey);
+  }
+
+  .desktop-care-team-action:hover {
+    background: rgba(var(--brand-teal-rgb), 0.12);
+    color: var(--brand-dark-grey);
+  }
+
+  .ocs-surface-card {
+    border-color: rgba(var(--brand-teal-rgb), 0.2);
+  }
+
+  .request-wizard-primary-btn {
+    background: var(--ocs-brand-gold);
+    color: var(--brand-dark-grey);
+  }
+
+  .ocs-primary-action-btn {
+    color: var(--brand-dark-grey);
+  }
 }

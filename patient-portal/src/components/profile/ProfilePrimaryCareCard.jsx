@@ -12,7 +12,7 @@ function ProfilePrimaryCareContent({ doctorName }) {
     <>
       <div className="flex items-center gap-3 px-5 py-3.5">
         <Stethoscope className="profile-row-icon size-[18px] shrink-0" strokeWidth={1.75} />
-        <p className="text-[15px] font-semibold leading-snug text-[#1a5c52]">{displayName}</p>
+        <p className="text-[15px] font-semibold leading-snug text-[#1a5c52] lg:text-brand-dark-grey">{displayName}</p>
       </div>
       <div className="profile-list-divider" aria-hidden="true" />
       <div className="flex items-center gap-3 px-5 py-3.5">
@@ -25,7 +25,7 @@ function ProfilePrimaryCareContent({ doctorName }) {
             {OCS_CARE_DISPLAY}
           </a>
         ) : (
-          <p className="text-[15px] font-medium text-[#8a9e9a]">Available after assignment</p>
+          <p className="text-[15px] font-medium text-[#8a9e9a] lg:text-brand-cool-grey">Available after assignment</p>
         )}
       </div>
     </>

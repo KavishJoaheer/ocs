@@ -12,19 +12,19 @@ const SECTIONS = [
     key: "medical_history",
     title: "Past Medical History",
     icon: Stethoscope,
-    tint: "bg-teal-100 text-[#2d8f98]",
+    tint: "bg-teal-100 text-[#2d8f98] lg:bg-brand-teal/10 lg:text-brand-dark-grey",
   },
   {
     key: "surgical_history",
     title: "Past Surgical History",
     icon: Scissors,
-    tint: "bg-teal-100 text-[#2d8f98]",
+    tint: "bg-teal-100 text-[#2d8f98] lg:bg-brand-teal/10 lg:text-brand-dark-grey",
   },
   {
     key: "drug_history",
     title: "Drug History",
     icon: Pill,
-    tint: "bg-teal-100 text-[#2d8f98]",
+    tint: "bg-teal-100 text-[#2d8f98] lg:bg-brand-teal/10 lg:text-brand-dark-grey",
   },
   {
     key: "allergy_history",
@@ -75,20 +75,20 @@ function ClinicalHistoryTile({ section, value }) {
           <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1 pt-0.5">
-          <p className="native-label text-[13px] leading-snug text-[#1a5c52]">{section.title}</p>
+          <p className="native-label text-[13px] leading-snug text-[#1a5c52] lg:text-brand-dark-grey">{section.title}</p>
           <p
             className={[
               "mt-2 text-[15px] font-medium leading-relaxed lg:mt-2.5 lg:text-[16px]",
               value.isEmpty
-                ? "font-normal italic text-[#8a9e9a]"
-                : "text-[#22485b]",
+                ? "font-normal italic text-[#8a9e9a] lg:text-brand-cool-grey"
+                : "text-[#22485b] lg:text-brand-dark-grey",
               !value.isEmpty && value.hasAllergyWarning ? "text-[#c45c3e]" : "",
             ].join(" ")}
           >
             {value.primary}
           </p>
           {value.details.length > 0 ? (
-            <p className="mt-2 text-[13px] leading-relaxed text-[#5b7f8a]">
+            <p className="mt-2 text-[13px] leading-relaxed text-[#5b7f8a] lg:text-brand-cool-grey">
               {value.details.join(" · ")}
             </p>
           ) : null}
@@ -102,7 +102,7 @@ function ClinicalHistoryView({ clinicalHistory }) {
   return (
     <div className="font-sans" aria-label="Clinical history">
       <div className="mb-4 flex justify-start lg:mb-6 lg:justify-end">
-        <p className="flex items-center gap-1.5 text-[11px] italic text-[#8a9e9a] lg:not-italic lg:font-medium lg:text-[12px]">
+        <p className="flex items-center gap-1.5 text-[11px] italic text-[#8a9e9a] lg:not-italic lg:font-medium lg:text-[12px] lg:text-brand-cool-grey">
           <Lock className="size-3 shrink-0 translate-y-px" strokeWidth={1.75} aria-hidden="true" />
           Read only · Maintained by your OCS doctor
         </p>

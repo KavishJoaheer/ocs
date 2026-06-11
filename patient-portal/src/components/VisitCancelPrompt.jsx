@@ -48,13 +48,13 @@ function VisitCancelPrompt({
           type="button"
           onClick={() => setShowConfirm(false)}
           disabled={cancelling}
-          className="mt-2 w-full text-center text-xs font-semibold text-[#2d8f98] transition hover:text-[#23767f]"
+          className="mt-2 w-full text-center text-xs font-semibold text-brand-teal transition hover:text-brand-dark-grey"
         >
           Keep my visit
         </button>
         <p className="mt-3 text-center text-[11px] text-[#8a9ea3]">
           Need help?{" "}
-          <a href="tel:52522234" className="font-medium text-[#2d8f98]">
+          <a href="tel:52522234" className="font-medium text-brand-teal">
             Call OCS
           </a>
         </p>

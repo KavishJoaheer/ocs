@@ -27,7 +27,7 @@ function ProfileListRow({
           <p
             className={[
               "text-[11px] font-medium uppercase tracking-[0.08em]",
-              onDark ? "text-white/80" : "text-[#8a9e9a]",
+              onDark ? "text-white/80" : "text-[#8a9e9a] lg:text-brand-cool-grey",
             ].join(" ")}
           >
             {label}
@@ -44,7 +44,7 @@ function ProfileListRow({
                       emptyValueClassName,
                     ].join(" ")
                   : [
-                      onDark ? "font-semibold text-white" : "font-semibold text-[#1a5c52]",
+                      onDark ? "font-semibold text-white" : "font-semibold text-[#1a5c52] lg:text-brand-dark-grey",
                       valueClassName,
                     ].join(" "),
               ].join(" ")}
