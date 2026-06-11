@@ -2909,10 +2909,8 @@ function MobileDoctorBagLayout({
             className={cx(
               "min-h-11 flex-1 rounded-2xl px-3 py-2.5 text-sm font-bold transition",
               doctorContext === scope.id
-                ? scope.id === "my"
-                  ? "bg-ocs-yellow text-slate-900 shadow-sm"
-                  : "bg-ocs-teal text-white shadow-sm"
-                : "border border-slate-100 bg-white text-slate-700",
+                ? "bg-ocs-yellow text-slate-900 shadow-sm"
+                : "border border-slate-100 bg-white text-slate-500",
             )}
           >
             {scope.label}
