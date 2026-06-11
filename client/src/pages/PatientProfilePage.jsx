@@ -1701,7 +1701,7 @@ function PatientProfilePage() {
           title={
             <div className="mb-4 flex w-full flex-col gap-1 border-b border-gray-100 pb-4">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-lg font-extrabold text-ocs-slate">
+                <span className="text-3xl font-extrabold text-ocs-slate md:text-4xl">
                   {data.patient.full_name}
                 </span>
                 <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-bold text-gray-500">
@@ -1713,7 +1713,7 @@ function PatientProfilePage() {
               {isPatientSubscribed(data.patient) ? (
                 <HealthPlanBadge className="ml-0" />
               ) : null}
-              <span className="text-xs text-ocs-grey">
+              <span className="text-sm text-ocs-grey">
                 📍 {profileAddressLabel} • Age: {profileAgeLabel}
               </span>
             </div>
@@ -1752,29 +1752,13 @@ function PatientProfilePage() {
                   New Consultation Note
                 </button>
               ) : null}
-              <a
-                href="#consultation-notes"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
-              >
-                <FileText className="size-4" />
-                View Past Notes
-              </a>
-              {showPatientBillingUi ? (
-                <Link
-                  to={`/billing?patientId=${id}`}
-                  aria-label="Open billing"
-                  title="Open billing"
-                  className="inline-flex items-center justify-center rounded-2xl border border-transparent p-3 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <CreditCard className="size-5" />
-                </Link>
-              ) : null}
               <Link
                 to="/patients"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+                aria-label="Back to patients"
+                title="Back to patients"
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 shadow-sm transition-colors hover:bg-slate-50 hover:text-ocs-slate"
               >
                 <ArrowLeft className="size-4" />
-                Back to patients
               </Link>
             </div>
           )
@@ -2389,16 +2373,11 @@ function PatientProfilePage() {
         </>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <HighlightStat
               icon={CalendarClock}
               label="Appointments"
               value={data.appointments.length}
-            />
-            <HighlightStat
-              icon={FileText}
-              label="Consultations"
-              value={data.consultations.length}
             />
             <HighlightStat
               icon={FlaskConical}
@@ -2688,18 +2667,6 @@ function PatientProfilePage() {
               <EmptyState
                 title="No consultations recorded"
                 description="Consultation notes will appear here as soon as a doctor completes a visit and saves the note."
-                action={
-                  canManageConsultations ? (
-                    <button
-                      type="button"
-                      onClick={() => setConsultationComposerOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
-                    >
-                      <Plus className="size-4" />
-                      Add consultation note
-                    </button>
-                  ) : null
-                }
               />
             )}
           </SectionCard>

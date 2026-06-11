@@ -25,7 +25,7 @@ function SectionCard({
         <div className="mb-3 flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             {title ? (
-              <h3 className={cx("break-words font-semibold text-ocs-slate", titleClassName || "text-base")}>
+              <h3 className={cx("break-words font-semibold text-ocs-slate", titleClassName || "text-base lg:text-lg")}>
                 {title}
               </h3>
             ) : null}

@@ -15,10 +15,8 @@ const linkhamNavItems = [
 
 function LinkhamNavIcon({ id, active, darkSidebar = false }) {
   const strokeClass = active
-    ? "stroke-ocs-teal"
-    : darkSidebar
-      ? "stroke-slate-500 group-hover:stroke-slate-700"
-      : "stroke-slate-500 group-hover:stroke-slate-700";
+    ? "stroke-white"
+    : "stroke-slate-500 group-hover:stroke-slate-700";
 
   const iconProps = {
     className: cx("size-4 fill-none stroke-2", strokeClass),
@@ -76,10 +74,10 @@ function LinkhamNavButton({ item, onNavigate, darkSidebar = false }) {
           "group flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-xs font-bold transition-all duration-200",
           darkSidebar
             ? isActive
-              ? "bg-ocs-teal/10 font-semibold text-ocs-teal"
+              ? "bg-gradient-to-r from-ocs-teal to-[#22a8a1] font-semibold text-white"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             : isActive
-              ? "bg-ocs-teal/10 font-semibold text-ocs-teal"
+              ? "bg-gradient-to-r from-ocs-teal to-[#22a8a1] font-semibold text-white"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
         )
       }
