@@ -394,7 +394,13 @@ function Sidebar() {
           <div className="mt-5 rounded-[30px] border border-ocs-yellow/30 bg-ocs-yellow p-5 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-lg font-semibold text-slate-900">{user.full_name}</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {user.role === "doctor"
+                    ? /^dr\.?\s/i.test(String(user.full_name || "").trim())
+                      ? user.full_name
+                      : `Dr ${user.full_name}`
+                    : user.full_name}
+                </p>
               </div>
               <button
                 type="button"

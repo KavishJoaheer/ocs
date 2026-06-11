@@ -166,6 +166,7 @@ function AppShell() {
     (isMobile && isInventory && userRole === "doctor") ||
     (isMobile && isSupplyRequests && userRole === "doctor");
   const hidePatientProfileDesktopHeader = isPatientProfile && !isMobile;
+  const hidePatientsDirectoryDesktopHeader = isPatientsDirectory && !isMobile;
 
   const dashboardMetaByRole = {
     doctor: {
@@ -236,7 +237,7 @@ function AppShell() {
         <Sidebar />
 
         <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
-          {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hidePatientProfileDesktopHeader ? (
+          {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hidePatientProfileDesktopHeader && !hidePatientsDirectoryDesktopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}
@@ -253,7 +254,7 @@ function AppShell() {
                 </div>
 
                 {!isPatientProfile ? (
-                  <p className="shrink-0 whitespace-nowrap text-sm font-medium text-slate-500 md:text-right">
+                  <p className="shrink-0 whitespace-nowrap text-base font-medium text-slate-500 md:text-right">
                     <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                       Dispatch desk
                     </span>
