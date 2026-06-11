@@ -154,7 +154,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
               ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
               : drawer
                 ? "rounded-r-xl border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32] shadow-sm"
-                : "bg-ocs-teal/10 font-semibold text-ocs-teal"),
+                : "bg-gradient-to-r from-ocs-teal to-[#22a8a1] font-semibold text-white"),
         );
       }}
     >
@@ -383,29 +383,29 @@ function Sidebar() {
       {/* ─── Desktop: full sidebar ─── */}
       <aside className="hidden w-full min-w-0 border-r border-slate-200 bg-white text-slate-900 lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-6">
-          <div className="inline-flex w-fit rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="inline-flex w-full rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
             <BrandMark
-              maxWidth={190}
+              maxWidth={240}
               logoClassName="drop-shadow-sm"
-              size={42}
+              size={56}
             />
           </div>
 
-          <div className="mt-5 rounded-[30px] border border-slate-200 bg-slate-50 p-5 text-slate-900 shadow-sm">
+          <div className="mt-5 rounded-[30px] border border-ocs-yellow/30 bg-ocs-yellow p-5 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-ocs-grey">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-900">
                   Signed in
                 </p>
-                <p className="mt-2 text-lg font-semibold text-ocs-slate">{user.full_name}</p>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-2 text-lg font-semibold text-slate-900">{user.full_name}</p>
+                <p className="mt-1 text-sm text-slate-900">
                   {getRoleLabel(user.role)} - @{user.username}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => logout()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-ocs-teal hover:text-ocs-teal"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition hover:border-slate-900/20 hover:bg-white/90"
               >
                 <LogOut className="size-4" />
                 Sign out
