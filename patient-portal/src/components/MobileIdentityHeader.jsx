@@ -11,7 +11,7 @@ function MobileIdentityHeader({ centerLabel = null }) {
       />
 
       {centerLabel ? (
-        <p className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[10px] font-bold uppercase tracking-wider text-teal-600">
+        <p className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[10px] font-bold uppercase tracking-wider text-brand-teal">
           {centerLabel}
         </p>
       ) : null}

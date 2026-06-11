@@ -7,21 +7,12 @@ const TABS = [
 const PILL_BASE =
   "cursor-pointer shrink-0 rounded-2xl border-2 px-5 py-2.5 text-[13px] transition-all duration-200 outline-none max-lg:min-w-0 max-lg:flex-1 max-lg:px-3 max-lg:text-[12px]";
 
-function pillClass(isActive, isDesktop) {
-  if (isDesktop) {
-    return [
-      PILL_BASE,
-      isActive
-        ? "border-brand-teal/20 bg-brand-teal/10 font-bold text-brand-dark-grey"
-        : "border-transparent bg-gray-100/50 font-medium text-brand-cool-grey",
-    ].join(" ");
-  }
-
+function pillClass(isActive) {
   return [
     PILL_BASE,
     isActive
-      ? "border-teal-500 bg-teal-500/10 font-bold text-teal-800"
-      : "border-transparent bg-gray-100/50 font-medium text-gray-600",
+      ? "border-brand-teal/20 bg-brand-teal/10 font-bold text-brand-dark-grey"
+      : "border-transparent bg-gray-100/50 font-medium text-brand-cool-grey",
   ].join(" ");
 }
 
@@ -45,7 +36,7 @@ function HealthRecordsSegmentedControl({ activeTab, onChange, layout = "mobile" 
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
-            className={pillClass(isActive, isDesktop)}
+            className={pillClass(isActive)}
           >
             <span className="whitespace-nowrap">{label}</span>
           </button>

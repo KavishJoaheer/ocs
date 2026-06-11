@@ -148,7 +148,7 @@ function RequestVisitForm() {
           onClick={handleReview}
           disabled={!canReview}
           className={[
-            "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-brand-gold text-sm font-bold text-white shadow-sm transition",
+            "flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-brand-gold text-sm font-bold text-brand-dark-grey shadow-sm transition",
             canReview ? "hover:brightness-105 active:scale-95" : "cursor-not-allowed opacity-50",
           ].join(" ")}
         >

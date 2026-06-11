@@ -1,6 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { canPatientCancelVisit, cancelPatientVisit } from "../lib/visitRequests.js";
+import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 
 function VisitCancelPrompt({
   visitId,
@@ -21,6 +22,7 @@ function VisitCancelPrompt({
     try {
       await cancelPatientVisit(visitId);
       toast.success("Your visit request has been cancelled.");
+      dispatchPatientDataChange();
       setShowConfirm(false);
       onCancelled?.();
     } catch (error) {

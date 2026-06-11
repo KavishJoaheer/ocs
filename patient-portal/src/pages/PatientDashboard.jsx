@@ -35,10 +35,28 @@ function DashboardErrorState({ message, onRetry, className = "" }) {
         className,
       ].join(" ")}
     >
-      <p className="native-display text-[20px] text-[#1a5c52]">Couldn&apos;t load your dashboard</p>
-      <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-[#5b7f8a]">{message}</p>
+      <p className="native-display text-[20px] text-brand-dark-grey">Couldn&apos;t load your dashboard</p>
+      <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-brand-cool-grey">{message}</p>
       <button type="button" onClick={onRetry} className="request-wizard-primary-btn mt-6 w-full max-w-[280px]">
         Try Again
+      </button>
+    </div>
+  );
+}
+
+function ActiveVisitStatusWarning({ message, onRetry }) {
+  return (
+    <div
+      role="status"
+      className="mx-[var(--native-pad-screen)] mb-4 rounded-2xl border border-brand-gold/35 bg-brand-gold/10 px-4 py-3 lg:mx-0"
+    >
+      <p className="text-[13px] leading-relaxed text-brand-dark-grey">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-2 text-[13px] font-semibold text-brand-teal underline-offset-2 hover:underline"
+      >
+        Retry visit status
       </button>
     </div>
   );
@@ -207,6 +225,7 @@ function PatientDashboard() {
   const [loadError, setLoadError] = useState(null);
   const [retryToken, setRetryToken] = useState(0);
   const [activeVisit, setActiveVisit] = useState(null);
+  const [activeVisitError, setActiveVisitError] = useState(null);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
@@ -216,15 +235,11 @@ function PatientDashboard() {
 
     async function fetchDashboard() {
       try {
-        const [data, visitData] = await Promise.all([
-          api.get("/patient-portal/dashboard"),
-          api.get("/patient-portal/visit-requests/active").catch(() => ({ visit_request: null })),
-        ]);
+        const data = await api.get("/patient-portal/dashboard");
         if (!ignore) {
           setPatient(data.patient || null);
           setNextAppointment(data.next_appointment || null);
           setLastConsultation(data.last_consultation || null);
-          setActiveVisit(visitData.visit_request || null);
         }
       } catch (error) {
         if (!ignore) {
@@ -232,6 +247,20 @@ function PatientDashboard() {
         }
       } finally {
         if (!ignore) setLoading(false);
+      }
+
+      try {
+        const visitData = await api.get("/patient-portal/visit-requests/active");
+        if (!ignore) {
+          setActiveVisit(visitData.visit_request || null);
+          setActiveVisitError(null);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setActiveVisitError(
+            error?.message || "Couldn't load your active visit status. Pull to refresh or try again.",
+          );
+        }
       }
     }
 
@@ -242,6 +271,7 @@ function PatientDashboard() {
   }, [refreshKey, retryToken]);
 
   function handleRetryDashboard() {
+    setActiveVisitError(null);
     setRetryToken((token) => token + 1);
   }
 
@@ -300,6 +330,9 @@ function PatientDashboard() {
 
   return (
     <>
+    {activeVisitError && isPrimaryProfile ? (
+      <ActiveVisitStatusWarning message={activeVisitError} onRetry={handleRetryDashboard} />
+    ) : null}
     {/* ───────── Desktop dashboard ───────── */}
     <div className="max-lg:hidden">
       {loading && isPrimaryProfile ? (

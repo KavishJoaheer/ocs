@@ -20,15 +20,15 @@ function ReportCard({ report, isLast = false }) {
       style={{ padding: "var(--native-pad-card)" }}
     >
       <div className="flex items-start gap-4">
-        <div className="squircle-inner flex size-11 shrink-0 items-center justify-center bg-teal-100 text-[#2d8f98]">
+        <div className="squircle-inner flex size-11 shrink-0 items-center justify-center bg-brand-teal/10 text-brand-teal">
           <FileText className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1 pt-0.5">
-          <p className="native-display truncate text-[16px] leading-snug text-[#1a5c52]">
+          <p className="native-display truncate text-[16px] leading-snug text-brand-dark-grey">
             {report.name}
           </p>
-          <p className="native-label mt-1 truncate text-[13px] text-[#5b7f8a]">{dateLabel}</p>
-          <p className="mt-0.5 truncate text-[13px] text-[#8a9e9a]">{source}</p>
+          <p className="native-label mt-1 truncate text-[13px] text-brand-cool-grey">{dateLabel}</p>
+          <p className="mt-0.5 truncate text-[13px] text-brand-cool-grey/80">{source}</p>
         </div>
         <ChevronRight
           className="size-[18px] shrink-0 translate-y-1 text-brand-gold"
@@ -81,11 +81,11 @@ function ReportRowDesktop({ report, isLast = false }) {
 function ReportsEmptyState({ onUpload }) {
   return (
     <div className="flex flex-col items-center px-4 py-14 text-center">
-      <div className="squircle-inner flex size-14 items-center justify-center bg-teal-100 text-[#2d8f98]">
+      <div className="squircle-inner flex size-14 items-center justify-center bg-brand-teal/10 text-brand-teal">
         <FolderHeart className="size-7" strokeWidth={1.75} />
       </div>
-      <h2 className="native-display mt-4 text-[18px] text-[#1a5c52] lg:text-brand-dark-grey">No reports yet</h2>
-      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-[#5b7f8a] lg:text-brand-cool-grey">
+      <h2 className="native-display mt-4 text-[18px] text-brand-dark-grey">No reports yet</h2>
+      <p className="mt-1 max-w-xs text-[15px] leading-relaxed text-brand-cool-grey">
         OCS care team reports appear automatically. You can also upload your own.
       </p>
       <button

@@ -10,7 +10,7 @@ export const URGENCY_META = {
   },
   urgent: {
     label: "Urgent",
-    selected: "bg-brand-gold text-white shadow-[0_10px_24px_rgba(var(--ocs-brand-gold-rgb),0.3)]",
+    selected: "bg-brand-gold text-brand-dark-grey shadow-[0_10px_24px_rgba(var(--ocs-brand-gold-rgb),0.3)]",
     pill: "bg-brand-gold/15 text-brand-gold-dark",
   },
   emergency: {

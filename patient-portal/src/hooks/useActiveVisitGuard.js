@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
 
 /**
@@ -16,8 +17,11 @@ export function useActiveVisitGuard() {
         navigate("/request-visit/tracking", { replace: true });
         return false;
       }
-    } catch {
-      // Non-blocking — allow the flow when status is unavailable.
+    } catch (error) {
+      toast.error(
+        error?.message || "Couldn't verify your visit status. Please try again in a moment.",
+      );
+      return false;
     }
     return true;
   }, [navigate]);
