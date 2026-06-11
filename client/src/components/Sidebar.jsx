@@ -147,14 +147,14 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
             : "gap-3 rounded-2xl px-4 py-3 text-sm font-semibold",
           mobile
             ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
-            : !drawer && "text-white/70 hover:bg-white/10 hover:text-white",
+            : !drawer && "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
           drawer && !isActive && "rounded-xl",
           isActive &&
             (mobile
               ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
               : drawer
                 ? "rounded-r-xl border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32] shadow-sm"
-                : "bg-ocs-teal text-white shadow-sm"),
+                : "bg-ocs-teal/10 font-semibold text-ocs-teal"),
         );
       }}
     >
@@ -381,9 +381,9 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-full min-w-0 border-r border-ocs-slate/20 bg-ocs-slate text-white lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
+      <aside className="hidden w-full min-w-0 border-r border-slate-200 bg-white text-slate-900 lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-6">
-          <div className="inline-flex w-fit rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-sm">
+          <div className="inline-flex w-fit rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
             <BrandMark
               maxWidth={190}
               logoClassName="drop-shadow-sm"
@@ -391,21 +391,21 @@ function Sidebar() {
             />
           </div>
 
-          <div className="mt-5 rounded-[30px] border border-white/20 bg-white/10 p-5 text-white shadow-sm">
+          <div className="mt-5 rounded-[30px] border border-slate-200 bg-slate-50 p-5 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/50">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-ocs-grey">
                   Signed in
                 </p>
-                <p className="mt-2 text-lg font-semibold text-white">{user.full_name}</p>
-                <p className="mt-1 text-sm text-white/70">
+                <p className="mt-2 text-lg font-semibold text-ocs-slate">{user.full_name}</p>
+                <p className="mt-1 text-sm text-slate-600">
                   {getRoleLabel(user.role)} - @{user.username}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => logout()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-ocs-teal hover:text-ocs-teal"
               >
                 <LogOut className="size-4" />
                 Sign out
@@ -414,7 +414,7 @@ function Sidebar() {
           </div>
 
           <div className="mt-6">
-            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
+            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-ocs-grey">
               Navigation
             </p>
             <nav className="mt-3 space-y-2">

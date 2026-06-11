@@ -351,15 +351,15 @@ function DoctorDashboardTile({
       ? dark
         ? "border-white/25 bg-ocs-teal text-white hover:border-white/35"
         : size === "hero"
-          ? "border-transparent bg-ocs-teal text-white hover:bg-ocs-teal/90"
+          ? "border-gray-100 bg-white text-ocs-slate shadow-sm hover:shadow-md"
           : "border-gray-200 bg-white text-ocs-slate hover:border-gray-300"
       : dark
-        ? "border-ocs-teal/30 bg-ocs-teal text-white shadow-[0_22px_50px_rgba(43,204,196,0.28)] hover:-translate-y-0.5 hover:bg-ocs-teal/90 hover:shadow-[0_28px_60px_rgba(43,204,196,0.32)]"
+        ? "border-ocs-teal/20 bg-ocs-teal text-white shadow-sm hover:bg-ocs-teal/90"
         : locked
-          ? "border-[rgba(65,200,198,0.18)] bg-white text-ocs-slate shadow-[0_18px_42px_rgba(34,72,91,0.08)]"
+          ? "border-[rgba(65,200,198,0.18)] bg-white text-ocs-slate shadow-sm"
           : size === "hero"
-            ? "border-transparent bg-ocs-teal text-white shadow-[0_18px_42px_rgba(43,204,196,0.18)] hover:-translate-y-0.5 hover:bg-ocs-teal/90 hover:shadow-[0_24px_54px_rgba(43,204,196,0.22)]"
-            : "border-[rgba(65,200,198,0.18)] bg-white text-ocs-slate shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-ocs-teal/30 hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
+            ? "border-gray-100 bg-white text-ocs-slate shadow-sm hover:shadow-md"
+            : "border-[rgba(65,200,198,0.18)] bg-white text-ocs-slate shadow-sm hover:border-ocs-teal/30",
   );
 
   const content = (
@@ -371,8 +371,8 @@ function DoctorDashboardTile({
             dark
               ? "border-white/16 bg-white/12 text-white"
               : size === "hero" && !dark
-                ? "border-white/20 bg-white/10 text-white"
-                : "border-[rgba(65,200,198,0.18)] bg-white text-ocs-teal",
+                ? "border-slate-200 bg-ocs-teal/10 text-ocs-teal"
+                : "border-slate-200 bg-white text-ocs-teal",
           )}
         >
           <Icon className="size-5 md:size-6" />
@@ -384,7 +384,7 @@ function DoctorDashboardTile({
           <p
             className={cx(
               "text-xs font-semibold uppercase tracking-wider",
-              dark ? "text-white/50" : size === "hero" ? "text-white/70" : "text-ocs-grey",
+              dark ? "text-white/50" : size === "hero" ? "text-ocs-grey" : "text-ocs-grey",
             )}
           >
             {eyebrow}
@@ -394,7 +394,7 @@ function DoctorDashboardTile({
           className={cx(
             "break-words text-base font-medium tracking-tight",
             eyebrow ? (size === "hero" ? "mt-2" : "mt-1") : size === "hero" ? "mt-2" : "mt-1",
-            dark ? "text-white" : size === "hero" ? "text-white" : "text-ocs-slate",
+            dark ? "text-white" : size === "hero" ? "text-ocs-slate" : "text-ocs-slate",
           )}
         >
           {title}
@@ -405,7 +405,7 @@ function DoctorDashboardTile({
           <p
             className={cx(
               "mt-2 break-words text-sm leading-6",
-              dark ? "line-clamp-3 text-white/90" : size === "hero" ? "text-white/80" : "text-ocs-grey",
+              dark ? "line-clamp-3 text-white/90" : size === "hero" ? "text-ocs-grey" : "text-ocs-grey",
             )}
           >
             {subtitle}
@@ -714,12 +714,12 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero =
   const classes = cx(
     "group relative overflow-hidden rounded-[30px] border px-5 py-5 transition duration-200 md:px-6 md:py-5",
     hero
-      ? "border-transparent bg-ocs-teal text-white"
+      ? "border-gray-100 bg-white shadow-sm"
       : accent
-        ? "border-ocs-yellow/20 bg-ocs-yellow/10 text-yellow-800"
+        ? "border-ocs-yellow/20 bg-white text-slate-700"
         : "border-gray-200 bg-white",
-    to ? "block cursor-pointer hover:border-gray-300" : "",
-    hero && to ? "hover:bg-ocs-teal/90" : "",
+    to ? "block cursor-pointer hover:border-gray-200" : "",
+    hero && to ? "hover:shadow-md" : "",
   );
 
   const content = (
@@ -732,9 +732,9 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero =
             className={cx(
               "flex size-12 shrink-0 items-center justify-center rounded-2xl border",
               hero
-                ? "border-white/20 bg-white/10 text-white"
+                ? "border-slate-200 bg-ocs-teal/10 text-ocs-teal"
                 : accent
-                  ? "border-ocs-yellow/30 bg-ocs-yellow/10 text-yellow-700"
+                  ? "border-ocs-yellow/30 bg-ocs-yellow/10 text-ocs-yellow"
                   : "border-gray-200 bg-slate-50 text-ocs-grey",
             )}
           >
@@ -746,9 +746,9 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero =
               className={cx(
                 "inline-flex size-9 items-center justify-center rounded-full border transition",
                 hero
-                  ? "border-white/20 bg-white/10 text-white group-hover:border-white/30"
+                  ? "border-slate-200 bg-white text-ocs-teal group-hover:border-ocs-teal/30"
                   : accent
-                    ? "border-ocs-yellow/30 bg-white text-yellow-700"
+                    ? "border-ocs-yellow/30 bg-white text-ocs-yellow"
                     : "border-gray-200 bg-white text-ocs-teal group-hover:border-ocs-teal/30",
               )}
             >
@@ -760,19 +760,19 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero =
         <p
           className={cx(
             "text-base font-medium leading-snug tracking-tight",
-            hero ? "text-white" : accent ? "text-yellow-900" : "text-ocs-slate",
+            hero ? "text-ocs-slate" : accent ? "text-slate-700" : "text-ocs-slate",
             metricLine ? "mt-4" : subtitle ? "mt-7" : "mt-5",
           )}
         >
           {title}
         </p>
         {metricLine ? (
-          <p className={cx("mt-2 text-sm font-semibold leading-snug", hero ? "text-white/90" : "text-yellow-800")}>
+          <p className={cx("mt-2 text-sm font-semibold leading-snug", hero ? "text-ocs-teal" : "text-slate-600")}>
             {metricLine}
           </p>
         ) : null}
         {subtitle ? (
-          <p className={cx("mt-4 max-w-[14rem] text-sm leading-7 md:text-[1.01rem]", hero ? "text-white/80" : "text-ocs-grey")}>
+          <p className={cx("mt-4 max-w-[14rem] text-sm leading-7 md:text-[1.01rem]", hero ? "text-ocs-grey" : "text-ocs-grey")}>
             {subtitle}
           </p>
         ) : null}
@@ -782,7 +782,7 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero =
             "h-[3px] w-16 rounded-full",
             metricLine ? "mt-5" : subtitle ? "mt-6" : "mt-5",
             hero
-              ? "bg-white/40"
+              ? "bg-ocs-teal/30"
               : accent
                 ? "bg-ocs-yellow"
                 : "bg-ocs-teal/40",
@@ -812,9 +812,9 @@ function countDoctorScheduledVisitsToday(dashboard) {
 
 const doctorMetricVariants = {
   scheduled: {
-    card: "border-transparent bg-ocs-teal text-white shadow-sm hover:bg-ocs-teal/90",
-    label: "text-white/80",
-    value: "text-white",
+    card: "border-gray-100 bg-white shadow-sm hover:shadow-md",
+    label: "text-slate-600",
+    value: "text-ocs-teal",
     anchorTheme: "doctor-primary",
   },
   assigned: {
@@ -961,19 +961,19 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
       {lowStockAlert?.triggered ? (
         <Link
           to="/inventory?context=my&restock=alert"
-          className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-ocs-yellow/30 bg-ocs-yellow/10 p-6 shadow-sm transition-colors hover:border-ocs-yellow/40 lg:col-span-2"
+          className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 border-l-4 border-l-ocs-yellow bg-white p-6 shadow-sm transition-colors hover:shadow-md lg:col-span-2"
         >
-          <div className="flex items-center justify-between border-b border-ocs-yellow/30 pb-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-yellow-800">Inventory alerts</span>
-            <span className="rounded-md bg-ocs-yellow/20 px-2 py-0.5 text-[11px] font-semibold text-yellow-800">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-600">Inventory alerts</span>
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
               {lowStockCount} at or below par
             </span>
           </div>
           <div className="mt-4 flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ocs-yellow/20 text-yellow-800">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ocs-yellow/10 text-ocs-yellow">
               <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
             </div>
-            <span className="min-w-0 text-xs font-semibold leading-normal text-yellow-900">
+            <span className="min-w-0 text-xs font-semibold leading-normal text-slate-700">
               {lowStockCount} item{lowStockCount === 1 ? "" : "s"} are currently low in your bag. Tap to restock.
             </span>
           </div>

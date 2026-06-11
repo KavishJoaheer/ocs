@@ -15,10 +15,10 @@ const linkhamNavItems = [
 
 function LinkhamNavIcon({ id, active, darkSidebar = false }) {
   const strokeClass = active
-    ? "stroke-white"
+    ? "stroke-ocs-teal"
     : darkSidebar
-      ? "stroke-white/70 group-hover:stroke-white"
-      : "stroke-[#3e5c76] group-hover:stroke-[#14213d]";
+      ? "stroke-slate-500 group-hover:stroke-slate-700"
+      : "stroke-slate-500 group-hover:stroke-slate-700";
 
   const iconProps = {
     className: cx("size-4 fill-none stroke-2", strokeClass),
@@ -76,11 +76,11 @@ function LinkhamNavButton({ item, onNavigate, darkSidebar = false }) {
           "group flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-xs font-bold transition-all duration-200",
           darkSidebar
             ? isActive
-              ? "bg-ocs-teal text-white shadow-sm"
-              : "text-white/70 hover:bg-white/10 hover:text-white"
+              ? "bg-ocs-teal/10 font-semibold text-ocs-teal"
+              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             : isActive
-              ? "bg-[#065a60] text-white shadow-sm"
-              : "text-[#3e5c76] hover:bg-gray-50 hover:text-[#14213d]",
+              ? "bg-ocs-teal/10 font-semibold text-ocs-teal"
+              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
         )
       }
     >
@@ -188,16 +188,16 @@ export default function LinkhamSidebar() {
         </div>
       </div>
 
-      <aside className="hidden min-h-screen w-64 shrink-0 flex-col border-r border-ocs-slate/20 bg-ocs-slate lg:flex">
-        <div className="border-b border-white/10 px-4 py-5">
+      <aside className="hidden min-h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+        <div className="border-b border-slate-200 bg-white px-4 py-5">
           <BrandMark maxWidth={150} size={34} />
-          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 p-3">
-            <div className="rounded-xl border border-white/20 bg-white/10 p-2 text-white">
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-2 text-ocs-teal">
               <ShieldCheck className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-white">{user.full_name}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/50">
+              <p className="truncate text-sm font-bold text-ocs-slate">{user.full_name}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ocs-grey">
                 {getRoleLabel(user.role)}
               </p>
             </div>
@@ -206,11 +206,11 @@ export default function LinkhamSidebar() {
 
         <LinkhamSidebarNav className="flex-1" darkSidebar />
 
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-slate-200 p-4">
           <button
             type="button"
             onClick={() => logout()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/30 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/10"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 transition hover:border-ocs-teal hover:text-ocs-teal"
           >
             <LogOut className="size-4" />
             Sign out
