@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
-import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
+import { CalendarCheck } from "lucide-react";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
+import MobileGradientHero from "../components/MobileGradientHero.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
@@ -115,19 +116,21 @@ function PatientAppointments() {
 
   return (
     <DesktopPageFrame className="visits-screen native-screen font-sans">
-      <div className="px-4 lg:px-0">
-        <MobileBrandHeader />
-        <PageHeroHeader
-          primaryText="Your"
-          secondaryText="Appointments"
-          subtitle="Scheduled by your OCS care team."
-          className="max-lg:mt-3 max-lg:pt-0"
-        />
-      </div>
+      <MobileGradientHero
+        headline="Your Appointments."
+        subline="Scheduled by your OCS care team."
+        icon={CalendarCheck}
+      />
+
+      <PageHeroHeader
+        primaryText="Your"
+        secondaryText="Appointments"
+        subtitle="Scheduled by your OCS care team."
+      />
 
       <DesktopPageBody>
       {loading ? (
-        <div className="mt-6 flex flex-col gap-4">
+        <div className="mt-5 flex flex-col gap-4 lg:mt-6">
           <div className="h-40 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
           <div className="h-28 animate-pulse rounded-2xl border border-teal-500/10 bg-white/70 lg:visits-card" />
         </div>
@@ -145,7 +148,7 @@ function PatientAppointments() {
         </div>
       ) : (
         <>
-          <section className="animate-fade-in-up stagger-1 mt-6">
+          <section className="animate-fade-in-up stagger-1 mt-5 lg:mt-6">
             <SectionLabel>Upcoming</SectionLabel>
             {upcoming.length === 0 ? (
               <p className="text-[14px] italic text-[#8a9e9a]">

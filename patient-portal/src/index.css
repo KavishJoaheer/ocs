@@ -1166,6 +1166,20 @@ button.native-grouped-row {
   box-shadow: none;
 }
 
+.hero-segment-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hero-segment-btn:focus,
+.hero-segment-btn:focus-visible {
+  outline: none;
+}
+
 /* Health Records — desktop crafted cards */
 @media (min-width: 1024px) {
   .health-records-crafted-card {

@@ -12,8 +12,9 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
-import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
+import MobileGradientHero from "../components/MobileGradientHero.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
+import BillingMobileStatsStrip from "../components/billing/BillingMobileStatsStrip.jsx";
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-MU", {
@@ -61,17 +62,20 @@ function PatientBilling() {
 
   return (
     <DesktopPageFrame className="font-sans">
-      <div className="px-4 lg:px-0">
-        <MobileBrandHeader />
-        <PageHeroHeader
-          primaryText="Billing"
-          secondaryText="& Payments"
-          subtitle="Review your bills, payments, and outstanding balances."
-          className="max-lg:mt-3 max-lg:pt-0"
-        />
-      </div>
+      <MobileGradientHero
+        headline="Billing & Payments"
+        subline="Your invoices and payment history."
+        outstandingAmount={summary?.outstanding}
+        formatOutstanding={formatCurrency}
+      />
 
-      <DesktopPageBody className="mt-6 space-y-8">
+      <PageHeroHeader
+        primaryText="Billing"
+        secondaryText="& Payments"
+        subtitle="Review your bills, payments, and outstanding balances."
+      />
+
+      <DesktopPageBody className="mt-5 space-y-8 lg:mt-6">
       {loadError && !loading ? (
         <div className="flex flex-col items-center rounded-[24px] border border-teal-500/10 bg-white px-6 py-16 text-center">
           <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load billing</p>
@@ -86,15 +90,20 @@ function PatientBilling() {
         </div>
       ) : null}
 
-      {/* Summary cards */}
+      {/* Summary — compact strip on mobile, cards on desktop */}
       {!loadError && loading ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.08)]" />
-          ))}
-        </div>
+        <>
+          <div className="h-[72px] animate-pulse rounded-xl bg-white/80 lg:hidden" />
+          <div className="hidden gap-4 sm:grid-cols-3 lg:grid">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-24 animate-pulse rounded-[24px] bg-[rgba(65,200,198,0.08)]" />
+            ))}
+          </div>
+        </>
       ) : !loadError ? (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <>
+          <BillingMobileStatsStrip summary={summary} formatCurrency={formatCurrency} />
+          <div className="hidden gap-4 sm:grid-cols-3 lg:grid">
           <div className="animate-fade-in-up stagger-1 rounded-[24px] border border-[rgba(65,200,198,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,251,250,0.88))] p-5 shadow-[0_16px_48px_rgba(34,72,91,0.08)]">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] p-2.5">
@@ -137,6 +146,7 @@ function PatientBilling() {
             </div>
           </div>
         </div>
+        </>
       ) : null}
 
       {/* Bills list */}

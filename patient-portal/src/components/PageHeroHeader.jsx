@@ -1,17 +1,7 @@
-/** Desktop architectural hero + compact mobile title. Hero is static (not sticky). */
+/** Desktop architectural hero — static, authoritative band with vertical spine. */
 function PageHeroHeader({ primaryText, secondaryText, subtitle, className = "" }) {
-  const mobileTitle = [primaryText, secondaryText].filter(Boolean).join(" ");
-
   return (
-    <>
-      {/* Mobile — compact in-page title */}
-      <header className={`pb-6 pt-4 lg:hidden ${className}`.trim()}>
-        <h1 className="text-[22px] font-bold tracking-tight text-gray-900">{mobileTitle}</h1>
-        {subtitle ? <p className="mt-1 text-[14px] text-gray-500">{subtitle}</p> : null}
-      </header>
-
-      {/* Desktop — authoritative hero band with vertical spine */}
-      <header className="relative hidden border-b border-gray-100 bg-white py-12 lg:flex lg:flex-col lg:gap-2 lg:px-10">
+      <header className={`relative hidden border-b border-gray-100 bg-white py-12 lg:flex lg:flex-col lg:gap-2 lg:px-10 ${className}`.trim()}>
         <div
           className="absolute left-10 top-1/2 h-12 w-1.5 -translate-y-1/2 rounded-full bg-teal-500"
           aria-hidden="true"
@@ -33,7 +23,6 @@ function PageHeroHeader({ primaryText, secondaryText, subtitle, className = "" }
           ) : null}
         </div>
       </header>
-    </>
   );
 }
 

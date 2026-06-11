@@ -4,9 +4,10 @@ import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
-import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
+import MobileGradientHero from "../components/MobileGradientHero.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import HealthRecordsSegmentedControl from "../components/health-records/HealthRecordsSegmentedControl.jsx";
+import HealthRecordsHeroTabs from "../components/health-records/HealthRecordsHeroTabs.jsx";
 import ConsultationsView from "../components/health-records/ConsultationsView.jsx";
 import ReportsView from "../components/health-records/ReportsView.jsx";
 import ClinicalHistoryView from "../components/health-records/ClinicalHistoryView.jsx";
@@ -131,21 +132,20 @@ function PatientHealthRecords() {
 
   return (
     <DesktopPageFrame className="native-health-records native-screen flex flex-col font-sans lg:bg-transparent">
-      <div className="px-4 lg:px-0">
-        <MobileBrandHeader />
-        <PageHeroHeader
-          primaryText="Health"
-          secondaryText="Records"
-          subtitle="Your health journey, securely organised."
-          className="max-lg:mt-3 max-lg:pt-0"
-        />
-      </div>
+      <MobileGradientHero
+        headline="Your Health Records."
+        subline="Everything about your health, in one place."
+        minHeightClass="min-h-[140px]"
+        footer={<HealthRecordsHeroTabs activeTab={activeTab} onChange={setActiveTab} />}
+      />
+
+      <PageHeroHeader
+        primaryText="Health"
+        secondaryText="Records"
+        subtitle="Your health journey, securely organised."
+      />
 
       <DesktopPageBody>
-        <div className="mt-6 lg:hidden">
-          <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
-        </div>
-
         <div className="mt-6 hidden lg:block">
           <HealthRecordsSegmentedControl
             activeTab={activeTab}
@@ -154,7 +154,7 @@ function PatientHealthRecords() {
           />
         </div>
 
-        <div className="min-h-[40vh] w-full" role="tabpanel" aria-label={activeTab}>
+        <div className="mt-5 min-h-[40vh] w-full lg:mt-0" role="tabpanel" aria-label={activeTab}>
         {loading ? (
           <>
             <div className="flex flex-col gap-4 lg:hidden">

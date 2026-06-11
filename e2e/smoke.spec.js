@@ -175,12 +175,13 @@ test.describe("OCS smoke", () => {
   test("patient health records overview loads", async ({ page, request }) => {
     const { token } = await registerPatient(request, "records");
     await injectPatientSession(page, token);
+    await page.setViewportSize({ width: 390, height: 844 });
 
     await page.goto(`${PATIENT_BASE}/health-records`);
-    await expect(page.getByRole("heading", { name: /^health records$/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /your health records/i })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole("tab", { name: /^consultation history$/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^consultations$/i })).toBeVisible();
     await expect(
       page.getByText(/no consultations yet|health story starts here|your health summary/i).first(),
     ).toBeVisible();
@@ -189,6 +190,7 @@ test.describe("OCS smoke", () => {
   test("patient billing page loads", async ({ page, request }) => {
     const { token } = await registerPatient(request, "billing");
     await injectPatientSession(page, token);
+    await page.setViewportSize({ width: 390, height: 844 });
 
     await page.goto(`${PATIENT_BASE}/billing`);
     await expect(page.getByRole("heading", { name: /billing & payments/i })).toBeVisible({
