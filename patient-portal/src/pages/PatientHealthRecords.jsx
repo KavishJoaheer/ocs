@@ -131,7 +131,7 @@ function PatientHealthRecords() {
   }
 
   return (
-    <DesktopPageFrame className="native-health-records native-screen flex flex-col font-sans lg:bg-transparent">
+    <DesktopPageFrame className="mobile-hero-page native-health-records flex flex-col font-sans lg:bg-transparent">
       <MobileGradientHero
         headline="Your Health Records."
         subline="Everything about your health, in one place."

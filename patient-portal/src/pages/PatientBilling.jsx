@@ -61,7 +61,7 @@ function PatientBilling() {
   }, [refreshKey, retryToken]);
 
   return (
-    <DesktopPageFrame className="font-sans">
+    <DesktopPageFrame className="mobile-hero-page font-sans">
       <MobileGradientHero
         headline="Billing & Payments"
         subline="Your invoices and payment history."

@@ -115,7 +115,7 @@ function PatientAppointments() {
     .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
-    <DesktopPageFrame className="visits-screen native-screen font-sans">
+    <DesktopPageFrame className="mobile-hero-page visits-screen font-sans">
       <MobileGradientHero
         headline="Your Appointments."
         subline="Scheduled by your OCS care team."

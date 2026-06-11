@@ -12,11 +12,8 @@ function MobileGradientHero({
     outstandingAmount != null && Number(outstandingAmount) > 0 && formatOutstanding;
 
   return (
-    <header
-      className={`relative w-full lg:hidden ${minHeightClass}`}
-      style={{ background: "linear-gradient(135deg, #1a5c52 0%, #0D9E8A 100%)" }}
-    >
-      <div className="px-5 pb-7 pt-[calc(env(safe-area-inset-top,0px)+24px)]">
+    <header className={`mobile-gradient-hero relative box-border w-full lg:hidden ${minHeightClass}`}>
+      <div className="mobile-gradient-hero__inner pb-7 pt-[calc(env(safe-area-inset-top,0px)+24px)]">
         <div className="flex items-center gap-2.5">
           {Icon ? (
             <Icon className="size-[18px] shrink-0 text-white/80" strokeWidth={2} aria-hidden="true" />
@@ -32,7 +29,7 @@ function MobileGradientHero({
       </div>
 
       {footer ? (
-        <div className="relative z-10 -mt-4 px-5" style={{ marginBottom: "-16px" }}>
+        <div className="mobile-gradient-hero__footer relative z-10 -mt-4" style={{ marginBottom: "-16px" }}>
           {footer}
         </div>
       ) : null}

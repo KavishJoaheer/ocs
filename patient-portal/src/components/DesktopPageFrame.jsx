@@ -9,7 +9,9 @@ function DesktopPageFrame({ children, className = "" }) {
 
 function DesktopPageBody({ children, className = "" }) {
   return (
-    <div className={["px-4 pb-10 lg:px-10", className].filter(Boolean).join(" ")}>
+    <div
+      className={["mobile-page-body max-md:px-4 px-4 pb-10 lg:px-10", className].filter(Boolean).join(" ")}
+    >
       {children}
     </div>
   );
