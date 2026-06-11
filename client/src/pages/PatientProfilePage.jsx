@@ -1568,15 +1568,16 @@ function PatientProfilePage() {
 
   const mobileDemographicsPrimary = [
     [data.patient.first_name, data.patient.last_name].filter(Boolean).join(" ").trim(),
-    [data.patient.gender, data.patient.date_of_birth ? formatAgeFromDateOfBirth(data.patient.date_of_birth) : ""]
-      .filter(Boolean)
-      .join(" — "),
-    hasMeaningfulPatientField(data.patient.patient_identifier)
-      ? `OCS ${String(data.patient.patient_identifier).trim()}`
-      : "",
+    data.patient.gender,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" - ");
+
+  const mobileAssignedDoctor = data.patient.assigned_doctor_name
+    ? /^dr\.?\s/i.test(String(data.patient.assigned_doctor_name).trim())
+      ? String(data.patient.assigned_doctor_name).trim()
+      : `Dr ${String(data.patient.assigned_doctor_name).trim()}`
+    : "Unassigned";
 
   const rawContactDigits = data.patient.patient_contact_number || data.patient.contact_number;
   const showMobileContact = hasMeaningfulPatientField(rawContactDigits);
@@ -1680,7 +1681,7 @@ function PatientProfilePage() {
             </div>
             <a
               href={`tel:${patientContactNumber}`}
-              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-2.5 text-sm font-semibold text-white"
+              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-ocs-slate px-4 py-2.5 text-sm font-semibold text-white"
             >
               <Phone className="size-4" />
               Quick Call
@@ -1861,8 +1862,8 @@ function PatientProfilePage() {
                   ) : null}
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge value={data.patient.status} />
-                    {assignedDoctor !== "Unassigned" ? (
-                      <span className="min-w-0 text-xs text-slate-600">{assignedDoctor}</span>
+                    {mobileAssignedDoctor !== "Unassigned" ? (
+                      <span className="min-w-0 text-xs text-slate-600">{mobileAssignedDoctor}</span>
                     ) : null}
                   </div>
                   {isPatientUnderReview(data.patient) ? (
@@ -2191,19 +2192,6 @@ function PatientProfilePage() {
                 <EmptyState
                   title="No consultations recorded"
                   description="Consultation notes will appear here as soon as a doctor completes a visit and saves the note."
-                  action={
-                    canModifyClinicalData ? (
-                      <button
-                        type="button"
-                        onClick={() => setConsultationComposerOpen(true)}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white"
-                        style={{ minHeight: 48 }}
-                      >
-                        <Plus className="size-4" />
-                        Add consultation note
-                      </button>
-                    ) : null
-                  }
                 />
               )}
             </div>
@@ -2981,7 +2969,7 @@ function PatientProfilePage() {
             <button
               type="button"
               onClick={() => setFabOpen((prev) => !prev)}
-              className="flex size-14 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg"
+              className="flex size-14 items-center justify-center rounded-full bg-ocs-yellow text-slate-900 shadow-lg"
             >
               <Plus
                 className={cx(
