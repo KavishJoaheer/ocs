@@ -1299,6 +1299,7 @@ router.patch("/:id/long-term-review", (req, res) => {
     patientId,
     changedByUserId: req.auth.id,
   });
+  publishPatientDataChange(patientId, { reason: "long_term_review" });
 
   res.json(
     formatPatientRecord({

@@ -99,6 +99,74 @@ function serializePatientProfile(patient) {
   };
 }
 
+function buildLongTermReviewAppointment(patient, patientId) {
+  if (!patient) {
+    return null;
+  }
+
+  const reviewDueDate = String(patient.review_due_date || "").trim();
+  const isUnderReview = patient.is_under_review === 1 || patient.is_under_review === true;
+
+  if (!isUnderReview || !reviewDueDate) {
+    return null;
+  }
+
+  const doctorName = patient.doctor_name || patient.assigned_doctor_name || null;
+
+  return {
+    id: `review-${patientId}`,
+    patient_id: patientId,
+    appointment_date: reviewDueDate,
+    appointment_time: "",
+    date: reviewDueDate,
+    time: "",
+    status: "scheduled",
+    doctor_name: doctorName,
+    kind: "review",
+    reason: String(patient.review_reason_note || "").trim() || null,
+  };
+}
+
+function serializeDashboardNextAppointment(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    date: row.date || row.appointment_date,
+    time: row.time ?? row.appointment_time ?? "",
+    doctor_name: row.doctor_name || null,
+    status: row.status || "scheduled",
+    kind: row.kind || null,
+    reason: row.reason || null,
+  };
+}
+
+function pickEarliestNextAppointment(dbNext, reviewNext) {
+  if (!dbNext) {
+    return reviewNext;
+  }
+
+  if (!reviewNext) {
+    return dbNext;
+  }
+
+  const dbDate = String(dbNext.date || "");
+  const reviewDate = String(reviewNext.date || "");
+
+  if (reviewDate < dbDate) {
+    return reviewNext;
+  }
+
+  if (reviewDate > dbDate) {
+    return dbNext;
+  }
+
+  // Same day — prefer the staff-scheduled appointment slot when one exists.
+  return dbNext;
+}
+
 router.get("/dashboard", (req, res) => {
   const patientId = req.patientAuth.patient_id;
 
@@ -156,15 +224,12 @@ router.get("/dashboard", (req, res) => {
     `)
     .get(patientId);
 
-  const nextAppointment = nextAppointmentRow
-    ? {
-        id: nextAppointmentRow.id,
-        date: nextAppointmentRow.appointment_date,
-        time: nextAppointmentRow.appointment_time,
-        doctor_name: nextAppointmentRow.doctor_name,
-        status: nextAppointmentRow.status,
-      }
-    : null;
+  const dbNextAppointment = serializeDashboardNextAppointment(nextAppointmentRow);
+  const reviewAppointment = buildLongTermReviewAppointment(patient, patientId);
+  const nextAppointment = pickEarliestNextAppointment(
+    dbNextAppointment,
+    serializeDashboardNextAppointment(reviewAppointment),
+  );
 
   const lastConsultationRow = db
     .prepare(`
@@ -214,7 +279,10 @@ router.get("/dashboard", (req, res) => {
     };
   });
 
-  const upcomingAppointments = upcomingCount?.count || 0;
+  let upcomingAppointments = upcomingCount?.count || 0;
+  if (reviewAppointment) {
+    upcomingAppointments += 1;
+  }
   const pendingBillsCount = pendingBills?.count || 0;
 
   return res.json({
@@ -264,19 +332,9 @@ router.get("/appointments", (req, res) => {
     `)
     .get(patientId);
 
-  const reviewDueDate = String(patient?.review_due_date || "").trim();
-
-  if (patient && (patient.is_under_review === 1 || patient.is_under_review === true) && reviewDueDate) {
-    appointments.unshift({
-      id: `review-${patientId}`,
-      patient_id: patientId,
-      appointment_date: reviewDueDate,
-      appointment_time: "",
-      status: "scheduled",
-      doctor_name: patient.doctor_name || null,
-      kind: "review",
-      reason: String(patient.review_reason_note || "").trim() || null,
-    });
+  const reviewAppointment = buildLongTermReviewAppointment(patient, patientId);
+  if (reviewAppointment) {
+    appointments.unshift(reviewAppointment);
   }
 
   return res.json({ appointments });
