@@ -24,12 +24,12 @@ const WIZARD_STEPS = [
   { label: "Next of Kin" },
 ];
 
-const MOBILE_FIELD_LABEL = "mb-1.5 block text-sm font-semibold text-gray-700";
+const MOBILE_FIELD_LABEL = "mb-1.5 block text-sm font-semibold text-slate-700";
 const MOBILE_STEP_STACK = "space-y-5.5";
 const MOBILE_INPUT =
-  "h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98] focus:bg-white";
+  "h-12 w-full rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white";
 const MOBILE_INPUT_DISABLED =
-  "h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98] focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100";
+  "h-12 w-full rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100";
 const MOBILE_TEXTAREA = cx(
   MOBILE_INPUT,
   "h-auto min-h-[5.5rem] resize-y leading-relaxed",
@@ -383,12 +383,12 @@ function PatientFormModal({
             <button
               type="button"
               onClick={handleCancel}
-              className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-xl text-[#2d8f98] transition active:bg-[rgba(65,200,198,0.08)]"
+              className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-xl text-ocs-teal transition active:bg-ocs-teal/10"
               aria-label="Go back"
             >
               <ArrowLeft className="size-6" />
             </button>
-            <span className="min-w-0 truncate text-lg font-bold text-slate-950">{actionLabel}</span>
+            <span className="min-w-0 truncate text-lg font-bold text-ocs-slate">{actionLabel}</span>
           </div>
         ) : null}
         {/* Step progress indicator */}
@@ -404,9 +404,9 @@ function PatientFormModal({
                 className={cx(
                   "flex size-9 items-center justify-center rounded-full text-sm font-bold transition",
                   i === wizardStep
-                    ? "bg-[#2d8f98] text-white shadow-md"
+                    ? "bg-ocs-teal text-white shadow-md"
                     : i < wizardStep
-                      ? "bg-[#41c8c6] text-white"
+                      ? "bg-ocs-teal/70 text-white"
                       : "bg-slate-100 text-slate-400",
                 )}
               >
@@ -415,7 +415,7 @@ function PatientFormModal({
               <span
                 className={cx(
                   "text-[11px] leading-tight",
-                  i === wizardStep ? "font-semibold text-[#2d8f98]" : "text-slate-400",
+                  i === wizardStep ? "font-semibold text-ocs-teal" : "text-ocs-grey",
                 )}
               >
                 {i + 1}. {step.label}
@@ -746,7 +746,7 @@ function PatientFormModal({
                   <button
                     type="button"
                     onClick={goToNextWizardStep}
-                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
+                    className="min-h-12 rounded-2xl bg-ocs-teal px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-ocs-teal/20 transition hover:bg-ocs-teal/90"
                   >
                     Next
                   </button>
@@ -754,7 +754,7 @@ function PatientFormModal({
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60 lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
+                    className="min-h-12 rounded-2xl bg-ocs-teal px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-ocs-teal/20 transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isSaving ? "Saving..." : actionLabel}
                   </button>

@@ -73,7 +73,7 @@ function SearchableOverlay({ open, title, items, onSelect, onClose }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search ${title.toLowerCase()}...`}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[#2d8f98] focus:bg-white"
+            className="w-full rounded-2xl border border-slate-100 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-ocs-teal focus:bg-white"
           />
         </div>
       </div>
@@ -140,6 +140,9 @@ export default function PatientLocationTags({
   };
 
   const getTagColor = (category) => {
+    if (isMobile && ["Town", "Neighborhood", "Village"].includes(category)) {
+      return "border-ocs-yellow/30 bg-ocs-yellow/10 text-ocs-yellow-dark";
+    }
     switch (category) {
       case "Clinic": return "bg-blue-100 text-blue-800 border-blue-300";
       case "Insurance": return "bg-green-100 text-green-800 border-green-300";
@@ -225,7 +228,9 @@ export default function PatientLocationTags({
                 onClick={() => setLocationType("town")}
                 className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
                   locationType === "town"
-                    ? "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
+                    ? isMobile
+                      ? "bg-ocs-teal text-white shadow-sm"
+                      : "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -236,7 +241,9 @@ export default function PatientLocationTags({
                 onClick={() => setLocationType("village")}
                 className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
                   locationType === "village"
-                    ? "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
+                    ? isMobile
+                      ? "bg-ocs-teal text-white shadow-sm"
+                      : "bg-sky-600 text-white shadow-lg shadow-sky-600/20"
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -253,9 +260,9 @@ export default function PatientLocationTags({
                   <button
                     type="button"
                     onClick={() => setOverlayTarget("town")}
-                    className="mt-2 flex min-h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-700 transition active:border-[#2d8f98]"
+                    className="mt-2 flex min-h-12 w-full items-center rounded-2xl border border-slate-100 bg-white px-4 py-3 text-left text-sm text-slate-700 transition active:border-ocs-teal"
                   >
-                    <MapPin className="mr-2 size-4 text-[#2d8f98]" />
+                    <MapPin className="mr-2 size-4 text-ocs-teal" />
                     {currentTownTag?.name || "Tap to search towns..."}
                   </button>
                 ) : (
@@ -282,9 +289,9 @@ export default function PatientLocationTags({
                     type="button"
                     disabled={!selectedTown && !currentTownTag}
                     onClick={() => setOverlayTarget("suburb")}
-                    className="mt-2 flex min-h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-700 transition active:border-[#2d8f98] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="mt-2 flex min-h-12 w-full items-center rounded-2xl border border-slate-100 bg-white px-4 py-3 text-left text-sm text-slate-700 transition active:border-ocs-teal disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    <MapPin className="mr-2 size-4 text-[#2d8f98]" />
+                    <MapPin className="mr-2 size-4 text-ocs-teal" />
                     {currentSuburbTag?.name || (selectedTown || currentTownTag ? "Tap to search suburbs..." : "Choose town first")}
                   </button>
                 ) : (
@@ -313,9 +320,9 @@ export default function PatientLocationTags({
                 <button
                   type="button"
                   onClick={() => setOverlayTarget("village")}
-                  className="mt-2 flex min-h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-700 transition active:border-[#2d8f98]"
+                  className="mt-2 flex min-h-12 w-full items-center rounded-2xl border border-slate-100 bg-white px-4 py-3 text-left text-sm text-slate-700 transition active:border-ocs-teal"
                 >
-                  <MapPin className="mr-2 size-4 text-[#2d8f98]" />
+                  <MapPin className="mr-2 size-4 text-ocs-teal" />
                   {currentVillageTag?.name || "Tap to search villages..."}
                 </button>
               ) : (

@@ -50,7 +50,7 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
   return (
     <Link
       to={to}
-      className="group relative flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/95 p-4 text-left shadow-[0_8px_22px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+      className="group relative flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-ocs-teal/20 bg-ocs-teal p-4 text-left text-white shadow-sm transition active:scale-[0.99] active:bg-ocs-teal/90"
     >
       {showLowStockLed ? (
         <span
@@ -58,13 +58,13 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
           aria-label="Low stock alert"
         />
       ) : null}
-      <div className="flex size-10 items-center justify-center rounded-xl border border-[#4FB8B3]/20 bg-[#ecf8f7] text-[#2d8f98]">
+      <div className="flex size-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white">
         <Icon className="size-5" strokeWidth={2.25} />
       </div>
       <div className="mt-3 min-w-0">
-        <p className="text-[15px] font-bold leading-snug tracking-tight text-gray-900">{label}</p>
+        <p className="text-[15px] font-bold leading-snug tracking-tight text-white">{label}</p>
       </div>
-      <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-teal-500/80" strokeWidth={2} />
+      <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-white/80" strokeWidth={2} />
     </Link>
   );
 }
@@ -73,21 +73,21 @@ function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
   return (
     <Link
       to="/supply-requests"
-      className="relative flex min-h-[110px] cursor-pointer flex-col justify-between rounded-2xl border border-gray-100/80 bg-white p-4 shadow-sm transition-all active:scale-[0.98]"
+      className="relative flex min-h-[110px] cursor-pointer flex-col justify-between rounded-2xl border border-ocs-teal/20 bg-ocs-teal p-4 text-white shadow-sm transition-all active:scale-[0.98] active:bg-ocs-teal/90"
     >
       <div className="flex items-start justify-between">
         <span className="text-xl" aria-hidden="true">
           📋
         </span>
         {pendingCount > 0 ? (
-          <span className="rounded-full border border-[#f5e3d7] bg-[#ba5a32]/10 px-2 py-0.5 text-[10px] font-extrabold text-[#ba5a32]">
+          <span className="rounded-full border border-ocs-yellow/30 bg-ocs-yellow/10 px-2 py-0.5 text-[10px] font-extrabold text-ocs-yellow-dark">
             {pendingCount} Pending
           </span>
         ) : null}
       </div>
       <div className="mt-4">
-        <p className="text-sm font-bold text-gray-800">Supply Requests</p>
-        <p className="text-[11px] font-semibold text-gray-400">Track, edit or cancel orders</p>
+        <p className="text-sm font-bold text-white">Supply Requests</p>
+        <p className="text-[11px] font-semibold text-white/70">Track, edit or cancel orders</p>
       </div>
     </Link>
   );
@@ -108,8 +108,8 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
   return (
     <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
       <header className="shrink-0 pb-2">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hello, Dr. {firstName}</h1>
-        <p className="mt-2 text-base text-slate-600">{buildDoctorMobileDateLabel()}</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ocs-slate">Hello, Dr. {firstName}</h1>
+        <p className="mt-2 text-base text-ocs-grey">{buildDoctorMobileDateLabel()}</p>
       </header>
 
       {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
@@ -131,13 +131,13 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
 
         <Link
           to="/patients/add"
-          className="group mt-4 flex w-full items-center gap-4 rounded-2xl border border-[rgba(65,200,198,0.16)] bg-white/95 px-4 py-3.5 text-left shadow-[0_8px_22px_rgba(34,72,91,0.06)] transition active:scale-[0.99] active:bg-slate-50/80"
+          className="group mt-4 flex w-full items-center gap-4 rounded-2xl border border-ocs-teal/20 bg-ocs-teal px-4 py-3.5 text-left text-white shadow-sm transition active:scale-[0.99] active:bg-ocs-teal/90"
         >
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/20 bg-[#ecf8f7] text-[#2d8f98]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white">
             <UserPlus className="size-5" strokeWidth={2.25} />
           </div>
-          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-gray-900">Add Patient</p>
-          <ArrowUpRight className="size-4 shrink-0 text-teal-500/80" strokeWidth={2} />
+          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-white">Add Patient</p>
+          <ArrowUpRight className="size-4 shrink-0 text-white/80" strokeWidth={2} />
         </Link>
       </nav>
     </div>
@@ -255,10 +255,10 @@ function MobileLauncher({
 
   return (
     <div className="flex min-h-[60svh] w-full min-w-0 flex-col">
-      <h1 className="text-[1.6rem] font-bold tracking-tight text-slate-950">
+      <h1 className="text-[1.6rem] font-bold tracking-tight text-ocs-slate">
         {greeting}
       </h1>
-      <p className="mt-1 text-sm text-[#51717b]">What would you like to do?</p>
+      <p className="mt-1 text-sm text-ocs-grey">What would you like to do?</p>
 
       {["admin", "operator"].includes(user.role) ? (
         <div className="mt-4">
@@ -283,20 +283,20 @@ function MobileLauncher({
             <Link
               key={card.label}
               to={card.to}
-              className="group flex w-full items-center gap-5 rounded-[24px] border border-[rgba(65,200,198,0.2)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] px-5 py-6 shadow-[0_20px_50px_rgba(34,72,91,0.08)] transition duration-150 active:scale-[0.97] active:shadow-[0_10px_30px_rgba(34,72,91,0.12)]"
+              className="group flex w-full items-center gap-5 rounded-[24px] border border-ocs-teal/20 bg-ocs-teal px-5 py-6 text-white shadow-sm transition duration-150 active:scale-[0.97] active:bg-ocs-teal/90"
             >
-              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(229,245,246,0.92))] text-[#2d8f98] shadow-sm transition group-active:bg-[#2d8f98] group-active:text-white">
+              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-sm">
                 <Icon className="size-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[1.05rem] font-bold tracking-tight text-slate-950">
+                <p className="text-[1.05rem] font-bold tracking-tight text-white">
                   {card.label}
                 </p>
-                <p className="mt-0.5 text-sm leading-6 text-[#51717b]">
+                <p className="mt-0.5 text-sm leading-6 text-white/70">
                   {card.description}
                 </p>
               </div>
-              <ArrowUpRight className="size-5 shrink-0 text-[#2d8f98] opacity-60 transition group-active:translate-x-0.5 group-active:-translate-y-0.5 group-active:opacity-100" />
+              <ArrowUpRight className="size-5 shrink-0 text-white/80 transition group-active:translate-x-0.5 group-active:-translate-y-0.5" />
             </Link>
           );
         })}

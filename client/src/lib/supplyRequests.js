@@ -8,7 +8,7 @@ export function supplyRequestStatusTone(status) {
   if (status === "cancelled") {
     return "bg-gray-100 text-gray-500";
   }
-  return "bg-[#fcf3ee] text-[#ba5a32]";
+  return "bg-ocs-yellow/10 text-ocs-yellow-dark";
 }
 
 export function supplyRequestStatusLabel(status) {

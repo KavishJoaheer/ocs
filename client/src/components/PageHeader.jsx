@@ -9,11 +9,11 @@ function PageHeader({ eyebrow, title, description, actions, className = "" }) {
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="mt-1 flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-slate-950 md:text-3xl lg:text-ocs-slate">
+        <h1 className="mt-1 flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-3xl">
           {title}
         </h1>
         {description ? (
-          <p className="mt-1.5 max-w-3xl break-words text-sm leading-6 text-gray-500 lg:text-ocs-grey">{description}</p>
+          <p className="mt-1.5 max-w-3xl break-words text-sm leading-6 text-slate-700 lg:text-ocs-grey">{description}</p>
         ) : null}
       </div>
 

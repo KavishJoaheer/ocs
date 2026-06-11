@@ -129,7 +129,7 @@ export default function LinkhamSidebar() {
   return (
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-64 lg:shrink-0">
       <div
-        className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-gray-100 bg-white px-4 lg:hidden"
+        className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-white/10 bg-ocs-slate px-4 shadow-md lg:hidden"
         style={{
           paddingTop: "max(0px, var(--sat))",
           paddingLeft: "max(1rem, var(--sal))",
@@ -139,7 +139,7 @@ export default function LinkhamSidebar() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="rounded-xl p-2 text-[#065a60] transition hover:bg-gray-50"
+          className="rounded-xl p-2 text-white transition hover:bg-white/10"
           aria-label="Open menu"
         >
           <Menu className="size-6" strokeWidth={2.25} />

@@ -33,7 +33,7 @@ function PatientDateOfBirthInput({
   const manualInputClass = cx(
     inputClass,
     isMobile
-      ? "border border-gray-200 bg-gray-50 text-gray-800 placeholder:text-gray-400 focus:border-[#557373] focus:bg-white"
+      ? "border border-slate-100 bg-gray-50 text-slate-700 placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white"
       : "border border-gray-200 bg-gray-50 text-gray-800 placeholder:text-gray-400 focus:border-[#557373] focus:bg-white",
   );
   const nicLockedInputClass = cx(

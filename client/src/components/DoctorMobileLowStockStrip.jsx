@@ -8,7 +8,7 @@ export default function DoctorMobileLowStockStrip({ lowStockCount }) {
   return (
     <Link
       to="/inventory?context=my"
-      className="animate-fade-in mb-4 flex w-full items-center gap-3 rounded-2xl border border-rose-100/80 bg-rose-50/70 p-3.5 shadow-sm transition active:scale-[0.99]"
+      className="animate-fade-in mb-4 flex w-full items-center gap-3 rounded-2xl border border-ocs-yellow/30 bg-ocs-yellow/10 p-3.5 shadow-sm transition active:scale-[0.99]"
     >
       <div className="relative flex h-2.5 w-2.5 shrink-0">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
@@ -16,10 +16,10 @@ export default function DoctorMobileLowStockStrip({ lowStockCount }) {
       </div>
 
       <div className="flex w-full items-center justify-between gap-3">
-        <span className="text-xs font-bold tracking-wide text-gray-800">
+        <span className="text-xs font-bold tracking-wide text-ocs-yellow-dark">
           {lowStockCount} items are currently low in your bag.
         </span>
-        <span className="shrink-0 rounded-lg bg-rose-100/60 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-rose-600">
+        <span className="shrink-0 rounded-lg border border-ocs-yellow/30 bg-ocs-yellow/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-ocs-yellow-dark">
           Action Needed
         </span>
       </div>

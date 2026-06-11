@@ -2830,7 +2830,7 @@ function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock,
   const currentQuantity = Number(item.quantity || 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
-  const qtyTone = low ? "text-rose-600" : "text-emerald-700";
+  const qtyTone = low ? "text-ocs-yellow-dark" : "text-emerald-700";
 
   return (
     <div className="flex min-h-[72px] items-center justify-between rounded-2xl bg-white p-4 shadow-sm transition-all active:scale-[0.99]">
@@ -2845,8 +2845,8 @@ function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock,
           aria-hidden
         />
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-bold tracking-wide text-gray-800">{item.item_name}</span>
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-400">
+          <span className="truncate text-sm font-bold tracking-wide text-slate-700">{item.item_name}</span>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ocs-grey">
             <span>
               {quantityLabel}{" "}
               <span className={cx("font-bold", qtyTone)}>{currentQuantity}</span>
@@ -2882,9 +2882,9 @@ function MobileDoctorBagLayout({
   onOpenRestock,
 }) {
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3.5 bg-[#f8f9fa] px-4 py-3">
+    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-4 py-3">
       <header className="flex items-start justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">
+        <h1 className="text-xl font-bold tracking-tight text-ocs-slate">
           {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
         </h1>
         {!doctorViewIsOcs ? (
@@ -2892,7 +2892,7 @@ function MobileDoctorBagLayout({
             type="button"
             onClick={onOpenRestockInventory}
             disabled={!doctorRestockCandidates.length}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#4FB8B3] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-ocs-teal px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Truck className="size-4" />
             Restock
@@ -2909,8 +2909,8 @@ function MobileDoctorBagLayout({
             className={cx(
               "min-h-11 flex-1 rounded-2xl px-3 py-2.5 text-sm font-bold transition",
               doctorContext === scope.id
-                ? "bg-[#4FB8B3] text-white shadow-sm"
-                : "border border-slate-200 bg-white text-slate-700",
+                ? "bg-ocs-teal text-white shadow-sm"
+                : "border border-slate-100 bg-white text-slate-700",
             )}
           >
             {scope.label}
@@ -2924,7 +2924,7 @@ function MobileDoctorBagLayout({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search by item name"
-          className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#4FB8B3] focus:bg-white"
+          className="h-12 w-full rounded-2xl border border-slate-100 bg-slate-50 pl-11 pr-4 text-sm outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white"
         />
       </label>
 
@@ -2938,8 +2938,8 @@ function MobileDoctorBagLayout({
               className={cx(
                 "shrink-0 rounded-2xl px-3.5 py-2 text-xs font-bold transition",
                 selectedView === String(folder.id)
-                  ? "bg-[#4FB8B3] text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-700",
+                  ? "bg-ocs-teal text-white shadow-sm"
+                  : "border border-slate-100 bg-white text-slate-700",
               )}
             >
               {folder.name}
@@ -4490,7 +4490,7 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            <div className="mt-2 flex w-full flex-col gap-3.5 bg-[#f8f9fa] px-1 py-3 md:hidden">
+            <div className="mt-2 flex w-full flex-col gap-3.5 bg-slate-50 px-1 py-3 md:hidden">
               {pagedItems.map((item) => (
                 <MobileInventoryStockCard
                   key={`m-${item.id}`}

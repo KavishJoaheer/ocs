@@ -225,13 +225,13 @@ function Sidebar() {
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
-        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-[rgba(65,200,198,0.14)] bg-white px-4 md:hidden"
+        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-white/10 bg-ocs-slate px-4 shadow-md md:hidden"
         style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="rounded-xl p-2 text-[#2d8f98] transition hover:bg-gray-50 active:bg-gray-50"
+          className="rounded-xl p-2 text-white transition hover:bg-white/10 active:bg-white/10"
           aria-label="Open menu"
         >
           <Menu className="h-6 w-6" strokeWidth={2.25} />
@@ -244,7 +244,7 @@ function Sidebar() {
         {location.pathname !== "/" ? (
           <Link
             to="/"
-            className="rounded-xl p-2 text-[#2d8f98] transition hover:bg-gray-50 active:bg-gray-50"
+            className="rounded-xl p-2 text-white transition hover:bg-white/10 active:bg-white/10"
             aria-label="Home"
           >
             <Home className="h-7 w-7" strokeWidth={2.25} />

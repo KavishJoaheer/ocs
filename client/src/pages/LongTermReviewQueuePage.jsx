@@ -30,8 +30,8 @@ export default function LongTermReviewQueuePage() {
     return (
       <div className="mx-auto w-full max-w-md space-y-4 pb-8">
         <header>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900">Long term review</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-xl font-bold tracking-tight text-ocs-slate">Long term review</h1>
+          <p className="mt-1 text-sm text-ocs-grey">
             Practice-wide chronic care follow-up queue.
           </p>
         </header>

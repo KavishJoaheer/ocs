@@ -1660,7 +1660,7 @@ function PatientProfilePage() {
             <div className="min-w-0 flex-1">
               <div className="flex w-full flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-base font-extrabold leading-snug text-slate-950">
+                  <h1 className="truncate text-base font-extrabold leading-snug text-ocs-slate">
                     {data.patient.full_name}
                   </h1>
                   <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-bold text-gray-500">
@@ -1673,14 +1673,14 @@ function PatientProfilePage() {
                     <HealthPlanBadge className="ml-0" compact />
                   </div>
                 ) : null}
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-ocs-grey">
                   📍 {profileAddressLabel} • Age: {profileAgeLabel}
                 </span>
               </div>
             </div>
             <a
               href={`tel:${patientContactNumber}`}
-              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white"
+              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-2.5 text-sm font-semibold text-white"
             >
               <Phone className="size-4" />
               Quick Call
@@ -1788,7 +1788,7 @@ function PatientProfilePage() {
                   className={cx(
                     "whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition",
                     activeTab === tab.key
-                      ? "bg-[#2d8f98] text-white"
+                      ? "bg-ocs-teal text-white"
                       : "bg-slate-100 text-slate-600",
                   )}
                   style={{ minHeight: 48 }}
@@ -1815,7 +1815,7 @@ function PatientProfilePage() {
               <button
                 type="button"
                 onClick={() => setPatientEditorOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-ocs-teal/40 hover:text-ocs-teal"
               >
                 <SquarePen className="size-4" />
                 Edit profile
@@ -1989,7 +1989,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white"
                   style={{ minHeight: 48 }}
                 >
                   <Plus className="size-4" />
@@ -2112,7 +2112,7 @@ function PatientProfilePage() {
                                     type="button"
                                     disabled={isSavingConsultation}
                                     onClick={() => handleConsultationSave(consultation)}
-                                    className="rounded-2xl bg-[#2d8f98] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                                     style={{ minHeight: 48 }}
                                   >
                                     {isSavingConsultation ? "Saving..." : "Save changes"}
@@ -2196,7 +2196,7 @@ function PatientProfilePage() {
                       <button
                         type="button"
                         onClick={() => setConsultationComposerOpen(true)}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white"
+                        className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white"
                         style={{ minHeight: 48 }}
                       >
                         <Plus className="size-4" />
@@ -2215,7 +2215,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setReportEditor({ id: null })}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white"
                   style={{ minHeight: 48 }}
                 >
                   <Plus className="size-4" />
@@ -2919,7 +2919,7 @@ function PatientProfilePage() {
                     <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
                       Attach Report
                     </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-[#2d8f98] text-white shadow-lg">
+                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
                       <Paperclip className="size-5" />
                     </span>
                   </button>
@@ -2937,7 +2937,7 @@ function PatientProfilePage() {
                     <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
                       New Bill
                     </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-[#2d8f98] text-white shadow-lg">
+                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
                       <CreditCard className="size-5" />
                     </span>
                   </button>
@@ -2954,7 +2954,7 @@ function PatientProfilePage() {
                     <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
                       Add Note
                     </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-[#2d8f98] text-white shadow-lg">
+                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
                       <FileText className="size-5" />
                     </span>
                   </button>
@@ -2971,7 +2971,7 @@ function PatientProfilePage() {
                     <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
                       Edit profile
                     </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-[#2d8f98] text-white shadow-lg">
+                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
                       <SquarePen className="size-5" />
                     </span>
                   </button>
@@ -2981,7 +2981,7 @@ function PatientProfilePage() {
             <button
               type="button"
               onClick={() => setFabOpen((prev) => !prev)}
-              className="flex size-14 items-center justify-center rounded-full bg-[#2d8f98] text-white shadow-lg"
+              className="flex size-14 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg"
             >
               <Plus
                 className={cx(

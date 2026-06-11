@@ -127,7 +127,7 @@ export default function SupplyRequestsPage() {
 
   return (
     <>
-      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col gap-3.5 bg-[#f8f9fa] px-1 py-2 md:max-w-2xl md:px-0 md:py-4">
+      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-1 py-2 md:max-w-2xl md:px-0 md:py-4">
         <div className="mb-1 flex items-center gap-2 px-1">
           <button
             type="button"
@@ -137,7 +137,7 @@ export default function SupplyRequestsPage() {
           >
             <ChevronLeft className="size-6 font-bold" strokeWidth={2.5} />
           </button>
-          <h1 className="text-lg font-extrabold text-gray-800">My Supply Requests</h1>
+          <h1 className="text-lg font-extrabold text-ocs-slate">My Supply Requests</h1>
         </div>
 
         <div className="px-1">
@@ -145,7 +145,7 @@ export default function SupplyRequestsPage() {
             type="button"
             onClick={openCreateModal}
             disabled={catalogLoading}
-            className="flex w-full min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#ba5a32] px-4 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-60"
+            className="flex w-full min-h-11 items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.98] active:bg-ocs-teal/90 disabled:opacity-60"
           >
             <Plus className="size-4" />
             New supply request

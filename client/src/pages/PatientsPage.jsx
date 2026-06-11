@@ -93,7 +93,7 @@ function MobilePatientStatusPill({ value }) {
     <span
       className={cx(
         "inline-flex shrink-0 rounded-lg border px-2 py-0.5 text-[11px] font-bold capitalize",
-        isUnderReview && "border-amber-200 bg-amber-50 text-amber-800",
+        isUnderReview && "border-ocs-yellow/30 bg-ocs-yellow/10 text-ocs-yellow-dark",
         isActive && "border-emerald-200 bg-emerald-50 text-emerald-700",
         !isUnderReview &&
           !isActive &&
@@ -498,8 +498,8 @@ function PatientsPage() {
             : "Search by OCS care number, patient ID, name, assigned doctor, location, or next of kin"
         }
         className={cx(
-          "w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-sky-400 focus:bg-white",
-          isMobile ? "h-12" : "py-3",
+          "w-full rounded-2xl border bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:bg-white",
+          isMobile ? "h-12 border-slate-100 focus:border-ocs-teal" : "border-slate-200 py-3 focus:border-sky-400",
         )}
       />
     </label>
@@ -609,7 +609,7 @@ function PatientsPage() {
       {isMobile ? (
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">Patient Directory</h1>
+            <h1 className="text-xl font-bold tracking-tight text-ocs-slate">Patient Directory</h1>
             <div className="flex items-center gap-2">
               {isDoctorMobile ? (
                 <button
@@ -641,7 +641,7 @@ function PatientsPage() {
         subtitle={isMobile ? null : `${pagination?.total || 0} total records`}
         className={
           isMobile
-            ? "flex min-h-0 flex-1 flex-col rounded-[24px] p-3 shadow-[0_16px_40px_rgba(34,72,91,0.06)]"
+            ? "flex min-h-0 flex-1 flex-col rounded-[24px] border-slate-100 bg-white p-3 shadow-sm"
             : undefined
         }
         actions={
@@ -689,11 +689,11 @@ function PatientsPage() {
                     {patients.map((patient) => (
                       <div
                         key={patient.id}
-                        className="mb-3 flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-2xl border border-[#557373]/15 bg-[#557373]/15 p-4 shadow-sm transition-all active:scale-[0.99]"
+                        className="mb-3 flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all active:scale-[0.99]"
                       >
                         <div className="flex items-center gap-3">
                           <div
-                            className="grid size-11 shrink-0 place-items-center rounded-full border border-[#557373]/20 bg-[#557373]/10 text-[#557373]"
+                            className="grid size-11 shrink-0 place-items-center rounded-full border border-ocs-teal/20 bg-ocs-teal/10 text-ocs-teal"
                             aria-hidden
                           >
                             <UserRound className="size-5" strokeWidth={2} />
@@ -701,29 +701,29 @@ function PatientsPage() {
 
                           <Link to={`/patients/${patient.id}`} className="min-w-0 flex-1">
                             <p className="flex flex-wrap items-center gap-y-1 break-words">
-                              <span className="text-base font-bold text-gray-900">
+                              <span className="text-base font-bold text-slate-700">
                                 {patient.full_name}
                               </span>
                               {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
                             </p>
-                            <p className="mt-1 break-words text-xs font-medium text-gray-600">
+                            <p className="mt-1 break-words text-xs font-medium text-ocs-grey">
                               {formatMobilePatientMetaLine(patient)}
                             </p>
 
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                               <MobilePatientStatusPill value={patient.status} />
-                              <span className="text-xs font-medium text-gray-600">
+                              <span className="text-xs font-medium text-ocs-grey">
                                 {displayText(patient.assigned_doctor_name, "Not assigned")}
                               </span>
                             </div>
                             {isPatientUnderReview(patient) && formatReviewDueShort(patient.review_due_date) ? (
-                              <p className="mt-1.5 text-xs font-medium text-amber-700">
+                              <p className="mt-1.5 text-xs font-medium text-ocs-yellow-dark">
                                 ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
                               </p>
                             ) : null}
 
                             {offlineDirectoryActive && patient.offline_directory ? (
-                              <div className="mt-3 space-y-1.5 rounded-xl border border-[#557373]/15 bg-white/70 p-2.5 text-[11px] leading-relaxed text-gray-700">
+                              <div className="mt-3 space-y-1.5 rounded-xl border border-slate-100 bg-white p-2.5 text-[11px] leading-relaxed text-slate-700">
                                 <p>
                                   <span className="font-bold text-gray-800">Location:</span>{" "}
                                   {patient.offline_directory.address_location}

@@ -157,7 +157,7 @@ function AppShell() {
   const isInventory = location.pathname === "/inventory";
   const isSupplyRequests = location.pathname === "/supply-requests";
   const isLinkhamPortal = location.pathname.startsWith("/linkham");
-  const hideBottomNav = isMobile;
+  const hideBottomNav = false;
   const hideLinkhamTopHeader = isLinkhamPortal;
   const userRole = user?.role;
   const alwaysHideTopHeader =
@@ -227,8 +227,8 @@ function AppShell() {
     <div
       className={
         isLinkhamPortal
-          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[#f8f9fa] text-slate-900 lg:bg-slate-50"
-          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900 lg:bg-slate-50"
+          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-slate-50 text-slate-900 lg:bg-slate-50"
+          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-slate-50 text-slate-900 lg:bg-slate-50"
       }
     >
       <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">

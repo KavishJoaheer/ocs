@@ -11,7 +11,7 @@ function PatientNationalIdInput({
     ? "text-xs font-bold text-gray-700"
     : "text-sm font-semibold text-slate-700";
   const inputClass = isMobile
-    ? "h-12 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold uppercase text-gray-800 outline-none transition placeholder:text-sm placeholder:normal-case placeholder:text-gray-400 focus:border-[#557373] focus:bg-white"
+    ? "h-12 w-full rounded-2xl border border-slate-100 bg-gray-50 px-4 py-3 text-sm font-semibold uppercase text-slate-700 outline-none transition placeholder:text-sm placeholder:normal-case placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white"
     : "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold uppercase text-gray-800 outline-none transition placeholder:normal-case placeholder:text-gray-400 focus:border-[#557373] focus:bg-white";
 
   return (
