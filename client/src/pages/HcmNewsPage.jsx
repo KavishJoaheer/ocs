@@ -8,6 +8,7 @@ import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
 
@@ -159,6 +160,7 @@ function NewsPostCard({ post, user, onEdit, onDelete }) {
 }
 
 function HcmNewsPage() {
+  const isMobile = useIsMobile();
   const { user, refreshHcmUnreadCount } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -332,7 +334,7 @@ function HcmNewsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Health care manager"
+        eyebrow={isMobile ? "Health care manager" : undefined}
         title="HCM news board"
         actions={
           <>

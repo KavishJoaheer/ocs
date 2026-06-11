@@ -39,11 +39,7 @@ export default function LongTermReviewQueuePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Clinical follow-up"
-        title="Long term review"
-        description="Practice-wide queue of patients flagged for chronic care follow-up."
-      />
+      <PageHeader title="Long term review" />
       {queue}
     </div>
   );

@@ -165,8 +165,13 @@ function AppShell() {
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
     (isMobile && isInventory && userRole === "doctor") ||
     (isMobile && isSupplyRequests && userRole === "doctor");
+  const isLongTermReview = /^\/(doctor|operator|admin)\/long-term-review$/.test(location.pathname);
+  const isAppointments = location.pathname === "/appointments";
+  const isHcmNews = location.pathname === "/hcm-news";
   const hidePatientProfileDesktopHeader = isPatientProfile && !isMobile;
   const hidePatientsDirectoryDesktopHeader = isPatientsDirectory && !isMobile;
+  const hideStaffViewsDesktopHeader =
+    !isMobile && (isLongTermReview || isAppointments || isHcmNews);
 
   const dashboardMetaByRole = {
     doctor: {
@@ -237,7 +242,7 @@ function AppShell() {
         <Sidebar />
 
         <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
-          {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hidePatientProfileDesktopHeader && !hidePatientsDirectoryDesktopHeader ? (
+          {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hidePatientProfileDesktopHeader && !hidePatientsDirectoryDesktopHeader && !hideStaffViewsDesktopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}

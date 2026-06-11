@@ -29,11 +29,9 @@ function formatAssignedDoctorLine(patient) {
     return "Not assigned";
   }
 
-  if (patient.assigned_doctor_specialization) {
-    return `${patient.assigned_doctor_name} (${patient.assigned_doctor_specialization})`;
-  }
-
-  return patient.assigned_doctor_name;
+  const name = String(patient.assigned_doctor_name).trim();
+  const withoutPrefix = name.replace(/^dr\.?\s+/i, "").trim();
+  return withoutPrefix ? `Dr ${withoutPrefix}` : "Not assigned";
 }
 
 function formatMobileAssignedDoctorLine(patient) {
@@ -243,7 +241,7 @@ function LongTermReviewWorkspaceList({
                 </div>
 
                 <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-                  <StatusBadge value={patient.status} />
+                  {isMobile ? <StatusBadge value={patient.status} /> : null}
                   <Link
                     className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
                     to={`/patients/${patient.id}`}

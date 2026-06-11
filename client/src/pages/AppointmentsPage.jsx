@@ -20,6 +20,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
@@ -200,6 +201,7 @@ function AppointmentFormModal({
 }
 
 function AppointmentsPage() {
+  const isMobile = useIsMobile();
   const { user } = useAuth();
   const canManageAppointments = user.role === "admin";
   const canUpdateStatus = user.role === "admin" || user.role === "doctor";
@@ -317,9 +319,13 @@ function AppointmentsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Scheduling"
+        eyebrow={isMobile ? "Scheduling" : undefined}
         title="Appointments"
-        description="Switch between a month calendar and a detailed list, then update doctor assignments or patient status in a few clicks."
+        description={
+          isMobile
+            ? "Switch between a month calendar and a detailed list, then update doctor assignments or patient status in a few clicks."
+            : undefined
+        }
         actions={
           canManageAppointments ? (
             <button
