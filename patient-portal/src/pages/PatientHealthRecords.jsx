@@ -4,6 +4,7 @@ import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
+import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
 import HealthRecordsSegmentedControl from "../components/health-records/HealthRecordsSegmentedControl.jsx";
 import ConsultationsView from "../components/health-records/ConsultationsView.jsx";
 import ReportsView from "../components/health-records/ReportsView.jsx";
@@ -128,11 +129,14 @@ function PatientHealthRecords() {
   }
 
   return (
-    <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col font-sans lg:max-w-4xl lg:bg-transparent">
+    <div className="native-health-records native-screen mx-auto flex w-full max-w-[720px] flex-col px-4 font-sans lg:max-w-4xl lg:bg-transparent lg:px-0">
+      <MobileBrandHeader />
+
       <PageHeroHeader
         primaryText="Health"
         secondaryText="Records"
         subtitle="Your health journey, securely organised."
+        className="max-lg:mt-3 max-lg:pt-0"
       />
 
       <div className="mt-6 lg:hidden">

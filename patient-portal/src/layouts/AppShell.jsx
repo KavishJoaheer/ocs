@@ -12,8 +12,15 @@ function AppShellContent() {
   const isProfile = pathname === "/profile";
   const isHealthRecords = pathname === "/health-records";
   const isAppointments = pathname === "/appointments";
+  const isBilling = pathname === "/billing";
   const isFullBleedMobile =
-    isNativeDashboard || isVisitSummary || isVisitStatus || isProfile || isHealthRecords || isAppointments;
+    isNativeDashboard ||
+    isVisitSummary ||
+    isVisitStatus ||
+    isProfile ||
+    isHealthRecords ||
+    isAppointments ||
+    isBilling;
   return (
     <div className="flex h-dvh min-h-0 flex-col lg:h-auto lg:min-h-screen lg:flex-row">
       <Sidebar />

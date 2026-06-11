@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
+import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-MU", {
@@ -58,12 +59,14 @@ function PatientBilling() {
   }, [refreshKey, retryToken]);
 
   return (
-    <div className="font-sans">
+    <div className="mx-auto w-full max-w-[720px] px-4 font-sans lg:max-w-3xl lg:px-0">
+      <MobileBrandHeader />
+
       <PageHeroHeader
         primaryText="Billing &"
         secondaryText="Payments"
         subtitle="Review your bills, payments, and outstanding balances."
-        className="animate-fade-in-up"
+        className="animate-fade-in-up max-lg:mt-3 max-lg:pt-0"
       />
 
       <div className="mt-6 space-y-8">

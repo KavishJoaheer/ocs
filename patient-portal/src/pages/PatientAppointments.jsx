@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
-import FamilyProfileSwitcher from "../components/FamilyProfileSwitcher.jsx";
+import MobileBrandHeader from "../components/MobileBrandHeader.jsx";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
@@ -114,23 +114,13 @@ function PatientAppointments() {
 
   return (
     <div className="visits-screen native-screen mx-auto w-full max-w-[720px] px-4 font-sans lg:max-w-3xl lg:px-0">
-      <div className="sticky top-0 z-40 -mx-4 flex min-h-12 items-center justify-between border-b border-teal-500/10 bg-white/90 px-4 pt-safe backdrop-blur-md lg:hidden">
-        <img
-          src="/ocs-medecins-mark.png"
-          alt="OCS Care"
-          className="h-7 w-7 shrink-0 object-contain"
-        />
-        <p className="absolute left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-[2px] text-[#2d8f98]">
-          OCS Care
-        </p>
-        <FamilyProfileSwitcher variant="avatar" />
-      </div>
+      <MobileBrandHeader />
 
       <PageHeroHeader
         primaryText="Your"
         secondaryText="Appointments."
         subtitle="Scheduled by your OCS care team."
-        className="animate-fade-in-up"
+        className="animate-fade-in-up max-lg:mt-3 max-lg:pt-0"
       />
 
       {loading ? (

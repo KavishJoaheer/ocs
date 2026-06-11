@@ -467,9 +467,6 @@ table {
 
 @media (max-width: 1023px) {
   .native-health-records {
-    padding-top: var(--native-safe-top);
-    padding-left: var(--native-pad-screen);
-    padding-right: var(--native-pad-screen);
     min-height: 100%;
     background: var(--native-canvas);
   }

@@ -49,8 +49,15 @@ function Sidebar() {
   const isProfile = pathname === "/profile";
   const isHealthRecords = pathname === "/health-records";
   const isAppointments = pathname === "/appointments";
+  const isBilling = pathname === "/billing";
   const hideMobileTopBar =
-    isNativeDashboard || isVisitSummary || isVisitStatus || isProfile || isHealthRecords || isAppointments;
+    isNativeDashboard ||
+    isVisitSummary ||
+    isVisitStatus ||
+    isProfile ||
+    isHealthRecords ||
+    isAppointments ||
+    isBilling;
 
   return (
     <>
