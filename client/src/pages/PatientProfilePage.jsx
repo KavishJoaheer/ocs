@@ -917,11 +917,11 @@ function ConsultationCreateModal({
 const LINK_STATUS_BADGES = {
   self_registered: {
     label: "Self-registered",
-    className: "bg-[rgba(232,160,32,0.15)] text-[#a86c08]",
+    className: "bg-brand-gold/15 text-brand-gold-dark",
   },
   pending_review: {
     label: "Pending link review",
-    className: "bg-[rgba(232,160,32,0.15)] text-[#a86c08]",
+    className: "bg-brand-gold/15 text-brand-gold-dark",
   },
 };
 
@@ -1022,7 +1022,7 @@ function AccountLinkReview({ patient, onChanged }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(232,160,32,0.4)] bg-[rgba(232,160,32,0.08)] px-4 py-3 text-sm font-semibold text-[#a86c08] transition hover:bg-[rgba(232,160,32,0.16)]"
+        className="inline-flex items-center gap-2 rounded-2xl border border-brand-gold/40 bg-brand-gold/8 px-4 py-3 text-sm font-semibold text-brand-gold-dark transition hover:bg-brand-gold/16"
       >
         <ShieldAlert className="size-4" />
         Review account link
@@ -1056,7 +1056,7 @@ function AccountLinkReview({ patient, onChanged }) {
 
           <div className="rounded-2xl border border-[rgba(65,200,198,0.18)] bg-white/70 p-4">
             <div className="flex items-center gap-2">
-              <GitMerge className="size-5 text-[#a86c08]" />
+              <GitMerge className="size-5 text-brand-gold-dark" />
               <p className="text-sm font-semibold text-slate-900">This duplicates an existing chart</p>
             </div>
             <p className="mt-1 text-sm text-slate-500">
@@ -1094,7 +1094,7 @@ function AccountLinkReview({ patient, onChanged }) {
                       type="button"
                       onClick={() => handleMerge(item)}
                       disabled={mergingId === item.id}
-                      className="shrink-0 rounded-xl border border-[rgba(232,160,32,0.4)] bg-[rgba(232,160,32,0.08)] px-3 py-1.5 text-xs font-semibold text-[#a86c08] transition hover:bg-[rgba(232,160,32,0.16)] disabled:opacity-50"
+                      className="shrink-0 rounded-xl border border-brand-gold/40 bg-brand-gold/8 px-3 py-1.5 text-xs font-semibold text-brand-gold-dark transition hover:bg-brand-gold/16 disabled:opacity-50"
                     >
                       {mergingId === item.id ? "Merging…" : "Merge into this"}
                     </button>

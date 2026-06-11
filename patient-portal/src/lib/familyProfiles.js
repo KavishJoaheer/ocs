@@ -2,7 +2,7 @@ import { formatDisplayName } from "./formatDisplayName.js";
 
 export const AVATAR_STYLES = {
   teal: "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white",
-  amber: "bg-[#e8a020] text-white",
+  amber: "bg-brand-gold text-white",
   grey: "bg-[#b0bcc0] text-white",
 };
 

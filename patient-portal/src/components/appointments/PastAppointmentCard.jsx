@@ -55,7 +55,7 @@ function PastAppointmentCard({ appointment }) {
             <div className="w-16 shrink-0" aria-hidden="true" />
             <Link
               to={summaryPath}
-              className="flex min-h-[44px] items-center gap-0.5 text-[15px] font-semibold text-brand-orange no-underline transition-opacity active:opacity-80"
+              className="flex min-h-[44px] items-center gap-0.5 text-[15px] font-semibold text-brand-gold no-underline transition-opacity active:opacity-80"
             >
               <span>View Visit Summary</span>
               <ChevronRight className="size-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
@@ -98,10 +98,10 @@ function PastAppointmentCard({ appointment }) {
       {appointment.status !== "cancelled" ? (
         <>
           <div className="visits-card-footer-divider hidden lg:block" aria-hidden="true" />
-          <Link to={summaryPath} className="visits-summary-link group hidden text-brand-orange lg:flex">
+          <Link to={summaryPath} className="visits-summary-link group hidden text-brand-gold lg:flex">
             <span>View Visit Summary</span>
             <ChevronRight
-              className="visits-summary-arrow size-[18px] shrink-0 text-brand-orange"
+              className="visits-summary-arrow size-[18px] shrink-0 text-brand-gold"
               strokeWidth={1.75}
             />
           </Link>

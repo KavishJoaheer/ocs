@@ -114,7 +114,7 @@ export function BloodPressureTrendChart({ readings = [] }) {
         })}
 
         <LinePath points={systolicPoints} color="#2d8f98" />
-        <LinePath points={diastolicPoints} color="#e8a020" />
+        <LinePath points={diastolicPoints} color="var(--ocs-brand-gold)" />
 
         {readings.map((item, index) => (
           <g key={`${item.date}-${index}`}>
@@ -125,7 +125,7 @@ export function BloodPressureTrendChart({ readings = [] }) {
             />
             <Dot
               point={diastolicPoints[index]}
-              color="#e8a020"
+              color="var(--ocs-brand-gold)"
               label={`${formatDateLabel(item.date)}: ${item.systolic}/${item.diastolic} mmHg`}
             />
             <text
@@ -147,7 +147,7 @@ export function BloodPressureTrendChart({ readings = [] }) {
           Systolic
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#e8a020]" />
+          <span className="h-2 w-2 rounded-full bg-brand-gold" />
           Diastolic
         </span>
       </div>

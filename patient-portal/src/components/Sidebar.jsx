@@ -25,7 +25,7 @@ function SidebarLink({ item }) {
         <>
           {isActive ? (
             <span
-              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-orange shadow-[0_0_12px_rgba(232,160,32,0.6)]"
+              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-gold shadow-[0_0_12px_rgba(var(--ocs-brand-gold-rgb),0.6)]"
               aria-hidden="true"
             />
           ) : null}
@@ -79,7 +79,7 @@ function Sidebar() {
           {/* Request a home visit — primary action */}
           <Link
             to="/request-visit"
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-[#e8a020] px-5 py-3.5 text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(232,160,32,0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(232,160,32,0.5)] active:scale-[0.98]"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-white shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98]"
           >
             <HousePlus className="size-5" />
             Request a Home Visit

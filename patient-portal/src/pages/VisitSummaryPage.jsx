@@ -113,7 +113,7 @@ function VisitSummaryPage() {
         >
           Try Again
         </button>
-        <Link to="/health-records" className="mt-4 text-[14px] font-semibold text-ocs-orange">
+        <Link to="/health-records" className="mt-4 text-[14px] font-semibold text-brand-gold">
           Back to Health Records
         </Link>
       </div>
@@ -124,7 +124,7 @@ function VisitSummaryPage() {
     return (
       <div className="visit-summary-screen flex flex-col items-center justify-center px-6 text-center">
         <p className="text-[15px] text-[#5b7f8a]">Visit summary not found.</p>
-        <Link to="/health-records" className="mt-4 text-[14px] font-semibold text-ocs-orange">
+        <Link to="/health-records" className="mt-4 text-[14px] font-semibold text-brand-gold">
           Back to Health Records
         </Link>
       </div>
@@ -213,7 +213,7 @@ function VisitSummaryPage() {
                       href={doc.url}
                       download
                       aria-label={`Download ${doc.name}`}
-                      className="flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-ocs-orange transition active:scale-95 active:bg-[rgba(232,160,32,0.1)]"
+                      className="flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-brand-gold transition active:scale-95 active:bg-brand-gold/10"
                     >
                       <Download className="size-[20px]" strokeWidth={2} />
                     </a>

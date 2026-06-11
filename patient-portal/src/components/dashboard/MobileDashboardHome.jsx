@@ -177,7 +177,7 @@ function MobileDashboardHome({
       <header className="animate-fade-in-up pb-10">
         <h1 className="native-display text-[28px] leading-tight">
           <span className="text-teal-900">{greeting},</span>{" "}
-          <span className="text-orange-500">{firstName || "there"}</span>
+          <span className="text-brand-gold">{firstName || "there"}</span>
         </h1>
         <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
           Your health. Unwavering care. Accessed effortlessly, managed securely.
@@ -198,7 +198,7 @@ function MobileDashboardHome({
           </p>
         </div>
         <div className="dashboard-hero-arrow-btn">
-          <ArrowRight className="size-6 text-ocs-orange" strokeWidth={2.5} />
+          <ArrowRight className="size-6 text-brand-gold" strokeWidth={2.5} />
         </div>
       </button>
 
@@ -225,7 +225,7 @@ function MobileDashboardHome({
             <button
               type="button"
               onClick={() => openRequestSheet()}
-              className="squircle-inner mt-5 bg-[#e8a020] px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]"
+              className="squircle-inner mt-5 bg-brand-gold px-6 py-3.5 text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98]"
             >
               Request a Home Visit
             </button>

@@ -4,6 +4,8 @@
 @theme {
   --font-sans: "Nunito Sans", "Segoe UI", sans-serif;
   --font-display: "Poppins", "Segoe UI", sans-serif;
+  --color-brand-gold: #d97706;
+  --color-brand-gold-dark: #b45309;
 }
 
 :root {

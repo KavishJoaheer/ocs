@@ -411,7 +411,7 @@ function UploadReportModal({ open, onClose, onUpload }) {
             <button
               type="submit"
               disabled={!canSubmit || isUploading}
-              className="flex h-14 w-full items-center justify-center rounded-xl bg-brand-orange text-[16px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-14 w-full items-center justify-center rounded-xl bg-brand-gold text-[16px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.3)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isUploading ? "Uploading…" : "Upload Report"}
             </button>

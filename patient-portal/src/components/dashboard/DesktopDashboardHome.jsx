@@ -50,7 +50,7 @@ function DesktopCareTeamCard({ doctorName }) {
 function DesktopConciergeCard() {
   return (
     <section className="desktop-concierge-card desktop-concierge-card-hover animate-fade-in-up stagger-2">
-      <p className="font-display text-sm font-semibold text-ocs-orange">We&apos;re here for you.</p>
+      <p className="font-display text-sm font-semibold text-brand-gold">We&apos;re here for you.</p>
       <h2 className="mt-3 font-display text-2xl font-bold leading-tight tracking-tight text-white">
         24/7 Medical Concierge
       </h2>
@@ -108,7 +108,7 @@ function DesktopLastVisitCard({ consultation }) {
       <div className="mt-8 flex justify-end">
         <Link
           to={summaryTo}
-          className="text-sm font-bold text-ocs-orange transition hover:text-[#c88710]"
+          className="text-sm font-bold text-brand-gold transition hover:text-brand-gold-dark"
         >
           View Visit Summary →
         </Link>

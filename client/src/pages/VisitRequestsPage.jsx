@@ -33,7 +33,7 @@ const STATUS_OPTIONS = [
 // Dispatch desk sees the full pipeline from patient intake through consultation.
 const DISPATCH_BOARD_COLUMNS = [
   { status: "pending", label: "Pending", accent: "#e2574c" },
-  { status: "acknowledged", label: "Acknowledged", accent: "#e8a020" },
+  { status: "acknowledged", label: "Acknowledged", accent: "#d97706" },
   { status: "assigned", label: "Assigned", accent: "#2d8f98" },
   { status: "en_route", label: "En route", accent: "#2d8f98" },
   { status: "arrived", label: "Arrived", accent: "#1a7f4b" },
@@ -50,13 +50,13 @@ const DOCTOR_BOARD_COLUMNS = [
 
 const URGENCY_STYLES = {
   routine: "bg-[rgba(45,143,152,0.12)] text-[#23767f]",
-  urgent: "bg-[rgba(232,160,32,0.15)] text-[#a86c08]",
+  urgent: "bg-brand-gold/15 text-brand-gold-dark",
   emergency: "bg-[rgba(226,87,76,0.14)] text-[#c23a2f]",
 };
 
 const URGENCY_DOT = {
   routine: "#2d8f98",
-  urgent: "#e8a020",
+  urgent: "#d97706",
   emergency: "#e2574c",
 };
 
@@ -99,7 +99,7 @@ function SlaChip({ createdAt, now, escalate }) {
     : mins >= 30
       ? "bg-[rgba(226,87,76,0.14)] text-[#c23a2f]"
       : mins >= 10
-        ? "bg-[rgba(232,160,32,0.15)] text-[#a86c08]"
+        ? "bg-brand-gold/15 text-brand-gold-dark"
         : "bg-[rgba(26,127,75,0.12)] text-[#1a7f4b]";
   const label = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
   return (

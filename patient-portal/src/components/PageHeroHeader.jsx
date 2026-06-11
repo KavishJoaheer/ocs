@@ -12,7 +12,7 @@ function PageHeroHeader({ primaryText, secondaryText, subtitle, className = "" }
             {secondaryText ? (
               <>
                 {" "}
-                <span className="text-orange-500">{secondaryText}</span>
+                <span className="text-brand-gold">{secondaryText}</span>
               </>
             ) : null}
           </h1>

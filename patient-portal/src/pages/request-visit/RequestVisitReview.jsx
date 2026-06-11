@@ -109,7 +109,7 @@ function RequestVisitReview() {
           type="button"
           onClick={handleConfirm}
           disabled={submitting}
-          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[#e8a020] text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
+          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-brand-gold text-sm font-bold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {submitting ? "Submitting…" : "Confirm Request"} <ArrowRight className="size-4" />
         </button>

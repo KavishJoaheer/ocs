@@ -7,7 +7,7 @@ function MobilePageTitle({ primaryText, secondaryText, subtitle, children, class
         {secondaryText ? (
           <>
             {" "}
-            <span className="text-orange-500">{secondaryText}</span>
+            <span className="text-brand-gold">{secondaryText}</span>
           </>
         ) : null}
       </h1>

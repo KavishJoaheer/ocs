@@ -30,7 +30,7 @@ const SECTIONS = [
     key: "allergy_history",
     title: "Allergy History",
     icon: ShieldAlert,
-    tint: "bg-orange-100 text-brand-orange",
+    tint: "bg-brand-gold/10 text-brand-gold",
     isAllergy: true,
   },
 ];

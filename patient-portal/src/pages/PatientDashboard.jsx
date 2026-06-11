@@ -181,7 +181,7 @@ function MobileActiveVisit({ visit, onCancelled }) {
         </Link>
         <a
           href="tel:52522234"
-          className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-[#E8A020] text-sm font-bold text-white shadow-sm transition active:scale-95 active:brightness-105"
+          className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-brand-gold text-sm font-bold text-white shadow-sm transition active:scale-95 active:brightness-105"
         >
           Call {doctor}
         </a>
@@ -289,12 +289,12 @@ function PatientDashboard() {
   const headline = isPrimaryProfile ? (
     <>
       <span className="text-[#52C4B9]">{greeting},</span>{" "}
-      <span className="text-brand-orange">{firstName}</span>
+      <span className="text-brand-gold">{firstName}</span>
     </>
   ) : (
     <>
       <span className="text-[#52C4B9]">Managing care for</span>{" "}
-      <span className="text-brand-orange">{firstName}</span>.
+      <span className="text-brand-gold">{firstName}</span>.
     </>
   );
 

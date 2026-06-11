@@ -52,10 +52,10 @@ function EditActions({ onCancel, onSave, saving }) {
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="flex min-h-[44px] items-center gap-1 px-1 text-[13px] font-semibold text-ocs-orange transition hover:text-[#c88710] disabled:opacity-50"
+        className="flex min-h-[44px] items-center gap-1 px-1 text-[13px] font-semibold text-brand-gold transition hover:text-brand-gold-dark disabled:opacity-50"
       >
         {saving ? (
-          <span className="size-3.5 animate-spin rounded-full border-2 border-[rgba(232,160,32,0.3)] border-t-[var(--ocs-orange)]" />
+          <span className="size-3.5 animate-spin rounded-full border-2 border-brand-gold/30 border-t-brand-gold" />
         ) : (
           <Save className="size-3.5" />
         )}
@@ -274,7 +274,7 @@ function PatientProfile() {
             placeholder="Policy number"
           />
         ) : billingForm.insurance_policy_number ? (
-          <span className="mt-0.5 inline-flex rounded-full bg-brand-orange px-3 py-1 text-xs font-bold tracking-wide text-white">
+          <span className="mt-0.5 inline-flex rounded-full bg-brand-gold px-3 py-1 text-xs font-bold tracking-wide text-white">
             {billingForm.insurance_policy_number}
           </span>
         ) : (

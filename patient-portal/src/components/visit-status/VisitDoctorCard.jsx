@@ -41,7 +41,7 @@ function VisitDoctorCard({ doctorName, specialty = "General Practitioner", phone
         aria-label={`Call ${formattedName}`}
         className="visit-status-call-btn flex size-11 shrink-0 items-center justify-center rounded-full transition active:scale-95"
       >
-        <Phone className="size-[18px] text-ocs-orange" strokeWidth={2.25} />
+        <Phone className="size-[18px] text-brand-gold" strokeWidth={2.25} />
       </a>
     </article>
   );

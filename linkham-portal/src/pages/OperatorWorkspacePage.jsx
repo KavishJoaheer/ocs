@@ -353,7 +353,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
         label: "Unpaid bills",
         value: data.summary.pendingPaymentsCount,
         description: "Consultation-linked bills still waiting on payment.",
-        accent: "bg-gradient-to-br from-amber-400 to-orange-500",
+        accent: "bg-gradient-to-br from-amber-400 to-brand-gold",
       },
       {
         icon: ClipboardList,

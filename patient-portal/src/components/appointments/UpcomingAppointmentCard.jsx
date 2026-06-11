@@ -65,7 +65,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           <button
             type="button"
             onClick={handleAddToCalendar}
-            className="flex min-h-[44px] items-center gap-2 text-[15px] font-semibold text-brand-orange transition-colors active:opacity-80"
+            className="flex min-h-[44px] items-center gap-2 text-[15px] font-semibold text-brand-gold transition-colors active:opacity-80"
           >
             <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
             Add to Calendar
@@ -115,7 +115,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
         <button
           type="button"
           onClick={handleAddToCalendar}
-          className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-brand-orange transition-colors duration-200 hover:text-[#c88710]"
+          className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-brand-gold transition-colors duration-200 hover:text-brand-gold-dark"
         >
           <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
           Add to Calendar

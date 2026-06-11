@@ -31,7 +31,7 @@ function ReportCard({ report, isLast = false }) {
           <p className="mt-0.5 truncate text-[13px] text-[#8a9e9a]">{source}</p>
         </div>
         <ChevronRight
-          className="size-[18px] shrink-0 translate-y-1 text-brand-orange"
+          className="size-[18px] shrink-0 translate-y-1 text-brand-gold"
           strokeWidth={1.75}
           aria-hidden="true"
         />
@@ -69,7 +69,7 @@ function ReportRowDesktop({ report, isLast = false }) {
           href={report.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 text-[15px] font-bold text-brand-orange transition hover:text-[#c88710]"
+          className="shrink-0 text-[15px] font-bold text-brand-gold transition hover:text-brand-gold-dark"
         >
           View
         </a>
@@ -91,7 +91,7 @@ function ReportsEmptyState({ onUpload }) {
       <button
         type="button"
         onClick={onUpload}
-        className="squircle-inner mt-6 bg-brand-orange px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(232,160,32,0.25)] transition active:scale-[0.98]"
+        className="squircle-inner mt-6 bg-brand-gold px-6 py-3 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98]"
       >
         Upload Report
       </button>
@@ -113,7 +113,7 @@ function ReportsView({ reports, onUpload }) {
           <button
             type="button"
             onClick={onUpload}
-            className="flex items-center gap-2 rounded-xl bg-brand-orange px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-105 active:scale-[0.98]"
+            className="flex items-center gap-2 rounded-xl bg-brand-gold px-5 py-2.5 text-[14px] font-bold text-white transition hover:brightness-105 active:scale-[0.98]"
           >
             <FileUp className="size-4 translate-y-px" strokeWidth={1.75} />
             Upload Report
@@ -148,7 +148,7 @@ function ReportsView({ reports, onUpload }) {
           <button
             type="button"
             onClick={onUpload}
-            className="ocs-surface-card ocs-card-press mt-4 flex w-full items-center justify-center gap-2 bg-white py-3.5 text-[15px] font-bold text-brand-orange lg:hidden"
+            className="ocs-surface-card ocs-card-press mt-4 flex w-full items-center justify-center gap-2 bg-white py-3.5 text-[15px] font-bold text-brand-gold lg:hidden"
           >
             <FileUp className="size-[18px] translate-y-px" strokeWidth={1.75} />
             Upload Report

@@ -516,7 +516,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
         label: "Cancelled",
         value: data.summary.cancelledAppointmentsThisMonth,
         description: `Appointments that dropped out of the ${monthLabel} roster.`,
-        accent: "bg-gradient-to-br from-amber-400 to-orange-500",
+        accent: "bg-gradient-to-br from-amber-400 to-brand-gold",
       },
     ];
 
@@ -556,7 +556,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
         label: "Pending payment",
         value: data.summary.pendingPaymentsCount,
         description: "Unpaid consultation bills linked to your doctor record.",
-        accent: "bg-gradient-to-br from-amber-400 to-orange-500",
+        accent: "bg-gradient-to-br from-amber-400 to-brand-gold",
       },
     ];
 
@@ -665,7 +665,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
         label: "Unpaid bills",
         value: data.summary.pendingPaymentsCount,
         description: "Consultation-linked bills still waiting for payment.",
-        accent: "bg-gradient-to-br from-amber-400 to-orange-500",
+        accent: "bg-gradient-to-br from-amber-400 to-brand-gold",
       },
       {
         icon: ClipboardList,
@@ -791,7 +791,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
         label: "Discharged",
         value: data.summary.dischargedAssignedPatientsCount,
         description: "Assigned patients currently marked as discharged.",
-        accent: "bg-gradient-to-br from-amber-400 to-orange-500",
+        accent: "bg-gradient-to-br from-amber-400 to-brand-gold",
       },
     ];
 
