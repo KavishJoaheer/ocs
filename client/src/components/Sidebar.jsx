@@ -394,18 +394,12 @@ function Sidebar() {
           <div className="mt-5 rounded-[30px] border border-ocs-yellow/30 bg-ocs-yellow p-5 text-slate-900 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-900">
-                  Signed in
-                </p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">{user.full_name}</p>
-                <p className="mt-1 text-sm text-slate-900">
-                  {getRoleLabel(user.role)} - @{user.username}
-                </p>
+                <p className="text-lg font-semibold text-slate-900">{user.full_name}</p>
               </div>
               <button
                 type="button"
                 onClick={() => logout()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition hover:border-slate-900/20 hover:bg-white/90"
+                className="inline-flex items-center gap-2 rounded-2xl bg-ocs-grey px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-grey/90"
               >
                 <LogOut className="size-4" />
                 Sign out

@@ -794,7 +794,7 @@ function PatientsPage() {
                   <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
                     <div className="overflow-x-auto">
                       <table className="min-w-full table-fixed bg-white text-left">
-                        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 lg:text-ocs-slate">
+                        <thead className="bg-gradient-to-r from-ocs-slate to-[#2f4749] text-xs font-semibold uppercase tracking-[0.22em] text-white">
                           {isUnderReviewView ? (
                             <tr>
                               <th className="w-[20%] px-4 py-2.5">Patient</th>
@@ -802,7 +802,7 @@ function PatientsPage() {
                               <th className="w-[18%] px-4 py-2.5">Assigned clinician</th>
                               <th className="w-[16%] px-4 py-2.5">Review timeline</th>
                               <th className="w-[22%] px-4 py-2.5">Review notes</th>
-                              <th className="sticky right-0 z-10 w-12 bg-slate-50 px-2 py-2.5 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
+                              <th className="sticky right-0 z-10 w-12 bg-[#2f4749] px-2 py-2.5 text-right text-white shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                                 <span className="sr-only">Row actions</span>
                               </th>
                             </tr>
@@ -813,7 +813,7 @@ function PatientsPage() {
                               <th className="w-[16%] px-4 py-2.5">Next of kin</th>
                               <th className="w-[22%] px-4 py-2.5">Clinical</th>
                               <th className="w-[10%] px-4 py-2.5">Created</th>
-                              <th className="sticky right-0 z-10 w-12 bg-slate-50 px-2 py-2.5 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
+                              <th className="sticky right-0 z-10 w-12 bg-[#2f4749] px-2 py-2.5 text-right text-white shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                                 <span className="sr-only">Row actions</span>
                               </th>
                             </tr>
