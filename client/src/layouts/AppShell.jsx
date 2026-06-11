@@ -157,7 +157,7 @@ function AppShell() {
   const isInventory = location.pathname === "/inventory";
   const isSupplyRequests = location.pathname === "/supply-requests";
   const isLinkhamPortal = location.pathname.startsWith("/linkham");
-  const hideBottomNav = false;
+  const hideBottomNav = isMobile;
   const hideLinkhamTopHeader = isLinkhamPortal;
   const userRole = user?.role;
   const alwaysHideTopHeader =

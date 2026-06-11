@@ -116,7 +116,7 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
 
       {showLowStockStrip ? <DoctorMobileLowStockStrip lowStockCount={lowStockCount} /> : null}
 
-      <nav className="doctor-mobile-action-grid" aria-label="Doctor quick actions">
+      <nav className="doctor-mobile-action-grid flex flex-col gap-4" aria-label="Doctor quick actions">
         <div className="grid grid-cols-2 gap-4">
           <DoctorMobileSplitCard to="/patients" label="Patient Directory" icon={UserRound} />
           <DoctorMobileSplitCard
@@ -131,13 +131,13 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
 
         <Link
           to="/patients/add"
-          className="group mt-4 flex w-full items-center gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left shadow-sm transition active:scale-[0.99] active:bg-slate-50/80"
+          className="group flex w-full items-center gap-4 rounded-2xl border border-ocs-teal/20 bg-gradient-to-br from-ocs-teal to-[#22a8a1] px-4 py-3.5 text-left text-white shadow-sm transition active:scale-[0.99] active:opacity-95"
         >
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/25 bg-white/15 text-white">
             <UserPlus className="size-5" strokeWidth={2.25} />
           </div>
-          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-slate-800">Add Patient</p>
-          <ArrowUpRight className="size-4 shrink-0 text-ocs-teal/60" strokeWidth={2} />
+          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-white">Add Patient</p>
+          <ArrowUpRight className="size-4 shrink-0 text-white/80" strokeWidth={2} />
         </Link>
       </nav>
     </div>

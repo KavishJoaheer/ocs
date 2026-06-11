@@ -281,15 +281,15 @@ function Sidebar() {
               </button>
             </div>
 
-            <div className="mb-6 rounded-2xl border border-gray-100/80 bg-gray-50 p-4">
+            <div className="mb-6 rounded-2xl border border-ocs-yellow/30 bg-ocs-yellow p-4">
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl border border-gray-100 bg-white p-2 text-gray-600">
+                <div className="rounded-2xl border border-slate-900/10 bg-white/60 p-2 text-slate-900">
                   <ShieldCheck className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-base font-bold text-gray-900">{user.full_name}</p>
-                  <p className="mt-0.5 text-xs font-semibold text-gray-500">{getRoleLabel(user.role)}</p>
-                  <p className="truncate text-xs text-gray-500">
+                  <p className="text-base font-bold text-slate-900">{user.full_name}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-800">{getRoleLabel(user.role)}</p>
+                  <p className="truncate text-xs text-slate-800/80">
                     {user.email || `@${user.username}`}
                   </p>
                 </div>
