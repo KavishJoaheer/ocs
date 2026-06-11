@@ -412,6 +412,16 @@ function formatMobileDoctorName(name) {
   return /^dr\.?\s/i.test(trimmed) ? trimmed : `Dr ${trimmed}`;
 }
 
+function formatDoctorDisplayName(name) {
+  const trimmed = String(name || "").trim().split(" - ")[0].trim();
+  if (!trimmed) return "";
+  const withoutPrefix = trimmed.replace(/^dr\.?\s+/i, "").trim();
+  return withoutPrefix ? `Dr ${withoutPrefix}` : "";
+}
+
+const DESKTOP_SECTION_TITLE_CLASS =
+  "inline-block rounded-full border border-white/60 bg-slate-200/40 px-4 py-2 text-lg font-semibold text-ocs-slate shadow-sm backdrop-blur-md";
+
 const MOBILE_TABS = [
   { key: "summary", label: "Summary" },
   { key: "notes", label: "Notes" },
@@ -1701,12 +1711,18 @@ function PatientProfilePage() {
           title={
             <div className="mb-4 flex w-full flex-col gap-1 border-b border-gray-100 pb-4">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-3xl font-extrabold text-ocs-slate md:text-4xl">
+                <span className="font-montserrat text-3xl font-semibold text-ocs-slate md:text-4xl">
                   {data.patient.full_name}
                 </span>
-                <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-bold text-gray-500">
-                  {data.patient.patient_identifier || "No OCS care number"}
-                </span>
+                {data.patient.patient_identifier ? (
+                  <span className="rounded-full bg-ocs-yellow px-3 py-1 text-sm font-bold text-slate-900 shadow-sm">
+                    #{String(data.patient.patient_identifier).replace(/^#/, "")}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500 shadow-sm">
+                    No OCS care number
+                  </span>
+                )}
                 <PatientLinkhamPolicyBadge patient={data.patient} />
                 <LinkStatusBadge status={data.patient.link_status} />
               </div>
@@ -2392,7 +2408,7 @@ function PatientProfilePage() {
           </div>
 
           <div className="grid gap-3 xl:grid-cols-12">
-            <SectionCard className="xl:col-span-7" title="Patient details" variant="demographic">
+            <SectionCard className="xl:col-span-7" title="Patient details" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 <ProfileDlItem label="Patient ID" value={data.patient.patient_id_number} emphasize />
                 <ProfileDlItem label="First name" value={data.patient.first_name} emphasize />
@@ -2426,7 +2442,7 @@ function PatientProfilePage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-5" title="Next of kin" variant="demographic">
+            <SectionCard className="xl:col-span-5" title="Next of kin" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
               <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                 <ProfileDlItem label="Name" value={data.patient.next_of_kin_name} emphasize />
                 <ProfileDlItem label="Relationship" value={data.patient.next_of_kin_relationship} />
@@ -2435,7 +2451,7 @@ function PatientProfilePage() {
               </dl>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-7" title="Clinical history">
+            <SectionCard className="xl:col-span-7" title="Clinical history" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
               <LongTermReviewAlertBanner
                 note={data.patient.review_reason_note}
                 dueDate={data.patient.review_due_date}
@@ -2448,7 +2464,7 @@ function PatientProfilePage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-5" title="Particularity">
+            <SectionCard className="xl:col-span-5" title="Particularity" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
               <p
                 className={cx(
                   "whitespace-pre-wrap text-xs leading-snug",
@@ -2464,6 +2480,7 @@ function PatientProfilePage() {
             id="consultation-notes"
             className="scroll-mt-28"
             title="Consultation notes"
+            titleClassName={DESKTOP_SECTION_TITLE_CLASS}
             actions={
               canManageConsultations ? (
                 <button
@@ -2511,10 +2528,7 @@ function PatientProfilePage() {
                               </td>
                               <td className="px-4 py-2.5 text-sm text-slate-600">
                                 <p className="text-sm font-bold text-slate-900">
-                                  {consultation.doctor_name}
-                                </p>
-                                <p className="mt-1 text-xs font-medium uppercase tracking-wider text-slate-500">
-                                  {consultation.specialization || "General practice"}
+                                  {formatDoctorDisplayName(consultation.doctor_name)}
                                 </p>
                               </td>
                               <td className="min-w-0 max-w-0 px-4 py-2.5">
@@ -2673,6 +2687,7 @@ function PatientProfilePage() {
 
           <SectionCard
         title="Medical & Lab Reports"
+            titleClassName={DESKTOP_SECTION_TITLE_CLASS}
             actions={
               canManageLabReports ? (
                   <button
@@ -2779,6 +2794,7 @@ function PatientProfilePage() {
           {showPatientBillingUi ? (
             <SectionCard
               title="Billing history"
+              titleClassName={DESKTOP_SECTION_TITLE_CLASS}
               actions={
                 <Link
                   to={`/billing?patientId=${id}`}
