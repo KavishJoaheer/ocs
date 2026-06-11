@@ -2892,7 +2892,7 @@ function MobileDoctorBagLayout({
             type="button"
             onClick={onOpenRestockInventory}
             disabled={!doctorRestockCandidates.length}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-ocs-teal px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-ocs-slate px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-ocs-slate/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Truck className="size-4" />
             Restock
@@ -2909,7 +2909,9 @@ function MobileDoctorBagLayout({
             className={cx(
               "min-h-11 flex-1 rounded-2xl px-3 py-2.5 text-sm font-bold transition",
               doctorContext === scope.id
-                ? "bg-ocs-teal text-white shadow-sm"
+                ? scope.id === "my"
+                  ? "bg-ocs-yellow text-slate-900 shadow-sm"
+                  : "bg-ocs-teal text-white shadow-sm"
                 : "border border-slate-100 bg-white text-slate-700",
             )}
           >

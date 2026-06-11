@@ -244,7 +244,7 @@ function Sidebar() {
         {location.pathname !== "/" ? (
           <Link
             to="/"
-            className="rounded-xl p-2 text-ocs-slate transition hover:bg-slate-50 active:bg-slate-50"
+            className="rounded-xl p-2 text-ocs-yellow transition hover:bg-slate-50 active:bg-slate-50"
             aria-label="Home"
           >
             <Home className="h-7 w-7" strokeWidth={2.25} />

@@ -424,7 +424,7 @@ function PatientsPage() {
     return (
       <Link
         to="/patients/add"
-        className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700 lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
+        className="inline-flex items-center gap-2 rounded-2xl bg-ocs-slate px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-slate/90 lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
       >
         <Plus className="size-4" />
         Add patient
