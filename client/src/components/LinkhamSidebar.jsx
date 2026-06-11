@@ -13,7 +13,7 @@ const linkhamNavItems = [
   { id: "reports", to: "/linkham/reports", label: "Report" },
 ];
 
-function LinkhamNavIcon({ id, active, darkSidebar = false }) {
+function LinkhamNavIcon({ id, active }) {
   const strokeClass = active
     ? "stroke-white"
     : "stroke-slate-500 group-hover:stroke-slate-700";
@@ -84,7 +84,7 @@ function LinkhamNavButton({ item, onNavigate, darkSidebar = false }) {
     >
       {({ isActive }) => (
         <>
-          <LinkhamNavIcon id={item.id} active={isActive} darkSidebar={darkSidebar} />
+          <LinkhamNavIcon id={item.id} active={isActive} />
           <span>{item.label}</span>
         </>
       )}

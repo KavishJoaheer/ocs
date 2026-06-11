@@ -26,6 +26,13 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 
+function formatMobileDrawerDisplayName(user) {
+  const name = String(user?.full_name || "").trim();
+  if (!name) return "";
+  if (user?.role !== "doctor") return name;
+  return /^dr\.?\s/i.test(name) ? name : `Dr ${name}`;
+}
+
 const navItems = [
   {
     to: "/",
@@ -287,11 +294,7 @@ function Sidebar() {
                   <ShieldCheck className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-base font-bold text-slate-900">{user.full_name}</p>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-800">{getRoleLabel(user.role)}</p>
-                  <p className="truncate text-xs text-slate-800/80">
-                    {user.email || `@${user.username}`}
-                  </p>
+                  <p className="text-base font-bold text-slate-900">{formatMobileDrawerDisplayName(user)}</p>
                 </div>
               </div>
             </div>
