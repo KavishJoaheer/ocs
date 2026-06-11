@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
 import MobileIdentityHeader from "../components/MobileIdentityHeader.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
+import PatientAccountLinkBanner from "../components/PatientAccountLinkBanner.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
 import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
 
@@ -42,6 +43,7 @@ function AppShellContent() {
           }
         >
           {!isFullBleedMobile ? <PushNotificationBanner className="mb-5" /> : null}
+          <PatientAccountLinkBanner className={isFullBleedMobile ? "mx-[var(--native-pad-screen)] mb-4 lg:mx-0" : "mb-5"} />
           <Outlet />
         </div>
       </main>

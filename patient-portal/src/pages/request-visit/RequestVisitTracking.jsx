@@ -135,7 +135,7 @@ function RequestVisitTracking() {
   const etaHeading = formatEtaHeading(visit);
   const showPrep =
     visit.status !== "arrived" && visit.status !== "in_consultation";
-  const doctorName = visit.doctor_name || "Shravan Joaheer";
+  const doctorName = visit.doctor_name || "Your doctor";
 
   return (
     <div className="visit-status-screen flex min-h-full flex-col">

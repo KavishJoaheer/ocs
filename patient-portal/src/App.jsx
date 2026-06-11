@@ -18,6 +18,7 @@ const RequestVisitFormGate = lazy(() => import("./pages/request-visit/RequestVis
 const RequestVisitReview = lazy(() => import("./pages/request-visit/RequestVisitReview.jsx"));
 const RequestVisitAwaiting = lazy(() => import("./pages/request-visit/RequestVisitAwaiting.jsx"));
 const RequestVisitTracking = lazy(() => import("./pages/request-visit/RequestVisitTracking.jsx"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage.jsx"));
 
 function RouteFallback() {
   return (
@@ -56,7 +57,9 @@ function App() {
         <Route path="consultations" element={<Navigate to="/health-records" replace />} />
         <Route path="billing" element={<PatientBilling />} />
         <Route path="profile" element={<PatientProfile />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </Suspense>
   );

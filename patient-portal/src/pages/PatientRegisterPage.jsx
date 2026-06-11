@@ -209,15 +209,21 @@ function PatientRegisterPage() {
 
                   <div>
                     <label htmlFor="register-national-id" className={LABEL_CLASS}>
-                      National ID <span className="text-gray-400">(optional)</span>
+                      National ID number <span className="text-gray-400">(optional)</span>
                     </label>
                     <input
                       id="register-national-id"
                       value={form.national_id}
                       onChange={setField("national_id")}
-                      placeholder="Links your account to your clinic record"
+                      placeholder="e.g. your government-issued NIC"
                       className={INPUT_CLASS}
+                      autoComplete="off"
                     />
+                    <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+                      Enter your government-issued ID to help us match your clinic record. This is{" "}
+                      <span className="font-semibold text-[#14213d]">not</span> your OCS care number
+                      (e.g. #OCS-224). OCS numbers are assigned by the clinic and cannot be used here.
+                    </p>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">

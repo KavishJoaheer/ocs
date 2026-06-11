@@ -1,4 +1,6 @@
 import dayjs from "dayjs";
+import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 function doctorInitials(name) {
@@ -20,7 +22,7 @@ function formatPrescriptionSummary(consultation) {
       .map((item) => [item.name, item.dosage].filter(Boolean).join(" "))
       .join(", ");
   }
-  return "Amoxicillin 500mg, Paracetamol";
+  return null;
 }
 
 function ConsultationCard({ consultation }) {
@@ -29,9 +31,10 @@ function ConsultationCard({ consultation }) {
   const visitType = consultation.visit_type || "Home Visit";
   const dateLabel = formatConsultationDate(consultation.date);
   const prescriptionSummary = formatPrescriptionSummary(consultation);
+  const summaryPath = consultation.id ? `/health-records/visits/${consultation.id}` : null;
 
-  return (
-    <article className="ocs-surface-card ocs-card-press w-full cursor-default overflow-hidden bg-white">
+  const card = (
+    <article className="ocs-surface-card ocs-card-press w-full overflow-hidden bg-white">
       <div
         className="flex items-start justify-between"
         style={{ padding: "var(--native-pad-card)" }}
@@ -72,12 +75,43 @@ function ConsultationCard({ consultation }) {
 
         <div>
           <p className="native-label mb-2 text-[13px] text-[#1a5c52] lg:text-brand-dark-grey">Prescription</p>
-          <p className="text-[14px] font-medium leading-relaxed text-[#22485b] lg:text-brand-cool-grey">
-            {prescriptionSummary}
-          </p>
+          {prescriptionSummary ? (
+            <p className="text-[14px] font-medium leading-relaxed text-[#22485b] lg:text-brand-cool-grey">
+              {prescriptionSummary}
+            </p>
+          ) : (
+            <p className="text-[14px] font-medium text-[#8a9e9a] lg:text-brand-cool-grey">Not recorded</p>
+          )}
         </div>
       </div>
+
+      {summaryPath ? (
+        <>
+          <div className="border-t border-teal-500/10 lg:border-brand-teal/20" aria-hidden="true" />
+          <div
+            className="flex items-center justify-between bg-white"
+            style={{ padding: "var(--native-pad-card)" }}
+          >
+            <span className="text-[14px] font-semibold text-brand-teal">View visit summary</span>
+            <ChevronRight className="size-5 text-brand-teal" strokeWidth={2.25} aria-hidden="true" />
+          </div>
+        </>
+      ) : null}
     </article>
+  );
+
+  if (!summaryPath) {
+    return card;
+  }
+
+  return (
+    <Link
+      to={summaryPath}
+      className="block w-full rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal"
+      aria-label={`View visit summary for ${doctorName} on ${dateLabel}`}
+    >
+      {card}
+    </Link>
   );
 }
 
