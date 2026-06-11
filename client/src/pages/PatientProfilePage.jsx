@@ -1547,11 +1547,11 @@ function PatientProfilePage() {
       ? data.patient.ongoing_treatment || "Ongoing treatment not recorded"
       : "Patient has been discharged from active treatment.";
   const assignedDoctor = data.patient.assigned_doctor_name
-    ? `${data.patient.assigned_doctor_name}${
-        data.patient.assigned_doctor_specialization
-          ? ` - ${data.patient.assigned_doctor_specialization}`
-          : ""
-      }`
+    ? (() => {
+        const baseName = String(data.patient.assigned_doctor_name).trim().split(" - ")[0].trim();
+        const nameWithoutPrefix = baseName.replace(/^dr\.?\s+/i, "").trim();
+        return nameWithoutPrefix ? `Dr ${nameWithoutPrefix}` : "Unassigned";
+      })()
     : "Unassigned";
   const patientContactNumber =
     data.patient.patient_contact_number || data.patient.contact_number || "Not recorded";
@@ -1698,7 +1698,6 @@ function PatientProfilePage() {
 
       <div className="hidden md:block">
         <PageHeader
-          eyebrow="Patient profile"
           title={
             <div className="mb-4 flex w-full flex-col gap-1 border-b border-gray-100 pb-4">
               <div className="flex flex-wrap items-center gap-3">
@@ -2415,21 +2414,14 @@ function PatientProfilePage() {
 
           <div className="grid gap-3 xl:grid-cols-12">
             <SectionCard className="xl:col-span-7" title="Patient details" variant="demographic">
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                <ProfileDlItem label="OCS care number" value={data.patient.patient_identifier} emphasize />
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 <ProfileDlItem label="Patient ID" value={data.patient.patient_id_number} emphasize />
                 <ProfileDlItem label="First name" value={data.patient.first_name} emphasize />
                 <ProfileDlItem label="Last name" value={data.patient.last_name} emphasize />
-                <ProfileDlItem
-                  label="Age"
-                  value={formatAgeFromDateOfBirth(data.patient.date_of_birth)}
-                  emphasize
-                />
                 <ProfileDlItem label="Gender" value={data.patient.gender} emphasize />
                 <ProfileDlItem label="Assigned doctor" value={assignedDoctor} emphasize />
                 <ProfileDlItem label="Contact" value={patientContactNumber} />
                 <ProfileDlItem label="Address" value={data.patient.address} />
-                <ProfileDlItem label="Location" value={data.patient.location} emptyLabel="Location not selected" />
               </dl>
               <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ocs-grey">
