@@ -13,10 +13,12 @@ const linkhamNavItems = [
   { id: "reports", to: "/linkham/reports", label: "Report" },
 ];
 
-function LinkhamNavIcon({ id, active }) {
+function LinkhamNavIcon({ id, active, darkSidebar = false }) {
   const strokeClass = active
     ? "stroke-white"
-    : "stroke-[#3e5c76] group-hover:stroke-[#14213d]";
+    : darkSidebar
+      ? "stroke-white/70 group-hover:stroke-white"
+      : "stroke-[#3e5c76] group-hover:stroke-[#14213d]";
 
   const iconProps = {
     className: cx("size-4 fill-none stroke-2", strokeClass),
@@ -63,7 +65,7 @@ function LinkhamNavIcon({ id, active }) {
   }
 }
 
-function LinkhamNavButton({ item, onNavigate }) {
+function LinkhamNavButton({ item, onNavigate, darkSidebar = false }) {
   return (
     <NavLink
       to={item.to}
@@ -72,15 +74,19 @@ function LinkhamNavButton({ item, onNavigate }) {
       className={({ isActive }) =>
         cx(
           "group flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-xs font-bold transition-all duration-200",
-          isActive
-            ? "bg-[#065a60] text-white shadow-sm"
-            : "text-[#3e5c76] hover:bg-gray-50 hover:text-[#14213d]",
+          darkSidebar
+            ? isActive
+              ? "bg-ocs-teal text-white shadow-sm"
+              : "text-white/70 hover:bg-white/10 hover:text-white"
+            : isActive
+              ? "bg-[#065a60] text-white shadow-sm"
+              : "text-[#3e5c76] hover:bg-gray-50 hover:text-[#14213d]",
         )
       }
     >
       {({ isActive }) => (
         <>
-          <LinkhamNavIcon id={item.id} active={isActive} />
+          <LinkhamNavIcon id={item.id} active={isActive} darkSidebar={darkSidebar} />
           <span>{item.label}</span>
         </>
       )}
@@ -88,11 +94,11 @@ function LinkhamNavButton({ item, onNavigate }) {
   );
 }
 
-function LinkhamSidebarNav({ onNavigate, className }) {
+function LinkhamSidebarNav({ onNavigate, className, darkSidebar = false }) {
   return (
     <nav className={cx("mt-4 flex w-full flex-col gap-1 px-3", className)}>
       {linkhamNavItems.map((item) => (
-        <LinkhamNavButton key={item.id} item={item} onNavigate={onNavigate} />
+        <LinkhamNavButton key={item.id} item={item} onNavigate={onNavigate} darkSidebar={darkSidebar} />
       ))}
     </nav>
   );
@@ -182,29 +188,29 @@ export default function LinkhamSidebar() {
         </div>
       </div>
 
-      <aside className="hidden min-h-screen w-64 shrink-0 flex-col border-r border-gray-100 bg-white lg:flex">
-        <div className="border-b border-gray-100 px-4 py-5">
+      <aside className="hidden min-h-screen w-64 shrink-0 flex-col border-r border-ocs-slate/20 bg-ocs-slate lg:flex">
+        <div className="border-b border-white/10 px-4 py-5">
           <BrandMark maxWidth={150} size={34} />
-          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3">
-            <div className="rounded-xl border border-gray-100 bg-white p-2 text-[#065a60]">
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 p-3">
+            <div className="rounded-xl border border-white/20 bg-white/10 p-2 text-white">
               <ShieldCheck className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-gray-900">{user.full_name}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              <p className="truncate text-sm font-bold text-white">{user.full_name}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/50">
                 {getRoleLabel(user.role)}
               </p>
             </div>
           </div>
         </div>
 
-        <LinkhamSidebarNav className="flex-1" />
+        <LinkhamSidebarNav className="flex-1" darkSidebar />
 
-        <div className="border-t border-gray-100 p-4">
+        <div className="border-t border-white/10 p-4">
           <button
             type="button"
             onClick={() => logout()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/30 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/10"
           >
             <LogOut className="size-4" />
             Sign out

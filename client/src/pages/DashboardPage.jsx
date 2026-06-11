@@ -349,13 +349,17 @@ function DoctorDashboardTile({
     !locked && (to || onClick) && "cursor-pointer",
     flat
       ? dark
-        ? "border-white/25 bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white hover:border-white/35"
-        : "border-gray-200 bg-white text-slate-950 hover:border-gray-300"
+        ? "border-white/25 bg-ocs-teal text-white hover:border-white/35"
+        : size === "hero"
+          ? "border-transparent bg-ocs-teal text-white hover:bg-ocs-teal/90"
+          : "border-gray-200 bg-white text-ocs-slate hover:border-gray-300"
       : dark
-        ? "border-[rgba(45,143,152,0.34)] bg-[linear-gradient(145deg,#2c9099_0%,#276f78_48%,#215f67_100%)] text-white shadow-[0_22px_50px_rgba(45,143,152,0.28)] hover:-translate-y-0.5 hover:shadow-[0_28px_60px_rgba(45,143,152,0.32)]"
+        ? "border-ocs-teal/30 bg-ocs-teal text-white shadow-[0_22px_50px_rgba(43,204,196,0.28)] hover:-translate-y-0.5 hover:bg-ocs-teal/90 hover:shadow-[0_28px_60px_rgba(43,204,196,0.32)]"
         : locked
-          ? "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)]"
-          : "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,251,250,0.94))] text-slate-950 shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-[rgba(45,143,152,0.26)] hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
+          ? "border-[rgba(65,200,198,0.18)] bg-white text-ocs-slate shadow-[0_18px_42px_rgba(34,72,91,0.08)]"
+          : size === "hero"
+            ? "border-transparent bg-ocs-teal text-white shadow-[0_18px_42px_rgba(43,204,196,0.18)] hover:-translate-y-0.5 hover:bg-ocs-teal/90 hover:shadow-[0_24px_54px_rgba(43,204,196,0.22)]"
+            : "border-[rgba(65,200,198,0.18)] bg-white text-ocs-slate shadow-[0_18px_42px_rgba(34,72,91,0.08)] hover:-translate-y-0.5 hover:border-ocs-teal/30 hover:shadow-[0_24px_54px_rgba(34,72,91,0.12)]",
   );
 
   const content = (
@@ -366,7 +370,9 @@ function DoctorDashboardTile({
             "flex size-12 shrink-0 items-center justify-center rounded-2xl border md:size-14",
             dark
               ? "border-white/16 bg-white/12 text-white"
-              : "border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(233,248,247,0.96))] text-[#2d8f98]",
+              : size === "hero" && !dark
+                ? "border-white/20 bg-white/10 text-white"
+                : "border-[rgba(65,200,198,0.18)] bg-white text-ocs-teal",
           )}
         >
           <Icon className="size-5 md:size-6" />
@@ -378,7 +384,7 @@ function DoctorDashboardTile({
           <p
             className={cx(
               "text-xs font-semibold uppercase tracking-wider",
-              dark ? "text-white/50" : "text-gray-400",
+              dark ? "text-white/50" : size === "hero" ? "text-white/70" : "text-ocs-grey",
             )}
           >
             {eyebrow}
@@ -388,7 +394,7 @@ function DoctorDashboardTile({
           className={cx(
             "break-words text-base font-medium tracking-tight",
             eyebrow ? (size === "hero" ? "mt-2" : "mt-1") : size === "hero" ? "mt-2" : "mt-1",
-            dark ? "text-white" : "text-slate-950",
+            dark ? "text-white" : size === "hero" ? "text-white" : "text-ocs-slate",
           )}
         >
           {title}
@@ -399,7 +405,7 @@ function DoctorDashboardTile({
           <p
             className={cx(
               "mt-2 break-words text-sm leading-6",
-              dark ? "line-clamp-3 text-white/90" : "text-[#51717b]",
+              dark ? "line-clamp-3 text-white/90" : size === "hero" ? "text-white/80" : "text-ocs-grey",
             )}
           >
             {subtitle}
@@ -451,7 +457,7 @@ function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup, befo
   return (
     <div className="mb-2 hidden items-start justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] pb-3 md:flex">
       <div className="min-w-0 flex-1 pr-4">
-        <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-slate-950 md:text-[2.125rem] md:leading-snug">
+        <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-[2.125rem] md:leading-snug">
           {title}
         </h1>
       </div>
@@ -502,7 +508,7 @@ function RoleDashboardStudio({
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   {leftEyebrow}
                 </p>
-                <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
+                <p className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
                   {leftTitle}
                 </p>
 
@@ -520,7 +526,7 @@ function RoleDashboardStudio({
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 {rightEyebrow}
               </p>
-              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
+              <p className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
                 {rightTitle}
               </p>
 
@@ -696,6 +702,7 @@ function DoctorPatientQuickSearch() {
 function OperatorScheduledVisitsMetricCard() {
   return (
     <PersonalOperationOverviewCard
+      hero
       icon={CalendarClock}
       title="Scheduled visits"
       to="/operator/scheduled-visits"
@@ -703,32 +710,48 @@ function OperatorScheduledVisitsMetricCard() {
   );
 }
 
-function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, icon: Icon, metricLine }) {
+function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero = false, to, icon: Icon, metricLine }) {
   const classes = cx(
-    "group relative overflow-hidden rounded-[30px] border border-gray-200 px-5 py-5 transition duration-200 md:px-6 md:py-5",
-    accent
-      ? "bg-[linear-gradient(160deg,rgba(238,249,249,0.98),rgba(224,239,241,0.94))]"
-      : "bg-white",
+    "group relative overflow-hidden rounded-[30px] border px-5 py-5 transition duration-200 md:px-6 md:py-5",
+    hero
+      ? "border-transparent bg-ocs-teal text-white"
+      : accent
+        ? "border-ocs-yellow/20 bg-ocs-yellow/10 text-yellow-800"
+        : "border-gray-200 bg-white",
     to ? "block cursor-pointer hover:border-gray-300" : "",
+    hero && to ? "hover:bg-ocs-teal/90" : "",
   );
 
   const content = (
     <>
-      <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[radial-gradient(circle,rgba(65,200,198,0.12),transparent_68%)] blur-2xl" />
+      <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.12),transparent_68%)] blur-2xl" />
 
       <div className="relative z-10 flex h-full flex-col">
         <div className="flex items-start justify-between gap-4">
           <div
             className={cx(
-              "flex size-12 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-slate-50",
-              accent ? "text-[#2d8f98]" : "text-[#5c7c86]",
+              "flex size-12 shrink-0 items-center justify-center rounded-2xl border",
+              hero
+                ? "border-white/20 bg-white/10 text-white"
+                : accent
+                  ? "border-ocs-yellow/30 bg-ocs-yellow/10 text-yellow-700"
+                  : "border-gray-200 bg-slate-50 text-ocs-grey",
             )}
           >
             {Icon ? <Icon className="size-5" /> : null}
           </div>
 
           {to ? (
-            <span className="inline-flex size-9 items-center justify-center rounded-full border border-gray-200 bg-white text-[#2d8f98] transition group-hover:border-[#2d8f98]/30">
+            <span
+              className={cx(
+                "inline-flex size-9 items-center justify-center rounded-full border transition",
+                hero
+                  ? "border-white/20 bg-white/10 text-white group-hover:border-white/30"
+                  : accent
+                    ? "border-ocs-yellow/30 bg-white text-yellow-700"
+                    : "border-gray-200 bg-white text-ocs-teal group-hover:border-ocs-teal/30",
+              )}
+            >
               <ArrowUpRight className="size-4" />
             </span>
           ) : null}
@@ -736,26 +759,33 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, to, ic
 
         <p
           className={cx(
-            "text-base font-medium leading-snug tracking-tight text-slate-950",
+            "text-base font-medium leading-snug tracking-tight",
+            hero ? "text-white" : accent ? "text-yellow-900" : "text-ocs-slate",
             metricLine ? "mt-4" : subtitle ? "mt-7" : "mt-5",
           )}
         >
           {title}
         </p>
         {metricLine ? (
-          <p className="mt-2 text-sm font-semibold leading-snug text-[#2e5f68]">{metricLine}</p>
+          <p className={cx("mt-2 text-sm font-semibold leading-snug", hero ? "text-white/90" : "text-yellow-800")}>
+            {metricLine}
+          </p>
         ) : null}
         {subtitle ? (
-          <p className="mt-4 max-w-[14rem] text-sm leading-7 text-[#496773] md:text-[1.01rem]">{subtitle}</p>
+          <p className={cx("mt-4 max-w-[14rem] text-sm leading-7 md:text-[1.01rem]", hero ? "text-white/80" : "text-ocs-grey")}>
+            {subtitle}
+          </p>
         ) : null}
 
         <div
           className={cx(
             "h-[3px] w-16 rounded-full",
             metricLine ? "mt-5" : subtitle ? "mt-6" : "mt-5",
-            accent
-              ? "bg-[linear-gradient(90deg,#41c8c6,#2d8f98)]"
-              : "bg-[linear-gradient(90deg,rgba(241,188,53,0.78),rgba(65,200,198,0.5))]",
+            hero
+              ? "bg-white/40"
+              : accent
+                ? "bg-ocs-yellow"
+                : "bg-ocs-teal/40",
           )}
         />
       </div>
@@ -782,8 +812,8 @@ function countDoctorScheduledVisitsToday(dashboard) {
 
 const doctorMetricVariants = {
   scheduled: {
-    card: "border-transparent bg-teal-600 text-white shadow-sm hover:bg-teal-700",
-    label: "text-teal-100",
+    card: "border-transparent bg-ocs-teal text-white shadow-sm hover:bg-ocs-teal/90",
+    label: "text-white/80",
     value: "text-white",
     anchorTheme: "doctor-primary",
   },
@@ -867,7 +897,7 @@ function OperatorPersonalOperationUpdates({ metrics }) {
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
           Coordination flow
         </p>
-        <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
+        <h3 className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
           Personal operation updates
         </h3>
 
@@ -921,7 +951,7 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
           <button
             type="button"
             onClick={onOpenRosterPdf}
-            className="whitespace-nowrap rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-teal-600"
+            className="whitespace-nowrap rounded-xl bg-ocs-teal px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-ocs-teal/90"
           >
             Open Calendar ➔
           </button>
@@ -931,19 +961,19 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
       {lowStockAlert?.triggered ? (
         <Link
           to="/inventory?context=my&restock=alert"
-          className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-rose-200 bg-rose-50/60 p-6 shadow-sm transition-colors hover:border-rose-300 lg:col-span-2"
+          className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-ocs-yellow/30 bg-ocs-yellow/10 p-6 shadow-sm transition-colors hover:border-ocs-yellow/40 lg:col-span-2"
         >
-          <div className="flex items-center justify-between border-b border-rose-200/60 pb-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-rose-700">Inventory alerts</span>
-            <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+          <div className="flex items-center justify-between border-b border-ocs-yellow/30 pb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-yellow-800">Inventory alerts</span>
+            <span className="rounded-md bg-ocs-yellow/20 px-2 py-0.5 text-[11px] font-semibold text-yellow-800">
               {lowStockCount} at or below par
             </span>
           </div>
           <div className="mt-4 flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ocs-yellow/20 text-yellow-800">
               <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
             </div>
-            <span className="min-w-0 text-xs font-semibold leading-normal text-rose-900">
+            <span className="min-w-0 text-xs font-semibold leading-normal text-yellow-900">
               {lowStockCount} item{lowStockCount === 1 ? "" : "s"} are currently low in your bag. Tap to restock.
             </span>
           </div>
@@ -1038,7 +1068,7 @@ function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSaving
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                   Shared roster
                 </p>
-                <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950 md:text-xl">
+                <p className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
                   Doctors shifts
                 </p>
 
@@ -1302,7 +1332,7 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
             type="button"
             onClick={onOpenRosterPdf}
             disabled={!rosterMeta?.has_roster}
-            className="w-full rounded-xl bg-gray-900 p-3.5 text-sm font-semibold text-white transition-all hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-xl bg-ocs-teal p-3.5 text-sm font-semibold text-white transition-all hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             📥 Download Current Roster PDF
           </button>
@@ -1324,7 +1354,7 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
 
       <div className="px-6 pb-2 pt-2 md:pt-0">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">OCS M&#201;DECINS</p>
-        <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-slate-950 md:text-2xl">
+        <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-2xl">
           Operations Dashboard
         </h1>
       </div>

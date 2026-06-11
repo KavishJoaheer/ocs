@@ -2253,7 +2253,7 @@ function OperatorRestockRequestsInbox({ refreshKey }) {
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 lg:text-ocs-slate">
               <tr>
                 <th className="px-3 py-2 text-left">Doctor</th>
                 <th className="px-3 py-2 text-left">Requested items</th>
@@ -4164,7 +4164,7 @@ export default function InventoryPage() {
               type="button"
               onClick={() => setDoctorRestockOpen(true)}
               disabled={!doctorRestockCandidates.length}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50 lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
             >
               <Truck className="size-4" />
               Restock My Inventory
@@ -4184,7 +4184,7 @@ export default function InventoryPage() {
                   <button
                     type="button"
                     onClick={() => setEditor({ item: null })}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1]"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
                   >
                     <Plus className="size-4" />
                     Add Item
@@ -4348,7 +4348,7 @@ export default function InventoryPage() {
                     <col style={{ width: doctorDesktopBagTable ? "21%" : "26%" }} />
                     <col style={{ width: inventoryActionsColWidth }} />
                   </colgroup>
-                  <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500 lg:text-ocs-slate">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
                       <th className="px-3 py-2 text-center align-middle">Qty</th>
@@ -4375,7 +4375,7 @@ export default function InventoryPage() {
                       return (
                         <Fragment key={item.id}>
                           <tr
-                            className={`group border-t border-slate-200/70 align-middle transition-colors hover:bg-slate-50/70 ${isLow ? "bg-red-50" : ""}`}
+                            className={`group border-t border-slate-200/70 align-middle text-slate-700 transition-colors hover:bg-slate-50 ${isLow ? "bg-red-50" : ""}`}
                             onClick={() => toggleExpanded(item.id)}
                           >
                             <td className="px-3 py-1.5 align-middle text-left">
@@ -4401,9 +4401,9 @@ export default function InventoryPage() {
                                   <span
                                     className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                                       trafficTone === "critical"
-                                        ? "bg-rose-100 text-rose-700"
+                                        ? "bg-ocs-yellow/20 text-yellow-800"
                                         : trafficTone === "warning"
-                                          ? "bg-amber-100 text-amber-700"
+                                          ? "bg-ocs-yellow/10 text-yellow-700"
                                           : "bg-teal-100 text-teal-700"
                                     }`}
                                   >
@@ -4417,9 +4417,9 @@ export default function InventoryPage() {
                                     <span
                                       className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
                                         trafficTone === "critical"
-                                          ? "bg-rose-100 text-rose-700"
+                                          ? "bg-ocs-yellow/20 text-yellow-800"
                                           : trafficTone === "warning"
-                                            ? "bg-amber-100 text-amber-700"
+                                            ? "bg-ocs-yellow/10 text-yellow-700"
                                             : "bg-teal-100 text-teal-700"
                                       }`}
                                     >

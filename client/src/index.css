@@ -6,6 +6,10 @@
   --font-display: "Poppins", "Segoe UI", sans-serif;
   --color-brand-gold: #d97706;
   --color-brand-gold-dark: #b45309;
+  --color-ocs-teal: #2bccc4;
+  --color-ocs-yellow: #f7ba24;
+  --color-ocs-grey: #7a7a7a;
+  --color-ocs-slate: #3b595c;
 }
 
 :root {

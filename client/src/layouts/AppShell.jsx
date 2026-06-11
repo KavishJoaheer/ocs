@@ -227,8 +227,8 @@ function AppShell() {
     <div
       className={
         isLinkhamPortal
-          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[#f8f9fa] text-slate-900"
-          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900"
+          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[#f8f9fa] text-slate-900 lg:bg-slate-50"
+          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-[radial-gradient(circle_at_top_left,_rgba(65,200,198,0.24),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(242,193,77,0.12),_transparent_20%),linear-gradient(180deg,_#f9fdfd_0%,_#eef8f8_100%)] text-slate-900 lg:bg-slate-50"
       }
     >
       <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
@@ -245,9 +245,9 @@ function AppShell() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                     OCS Medecins Operations
                   </p>
-                  <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-900">{activeMeta.label}</p>
+                  <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-900 lg:text-ocs-slate">{activeMeta.label}</p>
                   {activeMeta.helper ? (
-                    <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-500">{activeMeta.helper}</p>
+                    <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-500 lg:text-ocs-grey">{activeMeta.helper}</p>
                   ) : null}
                 </div>
 

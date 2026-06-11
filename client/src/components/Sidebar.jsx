@@ -147,23 +147,18 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
             : "gap-3 rounded-2xl px-4 py-3 text-sm font-semibold",
           mobile
             ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
-            : !drawer && "text-[#4e7b83] hover:bg-white/70 hover:text-[#22485b]",
+            : !drawer && "text-white/70 hover:bg-white/10 hover:text-white",
           drawer && !isActive && "rounded-xl",
           isActive &&
             (mobile
               ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
               : drawer
                 ? "rounded-r-xl border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32] shadow-sm"
-                : "bg-[linear-gradient(135deg,#41c8c6,#2d8f98)] text-white shadow-lg shadow-[rgba(45,143,152,0.22)]"),
+                : "bg-ocs-teal text-white shadow-sm"),
         );
       }}
     >
-      <Icon
-        className={cx(
-          "size-4 shrink-0",
-          drawer ? "text-current" : mobile ? "text-current" : "text-[#66d7d0]",
-        )}
-      />
+      <Icon className="size-4 shrink-0 text-current" />
       <span>{item.label}</span>
       {badgeCount > 0 ? (
         <span
@@ -386,31 +381,31 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-full min-w-0 border-r border-[rgba(65,200,198,0.14)] bg-[linear-gradient(180deg,#fbfefe_0%,#eef9f8_100%)] text-[#22485b] lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
+      <aside className="hidden w-full min-w-0 border-r border-ocs-slate/20 bg-ocs-slate text-white lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-6 py-6">
-          <div className="inline-flex w-fit rounded-[22px] border border-[rgba(65,200,198,0.2)] bg-white p-4 shadow-[0_12px_32px_rgba(34,72,91,0.08)]">
+          <div className="inline-flex w-fit rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-sm">
             <BrandMark
               maxWidth={190}
-              logoClassName="drop-shadow-[0_6px_18px_rgba(34,72,91,0.05)]"
+              logoClassName="drop-shadow-sm"
               size={42}
             />
           </div>
 
-          <div className="mt-5 rounded-[30px] border border-[rgba(65,200,198,0.16)] bg-white/92 p-5 text-[#22485b] shadow-[0_18px_52px_rgba(34,72,91,0.08)]">
+          <div className="mt-5 rounded-[30px] border border-white/20 bg-white/10 p-5 text-white shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6e949b]">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/50">
                   Signed in
                 </p>
-                <p className="mt-2 text-lg font-semibold text-[#22485b]">{user.full_name}</p>
-                <p className="mt-1 text-sm text-[#5b7f8a]">
+                <p className="mt-2 text-lg font-semibold text-white">{user.full_name}</p>
+                <p className="mt-1 text-sm text-white/70">
                   {getRoleLabel(user.role)} - @{user.username}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => logout()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-[rgba(65,200,198,0.08)] px-3 py-2 text-sm font-semibold text-[#2d8f98] transition hover:bg-[rgba(65,200,198,0.14)]"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
               >
                 <LogOut className="size-4" />
                 Sign out
@@ -419,7 +414,7 @@ function Sidebar() {
           </div>
 
           <div className="mt-6">
-            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#6e949b]">
+            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
               Navigation
             </p>
             <nav className="mt-3 space-y-2">

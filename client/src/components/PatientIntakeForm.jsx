@@ -746,7 +746,7 @@ function PatientFormModal({
                   <button
                     type="button"
                     onClick={goToNextWizardStep}
-                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
+                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
                   >
                     Next
                   </button>
@@ -754,7 +754,7 @@ function PatientFormModal({
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-h-12 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82] disabled:cursor-not-allowed disabled:opacity-60 lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
                   >
                     {isSaving ? "Saving..." : actionLabel}
                   </button>

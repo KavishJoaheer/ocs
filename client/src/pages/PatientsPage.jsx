@@ -424,7 +424,7 @@ function PatientsPage() {
     return (
       <Link
         to="/patients/add"
-        className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700"
+        className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700 lg:bg-ocs-teal lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
       >
         <Plus className="size-4" />
         Add patient
@@ -794,7 +794,7 @@ function PatientsPage() {
                   <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
                     <div className="overflow-x-auto">
                       <table className="min-w-full table-fixed bg-white text-left">
-                        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 lg:text-ocs-slate">
                           {isUnderReviewView ? (
                             <tr>
                               <th className="w-[20%] px-4 py-2.5">Patient</th>
@@ -837,7 +837,7 @@ function PatientsPage() {
                               tabIndex={0}
                               role="link"
                               aria-label={`Open patient profile for ${patient.full_name}`}
-                              className="cursor-pointer border-t border-slate-200/70 outline-none transition hover:bg-slate-50/80 focus-visible:bg-slate-50/80 focus-visible:ring-2 focus-visible:ring-sky-400/40"
+                              className="cursor-pointer border-t border-slate-200/70 text-slate-700 outline-none transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-sky-400/40"
                             >
                               {isUnderReviewView ? (
                                 <>
