@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
-import MobileGradientHero from "../components/MobileGradientHero.jsx";
+import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import BillingMobileStatsStrip from "../components/billing/BillingMobileStatsStrip.jsx";
 
@@ -62,12 +62,17 @@ function PatientBilling() {
 
   return (
     <DesktopPageFrame className="mobile-hero-page font-sans">
-      <MobileGradientHero
-        headline="Billing & Payments"
-        subline="Your invoices and payment history."
-        outstandingAmount={summary?.outstanding}
-        formatOutstanding={formatCurrency}
-      />
+      <MobilePageTitle
+        primaryText="Billing"
+        secondaryText="& Payments"
+        subtitle="Your invoices and payment history."
+      >
+        {!loading && summary?.outstanding > 0 ? (
+          <span className="mt-3 inline-flex rounded-[20px] border border-[rgba(232,160,32,0.4)] bg-[rgba(232,160,32,0.2)] px-3.5 py-1.5 text-[13px] font-semibold text-[#E8A020]">
+            {formatCurrency(summary.outstanding)} outstanding
+          </span>
+        ) : null}
+      </MobilePageTitle>
 
       <PageHeroHeader
         primaryText="Billing"

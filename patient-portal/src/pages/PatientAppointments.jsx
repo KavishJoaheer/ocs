@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
-import { CalendarCheck } from "lucide-react";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
-import MobileGradientHero from "../components/MobileGradientHero.jsx";
+import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
@@ -116,10 +115,10 @@ function PatientAppointments() {
 
   return (
     <DesktopPageFrame className="mobile-hero-page visits-screen font-sans">
-      <MobileGradientHero
-        headline="Your Appointments."
-        subline="Scheduled by your OCS care team."
-        icon={CalendarCheck}
+      <MobilePageTitle
+        primaryText="Your"
+        secondaryText="Appointments."
+        subtitle="Scheduled by your OCS care team."
       />
 
       <PageHeroHeader

@@ -1180,7 +1180,7 @@ button.native-grouped-row {
   outline: none;
 }
 
-/* Mobile gradient hero — Health Records, Appointments, Billing (max-width: 768px) */
+/* Mobile page layout — consistent 16px gutters (max-width: 768px) */
 @media (max-width: 768px) {
   .mobile-hero-page.native-screen,
   .mobile-hero-page {
@@ -1190,25 +1190,9 @@ button.native-grouped-row {
     padding-right: 0;
   }
 
-  .mobile-gradient-hero {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    background-color: #1a5c52;
-    background-image: linear-gradient(135deg, #1a5c52 0%, #0d9e8a 100%);
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-  }
-
-  .mobile-gradient-hero__inner,
-  .mobile-gradient-hero__footer,
   .mobile-page-body {
     padding-left: 16px;
     padding-right: 16px;
-  }
-
-  .mobile-gradient-hero__inner {
-    text-align: left;
   }
 }
 

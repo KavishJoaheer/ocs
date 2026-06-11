@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
+import MobileIdentityHeader from "../components/MobileIdentityHeader.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
 import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
@@ -27,6 +28,7 @@ function AppShellContent() {
         id="app-main-scroll"
         className="min-h-0 flex-1 overflow-y-auto max-lg:bg-[#F2F2F7] max-lg:pb-[var(--native-nav-clearance)] lg:bg-[var(--desktop-canvas)]"
       >
+        <MobileIdentityHeader />
         <div
           className={
             isProfile || isDesktopHeroPage

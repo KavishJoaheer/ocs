@@ -1,5 +1,5 @@
 import { LogOut, HousePlus } from "lucide-react";
-import { NavLink, Link, useLocation } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
@@ -42,40 +42,9 @@ function SidebarLink({ item }) {
 
 function Sidebar() {
   const { logout } = usePatientAuth();
-  const { pathname } = useLocation();
-  const isNativeDashboard = pathname === "/dashboard";
-  const isVisitSummary = pathname.startsWith("/health-records/visits/");
-  const isVisitStatus = pathname === "/request-visit/tracking";
-  const isProfile = pathname === "/profile";
-  const isHealthRecords = pathname === "/health-records";
-  const isAppointments = pathname === "/appointments";
-  const isBilling = pathname === "/billing";
-  const hideMobileTopBar =
-    isNativeDashboard ||
-    isVisitSummary ||
-    isVisitStatus ||
-    isProfile ||
-    isHealthRecords ||
-    isAppointments ||
-    isBilling;
 
   return (
     <>
-      {/* ─── Mobile top bar (hidden on native dashboard — header is in-page) ─── */}
-      <div
-        className={`mobile-top-bar relative flex min-h-14 items-center justify-between border-b border-[rgba(26,160,140,0.1)] bg-white px-4 lg:hidden ${hideMobileTopBar ? "hidden" : ""}`}
-      >
-        <img
-          src="/ocs-medecins-mark.png"
-          alt="OCS Care"
-          className="h-8 w-8 shrink-0 object-contain"
-        />
-        <p className="absolute left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-[2px] text-[#2d8f98]">
-          OCS Care
-        </p>
-        <FamilyProfileSwitcher variant="avatar" />
-      </div>
-
       {/* ─── Mobile bottom navigation — command center bar ─── */}
       <MobileBottomNav />
 

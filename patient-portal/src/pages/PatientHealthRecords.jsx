@@ -4,10 +4,9 @@ import { api, buildAuthedFileUrl } from "../lib/api.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
-import MobileGradientHero from "../components/MobileGradientHero.jsx";
+import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import HealthRecordsSegmentedControl from "../components/health-records/HealthRecordsSegmentedControl.jsx";
-import HealthRecordsHeroTabs from "../components/health-records/HealthRecordsHeroTabs.jsx";
 import ConsultationsView from "../components/health-records/ConsultationsView.jsx";
 import ReportsView from "../components/health-records/ReportsView.jsx";
 import ClinicalHistoryView from "../components/health-records/ClinicalHistoryView.jsx";
@@ -132,11 +131,11 @@ function PatientHealthRecords() {
 
   return (
     <DesktopPageFrame className="mobile-hero-page native-health-records flex flex-col font-sans lg:bg-transparent">
-      <MobileGradientHero
-        headline="Your Health Records."
-        subline="Everything about your health, in one place."
-        minHeightClass="min-h-[140px]"
-        footer={<HealthRecordsHeroTabs activeTab={activeTab} onChange={setActiveTab} />}
+      <MobilePageTitle
+        primaryText="Your Health"
+        secondaryText="Records."
+        subtitle="Everything about your health, in one place."
+        className="pb-2"
       />
 
       <PageHeroHeader
@@ -146,6 +145,10 @@ function PatientHealthRecords() {
       />
 
       <DesktopPageBody>
+        <div className="mb-5 lg:hidden">
+          <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
+        </div>
+
         <div className="mt-6 hidden lg:block">
           <HealthRecordsSegmentedControl
             activeTab={activeTab}
@@ -154,39 +157,39 @@ function PatientHealthRecords() {
           />
         </div>
 
-        <div className="mt-5 min-h-[40vh] w-full lg:mt-0" role="tabpanel" aria-label={activeTab}>
-        {loading ? (
-          <>
-            <div className="flex flex-col gap-4 lg:hidden">
-              <div className="ocs-surface-card h-36 animate-pulse bg-white/80" />
-              <div className="ocs-surface-card h-36 animate-pulse bg-white/80" />
+        <div className="min-h-[40vh] w-full lg:mt-0" role="tabpanel" aria-label={activeTab}>
+          {loading ? (
+            <>
+              <div className="flex flex-col gap-4 lg:hidden">
+                <div className="ocs-surface-card h-36 animate-pulse bg-white/80" />
+                <div className="ocs-surface-card h-36 animate-pulse bg-white/80" />
+              </div>
+              <div className="hidden space-y-4 lg:block">
+                <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
+                <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
+              </div>
+            </>
+          ) : loadError ? (
+            <div className="flex flex-col items-center px-4 py-16 text-center">
+              <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load health records</p>
+              <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500">{loadError}</p>
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
+              >
+                Try Again
+              </button>
             </div>
-            <div className="hidden space-y-4 lg:block">
-              <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
-              <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
-            </div>
-          </>
-        ) : loadError ? (
-          <div className="flex flex-col items-center px-4 py-16 text-center">
-            <p className="text-[20px] font-bold text-teal-900">Couldn&apos;t load health records</p>
-            <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500">{loadError}</p>
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="request-wizard-primary-btn mt-6 w-full max-w-[280px]"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : (
-          <HealthRecordsTabPanel
-            activeTab={activeTab}
-            consultations={consultations}
-            reports={medicalReports}
-            clinicalHistory={clinicalHistory}
-            onUpload={() => setUploadOpen(true)}
-          />
-        )}
+          ) : (
+            <HealthRecordsTabPanel
+              activeTab={activeTab}
+              consultations={consultations}
+              reports={medicalReports}
+              clinicalHistory={clinicalHistory}
+              onUpload={() => setUploadOpen(true)}
+            />
+          )}
         </div>
       </DesktopPageBody>
 
