@@ -122,7 +122,10 @@ export default function PatientLocationTags({
   const addTag = (category, name, { replaceCategory = false } = {}) => {
     const normalizedName = String(name || "").trim();
     if (!normalizedName) return;
-    const next = replaceCategory ? tags.filter((tag) => tag.category !== category) : tags;
+    let next = replaceCategory ? tags.filter((tag) => tag.category !== category) : tags;
+    if (["Village", "Town", "Neighborhood", "Clinic"].includes(category)) {
+      next = next.filter((tag) => tag.category !== "Legacy Location");
+    }
     if (!next.some((t) => t.category === category && t.name === normalizedName)) {
       onChange([...next, { category, name: normalizedName }]);
     }

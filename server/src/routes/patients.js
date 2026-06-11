@@ -13,6 +13,10 @@ const {
   isLinkhamInsuranceProvider,
   resolveInsuranceProviderFromTags,
 } = require("../lib/insuranceProvider");
+const {
+  buildPatientLocationFieldFromTags,
+  sanitizeLocationTagsForSave,
+} = require("../lib/locationTags.js");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 
 const router = express.Router();
@@ -266,7 +270,7 @@ function getPatientLocationTags(patientId) {
 }
 
 function updatePatientLocationTags(patientId, rawTags) {
-  const tags = normalizeLocationTags(rawTags);
+  const tags = sanitizeLocationTagsForSave(normalizeLocationTags(rawTags));
   const deleteLinks = db.prepare("DELETE FROM patient_locations WHERE patient_id = ?");
   const upsertLocation = db.prepare(`
     INSERT INTO locations (category, name)
@@ -1416,7 +1420,9 @@ router.post("/", (req, res) => {
   const patientId = Number(result.lastInsertRowid);
 
   if (PATIENT_TAG_ROLES.has(req.auth.role)) {
-    updatePatientLocationTags(patientId, payload.location_tags);
+    const savedTags = updatePatientLocationTags(patientId, payload.location_tags);
+    const locationField = buildPatientLocationFieldFromTags(savedTags);
+    db.prepare("UPDATE patients SET location = ? WHERE id = ?").run(locationField, patientId);
   }
 
   notifyLinkhamPatientsIfNeeded(patientId, payload.insurance_provider, req.auth.id);
@@ -1629,10 +1635,8 @@ router.put("/:id", (req, res) => {
 
   if (PATIENT_TAG_ROLES.has(req.auth.role)) {
     const savedTags = updatePatientLocationTags(patientId, payload.location_tags);
-    const fallbackLegacyLocation = savedTags.length ? savedTags.map((tag) => tag.name).join(", ") : "";
-    if (fallbackLegacyLocation !== payload.location) {
-      db.prepare("UPDATE patients SET location = ? WHERE id = ?").run(fallbackLegacyLocation, patientId);
-    }
+    const locationField = buildPatientLocationFieldFromTags(savedTags);
+    db.prepare("UPDATE patients SET location = ? WHERE id = ?").run(locationField, patientId);
   }
 
   const updated = {

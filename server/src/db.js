@@ -1688,13 +1688,41 @@ function backfillPatientRecords() {
   backfill();
 }
 
+function cleanupStaleLegacyPatientLocations() {
+  db.prepare(`
+    DELETE FROM patient_locations
+    WHERE rowid IN (
+      SELECT pl.rowid
+      FROM patient_locations pl
+      JOIN locations l ON l.id = pl.location_id
+      WHERE l.category = 'Legacy Location'
+        AND EXISTS (
+          SELECT 1
+          FROM patient_locations pl2
+          JOIN locations l2 ON l2.id = pl2.location_id
+          WHERE pl2.patient_id = pl.patient_id
+            AND l2.category IN ('Village', 'Town', 'Neighborhood', 'Clinic')
+        )
+    )
+  `).run();
+}
+
 function backfillPatientLocations() {
+  cleanupStaleLegacyPatientLocations();
+
   const rows = db
     .prepare(`
-      SELECT id, location
-      FROM patients
-      WHERE location IS NOT NULL
-        AND trim(location) != ''
+      SELECT p.id, p.location
+      FROM patients p
+      WHERE p.location IS NOT NULL
+        AND trim(p.location) != ''
+        AND NOT EXISTS (
+          SELECT 1
+          FROM patient_locations pl
+          JOIN locations l ON l.id = pl.location_id
+          WHERE pl.patient_id = p.id
+            AND l.category IN ('Village', 'Town', 'Neighborhood', 'Clinic')
+        )
     `)
     .all();
 

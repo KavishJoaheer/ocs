@@ -40,6 +40,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
+import { sanitizeLocationTagsForDisplay } from "../lib/locationTags.js";
 import {
   canEditConsultationNote,
   canManageConsultationNotes,
@@ -1899,7 +1900,7 @@ function PatientProfilePage() {
                       </p>
                       <div className="mt-1">
                         <PatientLocationTags
-                          tags={data.patient.location_tags || []}
+                          tags={sanitizeLocationTagsForDisplay(data.patient.location_tags || [])}
                           onChange={() => {}}
                           readOnly
                         />
@@ -2434,7 +2435,7 @@ function PatientProfilePage() {
                 </p>
                 <div className="mt-1">
                   <PatientLocationTags
-                    tags={data.patient.location_tags || []}
+                    tags={sanitizeLocationTagsForDisplay(data.patient.location_tags || [])}
                     onChange={() => {}}
                     readOnly
                   />

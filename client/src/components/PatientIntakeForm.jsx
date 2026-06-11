@@ -8,9 +8,13 @@ import PatientLocationTags from "./PatientLocationTags.jsx";
 import {
   isLinkhamInsuranceProvider,
   resolveInsuranceProviderFromTags,
-  syncInsuranceProviderWithTags,
   syncInsuranceSelection,
+  syncInsuranceProviderWithTags,
 } from "../lib/insuranceProvider.js";
+import {
+  buildPatientLocationFieldFromTags,
+  sanitizeLocationTagsForDisplay,
+} from "../lib/locationTags.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useKeyboardOffset } from "../hooks/useKeyboardOffset.js";
 import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientAutofill.js";
@@ -131,7 +135,7 @@ function toPatientFormState(patient) {
       patient.patient_contact_number ?? patient.contact_number ?? "",
     address: patient.address ?? "",
     location: patient.location ?? "",
-    location_tags: patient.location_tags ?? [],
+    location_tags: sanitizeLocationTagsForDisplay(patient.location_tags ?? []),
     insurance_provider:
       patient.insurance_provider ||
       resolveInsuranceProviderFromTags(patient.location_tags ?? []),
@@ -340,8 +344,10 @@ function PatientFormModal({
     }
     clearDraft();
 
-    const locationTags = Array.isArray(form.location_tags) ? form.location_tags : [];
-    const legacyLocation = locationTags.map((tag) => tag.name).join(", ");
+    const locationTags = sanitizeLocationTagsForDisplay(
+      Array.isArray(form.location_tags) ? form.location_tags : [],
+    );
+    const legacyLocation = buildPatientLocationFieldFromTags(locationTags);
 
     const insuranceProvider = resolveInsuranceProviderFromTags(
       locationTags,
