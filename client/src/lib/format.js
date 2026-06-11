@@ -90,8 +90,9 @@ export function statusTone(status) {
       return "bg-emerald-100 text-emerald-700 ring-emerald-600/20";
     case "completed":
     case "paid":
-    case "active":
       return "bg-emerald-100 text-emerald-700 ring-emerald-600/20";
+    case "active":
+      return "bg-ocs-teal/10 text-teal-800 ring-ocs-teal/20";
     case "offline":
     case "cancelled":
     case "discharged":

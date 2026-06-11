@@ -242,16 +242,16 @@ function HighlightStat({ icon: Icon, label, value, compact = false }) {
   }
 
   return (
-    <div className="max-w-full min-w-0 rounded-[22px] border border-white/80 bg-white/85 px-4 py-3.5">
+    <div className="max-w-full min-w-0 rounded-[22px] border border-transparent bg-white px-4 py-3.5 shadow-md">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="shrink-0 rounded-xl bg-sky-50 p-2.5 text-sky-700">
+        <div className="shrink-0 rounded-xl bg-ocs-teal/10 p-2.5 text-ocs-teal">
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-ocs-grey">
             {label}
           </p>
-          <p className="mt-0.5 break-words text-xl font-bold text-slate-950">{value}</p>
+          <p className="mt-0.5 break-words text-xl font-bold text-slate-800">{value}</p>
         </div>
       </div>
     </div>
@@ -341,11 +341,11 @@ function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
   const { text, isEmpty } = profileLine(value, emptyLabel);
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-semibold text-[#67755d]">{label}</dt>
+      <dt className="text-xs font-semibold text-ocs-grey">{label}</dt>
       <dd
         className={cx(
           "mt-1 break-words text-sm leading-snug",
-          isEmpty ? "text-slate-400" : emphasize ? "font-bold text-slate-900" : "font-medium text-slate-700",
+          isEmpty ? "text-ocs-grey" : emphasize ? "font-bold text-slate-800" : "font-medium text-slate-800",
         )}
       >
         {text}
@@ -358,11 +358,11 @@ function ClinicalGridItem({ label, value }) {
   const { text, isEmpty } = profileLine(value);
   return (
     <div className="min-w-0 border-b border-gray-100 pb-3">
-      <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</p>
+      <p className="text-xs font-bold uppercase tracking-widest text-ocs-grey">{label}</p>
       <p
         className={cx(
           "mt-1 line-clamp-3 break-words text-sm leading-snug",
-          isEmpty ? "text-slate-400" : "text-slate-700",
+          isEmpty ? "text-ocs-grey" : "text-slate-800",
         )}
       >
         {text}
@@ -470,7 +470,7 @@ function getLabReportAttachmentPublicUrl(attachment) {
 }
 
 const LAB_REPORT_OPEN_FILE_BUTTON_CLASS =
-  "inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700";
+  "inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700 md:text-ocs-slate md:hover:border-ocs-teal md:hover:text-ocs-teal";
 
 function LabReportAttachmentRow({
   attachment,
@@ -621,7 +621,7 @@ function LabReportModal({
                 setForm((current) => ({ ...current, report_title: event.target.value }))
               }
               placeholder="CBC panel, urine analysis, liver function test..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
             />
           </label>
 
@@ -634,7 +634,7 @@ function LabReportModal({
               onChange={(event) =>
                 setForm((current) => ({ ...current, report_date: event.target.value }))
               }
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
             />
           </label>
         </div>
@@ -651,7 +651,7 @@ function LabReportModal({
             onChange={(event) =>
               setForm((current) => ({ ...current, consultation_id: event.target.value }))
             }
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
           >
             <option value="">No linked consultation</option>
             {consultations.map((consultation) => (
@@ -663,11 +663,11 @@ function LabReportModal({
         </label>
 
         {selectedConsultation ? (
-          <div className="rounded-[24px] border border-sky-100 bg-sky-50/75 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+          <div className="rounded-[24px] border border-sky-100 bg-sky-50/75 p-4 md:border-ocs-teal/20 md:bg-ocs-teal/10">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700 md:text-ocs-teal">
               Linked consultation
             </p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">
+            <p className="mt-2 text-lg font-semibold text-slate-950 md:text-ocs-slate">
               {selectedConsultation.doctor_name}
             </p>
             <p className="mt-1 text-sm text-slate-600">
@@ -687,7 +687,7 @@ function LabReportModal({
               setForm((current) => ({ ...current, report_details: event.target.value }))
             }
             placeholder="Record the requested test, clinical findings, reference notes, abnormalities, and any follow-up recommendation."
-            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
+            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
           />
         </label>
 
@@ -698,7 +698,7 @@ function LabReportModal({
             multiple
             accept=".pdf,image/*"
             onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
-            className="w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 outline-none transition file:mr-4 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:border-sky-300 focus:border-sky-400 focus:bg-white"
+            className="w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 outline-none transition file:mr-4 file:rounded-xl file:border file:border-slate-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ocs-slate hover:border-slate-300 focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20 md:file:hover:border-ocs-teal md:file:hover:text-ocs-teal"
           />
           <p className="text-xs leading-5 text-slate-500">
             Upload PDF or image files. These files will be linked to this Medical & Lab Report and
@@ -728,7 +728,7 @@ function LabReportModal({
                     onClick={() =>
                       setSelectedFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))
                     }
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                   >
                     <X className="size-4" />
                     Remove
@@ -762,14 +762,14 @@ function LabReportModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 md:text-ocs-slate md:hover:border-ocs-teal md:hover:text-ocs-teal"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving}
-            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 md:bg-ocs-teal md:hover:bg-ocs-teal/90"
           >
             {isSaving
               ? "Saving..."
@@ -831,7 +831,7 @@ function ConsultationCreateModal({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, doctor_id: event.target.value }))
                 }
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
               >
                 <option value="">Select doctor</option>
                 {doctors.map((doctor) => (
@@ -842,11 +842,11 @@ function ConsultationCreateModal({
               </select>
             </label>
           ) : (
-            <div className="rounded-[24px] border border-sky-100 bg-sky-50/80 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+            <div className="rounded-[24px] border border-sky-100 bg-sky-50/80 p-4 md:border-ocs-teal/20 md:bg-ocs-teal/10">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700 md:text-ocs-teal">
                 Doctor
               </p>
-              <p className="mt-2 text-sm font-semibold text-slate-950">
+              <p className="mt-2 text-sm font-semibold text-slate-950 md:text-ocs-slate">
                 {user.full_name}
               </p>
             </div>
@@ -861,7 +861,7 @@ function ConsultationCreateModal({
               onChange={(event) =>
                 setForm((current) => ({ ...current, consultation_date: event.target.value }))
               }
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
             />
           </label>
 
@@ -874,7 +874,7 @@ function ConsultationCreateModal({
               onChange={(event) =>
                 setForm((current) => ({ ...current, appointment_time: event.target.value }))
               }
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
             />
           </label>
         </div>
@@ -889,7 +889,7 @@ function ConsultationCreateModal({
               setForm((current) => ({ ...current, doctor_notes: event.target.value }))
             }
             placeholder="Record assessment, plan, medication advice, and follow-up instructions."
-            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
+            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
           />
         </label>
 
@@ -897,14 +897,14 @@ function ConsultationCreateModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 md:text-ocs-slate md:hover:border-ocs-teal md:hover:text-ocs-teal"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving}
-            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 md:bg-ocs-teal md:hover:bg-ocs-teal/90"
           >
             {isSaving ? "Saving..." : "Add consultation note"}
           </button>
@@ -1650,7 +1650,7 @@ function PatientProfilePage() {
   ];
 
   return (
-    <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden">
+    <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:bg-slate-50">
       {isMobile && (
         <div
           className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
@@ -1695,7 +1695,7 @@ function PatientProfilePage() {
           title={
             <div className="mb-4 flex w-full flex-col gap-1 border-b border-gray-100 pb-4">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-lg font-extrabold text-gray-900">
+                <span className="text-lg font-extrabold text-ocs-slate">
                   {data.patient.full_name}
                 </span>
                 <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs font-bold text-gray-500">
@@ -1707,7 +1707,7 @@ function PatientProfilePage() {
               {isPatientSubscribed(data.patient) ? (
                 <HealthPlanBadge className="ml-0" />
               ) : null}
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-ocs-grey">
                 📍 {profileAddressLabel} • Age: {profileAgeLabel}
               </span>
             </div>
@@ -1730,7 +1730,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setPatientEditorOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                 >
                   <SquarePen className="size-4" />
                   Edit patient
@@ -1740,7 +1740,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-[#2d8f98]/20 transition hover:bg-[#257a82]"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-teal/90"
                 >
                   <Plus className="size-4" />
                   New Consultation Note
@@ -1748,7 +1748,7 @@ function PatientProfilePage() {
               ) : null}
               <a
                 href="#consultation-notes"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#2d8f98]/40 hover:text-[#257a82]"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
               >
                 <FileText className="size-4" />
                 View Past Notes
@@ -1765,7 +1765,7 @@ function PatientProfilePage() {
               ) : null}
               <Link
                 to="/patients"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
               >
                 <ArrowLeft className="size-4" />
                 Back to patients
@@ -2058,7 +2058,7 @@ function PatientProfilePage() {
                                             doctor_id: event.target.value,
                                           }))
                                         }
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white"
+                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                       >
                                         <option value="">Select doctor</option>
                                         {doctors.map((doctor) => (
@@ -2081,7 +2081,7 @@ function PatientProfilePage() {
                                             consultation_date: event.target.value,
                                           }))
                                         }
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white"
+                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                       />
                                     </label>
                                   </div>
@@ -2096,7 +2096,7 @@ function PatientProfilePage() {
                                       doctor_notes: event.target.value,
                                     }))
                                   }
-                                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
+                                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                   placeholder="Update the clinical note for this consultation."
                                 />
                                 <div className="flex justify-end gap-2">
@@ -2438,11 +2438,11 @@ function PatientProfilePage() {
                 <ProfileDlItem label="Location" value={data.patient.location} emptyLabel="Location not selected" />
               </dl>
               <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ocs-grey">
                   Status
                 </span>
                 <StatusBadge value={data.patient.status} />
-                <span className="min-w-0 text-xs leading-snug text-slate-600">{statusDetail}</span>
+                <span className="min-w-0 text-xs leading-snug text-ocs-grey">{statusDetail}</span>
               </div>
               {isPatientUnderReview(data.patient) ? (
                 <ScheduledReviewIndicator dueDate={data.patient.review_due_date} />
@@ -2487,7 +2487,7 @@ function PatientProfilePage() {
               <p
                 className={cx(
                   "whitespace-pre-wrap text-xs leading-snug",
-                  data.patient.particularity ? "text-slate-700 line-clamp-4" : "text-slate-400",
+                  data.patient.particularity ? "text-slate-800 line-clamp-4" : "text-ocs-grey",
                 )}
               >
                 {data.patient.particularity || "No particularity recorded during intake."}
@@ -2504,7 +2504,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
                 >
                   <Plus className="size-4" />
                   Add consultation note
@@ -2514,21 +2514,21 @@ function PatientProfilePage() {
           >
             {data.consultations.length ? (
               <div className="space-y-4">
-                <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_22px_50px_-38px_rgba(15,23,42,0.35)]">
+                <div className="overflow-hidden rounded-[28px] border border-transparent bg-white shadow-md">
                   <div className="overflow-x-auto">
                     <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
-                      <thead className="bg-[#fcf3ee]/80">
+                      <thead className="bg-slate-50">
                         <tr>
-                          <th className="w-[11%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
+                          <th className="w-[11%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ocs-slate">
                             Date
                           </th>
-                          <th className="w-[17%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
+                          <th className="w-[17%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ocs-slate">
                             Doctor
                           </th>
-                          <th className="min-w-0 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
+                          <th className="min-w-0 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ocs-slate">
                             Consultation note
                           </th>
-                          <th className="w-[28%] px-4 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-[#ba5a32]">
+                          <th className="w-[28%] px-4 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-ocs-slate">
                             Action
                           </th>
                         </tr>
@@ -2569,7 +2569,7 @@ function PatientProfilePage() {
                                                 doctor_id: event.target.value,
                                               }))
                                             }
-                                            className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+                                            className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                           >
                                             <option value="">Select doctor</option>
                                             {doctors.map((doctor) => (
@@ -2593,7 +2593,7 @@ function PatientProfilePage() {
                                                 consultation_date: event.target.value,
                                               }))
                                             }
-                                            className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+                                            className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                           />
                                         </label>
                                       </div>
@@ -2608,14 +2608,14 @@ function PatientProfilePage() {
                                           doctor_notes: event.target.value,
                                         }))
                                       }
-                                      className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+                                      className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                       placeholder="Update the clinical note for this consultation."
                                     />
                                     <div className="flex flex-wrap justify-end gap-2">
                                       <button
                                         type="button"
                                         onClick={handleConsultationEditCancel}
-                                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                                        className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                                       >
                                         Cancel
                                       </button>
@@ -2623,7 +2623,7 @@ function PatientProfilePage() {
                                         type="button"
                                         disabled={isSavingConsultation}
                                         onClick={() => handleConsultationSave(consultation)}
-                                        className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-60"
                                       >
                                         {isSavingConsultation ? "Saving..." : "Save changes"}
                                       </button>
@@ -2642,7 +2642,7 @@ function PatientProfilePage() {
                                   <button
                                     type="button"
                                     onClick={() => setConsultationNoteViewer(consultation)}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                                   >
                                     Open
                                   </button>
@@ -2650,7 +2650,7 @@ function PatientProfilePage() {
                                     <button
                                       type="button"
                                       onClick={() => handleConsultationEditStart(consultation)}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                                     >
                                       <SquarePen className="size-4" />
                                       {user.role === "admin" ? "Edit consultation" : "Edit note"}
@@ -2689,7 +2689,7 @@ function PatientProfilePage() {
                     <button
                       type="button"
                       onClick={() => setShowAllConsultations((current) => !current)}
-                      className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                     >
                       {showAllConsultations
                         ? "Show fewer consultation notes"
@@ -2707,7 +2707,7 @@ function PatientProfilePage() {
                     <button
                       type="button"
                       onClick={() => setConsultationComposerOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
                     >
                       <Plus className="size-4" />
                       Add consultation note
@@ -2725,7 +2725,7 @@ function PatientProfilePage() {
                   <button
                     type="button"
                     onClick={() => setReportEditor({ id: null })}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
                   >
                   <Plus className="size-4" />
                   Add Medical & Lab Report
@@ -2738,11 +2738,11 @@ function PatientProfilePage() {
                 {data.labReports.map((report) => (
                   <article
                     key={report.id}
-                    className="rounded-[26px] border border-slate-200/80 bg-white p-5"
+                    className="rounded-[26px] border border-transparent bg-white p-5 shadow-md"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-lg font-semibold text-slate-950">{report.report_title}</p>
+                        <p className="text-lg font-semibold text-ocs-slate">{report.report_title}</p>
                         <p className="mt-1 text-sm text-slate-500">
                           {formatDate(report.report_date)}
                         </p>
@@ -2752,7 +2752,7 @@ function PatientProfilePage() {
                         <button
                           type="button"
                           onClick={() => setReportEditor(report)}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                       >
                         <SquarePen className="size-4" />
                         Edit
@@ -2761,8 +2761,8 @@ function PatientProfilePage() {
                     </div>
 
                     {report.consultation_id ? (
-                      <div className="mt-4 rounded-[22px] border border-sky-100 bg-sky-50/75 px-4 py-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
+                      <div className="mt-4 rounded-[22px] border border-ocs-teal/20 bg-ocs-teal/10 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ocs-teal">
                           Linked consultation
                         </p>
                         <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -2829,7 +2829,7 @@ function PatientProfilePage() {
               actions={
                 <Link
                   to={`/billing?patientId=${id}`}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                 >
                   <CreditCard className="size-4" />
                   Open billing workspace
@@ -2837,9 +2837,9 @@ function PatientProfilePage() {
               }
             >
               {data.bills.length ? (
-                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
+                <div className="overflow-x-auto rounded-xl border border-transparent bg-white shadow-md">
                   <table className="min-w-full table-fixed text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-gray-50/80 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-ocs-slate">
                       <tr>
                         <th className="w-[26%] px-3 py-2">Bill / recorded</th>
                         <th className="w-[22%] px-3 py-2">Consultation</th>
@@ -2875,7 +2875,7 @@ function PatientProfilePage() {
                           <td className="px-3 py-1.5 align-middle text-right">
                             <Link
                               to={`/billing?patientId=${id}`}
-                              className="inline-flex rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                              className="inline-flex rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                             >
                               Open
                             </Link>
@@ -3053,7 +3053,7 @@ function PatientProfilePage() {
               <button
                 type="button"
                 onClick={() => setConsultationNoteViewer(null)}
-                className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
               >
                 Close
               </button>
@@ -3061,7 +3061,7 @@ function PatientProfilePage() {
                 <Link
                   to={`/consultations/${consultationNoteViewer.id}`}
                   onClick={() => setConsultationNoteViewer(null)}
-                  className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+                  className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 md:bg-ocs-teal md:hover:bg-ocs-teal/90"
                 >
                   Open full consultation record
                 </Link>

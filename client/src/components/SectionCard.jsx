@@ -16,7 +16,7 @@ function SectionCard({
       className={cx(
         "max-w-full min-w-0",
         variant === "demographic"
-          ? "rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-6 shadow-sm"
+          ? "rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-6 shadow-sm md:border-transparent md:bg-white md:shadow-md"
           : "rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm lg:border-transparent lg:bg-white lg:shadow-md",
         className,
       )}
