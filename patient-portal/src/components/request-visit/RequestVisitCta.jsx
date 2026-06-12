@@ -25,6 +25,9 @@ function RequestVisitCta({ className = "", children }) {
 
   return (
     <>
+      <Link to="/request-visit" className={["hidden lg:inline-flex", className].join(" ")}>
+        {children}
+      </Link>
       <button
         type="button"
         onClick={() => openRequestSheet()}
@@ -32,9 +35,6 @@ function RequestVisitCta({ className = "", children }) {
       >
         {children}
       </button>
-      <Link to="/request-visit" className={["hidden lg:inline-flex", className].join(" ")}>
-        {children}
-      </Link>
     </>
   );
 }
