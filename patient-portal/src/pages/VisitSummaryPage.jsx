@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
-import { ArrowLeft, ChevronLeft, Download, FileText, Pill, FlaskConical } from "lucide-react";
+import { ArrowLeft, ChevronLeft, Download, FileText } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatDoctorName } from "../lib/healthRecordsDisplay.js";
@@ -31,12 +31,27 @@ function SectionTitle({ children }) {
   return <h2 className="visit-summary-section-title">{children}</h2>;
 }
 
-function PrescriptionIcon({ type }) {
-  const Icon = type === "syrup" ? FlaskConical : Pill;
+function MobilePrescribedMedications({ prescriptions }) {
+  if (!prescriptions?.length) return null;
+
   return (
-    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[rgba(26,160,140,0.08)] text-[#2d8f98]">
-      <Icon className="size-[18px]" strokeWidth={1.75} />
-    </div>
+    <section className="px-1">
+      <h2 className="text-ocs-slate mt-6 border-b border-slate-100 pb-2 mb-3 text-lg font-semibold">
+        Prescribed Medications
+      </h2>
+      <ul className="flex flex-col gap-4">
+        {prescriptions.map((item) => (
+          <li key={item.id}>
+            <p className="text-slate-800 text-base font-medium">{item.name}</p>
+            {item.instructions ? (
+              <p className="text-slate-500 mt-1 text-sm leading-relaxed">{item.instructions}</p>
+            ) : item.dosage && item.dosage !== item.name ? (
+              <p className="text-slate-500 mt-1 text-sm leading-relaxed">{item.dosage}</p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -251,17 +266,17 @@ function VisitSummaryPage() {
               <div className="visit-summary-hero-avatar">
                 {doctorInitials(summary.doctor_name)}
               </div>
-              <p className="native-display mt-4 text-[22px] leading-tight text-[#1a5c52]">
+              <p className="native-display mt-4 text-[22px] leading-tight text-ocs-slate">
                 {doctorName}
               </p>
-              <p className="mt-2 text-[14px] text-[#8a9e9a]">{contextLabel}</p>
+              <p className="mt-2 text-[14px] text-brand-cool-grey">{contextLabel}</p>
             </div>
 
             {summary.diagnosis ? (
               <>
                 <div className="visit-summary-card-divider" aria-hidden="true" />
                 <div className="flex justify-center px-5 py-5">
-                  <span className="squircle-inner inline-flex bg-[rgba(26,160,140,0.1)] px-4 py-2 text-[14px] font-semibold text-[#2d8f98]">
+                  <span className="squircle-inner inline-flex bg-brand-teal/10 px-4 py-2 text-[14px] font-semibold text-ocs-teal">
                     {summary.diagnosis}
                   </span>
                 </div>
@@ -269,28 +284,7 @@ function VisitSummaryPage() {
             ) : null}
           </article>
 
-          {summary.prescriptions?.length > 0 ? (
-            <section className="mt-6">
-              <SectionTitle>Treatment Plan</SectionTitle>
-              <article className="visit-summary-card mt-2">
-                {summary.prescriptions.map((item, index) => (
-                  <div key={item.id}>
-                    <div className="flex items-center gap-3 px-5 py-4">
-                      <PrescriptionIcon type={item.type} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[15px] font-semibold text-[#1a5c52]">{item.name}</p>
-                        <p className="mt-0.5 text-[13px] text-[#8a9e9a]">{item.dosage}</p>
-                      </div>
-                      <p className="shrink-0 text-[13px] font-medium text-[#5b7f8a]">{item.duration}</p>
-                    </div>
-                    {index < summary.prescriptions.length - 1 ? (
-                      <div className="visit-summary-list-divider" aria-hidden="true" />
-                    ) : null}
-                  </div>
-                ))}
-              </article>
-            </section>
-          ) : null}
+          <MobilePrescribedMedications prescriptions={summary.prescriptions} />
 
           {summary.documents?.length > 0 ? (
             <section className="mt-6">
