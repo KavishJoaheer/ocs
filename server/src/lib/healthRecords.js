@@ -1,4 +1,5 @@
 const DIAGNOSIS_PREFIX_REGEX = /^(imp(ression)?\s*:|dx\s*-\s*|dx\s*:|diagnosis\s*:)/i;
+const PRESCRIBED_PREFIX_REGEX = /^prescribed\s*:/i;
 
 function parsePatientReportMeta(details) {
   const trimmed = String(details || "").trim();
@@ -18,15 +19,69 @@ function parsePatientReportMeta(details) {
   return null;
 }
 
+function clampDiagnosisText(diagnosis) {
+  let value = String(diagnosis || "").trim();
+  if (!value) {
+    return "General Assessment";
+  }
+
+  if (value.length > 140) {
+    value = `${value.slice(0, 140).trim()}…`;
+  }
+
+  return value;
+}
+
+function isExcludedFromDiagnosisLine(line) {
+  const cleaned = String(line || "").trim();
+  if (!cleaned) {
+    return true;
+  }
+
+  if (isVitalsLine(cleaned)) {
+    return true;
+  }
+
+  if (SKIP_LINE_REGEX.test(cleaned)) {
+    return true;
+  }
+
+  if (PRESCRIBED_PREFIX_REGEX.test(cleaned)) {
+    return true;
+  }
+
+  if (PRESCRIPTION_SECTION_REGEX.test(cleaned)) {
+    return true;
+  }
+
+  if (/^medication(?:\s+or\s+treatment)?\s*:/i.test(cleaned)) {
+    return true;
+  }
+
+  if (INSTRUCTION_START_REGEX.test(stripListPrefix(cleaned))) {
+    return true;
+  }
+
+  if (DOSAGE_REGEX.test(cleaned) && parseMedicationLine(cleaned)) {
+    return true;
+  }
+
+  return false;
+}
+
 function extractDiagnosisFromNotes(notes) {
   const rawText = String(notes || "").trim();
   if (!rawText) {
     return "General Assessment";
   }
 
-  for (const line of rawText.split("\n")) {
-    const cleanLine = String(line || "").trim();
-    if (!cleanLine || !DIAGNOSIS_PREFIX_REGEX.test(cleanLine)) {
+  const lines = rawText
+    .split("\n")
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+
+  for (const cleanLine of lines) {
+    if (!DIAGNOSIS_PREFIX_REGEX.test(cleanLine)) {
       continue;
     }
 
@@ -39,15 +94,18 @@ function extractDiagnosisFromNotes(notes) {
       .replace(/\bday\s*\d+\b.*$/i, "")
       .trim();
 
-    if (diagnosis.length > 140) {
-      diagnosis = `${diagnosis.slice(0, 140).trim()}…`;
-    }
-
-    return diagnosis || "General Assessment";
+    return clampDiagnosisText(diagnosis);
   }
 
-  const fallback = rawText.length > 80 ? `${rawText.slice(0, 80).trim()}…` : rawText;
-  return fallback || "General Assessment";
+  for (const cleanLine of lines) {
+    if (isExcludedFromDiagnosisLine(cleanLine)) {
+      continue;
+    }
+
+    return clampDiagnosisText(cleanLine);
+  }
+
+  return "General Assessment";
 }
 
 /** Patient-facing summary from consultation notes (excludes diagnosis lines). */
@@ -57,11 +115,15 @@ function buildPlainSummaryFromNotes(notes) {
     return "";
   }
 
+  const diagnosisLabel = extractDiagnosisFromNotes(rawText);
+
   const bodyLines = rawText
     .split("\n")
     .map((line) => String(line || "").trim())
     .filter(Boolean)
-    .filter((line) => !DIAGNOSIS_PREFIX_REGEX.test(line));
+    .filter((line) => !DIAGNOSIS_PREFIX_REGEX.test(line))
+    .filter((line) => !isExcludedFromDiagnosisLine(line))
+    .filter((line) => line !== diagnosisLabel);
 
   const text = bodyLines.join(" ").replace(/\s{2,}/g, " ").trim();
   if (!text) {
@@ -156,6 +218,41 @@ function isVitalsLine(line) {
   return VITALS_INLINE_REGEX.test(cleaned) && !DOSAGE_REGEX.test(cleaned);
 }
 
+function formatPrescriptionName(text) {
+  return String(text || "")
+    .replace(/^tab(?:let)?\.?\s+/i, "Tablet ")
+    .replace(/^cap(?:sule)?\.?\s+/i, "Capsule ")
+    .replace(/^syr(?:up)?\.?\s+/i, "Syrup ")
+    .trim();
+}
+
+function parsePrescribedLine(line) {
+  const cleaned = stripListPrefix(line);
+  const match = cleaned.match(/^prescribed\s*:\s*(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const body = match[1].trim();
+  if (!body) {
+    return null;
+  }
+
+  const withDosage = parseMedicationLine(body);
+  if (withDosage) {
+    return withDosage;
+  }
+
+  const name = formatPrescriptionName(body);
+
+  return {
+    name,
+    instructions: "",
+    duration: "",
+    type: inferMedicationType(body),
+  };
+}
+
 function parseMedicationLine(line) {
   const cleaned = stripListPrefix(line);
   if (!cleaned || !DOSAGE_REGEX.test(cleaned)) {
@@ -238,6 +335,13 @@ function extractPrescriptionsFromNotes(notes) {
 
     if (/^medication(?:\s+or\s+treatment)?\s*:/i.test(line)) {
       inPrescriptionSection = true;
+      continue;
+    }
+
+    const prescribedParsed = parsePrescribedLine(line);
+    if (prescribedParsed) {
+      prescriptions.push(prescribedParsed);
+      awaitingInstructions = !prescribedParsed.instructions;
       continue;
     }
 

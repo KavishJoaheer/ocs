@@ -62,6 +62,39 @@ test("extractDiagnosisFromNotes reads impression lines", () => {
   assert.match(diagnosis, /allergic rhinitis/i);
 });
 
+test("extractDiagnosisFromNotes separates bare diagnosis from prescribed lines", () => {
+  const diagnosis = extractDiagnosisFromNotes("URTI\nPrescribed: Tab levodenk");
+  assert.equal(diagnosis, "URTI");
+});
+
+test("extractPrescriptionsFromNotes reads Prescribed shorthand without dosage", () => {
+  const prescriptions = extractPrescriptionsFromNotes("URTI\nPrescribed: Tab levodenk");
+
+  assert.equal(prescriptions.length, 1);
+  assert.match(prescriptions[0].name, /levodenk/i);
+  assert.match(prescriptions[0].name, /tablet/i);
+});
+
+test("buildHealthRecordsPayload splits URTI diagnosis and levodenk prescription", () => {
+  const payload = buildHealthRecordsPayload({
+    patient: {},
+    consultationRows: [
+      {
+        id: 75,
+        consultation_date: "2026-06-09",
+        doctor_name: "Dr Shravan Joaheer",
+        doctor_notes: "URTI\nPrescribed: Tab levodenk",
+      },
+    ],
+    attachmentRows: [],
+    labReportRows: [],
+  });
+
+  assert.equal(payload.consultations[0].diagnosis, "URTI");
+  assert.equal(payload.consultations[0].prescriptions.length, 1);
+  assert.match(payload.consultations[0].prescriptions[0].name, /levodenk/i);
+});
+
 test("extractPrescriptionsFromNotes reads Rx lines and skips vitals", () => {
   const prescriptions = extractPrescriptionsFromNotes(`
     Vitals: BP 138/88 mmHg, Temp 37.2C
