@@ -115,7 +115,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
         <button
           type="button"
           onClick={handleAddToCalendar}
-          className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-brand-gold transition-colors duration-200 hover:text-brand-gold-dark"
+          className="flex cursor-pointer items-center gap-2 text-[14px] font-medium text-ocs-yellow transition-colors duration-200 hover:text-ocs-yellow-dark"
         >
           <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
           Add to Calendar

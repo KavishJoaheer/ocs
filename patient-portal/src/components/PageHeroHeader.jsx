@@ -8,11 +8,11 @@ function PageHeroHeader({ primaryText, secondaryText, subtitle, className = "" }
         />
         <div className="relative pl-7">
           <h1 className="text-5xl font-extrabold tracking-tight">
-            <span className="text-brand-dark-grey">{primaryText}</span>
+            <span className="text-ocs-slate">{primaryText}</span>
             {secondaryText ? (
               <>
                 {" "}
-                <span className="text-brand-gold">{secondaryText}</span>
+                <span className="text-ocs-yellow">{secondaryText}</span>
               </>
             ) : null}
           </h1>

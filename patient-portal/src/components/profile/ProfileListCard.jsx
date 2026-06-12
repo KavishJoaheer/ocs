@@ -18,7 +18,7 @@ function ProfileListCard({
       className={[
         "profile-list-card",
         isEmergency
-          ? "bg-gradient-to-br from-teal-500 to-teal-800 shadow-lg"
+          ? "bg-gradient-to-br from-teal-500 to-teal-800 shadow-lg lg:bg-ocs-slate lg:from-ocs-slate lg:to-ocs-slate"
           : ["profile-crafted-card", isTeal ? "profile-list-card-tinted" : "bg-white"].join(" "),
       ].join(" ")}
     >

@@ -116,7 +116,7 @@ function PatientBilling() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cool-grey">Total Billed</p>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey">
+                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey lg:text-ocs-slate">
                   {formatCurrency(summary?.total_billed)}
                 </p>
               </div>
@@ -130,7 +130,7 @@ function PatientBilling() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cool-grey">Total Paid</p>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey">
+                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey lg:text-ocs-slate">
                   {formatCurrency(summary?.total_paid)}
                 </p>
               </div>
@@ -144,7 +144,7 @@ function PatientBilling() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cool-grey">Outstanding</p>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey">
+                <p className="mt-1 font-display text-xl font-bold tracking-tight text-brand-dark-grey lg:text-ocs-slate">
                   {formatCurrency(summary?.outstanding)}
                 </p>
               </div>
@@ -164,7 +164,7 @@ function PatientBilling() {
       ) : !loadError && bills.length === 0 ? (
         <div className="animate-fade-in-up stagger-4 rounded-[30px] border border-dashed border-brand-teal/20 bg-brand-teal/5 p-12 text-center">
           <Receipt className="mx-auto size-14 text-brand-teal/30" />
-          <h3 className="mt-4 font-display text-xl font-semibold text-brand-dark-grey">
+          <h3 className="mt-4 font-display text-xl font-semibold text-brand-dark-grey lg:text-ocs-slate">
             No bills found
           </h3>
           <p className="mt-2 text-sm text-brand-cool-grey">
@@ -176,7 +176,7 @@ function PatientBilling() {
           <div className="p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <Receipt className="size-4 text-brand-teal" />
-              <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-dark-grey">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-dark-grey lg:text-ocs-slate">
                 Bill History
               </h2>
             </div>

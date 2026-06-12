@@ -15,11 +15,11 @@ function ProfileHeader({ fullName, initials, ocsCareNumber }) {
   return (
     <header className="profile-identity-header">
       <div className="profile-concierge-avatar">{initials}</div>
-      <h1 className="native-display mt-4 text-[24px] leading-tight text-[#1a5c52] lg:text-brand-dark-grey">
+      <h1 className="native-display mt-4 text-[24px] leading-tight text-[#1a5c52] lg:text-ocs-slate">
         {formatDisplayName(fullName)}
       </h1>
       {idLabel ? (
-        <span className="mt-3 inline-flex rounded-full bg-brand-gold px-3 py-1 text-xs font-bold tracking-wide text-brand-dark-grey">
+        <span className="mt-3 inline-flex rounded-full bg-brand-gold px-3 py-1 text-xs font-bold tracking-wide text-brand-dark-grey lg:bg-ocs-yellow lg:text-slate-900">
           {idLabel}
         </span>
       ) : null}

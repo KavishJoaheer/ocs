@@ -98,10 +98,10 @@ function PastAppointmentCard({ appointment }) {
       {appointment.status !== "cancelled" ? (
         <>
           <div className="visits-card-footer-divider hidden lg:block" aria-hidden="true" />
-          <Link to={summaryPath} className="visits-summary-link group hidden text-brand-gold lg:flex">
+          <Link to={summaryPath} className="visits-summary-link group hidden text-ocs-yellow lg:flex">
             <span>View Visit Summary</span>
             <ChevronRight
-              className="visits-summary-arrow size-[18px] shrink-0 text-brand-gold"
+              className="visits-summary-arrow size-[18px] shrink-0 text-ocs-yellow"
               strokeWidth={1.75}
             />
           </Link>

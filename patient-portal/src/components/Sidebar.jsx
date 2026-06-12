@@ -17,7 +17,7 @@ function SidebarLink({ item }) {
         [
           "sidebar-nav-link group relative -mx-6 flex min-h-[44px] items-center gap-3 px-6 text-sm outline-none transition-colors focus:outline-none focus-visible:outline-none",
           isActive
-            ? "sidebar-nav-link-active font-semibold text-brand-teal"
+            ? "sidebar-nav-link-active font-semibold text-brand-teal lg:text-white"
             : "font-normal text-brand-cool-grey hover:bg-[rgba(43,204,196,0.06)]",
         ].join(" ")
       }
@@ -26,12 +26,12 @@ function SidebarLink({ item }) {
         <>
           {isActive ? (
             <span
-              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-teal shadow-[0_0_12px_rgba(43,204,196,0.45)]"
+              className="absolute left-0 top-0 bottom-0 w-1 bg-brand-teal shadow-[0_0_12px_rgba(43,204,196,0.45)] lg:hidden"
               aria-hidden="true"
             />
           ) : null}
           <Icon
-            className={`size-[18px] shrink-0 ${isActive ? "text-brand-teal" : "text-brand-cool-grey"}`}
+            className={`size-[18px] shrink-0 ${isActive ? "text-brand-teal lg:text-white" : "text-brand-cool-grey"}`}
             strokeWidth={1.5}
           />
           <span>{item.label}</span>
@@ -78,7 +78,7 @@ function Sidebar() {
           </div>
 
           {/* Request a home visit — primary action */}
-          <RequestVisitCta className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-brand-dark-grey shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98]">
+          <RequestVisitCta className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-brand-dark-grey shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98] lg:bg-ocs-yellow lg:text-slate-900">
             <HousePlus className="size-5" />
             Request a Home Visit
           </RequestVisitCta>

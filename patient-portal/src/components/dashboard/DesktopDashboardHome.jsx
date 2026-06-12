@@ -20,7 +20,7 @@ function DesktopCareTeamCard({ doctorName }) {
 
   return (
     <section className="desktop-card animate-fade-in-up stagger-1">
-      <p className="desktop-section-label">Your Care Team</p>
+      <p className="desktop-section-label text-ocs-grey">Your Care Team</p>
 
       <div className="mt-5 flex items-center gap-4">
         <div className="desktop-care-team-avatar-wrap shrink-0">
@@ -32,7 +32,7 @@ function DesktopCareTeamCard({ doctorName }) {
           <span className="desktop-care-team-status" aria-label="Available" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-base font-bold leading-snug text-brand-dark-grey">
+          <p className="font-display text-base font-bold leading-snug text-ocs-slate">
             {displayName}
           </p>
           <p className="mt-0.5 text-sm text-brand-cool-grey">
@@ -50,7 +50,7 @@ function DesktopCareTeamCard({ doctorName }) {
 function DesktopConciergeCard() {
   return (
     <section className="desktop-concierge-card desktop-concierge-card-hover animate-fade-in-up stagger-2">
-      <p className="font-display text-sm font-semibold text-brand-gold">We&apos;re here for you.</p>
+      <p className="font-display text-sm font-semibold text-ocs-yellow">We&apos;re here for you.</p>
       <h2 className="mt-3 font-display text-2xl font-bold leading-tight tracking-tight text-white">
         24/7 Medical Concierge
       </h2>
@@ -76,7 +76,7 @@ function DesktopLastVisitCard({ consultation }) {
 
   return (
     <section className="desktop-card animate-fade-in-up stagger-1">
-      <h2 className="font-display text-lg font-bold text-brand-dark-grey">Your Last Visit</h2>
+      <h2 className="font-display text-lg font-bold text-ocs-slate">Your Last Visit</h2>
 
       <div className="mt-6 flex items-center justify-between gap-3">
         <p className="text-[13px] font-medium text-brand-cool-grey">{dateLabel}</p>
@@ -91,7 +91,7 @@ function DesktopLastVisitCard({ consultation }) {
           {doctorInitials(consultation.doctor_name)}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-lg font-bold leading-snug text-brand-dark-grey">{doctorName}</p>
+          <p className="font-display text-lg font-bold leading-snug text-ocs-slate">{doctorName}</p>
           <p className="mt-0.5 text-sm text-brand-cool-grey">General Practitioner</p>
         </div>
       </div>
@@ -99,7 +99,7 @@ function DesktopLastVisitCard({ consultation }) {
       {consultation.diagnosis ? (
         <div className="mt-6">
           <p className="consultation-micro-label">Diagnosis</p>
-          <span className="mt-2 inline-flex rounded-[14px] bg-brand-teal/10 px-4 py-1.5 text-[13px] font-medium text-brand-dark-grey">
+          <span className="mt-2 inline-flex rounded-[14px] bg-brand-teal/10 px-4 py-1.5 text-[13px] font-medium text-ocs-slate">
             {consultation.diagnosis}
           </span>
         </div>
@@ -108,7 +108,7 @@ function DesktopLastVisitCard({ consultation }) {
       <div className="mt-8 flex justify-end">
         <Link
           to={summaryTo}
-          className="text-sm font-bold text-brand-gold transition hover:text-brand-gold-dark"
+          className="text-sm font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
         >
           View Visit Summary →
         </Link>
@@ -129,7 +129,7 @@ function DesktopDashboardHome({
         <h1 className="font-display text-[2rem] tracking-tight sm:text-4xl">
           {headline}
         </h1>
-        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-brand-cool-grey">
+        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-ocs-grey">
           Your health. Unwavering care. Accessed effortlessly, managed securely.
         </p>
       </header>
@@ -145,13 +145,13 @@ function DesktopDashboardHome({
             <DesktopLastVisitCard consultation={profileLastConsultation} />
           ) : (
             <section className="desktop-card animate-fade-in-up stagger-1">
-              <h2 className="font-display text-lg font-bold text-brand-dark-grey">Your Last Visit</h2>
+              <h2 className="font-display text-lg font-bold text-ocs-slate">Your Last Visit</h2>
               <div className="mt-6 flex items-center gap-4">
                 <div className="flex size-11 items-center justify-center rounded-[12px] bg-brand-teal/10">
                   <HousePlus className="size-5 text-brand-teal" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <p className="font-display text-base font-bold text-brand-dark-grey">No visits yet</p>
+                  <p className="font-display text-base font-bold text-ocs-slate">No visits yet</p>
                   <p className="mt-0.5 text-sm text-brand-cool-grey">
                     Your care timeline will appear here after your first home visit.
                   </p>

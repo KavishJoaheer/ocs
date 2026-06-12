@@ -274,7 +274,7 @@ function PatientProfile() {
             placeholder="Policy number"
           />
         ) : billingForm.insurance_policy_number ? (
-          <span className="mt-0.5 inline-flex rounded-full bg-brand-gold px-3 py-1 text-xs font-bold tracking-wide text-brand-dark-grey">
+          <span className="mt-0.5 inline-flex rounded-full bg-brand-gold px-3 py-1 text-xs font-bold tracking-wide text-brand-dark-grey lg:bg-ocs-yellow lg:text-slate-900">
             {billingForm.insurance_policy_number}
           </span>
         ) : (

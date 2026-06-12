@@ -60,7 +60,7 @@ function ReportRowDesktop({ report, isLast = false }) {
             <FileText className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1 pt-0.5">
-            <p className="native-display text-[16px] leading-snug text-brand-dark-grey">{report.name}</p>
+            <p className="native-display text-[16px] leading-snug text-ocs-slate">{report.name}</p>
             <p className="native-label mt-1 text-[13px] text-brand-cool-grey">{dateLabel}</p>
             <p className="mt-0.5 text-[13px] text-brand-cool-grey">{source}</p>
           </div>
@@ -69,7 +69,7 @@ function ReportRowDesktop({ report, isLast = false }) {
           href={report.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 text-[15px] font-bold text-brand-gold transition hover:text-brand-gold-dark"
+          className="shrink-0 text-[15px] font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
         >
           View
         </a>
@@ -113,7 +113,7 @@ function ReportsView({ reports, onUpload }) {
           <button
             type="button"
             onClick={onUpload}
-            className="flex items-center gap-2 rounded-xl bg-brand-gold px-5 py-2.5 text-[14px] font-bold text-brand-dark-grey transition hover:brightness-105 active:scale-[0.98]"
+            className="flex items-center gap-2 rounded-xl bg-ocs-yellow px-5 py-2.5 text-[14px] font-bold text-slate-900 transition hover:brightness-105 active:scale-[0.98]"
           >
             <FileUp className="size-4 translate-y-px" strokeWidth={1.75} />
             Upload Report

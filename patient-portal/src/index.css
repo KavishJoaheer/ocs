@@ -11,6 +11,11 @@
   --color-brand-dark-grey: #3b595c;
   --color-brand-cool-grey: #7a7a7a;
   --color-brand-gold-dark: #db9f10;
+  --color-ocs-teal: #2bccc4;
+  --color-ocs-yellow: #f7ba24;
+  --color-ocs-grey: #7a7a7a;
+  --color-ocs-slate: #3b595c;
+  --color-ocs-yellow-dark: #b8860b;
 }
 
 :root {
@@ -1016,8 +1021,8 @@ table {
   border-radius: var(--desktop-card-radius);
   padding: 32px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(145deg, #0f4548 0%, #1a5c52 52%, #134e4f 100%);
-  box-shadow: 0 12px 40px rgba(15, 69, 72, 0.22);
+  background: #3b595c;
+  box-shadow: 0 12px 40px rgba(59, 89, 92, 0.22);
 }
 
 .desktop-concierge-card::before {
@@ -1284,6 +1289,13 @@ button.native-grouped-row {
   box-shadow: none;
 }
 
+@media (min-width: 1024px) {
+  .sidebar-nav-link-active {
+    background: linear-gradient(to right, #2bccc4, #22a8a1);
+    color: #fff;
+  }
+}
+
 .sidebar-nav-link-active:focus,
 .sidebar-nav-link-active:focus-visible {
   outline: none;
@@ -1310,6 +1322,7 @@ button.native-grouped-row {
     height: 110px;
     margin-left: 0;
     margin-right: 0;
+    background: #3b595c;
   }
 }
 
@@ -1869,8 +1882,8 @@ button.native-grouped-row {
 
 .upload-drawer-upload-btn {
   border-radius: 9999px;
-  background: var(--ocs-brand-gold);
-  color: var(--brand-dark-grey);
+  background: #f7ba24;
+  color: #0f172a;
   font-weight: 700;
   box-shadow: 0 4px 16px rgba(var(--ocs-brand-gold-rgb), 0.35);
   transition:

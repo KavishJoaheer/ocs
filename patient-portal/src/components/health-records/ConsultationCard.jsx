@@ -47,7 +47,7 @@ function ConsultationCard({ consultation }) {
             {doctorInitials(consultation.doctor_name)}
           </div>
           <div className="min-w-0 pt-0.5">
-            <p className="native-display text-[16px] leading-snug text-brand-dark-grey">{doctorName}</p>
+            <p className="native-display text-[16px] leading-snug text-brand-dark-grey lg:text-ocs-slate">{doctorName}</p>
             <p className="native-label mt-0.5 text-[13px] text-brand-cool-grey">{specialty}</p>
           </div>
         </div>
@@ -65,7 +65,7 @@ function ConsultationCard({ consultation }) {
         style={{ padding: "var(--native-pad-card)" }}
       >
         <div>
-          <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Diagnosis</p>
+          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">Diagnosis</p>
           {consultation.diagnosis ? (
             <span className="ocs-status-pill-diagnosis">{consultation.diagnosis}</span>
           ) : (
@@ -74,7 +74,7 @@ function ConsultationCard({ consultation }) {
         </div>
 
         <div>
-          <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Prescription</p>
+          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">Prescription</p>
           {prescriptionSummary ? (
             <p className="text-[14px] font-medium leading-relaxed text-brand-cool-grey">
               {prescriptionSummary}
