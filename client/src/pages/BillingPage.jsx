@@ -165,6 +165,138 @@ function createEmptyLineItem() {
   return { description: "", amount: "0", type: "Sale" };
 }
 
+function InventoryItemDescriptionField({
+  value,
+  onChange,
+  onPickItem,
+  inventoryOptions = [],
+  inventoryLoading = false,
+  disabled = false,
+  placeholder = "Description",
+  className,
+}) {
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const suggestionsRef = useRef(null);
+
+  const filteredSuggestions = useMemo(() => {
+    const needle = String(value || "").trim().toLowerCase();
+    if (!needle) {
+      return [];
+    }
+
+    return inventoryOptions
+      .filter((item) => String(item.item_name || "").toLowerCase().includes(needle))
+      .slice(0, 8);
+  }, [inventoryOptions, value]);
+
+  function pickItem(item) {
+    onPickItem?.(item);
+    setSuggestionsOpen(false);
+  }
+
+  return (
+    <div className="relative min-w-0">
+      <input
+        required
+        value={value}
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setSuggestionsOpen(event.target.value.trim().length > 0);
+          setHighlightIndex(0);
+        }}
+        onFocus={() => {
+          if (String(value || "").trim()) {
+            setSuggestionsOpen(true);
+          }
+        }}
+        onBlur={() => {
+          window.setTimeout(() => setSuggestionsOpen(false), 120);
+        }}
+        onKeyDown={(event) => {
+          if (!filteredSuggestions.length) {
+            return;
+          }
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setSuggestionsOpen(true);
+            setHighlightIndex((prev) => {
+              const next = Math.min(filteredSuggestions.length - 1, prev + 1);
+              suggestionsRef.current?.children[next]?.scrollIntoView({ block: "nearest" });
+              return next;
+            });
+            return;
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setSuggestionsOpen(true);
+            setHighlightIndex((prev) => {
+              const next = Math.max(0, prev - 1);
+              suggestionsRef.current?.children[next]?.scrollIntoView({ block: "nearest" });
+              return next;
+            });
+            return;
+          }
+
+          if (event.key === "Enter" && suggestionsOpen) {
+            event.preventDefault();
+            const picked = filteredSuggestions[highlightIndex];
+            if (picked) {
+              pickItem(picked);
+            }
+            return;
+          }
+
+          if (event.key === "Escape") {
+            setSuggestionsOpen(false);
+          }
+        }}
+        placeholder={inventoryLoading ? "Loading stock…" : placeholder}
+        className={className}
+      />
+
+      {suggestionsOpen && filteredSuggestions.length ? (
+        <div
+          ref={suggestionsRef}
+          className="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-2xl border border-slate-200 bg-white shadow-lg"
+        >
+          {filteredSuggestions.map((item, index) => {
+            const available = Number(item.quantity || 0);
+            const isActive = index === highlightIndex;
+            return (
+              <button
+                key={`inventory-suggest-${item.id}`}
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pickItem(item);
+                }}
+                className={cx(
+                  "w-full px-4 py-2.5 text-left text-sm transition",
+                  isActive ? "bg-[#4FB8B3] text-white" : "text-slate-700 hover:bg-slate-50",
+                )}
+              >
+                <p className="font-semibold">
+                  {item.item_name}
+                  <span className={cx("ml-2 text-xs font-medium", isActive ? "text-white/85" : "text-slate-500")}>
+                    {available > 0 ? `${available} in stock` : "Out of stock"}
+                  </span>
+                </p>
+                <p className={cx("text-xs", isActive ? "text-white/85" : "text-slate-500")}>
+                  {item.folder_name || "Uncategorized"} · {formatCurrency(item.selling_price || 0)}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function BillingStat({ icon: Icon, label, value }) {
   return (
     <div className="rounded-[28px] border border-white/80 bg-white/90 p-5 shadow-[0_25px_70px_rgba(15,23,42,0.08)]">
@@ -183,11 +315,32 @@ function BillingStat({ icon: Icon, label, value }) {
   );
 }
 
-function BillingItemsEditor({ items, setItems, lockInventory = false }) {
+function BillingItemsEditor({
+  items,
+  setItems,
+  lockInventory = false,
+  inventoryOptions = [],
+  inventoryLoading = false,
+}) {
   function updateItem(index, key, value) {
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index ? { ...item, [key]: value } : item,
+      ),
+    );
+  }
+
+  function applyInventorySuggestion(index, stockItem) {
+    const sellingPrice = Number(stockItem.selling_price || 0);
+    setItems((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index
+          ? {
+              ...row,
+              description: stockItem.item_name || "",
+              amount: String(sellingPrice),
+            }
+          : row,
       ),
     );
   }
@@ -199,12 +352,14 @@ function BillingItemsEditor({ items, setItems, lockInventory = false }) {
         const lineLocked = lockInventory && isInventoryLine;
         return (
           <div key={index} className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_160px_150px_auto]">
-            <input
-              required
+            <InventoryItemDescriptionField
               value={item.description}
-              onChange={(event) => updateItem(index, "description", event.target.value)}
-              placeholder="Description"
+              onChange={(nextDescription) => updateItem(index, "description", nextDescription)}
+              onPickItem={(stockItem) => applyInventorySuggestion(index, stockItem)}
+              inventoryOptions={inventoryOptions}
+              inventoryLoading={inventoryLoading}
               disabled={lineLocked}
+              placeholder="Search your stock or type custom item"
               className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500")}
             />
             <input
@@ -342,6 +497,8 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [items, setItems] = useState([createEmptyLineItem()]);
+  const [inventoryOptions, setInventoryOptions] = useState([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
   const [syncedDeps, setSyncedDeps] = useState({ open, bill });
 
   if (syncedDeps.open !== open || syncedDeps.bill !== bill) {
@@ -364,6 +521,41 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
       );
     }
   }
+
+  useEffect(() => {
+    if (!open || !bill?.consultation_id) {
+      setInventoryOptions([]);
+      return undefined;
+    }
+
+    let ignore = false;
+
+    async function loadInventory() {
+      setInventoryLoading(true);
+      try {
+        const rows = await api.get(
+          `/billing/inventory-options/by-consultation/${bill.consultation_id}`,
+        );
+        if (!ignore) {
+          setInventoryOptions(Array.isArray(rows) ? rows : []);
+        }
+      } catch {
+        if (!ignore) {
+          setInventoryOptions([]);
+        }
+      } finally {
+        if (!ignore) {
+          setInventoryLoading(false);
+        }
+      }
+    }
+
+    void loadInventory();
+
+    return () => {
+      ignore = true;
+    };
+  }, [open, bill?.consultation_id]);
 
   const total = useMemo(
     () =>
@@ -422,7 +614,13 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
           </p>
         </div>
 
-        <BillingItemsEditor items={items} setItems={setItems} lockInventory />
+        <BillingItemsEditor
+          items={items}
+          setItems={setItems}
+          lockInventory
+          inventoryOptions={inventoryOptions}
+          inventoryLoading={inventoryLoading}
+        />
 
         <BillingStatusFields
           status={status}
@@ -479,6 +677,9 @@ function DescriptionList({
   onAddManual,
   compactMobile = false,
   onUpdateInventoryLine = null,
+  inventoryOptions = [],
+  inventoryLoading = false,
+  onPickManualInventory = null,
 }) {
   const consultationSubtotal = Math.max(0, Number(consultationPrice || 0));
   const hasInventoryRows = items.length > 0;
@@ -543,10 +744,13 @@ function DescriptionList({
               return (
                 <div key={`manual-${index}`}>
                   <div className={`${gridCols} hidden px-4 py-3 text-sm md:grid`}>
-                    <input
+                    <InventoryItemDescriptionField
                       value={item.description}
-                      onChange={(event) => onUpdateManual(index, { description: event.target.value })}
-                      placeholder="Custom item description"
+                      onChange={(nextDescription) => onUpdateManual(index, { description: nextDescription })}
+                      onPickItem={(stockItem) => onPickManualInventory?.(index, stockItem)}
+                      inventoryOptions={inventoryOptions}
+                      inventoryLoading={inventoryLoading}
+                      placeholder="Search your stock or type custom item"
                       className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
                     />
                     <input
@@ -587,10 +791,13 @@ function DescriptionList({
                   </div>
                   {compactMobile ? (
                     <div className="md:hidden space-y-3 px-4 py-3">
-                      <input
+                      <InventoryItemDescriptionField
                         value={item.description}
-                        onChange={(event) => onUpdateManual(index, { description: event.target.value })}
-                        placeholder="Description"
+                        onChange={(nextDescription) => onUpdateManual(index, { description: nextDescription })}
+                        onPickItem={(stockItem) => onPickManualInventory?.(index, stockItem)}
+                        inventoryOptions={inventoryOptions}
+                        inventoryLoading={inventoryLoading}
+                        placeholder="Search your stock or type custom item"
                         className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#4FB8B3]"
                       />
                       <div className="grid grid-cols-2 gap-2">
@@ -1184,6 +1391,21 @@ function CreateBillingModal({
     );
   }
 
+  function pickManualInventoryItem(index, stockItem) {
+    const sellingPrice = Number(stockItem.selling_price || 0);
+    const qty = 1;
+    const available = Number(stockItem.quantity || 0);
+    updateManualLine(index, {
+      description: stockItem.item_name || "",
+      unit_price: sellingPrice,
+      quantity: qty,
+      inventory_item_id: stockItem.id,
+      folder_name: stockItem.folder_name || "",
+      available,
+      emergency_override: qty > available,
+    });
+  }
+
   function addManualLine() {
     if (!patientId || !consultationId) {
       toast.error("Select a patient and consultation first.");
@@ -1545,6 +1767,9 @@ function CreateBillingModal({
           onAddManual={addManualLine}
           compactMobile={isMobile}
           onUpdateInventoryLine={isMobile ? updateInventoryLine : null}
+          inventoryOptions={inventoryOptions}
+          inventoryLoading={inventoryLoading}
+          onPickManualInventory={pickManualInventoryItem}
         />
 
         <BillingStatusFields
