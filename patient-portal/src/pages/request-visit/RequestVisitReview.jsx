@@ -61,6 +61,11 @@ function RequestVisitReview() {
         navigate("/request-visit/tracking");
         return;
       }
+      if (error?.code === "account_not_linked" || /isn't linked/i.test(error?.message || "")) {
+        toast.error(error?.message || "Your account must be linked before requesting a visit.");
+        navigate("/dashboard", { replace: true });
+        return;
+      }
       toast.error(error?.message || "We couldn't submit your request. Please try again.");
     } finally {
       setSubmitting(false);

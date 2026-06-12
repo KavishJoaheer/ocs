@@ -1,9 +1,10 @@
 import { LogOut, HousePlus } from "lucide-react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 import MobileBottomNav from "./MobileBottomNav.jsx";
+import RequestVisitCta from "./request-visit/RequestVisitCta.jsx";
 
 function SidebarLink({ item }) {
   const Icon = item.icon;
@@ -77,13 +78,10 @@ function Sidebar() {
           </div>
 
           {/* Request a home visit — primary action */}
-          <Link
-            to="/request-visit"
-            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-brand-dark-grey shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98]"
-          >
+          <RequestVisitCta className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[16px] bg-brand-gold px-5 py-3.5 text-sm font-bold text-brand-dark-grey shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.5)] active:scale-[0.98]">
             <HousePlus className="size-5" />
             Request a Home Visit
-          </Link>
+          </RequestVisitCta>
 
           {/* Nav links */}
           <div className="mt-9">

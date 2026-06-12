@@ -5,6 +5,7 @@ const express = require("express");
 const multer = require("multer");
 const { db, labReportAttachmentsDir } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
+const { parsePatientReportMeta } = require("../lib/healthRecords");
 
 const router = express.Router();
 
@@ -280,6 +281,36 @@ function getAttachmentById(attachmentId) {
     `)
     .get(attachmentId);
 }
+
+router.get("/patient-uploads", (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+
+  const reports = db
+    .prepare(`
+      SELECT
+        lr.*,
+        p.full_name AS patient_name,
+        p.patient_identifier,
+        c.consultation_date,
+        d.full_name AS consultation_doctor_name,
+        d.specialization AS consultation_doctor_specialization,
+        u.full_name AS created_by_name,
+        u.role AS created_by_role
+      FROM lab_reports lr
+      JOIN patients p ON p.id = lr.patient_id AND p.deleted_at IS NULL
+      LEFT JOIN consultations c ON c.id = lr.consultation_id
+      LEFT JOIN doctors d ON d.id = c.doctor_id
+      LEFT JOIN users u ON u.id = lr.created_by_user_id
+      WHERE json_valid(lr.report_details)
+        AND json_extract(lr.report_details, '$.patient_uploaded') = 1
+      ORDER BY lr.created_at DESC, lr.id DESC
+      LIMIT ?
+    `)
+    .all(limit)
+    .filter((report) => parsePatientReportMeta(report.report_details));
+
+  res.json(attachFilesToReports(reports));
+});
 
 router.get("/", (req, res) => {
   const patientId = Number(req.query.patientId);

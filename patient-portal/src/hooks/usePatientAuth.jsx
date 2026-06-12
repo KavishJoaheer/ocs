@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
-import { startPatientRealtime, stopPatientRealtime } from "../lib/realtime.js";
+import { PATIENT_DATA_EVENT, startPatientRealtime, stopPatientRealtime } from "../lib/realtime.js";
 import { syncPushSubscriptionIfGranted } from "../lib/pushNotifications.js";
 
 const AuthContext = createContext(null);
@@ -122,6 +122,33 @@ export function AuthProvider({ children }) {
 
     return () => stopPatientRealtime();
   }, [token, user]);
+
+  // Refresh the session user when staff links or updates the patient record so
+  // link banners and visit-request guards clear without a manual re-login.
+  useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+
+    let ignore = false;
+
+    async function refreshSessionUser() {
+      try {
+        const payload = await api.get("/patient-auth/me");
+        if (!ignore) {
+          setUser(payload.user);
+        }
+      } catch {
+        // Non-blocking — page-level live refresh still applies.
+      }
+    }
+
+    window.addEventListener(PATIENT_DATA_EVENT, refreshSessionUser);
+    return () => {
+      ignore = true;
+      window.removeEventListener(PATIENT_DATA_EVENT, refreshSessionUser);
+    };
+  }, [token]);
 
   const value = useMemo(
     () => ({

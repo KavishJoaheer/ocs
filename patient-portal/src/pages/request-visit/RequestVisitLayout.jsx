@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
+import { ACCOUNT_NOT_LINKED_MESSAGE, isPatientAccountLinked } from "../../lib/patientAccountLink.js";
 import {
   INITIAL_DRAFT,
   clearVisitDraft,
@@ -11,13 +12,13 @@ import {
   writeVisitDraft,
 } from "../../lib/visitDraftStorage.js";
 
-function VisitGuardErrorState({ message, onRetry }) {
+function VisitGuardErrorState({ message, onRetry, retryLabel = "Try Again" }) {
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center px-6 py-16 text-center">
       <h2 className="native-display text-[22px] text-brand-dark-grey">Can&apos;t start a new visit right now</h2>
       <p className="mt-3 max-w-xs text-[14px] leading-relaxed text-brand-cool-grey">{message}</p>
       <button type="button" onClick={onRetry} className="request-wizard-primary-btn mt-8 w-full max-w-[280px]">
-        Try Again
+        {retryLabel}
       </button>
     </div>
   );
@@ -131,6 +132,16 @@ function RequestVisitLayout() {
       ignore = true;
     };
   }, [refreshKey]);
+
+  if (!isPatientAccountLinked(user)) {
+    return (
+      <VisitGuardErrorState
+        message={ACCOUNT_NOT_LINKED_MESSAGE}
+        retryLabel="Back to Dashboard"
+        onRetry={() => navigate("/dashboard", { replace: true })}
+      />
+    );
+  }
 
   if (shouldGuardVisit && visitGuardChecking) {
     return (

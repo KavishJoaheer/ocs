@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { FlaskConical, Microscope, UserRound } from "lucide-react";
+import { Link } from "react-router-dom";
+import { FileUp, FlaskConical, Microscope, UserRound } from "lucide-react";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { formatDate, truncate } from "../lib/format.js";
 
@@ -27,7 +29,9 @@ function SummaryTile({ icon: Icon, label, value, accentClass }) {
 }
 
 function LabWorkspacePage() {
+  const refreshKey = useLiveRefreshKey();
   const [consultations, setConsultations] = useState([]);
+  const [patientUploads, setPatientUploads] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,9 +39,13 @@ function LabWorkspacePage() {
 
     async function loadLabQueue() {
       try {
-        const response = await api.get("/consultations");
+        const [consultationResponse, uploadResponse] = await Promise.all([
+          api.get("/consultations"),
+          api.get("/lab-reports/patient-uploads?limit=12"),
+        ]);
         if (!ignore) {
-          setConsultations(response);
+          setConsultations(consultationResponse);
+          setPatientUploads(Array.isArray(uploadResponse) ? uploadResponse : []);
         }
       } finally {
         if (!ignore) {
@@ -51,7 +59,7 @@ function LabWorkspacePage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   const recentConsultations = useMemo(() => consultations.slice(0, 8), [consultations]);
   const unpaidLinkedCount = useMemo(
@@ -91,6 +99,62 @@ function LabWorkspacePage() {
           accentClass="bg-[linear-gradient(135deg,#5fb0b6,#357a86)]"
         />
       </div>
+
+      <SectionCard
+        title="Patient-uploaded reports"
+        subtitle="Reports submitted from the patient portal appear here for lab review."
+      >
+        {patientUploads.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {patientUploads.map((report) => (
+              <article
+                key={report.id}
+                className="rounded-[28px] border border-[rgba(242,193,77,0.35)] bg-white p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-950">{report.report_title}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      <Link
+                        to={`/patients/${report.patient_id}`}
+                        className="font-medium text-[#2d8f98] transition hover:underline"
+                      >
+                        {report.patient_name}
+                      </Link>
+                      {report.patient_identifier ? ` · ${report.patient_identifier}` : ""}
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-[#2d8f98]">
+                      {formatDate(report.report_date)}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[rgba(242,193,77,0.18)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a6a1f]">
+                    <FileUp className="size-3.5" />
+                    Patient upload
+                  </span>
+                </div>
+
+                {report.attachments?.length ? (
+                  <div className="mt-4 rounded-[22px] bg-slate-50/80 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      Attachments
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                      {report.attachments.map((attachment) => (
+                        <li key={attachment.id}>{attachment.original_name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No patient uploads yet"
+            description="When patients upload lab reports from their portal, they will appear here automatically."
+          />
+        )}
+      </SectionCard>
 
       <SectionCard
         title="Recent consultation queue"

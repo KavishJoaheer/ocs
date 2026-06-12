@@ -1168,6 +1168,8 @@ router.patch("/:id/verify-link", (req, res) => {
 
   db.prepare("UPDATE patients SET link_status = ? WHERE id = ?").run(nextStatus, patientId);
 
+  publishPatientDataChange(patientId, { reason: "patient" });
+
   res.json(
     formatPatientRecord({
       ...getPatientById(patientId),
@@ -1241,6 +1243,9 @@ router.post("/:id/merge", (req, res) => {
   });
 
   merge();
+
+  publishPatientDataChange(targetId, { reason: "patient" });
+  publishPatientDataChange(sourceId, { reason: "patient" });
 
   res.json(
     formatPatientRecord({

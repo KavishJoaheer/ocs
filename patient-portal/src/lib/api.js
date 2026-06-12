@@ -25,6 +25,14 @@ export function buildAuthedFileUrl(path) {
   return `${API_BASE}${path}${token ? `${separator}access_token=${encodeURIComponent(token)}` : ""}`;
 }
 
+function createApiError(message, data) {
+  const error = new Error(message);
+  if (data?.code) {
+    error.code = data.code;
+  }
+  return error;
+}
+
 async function apiRequest(path, options = {}) {
   const authToken = getStoredAuthToken();
   const headers = {
@@ -62,7 +70,7 @@ async function apiRequest(path, options = {}) {
       );
     }
 
-    throw new Error(data?.error || "Something went wrong.");
+    throw createApiError(data?.error || "Something went wrong.", data);
   }
 
   return data;
@@ -87,7 +95,7 @@ async function apiFormRequest(path, formData, options = {}) {
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    throw new Error(data?.error || "Something went wrong.");
+    throw createApiError(data?.error || "Something went wrong.", data);
   }
 
   return data;

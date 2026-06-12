@@ -338,7 +338,10 @@ function publishLinkhamClaimsChange({
  * The originating tab is suppressed via changedByClientSessionId so the actor's
  * own optimistic UI is not double-applied.
  */
-function publishPatientDataChange(patientId, { reason = null, changedByClientSessionId = null } = {}) {
+function publishPatientDataChange(
+  patientId,
+  { reason = null, changedByClientSessionId = null, notifyDoctorIds = null } = {},
+) {
   const pid = Number(patientId || 0);
   if (!pid) {
     return { delivered: 0 };
@@ -352,6 +355,11 @@ function publishPatientDataChange(patientId, { reason = null, changedByClientSes
 
   const assignedDoctorId = patient?.assigned_doctor_id ? Number(patient.assigned_doctor_id) : null;
   const isLinkhamInsured = String(patient?.insurance_provider || "").trim().toLowerCase() === "linkham";
+  const extraDoctorIds = new Set(
+    (Array.isArray(notifyDoctorIds) ? notifyDoctorIds : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0),
+  );
 
   const sessionId = changedByClientSessionId
     ? String(changedByClientSessionId)
@@ -389,7 +397,10 @@ function publishPatientDataChange(patientId, { reason = null, changedByClientSes
     if (role === "admin" || role === "operator" || role === "accountant" || role === "lab_tech") {
       deliver = true;
     } else if (role === "doctor") {
-      deliver = assignedDoctorId !== null && Number(client.doctorId || 0) === assignedDoctorId;
+      const clientDoctorId = Number(client.doctorId || 0);
+      deliver =
+        (assignedDoctorId !== null && clientDoctorId === assignedDoctorId) ||
+        extraDoctorIds.has(clientDoctorId);
     } else if (role === "linkham_admin") {
       deliver = isLinkhamInsured;
     }

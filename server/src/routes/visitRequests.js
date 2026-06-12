@@ -181,9 +181,15 @@ router.patch("/:id", (req, res) => {
 
   db.prepare(`UPDATE visit_requests SET ${updates.join(", ")} WHERE id = ?`).run(...params);
 
-  publishPatientDataChange(existing.patient_id, { reason: "visit_request" });
-
   const updated = getVisitRequestById(requestId);
+  const notifyDoctorIds = [existing.assigned_doctor_id, updated.assigned_doctor_id]
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  publishPatientDataChange(existing.patient_id, {
+    reason: "visit_request",
+    notifyDoctorIds,
+  });
   void notifyVisitRequestUpdated(updated, { before: existing }).catch((error) => {
     console.warn("[push] visit request update notification failed:", error?.message || error);
   });

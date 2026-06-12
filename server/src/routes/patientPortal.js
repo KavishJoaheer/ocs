@@ -404,7 +404,11 @@ router.post("/reports", (req, res, next) => {
     if (req.file?.path && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    return res.status(404).json({ error: "Patient record not found." });
+    return res.status(409).json({
+      error:
+        "Your portal account isn't linked to a clinic patient record yet. Please contact the clinic with your National ID.",
+      code: "account_not_linked",
+    });
   }
 
   if (!req.file) {
@@ -732,7 +736,11 @@ router.post("/visit-requests", (req, res) => {
   const patientUserId = req.patientAuth.id;
 
   if (!patientId) {
-    return res.status(404).json({ error: "Patient record not found." });
+    return res.status(409).json({
+      error:
+        "Your portal account isn't linked to a clinic patient record yet. Please contact the clinic with your National ID.",
+      code: "account_not_linked",
+    });
   }
 
   const existingActive = getActiveVisitRequestForPatient(patientId);
