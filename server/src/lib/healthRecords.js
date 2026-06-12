@@ -80,6 +80,210 @@ function buildPlainSummaryFromNotes(notes) {
   return `${text.slice(0, 220).trim()}…`;
 }
 
+const PRESCRIPTION_SECTION_REGEX =
+  /^(rx|prescriptions?|medications?|treatment plan|plan)\s*:/i;
+const VITALS_LINE_REGEX =
+  /^(vitals|bp|blood pressure|spo2|sp\s*o2|temp|temperature|pulse|hr|heart rate|glucose|hba1c|weight|height|bmi|o2\s*sat)/i;
+const VITALS_INLINE_REGEX =
+  /(?:\bbp\b|\bblood pressure\b|\bspo2\b|\bsp\s*o2\b|\btemperature\b|\btemp\b)\s*[:\-]|\b\d{2,3}\s*\/\s*\d{2,3}\s*(?:mm\s*hg)?/i;
+const DOSAGE_REGEX = /\b\d+(?:\.\d+)?\s*(?:mg|ml|mcg|g|iu|unit|units|%)\b/i;
+const INSTRUCTION_START_REGEX =
+  /^(take|give|apply|use|inhale|instill|dissolve|chew|swallow|inject|one|1)\b/i;
+const SKIP_LINE_REGEX =
+  /^(subjective|objective|assessment|findings|follow-?up|tests?\s*ordered|return visit|patient instructions?|symptoms|duration|patient concerns?|clinical impression)\s*:/i;
+const BULLET_PREFIX_REGEX = /^[-•*]\s*/;
+const NUMBER_PREFIX_REGEX = /^\d+[.)]\s*/;
+
+function expandPrescriptionInstructions(text) {
+  return String(text || "")
+    .replace(/\btds\b/gi, "3 times a day")
+    .replace(/\btid\b/gi, "3 times a day")
+    .replace(/\bbd\b/gi, "twice a day")
+    .replace(/\bbid\b/gi, "twice a day")
+    .replace(/\bod\b/gi, "once a day")
+    .replace(/\bqid\b/gi, "4 times a day")
+    .replace(/\bqds\b/gi, "4 times a day")
+    .replace(/\bprn\b/gi, "as needed")
+    .replace(/\bpo\b/gi, "by mouth")
+    .replace(/\bstat\b/gi, "immediately")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function extractDuration(text) {
+  const value = String(text || "");
+  const forDays = value.match(/\bfor\s+(\d+)\s*days?\b/i);
+  if (forDays) {
+    const count = Number(forDays[1]);
+    return `${count} day${count === 1 ? "" : "s"}`;
+  }
+
+  const timesDays = value.match(/\bx\s*(\d+)\s*days?\b/i);
+  if (timesDays) {
+    const count = Number(timesDays[1]);
+    return `${count} day${count === 1 ? "" : "s"}`;
+  }
+
+  const fractionDays = value.match(/\b(\d+)\s*\/\s*(\d+)\s*days?\b/i);
+  if (fractionDays) {
+    return `${fractionDays[1]}/${fractionDays[2]} days`;
+  }
+
+  return "";
+}
+
+function inferMedicationType(text) {
+  const lower = String(text || "").toLowerCase();
+  if (/\b(syrup|suspension|solution|elixir)\b/.test(lower)) return "syrup";
+  if (/\b(injection|intravenous|intramuscular)\b/.test(lower) || /\b(iv|im)\b/.test(lower)) {
+    return "injection";
+  }
+  if (/\b(cream|ointment|gel|lotion|drops)\b/.test(lower)) return "topical";
+  return "tablet";
+}
+
+function stripListPrefix(line) {
+  return String(line || "")
+    .replace(BULLET_PREFIX_REGEX, "")
+    .replace(NUMBER_PREFIX_REGEX, "")
+    .trim();
+}
+
+function isVitalsLine(line) {
+  const cleaned = String(line || "").trim();
+  if (!cleaned) return true;
+  if (VITALS_LINE_REGEX.test(cleaned)) return true;
+  return VITALS_INLINE_REGEX.test(cleaned) && !DOSAGE_REGEX.test(cleaned);
+}
+
+function parseMedicationLine(line) {
+  const cleaned = stripListPrefix(line);
+  if (!cleaned || !DOSAGE_REGEX.test(cleaned)) {
+    return null;
+  }
+
+  if (isVitalsLine(cleaned) && !INSTRUCTION_START_REGEX.test(cleaned)) {
+    return null;
+  }
+
+  let name = cleaned;
+  let instructions = "";
+
+  const splitMatch = cleaned.match(
+    /^(.+?\d+(?:\.\d+)?\s*(?:mg|ml|mcg|g|iu|unit|units|%)(?:\s*\/\s*\d+(?:\.\d+)?\s*(?:mg|ml|mcg|g))?)\s*[-–—:]\s*(.+)$/i,
+  );
+  if (splitMatch) {
+    name = splitMatch[1].trim();
+    instructions = expandPrescriptionInstructions(splitMatch[2]);
+  } else {
+    const instructionMatch = cleaned.match(
+      /^(.+?\d+(?:\.\d+)?\s*(?:mg|ml|mcg|g|iu|unit|units|%))\s+((?:take|give|apply|use|po|tds|bd|od|tid|qds).+)$/i,
+    );
+    if (instructionMatch) {
+      name = instructionMatch[1].trim();
+      instructions = expandPrescriptionInstructions(instructionMatch[2]);
+    }
+  }
+
+  const duration = extractDuration(instructions || cleaned);
+
+  return {
+    name,
+    instructions,
+    duration,
+    type: inferMedicationType(cleaned),
+  };
+}
+
+/** Patient-facing prescriptions parsed from free-text consultation notes. */
+function extractPrescriptionsFromNotes(notes) {
+  const rawText = String(notes || "").trim();
+  if (!rawText) {
+    return [];
+  }
+
+  const lines = rawText
+    .split("\n")
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+
+  const prescriptions = [];
+  let inPrescriptionSection = false;
+  let awaitingInstructions = false;
+
+  for (const line of lines) {
+    if (DIAGNOSIS_PREFIX_REGEX.test(line) || isVitalsLine(line)) {
+      awaitingInstructions = false;
+      continue;
+    }
+
+    if (SKIP_LINE_REGEX.test(line)) {
+      inPrescriptionSection = false;
+      awaitingInstructions = false;
+      continue;
+    }
+
+    if (PRESCRIPTION_SECTION_REGEX.test(line)) {
+      inPrescriptionSection = true;
+      const inlineMedication = line.replace(PRESCRIPTION_SECTION_REGEX, "").trim();
+      if (inlineMedication) {
+        const parsed = parseMedicationLine(inlineMedication);
+        if (parsed) {
+          prescriptions.push(parsed);
+          awaitingInstructions = !parsed.instructions;
+        }
+      }
+      continue;
+    }
+
+    if (/^medication(?:\s+or\s+treatment)?\s*:/i.test(line)) {
+      inPrescriptionSection = true;
+      continue;
+    }
+
+    const parsed = parseMedicationLine(line);
+    if (parsed) {
+      prescriptions.push(parsed);
+      awaitingInstructions = !parsed.instructions;
+      continue;
+    }
+
+    if (awaitingInstructions && INSTRUCTION_START_REGEX.test(stripListPrefix(line))) {
+      const last = prescriptions[prescriptions.length - 1];
+      if (last && !last.instructions) {
+        last.instructions = expandPrescriptionInstructions(stripListPrefix(line));
+        last.duration = extractDuration(last.instructions) || last.duration;
+      }
+      awaitingInstructions = false;
+      continue;
+    }
+
+    if (inPrescriptionSection && BULLET_PREFIX_REGEX.test(line)) {
+      const bulletContent = stripListPrefix(line);
+      if (/^(medication|treatment)\b/i.test(bulletContent) && !DOSAGE_REGEX.test(bulletContent)) {
+        continue;
+      }
+      const bulletParsed = parseMedicationLine(bulletContent);
+      if (bulletParsed) {
+        prescriptions.push(bulletParsed);
+        awaitingInstructions = !bulletParsed.instructions;
+      }
+      continue;
+    }
+
+    awaitingInstructions = false;
+  }
+
+  return prescriptions.map((item, index) => ({
+    id: index + 1,
+    name: item.name,
+    dosage: item.instructions || item.name,
+    instructions: item.instructions || "",
+    duration: item.duration || "",
+    type: item.type || "tablet",
+  }));
+}
+
 function splitClinicalField(text) {
   return String(text || "")
     .split(/[\n;]+/)
@@ -274,6 +478,7 @@ function buildHealthRecordsPayload({
     diagnosis: extractDiagnosisFromNotes(row.doctor_notes),
     plain_summary: buildPlainSummaryFromNotes(row.doctor_notes),
     note_preview: buildPlainSummaryFromNotes(row.doctor_notes),
+    prescriptions: extractPrescriptionsFromNotes(row.doctor_notes),
     reports: attachmentsByConsultation.get(row.id) || [],
   }));
 
@@ -345,6 +550,7 @@ module.exports = {
   buildHealthRecordsPayload,
   buildPlainSummaryFromNotes,
   extractDiagnosisFromNotes,
+  extractPrescriptionsFromNotes,
   parseVitalsFromText,
   mergeVitalsTrends,
 };

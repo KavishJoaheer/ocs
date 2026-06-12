@@ -7,6 +7,7 @@ const {
   mergeVitalsTrends,
   buildPlainSummaryFromNotes,
   extractDiagnosisFromNotes,
+  extractPrescriptionsFromNotes,
   buildHealthRecordsPayload,
 } = require("../src/lib/healthRecords");
 
@@ -59,6 +60,54 @@ test("buildPlainSummaryFromNotes skips diagnosis lines", () => {
 test("extractDiagnosisFromNotes reads impression lines", () => {
   const diagnosis = extractDiagnosisFromNotes("Imp: Seasonal allergic rhinitis");
   assert.match(diagnosis, /allergic rhinitis/i);
+});
+
+test("extractPrescriptionsFromNotes reads Rx lines and skips vitals", () => {
+  const prescriptions = extractPrescriptionsFromNotes(`
+    Vitals: BP 138/88 mmHg, Temp 37.2C
+    Imp: URTI
+    Rx:
+    - Amoxicillin 500mg - Take 1 tablet 3 times a day after meals for 5 days
+    - Paracetamol 1000mg - Take 1 tablet when needed for fever
+  `);
+
+  assert.equal(prescriptions.length, 2);
+  assert.match(prescriptions[0].name, /amoxicillin 500mg/i);
+  assert.match(prescriptions[0].instructions, /3 times a day/i);
+  assert.equal(prescriptions[0].duration, "5 days");
+  assert.match(prescriptions[1].name, /paracetamol 1000mg/i);
+});
+
+test("extractPrescriptionsFromNotes pairs medication lines with follow-up instructions", () => {
+  const prescriptions = extractPrescriptionsFromNotes(`
+    Plan:
+    - Amoxicillin 500mg
+    Take 1 tablet tid after meals for 5 days
+  `);
+
+  assert.equal(prescriptions.length, 1);
+  assert.match(prescriptions[0].name, /amoxicillin 500mg/i);
+  assert.match(prescriptions[0].instructions, /3 times a day/i);
+});
+
+test("buildHealthRecordsPayload includes prescriptions on consultations", () => {
+  const payload = buildHealthRecordsPayload({
+    patient: {},
+    consultationRows: [
+      {
+        id: 2,
+        consultation_date: "2026-03-10",
+        doctor_name: "Dr Shravan Joaheer",
+        doctor_notes:
+          "Imp: URTI\nRx:\n- Amoxicillin 500mg - Take 1 tablet 3 times a day after meals for 5 days",
+      },
+    ],
+    attachmentRows: [],
+    labReportRows: [],
+  });
+
+  assert.equal(payload.consultations[0].prescriptions.length, 1);
+  assert.match(payload.consultations[0].prescriptions[0].name, /amoxicillin/i);
 });
 
 test("buildHealthRecordsPayload returns summary, timeline, and vitals trends", () => {
