@@ -530,6 +530,57 @@ test("patient dashboard returns stats and recent activity", async () => {
   assert.ok(dashboard.data.next_appointment.doctor_name);
 });
 
+test("patient dashboard prefers structured patient_diagnosis over clinical notes", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("dashboard-structured"),
+      password: "secret123",
+      full_name: "Structured Dashboard Tester",
+      phone: "57007777",
+      date_of_birth: "1988-08-08",
+      gender: "F",
+    },
+  });
+  const token = reg.data.token;
+  const patientId = (await api("GET", "/api/patient-portal/profile", { token })).data.profile.id;
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now', '-1 day'), '10:30', 'completed')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO consultations (
+      appointment_id,
+      patient_id,
+      doctor_id,
+      consultation_date,
+      doctor_notes,
+      clinical_note,
+      patient_diagnosis,
+      patient_prescription
+    )
+    VALUES (?, ?, ?, date('now', '-1 day'), ?, ?, ?, ?)
+  `).run(
+    appointmentId,
+    patientId,
+    doctorId,
+    "BP 138/88. Patient febrile.\n\nURTI\nPrescribed: Tab levodenk",
+    "BP 138/88. Patient febrile.",
+    "URTI",
+    "Tab levodenk",
+  );
+
+  const dashboard = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.data));
+  assert.equal(dashboard.data.last_consultation.diagnosis, "URTI");
+  assert.match(dashboard.data.recent_activity[0].description, /URTI/i);
+  assert.doesNotMatch(dashboard.data.recent_activity[0].description, /138\/88/i);
+});
+
 test("patient billing returns bills and summary totals", async () => {
   const reg = await api("POST", "/api/patient-auth/register", {
     body: {

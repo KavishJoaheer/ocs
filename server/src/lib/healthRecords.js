@@ -689,4 +689,5 @@ module.exports = {
   extractPrescriptionsFromNotes,
   parseVitalsFromText,
   mergeVitalsTrends,
+  resolveConsultationDiagnosis,
 };

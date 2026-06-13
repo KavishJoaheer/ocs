@@ -19,7 +19,7 @@ const {
 } = require("../lib/visitRequests");
 const {
   buildHealthRecordsPayload,
-  extractDiagnosisFromNotes,
+  resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
 const { serializePatientBillingRows } = require("../lib/utils");
 
@@ -237,6 +237,7 @@ router.get("/dashboard", (req, res) => {
         c.id,
         c.consultation_date,
         c.doctor_notes,
+        c.patient_diagnosis,
         d.full_name AS doctor_name
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
@@ -251,7 +252,7 @@ router.get("/dashboard", (req, res) => {
         id: lastConsultationRow.id,
         doctor_name: lastConsultationRow.doctor_name,
         date: lastConsultationRow.consultation_date,
-        diagnosis: extractDiagnosisFromNotes(lastConsultationRow.doctor_notes),
+        diagnosis: resolveConsultationDiagnosis(lastConsultationRow),
       }
     : null;
 
@@ -261,7 +262,11 @@ router.get("/dashboard", (req, res) => {
 
   const recentConsultationRows = db
     .prepare(`
-      SELECT c.consultation_date, c.doctor_notes, d.full_name AS doctor_name
+      SELECT
+        c.consultation_date,
+        c.doctor_notes,
+        c.patient_diagnosis,
+        d.full_name AS doctor_name
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?
@@ -271,7 +276,7 @@ router.get("/dashboard", (req, res) => {
     .all(patientId);
 
   const recent_activity = recentConsultationRows.map((row) => {
-    const diagnosis = extractDiagnosisFromNotes(row.doctor_notes);
+    const diagnosis = resolveConsultationDiagnosis(row);
     const doctorName = String(row.doctor_name || "Your doctor").trim();
     return {
       date: row.consultation_date,
