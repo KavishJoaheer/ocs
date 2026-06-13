@@ -559,6 +559,33 @@ function buildUnifiedTimeline(consultations, reports) {
   return events.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
+function resolveConsultationDiagnosis(row) {
+  const structured = String(row.patient_diagnosis || "").trim();
+  if (structured) {
+    return structured;
+  }
+
+  return extractDiagnosisFromNotes(row.doctor_notes);
+}
+
+function resolveConsultationPrescriptions(row) {
+  const structuredRx = String(row.patient_prescription || "").trim();
+  if (structuredRx) {
+    return extractPrescriptionsFromNotes(`Prescribed: ${structuredRx}`);
+  }
+
+  return extractPrescriptionsFromNotes(row.doctor_notes);
+}
+
+function resolveConsultationPlainSummary(row) {
+  const structuredRx = String(row.patient_prescription || "").trim();
+  if (structuredRx) {
+    return structuredRx.length <= 220 ? structuredRx : `${structuredRx.slice(0, 220).trim()}…`;
+  }
+
+  return buildPlainSummaryFromNotes(row.doctor_notes);
+}
+
 function buildHealthRecordsPayload({
   patient,
   consultationRows,
@@ -579,10 +606,10 @@ function buildHealthRecordsPayload({
     id: row.id,
     date: row.consultation_date,
     doctor_name: row.doctor_name,
-    diagnosis: extractDiagnosisFromNotes(row.doctor_notes),
-    plain_summary: buildPlainSummaryFromNotes(row.doctor_notes),
-    note_preview: buildPlainSummaryFromNotes(row.doctor_notes),
-    prescriptions: extractPrescriptionsFromNotes(row.doctor_notes),
+    diagnosis: resolveConsultationDiagnosis(row),
+    plain_summary: resolveConsultationPlainSummary(row),
+    note_preview: resolveConsultationPlainSummary(row),
+    prescriptions: resolveConsultationPrescriptions(row),
     reports: attachmentsByConsultation.get(row.id) || [],
   }));
 

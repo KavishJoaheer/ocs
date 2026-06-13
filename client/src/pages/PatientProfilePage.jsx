@@ -458,8 +458,14 @@ function getEmptyConsultationEntry(user) {
     consultation_date: dayjs().format("YYYY-MM-DD"),
     appointment_time: dayjs().format("HH:mm"),
     doctor_notes: "",
+    clinical_note: "",
+    patient_diagnosis: "",
+    patient_prescription: "",
   };
 }
+
+const DESKTOP_CONSULTATION_FIELD_CLASS =
+  "w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-ocs-teal focus:bg-white focus:ring-2 focus:ring-ocs-teal/20";
 
 function roleLabel(role) {
   if (role === "admin") return "Admin";
@@ -821,11 +827,27 @@ function ConsultationCreateModal({
   function handleSubmit(event) {
     event.preventDefault();
 
+    const hasStructuredInput =
+      form.clinical_note.trim() ||
+      form.patient_diagnosis.trim() ||
+      form.patient_prescription.trim();
+
+    if (hasStructuredInput) {
+      if (!form.clinical_note.trim() || !form.patient_diagnosis.trim()) {
+        return;
+      }
+    } else if (!form.doctor_notes.trim()) {
+      return;
+    }
+
     onSubmit({
       doctor_id: isAdmin ? Number(form.doctor_id) : Number(user.doctor_id),
       consultation_date: form.consultation_date,
       appointment_time: form.appointment_time,
       doctor_notes: form.doctor_notes,
+      clinical_note: form.clinical_note,
+      patient_diagnosis: form.patient_diagnosis,
+      patient_prescription: form.patient_prescription,
     });
   }
 
@@ -895,19 +917,67 @@ function ConsultationCreateModal({
           </label>
         </div>
 
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Consultation note</span>
-          <textarea
-            required
-            rows="12"
-            value={form.doctor_notes}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, doctor_notes: event.target.value }))
-            }
-            placeholder="Record assessment, plan, medication advice, and follow-up instructions."
-            className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
-          />
-        </label>
+        <div className="md:hidden">
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Consultation note</span>
+            <textarea
+              rows="12"
+              value={form.doctor_notes}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, doctor_notes: event.target.value }))
+              }
+              placeholder="Record assessment, plan, medication advice, and follow-up instructions."
+              className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
+            />
+          </label>
+        </div>
+
+        <div className="hidden flex-col gap-4 md:flex">
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-ocs-slate">
+              Internal Clinical Note (Private)
+            </span>
+            <textarea
+              required
+              rows="8"
+              value={form.clinical_note}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, clinical_note: event.target.value }))
+              }
+              placeholder="Record assessment, vitals, and private clinical observations. This will not be visible to the patient."
+              className={DESKTOP_CONSULTATION_FIELD_CLASS}
+            />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-ocs-slate">Diagnosis (Patient-Facing)</span>
+            <textarea
+              required
+              rows="3"
+              value={form.patient_diagnosis}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, patient_diagnosis: event.target.value }))
+              }
+              placeholder="Enter the clear, finalized diagnosis for the patient."
+              className={DESKTOP_CONSULTATION_FIELD_CLASS}
+            />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-ocs-slate">
+              Prescription &amp; Instructions (Patient-Facing)
+            </span>
+            <textarea
+              rows="4"
+              value={form.patient_prescription}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, patient_prescription: event.target.value }))
+              }
+              placeholder="Enter prescribed medications and dosage instructions."
+              className={DESKTOP_CONSULTATION_FIELD_CLASS}
+            />
+          </label>
+        </div>
 
         <div className="flex justify-end gap-3">
           <button

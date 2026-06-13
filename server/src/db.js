@@ -857,6 +857,7 @@ function initializeDatabase() {
 
   ensurePatientColumns();
   ensureDoctorColumns();
+  ensureConsultationColumns();
   ensureUserColumns();
   backfillLegacyPushSubscriptions();
   ensureHcmNewsColumns();
@@ -1116,6 +1117,34 @@ function ensureDoctorColumns() {
   if (!columns.includes("deleted_at")) {
     db.exec("ALTER TABLE doctors ADD COLUMN deleted_at TEXT");
   }
+}
+
+function ensureConsultationColumns() {
+  const columns = db
+    .prepare("PRAGMA table_info(consultations)")
+    .all()
+    .map((column) => column.name);
+
+  const requiredColumns = [
+    {
+      name: "clinical_note",
+      sql: "ALTER TABLE consultations ADD COLUMN clinical_note TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "patient_diagnosis",
+      sql: "ALTER TABLE consultations ADD COLUMN patient_diagnosis TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "patient_prescription",
+      sql: "ALTER TABLE consultations ADD COLUMN patient_prescription TEXT NOT NULL DEFAULT ''",
+    },
+  ];
+
+  requiredColumns.forEach((column) => {
+    if (!columns.includes(column.name)) {
+      db.exec(column.sql);
+    }
+  });
 }
 
 function ensureUserColumns() {

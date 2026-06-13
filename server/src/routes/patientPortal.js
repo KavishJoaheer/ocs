@@ -537,7 +537,14 @@ router.get("/health-records", (req, res) => {
 
   const consultationRows = db
     .prepare(`
-      SELECT c.id, c.consultation_date, c.doctor_notes, d.full_name AS doctor_name
+      SELECT
+        c.id,
+        c.consultation_date,
+        c.doctor_notes,
+        c.clinical_note,
+        c.patient_diagnosis,
+        c.patient_prescription,
+        d.full_name AS doctor_name
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?

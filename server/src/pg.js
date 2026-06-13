@@ -387,6 +387,9 @@ async function initializePostgresDatabase() {
 
       await pool.query(`
         ALTER TABLE billing ADD COLUMN IF NOT EXISTS payment_method TEXT;
+        ALTER TABLE consultations ADD COLUMN IF NOT EXISTS clinical_note TEXT NOT NULL DEFAULT '';
+        ALTER TABLE consultations ADD COLUMN IF NOT EXISTS patient_diagnosis TEXT NOT NULL DEFAULT '';
+        ALTER TABLE consultations ADD COLUMN IF NOT EXISTS patient_prescription TEXT NOT NULL DEFAULT '';
       `);
 
       await pool.query(`

@@ -17,6 +17,7 @@ const {
   buildPatientLocationFieldFromTags,
   sanitizeLocationTagsForSave,
 } = require("../lib/locationTags.js");
+const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.js");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 
 const router = express.Router();
@@ -1672,8 +1673,12 @@ router.post("/:id/consultations", (req, res) => {
 
   const consultationDate = String(req.body.consultation_date ?? "").trim();
   const appointmentTime = String(req.body.appointment_time ?? "").trim();
-  const doctorNotes = String(req.body.doctor_notes ?? "").trim();
   const requestedDoctorId = Number(req.body.doctor_id);
+  const normalizedNotes = normalizeConsultationNotesPayload(req.body);
+
+  if (normalizedNotes.error) {
+    return res.status(400).json({ error: normalizedNotes.error });
+  }
 
   if (!consultationDate) {
     return res.status(400).json({ error: "Consultation date is required." });
@@ -1681,10 +1686,6 @@ router.post("/:id/consultations", (req, res) => {
 
   if (!appointmentTime) {
     return res.status(400).json({ error: "Consultation time is required." });
-  }
-
-  if (!doctorNotes) {
-    return res.status(400).json({ error: "Consultation note is required." });
   }
 
   const doctorId =
@@ -1725,11 +1726,23 @@ router.post("/:id/consultations", (req, res) => {
           patient_id,
           doctor_id,
           consultation_date,
-          doctor_notes
+          doctor_notes,
+          clinical_note,
+          patient_diagnosis,
+          patient_prescription
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)
-      .run(appointmentId, patientId, doctorId, consultationDate, doctorNotes).lastInsertRowid;
+      .run(
+        appointmentId,
+        patientId,
+        doctorId,
+        consultationDate,
+        normalizedNotes.doctor_notes,
+        normalizedNotes.clinical_note,
+        normalizedNotes.patient_diagnosis,
+        normalizedNotes.patient_prescription,
+      ).lastInsertRowid;
 
     ensureBillingForConsultation(consultationId, patientId);
 
