@@ -3,6 +3,8 @@ import dayjs from "dayjs";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatDoctorName, shouldShowPlainSummary } from "../../lib/healthRecordsDisplay.js";
 
+const MAX_CHAR_LIMIT = 80;
+
 function doctorInitials(name) {
   const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
   const parts = trimmed.split(/\s+/).filter(Boolean);
@@ -39,47 +41,26 @@ function resolvePatientDoctorNotes(consultation) {
   return notes;
 }
 
-function resolveDetailedInstructions(consultation) {
-  return (consultation.prescriptions || []).filter((item) => String(item.instructions || "").trim());
-}
-
-function hasExpandableDetails(consultation) {
-  return (
-    Boolean(resolvePatientDoctorNotes(consultation)) ||
-    resolveDetailedInstructions(consultation).length > 0
-  );
-}
-
-function DesktopExpandedDetails({ consultation }) {
-  const doctorNotes = resolvePatientDoctorNotes(consultation);
-  const detailedInstructions = resolveDetailedInstructions(consultation);
-
+function DesktopExpandedDetails({ prescription, patientNotes, hasLongPrescription }) {
   return (
     <div className="mt-4 border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] pb-5 pt-4">
-      {detailedInstructions.length > 0 ? (
+      {hasLongPrescription && prescription ? (
         <section>
-          <h3 className="text-ocs-slate mb-2 text-base font-semibold">Detailed Instructions</h3>
-          <ul className="flex flex-col gap-3">
-            {detailedInstructions.map((item) => (
-              <li key={item.id}>
-                <p className="text-ocs-slate text-sm font-medium">{item.name}</p>
-                <p className="text-ocs-slate/80 mt-1 break-words text-sm leading-relaxed">
-                  {item.instructions}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <h3 className="text-ocs-slate mb-2 text-base font-semibold">Prescription</h3>
+          <p className="text-ocs-slate break-words text-sm font-medium leading-relaxed">
+            {prescription}
+          </p>
         </section>
       ) : null}
 
-      {doctorNotes ? (
+      {patientNotes ? (
         <section
           className={
-            detailedInstructions.length > 0 ? "mt-4 border-t border-slate-100 pt-4" : undefined
+            hasLongPrescription && prescription ? "mt-4 border-t border-slate-100 pt-4" : undefined
           }
         >
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
-          <p className="text-ocs-slate/80 break-words text-sm leading-relaxed">{doctorNotes}</p>
+          <p className="text-ocs-slate/80 break-words text-sm leading-relaxed">{patientNotes}</p>
         </section>
       ) : null}
     </div>
@@ -92,8 +73,16 @@ function ConsultationCard({ consultation }) {
   const specialty = consultation.doctor_specialty || "General Practitioner";
   const visitType = consultation.visit_type || "Home Visit";
   const dateLabel = formatConsultationDate(consultation.date);
-  const prescriptionSummary = formatPrescriptionSummary(consultation);
-  const showDesktopAccordion = Boolean(consultation.id) && hasExpandableDetails(consultation);
+  const prescription = formatPrescriptionSummary(consultation);
+  const patientNotes = resolvePatientDoctorNotes(consultation);
+  const hasLongPrescription = Boolean(prescription && prescription.length > MAX_CHAR_LIMIT);
+  const hasNotes = Boolean(patientNotes);
+  const isExpandable = hasLongPrescription || hasNotes;
+  const showDesktopAccordion = Boolean(consultation.id) && isExpandable;
+
+  const desktopPrescriptionPreview = hasLongPrescription
+    ? `${prescription.slice(0, MAX_CHAR_LIMIT).trimEnd()}…`
+    : prescription;
 
   return (
     <article className="ocs-surface-card w-full overflow-hidden bg-white">
@@ -142,9 +131,9 @@ function ConsultationCard({ consultation }) {
 
         <div>
           <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Prescription</p>
-          {prescriptionSummary ? (
+          {prescription ? (
             <p className="break-words text-[14px] font-medium leading-relaxed text-brand-cool-grey">
-              {prescriptionSummary}
+              {prescription}
             </p>
           ) : (
             <p className="text-[14px] font-medium text-brand-cool-grey">Not recorded</p>
@@ -170,9 +159,14 @@ function ConsultationCard({ consultation }) {
 
         <div className="min-w-0">
           <p className="mb-2 text-sm text-slate-500">Prescription</p>
-          {prescriptionSummary ? (
-            <p className="break-words text-sm font-medium leading-relaxed text-ocs-slate">
-              {prescriptionSummary}
+          {prescription ? (
+            <p
+              className={[
+                "break-words text-sm font-medium leading-relaxed text-ocs-slate",
+                hasLongPrescription ? "line-clamp-2" : "",
+              ].join(" ")}
+            >
+              {desktopPrescriptionPreview}
             </p>
           ) : (
             <p className="text-sm font-medium text-ocs-slate/70">Not recorded</p>
@@ -207,7 +201,11 @@ function ConsultationCard({ consultation }) {
                 isExpanded ? "max-h-[960px] opacity-100" : "max-h-0 opacity-0"
               }`}
             >
-              <DesktopExpandedDetails consultation={consultation} />
+              <DesktopExpandedDetails
+                prescription={prescription}
+                patientNotes={patientNotes}
+                hasLongPrescription={hasLongPrescription}
+              />
             </div>
           </div>
         </>
