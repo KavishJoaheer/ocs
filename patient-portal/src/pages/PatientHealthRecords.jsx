@@ -56,6 +56,7 @@ function PatientHealthRecords() {
           visit_type: c.visit_type || "Home Visit",
           diagnosis: c.diagnosis,
           plain_summary: c.plain_summary || c.note_preview || null,
+          patient_prescription: c.patient_prescription || null,
           prescriptions: c.prescriptions || [],
         }));
 

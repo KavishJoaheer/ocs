@@ -578,9 +578,13 @@ function resolveConsultationPrescriptions(row) {
 }
 
 function resolveConsultationPlainSummary(row) {
+  const clinicalNote = String(row.clinical_note || "").trim();
+  const patientDiagnosis = String(row.patient_diagnosis || "").trim();
   const structuredRx = String(row.patient_prescription || "").trim();
-  if (structuredRx) {
-    return structuredRx.length <= 220 ? structuredRx : `${structuredRx.slice(0, 220).trim()}…`;
+
+  // Structured consultations already expose diagnosis and prescription separately.
+  if (clinicalNote || patientDiagnosis || structuredRx) {
+    return "";
   }
 
   return buildPlainSummaryFromNotes(row.doctor_notes);
@@ -609,6 +613,7 @@ function buildHealthRecordsPayload({
     diagnosis: resolveConsultationDiagnosis(row),
     plain_summary: resolveConsultationPlainSummary(row),
     note_preview: resolveConsultationPlainSummary(row),
+    patient_prescription: String(row.patient_prescription || "").trim() || null,
     prescriptions: resolveConsultationPrescriptions(row),
     reports: attachmentsByConsultation.get(row.id) || [],
   }));

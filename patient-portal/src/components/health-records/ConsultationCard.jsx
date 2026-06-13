@@ -1,7 +1,7 @@
 import { useState } from "react";
 import dayjs from "dayjs";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
+import { formatDoctorName, shouldShowPlainSummary } from "../../lib/healthRecordsDisplay.js";
 
 function doctorInitials(name) {
   const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
@@ -22,42 +22,60 @@ function formatPrescriptionSummary(consultation) {
       .map((item) => [item.name, item.dosage].filter(Boolean).join(" "))
       .join(", ");
   }
-  return null;
+  return consultation.patient_prescription?.trim() || null;
+}
+
+function resolvePatientDoctorNotes(consultation) {
+  const notes = String(consultation.plain_summary || "").trim();
+  if (!notes || !shouldShowPlainSummary(consultation.diagnosis, notes)) {
+    return "";
+  }
+
+  const prescriptionText = formatPrescriptionSummary(consultation);
+  if (prescriptionText && notes.toLowerCase() === prescriptionText.toLowerCase()) {
+    return "";
+  }
+
+  return notes;
 }
 
 function DesktopExpandedDetails({ consultation }) {
   const prescriptions = consultation.prescriptions || [];
-  const hasPrescriptions = prescriptions.length > 0;
-  const hasDoctorNotes = Boolean(consultation.plain_summary?.trim());
+  const rawPrescription = consultation.patient_prescription?.trim() || "";
+  const hasStructuredPrescriptions = prescriptions.length > 0;
+  const hasRawPrescription = Boolean(rawPrescription);
+  const doctorNotes = resolvePatientDoctorNotes(consultation);
 
   return (
-    <div className="border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] py-5">
+    <div className="mt-4 border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] pb-5 pt-4">
       <section>
-        <h3 className="text-ocs-slate border-b border-slate-100 pb-2 mb-3 text-base font-semibold">
+        <h3 className="text-ocs-slate mb-3 border-b border-slate-100 pb-2 text-base font-semibold">
           Prescribed Medications &amp; Instructions
         </h3>
-        {hasPrescriptions ? (
+        {hasStructuredPrescriptions ? (
           <ul className="flex flex-col gap-4">
             {prescriptions.map((item) => (
               <li key={item.id}>
                 <p className="text-ocs-slate font-medium">{item.name}</p>
                 {item.instructions ? (
-                  <p className="text-slate-500 mt-1 text-sm leading-relaxed">{item.instructions}</p>
+                  <p className="text-ocs-slate/80 mt-1 text-sm leading-relaxed">{item.instructions}</p>
                 ) : item.dosage && item.dosage !== item.name ? (
-                  <p className="text-slate-500 mt-1 text-sm leading-relaxed">{item.dosage}</p>
+                  <p className="text-ocs-slate/80 mt-1 text-sm leading-relaxed">{item.dosage}</p>
                 ) : null}
               </li>
             ))}
           </ul>
+        ) : hasRawPrescription ? (
+          <p className="text-ocs-slate text-sm leading-relaxed">{rawPrescription}</p>
         ) : (
-          <p className="text-sm text-brand-cool-grey">No prescribed medications recorded.</p>
+          <p className="text-ocs-slate/70 text-sm">No prescribed medications recorded.</p>
         )}
       </section>
 
-      {hasDoctorNotes ? (
-        <section className="mt-6">
+      {doctorNotes ? (
+        <section className="mt-4 border-t border-slate-100 pt-4">
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
-          <p className="text-slate-600 text-sm leading-relaxed">{consultation.plain_summary}</p>
+          <p className="text-ocs-slate/80 text-sm leading-relaxed">{doctorNotes}</p>
         </section>
       ) : null}
     </div>
@@ -90,20 +108,22 @@ function ConsultationCard({ consultation }) {
             <p className="native-display text-[16px] leading-snug text-brand-dark-grey lg:text-ocs-slate">
               {doctorName}
             </p>
-            <p className="native-label mt-0.5 text-[13px] text-brand-cool-grey">{specialty}</p>
+            <p className="native-label mt-0.5 text-[13px] text-brand-cool-grey lg:hidden">{specialty}</p>
           </div>
         </div>
 
         <div className="ml-4 shrink-0 text-right">
-          <p className="native-label text-[13px] text-brand-cool-grey">{dateLabel}</p>
-          <span className="ocs-status-pill ocs-status-pill-teal mt-2">{visitType}</span>
+          <p className="native-label text-[13px] text-brand-cool-grey lg:text-ocs-slate">{dateLabel}</p>
+          <span className="ocs-status-pill ocs-status-pill-teal mt-2 uppercase lg:tracking-[0.12em]">
+            {visitType}
+          </span>
         </div>
       </div>
 
       <div className="border-t border-brand-teal/10" aria-hidden="true" />
 
       <div
-        className="grid grid-cols-2 gap-4 bg-gradient-to-br from-brand-teal/5 to-white lg:gap-6"
+        className="grid grid-cols-2 gap-4 bg-gradient-to-br from-brand-teal/5 to-white lg:grid-cols-1 lg:gap-6"
         style={{ padding: "var(--native-pad-card)" }}
       >
         <div>
@@ -113,14 +133,14 @@ function ConsultationCard({ consultation }) {
           {consultation.diagnosis ? (
             <span className="ocs-status-pill-diagnosis">{consultation.diagnosis}</span>
           ) : (
-            <p className="text-[14px] font-medium text-brand-cool-grey">Not recorded</p>
+            <p className="text-[14px] font-medium text-brand-cool-grey lg:text-ocs-slate/70">
+              Not recorded
+            </p>
           )}
         </div>
 
-        <div>
-          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">
-            Prescription
-          </p>
+        <div className="lg:hidden">
+          <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Prescription</p>
           {prescriptionSummary ? (
             <p className="text-[14px] font-medium leading-relaxed text-brand-cool-grey">
               {prescriptionSummary}

@@ -67,4 +67,6 @@ test("buildHealthRecordsPayload prefers structured consultation columns", () => 
   assert.equal(payload.consultations[0].prescriptions.length, 1);
   assert.match(payload.consultations[0].prescriptions[0].name, /levodenk/i);
   assert.doesNotMatch(payload.consultations[0].plain_summary, /138\/88/i);
+  assert.equal(payload.consultations[0].plain_summary, "");
+  assert.equal(payload.consultations[0].patient_prescription, "Tab levodenk");
 });
