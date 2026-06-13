@@ -39,43 +39,47 @@ function resolvePatientDoctorNotes(consultation) {
   return notes;
 }
 
+function resolveDetailedInstructions(consultation) {
+  return (consultation.prescriptions || []).filter((item) => String(item.instructions || "").trim());
+}
+
+function hasExpandableDetails(consultation) {
+  return (
+    Boolean(resolvePatientDoctorNotes(consultation)) ||
+    resolveDetailedInstructions(consultation).length > 0
+  );
+}
+
 function DesktopExpandedDetails({ consultation }) {
-  const prescriptions = consultation.prescriptions || [];
-  const rawPrescription = consultation.patient_prescription?.trim() || "";
-  const hasStructuredPrescriptions = prescriptions.length > 0;
-  const hasRawPrescription = Boolean(rawPrescription);
   const doctorNotes = resolvePatientDoctorNotes(consultation);
+  const detailedInstructions = resolveDetailedInstructions(consultation);
 
   return (
     <div className="mt-4 border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] pb-5 pt-4">
-      <section>
-        <h3 className="text-ocs-slate mb-3 border-b border-slate-100 pb-2 text-base font-semibold">
-          Prescribed Medications &amp; Instructions
-        </h3>
-        {hasStructuredPrescriptions ? (
-          <ul className="flex flex-col gap-4">
-            {prescriptions.map((item) => (
+      {detailedInstructions.length > 0 ? (
+        <section>
+          <h3 className="text-ocs-slate mb-2 text-base font-semibold">Detailed Instructions</h3>
+          <ul className="flex flex-col gap-3">
+            {detailedInstructions.map((item) => (
               <li key={item.id}>
-                <p className="text-ocs-slate font-medium">{item.name}</p>
-                {item.instructions ? (
-                  <p className="text-ocs-slate/80 mt-1 text-sm leading-relaxed">{item.instructions}</p>
-                ) : item.dosage && item.dosage !== item.name ? (
-                  <p className="text-ocs-slate/80 mt-1 text-sm leading-relaxed">{item.dosage}</p>
-                ) : null}
+                <p className="text-ocs-slate text-sm font-medium">{item.name}</p>
+                <p className="text-ocs-slate/80 mt-1 break-words text-sm leading-relaxed">
+                  {item.instructions}
+                </p>
               </li>
             ))}
           </ul>
-        ) : hasRawPrescription ? (
-          <p className="text-ocs-slate text-sm leading-relaxed">{rawPrescription}</p>
-        ) : (
-          <p className="text-ocs-slate/70 text-sm">No prescribed medications recorded.</p>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       {doctorNotes ? (
-        <section className="mt-4 border-t border-slate-100 pt-4">
+        <section
+          className={
+            detailedInstructions.length > 0 ? "mt-4 border-t border-slate-100 pt-4" : undefined
+          }
+        >
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
-          <p className="text-ocs-slate/80 text-sm leading-relaxed">{doctorNotes}</p>
+          <p className="text-ocs-slate/80 break-words text-sm leading-relaxed">{doctorNotes}</p>
         </section>
       ) : null}
     </div>
@@ -89,7 +93,7 @@ function ConsultationCard({ consultation }) {
   const visitType = consultation.visit_type || "Home Visit";
   const dateLabel = formatConsultationDate(consultation.date);
   const prescriptionSummary = formatPrescriptionSummary(consultation);
-  const canExpand = Boolean(consultation.id);
+  const showDesktopAccordion = Boolean(consultation.id) && hasExpandableDetails(consultation);
 
   return (
     <article className="ocs-surface-card w-full overflow-hidden bg-white">
@@ -122,27 +126,24 @@ function ConsultationCard({ consultation }) {
 
       <div className="border-t border-brand-teal/10" aria-hidden="true" />
 
+      {/* Mobile — unchanged two-column summary */}
       <div
-        className="grid grid-cols-2 gap-4 bg-gradient-to-br from-brand-teal/5 to-white lg:grid-cols-1 lg:gap-6"
+        className="grid grid-cols-2 gap-4 bg-gradient-to-br from-brand-teal/5 to-white lg:hidden"
         style={{ padding: "var(--native-pad-card)" }}
       >
         <div>
-          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">
-            Diagnosis
-          </p>
+          <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Diagnosis</p>
           {consultation.diagnosis ? (
             <span className="ocs-status-pill-diagnosis">{consultation.diagnosis}</span>
           ) : (
-            <p className="text-[14px] font-medium text-brand-cool-grey lg:text-ocs-slate/70">
-              Not recorded
-            </p>
+            <p className="text-[14px] font-medium text-brand-cool-grey">Not recorded</p>
           )}
         </div>
 
-        <div className="lg:hidden">
+        <div>
           <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Prescription</p>
           {prescriptionSummary ? (
-            <p className="text-[14px] font-medium leading-relaxed text-brand-cool-grey">
+            <p className="break-words text-[14px] font-medium leading-relaxed text-brand-cool-grey">
               {prescriptionSummary}
             </p>
           ) : (
@@ -151,7 +152,35 @@ function ConsultationCard({ consultation }) {
         </div>
       </div>
 
-      {canExpand ? (
+      {/* Desktop — diagnosis and prescription side-by-side */}
+      <div
+        className="hidden w-full grid-cols-2 items-start gap-8 bg-gradient-to-br from-brand-teal/5 to-white lg:grid"
+        style={{ padding: "var(--native-pad-card)" }}
+      >
+        <div className="min-w-0">
+          <p className="mb-2 text-sm text-slate-500">Diagnosis</p>
+          {consultation.diagnosis ? (
+            <span className="inline-block rounded-full bg-ocs-teal/10 px-3 py-1.5 text-sm font-semibold text-ocs-teal">
+              {consultation.diagnosis}
+            </span>
+          ) : (
+            <p className="text-sm font-medium text-ocs-slate/70">Not recorded</p>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <p className="mb-2 text-sm text-slate-500">Prescription</p>
+          {prescriptionSummary ? (
+            <p className="break-words text-sm font-medium leading-relaxed text-ocs-slate">
+              {prescriptionSummary}
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-ocs-slate/70">Not recorded</p>
+          )}
+        </div>
+      </div>
+
+      {showDesktopAccordion ? (
         <>
           <div className="hidden border-t border-brand-teal/10 lg:block" aria-hidden="true" />
           <button
