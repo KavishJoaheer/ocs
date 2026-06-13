@@ -82,9 +82,7 @@ function DesktopLastVisitCard({ consultation }) {
   const dateLabel = dayjs(consultation.date).isValid()
     ? dayjs(consultation.date).format("D MMMM YYYY")
     : consultation.date;
-  const summaryTo = consultation.id
-    ? `/health-records/visits/${consultation.id}`
-    : "/health-records";
+  const summaryTo = "/health-records";
 
   return (
     <section className="desktop-card animate-fade-in-up stagger-1">
@@ -122,7 +120,7 @@ function DesktopLastVisitCard({ consultation }) {
           to={summaryTo}
           className="text-sm font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
         >
-          View Visit Summary →
+          View Health Records →
         </Link>
       </div>
     </section>

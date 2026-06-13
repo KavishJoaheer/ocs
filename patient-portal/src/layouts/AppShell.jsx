@@ -9,7 +9,6 @@ import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
 function AppShellContent() {
   const { pathname } = useLocation();
   const isNativeDashboard = pathname === "/dashboard";
-  const isVisitSummary = pathname.startsWith("/health-records/visits/");
   const isVisitStatus = pathname === "/request-visit/tracking";
   const isProfile = pathname === "/profile";
   const isHealthRecords = pathname === "/health-records";
@@ -18,7 +17,6 @@ function AppShellContent() {
   const isDesktopHeroPage = isHealthRecords || isAppointments || isBilling;
   const isFullBleedMobile =
     isNativeDashboard ||
-    isVisitSummary ||
     isVisitStatus ||
     isProfile ||
     isDesktopHeroPage;

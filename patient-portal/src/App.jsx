@@ -10,7 +10,6 @@ import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
 const PatientDashboard = lazy(() => import("./pages/PatientDashboard.jsx"));
 const PatientAppointments = lazy(() => import("./pages/PatientAppointments.jsx"));
 const PatientHealthRecords = lazy(() => import("./pages/PatientHealthRecords.jsx"));
-const VisitSummaryPage = lazy(() => import("./pages/VisitSummaryPage.jsx"));
 const PatientBilling = lazy(() => import("./pages/PatientBilling.jsx"));
 const PatientProfile = lazy(() => import("./pages/PatientProfile.jsx"));
 const RequestVisitLayout = lazy(() => import("./pages/request-visit/RequestVisitLayout.jsx"));
@@ -53,7 +52,7 @@ function App() {
         </Route>
         <Route path="appointments" element={<PatientAppointments />} />
         <Route path="health-records" element={<PatientHealthRecords />} />
-        <Route path="health-records/visits/:consultationId" element={<VisitSummaryPage />} />
+        <Route path="health-records/visits/:consultationId" element={<Navigate to="/health-records" replace />} />
         <Route path="consultations" element={<Navigate to="/health-records" replace />} />
         <Route path="billing" element={<PatientBilling />} />
         <Route path="profile" element={<PatientProfile />} />

@@ -1,6 +1,6 @@
+import { useState } from "react";
 import dayjs from "dayjs";
-import { Link } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 function doctorInitials(name) {
@@ -25,16 +25,56 @@ function formatPrescriptionSummary(consultation) {
   return null;
 }
 
+function DesktopExpandedDetails({ consultation }) {
+  const prescriptions = consultation.prescriptions || [];
+  const hasPrescriptions = prescriptions.length > 0;
+  const hasDoctorNotes = Boolean(consultation.plain_summary?.trim());
+
+  return (
+    <div className="border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] py-5">
+      <section>
+        <h3 className="text-ocs-slate border-b border-slate-100 pb-2 mb-3 text-base font-semibold">
+          Prescribed Medications &amp; Instructions
+        </h3>
+        {hasPrescriptions ? (
+          <ul className="flex flex-col gap-4">
+            {prescriptions.map((item) => (
+              <li key={item.id}>
+                <p className="text-ocs-slate font-medium">{item.name}</p>
+                {item.instructions ? (
+                  <p className="text-slate-500 mt-1 text-sm leading-relaxed">{item.instructions}</p>
+                ) : item.dosage && item.dosage !== item.name ? (
+                  <p className="text-slate-500 mt-1 text-sm leading-relaxed">{item.dosage}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-brand-cool-grey">No prescribed medications recorded.</p>
+        )}
+      </section>
+
+      {hasDoctorNotes ? (
+        <section className="mt-6">
+          <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
+          <p className="text-slate-600 text-sm leading-relaxed">{consultation.plain_summary}</p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function ConsultationCard({ consultation }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const doctorName = formatDoctorName(consultation.doctor_name);
   const specialty = consultation.doctor_specialty || "General Practitioner";
   const visitType = consultation.visit_type || "Home Visit";
   const dateLabel = formatConsultationDate(consultation.date);
   const prescriptionSummary = formatPrescriptionSummary(consultation);
-  const summaryPath = consultation.id ? `/health-records/visits/${consultation.id}` : null;
+  const canExpand = Boolean(consultation.id);
 
-  const card = (
-    <article className="ocs-surface-card ocs-card-press w-full overflow-hidden bg-white">
+  return (
+    <article className="ocs-surface-card w-full overflow-hidden bg-white">
       <div
         className="flex items-start justify-between"
         style={{ padding: "var(--native-pad-card)" }}
@@ -47,7 +87,9 @@ function ConsultationCard({ consultation }) {
             {doctorInitials(consultation.doctor_name)}
           </div>
           <div className="min-w-0 pt-0.5">
-            <p className="native-display text-[16px] leading-snug text-brand-dark-grey lg:text-ocs-slate">{doctorName}</p>
+            <p className="native-display text-[16px] leading-snug text-brand-dark-grey lg:text-ocs-slate">
+              {doctorName}
+            </p>
             <p className="native-label mt-0.5 text-[13px] text-brand-cool-grey">{specialty}</p>
           </div>
         </div>
@@ -65,7 +107,9 @@ function ConsultationCard({ consultation }) {
         style={{ padding: "var(--native-pad-card)" }}
       >
         <div>
-          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">Diagnosis</p>
+          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">
+            Diagnosis
+          </p>
           {consultation.diagnosis ? (
             <span className="ocs-status-pill-diagnosis">{consultation.diagnosis}</span>
           ) : (
@@ -74,7 +118,9 @@ function ConsultationCard({ consultation }) {
         </div>
 
         <div>
-          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">Prescription</p>
+          <p className="native-label mb-2 text-[13px] text-brand-dark-grey lg:text-ocs-slate">
+            Prescription
+          </p>
           {prescriptionSummary ? (
             <p className="text-[14px] font-medium leading-relaxed text-brand-cool-grey">
               {prescriptionSummary}
@@ -85,33 +131,39 @@ function ConsultationCard({ consultation }) {
         </div>
       </div>
 
-      {summaryPath ? (
+      {canExpand ? (
         <>
-          <div className="border-t border-brand-teal/10" aria-hidden="true" />
-          <div
-            className="flex items-center justify-between bg-white"
-            style={{ padding: "var(--native-pad-card)" }}
+          <div className="hidden border-t border-brand-teal/10 lg:block" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setIsExpanded((open) => !open)}
+            className="hidden w-full items-center justify-center bg-white py-3 text-ocs-teal transition hover:bg-slate-50/80 lg:flex"
+            aria-expanded={isExpanded}
+            aria-label={
+              isExpanded
+                ? `Collapse visit details for ${doctorName} on ${dateLabel}`
+                : `Expand visit details for ${doctorName} on ${dateLabel}`
+            }
           >
-            <span className="text-[14px] font-semibold text-brand-teal">View visit summary</span>
-            <ChevronRight className="size-5 text-brand-teal" strokeWidth={2.25} aria-hidden="true" />
+            {isExpanded ? (
+              <ChevronUp className="size-5" strokeWidth={2.25} aria-hidden="true" />
+            ) : (
+              <ChevronDown className="size-5" strokeWidth={2.25} aria-hidden="true" />
+            )}
+          </button>
+
+          <div className="hidden lg:block">
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                isExpanded ? "max-h-[960px] opacity-100" : "max-h-0 opacity-0"
+              }`}
+            >
+              <DesktopExpandedDetails consultation={consultation} />
+            </div>
           </div>
         </>
       ) : null}
     </article>
-  );
-
-  if (!summaryPath) {
-    return card;
-  }
-
-  return (
-    <Link
-      to={summaryPath}
-      className="block w-full rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal"
-      aria-label={`View visit summary for ${doctorName} on ${dateLabel}`}
-    >
-      {card}
-    </Link>
   );
 }
 
