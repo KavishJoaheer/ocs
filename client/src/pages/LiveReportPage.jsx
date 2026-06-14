@@ -4,11 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   LabelList,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -31,7 +27,60 @@ const PERIOD_OPTIONS = [
   { id: "daily", label: "Specific date" },
 ];
 
-const CHART_COLORS = ["#2d8f98", "#41c8c6", "#f1bc35", "#5a7c89", "#9ad0d2", "#d7eef0"];
+const LOCATION_BAR_LIMIT = 10;
+
+function buildTopLocationRows(rows, limit = LOCATION_BAR_LIMIT) {
+  const sorted = [...rows].sort(
+    (a, b) => Number(b.patient_count || 0) - Number(a.patient_count || 0),
+  );
+
+  if (sorted.length <= limit) {
+    return sorted;
+  }
+
+  const top = sorted.slice(0, limit);
+  const otherCount = sorted
+    .slice(limit)
+    .reduce((sum, row) => sum + Number(row.patient_count || 0), 0);
+
+  if (otherCount > 0) {
+    top.push({ location: "Other", patient_count: otherCount });
+  }
+
+  return top;
+}
+
+function LocationVolumeBars({ rows }) {
+  const displayRows = useMemo(() => buildTopLocationRows(rows), [rows]);
+  const maxCount = useMemo(
+    () => Math.max(...displayRows.map((row) => Number(row.patient_count || 0)), 1),
+    [displayRows],
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {displayRows.map((row) => {
+        const count = Number(row.patient_count || 0);
+        const widthPercent = Math.max(4, Math.round((count / maxCount) * 100));
+
+        return (
+          <div key={row.location} className="flex items-center gap-3">
+            <p className="w-1/3 min-w-0 truncate text-sm font-medium text-ocs-slate" title={row.location}>
+              {row.location}
+            </p>
+            <div className="h-2 min-w-0 flex-1 rounded-full bg-slate-100">
+              <div
+                className="h-2 rounded-full bg-ocs-teal"
+                style={{ width: `${widthPercent}%` }}
+              />
+            </div>
+            <p className="w-8 shrink-0 text-right text-sm font-bold text-ocs-slate">{count}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function getTodayInputValue() {
   const now = new Date();
@@ -404,32 +453,13 @@ export default function LiveReportPage() {
         </SectionCard>
 
         <SectionCard className="min-w-0" title="Patients Seen Per Location">
+          <p className="mb-3 text-xs text-slate-400">Top locations by visit volume</p>
           {locationRows.length === 0 ? (
             <div className="flex h-32 items-center justify-center text-sm italic text-gray-400">
               No data available for the selected period.
             </div>
           ) : (
-            <div className="h-56 min-h-[14rem] w-full min-w-0 lg:h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                  <Pie
-                    data={locationRows}
-                    dataKey="patient_count"
-                    nameKey="location"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius="72%"
-                    label={{ fontSize: 11 }}
-                  >
-                    {locationRows.map((_, index) => (
-                      <Cell key={`loc-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: "12px" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <LocationVolumeBars rows={locationRows} />
           )}
         </SectionCard>
       </div>
