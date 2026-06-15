@@ -581,6 +581,87 @@ test("patient dashboard prefers structured patient_diagnosis over clinical notes
   assert.doesNotMatch(dashboard.data.recent_activity[0].description, /138\/88/i);
 });
 
+test("staff can add mobile-style consultation notes from patient profile", async () => {
+  const patientId = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+    `)
+    .run(
+      "Consult Note Patient",
+      "Consult",
+      "Patient",
+      `STAFF-CN-${Date.now()}`,
+      35,
+      "1990-01-01",
+      "M",
+      "57001234",
+      "57001234",
+      "12 Clinic Road",
+    ).lastInsertRowid;
+
+  const doctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "arun.dharee", password: "Welcome@123" },
+  });
+  assert.equal(doctorLogin.status, 200);
+
+  const created = await api("POST", `/api/patients/${patientId}/consultations`, {
+    token: doctorLogin.data.token,
+    body: {
+      consultation_date: "2026-06-12",
+      appointment_time: "10:30",
+      doctor_notes: "Patient reviewed. Continue current treatment.",
+    },
+  });
+
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.doctor_notes, "Patient reviewed. Continue current treatment.");
+  assert.equal(created.data.clinical_note, "");
+  assert.equal(created.data.patient_diagnosis, "");
+});
+
+test("staff can add structured desktop consultation notes from patient profile", async () => {
+  const patientId = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+    `)
+    .run(
+      "Structured Consult Patient",
+      "Structured",
+      "Patient",
+      `STAFF-SC-${Date.now()}`,
+      42,
+      "1983-04-04",
+      "F",
+      "57005678",
+      "57005678",
+      "44 Health Street",
+    ).lastInsertRowid;
+
+  const created = await api("POST", `/api/patients/${patientId}/consultations`, {
+    token: adminToken,
+    body: {
+      doctor_id: db.prepare("SELECT id FROM doctors LIMIT 1").get().id,
+      consultation_date: "2026-06-12",
+      appointment_time: "14:00",
+      clinical_note: "BP 138/88. Patient febrile.",
+      patient_diagnosis: "URTI",
+      patient_prescription: "Tab levodenk",
+    },
+  });
+
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.clinical_note, "BP 138/88. Patient febrile.");
+  assert.equal(created.data.patient_diagnosis, "URTI");
+  assert.equal(created.data.patient_prescription, "Tab levodenk");
+  assert.match(created.data.doctor_notes, /URTI/i);
+});
+
 test("patient billing returns bills and summary totals", async () => {
   const reg = await api("POST", "/api/patient-auth/register", {
     body: {
@@ -592,8 +673,12 @@ test("patient billing returns bills and summary totals", async () => {
       gender: "M",
     },
   });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
   const token = reg.data.token;
-  const patientId = (await api("GET", "/api/patient-portal/profile", { token })).data.profile.id;
+  const profileRes = await api("GET", "/api/patient-portal/profile", { token });
+  assert.equal(profileRes.status, 200, JSON.stringify(profileRes.data));
+  assert.ok(profileRes.data.profile, JSON.stringify(profileRes.data));
+  const patientId = profileRes.data.profile.id;
   const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
 
   const appointmentId = db

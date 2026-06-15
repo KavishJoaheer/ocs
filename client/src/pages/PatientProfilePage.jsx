@@ -815,6 +815,7 @@ function ConsultationCreateModal({
 }) {
   const [form, setForm] = useState(getEmptyConsultationEntry(user));
   const isAdmin = user.role === "admin";
+  const isMobile = useIsMobile();
   const [syncedDeps, setSyncedDeps] = useState({ open, user });
 
   if (syncedDeps.open !== open || syncedDeps.user !== user) {
@@ -827,16 +828,18 @@ function ConsultationCreateModal({
   function handleSubmit(event) {
     event.preventDefault();
 
-    const hasStructuredInput =
-      form.clinical_note.trim() ||
-      form.patient_diagnosis.trim() ||
-      form.patient_prescription.trim();
-
-    if (hasStructuredInput) {
-      if (!form.clinical_note.trim() || !form.patient_diagnosis.trim()) {
+    if (isMobile) {
+      if (!form.doctor_notes.trim()) {
+        toast.error("Consultation note is required.");
         return;
       }
-    } else if (!form.doctor_notes.trim()) {
+    } else if (!form.clinical_note.trim() || !form.patient_diagnosis.trim()) {
+      if (!form.clinical_note.trim()) {
+        toast.error("Internal clinical note is required.");
+        return;
+      }
+
+      toast.error("Patient-facing diagnosis is required.");
       return;
     }
 
@@ -845,9 +848,9 @@ function ConsultationCreateModal({
       consultation_date: form.consultation_date,
       appointment_time: form.appointment_time,
       doctor_notes: form.doctor_notes,
-      clinical_note: form.clinical_note,
-      patient_diagnosis: form.patient_diagnosis,
-      patient_prescription: form.patient_prescription,
+      clinical_note: isMobile ? "" : form.clinical_note,
+      patient_diagnosis: isMobile ? "" : form.patient_diagnosis,
+      patient_prescription: isMobile ? "" : form.patient_prescription,
     });
   }
 
@@ -938,7 +941,6 @@ function ConsultationCreateModal({
               Internal Clinical Note (Private)
             </span>
             <textarea
-              required
               rows="8"
               value={form.clinical_note}
               onChange={(event) =>
@@ -952,7 +954,6 @@ function ConsultationCreateModal({
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-ocs-slate">Diagnosis (Patient-Facing)</span>
             <textarea
-              required
               rows="3"
               value={form.patient_diagnosis}
               onChange={(event) =>
