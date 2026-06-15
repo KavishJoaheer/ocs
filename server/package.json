@@ -27,6 +27,7 @@
     "audit:inventory-categories": "node src/scripts/auditInventoryCategories.js",
     "dedupe:ocs-master": "node -e \"require('./src/db').initializeDatabase(); const r=require('./src/lib/dedupeOcsMasterInventory').prepareOcsMasterInventoryIntegrity(); console.log(r);\"",
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
+    "smoke:production-flows": "node src/scripts/productionFlowSmoke.js",
     "audit:push-audience": "node src/scripts/validatePushAudienceRouting.js",
     "audit:inventory-realtime": "node src/scripts/validateInventoryRealtimeRouting.js",
     "audit:sale-billing-linkage": "node src/scripts/validateSaleBillingLinkage.js",
