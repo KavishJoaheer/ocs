@@ -119,6 +119,29 @@ async function notifyStaffNewVisitRequest(visit) {
   return { ok: delivered > 0, delivered, attempted: results.flat().length };
 }
 
+async function notifyStaffVisitCancelled(visit) {
+  if (!visit?.id) {
+    return { ok: false, skipped: true, reason: "missing_visit" };
+  }
+
+  const patientName = String(visit.patient_name || "A patient").trim();
+  const payload = {
+    title: "Home visit cancelled",
+    body: `${patientName} cancelled their home visit request.`,
+    url: "/visit-requests",
+    icon: "/icon-192.png",
+    tag: `visit-request-cancelled-${visit.id}`,
+  };
+
+  const results = await Promise.all(
+    STAFF_DISPATCH_ROLES.map((role) => sendPushToRole(role, payload)),
+  );
+
+  const delivered = results.flat().filter((entry) => entry?.ok).length;
+
+  return { ok: delivered > 0, delivered, attempted: results.flat().length };
+}
+
 async function notifyAssignedDoctor(visit, { previousDoctorId } = {}) {
   const doctorId = Number(visit?.assigned_doctor_id || 0);
   const previous = Number(previousDoctorId || 0);
@@ -180,5 +203,6 @@ module.exports = {
   buildPatientVisitPayload,
   notifyPatientVisitUpdate,
   notifyStaffNewVisitRequest,
+  notifyStaffVisitCancelled,
   notifyVisitRequestUpdated,
 };

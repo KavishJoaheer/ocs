@@ -1061,6 +1061,7 @@ router.post("/:id/restore", (req, res) => {
   }
 
   db.prepare("UPDATE patients SET deleted_at = NULL WHERE id = ?").run(patientId);
+  publishPatientDataChange(patientId, { reason: "patient" });
   res.json(getPatientById(patientId));
 });
 
@@ -1830,6 +1831,8 @@ router.post("/:id/operator-access", (req, res) => {
     `).run(patientId, operatorUserId, req.auth.id, expiresAt);
   })();
 
+  publishPatientDataChange(patientId, { reason: "patient" });
+
   res.status(201).json({
     access: getPatientOperatorAccess(patientId),
   });
@@ -1857,6 +1860,7 @@ router.delete("/:id/operator-access/:accessId", (req, res) => {
   }
 
   db.prepare("DELETE FROM patient_operator_access WHERE id = ?").run(accessId);
+  publishPatientDataChange(patientId, { reason: "patient" });
   res.status(204).send();
 });
 

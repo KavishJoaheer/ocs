@@ -815,7 +815,6 @@ function ConsultationCreateModal({
 }) {
   const [form, setForm] = useState(getEmptyConsultationEntry(user));
   const isAdmin = user.role === "admin";
-  const isMobile = useIsMobile();
   const [syncedDeps, setSyncedDeps] = useState({ open, user });
 
   if (syncedDeps.open !== open || syncedDeps.user !== user) {
@@ -828,17 +827,12 @@ function ConsultationCreateModal({
   function handleSubmit(event) {
     event.preventDefault();
 
-    if (isMobile) {
-      if (!form.doctor_notes.trim()) {
-        toast.error("Consultation note is required.");
-        return;
-      }
-    } else if (!form.clinical_note.trim() || !form.patient_diagnosis.trim()) {
-      if (!form.clinical_note.trim()) {
-        toast.error("Internal clinical note is required.");
-        return;
-      }
+    if (!form.clinical_note.trim()) {
+      toast.error("Internal clinical note is required.");
+      return;
+    }
 
+    if (!form.patient_diagnosis.trim()) {
       toast.error("Patient-facing diagnosis is required.");
       return;
     }
@@ -848,9 +842,9 @@ function ConsultationCreateModal({
       consultation_date: form.consultation_date,
       appointment_time: form.appointment_time,
       doctor_notes: form.doctor_notes,
-      clinical_note: isMobile ? "" : form.clinical_note,
-      patient_diagnosis: isMobile ? "" : form.patient_diagnosis,
-      patient_prescription: isMobile ? "" : form.patient_prescription,
+      clinical_note: form.clinical_note,
+      patient_diagnosis: form.patient_diagnosis,
+      patient_prescription: form.patient_prescription,
     });
   }
 
@@ -920,22 +914,7 @@ function ConsultationCreateModal({
           </label>
         </div>
 
-        <div className="md:hidden">
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Consultation note</span>
-            <textarea
-              rows="12"
-              value={form.doctor_notes}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, doctor_notes: event.target.value }))
-              }
-              placeholder="Record assessment, plan, medication advice, and follow-up instructions."
-              className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
-            />
-          </label>
-        </div>
-
-        <div className="hidden flex-col gap-4 md:flex">
+        <div className="flex flex-col gap-4">
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-ocs-slate">
               Internal Clinical Note (Private)

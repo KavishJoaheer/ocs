@@ -13,6 +13,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
 const workspaceMeta = {
   "current-week-roster": {
@@ -166,6 +167,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
   const [loading, setLoading] = useState(true);
 
   const meta = workspaceMeta[workspaceKey];
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
@@ -192,7 +194,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   const title = useMemo(() => (meta ? meta.title(data) : "Operator workspace"), [data, meta]);
 

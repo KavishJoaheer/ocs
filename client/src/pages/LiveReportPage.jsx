@@ -16,6 +16,7 @@ import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { formatCurrency } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -155,6 +156,7 @@ export default function LiveReportPage() {
   const [doctorScope, setDoctorScope] = useState("general");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [isRevenueExpanded, setIsRevenueExpanded] = useState(false);
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
@@ -186,7 +188,7 @@ export default function LiveReportPage() {
     return () => {
       ignore = true;
     };
-  }, [anchorDate, doctorScope, period, selectedDoctorId]);
+  }, [anchorDate, doctorScope, period, selectedDoctorId, refreshKey]);
 
   useEffect(() => {
     setIsRevenueExpanded(false);

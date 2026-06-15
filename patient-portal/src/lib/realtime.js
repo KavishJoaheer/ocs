@@ -8,12 +8,17 @@ export const PATIENT_DATA_EVENT = "patient:data";
 
 let eventSource = null;
 let reconnectTimer = null;
+let isConnected = false;
 
 function clearReconnectTimer() {
   if (reconnectTimer) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+}
+
+export function isPatientRealtimeConnected() {
+  return isConnected;
 }
 
 /**
@@ -38,17 +43,24 @@ export function startPatientRealtime() {
     return; // already connected
   }
 
+  isConnected = false;
+
   const url = `${API_BASE}/patient-portal/stream?access_token=${encodeURIComponent(token)}`;
   const source = new EventSource(url);
   eventSource = source;
 
-  source.addEventListener("connected", clearReconnectTimer);
+  source.addEventListener("connected", () => {
+    isConnected = true;
+    clearReconnectTimer();
+  });
 
   source.addEventListener("patient_data_change", () => {
     window.dispatchEvent(new CustomEvent(PATIENT_DATA_EVENT));
   });
 
   source.onerror = () => {
+    isConnected = false;
+
     if (eventSource === source) {
       source.close();
       eventSource = null;
@@ -67,6 +79,7 @@ export function startPatientRealtime() {
 
 export function stopPatientRealtime() {
   clearReconnectTimer();
+  isConnected = false;
   if (eventSource) {
     eventSource.close();
     eventSource = null;

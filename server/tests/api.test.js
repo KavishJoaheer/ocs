@@ -64,6 +64,17 @@ function uniqueEmail(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e6)}@test.local`;
 }
 
+async function verifyPortalPatientForVisits(reg) {
+  const patientId = reg.data.user.patient_id;
+  assert.ok(patientId, JSON.stringify(reg.data));
+
+  const verified = await api("PATCH", `/api/patients/${patientId}/verify-link`, {
+    token: adminToken,
+    body: { verified: true },
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.data));
+}
+
 let adminToken;
 
 test("staff admin can log in", async () => {
@@ -96,6 +107,7 @@ test("patient registration returns a normalized profile", async () => {
   assert.equal(profile.data.profile.phone, "57001122");
   assert.equal(profile.data.profile.date_of_birth, "1990-05-05");
   assert.equal(profile.data.profile.gender, "M");
+  assert.equal(reg.data.user.link_status, "self_registered");
   assert.ok(
     String(profile.data.profile.ocs_care_number || "").startsWith("OCS-"),
     "expected an OCS care number",
@@ -166,6 +178,7 @@ test("self-registration links to an existing staff record via national ID", asyn
     },
   });
   assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  assert.equal(reg.data.user.link_status, "pending_review");
 
   // The portal account should now read the staff record's data (same row).
   const profile = await api("GET", "/api/patient-portal/profile", {
@@ -199,6 +212,55 @@ test("self-registration links to an existing staff record via national ID", asyn
   });
   assert.equal(verified.status, 200, JSON.stringify(verified.data));
   assert.equal(verified.data.link_status, "verified");
+
+  const profileAfterVerify = await api("GET", "/api/patient-auth/me", {
+    token: reg.data.token,
+  });
+  assert.equal(profileAfterVerify.data.user.link_status, "verified");
+});
+
+test("pending portal link cannot request a home visit until verified", async () => {
+  const nationalId = `NID-VISIT-${Date.now()}`;
+  db.prepare(`
+    INSERT INTO patients (
+      full_name, first_name, last_name, patient_identifier, patient_id_number,
+      age, date_of_birth, gender, contact_number, patient_contact_number,
+      address, link_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+  `).run(
+    "Visit Gate Patient",
+    "Visit",
+    "Gate",
+    `STAFF-VG-${Date.now()}`,
+    nationalId,
+    38,
+    "1986-03-03",
+    "F",
+    "57008888",
+    "57008888",
+    "Rose Hill",
+  );
+
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("visit-gate"),
+      password: "secret123",
+      full_name: "Visit Gate Patient",
+      phone: "57008889",
+      national_id: nationalId,
+      date_of_birth: "1986-03-03",
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  assert.equal(reg.data.user.link_status, "pending_review");
+
+  const blocked = await api("POST", "/api/patient-portal/visit-requests", {
+    token: reg.data.token,
+    body: { address: "12 Home Lane", reason: "Fever", urgency: "routine" },
+  });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code, "account_link_pending");
 });
 
 test("staff can merge a duplicate patient into the canonical record", async () => {
@@ -281,6 +343,7 @@ test("home-visit request flows patient -> staff -> patient", async () => {
     },
   });
   const token = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
 
   const created = await api("POST", "/api/patient-portal/visit-requests", {
     token,
@@ -333,6 +396,7 @@ test("patient can cancel a pending visit request", async () => {
     },
   });
   const token = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
 
   const created = await api("POST", "/api/patient-portal/visit-requests", {
     token,
@@ -363,6 +427,7 @@ test("patient cannot cancel a visit after the doctor has arrived", async () => {
     },
   });
   const token = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
 
   const created = await api("POST", "/api/patient-portal/visit-requests", {
     token,
@@ -397,6 +462,7 @@ test("doctors only see assigned visit requests and can complete consultation", a
     },
   });
   const patientToken = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
 
   const created = await api("POST", "/api/patient-portal/visit-requests", {
     token: patientToken,

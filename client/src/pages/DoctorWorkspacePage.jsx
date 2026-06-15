@@ -14,6 +14,7 @@ import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import {
   formatAgeFromDateOfBirth,
@@ -373,6 +374,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
   const meta = workspaceMeta[workspaceKey];
   const underReviewFilter = searchParams.get("tab") === "under_review";
   const subscribedFilter = searchParams.get("filter") === "subscribed";
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     if (
@@ -408,7 +410,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   const title = useMemo(() => (meta ? meta.title(data) : "Doctor workspace"), [data, meta]);
 

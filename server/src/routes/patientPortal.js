@@ -11,7 +11,7 @@ const {
   savePatientPushSubscription,
   clearPatientPushSubscription,
 } = require("../lib/push");
-const { notifyStaffNewVisitRequest } = require("../lib/visitRequestNotifications");
+const { notifyStaffNewVisitRequest, notifyStaffVisitCancelled } = require("../lib/visitRequestNotifications");
 const {
   PATIENT_CANCELLABLE_STATUSES,
   getActiveVisitRequestForPatient,
@@ -22,6 +22,7 @@ const {
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
 const { serializePatientBillingRows } = require("../lib/utils");
+const { isVerifiedPatientPortalAccount } = require("../lib/patientAuth");
 
 const router = express.Router();
 
@@ -755,6 +756,14 @@ router.post("/visit-requests", (req, res) => {
     });
   }
 
+  if (!isVerifiedPatientPortalAccount(req.patientAuth)) {
+    return res.status(409).json({
+      error:
+        "Your clinic record is not verified yet. Please contact the clinic to complete account linking before requesting a visit.",
+      code: "account_link_pending",
+    });
+  }
+
   const existingActive = getActiveVisitRequestForPatient(patientId);
   if (existingActive) {
     return res.status(409).json({
@@ -820,7 +829,12 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
 
   publishPatientDataChange(patientId, { reason: "visit_request" });
 
-  return res.json({ visit_request: getVisitRequestById(requestId) });
+  const visitRequest = getVisitRequestById(requestId);
+  void notifyStaffVisitCancelled(visitRequest).catch((error) => {
+    console.warn("[push] visit cancellation notification failed:", error?.message || error);
+  });
+
+  return res.json({ visit_request: visitRequest });
 });
 
 router.handleReportAttachmentDownload = handleReportAttachmentDownload;

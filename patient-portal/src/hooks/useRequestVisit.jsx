@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import RequestDoctorSheet from "../components/request-visit/RequestDoctorSheet.jsx";
-import { ACCOUNT_NOT_LINKED_MESSAGE, isPatientAccountLinked } from "../lib/patientAccountLink.js";
+import { ACCOUNT_NOT_LINKED_MESSAGE, getPatientLinkBlockMessage, isPatientAccountLinked } from "../lib/patientAccountLink.js";
 import { useActiveVisitGuard } from "./useActiveVisitGuard.js";
 import { usePatientAuth } from "./usePatientAuth.jsx";
 
@@ -14,7 +14,7 @@ export function RequestVisitProvider({ children }) {
 
   const openRequestSheet = useCallback(async () => {
     if (!isPatientAccountLinked(user)) {
-      toast.error(ACCOUNT_NOT_LINKED_MESSAGE);
+      toast.error(getPatientLinkBlockMessage(user) || ACCOUNT_NOT_LINKED_MESSAGE);
       return false;
     }
 

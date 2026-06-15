@@ -2,9 +2,11 @@ const express = require("express");
 const { db } = require("../db");
 const {
   cleanupExpiredPatientSessions,
+  enrichPatientUserRow,
   requirePatientAuth,
   serializePatientUser,
 } = require("../lib/patientAuth");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
   generateSessionToken,
   getSessionExpiryTimestamp,
@@ -155,15 +157,17 @@ router.post("/register", (req, res) => {
 
     const user = db.prepare("SELECT * FROM patient_users WHERE id = ?").get(patientUserId);
 
-    return { token, user };
+    return { token, user, patientId };
   });
 
   try {
-    const { token, user } = register();
+    const { token, user, patientId } = register();
+
+    publishPatientDataChange(patientId, { reason: "patient" });
 
     return res.status(201).json({
       token,
-      user: serializePatientUser(user),
+      user: enrichPatientUserRow(user),
     });
   } catch (error) {
     if (error.code === "ALREADY_LINKED") {
@@ -221,7 +225,7 @@ router.post("/login", (req, res) => {
 
   return res.json({
     token,
-    user: serializePatientUser(user),
+    user: enrichPatientUserRow(user),
   });
 });
 

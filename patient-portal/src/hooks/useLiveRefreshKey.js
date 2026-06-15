@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { PATIENT_DATA_EVENT } from "../lib/realtime.js";
+import { isPatientRealtimeConnected, PATIENT_DATA_EVENT } from "../lib/realtime.js";
+
+const POLL_INTERVAL_MS = 60000;
 
 /**
  * Returns a counter that increments whenever the patient realtime stream
@@ -16,6 +18,16 @@ export function useLiveRefreshKey() {
     const bump = () => setRefreshKey((value) => value + 1);
     window.addEventListener(PATIENT_DATA_EVENT, bump);
     return () => window.removeEventListener(PATIENT_DATA_EVENT, bump);
+  }, []);
+
+  useEffect(() => {
+    const poll = window.setInterval(() => {
+      if (!isPatientRealtimeConnected()) {
+        setRefreshKey((value) => value + 1);
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(poll);
   }, []);
 
   return refreshKey;

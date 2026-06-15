@@ -14,6 +14,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { canEditConsultationNote } from "../lib/consultationAccess.js";
 import {
@@ -37,6 +38,7 @@ function ConsultationDetailPage() {
 
   const canEdit = consultation && canEditConsultationNote(user, consultation);
   const canViewConsultationNotes = user.role === "admin" || user.role === "doctor";
+  const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
@@ -68,7 +70,7 @@ function ConsultationDetailPage() {
     return () => {
       ignore = true;
     };
-  }, [id]);
+  }, [id, refreshKey]);
 
   async function handleSave(event) {
     event.preventDefault();

@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
-import { ACCOUNT_NOT_LINKED_MESSAGE, isPatientAccountLinked } from "../../lib/patientAccountLink.js";
+import { getPatientLinkBlockMessage, isPatientAccountLinked } from "../../lib/patientAccountLink.js";
 import {
   INITIAL_DRAFT,
   clearVisitDraft,
@@ -136,7 +136,7 @@ function RequestVisitLayout() {
   if (!isPatientAccountLinked(user)) {
     return (
       <VisitGuardErrorState
-        message={ACCOUNT_NOT_LINKED_MESSAGE}
+        message={getPatientLinkBlockMessage(user)}
         retryLabel="Back to Dashboard"
         onRetry={() => navigate("/dashboard", { replace: true })}
       />

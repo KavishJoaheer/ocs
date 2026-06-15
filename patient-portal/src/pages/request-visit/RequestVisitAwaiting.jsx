@@ -3,11 +3,13 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import dayjs from "dayjs";
 import { Headphones } from "lucide-react";
 import { api } from "../../lib/api.js";
+import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import { URGENCY_META } from "./urgency.js";
 
 function RequestVisitAwaiting() {
   const navigate = useNavigate();
   const { draft } = useOutletContext();
+  const refreshKey = useLiveRefreshKey();
 
   const submittedAt = draft.submittedAt ? dayjs(draft.submittedAt) : dayjs();
   const urgencyLabel = (URGENCY_META[draft.urgency] || URGENCY_META.routine).label;
@@ -18,17 +20,38 @@ function RequestVisitAwaiting() {
       return undefined;
     }
 
-    const timer = window.setTimeout(async () => {
+    let ignore = false;
+
+    async function checkActiveVisit() {
       try {
         const data = await api.get("/patient-portal/visit-requests/active");
-        navigate(data.visit_request ? "/request-visit/tracking" : "/dashboard");
+        if (ignore) {
+          return;
+        }
+
+        if (data.visit_request) {
+          navigate("/request-visit/tracking", { replace: true });
+        }
       } catch {
+        if (!ignore) {
+          navigate("/dashboard");
+        }
+      }
+    }
+
+    checkActiveVisit();
+
+    const timer = window.setTimeout(() => {
+      if (!ignore) {
         navigate("/dashboard");
       }
-    }, 6000);
+    }, 60000);
 
-    return () => window.clearTimeout(timer);
-  }, [draft.submittedAt, navigate]);
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [draft.submittedAt, navigate, refreshKey]);
 
   return (
     <div className="mx-auto flex min-h-[72vh] max-w-[460px] animate-fade-in-fast flex-col items-center justify-center text-center">

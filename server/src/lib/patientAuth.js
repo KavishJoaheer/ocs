@@ -15,10 +15,34 @@ function serializePatientUser(row) {
     email: row.email,
     full_name: row.full_name,
     patient_id: row.patient_id ? Number(row.patient_id) : null,
+    link_status: row.link_status != null ? String(row.link_status) : null,
     phone: row.phone || "",
     date_of_birth: row.date_of_birth || "",
     gender: row.gender || "M",
   };
+}
+
+function enrichPatientUserRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  if (row.link_status != null || !row.patient_id) {
+    return serializePatientUser(row);
+  }
+
+  const patient = db
+    .prepare("SELECT link_status FROM patients WHERE id = ? AND deleted_at IS NULL")
+    .get(row.patient_id);
+
+  return serializePatientUser({
+    ...row,
+    link_status: patient?.link_status ?? null,
+  });
+}
+
+function isVerifiedPatientPortalAccount(auth) {
+  return Boolean(auth?.patient_id) && auth?.link_status === "verified";
 }
 
 function getPatientSessionUserByToken(token) {
@@ -36,9 +60,11 @@ function getPatientSessionUserByToken(token) {
         u.patient_id,
         u.phone,
         u.date_of_birth,
-        u.gender
+        u.gender,
+        p.link_status
       FROM patient_auth_sessions s
       JOIN patient_users u ON u.id = s.patient_user_id
+      LEFT JOIN patients p ON p.id = u.patient_id AND p.deleted_at IS NULL
       WHERE s.token_hash = ?
         AND s.expires_at > CURRENT_TIMESTAMP
         AND u.is_active = 1
@@ -78,7 +104,7 @@ function authenticatePatient(req, res, next, { allowQuery = false } = {}) {
     return res.status(401).json({ error: "Your session is invalid or has expired." });
   }
 
-  req.patientAuth = serializePatientUser(session);
+  req.patientAuth = enrichPatientUserRow(session);
   req.patientAuthSessionId = Number(session.session_id);
   req.patientAuthToken = token;
   return next();
@@ -96,7 +122,9 @@ function requirePatientAuthFlexible(req, res, next) {
 
 module.exports = {
   cleanupExpiredPatientSessions,
+  enrichPatientUserRow,
   getPatientSessionUserByToken,
+  isVerifiedPatientPortalAccount,
   requirePatientAuth,
   requirePatientAuthFlexible,
   serializePatientUser,

@@ -1,5 +1,6 @@
 const express = require("express");
-const { publishLinkhamClaimsChange } = require("../lib/inventoryRealtime");
+const { db } = require("../db");
+const { publishLinkhamClaimsChange, publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
   approveLinkhamClaim,
   approveLinkhamCleanClaimsBatch,
@@ -14,6 +15,38 @@ const {
 } = require("../lib/linkhamPortal");
 
 const router = express.Router();
+
+function publishPatientBillingChangeForClaim(claim) {
+  const billingId = Number(claim?.id || 0);
+  if (!billingId) {
+    return;
+  }
+
+  const row = db.prepare("SELECT patient_id FROM billing WHERE id = ?").get(billingId);
+  if (row?.patient_id) {
+    publishPatientDataChange(row.patient_id, { reason: "billing" });
+  }
+}
+
+function publishPatientBillingChangesForClaims(claims = []) {
+  const patientIds = new Set();
+
+  claims.forEach((claim) => {
+    const billingId = Number(claim?.id || 0);
+    if (!billingId) {
+      return;
+    }
+
+    const row = db.prepare("SELECT patient_id FROM billing WHERE id = ?").get(billingId);
+    if (row?.patient_id) {
+      patientIds.add(Number(row.patient_id));
+    }
+  });
+
+  patientIds.forEach((patientId) => {
+    publishPatientDataChange(patientId, { reason: "billing" });
+  });
+}
 
 router.get("/dashboard", (_req, res) => {
   res.json(getLinkhamDashboardMetrics());
@@ -58,6 +91,7 @@ router.patch("/claims/batch-approve-clean", (req, res) => {
   publishLinkhamClaimsChange({
     changedByUserId: req.auth.id,
   });
+  publishPatientBillingChangesForClaims(result.approvedClaims || []);
 
   res.json(result);
 });
@@ -99,6 +133,7 @@ router.patch("/claims/:id/approve", (req, res) => {
     claimId: updated.id,
     changedByUserId: req.auth.id,
   });
+  publishPatientBillingChangeForClaim(updated);
 
   res.json(updated);
 });
@@ -115,6 +150,7 @@ router.patch("/claims/:id/dispute", (req, res) => {
     claimId: updated.id,
     changedByUserId: req.auth.id,
   });
+  publishPatientBillingChangeForClaim(updated);
 
   res.json(updated);
 });
