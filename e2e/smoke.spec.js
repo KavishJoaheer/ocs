@@ -26,7 +26,27 @@ async function registerPatient(request, suffix) {
   });
   expect(response.ok()).toBeTruthy();
   const body = await response.json();
-  return { email, token: body.token };
+  return {
+    email,
+    token: body.token,
+    patientId: body.user?.patient_id,
+  };
+}
+
+async function verifyPortalPatient(request, patientId) {
+  expect(patientId).toBeTruthy();
+  const staff = await staffLogin(request);
+  const verified = await request.patch(`${API_BASE}/patients/${patientId}/verify-link`, {
+    headers: { Authorization: `Bearer ${staff.token}` },
+    data: { verified: true },
+  });
+  expect(verified.ok()).toBeTruthy();
+}
+
+async function registerVerifiedPatient(request, suffix) {
+  const patient = await registerPatient(request, suffix);
+  await verifyPortalPatient(request, patient.patientId);
+  return patient;
 }
 
 async function injectPatientSession(page, token) {
@@ -59,7 +79,7 @@ test.describe("OCS smoke", () => {
   });
 
   test("API patient can register, request a visit, and staff can see it", async ({ request }) => {
-    const { token } = await registerPatient(request, "flow");
+    const { token } = await registerVerifiedPatient(request, "flow");
     const authHeaders = { Authorization: `Bearer ${token}` };
 
     const createVisit = await request.post(`${API_BASE}/patient-portal/visit-requests`, {
@@ -85,7 +105,7 @@ test.describe("OCS smoke", () => {
   });
 
   test("API patient can cancel a pending visit request", async ({ request }) => {
-    const { token } = await registerPatient(request, "cancel-api");
+    const { token } = await registerVerifiedPatient(request, "cancel-api");
     const authHeaders = { Authorization: `Bearer ${token}` };
 
     const createVisit = await request.post(`${API_BASE}/patient-portal/visit-requests`, {
@@ -115,7 +135,7 @@ test.describe("OCS smoke", () => {
   });
 
   test("patient visit tracking UI renders for an active request", async ({ page, request }) => {
-    const { token } = await registerPatient(request, "tracking");
+    const { token } = await registerVerifiedPatient(request, "tracking");
     await injectPatientSession(page, token);
 
     await request.post(`${API_BASE}/patient-portal/visit-requests`, {
@@ -136,7 +156,7 @@ test.describe("OCS smoke", () => {
   });
 
   test("patient can cancel an active visit from tracking", async ({ page, request }) => {
-    const { token } = await registerPatient(request, "cancel-ui");
+    const { token } = await registerVerifiedPatient(request, "cancel-ui");
     await injectPatientSession(page, token);
 
     await request.post(`${API_BASE}/patient-portal/visit-requests`, {
@@ -160,7 +180,7 @@ test.describe("OCS smoke", () => {
   });
 
   test("patient dashboard loads for an authenticated user", async ({ page, request }) => {
-    const { token } = await registerPatient(request, "dashboard");
+    const { token } = await registerVerifiedPatient(request, "dashboard");
     await injectPatientSession(page, token);
 
     await page.goto(`${PATIENT_BASE}/dashboard`);
