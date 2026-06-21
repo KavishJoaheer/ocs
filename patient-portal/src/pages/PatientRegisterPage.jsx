@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import MobilePatientRegisterForm from "../components/auth/MobilePatientRegisterForm.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { formatDisplayName } from "../lib/formatDisplayName.js";
 
@@ -19,6 +21,7 @@ const SECTION_CLASS =
   "text-[10px] font-extrabold uppercase tracking-widest text-[#065a60]";
 
 function PatientRegisterPage() {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { isAuthenticated, isBootstrapping, register } = usePatientAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,6 +37,10 @@ function PatientRegisterPage() {
 
   if (!isBootstrapping && isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (isMobile) {
+    return <MobilePatientRegisterForm />;
   }
 
   function validate() {
