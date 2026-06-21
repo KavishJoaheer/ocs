@@ -98,7 +98,7 @@ function PatientRegisterPage() {
   return (
     <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
       {/* Left: brand canvas */}
-      <div className="relative flex w-full shrink-0 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#f4fbfb] via-[#ebf6f6] to-[#dceeee] p-12 md:sticky md:top-0 md:h-svh md:w-1/2 lg:p-16">
+      <div className="relative flex w-full shrink-0 flex-col overflow-hidden bg-gradient-to-br from-[#f4fbfb] via-[#ebf6f6] to-[#dceeee] p-12 md:sticky md:top-0 md:h-svh md:w-1/2 lg:p-16">
         <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/15 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-[#f7ba24]/10 blur-[100px]" />
 
@@ -115,7 +115,7 @@ function PatientRegisterPage() {
           </Link>
         </div>
 
-        <div className="relative z-10 flex flex-1 flex-col justify-center py-10 lg:py-14">
+        <div className="relative z-10 pt-10 lg:pt-12">
           <div className="flex max-w-xl gap-5 lg:gap-6">
             <div
               className="amber-banner-accent w-1.5 shrink-0 self-stretch rounded-full bg-gradient-to-b from-[#f7ba24] to-[#e0a112]"
@@ -134,6 +134,8 @@ function PatientRegisterPage() {
             </div>
           </div>
         </div>
+
+        <div className="flex-1" aria-hidden="true" />
 
         <div className="relative z-10 text-[10px] font-medium tracking-wider text-[#3b595c]/45">
           PATIENT HEALTH HUB © {new Date().getFullYear()} OCS MÉDECINS
