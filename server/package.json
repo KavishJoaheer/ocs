@@ -33,6 +33,7 @@
     "audit:sale-billing-linkage": "node src/scripts/validateSaleBillingLinkage.js",
     "audit:cross-device-stream": "node src/scripts/validateCrossDeviceInventoryStream.js",
     "purge:deleted-patients": "node src/scripts/purgeSoftDeletedPatients.js",
+    "purge:patients-by-ids": "node src/scripts/purgePatientsByIds.js",
     "purge:deleted-team": "node src/scripts/purgeSoftDeletedTeamAccounts.js",
     "seed:doctor-stock": "node src/scripts/syncDoctorStockFromOcs.js",
     "clone:doctor-bag-template": "node src/scripts/cloneDoctorBagFromTemplate.js",

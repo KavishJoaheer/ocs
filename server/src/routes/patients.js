@@ -18,6 +18,7 @@ const {
   sanitizeLocationTagsForSave,
 } = require("../lib/locationTags.js");
 const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.js");
+const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 
 const router = express.Router();
@@ -1879,6 +1880,38 @@ router.delete("/:id/operator-access/:accessId", (req, res) => {
   db.prepare("DELETE FROM patient_operator_access WHERE id = ?").run(accessId);
   publishPatientDataChange(patientId, { reason: "patient" });
   res.status(204).send();
+});
+
+router.delete("/:id/permanent", (req, res) => {
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({ error: "Only admin can permanently delete patients." });
+  }
+
+  const patientId = Number(req.params.id);
+  const existing = db
+    .prepare("SELECT id, full_name FROM patients WHERE id = ?")
+    .get(patientId);
+
+  if (!existing) {
+    return res.status(404).json({ error: "Patient not found." });
+  }
+
+  try {
+    const removed = purgePatientRecordsSync(patientId);
+    publishPatientDataChange(patientId, { reason: "patient" });
+    return res.json({
+      removed: true,
+      patient: {
+        id: removed.id,
+        full_name: removed.full_name,
+        patient_identifier: removed.patient_identifier,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message || "Could not permanently delete the patient record.",
+    });
+  }
 });
 
 router.delete("/:id", (req, res) => {
