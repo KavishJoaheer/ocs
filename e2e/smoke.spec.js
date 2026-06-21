@@ -20,8 +20,7 @@ async function registerPatient(request, suffix) {
       password: "secret123",
       full_name: "E2E Patient",
       phone: "57001122",
-      date_of_birth: "1990-05-05",
-      gender: "M",
+      national_id: `E2E-${suffix}-${Date.now()}`,
     },
   });
   expect(response.ok()).toBeTruthy();

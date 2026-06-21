@@ -27,8 +27,6 @@ function PatientRegisterPage() {
     email: "",
     phone: "",
     national_id: "",
-    date_of_birth: "",
-    gender: "",
     password: "",
     confirmPassword: "",
   });
@@ -44,8 +42,9 @@ function PatientRegisterPage() {
     if (!form.full_name.trim()) newErrors.full_name = "Full name is required.";
     if (!form.email.trim()) newErrors.email = "Email is required.";
     if (!form.phone.trim()) newErrors.phone = "Phone number is required.";
-    if (!form.date_of_birth) newErrors.date_of_birth = "Date of birth is required.";
-    if (!form.gender) newErrors.gender = "Please select your gender.";
+    if (!form.national_id.trim()) {
+      newErrors.national_id = "National ID is required to match your medical records.";
+    }
     if (!form.password) newErrors.password = "Password is required.";
     if (form.password.length < 6) newErrors.password = "Password must be at least 6 characters.";
     if (form.password !== form.confirmPassword) {
@@ -67,8 +66,6 @@ function PatientRegisterPage() {
       email: form.email.trim(),
       phone: form.phone.trim(),
       national_id: form.national_id.trim(),
-      date_of_birth: form.date_of_birth,
-      gender: form.gender,
       password: form.password,
     })
       .then((newUser) => {
@@ -209,7 +206,7 @@ function PatientRegisterPage() {
 
                   <div>
                     <label htmlFor="register-national-id" className={LABEL_CLASS}>
-                      National ID number <span className="text-gray-400">(optional)</span>
+                      National ID number <span className="text-[#065a60]">*</span>
                     </label>
                     <input
                       id="register-national-id"
@@ -218,59 +215,16 @@ function PatientRegisterPage() {
                       placeholder="e.g. your government-issued NIC"
                       className={INPUT_CLASS}
                       autoComplete="off"
+                      required
                     />
+                    {errors.national_id && (
+                      <p className="mt-1.5 text-xs font-medium text-red-500">{errors.national_id}</p>
+                    )}
                     <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
                       Enter your government-issued ID to help us match your clinic record. This is{" "}
                       <span className="font-semibold text-[#14213d]">not</span> your OCS care number
                       (e.g. #OCS-224). OCS numbers are assigned by the clinic and cannot be used here.
                     </p>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label htmlFor="register-dob" className={LABEL_CLASS}>
-                        Date of birth
-                      </label>
-                      <input
-                        id="register-dob"
-                        type="date"
-                        value={form.date_of_birth}
-                        onChange={setField("date_of_birth")}
-                        className={INPUT_CLASS}
-                      />
-                      {errors.date_of_birth && (
-                        <p className="mt-1.5 text-xs font-medium text-red-500">
-                          {errors.date_of_birth}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <span className={LABEL_CLASS}>Gender</span>
-                      <div className="mt-2 flex gap-2">
-                        {[
-                          { value: "M", label: "Male" },
-                          { value: "F", label: "Female" },
-                        ].map(({ value, label }) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setField("gender")(value)}
-                            className={[
-                              "flex-1 rounded-xl border px-3 py-3.5 text-xs font-bold tracking-wide transition-all",
-                              form.gender === value
-                                ? "border-[#065a60] bg-[#065a60]/5 text-[#065a60] ring-4 ring-[#065a60]/5"
-                                : "border-gray-200 bg-white text-gray-500 hover:border-[#065a60]/30",
-                            ].join(" ")}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      {errors.gender && (
-                        <p className="mt-1.5 text-xs font-medium text-red-500">{errors.gender}</p>
-                      )}
-                    </div>
                   </div>
                 </div>
               </div>

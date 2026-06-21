@@ -44,10 +44,10 @@ export function AuthProvider({ children }) {
     return payload.user;
   }, []);
 
-  const register = useCallback(async ({ email, password, full_name, phone, date_of_birth, gender, national_id }) => {
+  const register = useCallback(async ({ email, password, full_name, phone, national_id }) => {
     const payload = await api.post(
       "/patient-auth/register",
-      { email, password, full_name, phone, date_of_birth, gender, national_id },
+      { email, password, full_name, phone, national_id },
       { skipAuth: true },
     );
 

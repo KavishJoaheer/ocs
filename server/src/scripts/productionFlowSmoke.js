@@ -216,8 +216,7 @@ async function flowVerifiedVisitRequest() {
       password: "secret123",
       full_name: "Visit Flow Patient",
       phone: "57005555",
-      date_of_birth: "1990-01-01",
-      gender: "M",
+      national_id: `SMOKE-VISIT-${uniqueSuffix()}`,
     },
   });
   assertOk(register.ok, "Patient register failed", register.data);

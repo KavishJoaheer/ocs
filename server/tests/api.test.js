@@ -64,6 +64,10 @@ function uniqueEmail(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e6)}@test.local`;
 }
 
+function uniqueNationalId(prefix) {
+  return `TEST-${prefix}-${Date.now()}${Math.floor(Math.random() * 1000)}`;
+}
+
 async function verifyPortalPatientForVisits(reg) {
   const patientId = reg.data.user.patient_id;
   assert.ok(patientId, JSON.stringify(reg.data));
@@ -94,6 +98,7 @@ test("patient registration returns a normalized profile", async () => {
       password: "secret123",
       full_name: "Profile Tester",
       phone: "57001122",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1990-05-05",
       gender: "M",
     },
@@ -121,6 +126,7 @@ test("PATCH /profile persists contact + next-of-kin details", async () => {
       password: "secret123",
       full_name: "Patch Tester",
       phone: "57003344",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1985-01-01",
       gender: "F",
     },
@@ -295,6 +301,7 @@ test("staff can merge a duplicate patient into the canonical record", async () =
       password: "secret123",
       full_name: "Merge Target",
       phone: "57002222",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1974-01-01",
       gender: "F",
     },
@@ -338,6 +345,7 @@ test("home-visit request flows patient -> staff -> patient", async () => {
       password: "secret123",
       full_name: "Visit Tester",
       phone: "57001234",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1992-03-03",
       gender: "F",
     },
@@ -391,6 +399,7 @@ test("patient can cancel a pending visit request", async () => {
       password: "secret123",
       full_name: "Cancel Tester",
       phone: "57007777",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1991-01-01",
       gender: "F",
     },
@@ -422,6 +431,7 @@ test("patient cannot cancel a visit after the doctor has arrived", async () => {
       password: "secret123",
       full_name: "No Cancel Tester",
       phone: "57008888",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1990-02-02",
       gender: "M",
     },
@@ -457,6 +467,7 @@ test("doctors only see assigned visit requests and can complete consultation", a
       password: "secret123",
       full_name: "Doctor Visit Tester",
       phone: "57009999",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1988-08-08",
       gender: "M",
     },
@@ -532,6 +543,7 @@ test("staff long-term review surfaces as an upcoming patient appointment", async
       password: "secret123",
       full_name: "Review Tester",
       phone: "57004321",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1979-09-09",
       gender: "M",
     },
@@ -563,6 +575,7 @@ test("patient dashboard returns stats and recent activity", async () => {
       password: "secret123",
       full_name: "Dashboard Tester",
       phone: "57005555",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1985-04-04",
       gender: "F",
     },
@@ -603,6 +616,7 @@ test("patient dashboard prefers structured patient_diagnosis over clinical notes
       password: "secret123",
       full_name: "Structured Dashboard Tester",
       phone: "57007777",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1988-08-08",
       gender: "F",
     },
@@ -735,6 +749,7 @@ test("patient billing returns bills and summary totals", async () => {
       password: "secret123",
       full_name: "Billing Tester",
       phone: "57006666",
+      national_id: uniqueNationalId("api"),
       date_of_birth: "1983-02-02",
       gender: "M",
     },

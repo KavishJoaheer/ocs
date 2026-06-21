@@ -43,19 +43,16 @@ router.post("/register", (req, res) => {
   const fullName = String(req.body.full_name ?? "").trim();
   const phone = String(req.body.phone ?? "").trim();
   const dateOfBirth = String(req.body.date_of_birth ?? "").trim();
-  const gender = String(req.body.gender ?? "").trim().toUpperCase();
+  const genderRaw = String(req.body.gender ?? "").trim().toUpperCase();
+  const gender = ["M", "F"].includes(genderRaw) ? genderRaw : "M";
   // National ID is the strong identifier we use to link a self-signup to an
-  // existing staff-managed patient record (optional, but prevents duplicates).
+  // existing staff-managed patient record and prevent duplicate charts.
   const nationalId = String(req.body.national_id ?? req.body.patient_id_number ?? "").trim();
 
-  if (!email || !password || !fullName || !phone || !dateOfBirth || !gender) {
+  if (!email || !password || !fullName || !phone || !nationalId) {
     return res
       .status(400)
-      .json({ error: "Email, password, full_name, phone, date_of_birth, and gender are required." });
-  }
-
-  if (!["M", "F"].includes(gender)) {
-    return res.status(400).json({ error: "Gender must be 'M' or 'F'." });
+      .json({ error: "Email, password, full_name, phone, and national_id are required." });
   }
 
   if (password.length < 6) {
@@ -80,13 +77,11 @@ router.post("/register", (req, res) => {
     // Strong-match an existing staff record by national ID so a patient who
     // signs up themselves is linked to their real chart instead of spawning a
     // duplicate.
-    const existingPatient = nationalId
-      ? db
-          .prepare(
-            "SELECT id FROM patients WHERE patient_id_number = ? AND deleted_at IS NULL",
-          )
-          .get(nationalId)
-      : null;
+    const existingPatient = db
+      .prepare(
+        "SELECT id FROM patients WHERE patient_id_number = ? AND deleted_at IS NULL",
+      )
+      .get(nationalId);
 
     if (existingPatient) {
       const alreadyLinked = db
