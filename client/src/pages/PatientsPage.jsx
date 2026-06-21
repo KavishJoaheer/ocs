@@ -2,11 +2,13 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CreditCard,
+  Globe,
   IdCard,
   MoreVertical,
   Plus,
   RefreshCw,
   Search,
+  ShieldAlert,
   SquarePen,
   Trash2,
   UserRound,
@@ -80,6 +82,46 @@ function PatientHealthPlanInlineBadge({ onDark = false } = {}) {
       title="Health plan subscriber"
     >
       ★
+    </span>
+  );
+}
+
+function PortalAccountBadge({ patient, onDark = false }) {
+  if (!patient.has_portal_account) return null;
+
+  const isPending =
+    patient.link_status === "pending_review" ||
+    patient.link_status === "self_registered";
+
+  if (isPending) {
+    return (
+      <span
+        className={cx(
+          "ml-2 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold",
+          onDark
+            ? "border border-amber-400/20 bg-amber-400/15 text-amber-200"
+            : "border border-amber-300/40 bg-amber-50 text-amber-700",
+        )}
+        title="Portal account pending approval"
+      >
+        <ShieldAlert className="size-3" />
+        Pending
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={cx(
+        "ml-2 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold",
+        onDark
+          ? "border border-white/10 bg-white/15 text-[#e6f0f0]"
+          : "border border-teal-200/60 bg-teal-50 text-teal-700",
+      )}
+      title="Has portal account"
+    >
+      <Globe className="size-3" />
+      Portal
     </span>
   );
 }
@@ -276,6 +318,8 @@ function PatientsPage() {
 
       if (statusFilter === "under_review") {
         url += "&underReview=1";
+      } else if (statusFilter === "pending_approval") {
+        url += "&pendingApproval=1";
       } else if (statusFilter !== "all") {
         url += `&status=${statusFilter}`;
       }
@@ -542,6 +586,7 @@ function PatientsPage() {
             { id: "active", label: "Active" },
             { id: "discharged", label: "Discharged" },
             { id: "under_review", label: "Under Review" },
+            { id: "pending_approval", label: "Pending Approval" },
           ].map((status) => (
             <button
               key={status.id}
@@ -559,7 +604,9 @@ function PatientsPage() {
                       ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
                       : status.id === "under_review"
                         ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
-                        : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+                        : status.id === "pending_approval"
+                          ? "bg-orange-600 text-white shadow-md shadow-orange-600/20"
+                          : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
                   : "text-slate-600 hover:bg-slate-50",
               )}
             >
@@ -705,6 +752,7 @@ function PatientsPage() {
                                 {patient.full_name}
                               </span>
                               {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
+                              <PortalAccountBadge patient={patient} />
                             </p>
                             <p className="mt-1 break-words text-xs font-medium text-ocs-grey">
                               {formatMobilePatientMetaLine(patient)}
@@ -850,6 +898,7 @@ function PatientsPage() {
                                         {isPatientSubscribed(patient) ? (
                                           <PatientHealthPlanInlineBadge />
                                         ) : null}
+                                        <PortalAccountBadge patient={patient} />
                                       </p>
                                       <p className="truncate text-xs text-slate-500">
                                         <PatientCareNumber patient={patient} className="truncate" />
@@ -894,8 +943,10 @@ function PatientsPage() {
                                     <UserRound className="size-4" />
                                   </div>
                                   <div className="min-w-0 space-y-0.5">
-                                    <p className="truncate font-semibold leading-tight text-slate-950">
-                                      {patient.full_name}
+                                    <p className="flex flex-wrap items-center gap-y-1 truncate font-semibold leading-tight text-slate-950">
+                                      <span className="truncate">{patient.full_name}</span>
+                                      {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
+                                      <PortalAccountBadge patient={patient} />
                                     </p>
                                     <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500">
                                       <IdCard className="size-3.5 shrink-0" />

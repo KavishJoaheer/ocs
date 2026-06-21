@@ -875,6 +875,9 @@ router.get("/", (req, res) => {
     String(req.query.subscribed ?? "").trim() === "1" ||
     String(req.query.subscribed ?? "").trim().toLowerCase() === "true" ||
     String(req.query.filter ?? "").trim() === "subscribed";
+  const pendingApproval =
+    String(req.query.pendingApproval ?? "").trim() === "1" ||
+    String(req.query.pendingApproval ?? "").trim().toLowerCase() === "true";
   const myAssignedFilter = String(req.query.filter ?? "").trim() === "my_assigned";
   const requestedDoctorId = Number(req.query.doctorId);
   let doctorId =
@@ -905,9 +908,12 @@ router.get("/", (req, res) => {
     operatorUserId,
     underReview: underReview ? 1 : 0,
     subscribed: subscribed ? 1 : 0,
+    pendingApproval: pendingApproval ? 1 : 0,
   };
   const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
   const subscribedFilterSql = "AND (@subscribed = 0 OR p.is_subscribed = 1)";
+  const pendingApprovalFilterSql =
+    "AND (@pendingApproval = 0 OR (p.link_status IN ('pending_review', 'self_registered') AND EXISTS (SELECT 1 FROM patient_users pu WHERE pu.patient_id = p.id)))";
   const linkhamFilterSql = getLinkhamPatientFilterSql(req.auth?.role);
   const listOrderSql = underReview
     ? `ORDER BY
@@ -947,6 +953,7 @@ router.get("/", (req, res) => {
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
         ${subscribedFilterSql}
+        ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
     `)
     .get(filters).count;
@@ -966,7 +973,11 @@ router.get("/", (req, res) => {
           WHERE poa.patient_id = p.id
             AND poa.operator_user_id = @operatorUserId
             AND poa.expires_at > CURRENT_TIMESTAMP
-        ) AS operator_edit_allowed
+        ) AS operator_edit_allowed,
+        EXISTS (
+          SELECT 1 FROM patient_users pu
+          WHERE pu.patient_id = p.id AND pu.is_active = 1
+        ) AS has_portal_account
       FROM patients p
       LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
       LEFT JOIN appointments a ON a.patient_id = p.id
@@ -995,6 +1006,7 @@ router.get("/", (req, res) => {
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
         ${subscribedFilterSql}
+        ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
       GROUP BY p.id, d.full_name, d.specialization
       ${listOrderSql}
@@ -1007,6 +1019,7 @@ router.get("/", (req, res) => {
       formatPatientRecord({
         ...patient,
         operator_edit_allowed: Boolean(patient.operator_edit_allowed),
+        has_portal_account: Boolean(patient.has_portal_account),
         location_tags: getPatientLocationTags(patient.id),
       }),
     ),
