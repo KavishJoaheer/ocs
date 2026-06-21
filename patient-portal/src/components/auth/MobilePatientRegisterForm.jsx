@@ -101,11 +101,31 @@ function MobilePatientRegisterForm() {
       </div>
 
       <div className="flex flex-1 flex-col px-[var(--native-pad-screen)] py-6">
+        <div className="mb-8">
+          <div className="flex gap-3">
+            <div
+              className="amber-banner-accent w-1 shrink-0 self-stretch rounded-full bg-gradient-to-b from-[#f7ba24] to-[#e0a112]"
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <h1 className="text-3xl font-black leading-[1.08] tracking-tight">
+                <span className="block text-[#3b595c]">Bringing Premium Care</span>
+                <span className="block text-[#3b595c]">
+                  at Your <span className="text-[#f7ba24]">Doorstep.</span>
+                </span>
+              </h1>
+              <p className="mt-4 text-sm font-semibold leading-relaxed tracking-wide text-[#065a60]">
+                Join OCS Care to manage your health in one secure place
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-6">
           <span className={SECTION_CLASS}>→ Create Patient Account</span>
-          <h1 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
+          <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#14213d]">
             Create your patient account
-          </h1>
+          </h2>
           <p className="mt-2 text-xs font-medium leading-relaxed text-gray-500">
             Register with your personal details to access appointments, records, and billing.
           </p>
