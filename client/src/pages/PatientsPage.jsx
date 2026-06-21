@@ -251,6 +251,7 @@ function PatientsPage() {
   const [patientCardMenu, setPatientCardMenu] = useState(null);
   const [desktopTableMenu, setDesktopTableMenu] = useState(null);
   const [offlineDirectoryActive, setOfflineDirectoryActive] = useState(false);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const isDoctorMobile = user.role === "doctor" && isMobile;
   useEffect(() => {
     if (!desktopTableMenu) return undefined;
@@ -304,6 +305,20 @@ function PatientsPage() {
     }
   }
 
+  async function loadPendingApprovalCount() {
+    if (isMobile) {
+      return;
+    }
+
+    try {
+      const data = await api.get("/patients?pendingApproval=1&page=1&limit=1");
+      setPendingApprovalCount(data.pagination?.total ?? 0);
+    } catch (error) {
+      console.error("Failed to load pending approval count", error);
+      setPendingApprovalCount(0);
+    }
+  }
+
   async function loadPatients() {
     if (isDoctorMobile && isBrowserOffline()) {
       await loadOfflinePatientDirectory();
@@ -343,6 +358,10 @@ function PatientsPage() {
       const data = await api.get(url);
       setPatientsData(data);
       setOfflineDirectoryActive(false);
+
+      if (!isMobile) {
+        void loadPendingApprovalCount();
+      }
 
       if (isDoctorMobile) {
         void prefetchPatientOfflineDirectory(user.id);
@@ -409,7 +428,12 @@ function PatientsPage() {
 
   useEffect(() => {
     loadDoctors();
+    void loadPendingApprovalCount();
   }, []);
+
+  useEffect(() => {
+    void loadPendingApprovalCount();
+  }, [isMobile, refreshKey]);
 
   useEffect(() => {
     loadPatients();
@@ -577,17 +601,26 @@ function PatientsPage() {
     </span>
   ) : null;
 
+  const patientStatusTabs = useMemo(() => {
+    const baseTabs = [
+      { id: "all", label: "All" },
+      { id: "active", label: "Active" },
+      { id: "discharged", label: "Discharged" },
+      { id: "under_review", label: "Under Review" },
+    ];
+
+    if (isMobile) {
+      return baseTabs;
+    }
+
+    return [...baseTabs, { id: "pending_approval", label: "Pending Approval" }];
+  }, [isMobile]);
+
   const statusFilters = (
     <div className="flex flex-wrap items-center gap-2">
       {!myAssignedFilterActive ? (
         <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
-          {[
-            { id: "all", label: "All" },
-            { id: "active", label: "Active" },
-            { id: "discharged", label: "Discharged" },
-            { id: "under_review", label: "Under Review" },
-            { id: "pending_approval", label: "Pending Approval" },
-          ].map((status) => (
+          {patientStatusTabs.map((status) => (
             <button
               key={status.id}
               type="button"
@@ -605,12 +638,26 @@ function PatientsPage() {
                       : status.id === "under_review"
                         ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
                         : status.id === "pending_approval"
-                          ? "bg-orange-600 text-white shadow-md shadow-orange-600/20"
+                          ? "bg-red-600 text-white shadow-md shadow-red-600/20"
                           : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
                   : "text-slate-600 hover:bg-slate-50",
               )}
             >
-              {status.label}
+              <span className="flex items-center gap-2">
+                {status.label}
+                {!isMobile && status.id === "pending_approval" && pendingApprovalCount > 0 ? (
+                  <span
+                    className={cx(
+                      "flex min-w-[20px] items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-bold",
+                      statusFilter === status.id
+                        ? "bg-white text-red-600"
+                        : "bg-red-500 text-white",
+                    )}
+                  >
+                    {pendingApprovalCount}
+                  </span>
+                ) : null}
+              </span>
             </button>
           ))}
         </div>

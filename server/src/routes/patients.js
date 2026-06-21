@@ -887,7 +887,11 @@ router.get("/", (req, res) => {
   }
 
   const effectiveStatus =
-    myAssignedFilter && req.auth?.role === "doctor" && !status ? "active" : status;
+    pendingApproval
+      ? ""
+      : myAssignedFilter && req.auth?.role === "doctor" && !status
+        ? "active"
+        : status;
   // The Sale-allocation picker needs the full assigned roster in one shot so
   // doctors with large patient panels still see every option without paging
   // inside a select dropdown. Other list views keep the default 100 cap.
