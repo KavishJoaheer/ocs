@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  Sparkles,
   SquarePen,
   Trash2,
   UserRound,
@@ -86,7 +87,7 @@ function PatientHealthPlanInlineBadge({ onDark = false } = {}) {
   );
 }
 
-function PortalAccountBadge({ patient, onDark = false }) {
+function PortalAccountBadge({ patient, onDark = false, desktop = false }) {
   if (!patient.has_portal_account) return null;
 
   const isPending =
@@ -110,6 +111,8 @@ function PortalAccountBadge({ patient, onDark = false }) {
     );
   }
 
+  const PortalIcon = desktop ? Sparkles : Globe;
+
   return (
     <span
       className={cx(
@@ -120,7 +123,7 @@ function PortalAccountBadge({ patient, onDark = false }) {
       )}
       title="Has portal account"
     >
-      <Globe className="size-3" />
+      <PortalIcon className="size-3" />
       Portal
     </span>
   );
@@ -945,7 +948,7 @@ function PatientsPage() {
                                         {isPatientSubscribed(patient) ? (
                                           <PatientHealthPlanInlineBadge />
                                         ) : null}
-                                        <PortalAccountBadge patient={patient} />
+                                        <PortalAccountBadge patient={patient} desktop />
                                       </p>
                                       <p className="truncate text-xs text-slate-500">
                                         <PatientCareNumber patient={patient} className="truncate" />
@@ -993,7 +996,7 @@ function PatientsPage() {
                                     <p className="flex flex-wrap items-center gap-y-1 truncate font-semibold leading-tight text-slate-950">
                                       <span className="truncate">{patient.full_name}</span>
                                       {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
-                                      <PortalAccountBadge patient={patient} />
+                                      <PortalAccountBadge patient={patient} desktop />
                                     </p>
                                     <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500">
                                       <IdCard className="size-3.5 shrink-0" />
