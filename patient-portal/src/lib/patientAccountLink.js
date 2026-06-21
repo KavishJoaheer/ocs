@@ -12,7 +12,7 @@ export function getPatientLinkState(user) {
     return "unlinked";
   }
 
-  if (user.link_status === "verified") {
+  if (user.link_status === "verified" || user.link_status === "staff_created") {
     return "verified";
   }
 

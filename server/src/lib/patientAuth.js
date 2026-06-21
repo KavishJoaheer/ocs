@@ -42,7 +42,7 @@ function enrichPatientUserRow(row) {
 }
 
 function isVerifiedPatientPortalAccount(auth) {
-  return Boolean(auth?.patient_id) && auth?.link_status === "verified";
+  return Boolean(auth?.patient_id) && (auth?.link_status === "verified" || auth?.link_status === "staff_created");
 }
 
 function getPatientSessionUserByToken(token) {
