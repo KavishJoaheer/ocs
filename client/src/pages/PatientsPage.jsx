@@ -87,7 +87,7 @@ function PatientHealthPlanInlineBadge({ onDark = false } = {}) {
   );
 }
 
-function PortalAccountBadge({ patient, onDark = false, desktop = false }) {
+function PortalAccountBadge({ patient, onDark = false, desktop = false, mobile = false }) {
   if (!patient.has_portal_account) return null;
 
   const isPending =
@@ -111,7 +111,7 @@ function PortalAccountBadge({ patient, onDark = false, desktop = false }) {
     );
   }
 
-  const PortalIcon = desktop ? Sparkles : Globe;
+  const PortalIcon = desktop || mobile ? Sparkles : Globe;
 
   return (
     <span
@@ -802,7 +802,7 @@ function PatientsPage() {
                                 {patient.full_name}
                               </span>
                               {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
-                              <PortalAccountBadge patient={patient} />
+                              <PortalAccountBadge patient={patient} mobile />
                             </p>
                             <p className="mt-1 break-words text-xs font-medium text-ocs-grey">
                               {formatMobilePatientMetaLine(patient)}
