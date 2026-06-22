@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import {
   ArrowLeft,
@@ -29,6 +29,11 @@ import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import {
+  LongTermReviewLogUpdateButton,
+  canLogLongTermReviewUpdate,
+  useLongTermReviewLogUpdate,
+} from "../components/LongTermReviewLogUpdate.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import PatientLinkhamPolicyBadge from "../components/PatientLinkhamPolicyBadge.jsx";
@@ -78,10 +83,10 @@ function HealthPlanBadge({ className, compact = false }) {
   );
 }
 
-function LongTermReviewAlertBanner({ note, dueDate }) {
+function LongTermReviewAlertBanner({ note, dueDate, actions }) {
   const trimmed = String(note || "").trim();
   const scheduledLabel = formatScheduledReviewDate(dueDate);
-  if (!trimmed && !scheduledLabel) {
+  if (!trimmed && !scheduledLabel && !actions) {
     return null;
   }
 
@@ -90,15 +95,20 @@ function LongTermReviewAlertBanner({ note, dueDate }) {
       className="mb-4 rounded-xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-4 text-[#6e2f14] shadow-sm"
       role="status"
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#ba5a32]">
-        Long term review — operator desk flag
-      </p>
-      {scheduledLabel ? (
-        <p className="mt-1 text-xs font-semibold text-[#6e2f14]">Target date: {scheduledLabel}</p>
-      ) : null}
-      {trimmed ? (
-        <p className="mt-1 text-sm font-medium leading-relaxed text-[#6e2f14]">{trimmed}</p>
-      ) : null}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#ba5a32]">
+            Long term review — operator desk flag
+          </p>
+          {scheduledLabel ? (
+            <p className="mt-1 text-xs font-semibold text-[#6e2f14]">Target date: {scheduledLabel}</p>
+          ) : null}
+          {trimmed ? (
+            <p className="mt-1 text-sm font-medium leading-relaxed text-[#6e2f14]">{trimmed}</p>
+          ) : null}
+        </div>
+        {actions ? <div className="shrink-0">{actions}</div> : null}
+      </div>
     </div>
   );
 }
@@ -1204,6 +1214,13 @@ function PatientProfilePage() {
   const canManageLabReports = canManageLabReportsForUser(user);
   const canManageConsultations = canManageConsultationNotes(user);
   const canFlagLongTermReview = ["admin", "operator"].includes(user.role);
+  const canLogLongTermReview = canLogLongTermReviewUpdate(user.role);
+  const onLongTermReviewUpdatedRef = useRef(null);
+  const { openLogUpdate, dialogs: longTermReviewLogDialogs } = useLongTermReviewLogUpdate({
+    onUpdated: async () => {
+      await onLongTermReviewUpdatedRef.current?.();
+    },
+  });
 
   const canEditPatientProfile = useMemo(() => {
     if (!data) {
@@ -1425,6 +1442,16 @@ function PatientProfilePage() {
       toast.error(error?.message || "Could not refresh the patient profile.");
     }
   }
+
+  onLongTermReviewUpdatedRef.current = reloadPatientProfile;
+
+  const longTermReviewLogAction =
+    data?.patient && isPatientUnderReview(data.patient) && canLogLongTermReview ? (
+      <LongTermReviewLogUpdateButton
+        onClick={() => openLogUpdate(data.patient)}
+        className="rounded-lg border border-[#e8c4b0] bg-white/80 px-3 py-1.5 text-sm font-semibold text-[#6e2f14] transition hover:bg-white"
+      />
+    ) : null;
 
   async function handleSavePatient(payload) {
     if (!data?.patient?.id) {
@@ -2009,6 +2036,7 @@ function PatientProfilePage() {
                   <LongTermReviewAlertBanner
                     note={data.patient.review_reason_note}
                     dueDate={data.patient.review_due_date}
+                    actions={longTermReviewLogAction}
                   />
                   <div className="space-y-2">
                     {mobileClinicalBlocks.map((block) => {
@@ -2511,6 +2539,7 @@ function PatientProfilePage() {
               <LongTermReviewAlertBanner
                 note={data.patient.review_reason_note}
                 dueDate={data.patient.review_due_date}
+                actions={longTermReviewLogAction}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
@@ -3025,6 +3054,8 @@ function PatientProfilePage() {
         onClose={() => setLongTermReviewModalOpen(false)}
         onSubmit={handleConfirmLongTermReviewFlag}
       />
+
+      {longTermReviewLogDialogs}
 
       <PatientFormModal
         canEditPatientIdentifier={user.role === "admin"}

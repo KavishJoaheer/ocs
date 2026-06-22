@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BellRing,
   CalendarClock,
@@ -8,9 +8,10 @@ import {
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import { LongTermReviewLogUpdateButton, useLongTermReviewLogUpdate } from "../components/LongTermReviewLogUpdate.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -261,7 +262,7 @@ function SeenPatientsList({ patients, monthLabel }) {
   );
 }
 
-function AssignedPatientsList({ patients, emptyTitle, emptyDescription }) {
+function AssignedPatientsList({ patients, emptyTitle, emptyDescription, onLogUpdate }) {
   if (!patients.length) {
     return (
       <EmptyState
@@ -303,6 +304,9 @@ function AssignedPatientsList({ patients, emptyTitle, emptyDescription }) {
               >
                 Open patient
               </Link>
+              {onLogUpdate ? (
+                <LongTermReviewLogUpdateButton onClick={() => onLogUpdate(patient)} />
+              ) : null}
             </div>
           </div>
         </div>
@@ -367,7 +371,6 @@ function UpdatesFeed({ updates }) {
 }
 
 function DoctorWorkspacePage({ workspaceKey }) {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -375,15 +378,12 @@ function DoctorWorkspacePage({ workspaceKey }) {
   const underReviewFilter = searchParams.get("tab") === "under_review";
   const subscribedFilter = searchParams.get("filter") === "subscribed";
   const refreshKey = useLiveRefreshKey();
-
-  useEffect(() => {
-    if (
-      workspaceKey === "assigned-patients" &&
-      searchParams.get("tab") === "under_review"
-    ) {
-      navigate("/doctor/long-term-review", { replace: true });
-    }
-  }, [navigate, searchParams, workspaceKey]);
+  const reloadWorkspaceRef = useRef(null);
+  const { openLogUpdate, dialogs: longTermReviewLogDialogs } = useLongTermReviewLogUpdate({
+    onUpdated: async () => {
+      await reloadWorkspaceRef.current?.();
+    },
+  });
 
   useEffect(() => {
     let ignore = false;
@@ -404,6 +404,15 @@ function DoctorWorkspacePage({ workspaceKey }) {
         }
       }
     }
+
+    reloadWorkspaceRef.current = async () => {
+      try {
+        const payload = await api.get("/dashboard/doctor-workspace");
+        setData(payload);
+      } catch (error) {
+        toast.error(error.message);
+      }
+    };
 
     loadWorkspace();
 
@@ -814,6 +823,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
               ? "Assigned patients on an active health plan will appear here."
               : undefined
         }
+        onLogUpdate={underReviewFilter ? openLogUpdate : undefined}
       />
     );
 
@@ -837,7 +847,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
           }
           subtitle={
             underReviewFilter
-              ? "Read-only view of your assigned patients flagged for long-term review."
+              ? "Assigned patients flagged for long-term review. Log updates without leaving this list."
               : subscribedFilter
                 ? "Read-only view of your assigned patients on an active health plan."
                 : "Assigned patient records linked to this doctor account."
@@ -892,6 +902,8 @@ function DoctorWorkspacePage({ workspaceKey }) {
       </div>
 
       {content}
+
+      {longTermReviewLogDialogs}
     </div>
   );
 }
