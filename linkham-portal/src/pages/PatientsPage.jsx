@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CreditCard,
@@ -16,6 +16,10 @@ import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import {
+  canLogLongTermReviewUpdate,
+  useLongTermReviewLogUpdate,
+} from "../components/LongTermReviewLogUpdate.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -209,6 +213,18 @@ function PatientsPage() {
   const [desktopTableMenu, setDesktopTableMenu] = useState(null);
   const [offlineDirectoryActive, setOfflineDirectoryActive] = useState(false);
   const isDoctorMobile = user.role === "doctor" && isMobile;
+  const canLogLongTermReview = canLogLongTermReviewUpdate(user.role);
+  const loadPatientsRef = useRef(null);
+  const { openLogUpdate, dialogs: longTermReviewLogDialogs } = useLongTermReviewLogUpdate({
+    onUpdated: async () => {
+      await loadPatientsRef.current?.();
+    },
+  });
+
+  function shouldShowReviewLogUpdate(patient) {
+    return canLogLongTermReview && isPatientUnderReview(patient);
+  }
+
   useEffect(() => {
     if (!desktopTableMenu) return undefined;
 
@@ -314,6 +330,8 @@ function PatientsPage() {
       setRefreshing(false);
     }
   }
+
+  loadPatientsRef.current = loadPatients;
 
   async function handleMobileDirectoryRefresh() {
     if (isDoctorMobile && isBrowserOffline()) {
@@ -1099,6 +1117,23 @@ function PatientsPage() {
                 Billing
               </Link>
             ) : null}
+            {shouldShowReviewLogUpdate(desktopTableMenu.patient) ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  const patient = desktopTableMenu.patient;
+                  setDesktopTableMenu(null);
+                  openLogUpdate(patient);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+              >
+                <span aria-hidden className="text-base leading-none">
+                  📝
+                </span>
+                Log update
+              </button>
+            ) : null}
             {canDeletePatients ? (
               <button
                 type="button"
@@ -1163,6 +1198,20 @@ function PatientsPage() {
                   Billing
                 </Link>
               ) : null}
+              {shouldShowReviewLogUpdate(patientCardMenu) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const patient = patientCardMenu;
+                    setPatientCardMenu(null);
+                    openLogUpdate(patient);
+                  }}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm font-semibold text-slate-800 transition active:bg-slate-100"
+                >
+                  <span aria-hidden>📝</span>
+                  Log update
+                </button>
+              ) : null}
               {canDeletePatients ? (
                 <button
                   type="button"
@@ -1212,6 +1261,8 @@ function PatientsPage() {
         }
         confirmLabel="Remove patient"
       />
+
+      {longTermReviewLogDialogs}
     </div>
   );
 }
