@@ -29,6 +29,7 @@ import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import {
   LongTermReviewLogUpdateButton,
+  canFlagLongTermReview,
   canLogLongTermReviewUpdate,
   useLongTermReviewLogUpdate,
 } from "../components/LongTermReviewLogUpdate.jsx";
@@ -942,7 +943,7 @@ function PatientProfilePage() {
   const canModifyClinicalData = user.role === "doctor" || user.role === "admin";
   const canManageLabReports = canManageLabReportsForUser(user);
   const canManageConsultations = canManageConsultationNotes(user);
-  const canFlagLongTermReview = ["admin", "operator"].includes(user.role);
+  const canFlagLongTermReviewAccess = canFlagLongTermReview(user.role);
   const canLogLongTermReview = canLogLongTermReviewUpdate(user.role);
   const onLongTermReviewUpdatedRef = useRef(null);
   const { openLogUpdate, dialogs: longTermReviewLogDialogs } = useLongTermReviewLogUpdate({
@@ -1533,7 +1534,7 @@ function PatientProfilePage() {
           }
           actions={(
             <div className="flex flex-row flex-wrap items-center justify-end gap-3">
-              {canFlagLongTermReview ? (
+              {canFlagLongTermReviewAccess ? (
                 <LongTermReviewFlagButton
                   patient={data.patient}
                   disabled={isSavingLongTermReview}
@@ -1615,7 +1616,7 @@ function PatientProfilePage() {
             </div>
           </div>
           <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            {canFlagLongTermReview ? (
+            {canFlagLongTermReviewAccess ? (
               <LongTermReviewFlagButton
                 patient={data.patient}
                 disabled={isSavingLongTermReview}

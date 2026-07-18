@@ -1290,15 +1290,6 @@ router.patch("/:id/long-term-review", (req, res) => {
   }
 
   const isUnderReview = parseBooleanField(req.body.is_under_review);
-  const wasUnderReview = parseBooleanField(existing.is_under_review);
-  const role = String(req.auth.role || "");
-
-  if (role === "doctor" && isUnderReview && !wasUnderReview) {
-    return res.status(403).json({
-      error: "Only admin and operator accounts can flag patients for long term review.",
-    });
-  }
-
   const reviewReasonNote = isUnderReview ? String(req.body.review_reason_note ?? "").trim() : "";
   const reviewDueDate = isUnderReview ? normalizeReviewDueDate(req.body.review_due_date) : "";
 

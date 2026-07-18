@@ -74,6 +74,20 @@ const navItems = [
     isActiveWhen: (location) => location.pathname === "/doctor/long-term-review",
   },
   {
+    to: "/operator/long-term-review",
+    label: "Long term review",
+    icon: Activity,
+    roles: ["operator"],
+    isActiveWhen: (location) => location.pathname === "/operator/long-term-review",
+  },
+  {
+    to: "/admin/long-term-review",
+    label: "Long term review",
+    icon: Activity,
+    roles: ["admin"],
+    isActiveWhen: (location) => location.pathname === "/admin/long-term-review",
+  },
+  {
     to: "/hcm-news",
     label: "HCM news",
     icon: BellRing,
