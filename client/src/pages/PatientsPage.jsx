@@ -7,6 +7,7 @@ import {
   MoreVertical,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   Sparkles,
@@ -246,6 +247,8 @@ function PatientsPage() {
     statusFilter === "under_review" ||
     searchParams.get("tab") === "under_review" ||
     searchParams.get("filter") === "under_review";
+  const isRecentlyDeletedView =
+    !isMobile && canDeletePatients && statusFilter === "recently_deleted";
   const [doctorIdFilter, setDoctorIdFilter] = useState("");
   const [page, setPage] = useState(1);
   const [patientsData, setPatientsData] = useState(null);
@@ -255,6 +258,8 @@ function PatientsPage() {
   const [editor, setEditor] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
+  const [patientToRestore, setPatientToRestore] = useState(null);
+  const [patientToPurge, setPatientToPurge] = useState(null);
   const [patientCardMenu, setPatientCardMenu] = useState(null);
   const [desktopTableMenu, setDesktopTableMenu] = useState(null);
   const [offlineDirectoryActive, setOfflineDirectoryActive] = useState(false);
@@ -348,6 +353,39 @@ function PatientsPage() {
     target(true);
 
     try {
+      if (!isMobile && canDeletePatients && statusFilter === "recently_deleted") {
+        const deleted = await api.get("/patients/deleted/recent");
+        const query = deferredSearch.trim().toLowerCase();
+        const items = query
+          ? deleted.filter((patient) => {
+              const haystack = [
+                patient.full_name,
+                patient.patient_identifier,
+                patient.patient_id_number,
+                patient.patient_contact_number,
+                patient.assigned_doctor_name,
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+              return haystack.includes(query);
+            })
+          : deleted;
+
+        setPatientsData({
+          items,
+          pagination: {
+            page: 1,
+            limit: Math.max(items.length, 1),
+            total: items.length,
+            totalPages: 1,
+          },
+        });
+        setOfflineDirectoryActive(false);
+        void loadPendingApprovalCount();
+        return;
+      }
+
       let url = `/patients?search=${encodeURIComponent(deferredSearch)}&page=${page}&limit=15`;
 
       if (statusFilter === "under_review") {
@@ -468,6 +506,7 @@ function PatientsPage() {
     user.doctor_id,
     user.role,
     user.id,
+    isMobile,
     isDoctorMobile,
     refreshKey,
   ]);
@@ -545,6 +584,32 @@ function PatientsPage() {
       await api.delete(`/patients/${patientToDelete.id}`);
       toast.success("Patient removed from the directory.");
       setPatientToDelete(null);
+      await loadPatients();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  async function handleRestore() {
+    if (!patientToRestore) return;
+
+    try {
+      await api.post(`/patients/${patientToRestore.id}/restore`);
+      toast.success(`${patientToRestore.full_name} restored to the patient directory.`);
+      setPatientToRestore(null);
+      await loadPatients();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  async function handlePermanentDelete() {
+    if (!patientToPurge) return;
+
+    try {
+      await api.delete(`/patients/${patientToPurge.id}/permanent`);
+      toast.success(`${patientToPurge.full_name} permanently deleted.`);
+      setPatientToPurge(null);
       await loadPatients();
     } catch (error) {
       toast.error(error.message);
@@ -634,8 +699,20 @@ function PatientsPage() {
       return baseTabs;
     }
 
-    return [...baseTabs, { id: "pending_approval", label: "Pending Approval" }];
-  }, [isMobile]);
+    const desktopTabs = [...baseTabs, { id: "pending_approval", label: "Pending Approval" }];
+
+    if (canDeletePatients) {
+      desktopTabs.push({ id: "recently_deleted", label: "Recently deleted" });
+    }
+
+    return desktopTabs;
+  }, [canDeletePatients, isMobile]);
+
+  useEffect(() => {
+    if (isMobile && statusFilter === "recently_deleted") {
+      setStatusFilter("all");
+    }
+  }, [isMobile, statusFilter]);
 
   const statusFilters = (
     <div className="flex flex-wrap items-center gap-2">
@@ -660,7 +737,9 @@ function PatientsPage() {
                         ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
                         : status.id === "pending_approval"
                           ? "bg-red-600 text-white shadow-md shadow-red-600/20"
-                          : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+                          : status.id === "recently_deleted"
+                            ? "bg-rose-700 text-white shadow-md shadow-rose-700/20"
+                            : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
                   : "text-slate-600 hover:bg-slate-50",
               )}
             >
@@ -688,7 +767,7 @@ function PatientsPage() {
         </span>
       )}
 
-      {!myAssignedFilterActive ? (
+      {!myAssignedFilterActive && !isRecentlyDeletedView ? (
         <select
         value={doctorIdFilter}
         onChange={(event) => {
@@ -753,7 +832,13 @@ function PatientsPage() {
       )}
 
       <SectionCard
-        subtitle={isMobile ? null : `${pagination?.total || 0} total records`}
+        subtitle={
+          isMobile
+            ? null
+            : isRecentlyDeletedView
+              ? `${pagination?.total || 0} deleted in the last 30 days`
+              : `${pagination?.total || 0} total records`
+        }
         className={
           isMobile
             ? "flex min-h-0 flex-1 flex-col rounded-[24px] border-slate-100 bg-white p-3 shadow-sm"
@@ -776,6 +861,13 @@ function PatientsPage() {
                 </div>
                 {subscriberFilterBadge}
                 {myAssignedFilterBadge}
+
+                {isRecentlyDeletedView ? (
+                  <div className="rounded-[24px] border border-rose-100 bg-rose-50/80 px-4 py-3 text-sm text-rose-950">
+                    Soft-deleted patients from the last 30 days. Restore returns them to the directory.
+                    Permanent delete removes the patient and linked clinical records.
+                  </div>
+                ) : null}
 
                 {user.role === "operator" ? (
                   <div className="rounded-[24px] border border-sky-100 bg-sky-50/75 px-4 py-3 text-sm text-sky-900">
@@ -904,6 +996,86 @@ function PatientsPage() {
                         </div>
                       </div>
                     ) : null}
+                  </div>
+                ) : isRecentlyDeletedView ? (
+                  <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full table-fixed bg-white text-left">
+                        <thead className="bg-gradient-to-r from-ocs-slate to-[#2f4749] text-xs font-semibold uppercase tracking-[0.22em] text-white">
+                          <tr>
+                            <th className="w-[24%] px-4 py-2.5">Patient</th>
+                            <th className="w-[18%] px-4 py-2.5">Contact</th>
+                            <th className="w-[18%] px-4 py-2.5">Assigned clinician</th>
+                            <th className="w-[14%] px-4 py-2.5">Deleted</th>
+                            <th className="w-[12%] px-4 py-2.5">Records</th>
+                            <th className="w-[14%] px-4 py-2.5 text-right">Restore</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {patients.map((patient) => (
+                            <tr
+                              key={patient.id}
+                              className="border-t border-slate-200/70 text-slate-700 transition hover:bg-slate-50"
+                            >
+                              <td className="px-4 py-3 align-top">
+                                <div className="min-w-0 space-y-0.5">
+                                  <p className="truncate font-semibold leading-tight text-slate-950">
+                                    {patient.full_name}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    <PatientCareNumber patient={patient} className="truncate" />
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    ID: {displayText(patient.patient_id_number)}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 align-top">
+                                <p className="truncate text-sm font-medium text-slate-800">
+                                  {displayText(patient.patient_contact_number)}
+                                </p>
+                                <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
+                                  {displayText(patient.location, "Location not selected")}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 align-top">
+                                <p className="line-clamp-2 text-sm font-semibold text-slate-800">
+                                  {formatAssignedClinicianLine(patient)}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 align-top text-sm text-slate-600">
+                                {formatDate(patient.deleted_at)}
+                              </td>
+                              <td className="px-4 py-3 align-top text-xs leading-snug text-slate-500">
+                                <p>{Number(patient.appointment_count || 0)} appointments</p>
+                                <p>{Number(patient.consultation_count || 0)} consultations</p>
+                                <p>{Number(patient.bill_count || 0)} bills</p>
+                              </td>
+                              <td className="px-4 py-3 align-top">
+                                <div className="flex flex-col items-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPatientToRestore(patient)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-ocs-teal px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-ocs-teal/90"
+                                  >
+                                    <RotateCcw className="size-3.5" aria-hidden />
+                                    Restore
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPatientToPurge(patient)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                  >
+                                    <Trash2 className="size-3.5" aria-hidden />
+                                    Delete forever
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 ) : (
                   /* ── Desktop: original table ── */
@@ -1145,7 +1317,7 @@ function PatientsPage() {
                   </div>
                 )}
 
-                {!isMobile ? (
+                {!isMobile && !isRecentlyDeletedView ? (
                 <div className="mt-5 flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-slate-500">
                     Page {pagination.page} of {pagination.totalPages}
@@ -1175,9 +1347,13 @@ function PatientsPage() {
               </>
             ) : (
               <EmptyState
-                title="No patients found"
-                description="Try a broader search or add a new patient to start tracking consultations and billing."
-                action={canCreatePatients ? headerActions : null}
+                title={isRecentlyDeletedView ? "No recently deleted patients" : "No patients found"}
+                description={
+                  isRecentlyDeletedView
+                    ? "Patients soft-deleted in the last 30 days will appear here so you can restore them."
+                    : "Try a broader search or add a new patient to start tracking consultations and billing."
+                }
+                action={!isRecentlyDeletedView && canCreatePatients ? headerActions : null}
               />
             )}
         </>
@@ -1365,6 +1541,33 @@ function PatientsPage() {
             : ""
         }
         confirmLabel="Remove patient"
+      />
+
+      <ConfirmDialog
+        open={Boolean(patientToRestore)}
+        onClose={() => setPatientToRestore(null)}
+        onConfirm={handleRestore}
+        title="Restore patient?"
+        description={
+          patientToRestore
+            ? `${patientToRestore.full_name} will return to the patient directory with their clinical history intact.`
+            : ""
+        }
+        confirmLabel="Restore patient"
+        tone="default"
+      />
+
+      <ConfirmDialog
+        open={Boolean(patientToPurge)}
+        onClose={() => setPatientToPurge(null)}
+        onConfirm={handlePermanentDelete}
+        title="Permanently delete patient?"
+        description={
+          patientToPurge
+            ? `${patientToPurge.full_name} and linked clinical records will be permanently removed. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete forever"
       />
 
       {longTermReviewLogDialogs}
