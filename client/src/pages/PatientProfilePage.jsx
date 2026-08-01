@@ -472,11 +472,27 @@ function getEmptyConsultationEntry(user) {
     clinical_note: "",
     patient_diagnosis: "",
     patient_prescription: "",
+    vital_bp: "",
+    vital_temperature: "",
+    vital_glycemia: "",
+    vital_spo2: "",
+    vital_rs: "",
   };
 }
 
 const DESKTOP_CONSULTATION_FIELD_CLASS =
   "w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-ocs-teal focus:bg-white focus:ring-2 focus:ring-ocs-teal/20";
+
+const CONSULTATION_VITAL_FIELD_CLASS =
+  "w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20";
+
+const CONSULTATION_VITAL_FIELDS = [
+  { key: "vital_bp", label: "BP", placeholder: "120/80" },
+  { key: "vital_temperature", label: "T", placeholder: "36.6 °C" },
+  { key: "vital_glycemia", label: "Gr", placeholder: "5.5 / 100" },
+  { key: "vital_spo2", label: "SpO2", placeholder: "98%" },
+  { key: "vital_rs", label: "RS", placeholder: "16" },
+];
 
 function roleLabel(role) {
   if (role === "admin") return "Admin";
@@ -856,6 +872,11 @@ function ConsultationCreateModal({
       clinical_note: form.clinical_note,
       patient_diagnosis: form.patient_diagnosis,
       patient_prescription: form.patient_prescription,
+      vital_bp: form.vital_bp,
+      vital_temperature: form.vital_temperature,
+      vital_glycemia: form.vital_glycemia,
+      vital_spo2: form.vital_spo2,
+      vital_rs: form.vital_rs,
     });
   }
 
@@ -926,20 +947,47 @@ function ConsultationCreateModal({
         </div>
 
         <div className="flex flex-col gap-4">
-          <label className="block space-y-2">
+          <div className="block space-y-2">
             <span className="text-sm font-semibold text-ocs-slate">
               Internal Clinical Note (Private)
             </span>
+
+            <div className="space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Vitals
+              </span>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+                {CONSULTATION_VITAL_FIELDS.map((field) => (
+                  <label key={field.key} className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600">{field.label}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={form[field.key]}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                      placeholder={field.placeholder}
+                      className={CONSULTATION_VITAL_FIELD_CLASS}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <textarea
               rows="8"
               value={form.clinical_note}
               onChange={(event) =>
                 setForm((current) => ({ ...current, clinical_note: event.target.value }))
               }
-              placeholder="Record assessment, vitals, and private clinical observations. This will not be visible to the patient."
+              placeholder="Record assessment and private clinical observations. This will not be visible to the patient."
               className={DESKTOP_CONSULTATION_FIELD_CLASS}
             />
-          </label>
+          </div>
 
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-ocs-slate">Diagnosis (Patient-Facing)</span>
