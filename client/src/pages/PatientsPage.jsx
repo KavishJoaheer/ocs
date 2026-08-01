@@ -20,10 +20,8 @@ import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import {
-  canLogLongTermReviewUpdate,
-  useLongTermReviewLogUpdate,
-} from "../components/LongTermReviewLogUpdate.jsx";
+import { canLogLongTermReviewUpdate } from "../lib/longTermReviewAccess.js";
+import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";

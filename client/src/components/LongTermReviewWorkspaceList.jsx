@@ -1,10 +1,8 @@
 import { Link } from "react-router-dom";
 import EmptyState from "./EmptyState.jsx";
 import StatusBadge from "./StatusBadge.jsx";
-import {
-  LongTermReviewLogUpdateButton,
-  useLongTermReviewLogUpdate,
-} from "./LongTermReviewLogUpdate.jsx";
+import { LongTermReviewLogUpdateButton } from "./LongTermReviewLogUpdate.jsx";
+import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { formatDate, truncate } from "../lib/format.js";
 import { formatScheduledReviewDate } from "../lib/patientReview.js";

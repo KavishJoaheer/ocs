@@ -732,6 +732,11 @@ test("staff can add structured desktop consultation notes from patient profile",
       clinical_note: "BP 138/88. Patient febrile.",
       patient_diagnosis: "URTI",
       patient_prescription: "Tab levodenk",
+      vital_bp: "138/88",
+      vital_temperature: "38.1 °C",
+      vital_glycemia: "5.4",
+      vital_spo2: "97%",
+      vital_rs: "18",
     },
   });
 
@@ -739,7 +744,13 @@ test("staff can add structured desktop consultation notes from patient profile",
   assert.equal(created.data.clinical_note, "BP 138/88. Patient febrile.");
   assert.equal(created.data.patient_diagnosis, "URTI");
   assert.equal(created.data.patient_prescription, "Tab levodenk");
+  assert.equal(created.data.vital_bp, "138/88");
+  assert.equal(created.data.vital_temperature, "38.1 °C");
+  assert.equal(created.data.vital_glycemia, "5.4");
+  assert.equal(created.data.vital_spo2, "97%");
+  assert.equal(created.data.vital_rs, "18");
   assert.match(created.data.doctor_notes, /URTI/i);
+  assert.match(created.data.doctor_notes, /BP 138\/88/);
 });
 
 test("patient billing returns bills and summary totals", async () => {

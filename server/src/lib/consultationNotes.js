@@ -10,9 +10,56 @@ function hasStructuredConsultationFields(body) {
   );
 }
 
-/** Legacy doctor_notes text composed for staff viewers and older integrations. */
-function composeDoctorNotesStorage({ clinicalNote, patientDiagnosis, patientPrescription }) {
+function normalizeVitalsFields(body) {
+  return {
+    vital_bp: trimValue(body?.vital_bp),
+    vital_temperature: trimValue(body?.vital_temperature),
+    vital_glycemia: trimValue(body?.vital_glycemia),
+    vital_spo2: trimValue(body?.vital_spo2),
+    vital_rs: trimValue(body?.vital_rs),
+  };
+}
+
+/** Compact vitals line for legacy doctor_notes / health-record parsers. */
+function composeVitalsLine(vitals) {
   const parts = [];
+
+  if (vitals.vital_bp) {
+    parts.push(`BP ${vitals.vital_bp}`);
+  }
+
+  if (vitals.vital_temperature) {
+    parts.push(`T ${vitals.vital_temperature}`);
+  }
+
+  if (vitals.vital_glycemia) {
+    parts.push(`Gr ${vitals.vital_glycemia}`);
+  }
+
+  if (vitals.vital_spo2) {
+    parts.push(`SpO2 ${vitals.vital_spo2}`);
+  }
+
+  if (vitals.vital_rs) {
+    parts.push(`RS ${vitals.vital_rs}`);
+  }
+
+  return parts.join(". ");
+}
+
+/** Legacy doctor_notes text composed for staff viewers and older integrations. */
+function composeDoctorNotesStorage({
+  clinicalNote,
+  patientDiagnosis,
+  patientPrescription,
+  vitals,
+}) {
+  const parts = [];
+  const vitalsLine = vitals ? composeVitalsLine(vitals) : "";
+
+  if (vitalsLine) {
+    parts.push(vitalsLine);
+  }
 
   if (clinicalNote) {
     parts.push(clinicalNote);
@@ -29,10 +76,21 @@ function composeDoctorNotesStorage({ clinicalNote, patientDiagnosis, patientPres
   return parts.join("\n\n");
 }
 
+function emptyVitalsFields() {
+  return {
+    vital_bp: "",
+    vital_temperature: "",
+    vital_glycemia: "",
+    vital_spo2: "",
+    vital_rs: "",
+  };
+}
+
 function normalizeStructuredConsultationPayload(body) {
   const clinicalNote = trimValue(body?.clinical_note);
   const patientDiagnosis = trimValue(body?.patient_diagnosis);
   const patientPrescription = trimValue(body?.patient_prescription);
+  const vitals = normalizeVitalsFields(body);
 
   if (!clinicalNote) {
     return { error: "Internal clinical note is required." };
@@ -46,10 +104,12 @@ function normalizeStructuredConsultationPayload(body) {
     clinical_note: clinicalNote,
     patient_diagnosis: patientDiagnosis,
     patient_prescription: patientPrescription,
+    ...vitals,
     doctor_notes: composeDoctorNotesStorage({
       clinicalNote,
       patientDiagnosis,
       patientPrescription,
+      vitals,
     }),
   };
 }
@@ -65,6 +125,7 @@ function normalizeLegacyConsultationNotes(body) {
     clinical_note: "",
     patient_diagnosis: "",
     patient_prescription: "",
+    ...emptyVitalsFields(),
     doctor_notes: doctorNotes,
   };
 }
@@ -79,6 +140,7 @@ function normalizeConsultationNotesPayload(body) {
 
 module.exports = {
   composeDoctorNotesStorage,
+  composeVitalsLine,
   hasStructuredConsultationFields,
   normalizeConsultationNotesPayload,
 };

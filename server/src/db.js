@@ -1138,6 +1138,26 @@ function ensureConsultationColumns() {
       name: "patient_prescription",
       sql: "ALTER TABLE consultations ADD COLUMN patient_prescription TEXT NOT NULL DEFAULT ''",
     },
+    {
+      name: "vital_bp",
+      sql: "ALTER TABLE consultations ADD COLUMN vital_bp TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "vital_temperature",
+      sql: "ALTER TABLE consultations ADD COLUMN vital_temperature TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "vital_glycemia",
+      sql: "ALTER TABLE consultations ADD COLUMN vital_glycemia TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "vital_spo2",
+      sql: "ALTER TABLE consultations ADD COLUMN vital_spo2 TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "vital_rs",
+      sql: "ALTER TABLE consultations ADD COLUMN vital_rs TEXT NOT NULL DEFAULT ''",
+    },
   ];
 
   requiredColumns.forEach((column) => {
