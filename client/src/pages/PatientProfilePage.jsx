@@ -29,12 +29,12 @@ import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import { LongTermReviewLogUpdateButton } from "../components/LongTermReviewLogUpdate.jsx";
 import {
-  LongTermReviewLogUpdateButton,
   canFlagLongTermReview,
   canLogLongTermReviewUpdate,
-  useLongTermReviewLogUpdate,
-} from "../components/LongTermReviewLogUpdate.jsx";
+} from "../lib/longTermReviewAccess.js";
+import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import PatientLinkhamPolicyBadge from "../components/PatientLinkhamPolicyBadge.jsx";
