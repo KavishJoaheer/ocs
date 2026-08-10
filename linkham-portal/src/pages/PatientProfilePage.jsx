@@ -43,6 +43,12 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import {
+  closePreviewTab,
+  openInlinePreviewTab,
+  presentFileBlob,
+  supportsInlineBlobPreview,
+} from "../lib/fileBlobViewer.js";
+import {
   canEditConsultationNote,
   canManageConsultationNotes,
 } from "../lib/consultationAccess.js";
@@ -1090,8 +1096,8 @@ function PatientProfilePage() {
       return;
     }
 
-    const previewTab = window.open("about:blank", "_blank");
-    if (!previewTab) {
+    const previewTab = openInlinePreviewTab();
+    if (!previewTab && supportsInlineBlobPreview()) {
       toast.error("Pop-up blocked. Allow pop-ups to open this file.");
       return;
     }
@@ -1106,32 +1112,18 @@ function PatientProfilePage() {
           : "application/octet-stream");
       const blob =
         response.blob instanceof Blob ? response.blob : new Blob([response.blob], { type: mime });
-      const objectUrl = window.URL.createObjectURL(blob);
-      const isViewable =
-        mime.includes("pdf") ||
-        mime.startsWith("image/") ||
-        /\.(pdf|png|jpe?g|gif|webp)$/i.test(attachment.original_name || "");
+      const mode = presentFileBlob({
+        blob,
+        filename: response.filename || attachment.original_name || "report-file",
+        mimeType: mime,
+        previewTab,
+      });
 
-      if (isViewable) {
-        previewTab.location.href = objectUrl;
-        window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 120_000);
-        return;
+      if (mode === "download") {
+        toast.success("File saved to your device. Open it from your downloads.");
       }
-
-      previewTab.close();
-
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = decodeURIComponent(
-        response.filename || attachment.original_name || "report-file",
-      );
-      link.rel = "noopener";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(objectUrl);
     } catch (error) {
-      previewTab.close();
+      closePreviewTab(previewTab);
       toast.error(error.message);
     }
   }

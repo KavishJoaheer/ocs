@@ -6,6 +6,11 @@ import { Link } from "react-router-dom";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
+import {
+  closePreviewTab,
+  openInlinePreviewTab,
+  presentFileBlob,
+} from "../lib/fileBlobViewer.js";
 import { pageContainerClass } from "../lib/utils.js";
 
 function AdminRosterPage() {
@@ -71,12 +76,22 @@ function AdminRosterPage() {
       return;
     }
 
+    const previewTab = openInlinePreviewTab();
+
     try {
       const file = await api.getBlob("/dashboard/roster/file");
-      const blobUrl = window.URL.createObjectURL(file.blob);
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60 * 1000);
+      const mode = presentFileBlob({
+        blob: file.blob,
+        filename: file.filename || "roster.pdf",
+        mimeType: file.contentType || "application/pdf",
+        previewTab,
+      });
+
+      if (mode === "download") {
+        toast.success("Roster saved to your device. Open it from your downloads.");
+      }
     } catch (error) {
+      closePreviewTab(previewTab);
       toast.error(error.message);
     }
   }
