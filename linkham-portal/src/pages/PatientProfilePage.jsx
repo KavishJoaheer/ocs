@@ -366,7 +366,7 @@ function ClinicalGridItem({ label, value }) {
       <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</p>
       <p
         className={cx(
-          "mt-1 line-clamp-3 break-words text-sm leading-snug",
+          "mt-1 whitespace-pre-line break-words text-sm leading-snug",
           isEmpty ? "text-slate-400" : "text-slate-700",
         )}
       >
@@ -1776,7 +1776,7 @@ function PatientProfilePage() {
                               <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
                                 {block.label}
                               </p>
-                              <p className="mt-1 line-clamp-3 break-words text-sm leading-snug text-slate-700">
+                              <p className="mt-1 whitespace-pre-line break-words text-sm leading-snug text-slate-700">
                                 {block.value}
                               </p>
                             </div>
@@ -2302,8 +2302,8 @@ function PatientProfilePage() {
             <SectionCard className="xl:col-span-5" title="Particularity">
               <p
                 className={cx(
-                  "whitespace-pre-wrap text-xs leading-snug",
-                  data.patient.particularity ? "text-slate-700 line-clamp-4" : "text-slate-400",
+                  "whitespace-pre-wrap break-words text-xs leading-snug",
+                  data.patient.particularity ? "text-slate-700" : "text-slate-400",
                 )}
               >
                 {data.patient.particularity || "No particularity recorded during intake."}
