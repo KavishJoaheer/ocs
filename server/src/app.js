@@ -188,7 +188,7 @@ function createApp() {
       POST: ["admin", "doctor", "operator"],
       PUT: ["admin", "doctor", "operator"],
       PATCH: ["admin", "operator"],
-      DELETE: ["admin"],
+      DELETE: ["admin", "operator"],
     }),
     patientsRouter,
   );

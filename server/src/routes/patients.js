@@ -1916,6 +1916,10 @@ router.delete("/:id/permanent", (req, res) => {
 });
 
 router.delete("/:id", (req, res) => {
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin and operator accounts can delete patients." });
+  }
+
   const patientId = Number(req.params.id);
   const existing = getPatientById(patientId);
 

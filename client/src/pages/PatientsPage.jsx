@@ -230,7 +230,9 @@ function PatientsPage() {
   const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
-  const canDeletePatients = user.role === "admin";
+  const canDeletePatients = ["admin", "operator"].includes(user.role);
+  // Restoring and purging soft-deleted records stays admin-only.
+  const canManageDeletedPatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
   const canOpenBilling =
     user.role === "admin" || user.role === "doctor" || user.role === "accountant";
@@ -246,7 +248,7 @@ function PatientsPage() {
     searchParams.get("tab") === "under_review" ||
     searchParams.get("filter") === "under_review";
   const isRecentlyDeletedView =
-    !isMobile && canDeletePatients && statusFilter === "recently_deleted";
+    !isMobile && canManageDeletedPatients && statusFilter === "recently_deleted";
   const [doctorIdFilter, setDoctorIdFilter] = useState("");
   const [page, setPage] = useState(1);
   const [patientsData, setPatientsData] = useState(null);
@@ -351,7 +353,7 @@ function PatientsPage() {
     target(true);
 
     try {
-      if (!isMobile && canDeletePatients && statusFilter === "recently_deleted") {
+      if (!isMobile && canManageDeletedPatients && statusFilter === "recently_deleted") {
         const deleted = await api.get("/patients/deleted/recent");
         const query = deferredSearch.trim().toLowerCase();
         const items = query
@@ -699,12 +701,12 @@ function PatientsPage() {
 
     const desktopTabs = [...baseTabs, { id: "pending_approval", label: "Pending Approval" }];
 
-    if (canDeletePatients) {
+    if (canManageDeletedPatients) {
       desktopTabs.push({ id: "recently_deleted", label: "Recently deleted" });
     }
 
     return desktopTabs;
-  }, [canDeletePatients, isMobile]);
+  }, [canManageDeletedPatients, isMobile]);
 
   useEffect(() => {
     if (isMobile && statusFilter === "recently_deleted") {

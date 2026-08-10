@@ -816,3 +816,85 @@ test("patient billing returns bills and summary totals", async () => {
   assert.equal(billing.data.summary.outstanding, 35);
   assert.match(billing.data.bills[0].items_summary, /Consultation|Lab/i);
 });
+
+function insertDirectoryPatient(label) {
+  return db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+    `)
+    .run(
+      `${label} Patient`,
+      label,
+      "Patient",
+      `STAFF-${label.toUpperCase()}-${Date.now()}`,
+      36,
+      "1990-01-01",
+      "F",
+      "57007777",
+      "57007777",
+      "9 Directory Street",
+    ).lastInsertRowid;
+}
+
+test("operator can delete a patient without admin permission", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  const operatorToken = login.data.token;
+
+  const patientId = insertDirectoryPatient("OperatorDelete");
+
+  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: operatorToken });
+  assert.equal(removed.status, 204, JSON.stringify(removed.data));
+
+  const softDeleted = db
+    .prepare("SELECT deleted_at FROM patients WHERE id = ?")
+    .get(patientId);
+  assert.ok(softDeleted.deleted_at, "expected the patient to be soft-deleted");
+
+  const profile = await api("GET", `/api/patients/${patientId}`, { token: operatorToken });
+  assert.equal(profile.status, 404, JSON.stringify(profile.data));
+});
+
+test("operator cannot permanently delete or browse recently deleted patients", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  const operatorToken = login.data.token;
+
+  const patientId = insertDirectoryPatient("OperatorPurge");
+
+  const purged = await api("DELETE", `/api/patients/${patientId}/permanent`, {
+    token: operatorToken,
+  });
+  assert.equal(purged.status, 403, JSON.stringify(purged.data));
+
+  const recentlyDeleted = await api("GET", "/api/patients/deleted/recent", {
+    token: operatorToken,
+  });
+  assert.equal(recentlyDeleted.status, 403, JSON.stringify(recentlyDeleted.data));
+
+  const stillPresent = db.prepare("SELECT deleted_at FROM patients WHERE id = ?").get(patientId);
+  assert.equal(stillPresent.deleted_at, null);
+});
+
+test("doctors still cannot delete patients", async () => {
+  const doctorUser = db
+    .prepare("SELECT username FROM users WHERE role = 'doctor' AND is_active = 1 LIMIT 1")
+    .get();
+  assert.ok(doctorUser, "expected a seeded doctor account");
+
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: doctorUser.username, password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+
+  const patientId = insertDirectoryPatient("DoctorDelete");
+  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: login.data.token });
+  assert.equal(removed.status, 403, JSON.stringify(removed.data));
+});
