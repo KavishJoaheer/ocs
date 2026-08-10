@@ -855,7 +855,7 @@ function PatientsPage() {
                             >
                               {isUnderReviewView ? (
                                 <>
-                                  <td className="px-4 py-2 align-top">
+                                  <td className="max-w-0 px-4 py-2 align-top">
                                     <div className="min-w-0 space-y-0.5">
                                       <p className="flex flex-wrap items-center gap-y-1">
                                         <span className="truncate font-semibold leading-tight text-slate-950">
@@ -871,13 +871,13 @@ function PatientsPage() {
                                     </div>
                                   </td>
 
-                                  <td className="px-4 py-2 align-top">
+                                  <td className="max-w-0 px-4 py-2 align-top">
                                     <p className="truncate text-sm font-medium leading-snug text-slate-700">
                                       {formatUnderReviewAgeLocationLine(patient)}
                                     </p>
                                   </td>
 
-                                  <td className="px-4 py-2 align-top">
+                                  <td className="max-w-0 px-4 py-2 align-top">
                                     <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800">
                                       {formatAssignedClinicianLine(patient)}
                                     </p>
@@ -902,7 +902,7 @@ function PatientsPage() {
                                 </>
                               ) : (
                                 <>
-                              <td className="px-4 py-2 align-top">
+                              <td className="max-w-0 px-4 py-2 align-top">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <div className="shrink-0 rounded-xl bg-sky-50 p-2 text-sky-700">
                                     <UserRound className="size-4" />
@@ -928,7 +928,7 @@ function PatientsPage() {
                                 </div>
                               </td>
 
-                              <td className="px-4 py-2 align-top">
+                              <td className="max-w-0 px-4 py-2 align-top">
                                 <p className="truncate text-sm font-medium leading-tight text-slate-800">
                                   {displayText(patient.patient_contact_number)}
                                 </p>
@@ -943,7 +943,7 @@ function PatientsPage() {
                                 </p>
                               </td>
 
-                              <td className="px-4 py-2 align-top">
+                              <td className="max-w-0 px-4 py-2 align-top">
                                 <p className="truncate text-sm font-semibold leading-tight text-slate-900">
                                   {displayText(patient.next_of_kin_name)}
                                 </p>
