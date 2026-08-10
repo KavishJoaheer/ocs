@@ -860,7 +860,37 @@ test("operator can delete a patient without admin permission", async () => {
   assert.equal(profile.status, 404, JSON.stringify(profile.data));
 });
 
-test("operator cannot permanently delete or browse recently deleted patients", async () => {
+test("operator can browse recently deleted patients and restore one", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  const operatorToken = login.data.token;
+
+  const patientId = insertDirectoryPatient("OperatorRestore");
+  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: operatorToken });
+  assert.equal(removed.status, 204, JSON.stringify(removed.data));
+
+  const recentlyDeleted = await api("GET", "/api/patients/deleted/recent", {
+    token: operatorToken,
+  });
+  assert.equal(recentlyDeleted.status, 200, JSON.stringify(recentlyDeleted.data));
+  assert.ok(
+    recentlyDeleted.data.some((patient) => patient.id === Number(patientId)),
+    "expected the deleted patient in the recently deleted list",
+  );
+
+  const restored = await api("POST", `/api/patients/${patientId}/restore`, {
+    token: operatorToken,
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal(
+    db.prepare("SELECT deleted_at FROM patients WHERE id = ?").get(patientId).deleted_at,
+    null,
+  );
+});
+
+test("operator cannot permanently delete a patient", async () => {
   const login = await api("POST", "/api/auth/login", {
     body: { username: "operator01", password: "Welcome@123" },
   });
@@ -873,14 +903,20 @@ test("operator cannot permanently delete or browse recently deleted patients", a
     token: operatorToken,
   });
   assert.equal(purged.status, 403, JSON.stringify(purged.data));
+  assert.ok(db.prepare("SELECT id FROM patients WHERE id = ?").get(patientId));
+});
 
-  const recentlyDeleted = await api("GET", "/api/patients/deleted/recent", {
-    token: operatorToken,
+test("admin can permanently delete a patient from recently deleted", async () => {
+  const patientId = insertDirectoryPatient("AdminPurge");
+
+  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: adminToken });
+  assert.equal(removed.status, 204, JSON.stringify(removed.data));
+
+  const purged = await api("DELETE", `/api/patients/${patientId}/permanent`, {
+    token: adminToken,
   });
-  assert.equal(recentlyDeleted.status, 403, JSON.stringify(recentlyDeleted.data));
-
-  const stillPresent = db.prepare("SELECT deleted_at FROM patients WHERE id = ?").get(patientId);
-  assert.equal(stillPresent.deleted_at, null);
+  assert.equal(purged.status, 200, JSON.stringify(purged.data));
+  assert.equal(db.prepare("SELECT id FROM patients WHERE id = ?").get(patientId), undefined);
 });
 
 test("doctors still cannot delete patients", async () => {

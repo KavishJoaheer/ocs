@@ -1038,8 +1038,10 @@ router.get("/", (req, res) => {
 });
 
 router.get("/deleted/recent", (req, res) => {
-  if (req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only admin can view recently deleted patients." });
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can view recently deleted patients.",
+    });
   }
 
   const patients = db
@@ -1067,8 +1069,10 @@ router.get("/deleted/recent", (req, res) => {
 });
 
 router.post("/:id/restore", (req, res) => {
-  if (req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only admin can restore deleted patients." });
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can restore deleted patients.",
+    });
   }
 
   const patientId = Number(req.params.id);

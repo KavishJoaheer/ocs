@@ -231,8 +231,9 @@ function PatientsPage() {
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = ["admin", "operator"].includes(user.role);
-  // Restoring and purging soft-deleted records stays admin-only.
-  const canManageDeletedPatients = user.role === "admin";
+  const canManageDeletedPatients = ["admin", "operator"].includes(user.role);
+  // Purging a soft-deleted record is irreversible, so it stays admin-only.
+  const canPurgePatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
   const canOpenBilling =
     user.role === "admin" || user.role === "doctor" || user.role === "accountant";
@@ -1061,14 +1062,16 @@ function PatientsPage() {
                                     <RotateCcw className="size-3.5" aria-hidden />
                                     Restore
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setPatientToPurge(patient)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
-                                  >
-                                    <Trash2 className="size-3.5" aria-hidden />
-                                    Delete forever
-                                  </button>
+                                  {canPurgePatients ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPatientToPurge(patient)}
+                                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                    >
+                                      <Trash2 className="size-3.5" aria-hidden />
+                                      Delete forever
+                                    </button>
+                                  ) : null}
                                 </div>
                               </td>
                             </tr>
