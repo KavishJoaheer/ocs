@@ -1158,6 +1158,10 @@ function ensureConsultationColumns() {
       name: "vital_rs",
       sql: "ALTER TABLE consultations ADD COLUMN vital_rs TEXT NOT NULL DEFAULT ''",
     },
+    {
+      name: "vital_pulse",
+      sql: "ALTER TABLE consultations ADD COLUMN vital_pulse TEXT NOT NULL DEFAULT ''",
+    },
   ];
 
   requiredColumns.forEach((column) => {

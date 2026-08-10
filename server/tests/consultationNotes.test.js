@@ -22,7 +22,7 @@ test("normalizeConsultationNotesPayload stores structured consultation fields se
   assert.equal(payload.vital_temperature, "");
   assert.equal(payload.vital_glycemia, "");
   assert.equal(payload.vital_spo2, "");
-  assert.equal(payload.vital_rs, "");
+  assert.equal(payload.vital_pulse, "");
   assert.match(payload.doctor_notes, /URTI/);
   assert.match(payload.doctor_notes, /Prescribed: Tab levodenk/);
 });
@@ -36,16 +36,17 @@ test("normalizeConsultationNotesPayload stores structured vitals alongside notes
     vital_temperature: "38.2 °C",
     vital_glycemia: "5.5",
     vital_spo2: "98%",
-    vital_rs: "18",
+    vital_pulse: "88",
   });
 
   assert.equal(payload.vital_bp, "138/88");
   assert.equal(payload.vital_temperature, "38.2 °C");
   assert.equal(payload.vital_glycemia, "5.5");
   assert.equal(payload.vital_spo2, "98%");
-  assert.equal(payload.vital_rs, "18");
+  assert.equal(payload.vital_pulse, "88");
   assert.match(payload.doctor_notes, /BP 138\/88/);
   assert.match(payload.doctor_notes, /SpO2 98%/);
+  assert.match(payload.doctor_notes, /Pulse 88/);
   assert.match(payload.doctor_notes, /Patient febrile/);
 });
 

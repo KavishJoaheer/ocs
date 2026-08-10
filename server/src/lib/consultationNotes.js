@@ -16,7 +16,7 @@ function normalizeVitalsFields(body) {
     vital_temperature: trimValue(body?.vital_temperature),
     vital_glycemia: trimValue(body?.vital_glycemia),
     vital_spo2: trimValue(body?.vital_spo2),
-    vital_rs: trimValue(body?.vital_rs),
+    vital_pulse: trimValue(body?.vital_pulse),
   };
 }
 
@@ -40,8 +40,8 @@ function composeVitalsLine(vitals) {
     parts.push(`SpO2 ${vitals.vital_spo2}`);
   }
 
-  if (vitals.vital_rs) {
-    parts.push(`RS ${vitals.vital_rs}`);
+  if (vitals.vital_pulse) {
+    parts.push(`Pulse ${vitals.vital_pulse}`);
   }
 
   return parts.join(". ");
@@ -82,7 +82,7 @@ function emptyVitalsFields() {
     vital_temperature: "",
     vital_glycemia: "",
     vital_spo2: "",
-    vital_rs: "",
+    vital_pulse: "",
   };
 }
 

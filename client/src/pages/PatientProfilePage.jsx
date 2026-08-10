@@ -476,7 +476,7 @@ function getEmptyConsultationEntry(user) {
     vital_temperature: "",
     vital_glycemia: "",
     vital_spo2: "",
-    vital_rs: "",
+    vital_pulse: "",
   };
 }
 
@@ -491,7 +491,7 @@ const CONSULTATION_VITAL_FIELDS = [
   { key: "vital_temperature", label: "T", placeholder: "36.6 °C" },
   { key: "vital_glycemia", label: "Gr", placeholder: "5.5 / 100" },
   { key: "vital_spo2", label: "SpO2", placeholder: "98%" },
-  { key: "vital_rs", label: "RS", placeholder: "16" },
+  { key: "vital_pulse", label: "Pulse", placeholder: "72" },
 ];
 
 function roleLabel(role) {
@@ -876,7 +876,7 @@ function ConsultationCreateModal({
       vital_temperature: form.vital_temperature,
       vital_glycemia: form.vital_glycemia,
       vital_spo2: form.vital_spo2,
-      vital_rs: form.vital_rs,
+      vital_pulse: form.vital_pulse,
     });
   }
 

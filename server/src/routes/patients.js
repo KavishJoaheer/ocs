@@ -1744,7 +1744,7 @@ router.post("/:id/consultations", (req, res) => {
           vital_temperature,
           vital_glycemia,
           vital_spo2,
-          vital_rs
+          vital_pulse
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
@@ -1761,7 +1761,7 @@ router.post("/:id/consultations", (req, res) => {
         normalizedNotes.vital_temperature,
         normalizedNotes.vital_glycemia,
         normalizedNotes.vital_spo2,
-        normalizedNotes.vital_rs,
+        normalizedNotes.vital_pulse,
       ).lastInsertRowid;
 
     ensureBillingForConsultation(consultationId, patientId);

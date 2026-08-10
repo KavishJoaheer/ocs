@@ -736,7 +736,7 @@ test("staff can add structured desktop consultation notes from patient profile",
       vital_temperature: "38.1 °C",
       vital_glycemia: "5.4",
       vital_spo2: "97%",
-      vital_rs: "18",
+      vital_pulse: "88",
     },
   });
 
@@ -748,9 +748,10 @@ test("staff can add structured desktop consultation notes from patient profile",
   assert.equal(created.data.vital_temperature, "38.1 °C");
   assert.equal(created.data.vital_glycemia, "5.4");
   assert.equal(created.data.vital_spo2, "97%");
-  assert.equal(created.data.vital_rs, "18");
+  assert.equal(created.data.vital_pulse, "88");
   assert.match(created.data.doctor_notes, /URTI/i);
   assert.match(created.data.doctor_notes, /BP 138\/88/);
+  assert.match(created.data.doctor_notes, /Pulse 88/);
 });
 
 test("patient billing returns bills and summary totals", async () => {

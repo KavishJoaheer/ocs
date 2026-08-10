@@ -395,6 +395,7 @@ async function initializePostgresDatabase() {
         ALTER TABLE consultations ADD COLUMN IF NOT EXISTS vital_glycemia TEXT NOT NULL DEFAULT '';
         ALTER TABLE consultations ADD COLUMN IF NOT EXISTS vital_spo2 TEXT NOT NULL DEFAULT '';
         ALTER TABLE consultations ADD COLUMN IF NOT EXISTS vital_rs TEXT NOT NULL DEFAULT '';
+        ALTER TABLE consultations ADD COLUMN IF NOT EXISTS vital_pulse TEXT NOT NULL DEFAULT '';
       `);
 
       await pool.query(`
