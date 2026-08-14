@@ -20,6 +20,7 @@ import { cx } from "../lib/utils.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
 import AppointmentChangeInbox from "../components/AppointmentChangeInbox.jsx";
 
 const STATUS_OPTIONS = [
@@ -518,6 +519,7 @@ export default function VisitRequestsPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const refreshKey = useLiveRefreshKey();
+  const appointmentChangeCount = useAppointmentChangeCount();
   const isDoctor = user?.role === "doctor";
   const canAssignDoctor = !isDoctor;
   const boardColumns = isDoctor ? DOCTOR_BOARD_COLUMNS : DISPATCH_BOARD_COLUMNS;
@@ -531,6 +533,11 @@ export default function VisitRequestsPage() {
   const loadRef = useRef(null);
 
   const loadRequests = useCallback(async ({ silent = false } = {}) => {
+    if (statusFilter === "changes") {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (silent) setRefreshing(true);
     try {
       const data = await api.get(`/visit-requests?status=${statusFilter}`);
@@ -658,11 +665,10 @@ export default function VisitRequestsPage() {
         }
       />
 
-      <AppointmentChangeInbox />
-
       <div className="flex flex-wrap gap-2">
         {[
           { value: "active", label: "Live board" },
+          ...(!isDoctor ? [{ value: "changes", label: "Changes", badge: appointmentChangeCount }] : []),
           { value: "all", label: "All" },
           { value: "completed", label: "Completed" },
           { value: "cancelled", label: "Cancelled" },
@@ -672,18 +678,40 @@ export default function VisitRequestsPage() {
             type="button"
             onClick={() => setStatusFilter(tab.value)}
             className={cx(
-              "rounded-full px-4 py-2 text-sm font-semibold transition",
+              "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
               statusFilter === tab.value
                 ? "bg-[#2d8f98] text-white shadow-sm"
                 : "border border-[rgba(65,200,198,0.25)] bg-white/70 text-[#4e7b83] hover:bg-white",
             )}
           >
             {tab.label}
+            {tab.badge > 0 ? (
+              <span
+                className={cx(
+                  "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold",
+                  statusFilter === tab.value ? "bg-white/90 text-[#2d8f98]" : "bg-[#2d8f98] text-white",
+                )}
+              >
+                {tab.badge > 9 ? "9+" : tab.badge}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
 
-      {loading ? (
+      {!isDoctor && statusFilter === "active" && appointmentChangeCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setStatusFilter("changes")}
+          className="w-full rounded-2xl border border-[#2d8f98]/25 bg-[#2d8f98]/8 px-4 py-3 text-left text-sm font-semibold text-[#2d8f98] transition hover:bg-[#2d8f98]/12"
+        >
+          {appointmentChangeCount} appointment change{appointmentChangeCount === 1 ? "" : "s"} waiting for the clinic
+        </button>
+      ) : null}
+
+      {statusFilter === "changes" ? (
+        <AppointmentChangeInbox />
+      ) : loading ? (
         <LoadingState label="Loading visit requests" />
       ) : requests.length === 0 ? (
         <EmptyState

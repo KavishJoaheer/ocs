@@ -1076,7 +1076,13 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
       dateTo: activityDateTo,
     }),
     activity_staff: role === "admin" ? getActivityStaffList() : [],
-    staging: role === "admin" || role === "operator" ? db.prepare("SELECT * FROM inventory_staging ORDER BY created_at DESC, id DESC LIMIT 200").all() : [],
+    staging: role === "admin" || role === "operator" ? db.prepare(`
+      SELECT s.*, f.name AS folder_name
+      FROM inventory_staging s
+      LEFT JOIN inventory_folders f ON f.id = s.folder_id
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT 200
+    `).all() : [],
     compare_rows:
       role === "admin" ? getCompareRows(activityDateFrom, activityDateTo) : [],
     my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],
@@ -2436,12 +2442,28 @@ router.post("/staging/import-csv", (req, res) => {
   `);
 
   let inserted = 0;
-  rowLines.forEach((line) => {
+  const skippedRows = [];
+  rowLines.forEach((line, index) => {
     const values = line.split(",").map((value) => value.trim());
-    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]));
+    const row = Object.fromEntries(headers.map((header, idx) => [header, values[idx] || ""]));
     const folderId = folderMap.get(String(row.folder || "").toLowerCase());
     const qty = Number(row.quantity || 0);
-    if (!folderId || !row.item_name || !Number.isInteger(qty) || qty < 0) return;
+    const lineNumber = index + 2;
+    if (!folderId) {
+      skippedRows.push({
+        line: lineNumber,
+        reason: row.folder ? `Unknown folder "${row.folder}"` : "Missing folder",
+      });
+      return;
+    }
+    if (!row.item_name) {
+      skippedRows.push({ line: lineNumber, reason: "Missing item name" });
+      return;
+    }
+    if (!Number.isInteger(qty) || qty < 0) {
+      skippedRows.push({ line: lineNumber, reason: "Invalid quantity" });
+      return;
+    }
     insert.run(
       folderId,
       row.item_name,
@@ -2457,8 +2479,21 @@ router.post("/staging/import-csv", (req, res) => {
     );
     inserted += 1;
   });
-  if (!inserted) return res.status(400).json({ error: "No valid rows found in CSV." });
-  res.status(201).json(getPayload(req));
+  const importSummary = {
+    imported: inserted,
+    skipped: skippedRows.length,
+    skipped_rows: skippedRows.slice(0, 25),
+  };
+  if (!inserted) {
+    return res.status(400).json({
+      error: "No valid rows found in CSV.",
+      import_summary: importSummary,
+    });
+  }
+  res.status(201).json({
+    ...getPayload(req),
+    import_summary: importSummary,
+  });
 });
 
 router.post("/staging/:id/release", (req, res) => {

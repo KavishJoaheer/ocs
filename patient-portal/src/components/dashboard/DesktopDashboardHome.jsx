@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { HousePlus } from "lucide-react";
+import { Calendar, HousePlus } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 
 const OCS_CARE_WHATSAPP_URL = "https://wa.me/23052522234";
@@ -77,6 +77,52 @@ function DesktopConciergeCard() {
   );
 }
 
+function DesktopNextAppointmentCard({ appointment }) {
+  const doctorName = formatDoctorName(appointment.doctor_name);
+  const dateLabel = dayjs(appointment.date).isValid()
+    ? dayjs(appointment.date).format("D MMMM YYYY")
+    : appointment.date;
+  const timeLabel = String(appointment.time || "").trim();
+
+  return (
+    <section className="desktop-card animate-fade-in-up stagger-1">
+      <h2 className="font-display text-lg font-bold text-ocs-slate">Your Next Appointment</h2>
+
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <p className="text-[13px] font-medium text-brand-cool-grey">
+          {dateLabel}
+          {timeLabel ? ` · ${timeLabel}` : ""}
+        </p>
+        <span className="desktop-visit-badge shrink-0">Upcoming</span>
+      </div>
+
+      <div className="mt-5 flex items-center gap-4">
+        <div
+          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-brand-teal/10 text-brand-teal"
+          aria-hidden="true"
+        >
+          <Calendar className="size-6" strokeWidth={1.75} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-lg font-bold leading-snug text-ocs-slate">{doctorName}</p>
+          <p className="mt-0.5 text-sm text-brand-cool-grey">
+            {appointment.reason || "Scheduled home visit"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-8 flex justify-end">
+        <Link
+          to="/appointments"
+          className="text-sm font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
+        >
+          View Appointments →
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function DesktopLastVisitCard({ consultation }) {
   const doctorName = formatDoctorName(consultation.doctor_name);
   const dateLabel = dayjs(consultation.date).isValid()
@@ -129,6 +175,7 @@ function DesktopLastVisitCard({ consultation }) {
 
 function DesktopDashboardHome({
   profileLastConsultation,
+  profileNextAppointment = null,
   activeVisitSlot,
   headline,
   careTeamDoctorName,
@@ -151,9 +198,12 @@ function DesktopDashboardHome({
       <div className="desktop-dashboard-shell">
       <div className="desktop-dashboard-grid">
         <div className="desktop-dashboard-col">
+          {profileNextAppointment ? (
+            <DesktopNextAppointmentCard appointment={profileNextAppointment} />
+          ) : null}
           {profileLastConsultation ? (
             <DesktopLastVisitCard consultation={profileLastConsultation} />
-          ) : (
+          ) : profileNextAppointment ? null : (
             <section className="desktop-card animate-fade-in-up stagger-1">
               <h2 className="font-display text-lg font-bold text-ocs-slate">Your Last Visit</h2>
               <div className="mt-6 flex items-center gap-4">

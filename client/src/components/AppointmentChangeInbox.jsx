@@ -78,7 +78,7 @@ function AppointmentChangeRow({ request, updatingId, onResolve }) {
           className="inline-flex items-center gap-1 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
         >
           <Check className="size-3.5" />
-          {isReschedule ? "Apply" : "Cancel visit"}
+          {isReschedule ? "Apply" : "Confirm cancellation"}
         </button>
         <button
           type="button"
@@ -135,7 +135,14 @@ function AppointmentChangeInbox() {
   }
 
   if (!loading && !requests.length) {
-    return null;
+    return (
+      <SectionCard
+        title="Appointment changes"
+        subtitle="Cancel and reschedule requests from Care land here."
+      >
+        <p className="text-sm text-slate-500">No appointment changes waiting.</p>
+      </SectionCard>
+    );
   }
 
   return (
@@ -145,7 +152,7 @@ function AppointmentChangeInbox() {
       actions={
         <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#2d8f98]/10 px-3 py-1.5 text-xs font-bold text-[#2d8f98]">
           <CalendarClock className="size-3.5" />
-          Board
+          Inbox
         </span>
       }
     >

@@ -3064,6 +3064,7 @@ export default function InventoryPage() {
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
+  const [logisticsTab, setLogisticsTab] = useState("stock");
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
     (next, { silent = false } = {}) => {
@@ -3082,6 +3083,10 @@ export default function InventoryPage() {
   const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
   const folders = data?.folders || [];
+  const pendingStagingCount = useMemo(
+    () => (Array.isArray(data?.staging) ? data.staging.filter((row) => row.status === "pending").length : 0),
+    [data?.staging],
+  );
   const openItemEditor = useCallback(
     (nextItem) => {
       const folderId = resolveItemFolderId(nextItem, folders);
@@ -4227,21 +4232,61 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {isOperator || isAdmin ? (
+      {canManageOcs ? (
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: "stock", label: "Stock" },
+            { id: "shipments", label: "Shipments", badge: pendingStagingCount },
+            { id: "count", label: "Count" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setLogisticsTab(tab.id)}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                logisticsTab === tab.id
+                  ? "bg-[#2d8f98] text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {tab.label}
+              {tab.badge > 0 ? (
+                <span
+                  className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
+                    logisticsTab === tab.id ? "bg-white/90 text-[#2d8f98]" : "bg-[#2d8f98] text-white"
+                  }`}
+                >
+                  {tab.badge > 9 ? "9+" : tab.badge}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {canManageOcs && logisticsTab === "stock" ? (
+        <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+      ) : null}
+
+      {canManageOcs && logisticsTab === "shipments" ? (
         <>
-          <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
           <InventoryCsvImport onImported={() => load(undefined, undefined, { silent: true })} />
           <InventoryStagingQueue
             rows={data?.staging}
             onReleased={() => load(undefined, undefined, { silent: true })}
           />
-          <InventoryStocktakePanel
-            items={data?.ocs_stock || items}
-            onApplied={() => load(undefined, undefined, { silent: true })}
-          />
         </>
       ) : null}
 
+      {canManageOcs && logisticsTab === "count" ? (
+        <InventoryStocktakePanel
+          items={data?.ocs_stock || items}
+          folders={folders}
+          onApplied={() => load(undefined, undefined, { silent: true })}
+        />
+      ) : null}
+
+      {!canManageOcs || logisticsTab === "stock" ? (
       <SectionCard
         className={isOperator ? "pb-3" : undefined}
         title={
@@ -4561,6 +4606,7 @@ export default function InventoryPage() {
           </div>
         </div>
       </SectionCard>
+      ) : null}
 
       {isDoctor ? (
         <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">

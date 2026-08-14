@@ -164,6 +164,7 @@ function MobileDashboardHome({
   lastConsultation = null,
   nextAppointment = null,
   careTeamDoctorName = null,
+  activeVisitSlot = null,
 }) {
   const { openRequestSheet } = useRequestVisit();
   const { activeProfile } = useFamilyProfile();
@@ -187,6 +188,12 @@ function MobileDashboardHome({
           Your health. Unwavering care. Accessed effortlessly, managed securely.
         </p>
       </header>
+
+      {activeVisitSlot ? (
+        <section className="squircle-outer mb-6 bg-white px-5 py-5" aria-label="Active visit">
+          {activeVisitSlot}
+        </section>
+      ) : null}
 
       <button
         type="button"

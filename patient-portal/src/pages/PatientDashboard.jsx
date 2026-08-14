@@ -165,7 +165,7 @@ function MobileActiveVisit({ visit, onCancelled }) {
   const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
 
   return (
-    <div className="mb-5 animate-fade-in-up">
+    <div className="animate-fade-in-up">
       <div className="flex items-center gap-2">
         <span className="relative flex size-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#34c759] opacity-70" />
@@ -363,6 +363,7 @@ function PatientDashboard() {
             headline={headline}
             careTeamDoctorName={careTeamDoctorName}
             profileLastConsultation={profileLastConsultation}
+            profileNextAppointment={profileNextAppointment}
             activeVisitSlot={
               profileActiveVisit ? (
                 <ActiveVisitCard visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
@@ -384,21 +385,17 @@ function PatientDashboard() {
         <div className="native-dashboard min-h-full bg-[#F2F2F7]">
           <DashboardErrorState message={loadError} onRetry={handleRetryDashboard} className="min-h-[60vh]" />
         </div>
-      ) : profileActiveVisit ? (
-        <div
-          className="px-[var(--native-pad-screen)]"
-          style={{
-            paddingTop: "var(--native-safe-top)",
-          }}
-        >
-          <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
-        </div>
       ) : (
         <MobileDashboardHome
           firstName={isPrimaryProfile ? firstName : activeProfile.firstName}
           lastConsultation={profileLastConsultation}
           nextAppointment={profileNextAppointment}
           careTeamDoctorName={careTeamDoctorName}
+          activeVisitSlot={
+            profileActiveVisit ? (
+              <MobileActiveVisit visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
+            ) : null
+          }
         />
       )}
     </div>

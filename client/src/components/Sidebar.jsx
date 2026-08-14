@@ -24,6 +24,7 @@ import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js"
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
+import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
 
 function formatMobileDrawerDisplayName(user) {
   const name = String(user?.full_name || "").trim();
@@ -202,6 +203,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
 
 function Sidebar() {
   const { logout, user, hcmUnreadCount } = useAuth();
+  const appointmentChangeCount = useAppointmentChangeCount();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const locationKey = `${location.pathname}${location.search}`;
@@ -226,6 +228,12 @@ function Sidebar() {
   }, [user.role]);
 
   const desktopOnlyPaths = new Set(["/appointments"]);
+
+  function navBadgeCount(item) {
+    if (item.to === "/hcm-news") return hcmUnreadCount;
+    if (item.to === "/visit-requests") return appointmentChangeCount;
+    return 0;
+  }
 
   const drawerNavItems = useMemo(
     () => visibleNavItems.filter((item) => !bottomPaths.has(item.to) && !desktopOnlyPaths.has(item.to)),
@@ -328,7 +336,7 @@ function Sidebar() {
                       item={item}
                       drawer
                       onNavigate={() => setDrawerOpen(false)}
-                      badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
+                      badgeCount={navBadgeCount(item)}
                     />
                   ))}
                 </nav>
@@ -391,7 +399,7 @@ function Sidebar() {
               key={item.to}
               item={item}
               mobile
-              badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
+              badgeCount={navBadgeCount(item)}
             />
           ))}
         </nav>
@@ -440,7 +448,7 @@ function Sidebar() {
                 <SidebarLink
                   key={item.to}
                   item={item}
-                  badgeCount={item.to === "/hcm-news" ? hcmUnreadCount : 0}
+                  badgeCount={navBadgeCount(item)}
                 />
               ))}
             </nav>
