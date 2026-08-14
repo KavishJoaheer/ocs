@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   CalendarClock,
   FilePenLine,
   ReceiptText,
   SquarePen,
+  TriangleAlert,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
@@ -35,10 +36,21 @@ function ConsultationDetailPage() {
     doctor_notes: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [noteChangedElsewhere, setNoteChangedElsewhere] = useState(false);
+  // The loader re-runs on every live refresh. These let it see the current edit
+  // state without listing it as a dependency, which would restart the fetch each
+  // time the doctor opens the editor.
+  const isEditingRef = useRef(false);
+  const editBaselineRef = useRef(null);
 
   const canEdit = consultation && canEditConsultationNote(user, consultation);
   const canViewConsultationNotes = user.role === "admin" || user.role === "doctor";
   const refreshKey = useLiveRefreshKey();
+  const hasUnsavedNote =
+    isEditing &&
+    consultation != null &&
+    (form.doctor_notes !== (consultation.doctor_notes ?? "") ||
+      form.consultation_date !== (consultation.consultation_date ?? ""));
 
   useEffect(() => {
     let ignore = false;
@@ -49,10 +61,22 @@ function ConsultationDetailPage() {
 
         if (!ignore) {
           setConsultation(data);
-          setForm({
-            consultation_date: data.consultation_date ?? "",
-            doctor_notes: data.doctor_notes ?? "",
-          });
+
+          // Any change to this patient bumps refreshKey, so this runs while a
+          // doctor is mid-sentence. Overwriting the form here would delete the
+          // note being written, so only the stored copy is refreshed and the
+          // doctor is told when it moved underneath them.
+          if (isEditingRef.current) {
+            const baseline = editBaselineRef.current;
+            if (baseline && (data.doctor_notes ?? "") !== baseline.doctor_notes) {
+              setNoteChangedElsewhere(true);
+            }
+          } else {
+            setForm({
+              consultation_date: data.consultation_date ?? "",
+              doctor_notes: data.doctor_notes ?? "",
+            });
+          }
         }
       } catch (error) {
         if (!ignore) {
@@ -72,6 +96,91 @@ function ConsultationDetailPage() {
     };
   }, [id, refreshKey]);
 
+  useEffect(() => {
+    isEditingRef.current = false;
+    editBaselineRef.current = null;
+    setIsEditing(false);
+    setNoteChangedElsewhere(false);
+  }, [id]);
+
+  // A phone reload, a closed tab, or tapping Back / the sidebar would otherwise
+  // discard the note silently. React Router's useBlocker needs a data router,
+  // which this app does not use, so in-app links are intercepted here.
+  useEffect(() => {
+    if (!hasUnsavedNote) {
+      return undefined;
+    }
+
+    const warnBeforeLeaving = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    const warnBeforeInAppNav = (event) => {
+      if (event.defaultPrevented || event.button !== 0) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const anchor = event.target.closest?.("a[href]");
+      if (!anchor) {
+        return;
+      }
+
+      let url;
+      try {
+        url = new URL(anchor.href, window.location.href);
+      } catch {
+        return;
+      }
+
+      if (url.origin !== window.location.origin) {
+        return;
+      }
+      if (
+        url.pathname === window.location.pathname &&
+        url.search === window.location.search &&
+        url.hash === window.location.hash
+      ) {
+        return;
+      }
+
+      const leave = window.confirm(
+        "You have unsaved consultation notes. Leave without saving?",
+      );
+      if (!leave) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    document.addEventListener("click", warnBeforeInAppNav, true);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeLeaving);
+      document.removeEventListener("click", warnBeforeInAppNav, true);
+    };
+  }, [hasUnsavedNote]);
+
+  function startEditing() {
+    editBaselineRef.current = {
+      consultation_date: consultation?.consultation_date ?? "",
+      doctor_notes: consultation?.doctor_notes ?? "",
+    };
+    isEditingRef.current = true;
+    setNoteChangedElsewhere(false);
+    setIsEditing(true);
+  }
+
+  function stopEditing() {
+    editBaselineRef.current = null;
+    isEditingRef.current = false;
+    setNoteChangedElsewhere(false);
+    setIsEditing(false);
+  }
+
   async function handleSave(event) {
     event.preventDefault();
     setIsSaving(true);
@@ -83,7 +192,7 @@ function ConsultationDetailPage() {
         consultation_date: updated.consultation_date ?? "",
         doctor_notes: updated.doctor_notes ?? "",
       });
-      setIsEditing(false);
+      stopEditing();
       toast.success("Consultation updated.");
     } catch (error) {
       toast.error(error.message);
@@ -312,7 +421,7 @@ function ConsultationDetailPage() {
             canEdit && !isEditing ? (
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={startEditing}
                 className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
               >
                 <SquarePen className="size-4" />
@@ -327,6 +436,24 @@ function ConsultationDetailPage() {
         >
           {isEditing ? (
             <form className="space-y-4" onSubmit={handleSave}>
+              {noteChangedElsewhere ? (
+                <div
+                  role="status"
+                  className="flex gap-3 rounded-[22px] border border-amber-300 bg-amber-50 p-4"
+                >
+                  <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">
+                      This note was changed elsewhere while you were writing
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      Your text below is untouched. Saving replaces the stored version, so copy
+                      anything you need first. Cancel loads the other version instead.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Consultation date</span>
                 <input
@@ -363,7 +490,7 @@ function ConsultationDetailPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setIsEditing(false);
+                    stopEditing();
                     setForm({
                       consultation_date: consultation.consultation_date ?? "",
                       doctor_notes: consultation.doctor_notes ?? "",
