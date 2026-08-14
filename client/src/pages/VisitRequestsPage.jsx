@@ -24,8 +24,8 @@ import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js
 import AppointmentChangeInbox from "../components/AppointmentChangeInbox.jsx";
 
 const STATUS_OPTIONS = [
-  { value: "pending", label: "Pending" },
-  { value: "acknowledged", label: "Acknowledged" },
+  { value: "pending", label: "Request received" },
+  { value: "acknowledged", label: "Reviewing" },
   { value: "assigned", label: "Doctor assigned" },
   { value: "en_route", label: "Doctor en route" },
   { value: "arrived", label: "Doctor arrived" },
@@ -36,9 +36,9 @@ const STATUS_OPTIONS = [
 
 // Dispatch desk sees the full pipeline from patient intake through consultation.
 const DISPATCH_BOARD_COLUMNS = [
-  { status: "pending", label: "Pending", accent: "#e2574c" },
-  { status: "acknowledged", label: "Acknowledged", accent: "#d97706" },
-  { status: "assigned", label: "Assigned", accent: "#2d8f98" },
+  { status: "pending", label: "Request received", accent: "#e2574c" },
+  { status: "acknowledged", label: "Reviewing", accent: "#d97706" },
+  { status: "assigned", label: "Doctor assigned", accent: "#2d8f98" },
   { status: "en_route", label: "En route", accent: "#2d8f98" },
   { status: "arrived", label: "Arrived", accent: "#1a7f4b" },
   { status: "in_consultation", label: "In consultation", accent: "#1a7f4b" },
@@ -46,7 +46,7 @@ const DISPATCH_BOARD_COLUMNS = [
 
 // Doctors only see visits once dispatch has assigned them.
 const DOCTOR_BOARD_COLUMNS = [
-  { status: "assigned", label: "Assigned", accent: "#2d8f98" },
+  { status: "assigned", label: "Doctor assigned", accent: "#2d8f98" },
   { status: "en_route", label: "En route", accent: "#2d8f98" },
   { status: "arrived", label: "Arrived", accent: "#1a7f4b" },
   { status: "in_consultation", label: "In consultation", accent: "#1a7f4b" },

@@ -11,8 +11,10 @@ import {
   TrendingUp,
   Wallet,
   Download,
+  Phone,
 } from "lucide-react";
 import { api } from "../lib/api.js";
+import { CLINIC_TEL_HREF } from "../lib/clinicContact.js";
 import { shareOrDownloadBillPdf } from "../lib/billPdf.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import MobilePageTitle from "../components/MobilePageTitle.jsx";
@@ -250,6 +252,13 @@ function PatientBilling() {
                     )}
                     {bill.status === "paid" ? "Paid" : "Unpaid"}
                   </span>
+                  <a
+                    href={CLINIC_TEL_HREF}
+                    className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-semibold text-[#2d8f98]"
+                  >
+                    <Phone className="size-3.5" />
+                    Call clinic
+                  </a>
                   {bill.id ? (
                     <button
                       type="button"

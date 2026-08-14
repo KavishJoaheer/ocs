@@ -104,10 +104,10 @@ function RequestVisitReview() {
             {urgency.label}
           </span>
         </SummaryRow>
-        <SummaryRow label="Estimated response">
+        <SummaryRow label="What happens next">
           <span className="inline-flex items-center gap-2">
             <Clock className="size-4 text-[#2d8f98]" />
-            Our team will call you within 15 minutes
+            The clinic will call you to confirm this visit
           </span>
         </SummaryRow>
       </div>

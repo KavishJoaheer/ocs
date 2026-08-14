@@ -96,7 +96,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
                 onClick={() => setSheetType("cancel")}
                 className="rounded-xl border border-[#c23a2f]/30 px-4 py-2.5 text-[13px] font-semibold text-[#c23a2f]"
               >
-                Cancel this visit
+                Ask the clinic to cancel
               </button>
             </div>
           ) : null}
@@ -169,7 +169,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
               onClick={() => setSheetType("cancel")}
               className="rounded-xl border border-[#c23a2f]/30 px-4 py-2 text-[13px] font-semibold text-[#c23a2f]"
             >
-              Cancel this visit
+              Ask the clinic to cancel
             </button>
           </div>
         ) : null}

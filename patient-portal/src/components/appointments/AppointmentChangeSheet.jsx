@@ -67,7 +67,7 @@ function AppointmentChangeSheet({ open, appointment, requestType, onClose }) {
     }
   }
 
-  const title = isReschedule ? "Change the date" : "Cancel this visit";
+  const title = isReschedule ? "Change the date" : "Ask the clinic to cancel";
   const submitLabel = isReschedule ? "Ask the clinic to reschedule" : "Ask the clinic to cancel";
 
   return (

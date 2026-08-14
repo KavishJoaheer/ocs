@@ -65,6 +65,86 @@ function MetricCard({ icon: Icon, label, value, description, accent }) {
   );
 }
 
+const COVERAGE_GROUPS = [
+  {
+    key: "available",
+    label: "Available now",
+    stateLabel: "Available",
+    empty: "No doctor is free for an emergency visit right now.",
+    cardClass: "border-l-4 border-[#1a7f4b] bg-[rgba(26,127,75,0.07)]",
+    stateClass: "text-[#1a7f4b]",
+  },
+  {
+    key: "active",
+    label: "On a visit",
+    stateLabel: "Busy",
+    empty: "No doctor is currently with a patient.",
+    cardClass: "border-l-4 border-[#d97706] bg-[rgba(217,119,6,0.08)]",
+    stateClass: "text-[#b45309]",
+  },
+  {
+    key: "offline",
+    label: "Offline",
+    stateLabel: "Offline",
+    empty: "Every doctor is signed in.",
+    cardClass: "border-l-4 border-slate-300 bg-slate-50",
+    stateClass: "text-slate-500",
+  },
+];
+
+function coverageStatus(doctor) {
+  const status = String(doctor?.operation_status || "offline").toLowerCase();
+  if (status === "available" || status === "active") return status;
+  return "offline";
+}
+
+function CoverageDoctorRoster({ doctors }) {
+  if (!doctors.length) {
+    return (
+      <EmptyState
+        title="No doctor coverage yet"
+        description="Doctor availability appears here when doctors set their operation status."
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {COVERAGE_GROUPS.map((group) => {
+        const rows = doctors.filter((doctor) => coverageStatus(doctor) === group.key);
+        return (
+          <section
+            key={group.key}
+            className={group.key === "offline" ? "lg:col-span-2" : undefined}
+          >
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-800">{group.label}</h3>
+              <span className="text-xs font-bold tabular-nums text-slate-500">{rows.length}</span>
+            </div>
+            {rows.length ? (
+              <div className={group.key === "offline" ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
+                {rows.map((doctor) => (
+                  <div key={doctor.id} className={`rounded-2xl px-4 py-3 ${group.cardClass}`}>
+                    <p className={`text-[11px] font-bold uppercase tracking-wide ${group.stateClass}`}>
+                      {group.stateLabel}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{doctor.full_name}</p>
+                    <p className="text-xs text-slate-500">{doctor.specialization || "Doctor"}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                {group.empty}
+              </p>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function AppointmentQueueList({ appointments, emptyTitle, emptyDescription }) {
   if (!appointments.length) {
     return <EmptyState title={emptyTitle} description={emptyDescription} />;
@@ -277,27 +357,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
           subtitle="Who can take an emergency visit right now."
           title="Doctor coverage"
         >
-          {(data.doctorStatuses || []).length ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              {(data.doctorStatuses || []).map((doctor) => (
-                <div
-                  key={doctor.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{doctor.full_name}</p>
-                    <p className="text-xs text-slate-500">{doctor.specialization || "Doctor"}</p>
-                  </div>
-                  <StatusBadge value={doctor.operation_status || "offline"} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="No doctor coverage yet"
-              description="Doctor availability appears here when doctors set their operation status."
-            />
-          )}
+          <CoverageDoctorRoster doctors={data.doctorStatuses || []} />
         </SectionCard>
         <SectionCard
           subtitle="Every scheduled visit this week, across the doctor team."
