@@ -55,6 +55,7 @@ import { sanitizeLocationTagsForDisplay } from "../lib/locationTags.js";
 import {
   canEditConsultationNote,
   canManageConsultationNotes,
+  isOperatorConsultationViewOnly,
 } from "../lib/consultationAccess.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import {
@@ -1383,7 +1384,8 @@ function PatientProfilePage() {
   const [isSavingLongTermReview, setIsSavingLongTermReview] = useState(false);
   const canModifyClinicalData = user.role === "doctor" || user.role === "admin";
   const canManageLabReports = canManageLabReportsForUser(user);
-  const canManageConsultations = canManageConsultationNotes(user);
+  const canManageConsultations =
+    canManageConsultationNotes(user) && !isOperatorConsultationViewOnly(user);
   const canFlagLongTermReviewAccess = canFlagLongTermReview(user.role);
   const canLogLongTermReview = canLogLongTermReviewUpdate(user.role);
   const onLongTermReviewUpdatedRef = useRef(null);

@@ -2,6 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { canPatientCancelVisit, cancelPatientVisit } from "../lib/visitRequests.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
+import { CLINIC_TEL_HREF } from "../lib/clinicContact.js";
 
 function VisitCancelPrompt({
   visitId,
@@ -56,8 +57,8 @@ function VisitCancelPrompt({
         </button>
         <p className="mt-3 text-center text-[11px] text-[#8a9ea3]">
           Need help?{" "}
-          <a href="tel:52522234" className="font-medium text-brand-teal">
-            Call OCS
+          <a href={CLINIC_TEL_HREF} className="font-medium text-brand-teal">
+            Call clinic
           </a>
         </p>
       </div>

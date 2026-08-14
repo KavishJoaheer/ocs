@@ -1,8 +1,6 @@
 import { Phone, Stethoscope } from "lucide-react";
+import { CLINIC_TEL_DISPLAY, CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
-
-const OCS_CARE_TEL = "52522234";
-const OCS_CARE_DISPLAY = "52 52 22 34";
 
 /** Doctor rows for the Primary Care Provider card body. */
 function ProfilePrimaryCareContent({ doctorName }) {
@@ -19,10 +17,10 @@ function ProfilePrimaryCareContent({ doctorName }) {
         <Phone className="profile-row-icon size-[18px] shrink-0" strokeWidth={1.75} />
         {doctorName ? (
           <a
-            href={`tel:${OCS_CARE_TEL}`}
+            href={CLINIC_TEL_HREF}
             className="text-[15px] font-bold text-brand-gold transition hover:text-brand-gold-dark active:opacity-70"
           >
-            {OCS_CARE_DISPLAY}
+            Clinic · {CLINIC_TEL_DISPLAY}
           </a>
         ) : (
           <p className="text-[15px] font-medium text-[#8a9e9a] lg:text-brand-cool-grey">Available after assignment</p>

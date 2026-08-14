@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { FileUp, FlaskConical, Microscope, UserRound } from "lucide-react";
+import { Download, FileUp, FlaskConical, Microscope, UserRound } from "lucide-react";
+import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -61,11 +62,56 @@ function LabWorkspacePage() {
     };
   }, [refreshKey]);
 
-  const recentConsultations = useMemo(() => consultations.slice(0, 8), [consultations]);
-  const unpaidLinkedCount = useMemo(
-    () => consultations.filter((item) => item.bill_status === "unpaid").length,
+  const recentConsultations = useMemo(
+    () => (Array.isArray(consultations) ? consultations.slice(0, 8) : []),
     [consultations],
   );
+  const unpaidLinkedCount = useMemo(
+    () => (Array.isArray(consultations) ? consultations : []).filter((item) => item.bill_status === "unpaid").length,
+    [consultations],
+  );
+
+  async function downloadAttachment(attachment) {
+    try {
+      const response = await api.getBlob(attachment.download_url);
+      const blob = response.blob instanceof Blob ? response.blob : new Blob([response.blob]);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = response.filename || attachment.original_name || "report";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error.message || "Could not download this file.");
+    }
+  }
+
+  async function attachUploadToConsultation(report, consultationId) {
+    if (!consultationId) {
+      return;
+    }
+
+    try {
+      const details =
+        typeof report.report_details === "string"
+          ? report.report_details
+          : JSON.stringify(report.report_details || { patient_uploaded: 1 });
+
+      await api.put(`/lab-reports/${report.id}`, {
+        report_title: report.report_title,
+        report_date: report.report_date,
+        report_details: details,
+        consultation_id: consultationId,
+      });
+      toast.success("Report attached to the consultation.");
+      const uploadResponse = await api.get("/lab-reports/patient-uploads?limit=12");
+      setPatientUploads(Array.isArray(uploadResponse) ? uploadResponse : []);
+    } catch (error) {
+      toast.error(error.message || "Could not attach this report.");
+    }
+  }
 
   if (loading) {
     return <LoadingState label="Loading lab workspace" />;
@@ -138,13 +184,59 @@ function LabWorkspacePage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                       Attachments
                     </p>
-                    <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                    <ul className="mt-2 space-y-2 text-sm text-slate-600">
                       {report.attachments.map((attachment) => (
-                        <li key={attachment.id}>{attachment.original_name}</li>
+                        <li key={attachment.id} className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 truncate">{attachment.original_name}</span>
+                          <button
+                            type="button"
+                            onClick={() => downloadAttachment(attachment)}
+                            className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-[#2d8f98] hover:underline"
+                          >
+                            <Download className="size-3.5" />
+                            Download
+                          </button>
+                        </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
+
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Link
+                    to={`/patients/${report.patient_id}`}
+                    className="text-sm font-semibold text-[#2d8f98] hover:underline"
+                  >
+                    Review on chart
+                  </Link>
+                  {report.consultation_id ? (
+                    <span className="text-xs font-medium text-slate-500">
+                      Attached to consult {formatDate(report.consultation_date)}
+                    </span>
+                  ) : (
+                    <label className="flex min-w-[180px] flex-1 items-center gap-2 text-xs text-slate-500">
+                      Attach to consult
+                      <select
+                        className="h-9 flex-1 rounded-xl border border-slate-200 bg-white px-2 text-sm text-slate-700"
+                        defaultValue=""
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          event.target.value = "";
+                          void attachUploadToConsultation(report, value);
+                        }}
+                      >
+                        <option value="">Select…</option>
+                        {(Array.isArray(consultations) ? consultations : [])
+                          .filter((item) => Number(item.patient_id) === Number(report.patient_id))
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {formatDate(item.consultation_date)} · {item.doctor_name || "Doctor"}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
               </article>
             ))}
           </div>

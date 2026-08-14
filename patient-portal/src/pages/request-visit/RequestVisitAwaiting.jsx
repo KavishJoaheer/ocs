@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import dayjs from "dayjs";
 import { Headphones } from "lucide-react";
 import { api } from "../../lib/api.js";
+import { CLINIC_TEL_DISPLAY, CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import { URGENCY_META } from "./urgency.js";
 
@@ -33,23 +34,14 @@ function RequestVisitAwaiting() {
           navigate("/request-visit/tracking", { replace: true });
         }
       } catch {
-        if (!ignore) {
-          navigate("/dashboard");
-        }
+        // Stay on this screen; the live-refresh key will retry.
       }
     }
 
     checkActiveVisit();
 
-    const timer = window.setTimeout(() => {
-      if (!ignore) {
-        navigate("/dashboard");
-      }
-    }, 60000);
-
     return () => {
       ignore = true;
-      window.clearTimeout(timer);
     };
   }, [draft.submittedAt, navigate, refreshKey]);
 
@@ -83,10 +75,10 @@ function RequestVisitAwaiting() {
           ← Return to Dashboard
         </Link>
         <a
-          href="tel:52522234"
+          href={CLINIC_TEL_HREF}
           className="text-sm font-semibold text-[#2d8f98] transition hover:text-[#23767f]"
         >
-          Need immediate help? Call 52 52 22 34
+          Need immediate help? Call {CLINIC_TEL_DISPLAY}
         </a>
       </div>
     </div>

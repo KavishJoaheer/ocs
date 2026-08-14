@@ -77,7 +77,13 @@ function AppShellContent() {
                 ].join(" ")
           }
         >
-          {!isFullBleedMobile ? <PushNotificationBanner className="mb-5" /> : null}
+          <PushNotificationBanner
+            className={
+              isFullBleedMobile
+                ? "mx-[var(--native-pad-screen)] mb-4 lg:mx-0 lg:mb-5"
+                : "mb-5"
+            }
+          />
           <PatientAccountLinkBanner className={isFullBleedMobile ? "mx-[var(--native-pad-screen)] mb-4 lg:mx-0" : "mb-5"} />
           <Outlet />
         </div>

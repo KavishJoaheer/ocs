@@ -216,7 +216,7 @@ function MobileLauncher({
       {
         label: `${monthLabel} roster`,
         icon: ClipboardList,
-        to: "/operator/april-roster",
+        to: "/operator/monthly-roster",
         description: "Open the full monthly doctor schedule.",
       },
       {
@@ -1090,7 +1090,7 @@ function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSaving
                     icon={ClipboardList}
                     size="compact"
                     title={`${monthLabel} roster`}
-                    to="/operator/april-roster"
+                    to="/operator/monthly-roster"
                   />
                 </div>
               </div>

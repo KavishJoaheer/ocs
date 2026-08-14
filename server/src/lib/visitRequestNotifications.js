@@ -114,6 +114,28 @@ async function notifyStaffNewVisitRequest(visit) {
     STAFF_DISPATCH_ROLES.map((role) => sendPushToRole(role, payload)),
   );
 
+  if (!visit.assigned_doctor_id) {
+    const onCallDoctorIds = db
+      .prepare(
+        `
+          SELECT DISTINCT u.id
+          FROM users u
+          INNER JOIN user_push_subscriptions s ON s.user_id = u.id
+          WHERE u.role = 'doctor'
+            AND u.is_active = 1
+            AND u.deleted_at IS NULL
+            AND u.operation_status IN ('available', 'active')
+        `,
+      )
+      .all()
+      .map((row) => Number(row.id));
+
+    const doctorResults = await Promise.all(
+      onCallDoctorIds.map((userId) => sendPushToUser(userId, payload)),
+    );
+    results.push(...doctorResults);
+  }
+
   const delivered = results.flat().filter((entry) => entry?.ok).length;
 
   return { ok: delivered > 0, delivered, attempted: results.flat().length };

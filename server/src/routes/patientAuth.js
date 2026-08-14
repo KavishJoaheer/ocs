@@ -7,6 +7,7 @@ const {
   serializePatientUser,
 } = require("../lib/patientAuth");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
+const { calculateAgeFromIsoDate, parseMauritianID } = require("../lib/nicParser");
 const {
   generateSessionToken,
   getSessionExpiryTimestamp,
@@ -18,21 +19,22 @@ const {
 const router = express.Router();
 
 function generatePatientIdentifier() {
-  const row = db
+  const latestIdentifier = db
     .prepare(
-      "SELECT patient_identifier FROM patients WHERE patient_identifier LIKE 'OCS-%' ORDER BY id DESC LIMIT 1",
+      `
+        SELECT patient_identifier
+        FROM patients
+        WHERE patient_identifier GLOB 'OCS-[0-9]*'
+        ORDER BY CAST(substr(patient_identifier, 5) AS INTEGER) DESC
+        LIMIT 1
+      `,
     )
-    .get();
+    .get()?.patient_identifier;
 
-  let nextNumber = 1;
-
-  if (row && row.patient_identifier) {
-    const match = row.patient_identifier.match(/^OCS-(\d+)$/);
-
-    if (match) {
-      nextNumber = parseInt(match[1], 10) + 1;
-    }
-  }
+  const latestNumber = latestIdentifier
+    ? Number.parseInt(String(latestIdentifier).replace(/^OCS-/, ""), 10)
+    : Number.NaN;
+  const nextNumber = Number.isFinite(latestNumber) ? latestNumber + 1 : 150;
 
   return `OCS-${nextNumber}`;
 }
@@ -42,12 +44,14 @@ router.post("/register", (req, res) => {
   const password = String(req.body.password ?? "");
   const fullName = String(req.body.full_name ?? "").trim();
   const phone = String(req.body.phone ?? "").trim();
-  const dateOfBirth = String(req.body.date_of_birth ?? "").trim();
   const genderRaw = String(req.body.gender ?? "").trim().toUpperCase();
   const gender = ["M", "F"].includes(genderRaw) ? genderRaw : "M";
   // National ID is the strong identifier we use to link a self-signup to an
   // existing staff-managed patient record and prevent duplicate charts.
-  const nationalId = String(req.body.national_id ?? req.body.patient_id_number ?? "").trim();
+  const nationalId = String(req.body.national_id ?? req.body.patient_id_number ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s/g, "");
 
   if (!email || !password || !fullName || !phone || !nationalId) {
     return res
@@ -55,9 +59,22 @@ router.post("/register", (req, res) => {
       .json({ error: "Email, password, full_name, phone, and national_id are required." });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters." });
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters." });
   }
+
+  const parsedNic = parseMauritianID(nationalId);
+  if (nationalId.length === 14 && !parsedNic) {
+    return res.status(400).json({
+      error: "Enter a valid 14-character Mauritian National ID.",
+    });
+  }
+
+  let dateOfBirth = String(req.body.date_of_birth ?? "").trim();
+  if (parsedNic) {
+    dateOfBirth = parsedNic.isoDob;
+  }
+  const age = parsedNic?.age ?? calculateAgeFromIsoDate(dateOfBirth) ?? 0;
 
   const existing = db.prepare("SELECT id FROM patient_users WHERE lower(email) = ?").get(email);
 
@@ -79,9 +96,16 @@ router.post("/register", (req, res) => {
     // duplicate.
     const existingPatient = db
       .prepare(
-        "SELECT id FROM patients WHERE patient_id_number = ? AND deleted_at IS NULL",
+        `
+          SELECT id, date_of_birth, gender
+          FROM patients
+          WHERE patient_id_number = ? AND deleted_at IS NULL
+        `,
       )
       .get(nationalId);
+
+    let userDateOfBirth = dateOfBirth;
+    let userGender = gender;
 
     if (existingPatient) {
       const alreadyLinked = db
@@ -96,8 +120,21 @@ router.post("/register", (req, res) => {
 
       patientId = existingPatient.id;
 
-      // Keep staff-entered data authoritative; only backfill an empty phone, and
-      // flag the link for staff to confirm.
+      const staffDob = String(existingPatient.date_of_birth || "").trim();
+      const staffGender = ["M", "F"].includes(existingPatient.gender)
+        ? existingPatient.gender
+        : gender;
+
+      // Keep staff-entered identity authoritative. Only fill an empty DOB from a
+      // parsed Mauritian NIC, backfill an empty phone, and flag the link for staff.
+      if (!staffDob && parsedNic) {
+        db.prepare(`
+          UPDATE patients
+          SET date_of_birth = ?, age = ?
+          WHERE id = ?
+        `).run(parsedNic.isoDob, parsedNic.age, patientId);
+      }
+
       db.prepare(`
         UPDATE patients
         SET patient_contact_number = CASE
@@ -106,6 +143,9 @@ router.post("/register", (req, res) => {
             link_status = 'pending_review'
         WHERE id = ?
       `).run(phone, patientId);
+
+      userDateOfBirth = staffDob || parsedNic?.isoDob || dateOfBirth;
+      userGender = staffGender;
     } else {
       const patientIdentifier = generatePatientIdentifier();
 
@@ -116,7 +156,7 @@ router.post("/register", (req, res) => {
             age, date_of_birth, gender, patient_contact_number,
             contact_number, address, assigned_doctor_id, link_status
           )
-          VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, '', '', NULL, 'self_registered')
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', NULL, 'self_registered')
         `)
         .run(
           fullName,
@@ -124,6 +164,7 @@ router.post("/register", (req, res) => {
           lastName,
           patientIdentifier,
           nationalId,
+          age,
           dateOfBirth,
           gender,
           phone,
@@ -137,7 +178,7 @@ router.post("/register", (req, res) => {
         INSERT INTO patient_users (email, password_hash, patient_id, full_name, phone, date_of_birth, gender)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
-      .run(email, passwordHash, patientId, fullName, phone, dateOfBirth, gender);
+      .run(email, passwordHash, patientId, fullName, phone, userDateOfBirth, userGender);
 
     const patientUserId = userResult.lastInsertRowid;
 
@@ -180,6 +221,12 @@ router.post("/register", (req, res) => {
     }
 
     if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      if (error.message.includes("patient_identifier")) {
+        return res.status(409).json({
+          error: "Could not assign a unique care number. Please try again.",
+        });
+      }
+
       return res.status(409).json({ error: "An account with this email already exists." });
     }
 

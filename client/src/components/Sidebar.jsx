@@ -19,7 +19,6 @@ import {
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
-import LinkhamSidebar from "./LinkhamSidebar.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
 import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -122,6 +121,12 @@ const navItems = [
     label: "Inventory",
     icon: Package,
     roles: ["admin", "doctor", "operator"],
+  },
+  {
+    to: "/supply-requests",
+    label: "Supply requests",
+    icon: Package,
+    roles: ["doctor"],
   },
   {
     to: "/visit-requests",
@@ -237,10 +242,6 @@ function Sidebar() {
       document.body.style.overflow = "";
     };
   }, [drawerOpen]);
-
-  if (user.role === "linkham_admin") {
-    return <LinkhamSidebar />;
-  }
 
   return (
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">

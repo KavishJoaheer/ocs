@@ -22,7 +22,7 @@ const workspaceMeta = {
     description: "Emergency SOS shift planning for the doctor team (inactive).",
     icon: CalendarClock,
   },
-  "april-roster": {
+  "monthly-roster": {
     eyebrow: "Operator roster",
     title: (data) => `${data?.periods?.monthLabel || "Current month"} roster`,
     description:
@@ -251,13 +251,13 @@ function OperatorWorkspacePage({ workspaceKey }) {
       >
         <EmptyState
           title="Feature inactive"
-          description="SOS Planning is not available for operators yet. Use the May roster or return to the dashboard."
+          description="SOS Planning is not available for operators yet. Use the monthly roster or return to the dashboard."
         />
       </SectionCard>
     );
   }
 
-  if (workspaceKey === "april-roster") {
+  if (workspaceKey === "monthly-roster") {
     metrics = [
       {
         icon: ClipboardList,

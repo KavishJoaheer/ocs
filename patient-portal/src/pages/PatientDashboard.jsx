@@ -5,6 +5,7 @@ import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { ArrowRight } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
+import { CLINIC_TEL_HREF } from "../lib/clinicContact.js";
 import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
 import VisitCancelPrompt from "../components/VisitCancelPrompt.jsx";
 import MobileDashboardHome from "../components/dashboard/MobileDashboardHome.jsx";
@@ -198,10 +199,10 @@ function MobileActiveVisit({ visit, onCancelled }) {
           View Live Tracking →
         </Link>
         <a
-          href="tel:52522234"
+          href={CLINIC_TEL_HREF}
           className="flex h-[48px] w-full items-center justify-center rounded-[14px] bg-brand-gold text-sm font-bold text-brand-dark-grey shadow-sm transition active:scale-95 active:brightness-105"
         >
-          Call {doctor}
+          Call clinic
         </a>
       </div>
 

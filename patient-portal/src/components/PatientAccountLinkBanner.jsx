@@ -1,9 +1,7 @@
 import { Link2 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { getPatientLinkBlockMessage, getPatientLinkState } from "../lib/patientAccountLink.js";
-
-const CLINIC_PHONE = "52522234";
-const CLINIC_PHONE_DISPLAY = "5252 2234";
+import { CLINIC_TEL, CLINIC_TEL_DISPLAY } from "../lib/clinicContact.js";
 
 const BANNER_COPY = {
   unlinked: {
@@ -13,10 +11,10 @@ const BANNER_COPY = {
         Your portal login is active, but we couldn&apos;t match it to an OCS patient file yet. Contact
         the clinic at{" "}
         <a
-          href={`tel:${CLINIC_PHONE}`}
+          href={`tel:${CLINIC_TEL}`}
           className="font-semibold text-brand-teal underline-offset-2 hover:underline"
         >
-          {CLINIC_PHONE_DISPLAY}
+          {CLINIC_TEL_DISPLAY}
         </a>{" "}
         with your National ID so staff can link your account.
       </>
@@ -29,10 +27,10 @@ const BANNER_COPY = {
         We matched your account to an existing clinic record. Staff will confirm the link shortly.
         For urgent help, call{" "}
         <a
-          href={`tel:${CLINIC_PHONE}`}
+          href={`tel:${CLINIC_TEL}`}
           className="font-semibold text-brand-teal underline-offset-2 hover:underline"
         >
-          {CLINIC_PHONE_DISPLAY}
+          {CLINIC_TEL_DISPLAY}
         </a>
         .
       </>
@@ -44,10 +42,10 @@ const BANNER_COPY = {
       <>
         Your sign-up created a temporary chart. Contact the clinic at{" "}
         <a
-          href={`tel:${CLINIC_PHONE}`}
+          href={`tel:${CLINIC_TEL}`}
           className="font-semibold text-brand-teal underline-offset-2 hover:underline"
         >
-          {CLINIC_PHONE_DISPLAY}
+          {CLINIC_TEL_DISPLAY}
         </a>{" "}
         with your National ID so staff can merge it with your official record.
       </>
@@ -59,10 +57,10 @@ const BANNER_COPY = {
       <>
         Your account is not ready for clinical services yet. Please contact the clinic at{" "}
         <a
-          href={`tel:${CLINIC_PHONE}`}
+          href={`tel:${CLINIC_TEL}`}
           className="font-semibold text-brand-teal underline-offset-2 hover:underline"
         >
-          {CLINIC_PHONE_DISPLAY}
+          {CLINIC_TEL_DISPLAY}
         </a>
         .
       </>

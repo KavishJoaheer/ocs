@@ -18,6 +18,7 @@ const assert = require("node:assert/strict");
 
 const { createApp } = require("../src/app");
 const { db } = require("../src/db");
+const { parseMauritianID } = require("../src/lib/nicParser");
 
 let server;
 let baseUrl;
@@ -66,6 +67,11 @@ function uniqueEmail(prefix) {
 
 function uniqueNationalId(prefix) {
   return `TEST-${prefix}-${Date.now()}${Math.floor(Math.random() * 1000)}`;
+}
+
+function uniqueMauritianNic() {
+  const serial = `${String(Date.now()).slice(-5)}${Math.floor(Math.random() * 10)}`;
+  return `B290493${serial}F`;
 }
 
 async function verifyPortalPatientForVisits(reg) {
@@ -117,6 +123,94 @@ test("patient registration returns a normalized profile", async () => {
     String(profile.data.profile.ocs_care_number || "").startsWith("OCS-"),
     "expected an OCS care number",
   );
+});
+
+test("patient registration derives DOB and age from a Mauritian NIC", async () => {
+  const nationalId = uniqueMauritianNic();
+  const parsed = parseMauritianID(nationalId);
+  assert.ok(parsed, `expected ${nationalId} to parse`);
+  assert.equal(parsed.isoDob, "1993-04-29");
+
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("nic"),
+      password: "secret123",
+      full_name: "Nic Tester",
+      phone: "57001122",
+      national_id: nationalId.toLowerCase(),
+      gender: "F",
+      date_of_birth: "2000-01-01",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  assert.equal(reg.data.user.date_of_birth, "1993-04-29");
+  assert.equal(reg.data.user.gender, "F");
+
+  const profile = await api("GET", "/api/patient-portal/profile", { token: reg.data.token });
+  assert.equal(profile.status, 200);
+  assert.equal(profile.data.profile.date_of_birth, "1993-04-29");
+  assert.equal(profile.data.profile.age, parsed.age);
+  assert.equal(profile.data.profile.gender, "F");
+  assert.equal(profile.data.profile.patient_id_number, nationalId);
+});
+
+test("patient registration rejects an invalid 14-character NIC", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("badnic"),
+      password: "secret123",
+      full_name: "Bad Nic",
+      phone: "57001122",
+      national_id: "B320493310239F",
+      gender: "M",
+    },
+  });
+  assert.equal(reg.status, 400, JSON.stringify(reg.data));
+  assert.match(String(reg.data.error || ""), /national id/i);
+});
+
+test("self-registration does not overwrite staff DOB or gender when linking", async () => {
+  const nationalId = uniqueMauritianNic();
+  const insert = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, patient_id_number,
+        age, date_of_birth, gender, contact_number, patient_contact_number,
+        address, link_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+    `)
+    .run(
+      "Staff Chart",
+      "Staff",
+      "Chart",
+      `OCS-${900000 + (Date.now() % 100000)}`,
+      nationalId,
+      46,
+      "1980-01-15",
+      "M",
+      "57009999",
+      "57009999",
+      "Quatre Bornes",
+    );
+
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("staffnic"),
+      password: "secret123",
+      full_name: "Staff Chart",
+      phone: "57005566",
+      national_id: nationalId,
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  assert.equal(reg.data.user.date_of_birth, "1980-01-15");
+  assert.equal(reg.data.user.gender, "M");
+
+  const profile = await api("GET", "/api/patient-portal/profile", { token: reg.data.token });
+  assert.equal(profile.data.profile.id, Number(insert.lastInsertRowid));
+  assert.equal(profile.data.profile.date_of_birth, "1980-01-15");
+  assert.equal(profile.data.profile.gender, "M");
 });
 
 test("PATCH /profile persists contact + next-of-kin details", async () => {
@@ -662,12 +756,19 @@ test("patient dashboard prefers structured patient_diagnosis over clinical notes
 });
 
 test("staff can add mobile-style consultation notes from patient profile", async () => {
+  const doctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "arun.dharee", password: "Welcome@123" },
+  });
+  assert.equal(doctorLogin.status, 200);
+  const doctorId = Number(doctorLogin.data.user?.doctor_id || 0);
+  assert.ok(doctorId, "expected a doctor_id on the staff user");
+
   const patientId = db
     .prepare(`
       INSERT INTO patients (
         full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
-        contact_number, patient_contact_number, address, link_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+        contact_number, patient_contact_number, address, link_status, assigned_doctor_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created', ?)
     `)
     .run(
       "Consult Note Patient",
@@ -680,12 +781,8 @@ test("staff can add mobile-style consultation notes from patient profile", async
       "57001234",
       "57001234",
       "12 Clinic Road",
+      doctorId,
     ).lastInsertRowid;
-
-  const doctorLogin = await api("POST", "/api/auth/login", {
-    body: { username: "arun.dharee", password: "Welcome@123" },
-  });
-  assert.equal(doctorLogin.status, 200);
 
   const created = await api("POST", `/api/patients/${patientId}/consultations`, {
     token: doctorLogin.data.token,

@@ -164,6 +164,8 @@ function createApp() {
   // auth endpoints too. Login attempts get an additional, stricter limiter.
   app.use("/api", apiLimiter);
   app.use("/api/auth/login", loginLimiter);
+  app.use("/api/patient-auth/login", loginLimiter);
+  app.use("/api/patient-auth/register", loginLimiter);
 
   app.use("/api/auth", authRouter);
   app.use("/api/push", pushRouter);

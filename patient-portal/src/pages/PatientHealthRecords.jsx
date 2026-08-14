@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
+import { exportHealthRecordsPdf } from "../lib/healthRecordsExport.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
@@ -25,11 +27,14 @@ function HealthRecordsTabPanel({ activeTab, consultations, reports, clinicalHist
 
 function PatientHealthRecords() {
   const { consultationId } = useParams();
+  const { user } = usePatientAuth();
   const [activeTab, setActiveTab] = useState("consultations");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [consultations, setConsultations] = useState([]);
   const [medicalReports, setMedicalReports] = useState([]);
   const [clinicalHistory, setClinicalHistory] = useState({});
+  const [summary, setSummary] = useState(null);
+  const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [retryToken, setRetryToken] = useState(0);
@@ -75,6 +80,8 @@ function PatientHealthRecords() {
         setConsultations(apiConsultations);
         setMedicalReports(apiReports);
         setClinicalHistory(data.clinical || {});
+        setSummary(data.summary || null);
+        setTimeline(Array.isArray(data.timeline) ? data.timeline : []);
       } catch (error) {
         if (!ignore) {
           setLoadError(
@@ -100,7 +107,6 @@ function PatientHealthRecords() {
       report_date: report.report_date || report.uploaded_at,
       uploaded_at: report.uploaded_at,
       requested_by_source: report.requested_by_source || "OCS Doctor",
-      url: reportUrl(report.id),
     }));
     setMedicalReports(apiReports);
   }
@@ -134,6 +140,16 @@ function PatientHealthRecords() {
     setRetryToken((token) => token + 1);
   }
 
+  function handleExportPdf() {
+    exportHealthRecordsPdf({
+      patientName: user?.full_name || "Patient",
+      summary,
+      clinical: clinicalHistory,
+      consultations,
+      timeline,
+    });
+  }
+
   return (
     <DesktopPageFrame className="mobile-hero-page native-health-records flex flex-col font-sans lg:bg-transparent">
       <MobilePageTitle
@@ -141,7 +157,17 @@ function PatientHealthRecords() {
         secondaryText="Records."
         subtitle="Everything about your health, in one place."
         className="pb-2"
-      />
+      >
+        {!loading && !loadError ? (
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            className="mt-3 text-[13px] font-semibold text-brand-teal"
+          >
+            Export PDF
+          </button>
+        ) : null}
+      </MobilePageTitle>
 
       <PageHeroHeader
         primaryText="Health"
@@ -154,12 +180,21 @@ function PatientHealthRecords() {
           <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
         </div>
 
-        <div className="mt-6 hidden lg:block">
+        <div className="mt-6 hidden items-center justify-between gap-4 lg:flex">
           <HealthRecordsSegmentedControl
             activeTab={activeTab}
             onChange={setActiveTab}
             layout="desktop"
           />
+          {!loading && !loadError ? (
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="shrink-0 text-sm font-semibold text-brand-teal transition hover:text-brand-dark-grey"
+            >
+              Export PDF
+            </button>
+          ) : null}
         </div>
 
         <div className="min-h-[40vh] w-full lg:mt-0" role="tabpanel" aria-label={activeTab}>

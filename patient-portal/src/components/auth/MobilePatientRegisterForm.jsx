@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import dayjs from "dayjs";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
 import { formatDisplayName } from "../../lib/formatDisplayName.js";
+import { normalizeNationalIdInput, parseMauritianID, validateRegisterForm } from "../../lib/registerForm.js";
 
 const STAFF_PORTAL_URL =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
@@ -27,38 +29,25 @@ function MobilePatientRegisterForm() {
     email: "",
     phone: "",
     national_id: "",
+    gender: "",
     password: "",
     confirmPassword: "",
   });
   const [errors, setErrors] = useState({});
+  const nicParsed = useMemo(() => parseMauritianID(form.national_id), [form.national_id]);
 
-  function validate() {
-    const newErrors = {};
-
-    if (!form.full_name.trim()) newErrors.full_name = "Full name is required.";
-    if (!form.email.trim()) newErrors.email = "Email is required.";
-    if (!form.phone.trim()) newErrors.phone = "Phone number is required.";
-    if (!form.national_id.trim()) {
-      newErrors.national_id = "National ID is required to match your medical records.";
-    }
-    if (!form.password) newErrors.password = "Password is required.";
-    if (form.password.length < 6) newErrors.password = "Password must be at least 6 characters.";
-    if (form.password !== form.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match.";
-    }
-
+  function handleSubmit(event) {
+    event.preventDefault();
+    const { errors: newErrors, nationalId } = validateRegisterForm(form);
     setErrors(newErrors);
 
     if (newErrors.national_id) {
       toast.error(newErrors.national_id);
+    } else if (newErrors.gender) {
+      toast.error(newErrors.gender);
     }
 
-    return Object.keys(newErrors).length === 0;
-  }
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    if (!validate()) return;
+    if (Object.keys(newErrors).length > 0) return;
 
     setIsSubmitting(true);
 
@@ -66,7 +55,8 @@ function MobilePatientRegisterForm() {
       full_name: form.full_name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
-      national_id: form.national_id.trim(),
+      national_id: nationalId,
+      gender: form.gender,
       password: form.password,
     })
       .then((newUser) => {
@@ -83,7 +73,10 @@ function MobilePatientRegisterForm() {
 
   function setField(field) {
     return (event) => {
-      const value = event.target ? event.target.value : event;
+      let value = event.target ? event.target.value : event;
+      if (field === "national_id") {
+        value = normalizeNationalIdInput(value);
+      }
       setForm((current) => ({ ...current, [field]: value }));
       if (errors[field]) setErrors((current) => ({ ...current, [field]: undefined }));
     };
@@ -196,18 +189,48 @@ function MobilePatientRegisterForm() {
                   id="mobile-register-national-id"
                   value={form.national_id}
                   onChange={setField("national_id")}
-                  placeholder="e.g. your government-issued NIC"
+                  placeholder="e.g. B290493310239F"
                   className={INPUT_CLASS}
                   autoComplete="off"
+                  inputMode="text"
+                  maxLength={14}
                   required
                 />
                 {errors.national_id ? (
                   <p className="mt-1.5 text-xs font-medium text-red-500">{errors.national_id}</p>
                 ) : null}
-                <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
-                  Enter your government-issued ID to help us match your clinic record. This is{" "}
-                  <span className="font-semibold text-[#14213d]">not</span> your OCS care number.
-                </p>
+                {nicParsed ? (
+                  <p className="mt-1.5 text-xs font-semibold leading-relaxed text-[#065a60]">
+                    Born {dayjs(nicParsed.isoDob).format("D MMMM YYYY")} (age {nicParsed.age}) from your
+                    National ID
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+                    Enter your 14-character Mauritian National ID. Date of birth is taken from this
+                    number. This is <span className="font-semibold text-[#14213d]">not</span> your OCS
+                    care number.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="mobile-register-gender" className={LABEL_CLASS}>
+                  Gender <span className="text-[#065a60]">*</span>
+                </label>
+                <select
+                  id="mobile-register-gender"
+                  value={form.gender}
+                  onChange={setField("gender")}
+                  className={INPUT_CLASS}
+                  required
+                >
+                  <option value="">Select gender</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+                {errors.gender ? (
+                  <p className="mt-1.5 text-xs font-medium text-red-500">{errors.gender}</p>
+                ) : null}
               </div>
             </div>
           </div>

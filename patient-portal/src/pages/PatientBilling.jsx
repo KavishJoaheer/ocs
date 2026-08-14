@@ -25,6 +25,15 @@ function formatCurrency(amount) {
   }).format(amount || 0);
 }
 
+function formatClaimStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "pending") return "Insurer: pending";
+  if (normalized === "approved") return "Insurer: approved";
+  if (normalized === "settled") return "Insurer: settled";
+  if (normalized === "disputed") return "Insurer: disputed";
+  return null;
+}
+
 function PatientBilling() {
   const [bills, setBills] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -200,6 +209,11 @@ function PatientBilling() {
                       {dayjs(bill.date).format("MMM D, YYYY")}
                       {bill.payment_method && ` · ${bill.payment_method}`}
                     </p>
+                    {formatClaimStatus(bill.linkham_claim_status) ? (
+                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-brand-teal">
+                        {formatClaimStatus(bill.linkham_claim_status)}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

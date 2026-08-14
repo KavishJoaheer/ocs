@@ -1,7 +1,6 @@
 import { Phone } from "lucide-react";
+import { CLINIC_TEL } from "../../lib/clinicContact.js";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
-
-const OCS_CARE_TEL = "52522234";
 
 function doctorInitials(name) {
   const trimmed = String(name || "Dr").replace(/^dr\.?\s+/i, "").trim();
@@ -11,7 +10,7 @@ function doctorInitials(name) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-function VisitDoctorCard({ doctorName, specialty = "General Practitioner", phone = OCS_CARE_TEL }) {
+function VisitDoctorCard({ doctorName, specialty = "General Practitioner", phone = CLINIC_TEL }) {
   const formattedName = formatDoctorName(doctorName);
 
   return (
@@ -38,7 +37,7 @@ function VisitDoctorCard({ doctorName, specialty = "General Practitioner", phone
 
       <a
         href={`tel:${phone}`}
-        aria-label={`Call ${formattedName}`}
+        aria-label="Call clinic"
         className="visit-status-call-btn flex size-11 shrink-0 items-center justify-center rounded-full transition active:scale-95"
       >
         <Phone className="size-[18px] text-brand-gold" strokeWidth={2.25} />

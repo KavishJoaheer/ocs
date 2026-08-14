@@ -36,7 +36,7 @@ const workspaceMeta = {
       "Review your scheduled home visits for the current week with direct links back to the patient and consultation records.",
     icon: CalendarClock,
   },
-  "april-roster": {
+  "monthly-roster": {
     eyebrow: "Doctor roster",
     title: (data) => `${data?.periods?.monthLabel || "Current month"} roster`,
     description:
@@ -64,7 +64,7 @@ const workspaceMeta = {
       "Review unpaid consultation bills linked to your visits so the doctor team can keep payment follow-up visible.",
     icon: CreditCard,
   },
-  "patients-seen-april": {
+  "patients-seen": {
     eyebrow: "Doctor patients",
     title: (data) => `Total patients seen in ${data?.periods?.monthLabel || "this month"}`,
     description:
@@ -507,7 +507,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
     );
   }
 
-  if (workspaceKey === "april-roster") {
+  if (workspaceKey === "monthly-roster") {
     metrics = [
       {
         icon: ClipboardList,
@@ -721,7 +721,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
     );
   }
 
-  if (workspaceKey === "patients-seen-april") {
+  if (workspaceKey === "patients-seen") {
     metrics = [
       {
         icon: UsersRound,

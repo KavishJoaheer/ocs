@@ -265,6 +265,10 @@ router.put("/:id", (req, res) => {
     WHERE id = ?
   `).run(payload.title, payload.body, req.auth.id, postId);
 
+  void broadcastHcmNewsToDoctors({ title: payload.title }).catch((error) => {
+    console.warn("[push] HCM update broadcast failed:", error?.message || error);
+  });
+
   res.json(buildPayload(req.auth));
 });
 

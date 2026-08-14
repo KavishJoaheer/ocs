@@ -445,6 +445,13 @@ function PatientProfile() {
           <div className="profile-desktop-col-right col-span-5 flex flex-col gap-8">
             {primaryCareCard}
             {billingCard}
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="block w-full rounded-xl border border-red-200 bg-white py-4 text-center text-[15px] font-semibold text-red-500"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       </div>

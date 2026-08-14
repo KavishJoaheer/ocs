@@ -89,6 +89,8 @@ function serializePatientBillingRows(rows) {
     payment_method: row.payment_method,
     items_summary: summarizeBillingItems(row.items),
     doctor_name: row.doctor_name || null,
+    linkham_claim_status: row.linkham_claim_status || null,
+    dispute_status: row.dispute_status || null,
   }));
 
   let total_billed = 0;

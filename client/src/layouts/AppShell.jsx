@@ -48,8 +48,12 @@ const pageMeta = {
     label: "Current week roster",
     helper: "Review this week's doctor visits and move directly into patient or consultation records.",
   },
+  "/doctor/monthly-roster": {
+    label: "Monthly roster",
+    helper: "See the full monthly roster for the doctor dashboard in one filtered workspace.",
+  },
   "/doctor/april-roster": {
-    label: "April roster",
+    label: "Monthly roster",
     helper: "See the full monthly roster for the doctor dashboard in one filtered workspace.",
   },
   "/doctor/hcm-updates": {
@@ -68,6 +72,10 @@ const pageMeta = {
     label: "Pending payment",
     helper: "Review unpaid consultation-linked billing entries tied to the doctor workspace.",
   },
+  "/doctor/patients-seen": {
+    label: "Patients seen",
+    helper: "Open every unique patient seen this month based on doctor consultation records.",
+  },
   "/doctor/patients-seen-april": {
     label: "Patients seen",
     helper: "Open every unique patient seen this month based on doctor consultation records.",
@@ -83,6 +91,10 @@ const pageMeta = {
   "/operator/current-week-roster": {
     label: "SOS Planning",
     helper: "Emergency SOS shift planning (inactive for operators).",
+  },
+  "/operator/monthly-roster": {
+    label: "Current month roster",
+    helper: "See the full monthly doctor schedule from the operator coordination workspace.",
   },
   "/operator/april-roster": {
     label: "Current month roster",

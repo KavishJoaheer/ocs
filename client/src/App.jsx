@@ -78,8 +78,12 @@ function App() {
               element={<DoctorWorkspacePage workspaceKey="current-week-roster" />}
             />
             <Route
+              path="/doctor/monthly-roster"
+              element={<DoctorWorkspacePage workspaceKey="monthly-roster" />}
+            />
+            <Route
               path="/doctor/april-roster"
-              element={<DoctorWorkspacePage workspaceKey="april-roster" />}
+              element={<Navigate to="/doctor/monthly-roster" replace />}
             />
             <Route
               path="/doctor/hcm-updates"
@@ -94,8 +98,12 @@ function App() {
               element={<DoctorWorkspacePage workspaceKey="pending-payment" />}
             />
             <Route
+              path="/doctor/patients-seen"
+              element={<DoctorWorkspacePage workspaceKey="patients-seen" />}
+            />
+            <Route
               path="/doctor/patients-seen-april"
-              element={<DoctorWorkspacePage workspaceKey="patients-seen-april" />}
+              element={<Navigate to="/doctor/patients-seen" replace />}
             />
             <Route
               path="/doctor/assigned-patients"
@@ -115,8 +123,12 @@ function App() {
               element={<OperatorWorkspacePage workspaceKey="current-week-roster" />}
             />
             <Route
+              path="/operator/monthly-roster"
+              element={<OperatorWorkspacePage workspaceKey="monthly-roster" />}
+            />
+            <Route
               path="/operator/april-roster"
-              element={<OperatorWorkspacePage workspaceKey="april-roster" />}
+              element={<Navigate to="/operator/monthly-roster" replace />}
             />
             <Route
               path="/operator/scheduled-visits"
