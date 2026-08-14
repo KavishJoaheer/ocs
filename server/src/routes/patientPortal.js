@@ -23,7 +23,7 @@ const {
   buildHealthRecordsPayload,
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
-const { parseBillingRow, serializePatientBillingRows } = require("../lib/utils");
+const { parseBillingRow, serializePatientBillingRows, offsetLocalDate } = require("../lib/utils");
 const { isVerifiedPatientPortalAccount } = require("../lib/patientAuth");
 const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
 const { mintStreamToken } = require("../lib/streamTokens");
@@ -1215,8 +1215,14 @@ router.post("/appointment-change-requests", (req, res) => {
     });
   }
 
-  if (requestType === "reschedule" && !preferredDate) {
-    return res.status(400).json({ error: "preferred_date is required to reschedule." });
+  if (requestType === "reschedule") {
+    const tomorrow = offsetLocalDate(1);
+    if (!preferredDate) {
+      return res.status(400).json({ error: "preferred_date is required to reschedule." });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate) || preferredDate < tomorrow) {
+      return res.status(400).json({ error: "Please choose a date from tomorrow onwards." });
+    }
   }
 
   const result = db

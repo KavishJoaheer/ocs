@@ -1074,7 +1074,7 @@ function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSaving
                   Shared roster
                 </p>
                 <p className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
-                  Doctors shifts
+                  Doctor shifts
                 </p>
 
                 <div className="mt-4 space-y-4">
@@ -1082,7 +1082,7 @@ function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSaving
                     eyebrow="Weekly coverage"
                     icon={CalendarClock}
                     size="hero"
-                    title="SOS Planning"
+                    title="This week's coverage"
                     to="/operator/current-week-roster"
                   />
                   <DoctorDashboardTile

@@ -89,7 +89,7 @@ const pageMeta = {
     helper: "Practice-wide chronic care follow-up queue.",
   },
   "/operator/current-week-roster": {
-    label: "SOS Planning",
+    label: "This week's coverage",
     helper: "This week's visits and which doctors are available for emergency coverage.",
   },
   "/operator/monthly-roster": {

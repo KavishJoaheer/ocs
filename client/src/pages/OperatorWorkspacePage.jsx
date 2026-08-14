@@ -17,8 +17,8 @@ import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
 const workspaceMeta = {
   "current-week-roster": {
-    eyebrow: "SOS Planning",
-    title: () => "SOS Planning",
+    eyebrow: "Weekly coverage",
+    title: () => "This week's coverage",
     description:
       "This week's visits across the doctor team, plus who is available for emergency coverage.",
     icon: CalendarClock,
@@ -95,7 +95,7 @@ function AppointmentQueueList({ appointments, emptyTitle, emptyDescription }) {
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge value={appointment.status} />
               <Link
-                className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                className="rounded-2xl bg-[#2d8f98] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#23767f]"
                 to={`/patients/${appointment.patient_id}`}
               >
                 Open patient
@@ -149,7 +149,7 @@ function PendingPaymentsList({ bills }) {
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
-                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#2d8f98] hover:text-[#2d8f98]"
                   to={`/patients/${bill.patient_id}`}
                 >
                   Open patient
@@ -231,7 +231,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
         Back to dashboard
       </Link>
       <Link
-        className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+        className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#23767f]"
         to="/patients"
       >
         Open patients
@@ -252,21 +252,21 @@ function OperatorWorkspacePage({ workspaceKey }) {
         label: "Week visits",
         value: data.summary.currentWeekRosterCount,
         description: `${formatDate(data.periods.weekStart)} to ${formatDate(data.periods.weekEnd)}`,
-        accent: "bg-gradient-to-br from-sky-500 to-blue-600",
+        accent: "bg-[#2d8f98]",
       },
       {
         icon: ClipboardList,
         label: "Scheduled",
         value: data.currentWeekRoster.filter((appointment) => appointment.status === "scheduled").length,
         description: "Visits still on the live calendar this week.",
-        accent: "bg-gradient-to-br from-cyan-500 to-sky-600",
+        accent: "bg-[#41c8c6]",
       },
       {
         icon: UsersRound,
         label: "Reachable doctors",
         value: availableDoctors.length,
-        description: "Doctors currently available or active for SOS coverage.",
-        accent: "bg-gradient-to-br from-emerald-500 to-teal-600",
+        description: "Doctors currently available or active for emergency coverage.",
+        accent: "bg-[#1a7f4b]",
       },
     ];
 

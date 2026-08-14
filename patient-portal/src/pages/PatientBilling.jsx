@@ -90,8 +90,7 @@ function PatientBilling() {
     <DesktopPageFrame className="mobile-hero-page font-sans">
       <MobilePageTitle
         primaryText="Billing"
-        secondaryText="& Payments"
-        subtitle="Your invoices and payment history."
+        subtitle="Your invoices and outstanding balances."
       >
         {!loading && summary?.outstanding > 0 ? (
           <span className="mt-3 inline-flex rounded-[20px] border border-brand-gold/40 bg-brand-gold/20 px-3.5 py-1.5 text-[13px] font-semibold text-brand-gold">
@@ -102,8 +101,7 @@ function PatientBilling() {
 
       <PageHeroHeader
         primaryText="Billing"
-        secondaryText="& Payments"
-        subtitle="Review your bills, payments, and outstanding balances."
+        subtitle="Review your bills and outstanding balances."
       />
 
       <DesktopPageBody className="mt-5 space-y-8 lg:mt-6">

@@ -2,7 +2,9 @@ import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { ArrowRight, FileText, Pill, FlaskConical, Calendar } from "lucide-react";
 import { useRequestVisit } from "../../hooks/useRequestVisit.jsx";
+import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
+import { getVisitRequestLabel } from "../../lib/familyProfiles.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,7 +166,9 @@ function MobileDashboardHome({
   careTeamDoctorName = null,
 }) {
   const { openRequestSheet } = useRequestVisit();
+  const { activeProfile } = useFamilyProfile();
   const greeting = getGreeting();
+  const visitLabel = getVisitRequestLabel(activeProfile);
 
   const timelineCards = buildCareTimeline({
     lastConsultation,
@@ -194,7 +198,7 @@ function MobileDashboardHome({
             24/7 Home Visits
           </p>
           <p className="native-display mt-2.5 text-[22px] leading-tight text-white">
-            Request a Home Doctor
+            {visitLabel}
           </p>
         </div>
         <div className="dashboard-hero-arrow-btn">
@@ -227,7 +231,7 @@ function MobileDashboardHome({
               onClick={() => openRequestSheet()}
               className="squircle-inner mt-5 bg-brand-gold px-6 py-3.5 text-[14px] font-bold text-brand-dark-grey shadow-[0_4px_16px_rgba(var(--ocs-brand-gold-rgb),0.25)] transition active:scale-[0.98]"
             >
-              Request a Home Visit
+              {visitLabel}
             </button>
           </div>
         )}

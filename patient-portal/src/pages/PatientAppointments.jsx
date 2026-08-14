@@ -157,9 +157,7 @@ function PatientAppointments() {
                 <p className="text-[14px] italic text-[#8a9e9a]">
                   No upcoming appointments. Your OCS care team will schedule these for you.
                 </p>
-                <RequestVisitCta className="inline-flex rounded-xl bg-brand-gold px-5 py-3 text-[14px] font-bold text-brand-dark-grey">
-                  Request a home visit
-                </RequestVisitCta>
+                <RequestVisitCta className="inline-flex rounded-xl bg-brand-gold px-5 py-3 text-[14px] font-bold text-brand-dark-grey" />
               </div>
             ) : (
               <div className="mt-4 flex flex-col gap-4">
@@ -177,7 +175,7 @@ function PatientAppointments() {
               </div>
             )}
             <p className="mt-4 text-[13px] leading-relaxed text-[#5b7f8a]">
-              Need to reschedule? Call the clinic at{" "}
+              The clinic confirms any date change before it takes effect. Need help? Call{" "}
               <a href={CLINIC_TEL_HREF} className="font-semibold text-[#2d8f98] underline-offset-2 hover:underline">
                 {CLINIC_TEL_DISPLAY}
               </a>

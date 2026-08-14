@@ -4,6 +4,8 @@ import { ChevronLeft, MapPin } from "lucide-react";
 import { api } from "../../lib/api.js";
 import EmergencyWarningModal from "./EmergencyWarningModal.jsx";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
+import { getVisitRequestLabel } from "../../lib/familyProfiles.js";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 import { readVisitDraft, getVisitDraftStorageKey } from "../../lib/visitDraftStorage.js";
 import { useKeyboardOffset } from "../../hooks/useKeyboardOffset.js";
@@ -48,6 +50,8 @@ function StepBackButton({ onClick }) {
 function RequestDoctorSheet({ open, onClose }) {
   const navigate = useNavigate();
   const { user } = usePatientAuth();
+  const { activeProfile } = useFamilyProfile();
+  const visitLabel = getVisitRequestLabel(activeProfile);
   const modalRef = useRef(null);
   const keyboardInset = useKeyboardOffset(open);
   useScrollLock(open);
@@ -225,6 +229,7 @@ function RequestDoctorSheet({ open, onClose }) {
                 <h2 id="request-doctor-title" className="native-display text-[22px] leading-tight text-[#1a5c52]">
                   Confirm visiting address
                 </h2>
+                <p className="mt-1 text-[14px] text-[#5b7f8a]">{visitLabel}</p>
 
                 <div className="mt-5">
                   <MiniMapPreview />
@@ -258,6 +263,7 @@ function RequestDoctorSheet({ open, onClose }) {
                 <h2 className="native-display text-[22px] leading-tight text-[#1a5c52]">
                   Symptoms &amp; Urgency
                 </h2>
+                <p className="mt-1 text-[14px] text-[#5b7f8a]">{visitLabel}</p>
 
                 <div className="mt-5">
                   <textarea

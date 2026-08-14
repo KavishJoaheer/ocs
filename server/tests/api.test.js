@@ -1113,6 +1113,16 @@ test("patient can add a dependent and request an appointment change", async () =
     `)
     .run(patientId, doctorId).lastInsertRowid;
 
+  const pastChange = await api("POST", "/api/patient-portal/appointment-change-requests", {
+    token,
+    body: {
+      appointment_id: appointmentId,
+      request_type: "reschedule",
+      preferred_date: "2020-01-01",
+    },
+  });
+  assert.equal(pastChange.status, 400, JSON.stringify(pastChange.data));
+
   const change = await api("POST", "/api/patient-portal/appointment-change-requests", {
     token,
     body: {

@@ -1,10 +1,8 @@
 import { useState } from "react";
 import dayjs from "dayjs";
-import toast from "react-hot-toast";
 import { CalendarPlus, Clock } from "lucide-react";
 import { downloadAppointmentIcs } from "../../lib/calendarExport.js";
-import { api } from "../../lib/api.js";
-import { dispatchPatientDataChange } from "../../lib/patientDataSync.js";
+import AppointmentChangeSheet from "./AppointmentChangeSheet.jsx";
 import DoctorAvatar from "./DoctorAvatar.jsx";
 
 function VisitStatusBadge({ children, tone = "teal" }) {
@@ -26,10 +24,7 @@ function VisitStatusBadge({ children, tone = "teal" }) {
 
 function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
   const date = dayjs(appointment.date);
-  const [requestType, setRequestType] = useState("");
-  const [message, setMessage] = useState("");
-  const [preferredDate, setPreferredDate] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [sheetType, setSheetType] = useState("");
   const pending = appointment.pending_change;
   const canRequestChange =
     appointment.kind !== "review" &&
@@ -38,29 +33,6 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
 
   function handleAddToCalendar() {
     downloadAppointmentIcs(appointment);
-  }
-
-  async function handleSubmitChange(event) {
-    event.preventDefault();
-    if (!requestType) return;
-    setSubmitting(true);
-    try {
-      await api.post("/patient-portal/appointment-change-requests", {
-        appointment_id: appointment.id,
-        request_type: requestType,
-        patient_message: message,
-        preferred_date: requestType === "reschedule" ? preferredDate : null,
-      });
-      toast.success("Sent to the clinic. We'll update this appointment when they confirm.");
-      setRequestType("");
-      setMessage("");
-      setPreferredDate("");
-      dispatchPatientDataChange();
-    } catch (error) {
-      toast.error(error.message || "Could not send this request.");
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
@@ -97,67 +69,36 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
         </div>
 
         <div className="mt-4 flex flex-col gap-3 border-t border-teal-500/10 pt-4">
-          <div className="flex gap-4">
-            <div className="w-16 shrink-0" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={handleAddToCalendar}
-              className="flex min-h-[44px] items-center gap-2 text-[15px] font-semibold text-brand-gold transition-colors active:opacity-80"
-            >
-              <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-              Add to Calendar
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleAddToCalendar}
+            className="flex min-h-[44px] items-center gap-2 text-[15px] font-semibold text-brand-gold transition-colors active:opacity-80"
+          >
+            <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+            Add to Calendar
+          </button>
           {pending ? (
-            <p className="pl-20 text-[13px] text-[#2d8f98]">
+            <p className="text-[13px] text-[#2d8f98]">
               {pending.request_type === "cancel" ? "Cancel" : "Reschedule"} request is with the clinic.
+              They will confirm before anything changes.
             </p>
           ) : canRequestChange ? (
-            <form className="space-y-2 pl-20" onSubmit={handleSubmitChange}>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRequestType("reschedule")}
-                  className="text-[13px] font-semibold text-[#2d8f98]"
-                >
-                  Request reschedule
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRequestType("cancel")}
-                  className="text-[13px] font-semibold text-[#c23a2f]"
-                >
-                  Request cancel
-                </button>
-              </div>
-              {requestType ? (
-                <>
-                  {requestType === "reschedule" ? (
-                    <input
-                      required
-                      type="date"
-                      value={preferredDate}
-                      onChange={(event) => setPreferredDate(event.target.value)}
-                      className="w-full rounded-xl border border-teal-100 px-3 py-2 text-sm"
-                    />
-                  ) : null}
-                  <textarea
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                    rows={2}
-                    placeholder="Tell the clinic why, if you want"
-                    className="w-full rounded-xl border border-teal-100 px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="rounded-xl bg-[#2d8f98] px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
-                  >
-                    {submitting ? "Sending..." : "Send to clinic"}
-                  </button>
-                </>
-              ) : null}
-            </form>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSheetType("reschedule")}
+                className="rounded-xl bg-[#2d8f98] px-4 py-2.5 text-[13px] font-semibold text-white"
+              >
+                Change the date
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheetType("cancel")}
+                className="rounded-xl border border-[#c23a2f]/30 px-4 py-2.5 text-[13px] font-semibold text-[#c23a2f]"
+              >
+                Cancel this visit
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -200,7 +141,7 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
       </div>
 
       <div className="hidden border-t border-brand-teal/20 lg:block" aria-hidden="true" />
-      <div className="hidden items-center justify-end px-5 py-[14px] pb-4 lg:flex">
+      <div className="hidden items-center justify-between gap-3 px-5 py-[14px] pb-4 lg:flex">
         <button
           type="button"
           onClick={handleAddToCalendar}
@@ -209,55 +150,37 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
           Add to Calendar
         </button>
+        {pending ? (
+          <p className="max-w-[240px] text-right text-[13px] text-[#2d8f98]">
+            {pending.request_type === "cancel" ? "Cancel" : "Reschedule"} request is with the clinic.
+            They will confirm before anything changes.
+          </p>
+        ) : canRequestChange ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSheetType("reschedule")}
+              className="rounded-xl bg-[#2d8f98] px-4 py-2 text-[13px] font-semibold text-white"
+            >
+              Change the date
+            </button>
+            <button
+              type="button"
+              onClick={() => setSheetType("cancel")}
+              className="rounded-xl border border-[#c23a2f]/30 px-4 py-2 text-[13px] font-semibold text-[#c23a2f]"
+            >
+              Cancel this visit
+            </button>
+          </div>
+        ) : null}
       </div>
-      {pending ? (
-        <p className="hidden px-5 pb-4 text-[13px] text-[#2d8f98] lg:block">
-          {pending.request_type === "cancel" ? "Cancel" : "Reschedule"} request is with the clinic.
-        </p>
-      ) : canRequestChange && requestType ? (
-        <form className="hidden space-y-2 px-5 pb-4 lg:block" onSubmit={handleSubmitChange}>
-          {requestType === "reschedule" ? (
-            <input
-              required
-              type="date"
-              value={preferredDate}
-              onChange={(event) => setPreferredDate(event.target.value)}
-              className="w-full rounded-xl border border-teal-100 px-3 py-2 text-sm"
-            />
-          ) : null}
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            rows={2}
-            placeholder="Tell the clinic why, if you want"
-            className="w-full rounded-xl border border-teal-100 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-xl bg-[#2d8f98] px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
-          >
-            {submitting ? "Sending..." : "Send to clinic"}
-          </button>
-        </form>
-      ) : canRequestChange ? (
-        <div className="hidden gap-4 px-5 pb-4 lg:flex">
-          <button
-            type="button"
-            onClick={() => setRequestType("reschedule")}
-            className="text-[13px] font-semibold text-[#2d8f98]"
-          >
-            Request reschedule
-          </button>
-          <button
-            type="button"
-            onClick={() => setRequestType("cancel")}
-            className="text-[13px] font-semibold text-[#c23a2f]"
-          >
-            Request cancel
-          </button>
-        </div>
-      ) : null}
+
+      <AppointmentChangeSheet
+        open={Boolean(sheetType)}
+        appointment={appointment}
+        requestType={sheetType}
+        onClose={() => setSheetType("")}
+      />
     </article>
   );
 }

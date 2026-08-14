@@ -53,6 +53,13 @@ export function buildDependentProfile(row, index = 0) {
   };
 }
 
+export function getVisitRequestLabel(profile) {
+  if (profile && !profile.isPrimary && profile.firstName) {
+    return `Request a visit for ${profile.firstName}`;
+  }
+  return "Request a Home Visit";
+}
+
 export function getDefaultProfileId() {
   return PRIMARY_PROFILE_ID;
 }

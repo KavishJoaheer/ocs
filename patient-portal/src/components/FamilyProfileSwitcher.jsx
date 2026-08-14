@@ -5,7 +5,7 @@ import { useFocusTrap } from "../hooks/useFocusTrap.js";
 import { useScrollLock } from "../hooks/useScrollLock.js";
 import { AVATAR_STYLES } from "../lib/familyProfiles.js";
 
-function ProfileAvatar({ profile, size = "md" }) {
+function ProfileAvatar({ profile, size = "md", showDependentBadge = false }) {
   const sizeClass =
     size === "header"
       ? "size-[34px] bg-brand-dark-grey text-[13px] font-semibold text-white shadow-none"
@@ -14,12 +14,26 @@ function ProfileAvatar({ profile, size = "md" }) {
         : "size-12 text-base";
 
   const colorClass = size === "header" ? "" : AVATAR_STYLES[profile.avatarVariant];
+  const ringClass =
+    showDependentBadge && !profile.isPrimary
+      ? size === "header"
+        ? "ring-2 ring-brand-gold ring-offset-2 ring-offset-white"
+        : "ring-2 ring-brand-gold"
+      : "";
 
   return (
-    <div
-      className={`flex shrink-0 items-center justify-center rounded-full font-medium shadow-lg shadow-[rgba(45,143,152,0.12)] ${sizeClass} ${colorClass}`}
-    >
-      {profile.initials}
+    <div className="relative shrink-0">
+      <div
+        className={`flex items-center justify-center rounded-full font-medium shadow-lg shadow-[rgba(45,143,152,0.12)] ${sizeClass} ${colorClass} ${ringClass}`}
+      >
+        {profile.initials}
+      </div>
+      {showDependentBadge && !profile.isPrimary ? (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-white bg-brand-gold"
+          aria-hidden="true"
+        />
+      ) : null}
     </div>
   );
 }
@@ -137,7 +151,10 @@ function FamilyProfileSwitcher({ variant = "default" }) {
   if (!canSwitch) {
     if (isAvatar) {
       return (
-        <div className="flex size-[34px] items-center justify-center" aria-hidden="true">
+        <div className="flex min-h-[44px] items-center gap-2" aria-label={activeProfile.name}>
+          <span className="max-w-[7.5rem] truncate text-[13px] font-semibold text-[#1a5c52]">
+            {activeProfile.firstName}
+          </span>
           <ProfileAvatar profile={activeProfile} size="header" />
         </div>
       );
@@ -147,6 +164,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
       <div className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1 py-1">
         <ProfileAvatar profile={activeProfile} />
         <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-brand-dark-grey">{activeProfile.name}</p>
           <p className="truncate text-xs font-light text-brand-cool-grey">{activeProfile.relationship}</p>
         </div>
       </div>
@@ -161,10 +179,13 @@ function FamilyProfileSwitcher({ variant = "default" }) {
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-label="Switch family profile"
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition active:scale-95"
+          aria-label={`Switch family profile, currently ${activeProfile.name}`}
+          className="relative flex min-h-[44px] items-center gap-2 rounded-full py-1 pl-1 pr-1 transition active:scale-95"
         >
-          <ProfileAvatar profile={activeProfile} size="header" />
+          <span className="max-w-[7.5rem] truncate text-[13px] font-semibold text-[#1a5c52]">
+            {activeProfile.firstName}
+          </span>
+          <ProfileAvatar profile={activeProfile} size="header" showDependentBadge />
         </button>
         <ProfileBottomSheet
           open={open}
@@ -188,6 +209,7 @@ function FamilyProfileSwitcher({ variant = "default" }) {
       >
         <ProfileAvatar profile={activeProfile} />
         <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-brand-dark-grey">{activeProfile.name}</p>
           <p className="truncate text-xs font-light text-brand-cool-grey">{activeProfile.relationship}</p>
         </div>
         <ChevronDown
