@@ -24,7 +24,10 @@ const {
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
 const { parseBillingRow, serializePatientBillingRows, offsetLocalDate } = require("../lib/utils");
-const { isVerifiedPatientPortalAccount } = require("../lib/patientAuth");
+const {
+  isVerifiedPatientPortalAccount,
+  requireConfirmedChartAccess,
+} = require("../lib/patientAuth");
 const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
 const { mintStreamToken } = require("../lib/streamTokens");
 const {
@@ -174,6 +177,23 @@ function pickEarliestNextAppointment(dbNext, reviewNext) {
   // Same day — prefer the staff-scheduled appointment slot when one exists.
   return dbNext;
 }
+
+// Everything below reads or writes a patient chart, so the confirmation gate is
+// applied to the whole router and only these paths opt out. A route added later
+// is therefore protected by default rather than by remembering to guard it.
+const CHART_ACCESS_EXEMPT_PATHS = new Set([
+  "/stream-token",
+  "/push/vapid-public-key",
+  "/push/subscribe",
+]);
+
+router.use((req, res, next) => {
+  if (CHART_ACCESS_EXEMPT_PATHS.has(req.path)) {
+    return next();
+  }
+
+  return requireConfirmedChartAccess(req, res, next);
+});
 
 router.get("/dashboard", (req, res) => {
   const patientId = req.portalPatientId;

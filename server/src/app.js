@@ -25,7 +25,11 @@ const appointmentChangeRequestsRouter = require("./routes/appointmentChangeReque
 const patientAuthRouter = require("./routes/patientAuth");
 const patientPortalRouter = require("./routes/patientPortal");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
-const { requirePatientAuth, requirePatientAuthFlexible } = require("./lib/patientAuth");
+const {
+  requireConfirmedChartAccess,
+  requirePatientAuth,
+  requirePatientAuthFlexible,
+} = require("./lib/patientAuth");
 const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
 
 let initialized = false;
@@ -327,9 +331,11 @@ function createApp() {
   app.get("/api/patient-portal/stream", requirePatientAuthFlexible, handlePatientPortalStream);
   // Report file download authenticates via ?access_token= so the browser can
   // open/download it directly (no Authorization header on <a>/window.open).
+  // Registered outside the portal router, so it needs the same confirmation gate.
   app.get(
     "/api/patient-portal/reports/attachments/:attachmentId/download",
     requirePatientAuthFlexible,
+    requireConfirmedChartAccess,
     patientPortalRouter.handleReportAttachmentDownload,
   );
   app.use("/api/patient-portal", requirePatientAuth, patientPortalRouter);

@@ -207,10 +207,18 @@ test("self-registration does not overwrite staff DOB or gender when linking", as
   assert.equal(reg.data.user.date_of_birth, "1980-01-15");
   assert.equal(reg.data.user.gender, "M");
 
-  const profile = await api("GET", "/api/patient-portal/profile", { token: reg.data.token });
-  assert.equal(profile.data.profile.id, Number(insert.lastInsertRowid));
-  assert.equal(profile.data.profile.date_of_birth, "1980-01-15");
-  assert.equal(profile.data.profile.gender, "M");
+  // The chart itself stays closed until staff confirm the link, so assert the
+  // staff values on the row rather than through the portal.
+  const linkedRow = db
+    .prepare("SELECT date_of_birth, gender FROM patients WHERE id = ?")
+    .get(Number(insert.lastInsertRowid));
+  assert.equal(linkedRow.date_of_birth, "1980-01-15");
+  assert.equal(linkedRow.gender, "M");
+
+  const linkedUser = db
+    .prepare("SELECT patient_id FROM patient_users WHERE lower(email) = lower(?)")
+    .get(reg.data.user.email);
+  assert.equal(Number(linkedUser.patient_id), Number(insert.lastInsertRowid));
 });
 
 test("PATCH /profile persists contact + next-of-kin details", async () => {
@@ -280,12 +288,12 @@ test("self-registration links to an existing staff record via national ID", asyn
   assert.equal(reg.status, 201, JSON.stringify(reg.data));
   assert.equal(reg.data.user.link_status, "pending_review");
 
-  // The portal account should now read the staff record's data (same row).
-  const profile = await api("GET", "/api/patient-portal/profile", {
-    token: reg.data.token,
-  });
-  assert.equal(profile.data.profile.id, staffPatientId, "should link to staff row");
-  assert.equal(profile.data.profile.address, "Sky Garden, Quatre Bornes");
+  // The account points at the staff row, but the chart stays closed until staff
+  // confirm the link, so the address is checked after verification below.
+  const linkedUser = db
+    .prepare("SELECT patient_id FROM patient_users WHERE lower(email) = lower(?)")
+    .get(reg.data.user.email);
+  assert.equal(Number(linkedUser.patient_id), staffPatientId, "should link to staff row");
 
   // The staff record should be flagged as pending review.
   const row = db.prepare("SELECT link_status FROM patients WHERE id = ?").get(staffPatientId);
@@ -317,6 +325,14 @@ test("self-registration links to an existing staff record via national ID", asyn
     token: reg.data.token,
   });
   assert.equal(profileAfterVerify.data.user.link_status, "verified");
+
+  // Confirming the link is what opens the chart.
+  const profile = await api("GET", "/api/patient-portal/profile", {
+    token: reg.data.token,
+  });
+  assert.equal(profile.status, 200, JSON.stringify(profile.data));
+  assert.equal(profile.data.profile.id, staffPatientId);
+  assert.equal(profile.data.profile.address, "Sky Garden, Quatre Bornes");
 });
 
 test("pending portal link cannot request a home visit until verified", async () => {
@@ -361,6 +377,147 @@ test("pending portal link cannot request a home visit until verified", async () 
   });
   assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
   assert.equal(blocked.data.code, "account_link_pending");
+});
+
+test("a claimed chart stays closed until staff confirm the link", async () => {
+  // Signup matches an existing chart on national ID alone, so until staff
+  // confirm the person, none of that chart may be readable or writable.
+  const nationalId = `NID-CLAIM-${Date.now()}`;
+  const secretAddress = "Villa Konfidansiel, Curepipe";
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+
+  const victimId = Number(
+    db
+      .prepare(`
+        INSERT INTO patients (
+          full_name, first_name, last_name, patient_identifier, patient_id_number,
+          age, date_of_birth, gender, contact_number, patient_contact_number,
+          address, link_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created')
+      `)
+      .run(
+        "Claimed Chart",
+        "Claimed",
+        "Chart",
+        `OCS-CLAIM-${Date.now()}`,
+        nationalId,
+        52,
+        "1974-06-06",
+        "F",
+        "57001010",
+        "57001010",
+        secretAddress,
+      ).lastInsertRowid,
+  );
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now'), '09:00', 'completed')
+    `)
+    .run(victimId, doctorId).lastInsertRowid;
+
+  const consultationId = db
+    .prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, date('now'), 'Impression: hypertension. Rx: amlodipine 5mg.')
+    `)
+    .run(appointmentId, victimId, doctorId).lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+    VALUES (?, ?, '[]', 1500, 'unpaid')
+  `).run(consultationId, victimId);
+
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("claim"),
+      password: "secret123",
+      full_name: "Claimed Chart",
+      phone: "57002020",
+      national_id: nationalId,
+      date_of_birth: "1974-06-06",
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  assert.equal(reg.data.user.link_status, "pending_review");
+  const token = reg.data.token;
+
+  const readPaths = [
+    "/api/patient-portal/profile",
+    "/api/patient-portal/dashboard",
+    "/api/patient-portal/health-records",
+    "/api/patient-portal/billing",
+    "/api/patient-portal/appointments",
+    "/api/patient-portal/dependents",
+    "/api/patient-portal/visit-requests/active",
+  ];
+
+  for (const path of readPaths) {
+    const response = await api("GET", path, { token });
+    assert.equal(response.status, 409, `${path} should be gated: ${JSON.stringify(response.data)}`);
+    assert.equal(response.data.code, "account_link_pending", path);
+    assert.ok(
+      !JSON.stringify(response.data).includes(secretAddress),
+      `${path} must not leak the claimed chart`,
+    );
+  }
+
+  // The live-refresh stream stays available so the app notices the moment staff
+  // confirm the link. This also proves the gate's exempt paths still match.
+  const streamToken = await api("POST", "/api/patient-portal/stream-token", { token });
+  assert.equal(streamToken.status, 200, JSON.stringify(streamToken.data));
+  const vapid = await api("GET", "/api/patient-portal/push/vapid-public-key", { token });
+  assert.notEqual(vapid.status, 409, "push key lookup carries no chart data");
+
+  // Writing into someone else's record must be refused too.
+  const write = await api("PATCH", "/api/patient-portal/profile", {
+    token,
+    body: { address: "Attacker Street 1" },
+  });
+  assert.equal(write.status, 409, JSON.stringify(write.data));
+  const untouched = db.prepare("SELECT address FROM patients WHERE id = ?").get(victimId);
+  assert.equal(untouched.address, secretAddress, "a pending account must not edit the chart");
+
+  // Staff confirming the link is what grants access.
+  const verified = await api("PATCH", `/api/patients/${victimId}/verify-link`, {
+    token: adminToken,
+    body: { verified: true },
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.data));
+
+  const afterVerify = await api("GET", "/api/patient-portal/health-records", { token });
+  assert.equal(afterVerify.status, 200, JSON.stringify(afterVerify.data));
+});
+
+test("a self-registered account still reads the chart its own signup created", async () => {
+  // Nothing to protect here: the chart was created by this signup, so gating it
+  // would lock a genuine new patient out of their own portal.
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("fresh"),
+      password: "secret123",
+      full_name: "Fresh Signup",
+      phone: "57003030",
+      national_id: uniqueNationalId("fresh"),
+      date_of_birth: "1996-07-07",
+      gender: "M",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  assert.equal(reg.data.user.link_status, "self_registered");
+  const token = reg.data.token;
+
+  for (const path of [
+    "/api/patient-portal/profile",
+    "/api/patient-portal/dashboard",
+    "/api/patient-portal/health-records",
+    "/api/patient-portal/billing",
+  ]) {
+    const response = await api("GET", path, { token });
+    assert.equal(response.status, 200, `${path} should stay open: ${JSON.stringify(response.data)}`);
+  }
 });
 
 test("staff can merge a duplicate patient into the canonical record", async () => {

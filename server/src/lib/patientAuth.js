@@ -46,6 +46,31 @@ function isVerifiedPatientPortalAccount(auth) {
   return Boolean(auth?.patient_id) && (auth?.link_status === "verified" || auth?.link_status === "staff_created");
 }
 
+// Signup claims an existing chart on a national ID alone, so a pending_review
+// account may be sitting on someone else's medical history until staff confirm
+// the person. A self_registered account created its own chart during signup, so
+// there is no third party's history in it, and an account with no chart at all
+// falls through to each route's own not-linked message.
+function isPortalChartAwaitingConfirmation(auth) {
+  if (!auth?.patient_id || isVerifiedPatientPortalAccount(auth)) {
+    return false;
+  }
+
+  return auth.link_status !== "self_registered";
+}
+
+function requireConfirmedChartAccess(req, res, next) {
+  if (!isPortalChartAwaitingConfirmation(req.patientAuth)) {
+    return next();
+  }
+
+  return res.status(409).json({
+    error:
+      "Your clinic record is still being confirmed by staff, so it cannot be opened yet. Please contact the clinic to finish linking your account.",
+    code: "account_link_pending",
+  });
+}
+
 function getPatientSessionUserByToken(token) {
   cleanupExpiredPatientSessions();
 
@@ -157,7 +182,9 @@ module.exports = {
   cleanupExpiredPatientSessions,
   enrichPatientUserRow,
   getPatientSessionUserByToken,
+  isPortalChartAwaitingConfirmation,
   isVerifiedPatientPortalAccount,
+  requireConfirmedChartAccess,
   requirePatientAuth,
   requirePatientAuthFlexible,
   serializePatientUser,
