@@ -5,6 +5,8 @@ import HomeGate from "./components/HomeGate.jsx";
 import AppShell from "./layouts/AppShell.jsx";
 import PatientLoginPage from "./pages/PatientLoginPage.jsx";
 import PatientRegisterPage from "./pages/PatientRegisterPage.jsx";
+import PatientForgotPasswordPage from "./pages/PatientForgotPasswordPage.jsx";
+import PatientResetPasswordPage from "./pages/PatientResetPasswordPage.jsx";
 
 // Lazy-load the in-app screens so the first paint (login/register) stays light.
 const PatientDashboard = lazy(() => import("./pages/PatientDashboard.jsx"));
@@ -35,6 +37,8 @@ function App() {
       <Route path="/welcome" element={<Navigate to="/" replace />} />
       <Route path="/login" element={<PatientLoginPage />} />
       <Route path="/register" element={<PatientRegisterPage />} />
+      <Route path="/forgot-password" element={<PatientForgotPasswordPage />} />
+      <Route path="/reset-password" element={<PatientResetPasswordPage />} />
       <Route
         element={
           <ProtectedRoute>

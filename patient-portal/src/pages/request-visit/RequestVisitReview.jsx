@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
 import { api } from "../../lib/api.js";
 import { formatDisplayName } from "../../lib/formatDisplayName.js";
 import { dispatchPatientDataChange } from "../../lib/patientDataSync.js";
@@ -24,9 +25,12 @@ function RequestVisitReview() {
   const navigate = useNavigate();
   const { draft, updateDraft, storageKey } = useOutletContext();
   const { user } = usePatientAuth();
+  const { activeProfile } = useFamilyProfile();
   const [submitting, setSubmitting] = useState(false);
 
-  const visitForName = formatDisplayName(user?.full_name) || "Myself";
+  const visitForName = activeProfile?.isPrimary
+    ? formatDisplayName(user?.full_name) || "Myself"
+    : activeProfile?.name || "A family member";
   const urgency = URGENCY_META[draft.urgency] || URGENCY_META.routine;
 
   async function handleConfirm() {

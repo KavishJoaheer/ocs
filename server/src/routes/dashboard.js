@@ -933,6 +933,7 @@ function getOperatorWorkspacePayload() {
     pendingPayments,
     longTermReview,
     reviewAppointmentsThisMonth,
+    doctorStatuses: getDoctorStatuses(),
   };
 }
 

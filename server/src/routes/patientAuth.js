@@ -15,6 +15,7 @@ const {
   hashSessionToken,
   verifyPassword,
 } = require("../lib/security");
+const { getPatientPortalOrigin, sendPatientPasswordResetEmail } = require("../lib/mailer");
 
 const router = express.Router();
 
@@ -304,6 +305,94 @@ router.post("/change-password", requirePatientAuth, (req, res) => {
     hashPassword(newPassword),
     user.id,
   );
+
+  return res.json({ ok: true });
+});
+
+router.post("/forgot-password", async (req, res) => {
+  const email = String(req.body.email ?? "").trim().toLowerCase();
+  const generic = { ok: true };
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required." });
+  }
+
+  const user = db
+    .prepare("SELECT id, email FROM patient_users WHERE lower(email) = ? AND is_active = 1")
+    .get(email);
+
+  if (!user) {
+    return res.json(generic);
+  }
+
+  db.prepare(
+    `
+      DELETE FROM patient_password_reset_tokens
+      WHERE patient_user_id = ? OR expires_at <= CURRENT_TIMESTAMP
+    `,
+  ).run(user.id);
+
+  const token = generateSessionToken();
+  const expires = new Date(Date.now() + 60 * 60 * 1000);
+  db.prepare(
+    `
+      INSERT INTO patient_password_reset_tokens (patient_user_id, token_hash, expires_at)
+      VALUES (?, ?, ?)
+    `,
+  ).run(user.id, hashSessionToken(token), expires.toISOString().replace("T", " ").slice(0, 19));
+
+  const resetUrl = `${getPatientPortalOrigin()}/reset-password?token=${encodeURIComponent(token)}`;
+  try {
+    await sendPatientPasswordResetEmail({ to: user.email, resetUrl });
+  } catch (error) {
+    console.warn("[mailer] password reset email failed:", error?.message || error);
+  }
+
+  if (process.env.NODE_ENV === "test") {
+    return res.json({ ok: true, reset_token: token });
+  }
+
+  return res.json(generic);
+});
+
+router.post("/reset-password", (req, res) => {
+  const token = String(req.body.token ?? "").trim();
+  const newPassword = String(req.body.new_password ?? "");
+
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: "Reset token and new password are required." });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters." });
+  }
+
+  const row = db
+    .prepare(
+      `
+        SELECT id, patient_user_id
+        FROM patient_password_reset_tokens
+        WHERE token_hash = ?
+          AND used_at IS NULL
+          AND expires_at > CURRENT_TIMESTAMP
+      `,
+    )
+    .get(hashSessionToken(token));
+
+  if (!row) {
+    return res.status(400).json({ error: "This reset link is invalid or has expired." });
+  }
+
+  db.transaction(() => {
+    db.prepare("UPDATE patient_users SET password_hash = ? WHERE id = ?").run(
+      hashPassword(newPassword),
+      row.patient_user_id,
+    );
+    db.prepare("UPDATE patient_password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?").run(
+      row.id,
+    );
+    db.prepare("DELETE FROM patient_auth_sessions WHERE patient_user_id = ?").run(row.patient_user_id);
+  })();
 
   return res.json({ ok: true });
 });

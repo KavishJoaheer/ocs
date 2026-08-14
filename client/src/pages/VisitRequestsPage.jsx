@@ -20,6 +20,7 @@ import { cx } from "../lib/utils.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import AppointmentChangeInbox from "../components/AppointmentChangeInbox.jsx";
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
@@ -62,10 +63,13 @@ const URGENCY_DOT = {
   emergency: "#e2574c",
 };
 
-function visitForLabel(visitFor) {
-  const value = String(visitFor || "myself").trim().toLowerCase();
+function visitForLabel(request) {
+  const value = String(request?.visit_for || "myself").trim().toLowerCase();
   if (!value || value === "myself") {
     return null;
+  }
+  if (request?.dependent_name) {
+    return `Visit for ${request.dependent_name}`;
   }
   if (value === "dependent") {
     return "Visit for a dependent";
@@ -187,9 +191,9 @@ function BoardCard({
               style={{ background: URGENCY_DOT[request.urgency] || URGENCY_DOT.routine }}
             />
             <p className="truncate text-sm font-semibold text-slate-950">{request.patient_name}</p>
-            {visitForLabel(request.visit_for) ? (
+            {visitForLabel(request) ? (
               <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                {visitForLabel(request.visit_for)}
+                {visitForLabel(request)}
               </span>
             ) : null}
             <SlaChip createdAt={request.created_at} now={now} escalate={escalate} />
@@ -401,9 +405,9 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-base font-semibold text-slate-950">{request.patient_name}</p>
-            {visitForLabel(request.visit_for) ? (
+            {visitForLabel(request) ? (
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                {visitForLabel(request.visit_for)}
+                {visitForLabel(request)}
               </span>
             ) : null}
             <UrgencyBadge urgency={request.urgency} />
@@ -653,6 +657,8 @@ export default function VisitRequestsPage() {
           </button>
         }
       />
+
+      <AppointmentChangeInbox />
 
       <div className="flex flex-wrap gap-2">
         {[

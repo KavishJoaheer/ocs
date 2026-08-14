@@ -986,6 +986,121 @@ test("patient can change password in-app", async () => {
   assert.equal(loginNew.status, 200, JSON.stringify(loginNew.data));
 });
 
+test("patient can reset password with an emailed token", async () => {
+  const email = uniqueEmail("reset");
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email,
+      password: "secret123",
+      full_name: "Reset Tester",
+      phone: "57001124",
+      national_id: uniqueNationalId("rst"),
+      gender: "M",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+
+  const unknown = await api("POST", "/api/patient-auth/forgot-password", {
+    body: { email: uniqueEmail("missing") },
+  });
+  assert.equal(unknown.status, 200);
+  assert.equal(unknown.data.ok, true);
+  assert.equal(unknown.data.reset_token, undefined);
+
+  const forgot = await api("POST", "/api/patient-auth/forgot-password", { body: { email } });
+  assert.equal(forgot.status, 200, JSON.stringify(forgot.data));
+  assert.ok(forgot.data.reset_token);
+
+  const short = await api("POST", "/api/patient-auth/reset-password", {
+    body: { token: forgot.data.reset_token, new_password: "short" },
+  });
+  assert.equal(short.status, 400);
+
+  const reset = await api("POST", "/api/patient-auth/reset-password", {
+    body: { token: forgot.data.reset_token, new_password: "resetpass1" },
+  });
+  assert.equal(reset.status, 200, JSON.stringify(reset.data));
+
+  const reused = await api("POST", "/api/patient-auth/reset-password", {
+    body: { token: forgot.data.reset_token, new_password: "resetpass2" },
+  });
+  assert.equal(reused.status, 400);
+
+  const login = await api("POST", "/api/patient-auth/login", {
+    body: { email, password: "resetpass1" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+});
+
+test("patient can add a dependent and request an appointment change", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("family"),
+      password: "secret123",
+      full_name: "Family Guardian",
+      phone: "57001125",
+      national_id: uniqueNationalId("fam"),
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  const token = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
+
+  const created = await api("POST", "/api/patient-portal/dependents", {
+    token,
+    body: {
+      full_name: "Family Child",
+      relationship: "Son",
+      date_of_birth: "2018-06-01",
+      gender: "M",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.dependent.full_name, "Family Child");
+
+  const listed = await api("GET", "/api/patient-portal/dependents", { token });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.data.dependents.length, 1);
+
+  const profile = await api("GET", "/api/patient-portal/profile", { token });
+  const patientId = profile.data.profile.id;
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now', '+3 day'), '10:00', 'scheduled')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  const change = await api("POST", "/api/patient-portal/appointment-change-requests", {
+    token,
+    body: {
+      appointment_id: appointmentId,
+      request_type: "reschedule",
+      preferred_date: "2030-01-15",
+      patient_message: "School morning",
+    },
+  });
+  assert.equal(change.status, 201, JSON.stringify(change.data));
+
+  const inbox = await api("GET", "/api/appointment-change-requests?status=pending", {
+    token: adminToken,
+  });
+  assert.equal(inbox.status, 200, JSON.stringify(inbox.data));
+  assert.ok(inbox.data.requests.some((row) => row.appointment_id === Number(appointmentId)));
+
+  const resolved = await api("PATCH", `/api/appointment-change-requests/${change.data.request.id}`, {
+    token: adminToken,
+    body: { status: "resolved" },
+  });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
+
+  const updated = db.prepare("SELECT appointment_date, status FROM appointments WHERE id = ?").get(appointmentId);
+  assert.equal(updated.appointment_date, "2030-01-15");
+  assert.equal(updated.status, "scheduled");
+});
+
 function insertDirectoryPatient(label) {
   return db
     .prepare(`

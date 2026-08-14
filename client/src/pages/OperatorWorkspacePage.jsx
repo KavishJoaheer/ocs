@@ -16,6 +16,13 @@ import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
 const workspaceMeta = {
+  "current-week-roster": {
+    eyebrow: "SOS Planning",
+    title: () => "SOS Planning",
+    description:
+      "This week's visits across the doctor team, plus who is available for emergency coverage.",
+    icon: CalendarClock,
+  },
   "monthly-roster": {
     eyebrow: "Operator roster",
     title: (data) => `${data?.periods?.monthLabel || "Current month"} roster`,
@@ -234,6 +241,85 @@ function OperatorWorkspacePage({ workspaceKey }) {
 
   let metrics = [];
   let content = null;
+
+  if (workspaceKey === "current-week-roster") {
+    const availableDoctors = (data.doctorStatuses || []).filter(
+      (doctor) => doctor.operation_status === "available" || doctor.operation_status === "active",
+    );
+    metrics = [
+      {
+        icon: CalendarClock,
+        label: "Week visits",
+        value: data.summary.currentWeekRosterCount,
+        description: `${formatDate(data.periods.weekStart)} to ${formatDate(data.periods.weekEnd)}`,
+        accent: "bg-gradient-to-br from-sky-500 to-blue-600",
+      },
+      {
+        icon: ClipboardList,
+        label: "Scheduled",
+        value: data.currentWeekRoster.filter((appointment) => appointment.status === "scheduled").length,
+        description: "Visits still on the live calendar this week.",
+        accent: "bg-gradient-to-br from-cyan-500 to-sky-600",
+      },
+      {
+        icon: UsersRound,
+        label: "Reachable doctors",
+        value: availableDoctors.length,
+        description: "Doctors currently available or active for SOS coverage.",
+        accent: "bg-gradient-to-br from-emerald-500 to-teal-600",
+      },
+    ];
+
+    content = (
+      <div className="space-y-6">
+        <SectionCard
+          actions={sharedActions}
+          subtitle="Who can take an emergency visit right now."
+          title="Doctor coverage"
+        >
+          {(data.doctorStatuses || []).length ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {(data.doctorStatuses || []).map((doctor) => (
+                <div
+                  key={doctor.id}
+                  className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{doctor.full_name}</p>
+                    <p className="text-xs text-slate-500">{doctor.specialization || "Doctor"}</p>
+                  </div>
+                  <StatusBadge value={doctor.operation_status || "offline"} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No doctor coverage yet"
+              description="Doctor availability appears here when doctors set their operation status."
+            />
+          )}
+        </SectionCard>
+        <SectionCard
+          subtitle="Every scheduled visit this week, across the doctor team."
+          title="This week's visits"
+        >
+          <AppointmentQueueList
+            appointments={data.currentWeekRoster}
+            emptyDescription="No visits are currently scheduled for this week."
+            emptyTitle="No visits this week"
+          />
+        </SectionCard>
+        <div className="flex justify-end">
+          <Link
+            className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white"
+            to="/visit-requests"
+          >
+            Open dispatch board
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (workspaceKey === "monthly-roster") {
     metrics = [

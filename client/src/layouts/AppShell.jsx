@@ -88,6 +88,10 @@ const pageMeta = {
     label: "Long term review",
     helper: "Practice-wide chronic care follow-up queue.",
   },
+  "/operator/current-week-roster": {
+    label: "SOS Planning",
+    helper: "This week's visits and which doctors are available for emergency coverage.",
+  },
   "/operator/monthly-roster": {
     label: "Current month roster",
     helper: "See the full monthly doctor schedule from the operator coordination workspace.",

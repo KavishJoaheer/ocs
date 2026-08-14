@@ -26,6 +26,9 @@ const { parseBillingRow, serializePatientBillingRows } = require("../lib/utils")
 const { isVerifiedPatientPortalAccount } = require("../lib/patientAuth");
 const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
 const { mintStreamToken } = require("../lib/streamTokens");
+const {
+  getPendingChangeForAppointment,
+} = require("../lib/appointmentChangeRequests");
 
 const router = express.Router();
 
@@ -172,7 +175,7 @@ function pickEarliestNextAppointment(dbNext, reviewNext) {
 }
 
 router.get("/dashboard", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.json({
@@ -310,7 +313,7 @@ router.get("/dashboard", (req, res) => {
 });
 
 router.get("/appointments", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.json({ appointments: [] });
@@ -346,11 +349,21 @@ router.get("/appointments", (req, res) => {
     appointments.unshift(reviewAppointment);
   }
 
-  return res.json({ appointments });
+  const withChanges = appointments.map((row) => {
+    if (!row?.id || String(row.id).startsWith("review-")) {
+      return { ...row, pending_change: null };
+    }
+    return {
+      ...row,
+      pending_change: getPendingChangeForAppointment(row.id, patientId),
+    };
+  });
+
+  return res.json({ appointments: withChanges });
 });
 
 router.get("/billing", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.json({
@@ -379,7 +392,7 @@ router.get("/billing", (req, res) => {
 });
 
 router.get("/billing/:id", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
   const billId = Number(req.params.id);
 
   if (!patientId) {
@@ -429,7 +442,7 @@ router.get("/billing/:id", (req, res) => {
 });
 
 router.get("/profile", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.json({ patient: null });
@@ -579,7 +592,7 @@ router.post("/reports", (req, res, next) => {
 });
 
 router.get("/health-records", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.json({
@@ -664,7 +677,7 @@ router.get("/health-records", (req, res) => {
 });
 
 function applyProfileUpdate(req, res) {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.status(404).json({ error: "Patient record not found." });
@@ -809,7 +822,7 @@ function handleReportAttachmentDownload(req, res) {
 }
 
 router.get("/visit-requests/active", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     return res.json({ visit_request: null });
@@ -819,7 +832,7 @@ router.get("/visit-requests/active", (req, res) => {
 });
 
 router.post("/visit-requests", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
   const patientUserId = req.patientAuth.id;
 
   if (!patientId) {
@@ -846,7 +859,10 @@ router.post("/visit-requests", (req, res) => {
     });
   }
 
-  const visitFor = String(req.body.visit_for ?? "myself").trim() || "myself";
+  const guardianId = Number(req.patientAuth.patient_id || 0);
+  const isDependentVisit = Boolean(patientId && guardianId && Number(patientId) !== guardianId);
+  const visitFor = isDependentVisit ? "dependent" : "myself";
+  const dependentPatientId = isDependentVisit ? Number(patientId) : null;
   const address = String(req.body.address ?? "").trim();
   const reason = String(req.body.reason ?? "").trim();
   const urgencyRaw = String(req.body.urgency ?? "routine").trim().toLowerCase();
@@ -862,10 +878,20 @@ router.post("/visit-requests", (req, res) => {
 
   const result = db
     .prepare(`
-      INSERT INTO visit_requests (patient_id, patient_user_id, visit_for, address, reason, urgency, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending')
+      INSERT INTO visit_requests (
+        patient_id, patient_user_id, visit_for, dependent_patient_id, address, reason, urgency, status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
     `)
-    .run(patientId, patientUserId || null, visitFor, address, reason, urgency);
+    .run(
+      patientId,
+      patientUserId || null,
+      visitFor,
+      dependentPatientId,
+      address,
+      reason,
+      urgency,
+    );
 
   publishPatientDataChange(patientId, { reason: "visit_request" });
 
@@ -878,7 +904,7 @@ router.post("/visit-requests", (req, res) => {
 });
 
 router.patch("/visit-requests/:id/cancel", (req, res) => {
-  const patientId = req.patientAuth.patient_id;
+  const patientId = req.portalPatientId;
   const requestId = Number(req.params.id);
 
   if (!patientId || !Number.isInteger(requestId)) {
@@ -886,8 +912,14 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
   }
 
   const existing = db.prepare("SELECT * FROM visit_requests WHERE id = ?").get(requestId);
+  const guardianId = Number(req.patientAuth.patient_id || 0);
+  const ownsVisit =
+    existing &&
+    (Number(existing.patient_id) === Number(patientId) ||
+      Number(existing.patient_user_id) === Number(req.patientAuth.id) ||
+      Number(existing.patient_id) === guardianId);
 
-  if (!existing || Number(existing.patient_id) !== Number(patientId)) {
+  if (!existing || !ownsVisit) {
     return res.status(404).json({ error: "Visit request not found." });
   }
 
@@ -949,6 +981,256 @@ router.delete("/push/subscribe", (req, res) => {
     endpoint ? { endpoint: String(endpoint) } : {},
   );
   res.json({ ok: true });
+});
+
+function generateDependentIdentifier() {
+  const latestIdentifier = db
+    .prepare(
+      `
+        SELECT patient_identifier
+        FROM patients
+        WHERE patient_identifier GLOB 'OCS-[0-9]*'
+        ORDER BY CAST(substr(patient_identifier, 5) AS INTEGER) DESC
+        LIMIT 1
+      `,
+    )
+    .get()?.patient_identifier;
+
+  const latestNumber = latestIdentifier
+    ? Number.parseInt(String(latestIdentifier).replace(/^OCS-/, ""), 10)
+    : Number.NaN;
+  const nextNumber = Number.isFinite(latestNumber) ? latestNumber + 1 : 150;
+  return `OCS-${nextNumber}`;
+}
+
+function ageFromIsoDob(isoDob) {
+  const dob = new Date(String(isoDob || ""));
+  if (Number.isNaN(dob.getTime())) return 0;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDelta = today.getMonth() - dob.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return Math.max(0, age);
+}
+
+function serializeDependent(row) {
+  return {
+    id: Number(row.id),
+    full_name: row.full_name,
+    date_of_birth: row.date_of_birth || "",
+    gender: row.gender || "M",
+    relationship: row.family_relationship || row.contact_relationship || "",
+    patient_identifier: row.patient_identifier || "",
+  };
+}
+
+router.get("/dependents", (req, res) => {
+  const guardianId = req.patientAuth.patient_id;
+  if (!guardianId) {
+    return res.json({ dependents: [] });
+  }
+
+  const rows = db
+    .prepare(
+      `
+        SELECT id, full_name, date_of_birth, gender, family_relationship, contact_relationship, patient_identifier
+        FROM patients
+        WHERE parent_patient_id = ?
+          AND deleted_at IS NULL
+        ORDER BY full_name ASC, id ASC
+      `,
+    )
+    .all(guardianId);
+
+  return res.json({ dependents: rows.map(serializeDependent) });
+});
+
+router.post("/dependents", (req, res) => {
+  const guardianId = req.patientAuth.patient_id;
+  if (!guardianId) {
+    return res.status(409).json({ error: "Link your clinic record before adding family members." });
+  }
+
+  const fullName = String(req.body.full_name ?? "").trim();
+  const relationship = String(req.body.relationship ?? "").trim();
+  const dateOfBirth = String(req.body.date_of_birth ?? "").trim();
+  const genderRaw = String(req.body.gender ?? "").trim().toUpperCase();
+  const gender = ["M", "F"].includes(genderRaw) ? genderRaw : "";
+
+  if (!fullName || !relationship || !dateOfBirth || !gender) {
+    return res.status(400).json({ error: "full_name, relationship, date_of_birth, and gender are required." });
+  }
+
+  const nameParts = fullName.split(/\s+/);
+  const firstName = nameParts[0] || fullName;
+  const lastName = nameParts.slice(1).join(" ") || "";
+  const guardian = db
+    .prepare("SELECT assigned_doctor_id, address, location FROM patients WHERE id = ?")
+    .get(guardianId);
+
+  const result = db
+    .prepare(
+      `
+        INSERT INTO patients (
+          full_name, first_name, last_name, patient_identifier, patient_id_number,
+          age, date_of_birth, gender, parent_patient_id, family_relationship, contact_relationship,
+          contact_number, patient_contact_number, address, location, assigned_doctor_id, link_status
+        )
+        VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 'staff_created')
+      `,
+    )
+    .run(
+      fullName,
+      firstName,
+      lastName,
+      generateDependentIdentifier(),
+      ageFromIsoDob(dateOfBirth),
+      dateOfBirth,
+      gender,
+      guardianId,
+      relationship,
+      relationship,
+      guardian?.address || "",
+      guardian?.location || "",
+      guardian?.assigned_doctor_id || null,
+    );
+
+  const created = db
+    .prepare(
+      `
+        SELECT id, full_name, date_of_birth, gender, family_relationship, contact_relationship, patient_identifier
+        FROM patients
+        WHERE id = ?
+      `,
+    )
+    .get(result.lastInsertRowid);
+
+  publishPatientDataChange(guardianId, { reason: "profile" });
+  return res.status(201).json({ dependent: serializeDependent(created) });
+});
+
+router.delete("/dependents/:id", (req, res) => {
+  const guardianId = req.patientAuth.patient_id;
+  const dependentId = Number(req.params.id);
+  if (!guardianId || !Number.isInteger(dependentId)) {
+    return res.status(404).json({ error: "Family member not found." });
+  }
+
+  const row = db
+    .prepare(
+      `
+        SELECT id FROM patients
+        WHERE id = ? AND parent_patient_id = ? AND deleted_at IS NULL
+      `,
+    )
+    .get(dependentId, guardianId);
+
+  if (!row) {
+    return res.status(404).json({ error: "Family member not found." });
+  }
+
+  db.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(dependentId);
+  publishPatientDataChange(guardianId, { reason: "profile" });
+  return res.status(204).send();
+});
+
+router.post("/appointment-change-requests", (req, res) => {
+  const patientId = req.portalPatientId;
+  if (!patientId) {
+    return res.status(409).json({ error: "Your clinic record is not linked yet." });
+  }
+
+  const appointmentId = Number(req.body.appointment_id);
+  const requestType = String(req.body.request_type || "").trim().toLowerCase();
+  const patientMessage = String(req.body.patient_message || "").trim();
+  const preferredDate = String(req.body.preferred_date || "").trim() || null;
+  const preferredTime = String(req.body.preferred_time || "").trim() || null;
+
+  if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+    return res.status(400).json({ error: "appointment_id is required." });
+  }
+  if (!["cancel", "reschedule"].includes(requestType)) {
+    return res.status(400).json({ error: "request_type must be cancel or reschedule." });
+  }
+
+  const appointment = db
+    .prepare(
+      `
+        SELECT a.*, p.parent_patient_id
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        WHERE a.id = ?
+          AND p.deleted_at IS NULL
+      `,
+    )
+    .get(appointmentId);
+
+  const guardianId = Number(req.patientAuth.patient_id || 0);
+  const ownsAppointment =
+    appointment &&
+    (Number(appointment.patient_id) === Number(patientId) ||
+      Number(appointment.patient_id) === guardianId ||
+      Number(appointment.parent_patient_id) === guardianId);
+
+  if (!ownsAppointment) {
+    return res.status(404).json({ error: "Appointment not found." });
+  }
+
+  if (appointment.status !== "scheduled") {
+    return res.status(400).json({ error: "Only upcoming appointments can be changed." });
+  }
+
+  const pending = getPendingChangeForAppointment(appointmentId, appointment.patient_id);
+  if (pending) {
+    return res.status(409).json({
+      error: "A change request is already waiting for the clinic.",
+      request: pending,
+    });
+  }
+
+  if (requestType === "reschedule" && !preferredDate) {
+    return res.status(400).json({ error: "preferred_date is required to reschedule." });
+  }
+
+  const result = db
+    .prepare(
+      `
+        INSERT INTO appointment_change_requests (
+          appointment_id, patient_id, patient_user_id, request_type, patient_message,
+          preferred_date, preferred_time, status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+      `,
+    )
+    .run(
+      appointmentId,
+      appointment.patient_id,
+      req.patientAuth.id,
+      requestType,
+      patientMessage,
+      preferredDate,
+      preferredTime,
+    );
+
+  publishPatientDataChange(appointment.patient_id, { reason: "appointment" });
+
+  void sendPushToRole("operator", {
+    title: requestType === "cancel" ? "Appointment cancel request" : "Appointment reschedule request",
+    body: "A patient asked to change a scheduled visit.",
+    url: "/visit-requests",
+    tag: `appointment-change-${result.lastInsertRowid}`,
+  }).catch(() => {});
+  void sendPushToRole("admin", {
+    title: requestType === "cancel" ? "Appointment cancel request" : "Appointment reschedule request",
+    body: "A patient asked to change a scheduled visit.",
+    url: "/visit-requests",
+    tag: `appointment-change-${result.lastInsertRowid}`,
+  }).catch(() => {});
+
+  const created = getPendingChangeForAppointment(appointmentId, appointment.patient_id);
+  return res.status(201).json({ request: created });
 });
 
 module.exports = router;

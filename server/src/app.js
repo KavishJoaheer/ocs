@@ -21,6 +21,7 @@ const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
 const restockRequestsRouter = require("./routes/restockRequests");
 const visitRequestsRouter = require("./routes/visitRequests");
+const appointmentChangeRequestsRouter = require("./routes/appointmentChangeRequests");
 const patientAuthRouter = require("./routes/patientAuth");
 const patientPortalRouter = require("./routes/patientPortal");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
@@ -166,6 +167,7 @@ function createApp() {
   app.use("/api/auth/login", loginLimiter);
   app.use("/api/patient-auth/login", loginLimiter);
   app.use("/api/patient-auth/register", loginLimiter);
+  app.use("/api/patient-auth/forgot-password", loginLimiter);
 
   app.use("/api/auth", authRouter);
   app.use("/api/push", pushRouter);
@@ -307,6 +309,16 @@ function createApp() {
       PATCH: ["admin", "doctor", "operator"],
     }),
     visitRequestsRouter,
+  );
+
+  app.use(
+    "/api/appointment-change-requests",
+    requireAuth,
+    authorizeByMethod({
+      GET: ["admin", "doctor", "operator"],
+      PATCH: ["admin", "doctor", "operator"],
+    }),
+    appointmentChangeRequestsRouter,
   );
 
   app.use("/api/patient-auth", patientAuthRouter);

@@ -47,6 +47,8 @@ function serializeVisitRequest(row, { includeStaffNotes = true } = {}) {
     patient_identifier: row.patient_identifier || null,
     patient_contact_number: row.patient_contact_number || null,
     visit_for: row.visit_for || "myself",
+    dependent_patient_id: row.dependent_patient_id ? Number(row.dependent_patient_id) : null,
+    dependent_name: row.dependent_name || null,
     address: row.address || "",
     reason: row.reason || "",
     urgency: row.urgency || "routine",
@@ -73,9 +75,11 @@ const VISIT_REQUEST_SELECT = `
     p.full_name AS patient_name,
     p.patient_identifier AS patient_identifier,
     p.patient_contact_number AS patient_contact_number,
+    dep.full_name AS dependent_name,
     d.full_name AS doctor_name
   FROM visit_requests v
   JOIN patients p ON p.id = v.patient_id
+  LEFT JOIN patients dep ON dep.id = v.dependent_patient_id
   LEFT JOIN doctors d ON d.id = v.assigned_doctor_id
 `;
 

@@ -128,6 +128,12 @@ function PatientLoginPage() {
               />
             </div>
 
+            <div className="text-right">
+              <Link to="/forgot-password" className="text-xs font-bold text-[#065a60]">
+                Forgot password?
+              </Link>
+            </div>
+
             <button
               type="submit"
               disabled={isSubmitting}

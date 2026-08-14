@@ -411,6 +411,58 @@ function ensureVisitRequestAppointmentColumn() {
   db.exec("ALTER TABLE visit_requests ADD COLUMN appointment_id INTEGER");
 }
 
+function ensureVisitRequestDependentColumn() {
+  const columns = db.prepare("PRAGMA table_info(visit_requests)").all();
+  if (columns.some((column) => column.name === "dependent_patient_id")) {
+    return;
+  }
+  db.exec("ALTER TABLE visit_requests ADD COLUMN dependent_patient_id INTEGER");
+}
+
+function createAppointmentChangeRequestsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS appointment_change_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      appointment_id INTEGER NOT NULL,
+      patient_id INTEGER NOT NULL,
+      patient_user_id INTEGER,
+      request_type TEXT NOT NULL CHECK (request_type IN ('cancel', 'reschedule')),
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'acknowledged', 'resolved', 'rejected')),
+      patient_message TEXT NOT NULL DEFAULT '',
+      preferred_date TEXT,
+      preferred_time TEXT,
+      staff_notes TEXT NOT NULL DEFAULT '',
+      resolved_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_appointment_change_requests_status
+      ON appointment_change_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_appointment_change_requests_patient
+      ON appointment_change_requests(patient_id);
+  `);
+}
+
+function createPatientPasswordResetTokensTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_patient_password_reset_tokens_hash
+      ON patient_password_reset_tokens(token_hash);
+  `);
+}
+
 function migrateVisitRequestsConsultationStatusIfNeeded() {
   const tableSql = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'visit_requests'")
@@ -876,6 +928,9 @@ function initializeDatabase() {
   createVisitRequestsTable();
   migrateVisitRequestsConsultationStatusIfNeeded();
   ensureVisitRequestAppointmentColumn();
+  ensureVisitRequestDependentColumn();
+  createAppointmentChangeRequestsTable();
+  createPatientPasswordResetTokensTable();
   createRestockRequestsTable();
 
   ensurePatientColumns();
@@ -1115,6 +1170,14 @@ function ensurePatientColumns() {
       // 'verified' (staff confirmed the link).
       name: "link_status",
       sql: "ALTER TABLE patients ADD COLUMN link_status TEXT NOT NULL DEFAULT 'staff_created'",
+    },
+    {
+      name: "parent_patient_id",
+      sql: "ALTER TABLE patients ADD COLUMN parent_patient_id INTEGER",
+    },
+    {
+      name: "family_relationship",
+      sql: "ALTER TABLE patients ADD COLUMN family_relationship TEXT NOT NULL DEFAULT ''",
     },
   ];
 

@@ -34,6 +34,8 @@ import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import InventoryStagingQueue from "../components/InventoryStagingQueue.jsx";
+import InventoryCsvImport from "../components/InventoryCsvImport.jsx";
+import InventoryStocktakePanel from "../components/InventoryStocktakePanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api, ApiError } from "../lib/api.js";
@@ -4228,9 +4230,14 @@ export default function InventoryPage() {
       {isOperator || isAdmin ? (
         <>
           <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+          <InventoryCsvImport onImported={() => load(undefined, undefined, { silent: true })} />
           <InventoryStagingQueue
             rows={data?.staging}
             onReleased={() => load(undefined, undefined, { silent: true })}
+          />
+          <InventoryStocktakePanel
+            items={data?.ocs_stock || items}
+            onApplied={() => load(undefined, undefined, { silent: true })}
           />
         </>
       ) : null}

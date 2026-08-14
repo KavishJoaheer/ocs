@@ -116,6 +116,31 @@ function authenticatePatient(req, res, next, { allowQuery = false, allowStreamTo
   req.patientAuth = enrichPatientUserRow(session);
   req.patientAuthSessionId = session.session_id ? Number(session.session_id) : null;
   req.patientAuthToken = token;
+
+  const guardianId = req.patientAuth?.patient_id ? Number(req.patientAuth.patient_id) : null;
+  const requested = Number(req.get("x-ocs-patient-id") || 0);
+  if (!requested || requested === guardianId) {
+    req.portalPatientId = guardianId;
+    return next();
+  }
+
+  const child = db
+    .prepare(
+      `
+        SELECT id
+        FROM patients
+        WHERE id = ?
+          AND parent_patient_id = ?
+          AND deleted_at IS NULL
+      `,
+    )
+    .get(requested, guardianId);
+
+  if (!child) {
+    return res.status(403).json({ error: "You cannot access that family profile." });
+  }
+
+  req.portalPatientId = Number(child.id);
   return next();
 }
 

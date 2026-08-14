@@ -1,5 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const AUTH_TOKEN_KEY = "ocs_patient_auth_token";
+const ACTING_PATIENT_KEY = "ocs_acting_patient_id";
 
 export function getStoredAuthToken() {
   return window.localStorage.getItem(AUTH_TOKEN_KEY);
@@ -12,6 +13,19 @@ export function setStoredAuthToken(token) {
   }
 
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.sessionStorage.removeItem(ACTING_PATIENT_KEY);
+}
+
+export function getActingPatientId() {
+  return window.sessionStorage.getItem(ACTING_PATIENT_KEY);
+}
+
+export function setActingPatientId(patientId) {
+  if (patientId) {
+    window.sessionStorage.setItem(ACTING_PATIENT_KEY, String(patientId));
+    return;
+  }
+  window.sessionStorage.removeItem(ACTING_PATIENT_KEY);
 }
 
 /**
@@ -53,6 +67,11 @@ async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${authToken}`;
   }
 
+  const actingPatientId = options.skipAuth ? null : getActingPatientId();
+  if (actingPatientId && !headers["X-OCS-Patient-Id"]) {
+    headers["X-OCS-Patient-Id"] = actingPatientId;
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
@@ -91,6 +110,11 @@ async function apiFormRequest(path, formData, options = {}) {
 
   if (!options.skipAuth && authToken && !headers.Authorization) {
     headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  const actingPatientId = options.skipAuth ? null : getActingPatientId();
+  if (actingPatientId && !headers["X-OCS-Patient-Id"]) {
+    headers["X-OCS-Patient-Id"] = actingPatientId;
   }
 
   const response = await fetch(`${API_BASE}${path}`, {

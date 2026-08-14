@@ -65,6 +65,7 @@ function mapAppointment(row) {
     kind,
     note: formatAppointmentNote(row, doctorName, kind),
     consultation_id: row.consultation_id || null,
+    pending_change: row.pending_change || null,
   };
 }
 

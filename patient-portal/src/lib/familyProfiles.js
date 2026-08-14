@@ -8,26 +8,26 @@ export const AVATAR_STYLES = {
 
 export const PRIMARY_PROFILE_ID = "primary";
 
-/**
- * Build the active profile from the *real* signed-in patient. Previously this
- * file shipped a hardcoded family ("Varun Joaheer" + dependents) which meant
- * every patient saw the same identity. There is no family/dependents backend
- * yet, so the only profile is the authenticated patient themselves.
- */
+const AVATAR_CYCLE = ["amber", "grey", "teal"];
+
+function initialsFromName(name) {
+  const parts = String(name || "").split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return (parts[0] || "ME").slice(0, 2).toUpperCase();
+}
+
 export function buildPrimaryProfile(user) {
   const rawName = String(user?.full_name || "Your Account").trim() || "Your Account";
   const name = formatDisplayName(rawName);
   const parts = name.split(/\s+/).filter(Boolean);
   const firstName = parts[0] || "You";
-  const initials = (
-    parts.length >= 2
-      ? parts[0][0] + parts[parts.length - 1][0]
-      : (parts[0] || "ME").slice(0, 2)
-  ).toUpperCase();
 
   return {
     id: PRIMARY_PROFILE_ID,
-    initials,
+    patientId: user?.patient_id || null,
+    initials: initialsFromName(name),
     name,
     firstName,
     relationship: "Primary Account",
@@ -37,7 +37,22 @@ export function buildPrimaryProfile(user) {
   };
 }
 
-/** No dependents backend yet — kept so existing imports stay valid. */
+export function buildDependentProfile(row, index = 0) {
+  const name = formatDisplayName(row.full_name);
+  const parts = name.split(/\s+/).filter(Boolean);
+  return {
+    id: String(row.id),
+    patientId: Number(row.id),
+    initials: initialsFromName(name),
+    name,
+    firstName: parts[0] || name,
+    relationship: row.relationship || "Family member",
+    avatarVariant: AVATAR_CYCLE[index % AVATAR_CYCLE.length],
+    isPrimary: false,
+    possessive: `${parts[0] || name}'s`,
+  };
+}
+
 export const DEPENDENT_DASHBOARD = {};
 
 export function getDefaultProfileId() {
