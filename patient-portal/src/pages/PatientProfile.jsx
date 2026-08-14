@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { formatDisplayName } from "../lib/formatDisplayName.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
@@ -69,6 +70,8 @@ function EditActions({ onCancel, onSave, saving }) {
 
 function PatientProfile() {
   const { user, updateUser, logout } = usePatientAuth();
+  const { activeProfile, activeProfileId } = useFamilyProfile();
+  const isPrimaryProfile = Boolean(activeProfile?.isPrimary);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -124,14 +127,18 @@ function PatientProfile() {
     }
 
     setLoading(true);
+    setEditingContact(false);
+    setEditingBilling(false);
+    setEditingEmergency(false);
     fetchProfile();
     return () => {
       ignore = true;
     };
-  }, [refreshKey, retryToken]);
+  }, [refreshKey, retryToken, activeProfileId]);
 
-  const initials = user?.full_name
-    ? user.full_name
+  const displayName = profile?.full_name || activeProfile?.name || user?.full_name;
+  const initials = displayName
+    ? displayName
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -149,7 +156,7 @@ function PatientProfile() {
       setProfile((prev) => ({ ...prev, ...fields }));
       onSuccess?.();
       toast.success("Profile updated successfully.");
-      if (data.user) updateUser(data.user);
+      if (isPrimaryProfile && data.user) updateUser(data.user);
       dispatchPatientDataChange();
     } catch (error) {
       toast.error(error.message);
@@ -197,8 +204,12 @@ function PatientProfile() {
 
   const personalCard = (
     <ProfileListCard title="Personal Information">
-      <ProfileListRow icon={UserCircle} label="Full Name" value={formatDisplayName(user?.full_name)} />
-      <ProfileListRow icon={Mail} label="Email" value={user?.email} />
+      <ProfileListRow icon={UserCircle} label="Full Name" value={formatDisplayName(displayName)} />
+      {isPrimaryProfile ? (
+        <ProfileListRow icon={Mail} label="Email" value={user?.email} />
+      ) : (
+        <ProfileListRow icon={Users} label="Relationship" value={activeProfile?.relationship} />
+      )}
       <ProfileListRow
         icon={Calendar}
         label="Date of Birth"
@@ -415,9 +426,10 @@ function PatientProfile() {
       <div className="profile-hub mx-auto w-full max-w-4xl px-[var(--native-pad-screen)] pb-8 lg:px-6 lg:pb-12">
         <div className="profile-identity-zone">
           <ProfileHeader
-            fullName={user?.full_name}
+            fullName={displayName}
             initials={initials}
             ocsCareNumber={profile?.ocs_care_number}
+            managing={!isPrimaryProfile}
           />
         </div>
 
@@ -428,8 +440,12 @@ function PatientProfile() {
           {contactCard}
           {billingCard}
           {emergencyCard}
-          <ProfileFamilyCard />
-          <ProfilePasswordCard />
+          {isPrimaryProfile ? <ProfileFamilyCard /> : (
+            <p className="px-1 text-center text-[13px] leading-relaxed text-[#5b7f8a]">
+              Account, password, and family members stay on your profile.
+            </p>
+          )}
+          {isPrimaryProfile ? <ProfilePasswordCard /> : null}
           <button
             type="button"
             onClick={() => logout()}
@@ -445,12 +461,16 @@ function PatientProfile() {
             {personalCard}
             {contactCard}
             {emergencyCard}
-            <ProfileFamilyCard />
+            {isPrimaryProfile ? <ProfileFamilyCard /> : (
+              <p className="text-[13px] leading-relaxed text-[#5b7f8a]">
+                Account, password, and family members stay on your profile.
+              </p>
+            )}
           </div>
           <div className="profile-desktop-col-right col-span-5 flex flex-col gap-8">
             {primaryCareCard}
             {billingCard}
-            <ProfilePasswordCard />
+            {isPrimaryProfile ? <ProfilePasswordCard /> : null}
             <button
               type="button"
               onClick={() => logout()}

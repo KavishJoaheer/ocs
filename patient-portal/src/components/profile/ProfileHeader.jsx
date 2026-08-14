@@ -9,13 +9,22 @@ function formatOcsId(number) {
 }
 
 /** Avatar, name, and ID — sits inside the centered profile hub below the teal band. */
-function ProfileHeader({ fullName, initials, ocsCareNumber }) {
+function ProfileHeader({ fullName, initials, ocsCareNumber, managing = false }) {
   const idLabel = formatOcsId(ocsCareNumber);
 
   return (
     <header className="profile-identity-header">
       <div className="profile-concierge-avatar">{initials}</div>
-      <h1 className="native-display mt-4 text-[24px] leading-tight text-[#1a5c52] lg:text-ocs-slate">
+      {managing ? (
+        <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
+          Managing care for
+        </p>
+      ) : null}
+      <h1
+        className={`native-display leading-tight text-[#1a5c52] lg:text-ocs-slate ${
+          managing ? "mt-1 text-[24px]" : "mt-4 text-[24px]"
+        }`}
+      >
         {formatDisplayName(fullName)}
       </h1>
       {idLabel ? (

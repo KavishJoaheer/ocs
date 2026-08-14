@@ -123,6 +123,15 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
 
       <nav className="doctor-mobile-action-grid flex flex-col gap-4" aria-label="Doctor quick actions">
         <div className="grid grid-cols-2 gap-4">
+          <DoctorMobileSplitCard to="/visit-requests" label="Visit requests" icon={ClipboardList} />
+          <DoctorMobileSplitCard
+            to="/doctor/current-week-roster"
+            label="This week's roster"
+            icon={CalendarClock}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
           <DoctorMobileSplitCard to="/patients" label="Patient Directory" icon={UserRound} />
           <DoctorMobileSplitCard
             to="/inventory"
@@ -172,6 +181,24 @@ function MobileLauncher({
   const greeting = `Hello, ${firstName}`;
 
   const cards = [];
+
+  if (["admin", "operator"].includes(user.role)) {
+    cards.push({
+      label: "Visit requests",
+      icon: ClipboardList,
+      to: "/visit-requests",
+      description: "Assign doctors and track home visits in progress.",
+    });
+  }
+
+  if (user.role === "operator") {
+    cards.push({
+      label: "This week's coverage",
+      icon: CalendarClock,
+      to: "/operator/current-week-roster",
+      description: "This week's visits and who is available for emergency coverage.",
+    });
+  }
 
   if (["admin", "doctor", "operator"].includes(user.role)) {
     cards.push({
