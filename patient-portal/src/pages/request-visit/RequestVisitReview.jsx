@@ -26,8 +26,7 @@ function RequestVisitReview() {
   const { user } = usePatientAuth();
   const [submitting, setSubmitting] = useState(false);
 
-  const visitForName =
-    draft.visitFor === "myself" ? formatDisplayName(user?.full_name) || "Myself" : "A dependent";
+  const visitForName = formatDisplayName(user?.full_name) || "Myself";
   const urgency = URGENCY_META[draft.urgency] || URGENCY_META.routine;
 
   async function handleConfirm() {
@@ -45,7 +44,7 @@ function RequestVisitReview() {
 
     try {
       await api.post("/patient-portal/visit-requests", {
-        visit_for: draft.visitFor,
+        visit_for: "myself",
         address: draft.address,
         reason: draft.reason,
         urgency: draft.urgency,

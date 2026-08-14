@@ -120,7 +120,7 @@ function App() {
             />
             <Route
               path="/operator/current-week-roster"
-              element={<OperatorWorkspacePage workspaceKey="current-week-roster" />}
+              element={<Navigate to="/operator/monthly-roster" replace />}
             />
             <Route
               path="/operator/monthly-roster"

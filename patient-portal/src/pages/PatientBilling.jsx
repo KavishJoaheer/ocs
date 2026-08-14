@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
+import toast from "react-hot-toast";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import {
   CreditCard,
@@ -9,8 +10,10 @@ import {
   Banknote,
   TrendingUp,
   Wallet,
+  Download,
 } from "lucide-react";
 import { api } from "../lib/api.js";
+import { shareOrDownloadBillPdf } from "../lib/billPdf.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
@@ -40,6 +43,7 @@ function PatientBilling() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [retryToken, setRetryToken] = useState(0);
+  const [downloadingId, setDownloadingId] = useState(null);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
@@ -68,6 +72,19 @@ function PatientBilling() {
     fetchBilling();
     return () => { ignore = true; };
   }, [refreshKey, retryToken]);
+
+  async function handleDownloadInvoice(billId) {
+    if (downloadingId) return;
+    setDownloadingId(billId);
+    try {
+      const data = await api.get(`/patient-portal/billing/${billId}`);
+      await shareOrDownloadBillPdf(data.bill);
+    } catch (error) {
+      toast.error(error?.message || "Could not download this invoice.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   return (
     <DesktopPageFrame className="mobile-hero-page font-sans">
@@ -217,7 +234,7 @@ function PatientBilling() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                   <p className="font-display text-lg font-bold text-brand-dark-grey">
                     {formatCurrency(bill.amount)}
                   </p>
@@ -235,6 +252,17 @@ function PatientBilling() {
                     )}
                     {bill.status === "paid" ? "Paid" : "Unpaid"}
                   </span>
+                  {bill.id ? (
+                    <button
+                      type="button"
+                      disabled={downloadingId === bill.id}
+                      onClick={() => handleDownloadInvoice(bill.id)}
+                      className="inline-flex min-h-[36px] items-center gap-1.5 text-xs font-semibold text-[#2d8f98] disabled:opacity-50"
+                    >
+                      <Download className="size-3.5" />
+                      {downloadingId === bill.id ? "Preparing…" : "Download invoice"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}

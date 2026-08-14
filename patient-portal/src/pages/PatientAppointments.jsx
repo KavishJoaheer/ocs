@@ -7,6 +7,8 @@ import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
+import RequestVisitCta from "../components/request-visit/RequestVisitCta.jsx";
+import { CLINIC_TEL_DISPLAY, CLINIC_TEL_HREF } from "../lib/clinicContact.js";
 
 function withDoctorPrefix(name) {
   const value = String(name || "").trim();
@@ -150,9 +152,14 @@ function PatientAppointments() {
           <section className="animate-fade-in-up stagger-1 mt-5 lg:mt-6">
             <SectionLabel>Upcoming</SectionLabel>
             {upcoming.length === 0 ? (
-              <p className="text-[14px] italic text-[#8a9e9a]">
-                No upcoming appointments. Your OCS care team will schedule these for you.
-              </p>
+              <div className="mt-4 space-y-4">
+                <p className="text-[14px] italic text-[#8a9e9a]">
+                  No upcoming appointments. Your OCS care team will schedule these for you.
+                </p>
+                <RequestVisitCta className="inline-flex rounded-xl bg-brand-gold px-5 py-3 text-[14px] font-bold text-brand-dark-grey">
+                  Request a home visit
+                </RequestVisitCta>
+              </div>
             ) : (
               <div className="mt-4 flex flex-col gap-4">
                 {upcoming.map((appointment, idx) => (
@@ -168,6 +175,13 @@ function PatientAppointments() {
                 ))}
               </div>
             )}
+            <p className="mt-4 text-[13px] leading-relaxed text-[#5b7f8a]">
+              Need to reschedule? Call the clinic at{" "}
+              <a href={CLINIC_TEL_HREF} className="font-semibold text-[#2d8f98] underline-offset-2 hover:underline">
+                {CLINIC_TEL_DISPLAY}
+              </a>
+              .
+            </p>
           </section>
 
           <section

@@ -16,12 +16,6 @@ import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
 const workspaceMeta = {
-  "current-week-roster": {
-    eyebrow: "Coordination",
-    title: () => "SOS Planning",
-    description: "Emergency SOS shift planning for the doctor team (inactive).",
-    icon: CalendarClock,
-  },
   "monthly-roster": {
     eyebrow: "Operator roster",
     title: (data) => `${data?.periods?.monthLabel || "Current month"} roster`,
@@ -240,22 +234,6 @@ function OperatorWorkspacePage({ workspaceKey }) {
 
   let metrics = [];
   let content = null;
-
-  if (workspaceKey === "current-week-roster") {
-    metrics = [];
-    content = (
-      <SectionCard
-        actions={sharedActions}
-        subtitle="This workspace is reserved for SOS shift planning."
-        title="SOS Planning"
-      >
-        <EmptyState
-          title="Feature inactive"
-          description="SOS Planning is not available for operators yet. Use the monthly roster or return to the dashboard."
-        />
-      </SectionCard>
-    );
-  }
 
   if (workspaceKey === "monthly-roster") {
     metrics = [

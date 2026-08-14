@@ -33,6 +33,7 @@ import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
+import InventoryStagingQueue from "../components/InventoryStagingQueue.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api, ApiError } from "../lib/api.js";
@@ -4225,7 +4226,13 @@ export default function InventoryPage() {
       )}
 
       {isOperator || isAdmin ? (
-        <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+        <>
+          <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+          <InventoryStagingQueue
+            rows={data?.staging}
+            onReleased={() => load(undefined, undefined, { silent: true })}
+          />
+        </>
       ) : null}
 
       <SectionCard

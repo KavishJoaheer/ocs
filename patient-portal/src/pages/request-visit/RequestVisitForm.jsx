@@ -56,37 +56,10 @@ function RequestVisitForm() {
 
       <p className={`mt-8 ${SECTION_LABEL}`}>New Request</p>
       <h1 className="mt-3 font-display text-3xl tracking-tight text-slate-950 sm:text-4xl">
-        Who needs care today?
+        Request a home visit
       </h1>
 
       <div className="mt-10 space-y-9">
-        <section>
-          <p className={SECTION_LABEL}>Visit For</p>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            {[
-              { value: "myself", label: "Myself" },
-              { value: "dependent", label: "A Dependent" },
-            ].map((option) => {
-              const active = draft.visitFor === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => updateDraft({ visitFor: option.value })}
-                  className={[
-                    "flex h-[52px] items-center justify-center rounded-full text-sm font-bold transition",
-                    active
-                      ? "bg-[#2d8f98] text-white shadow-[0_12px_30px_rgba(45,143,152,0.28)]"
-                      : "border border-[rgba(65,200,198,0.3)] bg-transparent text-[#3b595c] hover:bg-[rgba(65,200,198,0.06)]",
-                  ].join(" ")}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
         <section>
           <p className={SECTION_LABEL}>Visiting Address</p>
           <div className="relative mt-3">

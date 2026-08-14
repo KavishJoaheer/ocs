@@ -22,7 +22,7 @@ const {
   buildHealthRecordsPayload,
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
-const { serializePatientBillingRows } = require("../lib/utils");
+const { parseBillingRow, serializePatientBillingRows } = require("../lib/utils");
 const { isVerifiedPatientPortalAccount } = require("../lib/patientAuth");
 const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
 const { mintStreamToken } = require("../lib/streamTokens");
@@ -376,6 +376,56 @@ router.get("/billing", (req, res) => {
     .all(patientId);
 
   return res.json(serializePatientBillingRows(rows));
+});
+
+router.get("/billing/:id", (req, res) => {
+  const patientId = req.patientAuth.patient_id;
+  const billId = Number(req.params.id);
+
+  if (!patientId) {
+    return res.status(404).json({ error: "Bill not found." });
+  }
+
+  if (!Number.isInteger(billId) || billId <= 0) {
+    return res.status(400).json({ error: "Bill id is required." });
+  }
+
+  const row = db
+    .prepare(
+      `
+        SELECT
+          b.*,
+          p.full_name AS patient_name,
+          c.consultation_date,
+          d.full_name AS doctor_name
+        FROM billing b
+        JOIN patients p ON p.id = b.patient_id
+        JOIN consultations c ON c.id = b.consultation_id
+        JOIN doctors d ON d.id = c.doctor_id
+        WHERE b.id = ?
+          AND b.patient_id = ?
+          AND p.deleted_at IS NULL
+      `,
+    )
+    .get(billId, patientId);
+
+  if (!row) {
+    return res.status(404).json({ error: "Bill not found." });
+  }
+
+  const bill = parseBillingRow(row);
+  return res.json({
+    bill: {
+      id: bill.id,
+      patient_name: bill.patient_name,
+      consultation_date: bill.consultation_date,
+      total_amount: bill.total_amount,
+      status: bill.status,
+      items: bill.items,
+      doctor_name: bill.doctor_name || null,
+      linkham_claim_status: bill.linkham_claim_status || null,
+    },
+  });
 });
 
 router.get("/profile", (req, res) => {

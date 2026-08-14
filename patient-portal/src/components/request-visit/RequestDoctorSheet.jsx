@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, MapPin, User, Users } from "lucide-react";
+import { ChevronLeft, MapPin } from "lucide-react";
 import { api } from "../../lib/api.js";
 import EmergencyWarningModal from "./EmergencyWarningModal.jsx";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
@@ -53,26 +53,19 @@ function RequestDoctorSheet({ open, onClose }) {
   useScrollLock(open);
   useFocusTrap(open, modalRef);
 
-  const patientSelectTimerRef = useRef(null);
   const addressHydratedRef = useRef(false);
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(2);
   const [stepDirection, setStepDirection] = useState("forward");
-  const [visitFor, setVisitFor] = useState(null);
-  const [pendingPatient, setPendingPatient] = useState(null);
   const [address, setAddress] = useState("");
   const [reason, setReason] = useState("");
   const [urgency, setUrgency] = useState("routine");
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
 
   const resetWizard = useCallback(() => {
-    clearTimeout(patientSelectTimerRef.current);
-    patientSelectTimerRef.current = null;
     addressHydratedRef.current = false;
-    setCurrentStep(1);
+    setCurrentStep(2);
     setStepDirection("forward");
-    setVisitFor(null);
-    setPendingPatient(null);
     setAddress("");
     setReason("");
     setUrgency("routine");
@@ -89,17 +82,6 @@ function RequestDoctorSheet({ open, onClose }) {
     setCurrentStep(step);
   }
 
-  function handlePatientSelect(value) {
-    setPendingPatient(value);
-    setVisitFor(value);
-    clearTimeout(patientSelectTimerRef.current);
-    patientSelectTimerRef.current = window.setTimeout(() => {
-      setStepDirection("forward");
-      setCurrentStep(2);
-      setPendingPatient(null);
-    }, 300);
-  }
-
   function handleUrgencySelect(level) {
     if (level === "emergency") {
       setUrgency("emergency");
@@ -110,10 +92,10 @@ function RequestDoctorSheet({ open, onClose }) {
   }
 
   function handleReviewSubmit() {
-    if (!reason.trim() || !address.trim() || !visitFor) return;
+    if (!reason.trim() || !address.trim()) return;
 
     const wizardDraft = {
-      visitFor,
+      visitFor: "myself",
       address: address.trim(),
       reason: reason.trim(),
       urgency,
@@ -125,7 +107,6 @@ function RequestDoctorSheet({ open, onClose }) {
 
   useEffect(() => {
     if (!open) {
-      clearTimeout(patientSelectTimerRef.current);
       return undefined;
     }
 
@@ -133,9 +114,6 @@ function RequestDoctorSheet({ open, onClose }) {
     addressHydratedRef.current = false;
 
     const storedDraft = readVisitDraft(getVisitDraftStorageKey(user));
-    if (storedDraft.visitFor) {
-      setVisitFor(storedDraft.visitFor);
-    }
     if (storedDraft.address) {
       setAddress(storedDraft.address);
       addressHydratedRef.current = true;
@@ -146,11 +124,9 @@ function RequestDoctorSheet({ open, onClose }) {
     if (storedDraft.urgency) {
       setUrgency(storedDraft.urgency);
     }
-    if (storedDraft.reason && storedDraft.address && storedDraft.visitFor) {
+    if (storedDraft.reason && storedDraft.address) {
       setCurrentStep(3);
-    } else if (storedDraft.address && storedDraft.visitFor) {
-      setCurrentStep(2);
-    } else if (storedDraft.visitFor) {
+    } else {
       setCurrentStep(2);
     }
 
@@ -171,7 +147,6 @@ function RequestDoctorSheet({ open, onClose }) {
 
     return () => {
       ignore = true;
-      clearTimeout(patientSelectTimerRef.current);
     };
   }, [open, user]);
 
@@ -244,52 +219,10 @@ function RequestDoctorSheet({ open, onClose }) {
           ].join(" ")}
         >
           <div key={currentStep} className={stepAnimationClass}>
-            {currentStep === 1 ? (
-              <div>
-                <h2 id="request-doctor-title" className="native-display text-[22px] leading-tight text-[#1a5c52]">
-                  Who needs care today?
-                </h2>
-
-                <div className="mt-6 grid grid-cols-2 gap-4">
-                  {[
-                    { value: "myself", label: "Myself", icon: User },
-                    { value: "dependent", label: "A Dependent", icon: Users },
-                  ].map((option) => {
-                    const Icon = option.icon;
-                    const isSelected =
-                      pendingPatient === option.value || visitFor === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => handlePatientSelect(option.value)}
-                        className={[
-                          "request-patient-card squircle-inner flex min-h-[120px] flex-col items-center justify-center gap-3 px-3 py-7 transition",
-                          isSelected ? "request-patient-card-selected" : "request-patient-card-idle",
-                        ].join(" ")}
-                      >
-                        <div
-                          className={[
-                            "flex size-12 items-center justify-center rounded-full transition",
-                            isSelected
-                              ? "bg-[rgba(26,160,140,0.14)] text-[#2d8f98]"
-                              : "bg-[rgba(138,158,154,0.12)] text-[#8a9e9a]",
-                          ].join(" ")}
-                        >
-                          <Icon className="size-6" strokeWidth={1.75} />
-                        </div>
-                        <span className="text-[15px] font-semibold text-[#1a5c52]">{option.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
             {currentStep === 2 ? (
               <div>
-                <StepBackButton onClick={() => goToStep(1)} />
-                <h2 className="native-display text-[22px] leading-tight text-[#1a5c52]">
+                <StepBackButton onClick={handleClose} />
+                <h2 id="request-doctor-title" className="native-display text-[22px] leading-tight text-[#1a5c52]">
                   Confirm visiting address
                 </h2>
 

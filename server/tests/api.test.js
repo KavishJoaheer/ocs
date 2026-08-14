@@ -912,6 +912,78 @@ test("patient billing returns bills and summary totals", async () => {
   assert.equal(billing.data.summary.total_paid, 95);
   assert.equal(billing.data.summary.outstanding, 35);
   assert.match(billing.data.bills[0].items_summary, /Consultation|Lab/i);
+
+  const billId = billing.data.bills[0].id;
+  const detail = await api("GET", `/api/patient-portal/billing/${billId}`, { token });
+  assert.equal(detail.status, 200, JSON.stringify(detail.data));
+  assert.equal(detail.data.bill.id, billId);
+  assert.ok(Array.isArray(detail.data.bill.items));
+  assert.ok(detail.data.bill.items.length >= 1);
+
+  const otherReg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("billingother"),
+      password: "secret123",
+      full_name: "Other Billing",
+      phone: "57006667",
+      national_id: uniqueNationalId("api"),
+      gender: "F",
+    },
+  });
+  assert.equal(otherReg.status, 201, JSON.stringify(otherReg.data));
+  const foreign = await api("GET", `/api/patient-portal/billing/${billId}`, {
+    token: otherReg.data.token,
+  });
+  assert.equal(foreign.status, 404, JSON.stringify(foreign.data));
+});
+
+test("patient can change password in-app", async () => {
+  const email = uniqueEmail("pwd");
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email,
+      password: "secret123",
+      full_name: "Password Tester",
+      phone: "57001123",
+      national_id: uniqueNationalId("pwd"),
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  const token = reg.data.token;
+
+  const unauth = await api("POST", "/api/patient-auth/change-password", {
+    body: { current_password: "secret123", new_password: "newpass12" },
+  });
+  assert.equal(unauth.status, 401);
+
+  const wrong = await api("POST", "/api/patient-auth/change-password", {
+    token,
+    body: { current_password: "wrongpass", new_password: "newpass12" },
+  });
+  assert.equal(wrong.status, 401);
+
+  const short = await api("POST", "/api/patient-auth/change-password", {
+    token,
+    body: { current_password: "secret123", new_password: "short" },
+  });
+  assert.equal(short.status, 400);
+
+  const ok = await api("POST", "/api/patient-auth/change-password", {
+    token,
+    body: { current_password: "secret123", new_password: "newpass12" },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+
+  const loginOld = await api("POST", "/api/patient-auth/login", {
+    body: { email, password: "secret123" },
+  });
+  assert.equal(loginOld.status, 401);
+
+  const loginNew = await api("POST", "/api/patient-auth/login", {
+    body: { email, password: "newpass12" },
+  });
+  assert.equal(loginNew.status, 200, JSON.stringify(loginNew.data));
 });
 
 function insertDirectoryPatient(label) {

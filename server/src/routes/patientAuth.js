@@ -280,4 +280,32 @@ router.post("/logout", requirePatientAuth, (req, res) => {
   res.status(204).send();
 });
 
+router.post("/change-password", requirePatientAuth, (req, res) => {
+  const currentPassword = String(req.body.current_password ?? "");
+  const newPassword = String(req.body.new_password ?? "");
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "Current password and new password are required." });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters." });
+  }
+
+  const user = db
+    .prepare("SELECT id, password_hash FROM patient_users WHERE id = ? AND is_active = 1")
+    .get(req.patientAuth.id);
+
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: "Current password is incorrect." });
+  }
+
+  db.prepare("UPDATE patient_users SET password_hash = ? WHERE id = ?").run(
+    hashPassword(newPassword),
+    user.id,
+  );
+
+  return res.json({ ok: true });
+});
+
 module.exports = router;

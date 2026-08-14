@@ -15,7 +15,12 @@ export function readVisitDraft(storageKey) {
   try {
     const saved = sessionStorage.getItem(storageKey);
     if (saved) {
-      return { ...INITIAL_DRAFT, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      return {
+        ...INITIAL_DRAFT,
+        ...parsed,
+        visitFor: "myself",
+      };
     }
   } catch {
     // Ignore corrupt storage.

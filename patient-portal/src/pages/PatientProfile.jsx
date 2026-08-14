@@ -24,6 +24,7 @@ import ProfileListCard from "../components/profile/ProfileListCard.jsx";
 import ProfileListRow from "../components/profile/ProfileListRow.jsx";
 import ProfileCardAction from "../components/profile/ProfileCardAction.jsx";
 import ProfilePrimaryCareContent from "../components/profile/ProfilePrimaryCareCard.jsx";
+import ProfilePasswordCard from "../components/profile/ProfilePasswordCard.jsx";
 
 function InlineInput({ value, onChange, placeholder, type = "text" }) {
   return (
@@ -426,6 +427,7 @@ function PatientProfile() {
           {contactCard}
           {billingCard}
           {emergencyCard}
+          <ProfilePasswordCard />
           <button
             type="button"
             onClick={() => logout()}
@@ -445,6 +447,7 @@ function PatientProfile() {
           <div className="profile-desktop-col-right col-span-5 flex flex-col gap-8">
             {primaryCareCard}
             {billingCard}
+            <ProfilePasswordCard />
             <button
               type="button"
               onClick={() => logout()}

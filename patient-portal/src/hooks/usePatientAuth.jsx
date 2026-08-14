@@ -66,6 +66,10 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const changePassword = useCallback(async ({ current_password, new_password }) => {
+    await api.post("/patient-auth/change-password", { current_password, new_password });
+  }, []);
+
   useEffect(() => {
     const handleUnauthorized = (event) => {
       const invalidToken = event.detail?.token;
@@ -159,9 +163,10 @@ export function AuthProvider({ children }) {
       login,
       register,
       logout,
+      changePassword,
       updateUser,
     }),
-    [isBootstrapping, login, register, logout, token, updateUser, user],
+    [isBootstrapping, login, register, logout, changePassword, token, updateUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

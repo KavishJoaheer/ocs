@@ -1079,13 +1079,6 @@ function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSaving
 
                 <div className="mt-4 space-y-4">
                   <DoctorDashboardTile
-                    eyebrow="Weekly schedule"
-                    icon={CalendarClock}
-                    locked
-                    size="hero"
-                    title="SOS Planning"
-                  />
-                  <DoctorDashboardTile
                     eyebrow="Monthly view"
                     icon={ClipboardList}
                     size="compact"
