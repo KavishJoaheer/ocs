@@ -1,6 +1,7 @@
 const express = require("express");
 const { db } = require("../db");
 const { hashPassword } = require("../lib/security");
+const { revokeStaffSessionsForUser } = require("../lib/auth");
 
 const router = express.Router();
 
@@ -218,6 +219,7 @@ router.put("/:id", (req, res) => {
           hashPassword(payload.password),
           existing.user_id,
         );
+        revokeStaffSessionsForUser(existing.user_id);
       } else {
         db.prepare(`
           UPDATE users

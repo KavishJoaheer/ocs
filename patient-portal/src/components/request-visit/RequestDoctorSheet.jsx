@@ -117,7 +117,7 @@ function RequestDoctorSheet({ open, onClose }) {
     let ignore = false;
     addressHydratedRef.current = false;
 
-    const storedDraft = readVisitDraft(getVisitDraftStorageKey(user));
+    const storedDraft = readVisitDraft(getVisitDraftStorageKey(user, activeProfile?.patientId));
     if (storedDraft.address) {
       setAddress(storedDraft.address);
       addressHydratedRef.current = true;
@@ -152,7 +152,7 @@ function RequestDoctorSheet({ open, onClose }) {
     return () => {
       ignore = true;
     };
-  }, [open, user]);
+  }, [open, user, activeProfile?.patientId]);
 
   useEffect(() => {
     if (!open) return undefined;

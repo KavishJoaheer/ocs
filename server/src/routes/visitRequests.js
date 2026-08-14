@@ -66,15 +66,20 @@ router.get("/", (req, res) => {
 
   const countWhere =
     role === "doctor" && doctorId
-      ? `WHERE assigned_doctor_id = ? AND status IN (${DOCTOR_VISIBLE_STATUSES.map(() => "?").join(", ")})`
-      : `WHERE status IN (${ACTIVE_VISIT_STATUSES.map(() => "?").join(", ")})`;
+      ? `WHERE v.assigned_doctor_id = ? AND v.status IN (${DOCTOR_VISIBLE_STATUSES.map(() => "?").join(", ")})`
+      : `WHERE v.status IN (${ACTIVE_VISIT_STATUSES.map(() => "?").join(", ")})`;
   const countParams =
     role === "doctor" && doctorId
       ? [doctorId, ...DOCTOR_VISIBLE_STATUSES]
       : [...ACTIVE_VISIT_STATUSES];
 
   const activeCount = db
-    .prepare(`SELECT COUNT(*) AS count FROM visit_requests ${countWhere}`)
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM visit_requests v
+      JOIN patients p ON p.id = v.patient_id AND p.deleted_at IS NULL
+      ${countWhere}
+    `)
     .get(...countParams)?.count;
 
   return res.json({

@@ -6,6 +6,17 @@ function cleanupExpiredSessions() {
   db.prepare("DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP").run();
 }
 
+function revokeStaffSessionsForUser(userId) {
+  const id = Number(userId || 0);
+  if (!Number.isInteger(id) || id <= 0) {
+    return 0;
+  }
+
+  return Number(
+    db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run(id).changes || 0,
+  );
+}
+
 function serializeUser(row) {
   if (!row) {
     return null;
@@ -135,5 +146,6 @@ module.exports = {
   extractBearerToken,
   requireAuth,
   requireAuthFlexible,
+  revokeStaffSessionsForUser,
   serializeUser,
 };

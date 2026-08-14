@@ -98,7 +98,7 @@ router.post("/register", (req, res) => {
     const existingPatient = db
       .prepare(
         `
-          SELECT id, date_of_birth, gender
+          SELECT id, date_of_birth, gender, link_status
           FROM patients
           WHERE patient_id_number = ? AND deleted_at IS NULL
         `,
@@ -107,18 +107,29 @@ router.post("/register", (req, res) => {
 
     let userDateOfBirth = dateOfBirth;
     let userGender = gender;
+    let attachToExisting = false;
 
     if (existingPatient) {
       const alreadyLinked = db
         .prepare("SELECT id FROM patient_users WHERE patient_id = ?")
         .get(existingPatient.id);
+      const existingStatus = String(existingPatient.link_status || "");
 
-      if (alreadyLinked) {
+      // A verified clinic chart already has an owner. An unconfirmed claim must
+      // not 409 the next person — that is how a NIC guess locked the real patient out.
+      if (
+        alreadyLinked &&
+        (existingStatus === "verified" || existingStatus === "staff_created")
+      ) {
         const error = new Error("ALREADY_LINKED");
         error.code = "ALREADY_LINKED";
         throw error;
       }
 
+      attachToExisting = !alreadyLinked;
+    }
+
+    if (attachToExisting) {
       patientId = existingPatient.id;
 
       const staffDob = String(existingPatient.date_of_birth || "").trim();
@@ -164,7 +175,7 @@ router.post("/register", (req, res) => {
           firstName,
           lastName,
           patientIdentifier,
-          nationalId,
+          existingPatient ? "" : nationalId,
           age,
           dateOfBirth,
           gender,

@@ -156,18 +156,13 @@ export async function flushOfflineQueue({ silent = false } = {}) {
           const label = entry.meta?.itemName || "inventory update";
           toast.error(`${label} conflicted with a newer server update. Refreshing latest stock.`);
         }
-        break;
+        continue;
       }
 
       if (isNetworkFailure(error)) {
         break;
       }
 
-      // Roster/validation failures (e.g. Sale missing patient or assigned to
-      // wrong doctor) should be surfaced to the user but kept in the queue so
-      // the next reconciliation pass (or a manual retry once the patient list
-      // refreshes) can resolve them. Only drop on 410 (server explicitly
-      // marks the request as gone) so we never silently lose a real Sale.
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         if (error.status === 410) {
           await removeOfflineMutation(entry.id);
@@ -181,7 +176,7 @@ export async function flushOfflineQueue({ silent = false } = {}) {
               : `${label} needs attention: ${error.message}. Re-open the item to retry.`,
           );
         }
-        break;
+        continue;
       }
 
       // Server-side (5xx) or unknown failures are not the doctor's fault and

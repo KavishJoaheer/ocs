@@ -47,3 +47,19 @@ test("buildPatientVisitPayload skips unchanged status", () => {
 
   assert.equal(payload, null);
 });
+
+test("buildPatientVisitPayload announces a doctor assigned without status=assigned", () => {
+  const payload = buildPatientVisitPayload(
+    {
+      id: 7,
+      status: "acknowledged",
+      assigned_doctor_id: 12,
+      doctor_name: "Dr Smith",
+    },
+    { previousStatus: "pending", previousDoctorId: null },
+  );
+
+  assert.ok(payload);
+  assert.equal(payload.title, "Doctor assigned");
+  assert.match(payload.body, /Dr Smith/);
+});

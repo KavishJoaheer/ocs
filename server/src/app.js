@@ -271,7 +271,15 @@ function createApp() {
 
   app.use(
     "/api/inventory",
-    requireAuthFlexible,
+    (req, res, next) => {
+      const isStreamRequest = req.method === "GET" && req.path === "/stream";
+      // Stream tokens are minted for EventSource, which cannot send headers.
+      // They must not authenticate inventory mutations if the URL leaks.
+      if (isStreamRequest) {
+        return requireAuthFlexible(req, res, next);
+      }
+      return requireAuth(req, res, next);
+    },
     (req, res, next) => {
       const isStreamRequest = req.method === "GET" && req.path === "/stream";
 

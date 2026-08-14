@@ -6,9 +6,13 @@ const INITIAL_DRAFT = {
   submittedAt: null,
 };
 
-export function getVisitDraftStorageKey(user) {
-  const id = user?.id ?? user?.patient_id ?? user?.email;
-  return id ? `ocs-visit-draft:${id}` : "ocs-visit-draft:anonymous";
+export function getVisitDraftStorageKey(user, actingPatientId) {
+  const accountId = user?.id ?? user?.email;
+  if (!accountId) {
+    return "ocs-visit-draft:anonymous";
+  }
+  const profileId = actingPatientId || "primary";
+  return `ocs-visit-draft:${accountId}:${profileId}`;
 }
 
 export function readVisitDraft(storageKey) {

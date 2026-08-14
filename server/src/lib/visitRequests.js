@@ -78,7 +78,7 @@ const VISIT_REQUEST_SELECT = `
     dep.full_name AS dependent_name,
     d.full_name AS doctor_name
   FROM visit_requests v
-  JOIN patients p ON p.id = v.patient_id
+  JOIN patients p ON p.id = v.patient_id AND p.deleted_at IS NULL
   LEFT JOIN patients dep ON dep.id = v.dependent_patient_id
   LEFT JOIN doctors d ON d.id = v.assigned_doctor_id
 `;

@@ -30,7 +30,8 @@ export function FamilyProfileProvider({ children }) {
           setDependents(data.dependents || []);
         }
       } catch {
-        if (!ignore) setDependents([]);
+        // Keep the last good list. Clearing here made a network blip look like
+        // the guardian had no family members.
       }
     }
     if (user) {

@@ -299,7 +299,8 @@ test("self-registration links to an existing staff record via national ID", asyn
   const row = db.prepare("SELECT link_status FROM patients WHERE id = ?").get(staffPatientId);
   assert.equal(row.link_status, "pending_review");
 
-  // A second account claiming the same national ID must be rejected.
+  // A second account claiming the same national ID must not lock the real
+  // patient out. It gets its own self-registered chart instead of 409.
   const dup = await api("POST", "/api/patient-auth/register", {
     body: {
       email: uniqueEmail("link2"),
@@ -311,7 +312,12 @@ test("self-registration links to an existing staff record via national ID", asyn
       gender: "M",
     },
   });
-  assert.equal(dup.status, 409, JSON.stringify(dup.data));
+  assert.equal(dup.status, 201, JSON.stringify(dup.data));
+  assert.equal(dup.data.user.link_status, "self_registered");
+  assert.notEqual(Number(dup.data.user.patient_id), staffPatientId);
+
+  const stillPending = db.prepare("SELECT link_status FROM patients WHERE id = ?").get(staffPatientId);
+  assert.equal(stillPending.link_status, "pending_review");
 
   // Staff can verify the link.
   const verified = await api("PATCH", `/api/patients/${staffPatientId}/verify-link`, {
@@ -333,6 +339,19 @@ test("self-registration links to an existing staff record via national ID", asyn
   assert.equal(profile.status, 200, JSON.stringify(profile.data));
   assert.equal(profile.data.profile.id, staffPatientId);
   assert.equal(profile.data.profile.address, "Sky Garden, Quatre Bornes");
+
+  const afterVerifyDup = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("link3"),
+      password: "secret123",
+      full_name: "Late Claim",
+      phone: "57007799",
+      national_id: nationalId,
+      date_of_birth: "1984-02-02",
+      gender: "M",
+    },
+  });
+  assert.equal(afterVerifyDup.status, 409, JSON.stringify(afterVerifyDup.data));
 });
 
 test("pending portal link cannot request a home visit until verified", async () => {
@@ -1874,4 +1893,55 @@ test("doctors still cannot delete patients", async () => {
   const patientId = insertDirectoryPatient("DoctorDelete");
   const removed = await api("DELETE", `/api/patients/${patientId}`, { token: login.data.token });
   assert.equal(removed.status, 403, JSON.stringify(removed.data));
+});
+
+test("a staff stream token cannot call the inventory API", async () => {
+  const minted = await api("POST", "/api/auth/stream-token", { token: adminToken });
+  assert.equal(minted.status, 200, JSON.stringify(minted.data));
+  assert.ok(minted.data.token);
+
+  const leaked = await api("GET", `/api/inventory?access_token=${encodeURIComponent(minted.data.token)}`);
+  assert.equal(leaked.status, 401, JSON.stringify(leaked.data));
+
+  const withBearer = await api("GET", "/api/inventory", { token: adminToken });
+  assert.equal(withBearer.status, 200, JSON.stringify(withBearer.data));
+});
+
+test("resetting a staff password revokes existing sessions", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  const operatorToken = login.data.token;
+  const operatorId = login.data.user.id;
+
+  const before = await api("GET", "/api/auth/me", { token: operatorToken });
+  assert.equal(before.status, 200, JSON.stringify(before.data));
+
+  const reset = await api("PUT", `/api/team-operations/operator/${operatorId}`, {
+    token: adminToken,
+    body: {
+      full_name: login.data.user.full_name,
+      username: "operator01",
+      password: "Welcome@123",
+    },
+  });
+  assert.equal(reset.status, 200, JSON.stringify(reset.data));
+
+  const after = await api("GET", "/api/auth/me", { token: operatorToken });
+  assert.equal(after.status, 401, JSON.stringify(after.data));
+});
+
+test("soft-deleted patients do not appear on the visit-request board", async () => {
+  const patientId = insertDirectoryPatient("DeletedVisit");
+  db.prepare(`
+    INSERT INTO visit_requests (patient_id, visit_for, address, reason, status)
+    VALUES (?, 'myself', 'Old House', 'Check-up', 'pending')
+  `).run(patientId);
+  db.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(patientId);
+
+  const board = await api("GET", "/api/visit-requests?status=active", { token: adminToken });
+  assert.equal(board.status, 200, JSON.stringify(board.data));
+  const ids = (board.data.visit_requests || []).map((row) => Number(row.patient_id));
+  assert.equal(ids.includes(patientId), false);
 });

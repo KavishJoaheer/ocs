@@ -1,6 +1,7 @@
 const express = require("express");
 const { db } = require("../db");
 const { hashPassword } = require("../lib/security");
+const { revokeStaffSessionsForUser } = require("../lib/auth");
 
 const router = express.Router();
 
@@ -304,6 +305,7 @@ function updateMember(memberId, payload) {
           hashPassword(payload.password),
           existing.user_id,
         );
+        revokeStaffSessionsForUser(existing.user_id);
       } else {
         db.prepare(
           `
@@ -356,6 +358,7 @@ function updateMember(memberId, payload) {
       WHERE id = ?
     `,
     ).run(payload.username, payload.full_name, hashPassword(payload.password), memberId);
+    revokeStaffSessionsForUser(memberId);
   } else {
     db.prepare(
       `

@@ -3,7 +3,9 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
 import { getPatientLinkBlockMessage, isPatientAccountLinked } from "../../lib/patientAccountLink.js";
+import { pickVisibleActiveVisit } from "../../lib/visitRequests.js";
 import {
   INITIAL_DRAFT,
   clearVisitDraft,
@@ -28,8 +30,9 @@ function RequestVisitLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = usePatientAuth();
+  const { activeProfile } = useFamilyProfile();
   const refreshKey = useLiveRefreshKey();
-  const storageKey = getVisitDraftStorageKey(user);
+  const storageKey = getVisitDraftStorageKey(user, activeProfile?.patientId);
   const isRequestForm =
     location.pathname === "/request-visit" || location.pathname === "/request-visit/";
   const shouldGuardVisit = isRequestForm && !location.state?.wizardDraft;
@@ -89,7 +92,7 @@ function RequestVisitLayout() {
     async function guardActiveVisit() {
       try {
         const data = await api.get("/patient-portal/visit-requests/active");
-        if (!ignore && data.visit_request) {
+        if (!ignore && pickVisibleActiveVisit(data)) {
           navigate("/request-visit/tracking", { replace: true });
           return;
         }
@@ -131,7 +134,7 @@ function RequestVisitLayout() {
     return () => {
       ignore = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, storageKey]);
 
   if (!isPatientAccountLinked(user)) {
     return (
