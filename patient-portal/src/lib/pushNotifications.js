@@ -118,6 +118,50 @@ export async function registerServiceWorker() {
   return registration;
 }
 
+export function listenForPushSubscriptionChanges(onChange) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return () => {};
+  }
+
+  function handleMessage(event) {
+    if (event?.data?.type === "ocs:push-subscription-change") {
+      onChange?.(event.data.subscription || null);
+    }
+  }
+
+  navigator.serviceWorker.addEventListener("message", handleMessage);
+  return () => navigator.serviceWorker.removeEventListener("message", handleMessage);
+}
+
+export function listenForServiceWorkerNavigation(onNavigate) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return () => {};
+  }
+
+  function handleMessage(event) {
+    if (event?.data?.type === "ocs:navigate" && event.data.url) {
+      onNavigate?.(event.data.url);
+    }
+  }
+
+  navigator.serviceWorker.addEventListener("message", handleMessage);
+  return () => navigator.serviceWorker.removeEventListener("message", handleMessage);
+}
+
+export async function drainPendingServiceWorkerSubscription() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const target = registration?.active || navigator.serviceWorker.controller;
+    target?.postMessage({ type: "ocs:request-pending-subscription" });
+  } catch {
+    // SW not ready yet; the next boot will retry.
+  }
+}
+
 export async function persistPushSubscriptionPayload(subscriptionJson) {
   if (!subscriptionJson?.endpoint) {
     return { ok: false, reason: "missing_endpoint" };

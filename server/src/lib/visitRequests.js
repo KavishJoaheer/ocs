@@ -34,12 +34,12 @@ function getStatusLabel(status) {
   return STATUS_LABELS[status] || status;
 }
 
-function serializeVisitRequest(row) {
+function serializeVisitRequest(row, { includeStaffNotes = true } = {}) {
   if (!row) {
     return null;
   }
 
-  return {
+  const payload = {
     id: Number(row.id),
     patient_id: row.patient_id ? Number(row.patient_id) : null,
     patient_user_id: row.patient_user_id ? Number(row.patient_user_id) : null,
@@ -55,10 +55,16 @@ function serializeVisitRequest(row) {
     assigned_doctor_id: row.assigned_doctor_id ? Number(row.assigned_doctor_id) : null,
     doctor_name: row.doctor_name || null,
     eta_minutes: row.eta_minutes != null ? Number(row.eta_minutes) : null,
-    staff_notes: row.staff_notes || "",
+    appointment_id: row.appointment_id ? Number(row.appointment_id) : null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
   };
+
+  if (includeStaffNotes) {
+    payload.staff_notes = row.staff_notes || "";
+  }
+
+  return payload;
 }
 
 const VISIT_REQUEST_SELECT = `
@@ -73,9 +79,9 @@ const VISIT_REQUEST_SELECT = `
   LEFT JOIN doctors d ON d.id = v.assigned_doctor_id
 `;
 
-function getVisitRequestById(id) {
+function getVisitRequestById(id, options) {
   const row = db.prepare(`${VISIT_REQUEST_SELECT} WHERE v.id = ?`).get(id);
-  return serializeVisitRequest(row);
+  return serializeVisitRequest(row, options);
 }
 
 function getActiveVisitRequestForPatient(patientId) {
@@ -88,7 +94,7 @@ function getActiveVisitRequestForPatient(patientId) {
        LIMIT 1`,
     )
     .get(patientId, ...ACTIVE_VISIT_STATUSES);
-  return serializeVisitRequest(row);
+  return serializeVisitRequest(row, { includeStaffNotes: false });
 }
 
 module.exports = {

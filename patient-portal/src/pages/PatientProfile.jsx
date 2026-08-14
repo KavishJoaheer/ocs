@@ -74,10 +74,16 @@ function PatientProfile() {
   const [saving, setSaving] = useState(false);
   const [editingContact, setEditingContact] = useState(false);
   const [editingBilling, setEditingBilling] = useState(false);
+  const [editingEmergency, setEditingEmergency] = useState(false);
   const [contactForm, setContactForm] = useState({ phone: "", address: "" });
   const [billingForm, setBillingForm] = useState({
     insurance_provider: "",
     insurance_policy_number: "",
+  });
+  const [emergencyForm, setEmergencyForm] = useState({
+    next_of_kin_name: "",
+    next_of_kin_phone: "",
+    next_of_kin_relationship: "",
   });
   const refreshKey = useLiveRefreshKey();
 
@@ -99,6 +105,11 @@ function PatientProfile() {
           insurance_provider: p.insurance_provider || data.patient?.insurance_provider || "",
           insurance_policy_number:
             p.insurance_policy_number || data.patient?.insurance_policy_number || "",
+        });
+        setEmergencyForm({
+          next_of_kin_name: p.next_of_kin_name || "",
+          next_of_kin_phone: p.next_of_kin_phone || "",
+          next_of_kin_relationship: p.next_of_kin_relationship || "",
         });
       } catch (error) {
         if (!ignore) {
@@ -153,6 +164,10 @@ function PatientProfile() {
     saveProfileFields(billingForm, () => setEditingBilling(false));
   }
 
+  function handleSaveEmergency() {
+    saveProfileFields(emergencyForm, () => setEditingEmergency(false));
+  }
+
   function handleCancelContact() {
     setContactForm({ phone: profile?.phone || "", address: profile?.address || "" });
     setEditingContact(false);
@@ -164,6 +179,15 @@ function PatientProfile() {
       insurance_policy_number: profile?.insurance_policy_number || "",
     });
     setEditingBilling(false);
+  }
+
+  function handleCancelEmergency() {
+    setEmergencyForm({
+      next_of_kin_name: profile?.next_of_kin_name || "",
+      next_of_kin_phone: profile?.next_of_kin_phone || "",
+      next_of_kin_relationship: profile?.next_of_kin_relationship || "",
+    });
+    setEditingEmergency(false);
   }
 
   const billingActionLabel =
@@ -285,29 +309,69 @@ function PatientProfile() {
   );
 
   const emergencyCard = (
-    <ProfileListCard title="Emergency Contact" variant="emergency">
+    <ProfileListCard
+      title="Emergency Contact"
+      variant="emergency"
+      action={
+        editingEmergency ? (
+          <EditActions onCancel={handleCancelEmergency} onSave={handleSaveEmergency} saving={saving} />
+        ) : (
+          <ProfileCardAction label="Edit" onClick={() => setEditingEmergency(true)} />
+        )
+      }
+    >
       <ProfileListRow
         icon={UserCircle}
         label="Name"
-        value={profile?.next_of_kin_name}
+        value={editingEmergency ? undefined : emergencyForm.next_of_kin_name}
         emptyLabel="Not yet added"
         tone="onDark"
-      />
+      >
+        {editingEmergency ? (
+          <InlineInput
+            value={emergencyForm.next_of_kin_name}
+            onChange={(e) =>
+              setEmergencyForm((c) => ({ ...c, next_of_kin_name: e.target.value }))
+            }
+            placeholder="Emergency contact name"
+          />
+        ) : null}
+      </ProfileListRow>
       <ProfileListRow
         icon={Phone}
         label="Phone"
-        value={profile?.next_of_kin_phone}
+        value={editingEmergency ? undefined : emergencyForm.next_of_kin_phone}
         emptyLabel="Not yet added"
         tone="onDark"
-      />
+      >
+        {editingEmergency ? (
+          <InlineInput
+            value={emergencyForm.next_of_kin_phone}
+            onChange={(e) =>
+              setEmergencyForm((c) => ({ ...c, next_of_kin_phone: e.target.value }))
+            }
+            placeholder="Emergency contact phone"
+          />
+        ) : null}
+      </ProfileListRow>
       <ProfileListRow
         icon={Users}
         label="Relationship"
-        value={profile?.next_of_kin_relationship}
+        value={editingEmergency ? undefined : emergencyForm.next_of_kin_relationship}
         emptyLabel="Not yet added"
         tone="onDark"
         isLast
-      />
+      >
+        {editingEmergency ? (
+          <InlineInput
+            value={emergencyForm.next_of_kin_relationship}
+            onChange={(e) =>
+              setEmergencyForm((c) => ({ ...c, next_of_kin_relationship: e.target.value }))
+            }
+            placeholder="Relationship"
+          />
+        ) : null}
+      </ProfileListRow>
     </ProfileListCard>
   );
 

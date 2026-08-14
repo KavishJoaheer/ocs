@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { api, buildAuthedFileUrl } from "../lib/api.js";
+import { api } from "../lib/api.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
@@ -12,13 +13,9 @@ import ReportsView from "../components/health-records/ReportsView.jsx";
 import ClinicalHistoryView from "../components/health-records/ClinicalHistoryView.jsx";
 import UploadReportModal from "../components/health-records/UploadReportModal.jsx";
 
-function reportUrl(attachmentId) {
-  return buildAuthedFileUrl(`/patient-portal/reports/attachments/${attachmentId}/download`);
-}
-
-function HealthRecordsTabPanel({ activeTab, consultations, reports, clinicalHistory, onUpload }) {
+function HealthRecordsTabPanel({ activeTab, consultations, reports, clinicalHistory, onUpload, highlightId }) {
   if (activeTab === "consultations") {
-    return <ConsultationsView consultations={consultations} />;
+    return <ConsultationsView consultations={consultations} highlightId={highlightId} />;
   }
   if (activeTab === "reports") {
     return <ReportsView reports={reports} onUpload={onUpload} />;
@@ -27,6 +24,7 @@ function HealthRecordsTabPanel({ activeTab, consultations, reports, clinicalHist
 }
 
 function PatientHealthRecords() {
+  const { consultationId } = useParams();
   const [activeTab, setActiveTab] = useState("consultations");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [consultations, setConsultations] = useState([]);
@@ -36,6 +34,12 @@ function PatientHealthRecords() {
   const [loadError, setLoadError] = useState(null);
   const [retryToken, setRetryToken] = useState(0);
   const refreshKey = useLiveRefreshKey();
+
+  useEffect(() => {
+    if (consultationId) {
+      setActiveTab("consultations");
+    }
+  }, [consultationId]);
 
   useEffect(() => {
     let ignore = false;
@@ -66,7 +70,6 @@ function PatientHealthRecords() {
           report_date: report.report_date || report.uploaded_at,
           uploaded_at: report.uploaded_at,
           requested_by_source: report.requested_by_source || "OCS Doctor",
-          url: reportUrl(report.id),
         }));
 
         setConsultations(apiConsultations);
@@ -190,6 +193,7 @@ function PatientHealthRecords() {
               reports={medicalReports}
               clinicalHistory={clinicalHistory}
               onUpload={() => setUploadOpen(true)}
+              highlightId={consultationId}
             />
           )}
         </div>

@@ -5,6 +5,7 @@ const multer = require("multer");
 const { db, rosterDir } = require("../db");
 const { notifyDoctorLowStockSummary, notifyOcsLowStockSubscribers } = require("../lib/push");
 const { serializeUser } = require("../lib/auth");
+const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
   getGlobalLongTermReviewPatients,
   getLongTermReviewCount,
@@ -1507,6 +1508,7 @@ router.post("/operator-access", (req, res) => {
     `).run(patientId, operatorUserId, req.auth.id, expiresAt);
   })();
 
+  publishPatientDataChange(patientId, { reason: "patient" });
   res.status(201).json(getDashboardOperatorAccessPayload());
 });
 
@@ -1517,7 +1519,7 @@ router.delete("/operator-access/:accessId", (req, res) => {
 
   const accessId = Number(req.params.accessId);
   const existing = db
-    .prepare("SELECT id FROM patient_operator_access WHERE id = ?")
+    .prepare("SELECT id, patient_id FROM patient_operator_access WHERE id = ?")
     .get(accessId);
 
   if (!existing) {
@@ -1525,6 +1527,7 @@ router.delete("/operator-access/:accessId", (req, res) => {
   }
 
   db.prepare("DELETE FROM patient_operator_access WHERE id = ?").run(accessId);
+  publishPatientDataChange(existing.patient_id, { reason: "patient" });
   res.status(204).send();
 });
 

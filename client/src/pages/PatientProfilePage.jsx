@@ -24,7 +24,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -1240,8 +1240,124 @@ function AccountLinkReview({ patient, onChanged }) {
   );
 }
 
+function OperatorAccessManager({ patientId, access = [], operatorOptions = [], onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [operatorUserId, setOperatorUserId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [revokingId, setRevokingId] = useState(null);
+
+  async function handleGrant() {
+    const selectedId = Number(operatorUserId);
+    if (!Number.isInteger(selectedId) || selectedId <= 0) {
+      toast.error("Select an operator to grant access.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post(`/patients/${patientId}/operator-access`, {
+        operator_user_id: selectedId,
+      });
+      toast.success("Operator access granted.");
+      setOperatorUserId("");
+      await onChanged?.();
+    } catch (error) {
+      toast.error(error?.message || "Could not grant operator access.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRevoke(accessId) {
+    setRevokingId(accessId);
+    try {
+      await api.delete(`/patients/${patientId}/operator-access/${accessId}`);
+      toast.success("Operator access revoked.");
+      await onChanged?.();
+    } catch (error) {
+      toast.error(error?.message || "Could not revoke operator access.");
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+      >
+        <LockKeyhole className="size-4" />
+        Operator access
+      </button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Operator chart access"
+        description="Grant time-limited edit access. Operators can edit this chart only while a grant is active."
+        size="md"
+      >
+        <div className="space-y-5">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              value={operatorUserId}
+              onChange={(event) => setOperatorUserId(event.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-ocs-teal"
+            >
+              <option value="">Select operator</option>
+              {operatorOptions.map((operator) => (
+                <option key={operator.id} value={String(operator.id)}>
+                  {operator.full_name || operator.username}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleGrant}
+              disabled={saving}
+              className="inline-flex items-center justify-center rounded-2xl bg-ocs-teal px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {saving ? "Granting…" : "Grant 24h"}
+            </button>
+          </div>
+          <div className="space-y-2">
+            {access.length === 0 ? (
+              <p className="text-sm text-slate-500">No active grants. Operators cannot edit this chart until you grant access.</p>
+            ) : (
+              access.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {row.operator_name || row.operator_username}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Expires {row.expires_at ? dayjs(row.expires_at).format("D MMM YYYY, HH:mm") : "—"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRevoke(row.id)}
+                    disabled={revokingId === row.id}
+                    className="text-sm font-semibold text-rose-600 disabled:opacity-50"
+                  >
+                    {revokingId === row.id ? "Revoking…" : "Revoke"}
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 function PatientProfilePage() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -1281,8 +1397,24 @@ function PatientProfilePage() {
     if (!data) {
       return false;
     }
-    return ["admin", "doctor", "operator"].includes(user.role);
+    if (["admin", "doctor"].includes(user.role)) {
+      return true;
+    }
+    if (user.role === "operator") {
+      return Boolean(data.operator_can_edit);
+    }
+    return false;
   }, [data, user.role]);
+
+  useEffect(() => {
+    if (searchParams.get("composeConsultation") !== "1" || !canManageConsultations) {
+      return;
+    }
+    setConsultationComposerOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("composeConsultation");
+    setSearchParams(next, { replace: true });
+  }, [canManageConsultations, searchParams, setSearchParams]);
 
   const showPatientBillingUi = useMemo(
     () => Boolean(data && canBillPatientForUser(user, data.patient)),
@@ -1863,6 +1995,14 @@ function PatientProfilePage() {
               {canFlagLongTermReviewAccess ? (
                 <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
               ) : null}
+              {user.role === "admin" ? (
+                <OperatorAccessManager
+                  patientId={data.patient.id}
+                  access={data.operatorAccess || []}
+                  operatorOptions={data.operatorOptions || []}
+                  onChanged={reloadPatientProfile}
+                />
+              ) : null}
               {canFlagLongTermReviewAccess ? (
                 <LongTermReviewFlagButton
                   patient={data.patient}
@@ -1931,6 +2071,14 @@ function PatientProfilePage() {
           <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {canFlagLongTermReviewAccess ? (
               <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
+            ) : null}
+            {user.role === "admin" ? (
+              <OperatorAccessManager
+                patientId={data.patient.id}
+                access={data.operatorAccess || []}
+                operatorOptions={data.operatorOptions || []}
+                onChanged={reloadPatientProfile}
+              />
             ) : null}
             {canFlagLongTermReviewAccess ? (
               <LongTermReviewFlagButton

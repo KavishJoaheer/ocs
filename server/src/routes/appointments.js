@@ -1,6 +1,7 @@
 const express = require("express");
 const { db } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
+const { getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 
 const router = express.Router();
 const validStatuses = new Set(["scheduled", "completed", "cancelled"]);
@@ -22,9 +23,11 @@ function validateAppointmentPayload(body) {
 }
 
 router.get("/", (req, res) => {
-  let doctorId = String(req.query.doctorId ?? "").trim();
-  if (req.auth?.role === "doctor" && req.auth.doctor_id) {
-    doctorId = String(req.auth.doctor_id);
+  const doctorId = String(req.query.doctorId ?? "").trim();
+  const caseloadDoctorId =
+    req.auth?.role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
+  if (req.auth?.role === "doctor" && !caseloadDoctorId) {
+    return res.json([]);
   }
   const status = String(req.query.status ?? "").trim();
   const dateFrom = String(req.query.dateFrom ?? "").trim();
@@ -47,9 +50,16 @@ router.get("/", (req, res) => {
         AND (@status = '' OR a.status = @status)
         AND (@dateFrom = '' OR a.appointment_date >= @dateFrom)
         AND (@dateTo = '' OR a.appointment_date <= @dateTo)
+        ${caseloadDoctorId ? getDoctorCaseloadFilterSql("p") : ""}
       ORDER BY a.appointment_date ASC, a.appointment_time ASC
     `)
-    .all({ doctorId, status, dateFrom, dateTo });
+    .all({
+      doctorId,
+      status,
+      dateFrom,
+      dateTo,
+      ...(caseloadDoctorId ? { caseloadDoctorId } : {}),
+    });
 
   res.json(appointments);
 });

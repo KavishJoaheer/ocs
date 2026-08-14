@@ -19,7 +19,7 @@ function ConsultationsEmptyState() {
   );
 }
 
-function ConsultationsView({ consultations }) {
+function ConsultationsView({ consultations, highlightId }) {
   const sorted = [...consultations].sort(
     (a, b) => new Date(b.date) - new Date(a.date),
   );
@@ -28,10 +28,16 @@ function ConsultationsView({ consultations }) {
     return <ConsultationsEmptyState />;
   }
 
+  const highlightedId = highlightId != null ? String(highlightId) : "";
+
   return (
     <div className="flex flex-col gap-4 font-sans" aria-label="Consultation history">
       {sorted.map((consultation) => (
-        <ConsultationCard key={consultation.id} consultation={consultation} />
+        <ConsultationCard
+          key={consultation.id}
+          consultation={consultation}
+          highlighted={highlightedId !== "" && String(consultation.id) === highlightedId}
+        />
       ))}
     </div>
   );

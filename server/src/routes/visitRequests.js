@@ -1,6 +1,7 @@
 const express = require("express");
-const { db } = require("../db");
+const { db, ensureBillingForConsultation } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
+const { getTodayLocal } = require("../lib/utils");
 const {
   notifyStaffNewVisitRequest,
   notifyVisitRequestUpdated,
@@ -131,6 +132,9 @@ router.patch("/:id", (req, res) => {
     if (status === "cancelled") {
       updates.push("cancelled_by = 'staff'");
     }
+  } else if (isDispatchRole(role) && existing.status === "pending") {
+    updates.push("status = ?");
+    params.push("acknowledged");
   }
 
   if (req.body.assigned_doctor_id !== undefined) {
@@ -176,10 +180,95 @@ router.patch("/:id", (req, res) => {
     return res.status(400).json({ error: "No valid fields provided for update." });
   }
 
+  const completingNow = String(req.body.status || "").trim().toLowerCase() === "completed";
+  const conversionDoctorId = Number(
+    req.body.assigned_doctor_id !== undefined
+      ? req.body.assigned_doctor_id
+      : existing.assigned_doctor_id,
+  );
+
+  if (completingNow) {
+    if (!existing.patient_id) {
+      return res.status(400).json({ error: "This visit is not linked to a patient record." });
+    }
+    if (!Number.isInteger(conversionDoctorId) || conversionDoctorId <= 0) {
+      return res.status(400).json({
+        error: "Assign a doctor before completing this visit.",
+      });
+    }
+  }
+
   updates.push("updated_at = CURRENT_TIMESTAMP");
   params.push(requestId);
 
-  db.prepare(`UPDATE visit_requests SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  let converted = { appointmentId: existing.appointment_id || null, consultationId: null };
+
+  const applyUpdate = db.transaction(() => {
+    db.prepare(`UPDATE visit_requests SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+
+    if (!completingNow) {
+      return converted;
+    }
+
+    const today = getTodayLocal();
+    const now = new Date();
+    const appointmentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    let appointmentId = existing.appointment_id ? Number(existing.appointment_id) : null;
+    if (!appointmentId) {
+      appointmentId = db
+        .prepare(
+          `
+          INSERT INTO appointments (
+            patient_id,
+            doctor_id,
+            appointment_date,
+            appointment_time,
+            status
+          )
+          VALUES (?, ?, ?, ?, 'completed')
+        `,
+        )
+        .run(existing.patient_id, conversionDoctorId, today, appointmentTime).lastInsertRowid;
+      db.prepare("UPDATE visit_requests SET appointment_id = ? WHERE id = ?").run(
+        appointmentId,
+        requestId,
+      );
+    }
+
+    let consultation = db
+      .prepare("SELECT id FROM consultations WHERE appointment_id = ?")
+      .get(appointmentId);
+    if (!consultation) {
+      const consultationId = db
+        .prepare(
+          `
+          INSERT INTO consultations (
+            appointment_id,
+            patient_id,
+            doctor_id,
+            consultation_date,
+            doctor_notes
+          )
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        )
+        .run(
+          appointmentId,
+          existing.patient_id,
+          conversionDoctorId,
+          today,
+          "Home visit completed.",
+        ).lastInsertRowid;
+      ensureBillingForConsultation(consultationId, existing.patient_id);
+      return { appointmentId, consultationId };
+    }
+
+    ensureBillingForConsultation(consultation.id, existing.patient_id);
+    return { appointmentId, consultationId: Number(consultation.id) };
+  });
+
+  converted = applyUpdate();
 
   const updated = getVisitRequestById(requestId);
   const notifyDoctorIds = [existing.assigned_doctor_id, updated.assigned_doctor_id]
@@ -194,7 +283,18 @@ router.patch("/:id", (req, res) => {
     console.warn("[push] visit request update notification failed:", error?.message || error);
   });
 
-  return res.json({ visit_request: updated });
+  return res.json({
+    visit_request: updated,
+    follow_up:
+      updated?.appointment_id && updated.patient_id
+        ? {
+            patient_id: updated.patient_id,
+            appointment_id: updated.appointment_id,
+            consultation_id: converted?.consultationId || null,
+            doctor_id: updated.assigned_doctor_id,
+          }
+        : null,
+  });
 });
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const { db } = require("../db");
 const { hashSessionToken } = require("./security");
+const { getStaffUserByStreamToken } = require("./streamTokens");
 
 function cleanupExpiredSessions() {
   db.prepare("DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP").run();
@@ -80,22 +81,24 @@ function requireAuth(req, res, next) {
 }
 
 function requireAuthFlexible(req, res, next) {
-  const token =
-    extractBearerToken(req.headers.authorization) || String(req.query.access_token || "").trim();
+  const headerToken = extractBearerToken(req.headers.authorization);
+  const queryToken = String(req.query.access_token || "").trim();
 
-  if (!token) {
+  if (!headerToken && !queryToken) {
     return res.status(401).json({ error: "Authentication is required." });
   }
 
-  const session = getSessionUserByToken(token);
+  const session = headerToken
+    ? getSessionUserByToken(headerToken)
+    : getStaffUserByStreamToken(queryToken);
 
   if (!session) {
     return res.status(401).json({ error: "Your session is invalid or has expired." });
   }
 
   req.auth = serializeUser(session);
-  req.authSessionId = Number(session.session_id);
-  req.authToken = token;
+  req.authSessionId = session.session_id ? Number(session.session_id) : null;
+  req.authToken = headerToken || queryToken;
   return next();
 }
 

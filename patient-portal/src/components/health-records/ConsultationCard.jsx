@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatDoctorName, shouldShowPlainSummary } from "../../lib/healthRecordsDisplay.js";
@@ -41,11 +41,11 @@ function resolvePatientDoctorNotes(consultation) {
   return notes;
 }
 
-function DesktopExpandedDetails({ prescription, patientNotes, hasLongPrescription }) {
+function ExpandedVisitDetails({ prescription, patientNotes, hasLongPrescription }) {
   return (
     <div className="mt-4 border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] pb-5 pt-4">
       {hasLongPrescription && prescription ? (
-        <section>
+        <section className="hidden lg:block">
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Prescription</h3>
           <p className="text-ocs-slate break-words text-sm font-medium leading-relaxed">
             {prescription}
@@ -56,7 +56,7 @@ function DesktopExpandedDetails({ prescription, patientNotes, hasLongPrescriptio
       {patientNotes ? (
         <section
           className={
-            hasLongPrescription && prescription ? "mt-4 border-t border-slate-100 pt-4" : undefined
+            hasLongPrescription && prescription ? "lg:mt-4 lg:border-t lg:border-slate-100 lg:pt-4" : undefined
           }
         >
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
@@ -67,8 +67,8 @@ function DesktopExpandedDetails({ prescription, patientNotes, hasLongPrescriptio
   );
 }
 
-function ConsultationCard({ consultation }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+function ConsultationCard({ consultation, highlighted = false }) {
+  const [isExpanded, setIsExpanded] = useState(Boolean(highlighted));
   const doctorName = formatDoctorName(consultation.doctor_name);
   const specialty = consultation.doctor_specialty || "General Practitioner";
   const visitType = consultation.visit_type || "Home Visit";
@@ -78,14 +78,36 @@ function ConsultationCard({ consultation }) {
   const hasLongPrescription = Boolean(prescription && prescription.length > MAX_CHAR_LIMIT);
   const hasNotes = Boolean(patientNotes);
   const isExpandable = hasLongPrescription || hasNotes;
-  const showDesktopAccordion = Boolean(consultation.id) && isExpandable;
+  const showAccordion = Boolean(consultation.id) && (isExpandable || highlighted);
 
   const desktopPrescriptionPreview = hasLongPrescription
     ? `${prescription.slice(0, MAX_CHAR_LIMIT).trimEnd()}…`
     : prescription;
 
+  useEffect(() => {
+    if (highlighted) {
+      setIsExpanded(true);
+    }
+  }, [highlighted]);
+
+  useEffect(() => {
+    if (!highlighted || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const node = document.getElementById(`consultation-${consultation.id}`);
+    node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return undefined;
+  }, [highlighted, consultation.id]);
+
   return (
-    <article className="ocs-surface-card w-full overflow-hidden bg-white">
+    <article
+      id={consultation.id ? `consultation-${consultation.id}` : undefined}
+      className={[
+        "ocs-surface-card w-full overflow-hidden bg-white",
+        highlighted ? "ring-2 ring-brand-teal/40" : "",
+      ].join(" ")}
+    >
       <div
         className="flex items-start justify-between"
         style={{ padding: "var(--native-pad-card)" }}
@@ -174,13 +196,13 @@ function ConsultationCard({ consultation }) {
         </div>
       </div>
 
-      {showDesktopAccordion ? (
+      {showAccordion ? (
         <>
-          <div className="hidden border-t border-brand-teal/10 lg:block" aria-hidden="true" />
+          <div className="border-t border-brand-teal/10" aria-hidden="true" />
           <button
             type="button"
             onClick={() => setIsExpanded((open) => !open)}
-            className="hidden w-full items-center justify-center bg-white py-3 text-ocs-teal transition hover:bg-slate-50/80 lg:flex"
+            className="flex w-full items-center justify-center bg-white py-3 text-ocs-teal transition hover:bg-slate-50/80"
             aria-expanded={isExpanded}
             aria-label={
               isExpanded
@@ -195,18 +217,16 @@ function ConsultationCard({ consultation }) {
             )}
           </button>
 
-          <div className="hidden lg:block">
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isExpanded ? "max-h-[960px] opacity-100" : "max-h-0 opacity-0"
-              }`}
-            >
-              <DesktopExpandedDetails
-                prescription={prescription}
-                patientNotes={patientNotes}
-                hasLongPrescription={hasLongPrescription}
-              />
-            </div>
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              isExpanded ? "max-h-[960px] opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
+            <ExpandedVisitDetails
+              prescription={prescription}
+              patientNotes={patientNotes}
+              hasLongPrescription={hasLongPrescription}
+            />
           </div>
         </>
       ) : null}

@@ -3,6 +3,7 @@ const { reverseInventoryForConsultation } = require("../lib/inventoryReversal");
 const { db, ensureBillingForConsultation } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { parseBillingRow, toNumber } = require("../lib/utils");
+const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 
 const router = express.Router();
 
@@ -157,8 +158,14 @@ router.get("/", (req, res) => {
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0
       ? requestedDoctorId
       : null;
-  if (req.auth?.role === "doctor" && req.auth.doctor_id) {
-    doctorScoped = Number(req.auth.doctor_id);
+  const caseloadDoctorId =
+    req.auth?.role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
+
+  if (req.auth?.role === "doctor") {
+    if (!caseloadDoctorId) {
+      return res.json([]);
+    }
+    doctorScoped = null;
   }
 
   const consultations = db
@@ -195,9 +202,13 @@ router.get("/", (req, res) => {
       JOIN appointments a ON a.id = c.appointment_id
       WHERE p.deleted_at IS NULL
         AND (@doctorScoped IS NULL OR c.doctor_id = @doctorScoped)
+        ${caseloadDoctorId ? getDoctorCaseloadFilterSql("p") : ""}
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
-    .all({ doctorScoped })
+    .all({
+      doctorScoped,
+      ...(caseloadDoctorId ? { caseloadDoctorId } : {}),
+    })
     .map((consultation) => ({
       ...consultation,
       bill_count: Number(consultation.bill_count || 0),
@@ -214,13 +225,12 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Consultation not found." });
   }
 
-  if (
-    req.auth?.role === "doctor" &&
-    req.auth.doctor_id &&
-    Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
-  ) {
+  const consultationPatient = db
+    .prepare("SELECT * FROM patients WHERE id = ? AND deleted_at IS NULL")
+    .get(consultation.patient_id);
+  if (!doctorCanAccessPatient(consultationPatient, req.auth)) {
     return res.status(403).json({
-      error: "You can only view consultations linked to your own practice.",
+      error: doctorPatientAccessError(req.auth),
     });
   }
 

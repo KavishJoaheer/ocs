@@ -11,6 +11,7 @@ const {
   findUnbilledSaleCredit,
   markSaleMovementsBilled,
 } = require("../lib/saleBillingLinkage");
+const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 
 const router = express.Router();
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
@@ -55,16 +56,24 @@ function normalizePaymentMethod(value) {
 }
 
 function buildDoctorAccessClause(auth) {
-  if (auth?.role === "doctor" && auth.doctor_id) {
+  if (auth?.role === "doctor") {
+    const caseloadDoctorId = Number(auth.doctor_id || 0);
+    if (!caseloadDoctorId) {
+      return {
+        clause: "AND 1 = 0",
+        params: {},
+      };
+    }
+
     return {
-      clause: "AND c.doctor_id = @doctorId",
-      params: { doctorId: Number(auth.doctor_id) },
+      clause: getDoctorCaseloadFilterSql("p"),
+      params: { caseloadDoctorId },
     };
   }
 
   return {
     clause: "",
-    params: { doctorId: null },
+    params: {},
   };
 }
 
@@ -376,17 +385,27 @@ function getJoinedBillById(billId) {
   };
 }
 
-function ensureBillAccess(req, bill) {
+function ensureBillAccess(req, bill, { write = false } = {}) {
   if (!bill) {
     return { status: 404, error: "Bill not found." };
   }
 
-  if (
-    req.auth?.role === "doctor" &&
-    req.auth.doctor_id &&
-    Number(bill.doctor_id) !== Number(req.auth.doctor_id)
-  ) {
-    return { status: 403, error: "You can only manage billing linked to your own consultations." };
+  if (req.auth?.role !== "doctor") {
+    return null;
+  }
+
+  if (write) {
+    if (!req.auth.doctor_id || Number(bill.doctor_id) !== Number(req.auth.doctor_id)) {
+      return { status: 403, error: "You can only manage billing linked to your own consultations." };
+    }
+    return null;
+  }
+
+  const patient = db
+    .prepare("SELECT * FROM patients WHERE id = ? AND deleted_at IS NULL")
+    .get(bill.patient_id);
+  if (!doctorCanAccessPatient(patient, req.auth)) {
+    return { status: 403, error: doctorPatientAccessError(req.auth) };
   }
 
   return null;
@@ -682,7 +701,7 @@ router.post("/", (req, res) => {
 router.put("/:id", (req, res) => {
   const billId = Number(req.params.id);
   const existing = getJoinedBillById(billId);
-  const accessError = ensureBillAccess(req, existing);
+  const accessError = ensureBillAccess(req, existing, { write: true });
 
   if (accessError) {
     return res.status(accessError.status).json({ error: accessError.error });
@@ -748,7 +767,7 @@ router.put("/:id", (req, res) => {
 router.patch("/:id/pay", (req, res) => {
   const billId = Number(req.params.id);
   const existing = getJoinedBillById(billId);
-  const accessError = ensureBillAccess(req, existing);
+  const accessError = ensureBillAccess(req, existing, { write: true });
 
   if (accessError) {
     return res.status(accessError.status).json({ error: accessError.error });

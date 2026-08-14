@@ -7,6 +7,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
 import {
@@ -35,6 +36,7 @@ function BillingStat({ icon: Icon, label, value }) {
 
 export default function OperatorBillingStatusPage() {
   const isMobile = useIsMobile();
+  const refreshKey = useLiveRefreshKey();
   const [statusFilter, setStatusFilter] = useState("");
   const [mobileBillTab, setMobileBillTab] = useState("pending");
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function OperatorBillingStatusPage() {
     return () => {
       ignore = true;
     };
-  }, [statusFilter, isMobile]);
+  }, [statusFilter, isMobile, refreshKey]);
 
   const billsForDisplay = useMemo(() => {
     if (!isMobile) {

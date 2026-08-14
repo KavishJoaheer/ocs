@@ -6,8 +6,10 @@ import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
+import { OCS_INVENTORY_EVENT } from "../lib/inventorySync.js";
 
 const BADGE_STYLES = {
   restock: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
@@ -92,6 +94,8 @@ function buildReceiptPrintHtml(receipt) {
 
 function StockActivityPage() {
   const { user } = useAuth();
+  const refreshKey = useLiveRefreshKey();
+  const [inventoryTick, setInventoryTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [actors, setActors] = useState([]);
@@ -116,6 +120,7 @@ function StockActivityPage() {
   const [dateTo, setDateTo] = useState("");
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const actionMenuRef = useRef(null);
+  const lastFetchQueryRef = useRef(null);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -130,10 +135,22 @@ function StockActivityPage() {
   }, [page, search, userId, selectedActions, dateFrom, dateTo]);
 
   useEffect(() => {
+    function handleInventoryLive() {
+      setInventoryTick((value) => value + 1);
+    }
+    window.addEventListener(OCS_INVENTORY_EVENT, handleInventoryLive);
+    return () => window.removeEventListener(OCS_INVENTORY_EVENT, handleInventoryLive);
+  }, []);
+
+  useEffect(() => {
     let ignore = false;
     async function load() {
+      const showSpinner = lastFetchQueryRef.current !== query;
+      lastFetchQueryRef.current = query;
       try {
-        setLoading(true);
+        if (showSpinner) {
+          setLoading(true);
+        }
         const payload = await api.get(`/inventory/activity-history?${query}`);
         if (ignore) return;
         const nextRows = payload?.rows || [];
@@ -164,7 +181,7 @@ function StockActivityPage() {
     return () => {
       ignore = true;
     };
-  }, [query, page]);
+  }, [query, page, refreshKey, inventoryTick]);
 
   useEffect(() => {
     function handleClickOutside(event) {

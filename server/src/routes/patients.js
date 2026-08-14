@@ -20,6 +20,11 @@ const {
 const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.js");
 const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
 const { parseBillingRow, toPagination } = require("../lib/utils");
+const {
+  doctorCanAccessPatient,
+  doctorPatientAccessError,
+  getDoctorCaseloadFilterSql,
+} = require("../lib/patientAccess");
 
 const router = express.Router();
 
@@ -512,11 +517,15 @@ function getPatientRevisions(patientId) {
 }
 
 function ensureDoctorPatientAccess(patient, auth) {
-  if (!patient || auth?.role !== "doctor") {
-    return true;
+  return doctorCanAccessPatient(patient, auth);
+}
+
+function operatorMayEditPatient(patientId, auth) {
+  if (auth?.role !== "operator") {
+    return false;
   }
 
-  return Boolean(auth?.doctor_id);
+  return hasActiveOperatorEditAccess(patientId, auth.id);
 }
 
 function hasActiveOperatorEditAccess(patientId, operatorUserId) {
@@ -904,6 +913,8 @@ router.get("/", (req, res) => {
     pageLimitCeiling,
   );
   const operatorUserId = req.auth?.role === "operator" ? Number(req.auth.id) : null;
+  const restrictDoctorList = req.auth?.role === "doctor";
+  const caseloadDoctorId = restrictDoctorList ? Number(req.auth.doctor_id || 0) : null;
 
   const filters = {
     search,
@@ -914,12 +925,14 @@ router.get("/", (req, res) => {
     underReview: underReview ? 1 : 0,
     subscribed: subscribed ? 1 : 0,
     pendingApproval: pendingApproval ? 1 : 0,
+    caseloadDoctorId,
   };
   const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
   const subscribedFilterSql = "AND (@subscribed = 0 OR p.is_subscribed = 1)";
   const pendingApprovalFilterSql =
     "AND (@pendingApproval = 0 OR (p.link_status IN ('pending_review', 'self_registered') AND EXISTS (SELECT 1 FROM patient_users pu WHERE pu.patient_id = p.id)))";
   const linkhamFilterSql = getLinkhamPatientFilterSql(req.auth?.role);
+  const doctorCaseloadSql = restrictDoctorList ? getDoctorCaseloadFilterSql("p") : "";
   const listOrderSql = underReview
     ? `ORDER BY
         CASE
@@ -960,6 +973,7 @@ router.get("/", (req, res) => {
         ${subscribedFilterSql}
         ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
+        ${doctorCaseloadSql}
     `)
     .get(filters).count;
 
@@ -1013,6 +1027,7 @@ router.get("/", (req, res) => {
         ${subscribedFilterSql}
         ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
+        ${doctorCaseloadSql}
       GROUP BY p.id, d.full_name, d.specialization
       ${listOrderSql}
       LIMIT @limit OFFSET @offset
@@ -1101,7 +1116,7 @@ router.get("/:id", (req, res) => {
 
   if (!ensureDoctorPatientAccess(patient, req.auth)) {
     return res.status(403).json({
-      error: "Your doctor account is not linked to a doctor profile.",
+      error: doctorPatientAccessError(req.auth),
     });
   }
 
@@ -1168,7 +1183,7 @@ router.get("/:id", (req, res) => {
     revisions,
     operatorAccess,
     operatorOptions,
-    operator_can_edit: req.auth.role === "operator",
+    operator_can_edit: operatorMayEditPatient(patientId, req.auth),
   });
 });
 
@@ -1484,9 +1499,15 @@ router.put("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
+  if (req.auth.role === "operator" && !operatorMayEditPatient(patientId, req.auth)) {
+    return res.status(403).json({
+      error: "Operator edit access for this patient has expired or was not granted.",
+    });
+  }
+
   if (req.auth.role !== "operator" && !ensureDoctorPatientAccess(existing, req.auth)) {
     return res.status(403).json({
-      error: "Your doctor account is not linked to a doctor profile.",
+      error: doctorPatientAccessError(req.auth),
     });
   }
 
@@ -1681,7 +1702,7 @@ router.post("/:id/consultations", (req, res) => {
 
   if (!ensureDoctorPatientAccess(patient, req.auth)) {
     return res.status(403).json({
-      error: "Your doctor account is not linked to a doctor profile.",
+      error: doctorPatientAccessError(req.auth),
     });
   }
 

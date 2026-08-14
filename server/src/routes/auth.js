@@ -5,6 +5,7 @@ const {
   requireAuth,
   serializeUser,
 } = require("../lib/auth");
+const { mintStreamToken } = require("../lib/streamTokens");
 const {
   generateSessionToken,
   getSessionExpiryTimestamp,
@@ -58,6 +59,11 @@ router.post("/login", (req, res) => {
 
 router.get("/me", requireAuth, (req, res) => {
   res.json({ user: req.auth });
+});
+
+router.post("/stream-token", requireAuth, (req, res) => {
+  const minted = mintStreamToken({ audience: "staff", userId: req.auth.id });
+  return res.json(minted);
 });
 
 router.post("/logout", requireAuth, (req, res) => {

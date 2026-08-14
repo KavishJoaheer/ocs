@@ -1,5 +1,15 @@
 import { ChevronRight, FileText, FileUp, FolderHeart } from "lucide-react";
+import toast from "react-hot-toast";
 import { formatHealthDate } from "../../lib/healthRecordsDisplay.js";
+import { openAuthedFile } from "../../lib/api.js";
+
+async function openReport(report) {
+  try {
+    await openAuthedFile(`/patient-portal/reports/attachments/${report.id}/download`);
+  } catch (error) {
+    toast.error(error.message || "Could not open the report.");
+  }
+}
 
 function ReportCard({ report, isLast = false }) {
   const dateLabel = report.report_date
@@ -8,13 +18,12 @@ function ReportCard({ report, isLast = false }) {
   const source = report.requested_by_source || "OCS Doctor";
 
   return (
-    <a
-      href={report.url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={() => openReport(report)}
       aria-label={`View ${report.name}`}
       className={[
-        "ocs-surface-card ocs-card-press block w-full bg-white no-underline lg:hidden",
+        "ocs-surface-card ocs-card-press block w-full bg-white text-left no-underline lg:hidden",
         isLast ? "" : "mb-4",
       ].join(" ")}
       style={{ padding: "var(--native-pad-card)" }}
@@ -36,7 +45,7 @@ function ReportCard({ report, isLast = false }) {
           aria-hidden="true"
         />
       </div>
-    </a>
+    </button>
   );
 }
 
@@ -65,14 +74,13 @@ function ReportRowDesktop({ report, isLast = false }) {
             <p className="mt-0.5 text-[13px] text-brand-cool-grey">{source}</p>
           </div>
         </div>
-        <a
-          href={report.url}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => openReport(report)}
           className="shrink-0 text-[15px] font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
         >
           View
-        </a>
+        </button>
       </div>
     </article>
   );

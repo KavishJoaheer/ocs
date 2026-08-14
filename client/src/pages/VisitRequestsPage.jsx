@@ -13,6 +13,7 @@ import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { formatDate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -60,6 +61,17 @@ const URGENCY_DOT = {
   urgent: "#d97706",
   emergency: "#e2574c",
 };
+
+function visitForLabel(visitFor) {
+  const value = String(visitFor || "myself").trim().toLowerCase();
+  if (!value || value === "myself") {
+    return null;
+  }
+  if (value === "dependent") {
+    return "Visit for a dependent";
+  }
+  return `Visit for ${value.replace(/_/g, " ")}`;
+}
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -175,6 +187,11 @@ function BoardCard({
               style={{ background: URGENCY_DOT[request.urgency] || URGENCY_DOT.routine }}
             />
             <p className="truncate text-sm font-semibold text-slate-950">{request.patient_name}</p>
+            {visitForLabel(request.visit_for) ? (
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                {visitForLabel(request.visit_for)}
+              </span>
+            ) : null}
             <SlaChip createdAt={request.created_at} now={now} escalate={escalate} />
           </div>
           <p className="mt-1 line-clamp-1 text-xs text-slate-500">
@@ -384,6 +401,11 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-base font-semibold text-slate-950">{request.patient_name}</p>
+            {visitForLabel(request.visit_for) ? (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                {visitForLabel(request.visit_for)}
+              </span>
+            ) : null}
             <UrgencyBadge urgency={request.urgency} />
           </div>
           <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-gray-400">
@@ -489,6 +511,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
 
 export default function VisitRequestsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const refreshKey = useLiveRefreshKey();
   const isDoctor = user?.role === "doctor";
@@ -555,19 +578,50 @@ export default function VisitRequestsPage() {
   }, []);
 
   const handleUpdate = useCallback(async (id, payload) => {
+    if (payload.status === "completed") {
+      const existing = requests.find((request) => request.id === id);
+      const doctorId = Number(
+        payload.assigned_doctor_id !== undefined
+          ? payload.assigned_doctor_id
+          : existing?.assigned_doctor_id,
+      );
+      if (!Number.isInteger(doctorId) || doctorId <= 0) {
+        toast.error("Assign a doctor before completing this visit.");
+        return;
+      }
+    }
+
     // Optimistic: reflect the change in the UI immediately, then reconcile with
     // the server (and roll back to server truth if the request fails).
     setRequests((current) =>
       current.map((request) => (request.id === id ? { ...request, ...payload } : request)),
     );
     try {
-      await api.patch(`/visit-requests/${id}`, payload);
+      const result = await api.patch(`/visit-requests/${id}`, payload);
+      if (result?.visit_request) {
+        setRequests((current) =>
+          current.map((request) =>
+            request.id === id ? { ...request, ...result.visit_request } : request,
+          ),
+        );
+      }
+      if (payload.status === "completed" && result?.follow_up?.patient_id) {
+        if (isDoctor && result.follow_up.consultation_id) {
+          toast.success("Visit completed. Add consultation notes.");
+          navigate(`/consultations/${result.follow_up.consultation_id}`);
+        } else if (isDoctor) {
+          toast.success("Visit completed. Add consultation notes on the patient chart.");
+          navigate(`/patients/${result.follow_up.patient_id}?composeConsultation=1`);
+        } else {
+          toast.success("Visit completed. Appointment, consultation, and bill were created.");
+        }
+      }
     } catch (error) {
       await loadRequests({ silent: true });
       throw error;
     }
     await loadRequests({ silent: true });
-  }, [loadRequests]);
+  }, [isDoctor, loadRequests, navigate, requests]);
 
   const activeDoctors = useMemo(
     () => doctors.filter((doctor) => doctor.is_active !== 0 && !doctor.deleted_at),

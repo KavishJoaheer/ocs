@@ -136,6 +136,19 @@ function createAuthSessionsTable() {
   `);
 }
 
+function createStreamTokensTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stream_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      audience TEXT NOT NULL CHECK (audience IN ('staff', 'patient')),
+      user_id INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+}
+
 function createUserPushSubscriptionsTable() {
   // One row per (user, browser endpoint). Replaces the single-token field on
   // users so a single account can keep working subscriptions on phone +
@@ -388,6 +401,14 @@ function createVisitRequestsTable() {
       FOREIGN KEY (assigned_doctor_id) REFERENCES doctors(id) ON DELETE SET NULL
     );
   `);
+}
+
+function ensureVisitRequestAppointmentColumn() {
+  const columns = db.prepare("PRAGMA table_info(visit_requests)").all();
+  if (columns.some((column) => column.name === "appointment_id")) {
+    return;
+  }
+  db.exec("ALTER TABLE visit_requests ADD COLUMN appointment_id INTEGER");
 }
 
 function migrateVisitRequestsConsultationStatusIfNeeded() {
@@ -838,6 +859,7 @@ function initializeDatabase() {
   createUsersTable();
   migrateUsersLinkhamAdminRoleIfNeeded();
   createAuthSessionsTable();
+  createStreamTokensTable();
   createUserPushSubscriptionsTable();
   createLabReportsTable();
   createLabReportAttachmentsTable();
@@ -853,6 +875,7 @@ function initializeDatabase() {
   createPatientPushSubscriptionsTable();
   createVisitRequestsTable();
   migrateVisitRequestsConsultationStatusIfNeeded();
+  ensureVisitRequestAppointmentColumn();
   createRestockRequestsTable();
 
   ensurePatientColumns();

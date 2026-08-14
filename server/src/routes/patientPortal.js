@@ -4,12 +4,13 @@ const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const { db, labReportAttachmentsDir } = require("../db");
-const { publishPatientDataChange } = require("../lib/inventoryRealtime");
+const { publishPatientDataChange, publishLinkhamPatientsChange } = require("../lib/inventoryRealtime");
 const {
   getVapidPublicKey,
   isPushConfigured,
   savePatientPushSubscription,
   clearPatientPushSubscription,
+  sendPushToRole,
 } = require("../lib/push");
 const { notifyStaffNewVisitRequest, notifyStaffVisitCancelled } = require("../lib/visitRequestNotifications");
 const {
@@ -23,6 +24,8 @@ const {
 } = require("../lib/healthRecords");
 const { serializePatientBillingRows } = require("../lib/utils");
 const { isVerifiedPatientPortalAccount } = require("../lib/patientAuth");
+const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
+const { mintStreamToken } = require("../lib/streamTokens");
 
 const router = express.Router();
 
@@ -488,6 +491,19 @@ router.post("/reports", (req, res, next) => {
 
     publishPatientDataChange(patientId, { reason: "lab_report" });
 
+    const patientName =
+      db.prepare("SELECT full_name FROM patients WHERE id = ?").get(patientId)?.full_name ||
+      "A patient";
+    void sendPushToRole("lab_tech", {
+      title: "New patient lab upload",
+      body: `${patientName} uploaded a report for review.`,
+      url: "/lab",
+      icon: "/icon-192.png",
+      tag: `patient-lab-upload-${reportId}`,
+    }).catch((error) => {
+      console.warn("[push] patient lab upload notification failed:", error?.message || error);
+    });
+
     const attachment = db
       .prepare(
         "SELECT id, created_at FROM lab_report_attachments WHERE report_id = ? ORDER BY id DESC LIMIT 1",
@@ -679,6 +695,14 @@ function applyProfileUpdate(req, res) {
 
   publishPatientDataChange(patientId, { reason: "profile" });
 
+  if (
+    insuranceProvider !== undefined &&
+    (isLinkhamInsuranceProvider(insuranceProvider) ||
+      isLinkhamInsuranceProvider(patient.insurance_provider))
+  ) {
+    publishLinkhamPatientsChange({ patientId });
+  }
+
   return res.json({
     profile: serializePatientProfile(updated),
     patient: updated,
@@ -795,7 +819,7 @@ router.post("/visit-requests", (req, res) => {
 
   publishPatientDataChange(patientId, { reason: "visit_request" });
 
-  const visitRequest = getVisitRequestById(result.lastInsertRowid);
+  const visitRequest = getVisitRequestById(result.lastInsertRowid, { includeStaffNotes: false });
   void notifyStaffNewVisitRequest(visitRequest).catch((error) => {
     console.warn("[push] new visit request notification failed:", error?.message || error);
   });
@@ -829,7 +853,7 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
 
   publishPatientDataChange(patientId, { reason: "visit_request" });
 
-  const visitRequest = getVisitRequestById(requestId);
+  const visitRequest = getVisitRequestById(requestId, { includeStaffNotes: false });
   void notifyStaffVisitCancelled(visitRequest).catch((error) => {
     console.warn("[push] visit cancellation notification failed:", error?.message || error);
   });
@@ -838,6 +862,11 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
 });
 
 router.handleReportAttachmentDownload = handleReportAttachmentDownload;
+
+router.post("/stream-token", (req, res) => {
+  const minted = mintStreamToken({ audience: "patient", userId: req.patientAuth.id });
+  return res.json(minted);
+});
 
 router.get("/push/vapid-public-key", (_req, res) => {
   const configured = isPushConfigured();

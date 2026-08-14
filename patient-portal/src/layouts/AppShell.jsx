@@ -1,17 +1,54 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import Sidebar from "../components/Sidebar.jsx";
 import MobileIdentityHeader from "../components/MobileIdentityHeader.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import PatientAccountLinkBanner from "../components/PatientAccountLinkBanner.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
 import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
+import {
+  drainPendingServiceWorkerSubscription,
+  listenForPushSubscriptionChanges,
+  listenForServiceWorkerNavigation,
+  persistPushSubscriptionPayload,
+  syncPushSubscriptionIfGranted,
+} from "../lib/pushNotifications.js";
+
+function ServiceWorkerBridge() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    void drainPendingServiceWorkerSubscription();
+    const stopSubscription = listenForPushSubscriptionChanges((subscription) => {
+      if (subscription) {
+        void persistPushSubscriptionPayload(subscription);
+      } else {
+        void syncPushSubscriptionIfGranted();
+      }
+    });
+    const stopNavigation = listenForServiceWorkerNavigation((url) => {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        navigate(`${parsed.pathname}${parsed.search}${parsed.hash}`);
+      } catch {
+        navigate(url);
+      }
+    });
+    return () => {
+      stopSubscription();
+      stopNavigation();
+    };
+  }, [navigate]);
+
+  return null;
+}
 
 function AppShellContent() {
   const { pathname } = useLocation();
   const isNativeDashboard = pathname === "/dashboard";
   const isVisitStatus = pathname === "/request-visit/tracking";
   const isProfile = pathname === "/profile";
-  const isHealthRecords = pathname === "/health-records";
+  const isHealthRecords = pathname === "/health-records" || pathname.startsWith("/health-records/");
   const isAppointments = pathname === "/appointments";
   const isBilling = pathname === "/billing";
   const isDesktopHeroPage = isHealthRecords || isAppointments || isBilling;
@@ -53,6 +90,7 @@ function AppShell() {
   return (
     <FamilyProfileProvider>
       <RequestVisitProvider>
+        <ServiceWorkerBridge />
         <AppShellContent />
       </RequestVisitProvider>
     </FamilyProfileProvider>

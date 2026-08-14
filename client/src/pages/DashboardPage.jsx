@@ -45,6 +45,7 @@ import {
 } from "../lib/fileBlobViewer.js";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
+import OperatorAccessAdminCard from "../components/OperatorAccessAdminCard.jsx";
 
 function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
@@ -1341,6 +1342,10 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
             📥 Download Current Roster PDF
           </button>
         </div>
+      </AdminExecutiveCard>
+
+      <AdminExecutiveCard title="Operator chart access" anchorAccent="teal">
+        <OperatorAccessAdminCard />
       </AdminExecutiveCard>
     </div>
   );

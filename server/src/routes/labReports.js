@@ -6,6 +6,7 @@ const multer = require("multer");
 const { db, labReportAttachmentsDir } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { parsePatientReportMeta } = require("../lib/healthRecords");
+const { doctorCanAccessPatient, doctorPatientAccessError } = require("../lib/patientAccess");
 
 const router = express.Router();
 
@@ -211,11 +212,7 @@ function ensureConsultationMatchesPatient(patientId, consultationId) {
 }
 
 function ensureDoctorPatientAccess(patient, auth) {
-  if (auth.role !== "doctor") {
-    return true;
-  }
-
-  return Boolean(auth?.doctor_id);
+  return doctorCanAccessPatient(patient, auth);
 }
 
 function saveAttachments({ reportId, patientId, consultationId, files, uploadedByUserId }) {

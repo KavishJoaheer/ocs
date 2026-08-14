@@ -1,4 +1,4 @@
-import { getStoredAuthToken, resolveApiPath } from "./api.js";
+import { api, getStoredAuthToken, resolveApiPath } from "./api.js";
 import { getClientSessionId } from "./clientSession.js";
 import {
   DOCTOR_BAG_INVENTORY_EVENT,
@@ -19,6 +19,7 @@ let reconnectTimer = null;
 let invalidationTimer = null;
 let pendingInvalidation = null;
 let activeSessionKey = "";
+let connecting = false;
 
 function buildSessionKey(user) {
   if (!user?.role) {
@@ -90,6 +91,18 @@ function clearReconnectTimer() {
   }
 }
 
+async function mintStaffStreamToken() {
+  try {
+    const payload = await api.post("/auth/stream-token");
+    if (payload?.token) {
+      return payload.token;
+    }
+  } catch {
+    // Retry on the reconnect path instead of putting a session token in the URL.
+  }
+  return null;
+}
+
 function scheduleReconnect(user) {
   if (!user || buildSessionKey(user) !== activeSessionKey) {
     return;
@@ -103,6 +116,7 @@ function scheduleReconnect(user) {
 }
 
 export function stopInventoryRealtimeSync() {
+  connecting = false;
   activeSessionKey = "";
   clearReconnectTimer();
 
@@ -136,19 +150,31 @@ export function startInventoryRealtimeSync(user) {
   }
 
   const sessionKey = buildSessionKey(user);
-  if (sessionKey === activeSessionKey && eventSource) {
+  if (sessionKey === activeSessionKey && (eventSource || connecting)) {
     return;
   }
 
   stopInventoryRealtimeSync();
   activeSessionKey = sessionKey;
+  connecting = true;
 
   const tabSessionId = getClientSessionId();
-  const streamUrl = `${resolveApiPath("/inventory/stream")}?access_token=${encodeURIComponent(
-    token,
-  )}&client_session_id=${encodeURIComponent(tabSessionId)}`;
-  const source = new EventSource(streamUrl);
-  eventSource = source;
+  const generation = sessionKey;
+
+  void mintStaffStreamToken().then((streamToken) => {
+    connecting = false;
+    if (!streamToken || activeSessionKey !== generation) {
+      if (!streamToken && activeSessionKey === generation) {
+        scheduleReconnect(user);
+      }
+      return;
+    }
+
+    const streamUrl = `${resolveApiPath("/inventory/stream")}?access_token=${encodeURIComponent(
+      streamToken,
+    )}&client_session_id=${encodeURIComponent(tabSessionId)}`;
+    const source = new EventSource(streamUrl);
+    eventSource = source;
 
   source.addEventListener("connected", () => {
     clearReconnectTimer();
@@ -258,6 +284,7 @@ export function startInventoryRealtimeSync(user) {
     }
     scheduleReconnect(user);
   };
+  });
 }
 
 export function isInventoryRealtimeActive() {

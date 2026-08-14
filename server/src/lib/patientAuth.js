@@ -1,5 +1,6 @@
 const { db } = require("../db");
 const { hashSessionToken } = require("./security");
+const { getPatientUserByStreamToken } = require("./streamTokens");
 
 function cleanupExpiredPatientSessions() {
   db.prepare("DELETE FROM patient_auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP").run();
@@ -78,46 +79,53 @@ function extractPatientToken(req, { allowQuery = false } = {}) {
   if (header.startsWith("Bearer ")) {
     const token = header.slice(7).trim();
     if (token) {
-      return token;
+      return { token, source: "header" };
     }
   }
 
-  // EventSource (SSE) cannot send custom headers, so the patient realtime
-  // stream passes the bearer token as a query parameter instead.
+  // EventSource (SSE) and file downloads cannot send custom headers, so they
+  // pass a short-lived stream token as a query parameter instead.
   if (allowQuery && req.query && req.query.access_token) {
-    return String(req.query.access_token).trim();
+    const token = String(req.query.access_token).trim();
+    if (token) {
+      return { token, source: "query" };
+    }
   }
 
-  return "";
+  return { token: "", source: null };
 }
 
-function authenticatePatient(req, res, next, { allowQuery = false } = {}) {
-  const token = extractPatientToken(req, { allowQuery });
+function authenticatePatient(req, res, next, { allowQuery = false, allowStreamToken = false } = {}) {
+  const { token, source } = extractPatientToken(req, { allowQuery });
 
   if (!token) {
     return res.status(401).json({ error: "Authentication is required." });
   }
 
-  const session = getPatientSessionUserByToken(token);
+  const session =
+    source === "query"
+      ? allowStreamToken
+        ? getPatientUserByStreamToken(token)
+        : null
+      : getPatientSessionUserByToken(token);
 
   if (!session) {
     return res.status(401).json({ error: "Your session is invalid or has expired." });
   }
 
   req.patientAuth = enrichPatientUserRow(session);
-  req.patientAuthSessionId = Number(session.session_id);
+  req.patientAuthSessionId = session.session_id ? Number(session.session_id) : null;
   req.patientAuthToken = token;
   return next();
 }
 
 function requirePatientAuth(req, res, next) {
-  return authenticatePatient(req, res, next, { allowQuery: false });
+  return authenticatePatient(req, res, next, { allowQuery: false, allowStreamToken: false });
 }
 
-// Same as requirePatientAuth but also accepts the token via ?access_token=,
-// used by the patient realtime (SSE) stream.
+// SSE and file downloads authenticate via ?access_token= using a stream token.
 function requirePatientAuthFlexible(req, res, next) {
-  return authenticatePatient(req, res, next, { allowQuery: true });
+  return authenticatePatient(req, res, next, { allowQuery: true, allowStreamToken: true });
 }
 
 module.exports = {

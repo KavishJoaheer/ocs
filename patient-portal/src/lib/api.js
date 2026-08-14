@@ -15,14 +15,23 @@ export function setStoredAuthToken(token) {
 }
 
 /**
- * Build an absolute URL to an authenticated file endpoint (e.g. a report PDF),
- * carrying the bearer token in the query string since a plain <a>/window.open
+ * Open an authenticated file endpoint (e.g. a report PDF) in a new tab.
+ * Uses a short-lived stream token in the query string because <a>/window.open
  * cannot send an Authorization header.
  */
-export function buildAuthedFileUrl(path) {
-  const token = getStoredAuthToken();
+export async function openAuthedFile(path) {
+  const minted = await api.post("/patient-portal/stream-token");
+  const token = minted?.token;
+  if (!token) {
+    throw new Error("Could not open the file. Please try again.");
+  }
+
   const separator = path.includes("?") ? "&" : "?";
-  return `${API_BASE}${path}${token ? `${separator}access_token=${encodeURIComponent(token)}` : ""}`;
+  window.open(
+    `${API_BASE}${path}${separator}access_token=${encodeURIComponent(token)}`,
+    "_blank",
+    "noopener,noreferrer",
+  );
 }
 
 function createApiError(message, data) {

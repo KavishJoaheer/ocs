@@ -52,7 +52,7 @@ function App() {
         </Route>
         <Route path="appointments" element={<PatientAppointments />} />
         <Route path="health-records" element={<PatientHealthRecords />} />
-        <Route path="health-records/visits/:consultationId" element={<Navigate to="/health-records" replace />} />
+        <Route path="health-records/visits/:consultationId" element={<PatientHealthRecords />} />
         <Route path="consultations" element={<Navigate to="/health-records" replace />} />
         <Route path="billing" element={<PatientBilling />} />
         <Route path="profile" element={<PatientProfile />} />
