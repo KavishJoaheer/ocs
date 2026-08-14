@@ -13,14 +13,24 @@ function toTimeInput(value) {
 }
 
 function AppointmentChangeRow({ request, updatingId, onResolve }) {
-  const [appointmentDate, setAppointmentDate] = useState(
-    request.preferred_date || request.appointment_date || "",
-  );
-  const [appointmentTime, setAppointmentTime] = useState(
-    toTimeInput(request.preferred_time || request.appointment_time),
-  );
+  const [appointmentDate, setAppointmentDate] = useState(request.preferred_date || "");
+  const [appointmentTime, setAppointmentTime] = useState(toTimeInput(request.appointment_time));
   const busy = Boolean(updatingId);
   const isReschedule = request.request_type === "reschedule";
+  const canApply = !isReschedule || Boolean(appointmentDate);
+  const preferredTime = toTimeInput(request.preferred_time);
+  const currentSlot = [
+    request.appointment_date ? formatDate(request.appointment_date) : null,
+    request.appointment_time ? toTimeInput(request.appointment_time) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ") || "No slot on file";
+  const preferredHint = [
+    request.preferred_date ? formatDate(request.preferred_date) : null,
+    preferredTime,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   function handleApply() {
     if (isReschedule && !appointmentDate) {
@@ -34,62 +44,77 @@ function AppointmentChangeRow({ request, updatingId, onResolve }) {
   }
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-slate-900">
-          {request.patient_name} · {isReschedule ? "Reschedule" : "Cancel"}
-        </p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Current: {formatDate(request.appointment_date)}
-          {request.appointment_time ? ` · ${request.appointment_time}` : ""}
-          {request.doctor_name ? ` · ${request.doctor_name}` : ""}
-        </p>
-        {request.patient_message ? (
-          <p className="mt-1 text-sm text-slate-600">{request.patient_message}</p>
-        ) : null}
-        {isReschedule ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <label className="text-xs font-medium text-slate-500">
-              New date
-              <input
-                type="date"
-                value={appointmentDate}
-                onChange={(event) => setAppointmentDate(event.target.value)}
-                className="mt-1 block h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800"
-              />
-            </label>
-            <label className="text-xs font-medium text-slate-500">
-              Time
-              <input
-                type="time"
-                value={appointmentTime}
-                onChange={(event) => setAppointmentTime(event.target.value)}
-                className="mt-1 block h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800"
-              />
-            </label>
+    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900">
+            {request.patient_name} · {isReschedule ? "Reschedule" : "Cancel"}
+          </p>
+          {request.doctor_name ? (
+            <p className="mt-0.5 text-xs text-slate-500">{request.doctor_name}</p>
+          ) : null}
+          {request.patient_message ? (
+            <p className="mt-1 text-sm text-slate-600">{request.patient_message}</p>
+          ) : null}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={busy || !canApply}
+            onClick={handleApply}
+            className="inline-flex items-center gap-1 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Check className="size-3.5" />
+            {isReschedule ? "Apply" : "Confirm cancellation"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onResolve(request, "rejected")}
+            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+          >
+            <X className="size-3.5" />
+            Decline
+          </button>
+        </div>
+      </div>
+
+      {isReschedule ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current slot</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{currentSlot}</p>
           </div>
-        ) : null}
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={handleApply}
-          className="inline-flex items-center gap-1 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          <Check className="size-3.5" />
-          {isReschedule ? "Apply" : "Confirm cancellation"}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onResolve(request, "rejected")}
-          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
-        >
-          <X className="size-3.5" />
-          Decline
-        </button>
-      </div>
+          <div className="rounded-xl border border-slate-200 px-3 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">New slot</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <label className="text-xs font-medium text-slate-500">
+                Date
+                <input
+                  type="date"
+                  value={appointmentDate}
+                  onChange={(event) => setAppointmentDate(event.target.value)}
+                  className="mt-1 block h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800"
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-500">
+                Time
+                <input
+                  type="time"
+                  value={appointmentTime}
+                  onChange={(event) => setAppointmentTime(event.target.value)}
+                  className="mt-1 block h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800"
+                />
+              </label>
+            </div>
+            {preferredHint ? (
+              <p className="mt-2 text-xs text-slate-500">Patient asked for {preferredHint}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-slate-500">Current: {currentSlot}</p>
+      )}
     </div>
   );
 }

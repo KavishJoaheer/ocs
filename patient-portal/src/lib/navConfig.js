@@ -31,7 +31,7 @@ export const PATIENT_NAV_ITEMS = [
   {
     to: "/appointments",
     label: "Appointments",
-    mobileLabel: "Visits",
+    mobileLabel: "Appointments",
     icon: CalendarCheck,
     mobileIcon: Calendar,
     mobileIconActive: CalendarCheck,

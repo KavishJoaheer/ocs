@@ -165,6 +165,7 @@ function MobileDashboardHome({
   nextAppointment = null,
   careTeamDoctorName = null,
   activeVisitSlot = null,
+  managing = false,
 }) {
   const { openRequestSheet } = useRequestVisit();
   const { activeProfile } = useFamilyProfile();
@@ -181,8 +182,17 @@ function MobileDashboardHome({
     <div className="native-dashboard min-h-full bg-[#F2F2F7]">
       <header className="animate-fade-in-up pb-10">
         <h1 className="native-display text-[28px] leading-tight">
-          <span className="text-brand-dark-grey">{greeting},</span>{" "}
-          <span className="text-brand-gold">{firstName || "there"}</span>
+          {managing ? (
+            <>
+              <span className="text-brand-dark-grey">Managing care for</span>{" "}
+              <span className="text-brand-gold">{firstName}</span>.
+            </>
+          ) : (
+            <>
+              <span className="text-brand-dark-grey">{greeting},</span>{" "}
+              <span className="text-brand-gold">{firstName || "there"}</span>
+            </>
+          )}
         </h1>
         <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
           Your health. Unwavering care. Accessed effortlessly, managed securely.

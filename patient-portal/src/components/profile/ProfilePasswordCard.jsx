@@ -27,7 +27,7 @@ function ProfilePasswordCard() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast.success("Password updated.");
+      toast.success("Password updated. Other devices will need to sign in again.");
     } catch (error) {
       toast.error(error.message || "Could not update password.");
     } finally {

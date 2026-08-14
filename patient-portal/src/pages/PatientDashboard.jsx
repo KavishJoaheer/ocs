@@ -25,7 +25,6 @@ const VISIT_STEPS = [
   "Doctor en route",
   "Doctor arrived",
 ];
-const ACTIVE_STEP_INDEX = 2;
 
 function DashboardErrorState({ message, onRetry, className = "" }) {
   return (
@@ -63,7 +62,9 @@ function ActiveVisitStatusWarning({ message, onRetry }) {
 }
 
 function ActiveVisitCard({ visit, onCancelled }) {
-  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
+  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : 0;
+  const eta = extractEtaMinutes(visit);
+  const showEta = visit.status === "en_route" && eta != null;
 
   return (
     <div className="desktop-card">
@@ -82,11 +83,13 @@ function ActiveVisitCard({ visit, onCancelled }) {
       ) : null}
 
       <p className={`${visit.forName ? "mt-1" : "mt-3"} font-display text-lg font-bold tracking-tight text-brand-dark-grey`}>
-        {visit.doctor || "Your doctor"}
+        {visitHeadline(visit)}
       </p>
-      <p className="mt-1 text-sm text-brand-cool-grey">
-        {visit.statusText || "Doctor en route · Est. arrival 25 min"}
-      </p>
+      {showEta ? (
+        <p className="mt-1 text-sm text-brand-cool-grey">Estimated arrival: {eta} minutes</p>
+      ) : visit.statusText ? (
+        <p className="mt-1 text-sm text-brand-cool-grey">{visit.statusText}</p>
+      ) : null}
 
       {/* 4-step horizontal progress */}
       <div className="mt-5 grid grid-cols-4 gap-1.5">
@@ -144,25 +147,33 @@ function formatDoctorName(name) {
   return `Dr. ${trimmed}`;
 }
 
-function formatDoctorSurname(name) {
-  const trimmed = String(name || "Doctor").trim();
-  const withoutPrefix = trimmed.replace(/^dr\.?\s+/i, "");
-  const parts = withoutPrefix.split(/\s+/).filter(Boolean);
-  const surname = parts[parts.length - 1];
-  return surname ? `Dr. ${surname}` : formatDoctorName(name);
+function extractEtaMinutes(visit) {
+  if (visit?.status !== "en_route") return null;
+  if (visit?.eta_minutes != null) return visit.eta_minutes;
+  const match = String(visit?.statusText || "").match(/(\d+)\s*min/i);
+  if (match) return Number.parseInt(match[1], 10);
+  return null;
 }
 
-function extractEtaMinutes(visit) {
-  const status = visit?.status || "";
-  const match = status.match(/(\d+)\s*min/i);
-  if (match) return Number.parseInt(match[1], 10);
-  return 25;
+function visitHeadline(visit) {
+  const doctor = visit.doctor || "Your doctor";
+  const status = visit.status || "";
+  if (status === "arrived" || status === "in_consultation") {
+    return `${doctor} has arrived.`;
+  }
+  if (status === "en_route") {
+    return `${doctor} is on the way.`;
+  }
+  if (status === "assigned") {
+    return `${doctor} has been assigned.`;
+  }
+  return "We're reviewing your request.";
 }
 
 function MobileActiveVisit({ visit, onCancelled }) {
-  const doctor = formatDoctorSurname(visit.doctor);
   const eta = extractEtaMinutes(visit);
-  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : ACTIVE_STEP_INDEX;
+  const activeStepIndex = Number.isInteger(visit.stepIndex) ? visit.stepIndex : 0;
+  const showEta = visit.status === "en_route" && eta != null;
 
   return (
     <div className="animate-fade-in-up">
@@ -177,14 +188,18 @@ function MobileActiveVisit({ visit, onCancelled }) {
       </div>
 
       <p className="mt-2 font-display text-[22px] font-bold leading-tight tracking-tight text-[#1a5c52]">
-        {doctor} is on the way.
+        {visitHeadline(visit)}
       </p>
       {visit.forName ? (
         <p className="mt-1 text-[13px] font-medium text-[#2d8f98]">Visit for {visit.forName}</p>
       ) : null}
-      <p className="mt-1 text-[13px] font-light text-[#5b7f8a]">
-        Estimated arrival: {eta} minutes
-      </p>
+      {showEta ? (
+        <p className="mt-1 text-[13px] font-light text-[#5b7f8a]">
+          Estimated arrival: {eta} minutes
+        </p>
+      ) : visit.statusText ? (
+        <p className="mt-1 text-[13px] font-light text-[#5b7f8a]">{visit.statusText}</p>
+      ) : null}
 
       <div className="mt-5 grid grid-cols-4 gap-1.5">
         {VISIT_STEPS.map((step, i) => (
@@ -298,6 +313,7 @@ function PatientDashboard() {
             ? `${activeVisit.status_label} · Est. arrival ${activeVisit.eta_minutes} min`
             : activeVisit.status_label,
         stepIndex: VISIT_STATUS_STEP_INDEX[activeVisit.status] ?? 0,
+        eta_minutes: activeVisit.eta_minutes ?? null,
         forName:
           isPrimaryProfile && Number(activeVisit.patient_id) !== Number(activeProfile.patientId)
             ? activeVisit.dependent_name || activeVisit.patient_name
@@ -387,7 +403,8 @@ function PatientDashboard() {
         </div>
       ) : (
         <MobileDashboardHome
-          firstName={isPrimaryProfile ? firstName : activeProfile.firstName}
+          firstName={firstName}
+          managing={!isPrimaryProfile}
           lastConsultation={profileLastConsultation}
           nextAppointment={profileNextAppointment}
           careTeamDoctorName={careTeamDoctorName}

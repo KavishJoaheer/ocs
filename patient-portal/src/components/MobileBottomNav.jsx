@@ -49,7 +49,7 @@ function MobileBottomNav() {
                       ) : null}
                       <span
                         className={[
-                          "relative block text-[12px] leading-none transition-colors duration-200",
+                          "relative block whitespace-nowrap text-[11px] leading-none tracking-tight transition-colors duration-200",
                           isActive ? "font-semibold text-brand-teal" : "font-semibold text-gray-400",
                         ].join(" ")}
                       >
