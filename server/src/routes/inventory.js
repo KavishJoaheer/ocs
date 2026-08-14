@@ -2626,7 +2626,38 @@ router.delete("/items/:id", (req, res) => {
     });
   }
 
+  const movementHistory = db
+    .prepare(`
+      SELECT COUNT(*) AS movement_count, MAX(created_at) AS last_movement_at
+      FROM inventory_movements
+      WHERE item_id = ?
+    `)
+    .get(itemId);
+
   db.transaction(() => {
+    // inventory_movements cascades away with the item, so snapshot what is being
+    // discarded into inventory_audit_logs, which holds no foreign key to the
+    // item and therefore outlives it.
+    recordAudit({
+      actionType: "delete_item",
+      itemId,
+      itemName: item.item_name,
+      quantity: Number(item.quantity || 0),
+      reason: String(req.body?.reason || "").trim() || "Stock item deleted",
+      targetDoctorId: item.owner_doctor_id || null,
+      performedByUserId: req.auth?.id || null,
+      performedByRole: req.auth?.role || "",
+      performedByName: req.auth?.full_name || req.auth?.username || "",
+      metaJson: JSON.stringify({
+        stock_scope: item.stock_scope || null,
+        unit: item.unit || null,
+        expiry_date: item.expiry_date || null,
+        quantity_at_deletion: Number(item.quantity || 0),
+        movements_discarded: Number(movementHistory?.movement_count || 0),
+        last_movement_at: movementHistory?.last_movement_at || null,
+      }),
+    });
+
     db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
     db.prepare("DELETE FROM inventory_movements WHERE item_id = ?").run(itemId);
     db.prepare("DELETE FROM inventory WHERE id = ?").run(itemId);
@@ -2634,6 +2665,15 @@ router.delete("/items/:id", (req, res) => {
       recordOcsCatalogExclusion(item.item_name, req.auth?.id || null);
     }
   })();
+
+  // The row is gone, so a per-item event has nothing to read: tell every open
+  // session to reload its lists instead.
+  try {
+    publishInventoryResyncBroadcast({ reason: "item_deleted" });
+  } catch (error) {
+    console.warn("[inventory][DELETE /items/:id] resync broadcast failed:", error?.message || error);
+  }
+
   res.status(204).send();
 });
 

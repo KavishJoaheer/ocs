@@ -851,8 +851,11 @@ function initializeDatabase() {
         CHECK (payment_method IN ('cash', 'juice', 'card', 'ib') OR payment_method IS NULL),
       payment_date TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT,
+      updated_by_user_id INTEGER,
       FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE RESTRICT,
-      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE RESTRICT
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE RESTRICT,
+      FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS inventory_folders (
@@ -1379,6 +1382,22 @@ function ensureBillingColumns() {
       ADD COLUMN dispute_status TEXT NOT NULL DEFAULT 'Clean'
         CHECK (dispute_status IN ('Clean', 'Flagged_Review'))
     `);
+  }
+
+  // Read the column list again: the legacy rebuild above may have replaced the
+  // table since the first PRAGMA.
+  const auditColumns = db
+    .prepare("PRAGMA table_info(billing)")
+    .all()
+    .map((column) => column.name);
+
+  // Money changes must be attributable, so every edit records who and when.
+  if (!auditColumns.includes("updated_at")) {
+    db.exec("ALTER TABLE billing ADD COLUMN updated_at TEXT");
+  }
+
+  if (!auditColumns.includes("updated_by_user_id")) {
+    db.exec("ALTER TABLE billing ADD COLUMN updated_by_user_id INTEGER REFERENCES users(id)");
   }
 }
 

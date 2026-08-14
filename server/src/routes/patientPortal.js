@@ -471,7 +471,9 @@ router.post("/reports", (req, res, next) => {
     return next();
   });
 }, (req, res) => {
-  const patientId = req.patientAuth?.patient_id;
+  // File the report against the profile the patient is acting as, so a report
+  // uploaded while a dependent is selected lands on the dependent's chart.
+  const patientId = req.portalPatientId;
 
   if (!patientId) {
     if (req.file?.path && fs.existsSync(req.file.path)) {
@@ -786,14 +788,41 @@ function applyProfileUpdate(req, res) {
 router.put("/profile", applyProfileUpdate);
 router.patch("/profile", applyProfileUpdate);
 
+// A guardian may open records for their own profile and for any dependent they
+// manage. Downloads authenticate with a query token and cannot carry the
+// acting-profile header, so resolve access from the family tree instead.
+function portalCanAccessPatientRecord(req, patientId) {
+  const target = Number(patientId || 0);
+  const guardianId = Number(req.patientAuth?.patient_id || 0);
+  const acting = Number(req.portalPatientId || 0);
+
+  if (!target) {
+    return false;
+  }
+  if (target === acting || target === guardianId) {
+    return true;
+  }
+  if (!guardianId) {
+    return false;
+  }
+
+  return Boolean(
+    db
+      .prepare(
+        "SELECT id FROM patients WHERE id = ? AND parent_patient_id = ? AND deleted_at IS NULL",
+      )
+      .get(target, guardianId),
+  );
+}
+
 // Serve a report attachment to the patient who owns it. Mounted in app.js with
 // requirePatientAuthFlexible so the browser can open it directly (token in the
 // query string, since <a>/window.open cannot send an Authorization header).
 function handleReportAttachmentDownload(req, res) {
-  const patientId = req.patientAuth?.patient_id;
+  const guardianId = Number(req.patientAuth?.patient_id || 0);
   const attachmentId = Number(req.params.attachmentId);
 
-  if (!patientId || !Number.isInteger(attachmentId) || attachmentId <= 0) {
+  if (!guardianId || !Number.isInteger(attachmentId) || attachmentId <= 0) {
     return res.status(404).json({ error: "Attachment not found." });
   }
 
@@ -803,8 +832,8 @@ function handleReportAttachmentDownload(req, res) {
     )
     .get(attachmentId);
 
-  // Ownership check: a patient may only open their own attachments.
-  if (!attachment || Number(attachment.patient_id) !== Number(patientId)) {
+  // Ownership check: own attachments, or those of a dependent they manage.
+  if (!attachment || !portalCanAccessPatientRecord(req, attachment.patient_id)) {
     return res.status(404).json({ error: "Attachment not found." });
   }
 

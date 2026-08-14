@@ -1230,6 +1230,7 @@ const PATIENT_CHILD_TABLES = [
   "patient_operator_access",
   "visit_requests",
   "patient_users",
+  "appointment_change_requests",
 ];
 
 // Merge a duplicate patient record (source) into the canonical one (target).
@@ -1273,6 +1274,15 @@ router.post("/:id/merge", (req, res) => {
       "UPDATE OR IGNORE patient_locations SET patient_id = ? WHERE patient_id = ?",
     ).run(targetId, sourceId);
     db.prepare("DELETE FROM patient_locations WHERE patient_id = ?").run(sourceId);
+
+    // Family links live on the dependent's own row and have no foreign key, so
+    // move them explicitly or the dependents would point at a merged-away record.
+    db.prepare(
+      "UPDATE patients SET parent_patient_id = ? WHERE parent_patient_id = ?",
+    ).run(targetId, sourceId);
+    db.prepare(
+      "UPDATE visit_requests SET dependent_patient_id = ? WHERE dependent_patient_id = ?",
+    ).run(targetId, sourceId);
 
     // Soft-delete the duplicate and mark the surviving record as verified.
     db.prepare(
@@ -1927,6 +1937,9 @@ router.delete("/:id/permanent", (req, res) => {
     publishPatientDataChange(patientId, { reason: "patient" });
     return res.json({
       removed: true,
+      // Dependents are their own patient records, so they survive the purge with
+      // the family link cleared. Report it so staff know to re-link them.
+      detached_dependents: Number(removed.detached_dependents || 0),
       patient: {
         id: removed.id,
         full_name: removed.full_name,

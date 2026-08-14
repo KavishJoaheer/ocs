@@ -173,10 +173,10 @@ function publishInventoryChange({
 }
 
 /** Fan out a full inventory refresh hint after bulk DB maintenance (no warehouse mutation). */
-function publishInventoryResyncBroadcast() {
+function publishInventoryResyncBroadcast({ reason = "doctor_bag_matrix_clone" } = {}) {
   const event = {
     type: "inventory_resync",
-    reason: "doctor_bag_matrix_clone",
+    reason,
     at: new Date().toISOString(),
   };
 

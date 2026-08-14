@@ -17,7 +17,7 @@ const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createApp } = require("../src/app");
-const { db } = require("../src/db");
+const { db, labReportAttachmentsDir } = require("../src/db");
 const { parseMauritianID } = require("../src/lib/nicParser");
 
 let server;
@@ -1189,6 +1189,223 @@ test("patient can add a dependent and request an appointment change", async () =
   assert.equal(listedAfter.data.dependents.length, 0);
 });
 
+test("marking a bill paid records who changed it and when", async () => {
+  const patientId = insertDirectoryPatient("BillingAudit");
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now', '-1 day'), '10:00', 'completed')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  const consultationId = db
+    .prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, date('now', '-1 day'), 'Audit trail check')
+    `)
+    .run(appointmentId, patientId, doctorId).lastInsertRowid;
+
+  const billId = db
+    .prepare(`
+      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+      VALUES (?, ?, ?, ?, 'unpaid')
+    `)
+    .run(
+      consultationId,
+      patientId,
+      JSON.stringify([{ description: "General Consultation", amount: 800 }]),
+      800,
+    ).lastInsertRowid;
+
+  const before = db.prepare("SELECT updated_at, updated_by_user_id FROM billing WHERE id = ?").get(billId);
+  assert.equal(before.updated_at, null);
+  assert.equal(before.updated_by_user_id, null);
+
+  const paid = await api("PATCH", `/api/billing/${billId}/pay`, {
+    token: adminToken,
+    body: { payment_method: "cash" },
+  });
+  assert.equal(paid.status, 200, JSON.stringify(paid.data));
+  assert.equal(paid.data.status, "paid");
+
+  const adminUserId = db
+    .prepare("SELECT id FROM users WHERE username = 'shravan.joaheer'")
+    .get().id;
+  const after = db.prepare("SELECT updated_at, updated_by_user_id FROM billing WHERE id = ?").get(billId);
+  assert.ok(after.updated_at, "expected an updated_at stamp");
+  assert.equal(Number(after.updated_by_user_id), Number(adminUserId));
+  assert.equal(paid.data.updated_by_name, "Dr Shravan Kumar Joaheer");
+});
+
+async function uploadPatientReport({ token, actingPatientId, name }) {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([Buffer.from("%PDF-1.4 test report")], { type: "application/pdf" }),
+    "report.pdf",
+  );
+  form.append("name", name);
+  form.append("report_date", "2030-03-04");
+
+  const headers = { Authorization: `Bearer ${token}` };
+  if (actingPatientId) {
+    headers["X-OCS-Patient-Id"] = String(actingPatientId);
+  }
+
+  const res = await fetch(`${baseUrl}/api/patient-portal/reports`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  const text = await res.text();
+  return { status: res.status, data: text ? JSON.parse(text) : null };
+}
+
+function downloadPatientReport(attachmentId, token) {
+  return fetch(`${baseUrl}/api/patient-portal/reports/attachments/${attachmentId}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// Store an attachment owned outright by the given patient, so download access
+// can be tested independently of how the upload route files reports.
+function insertStoredAttachment(patientId, title) {
+  fs.mkdirSync(labReportAttachmentsDir, { recursive: true });
+  const storedName = `test-${patientId}-${Date.now()}.pdf`;
+  const contents = "%PDF-1.4 stored report";
+  fs.writeFileSync(path.join(labReportAttachmentsDir, storedName), contents);
+
+  const reportId = db
+    .prepare(`
+      INSERT INTO lab_reports (
+        patient_id, consultation_id, report_title, report_date, report_details, created_by_user_id
+      )
+      VALUES (?, NULL, ?, ?, ?, NULL)
+    `)
+    .run(patientId, title, "2030-03-04", JSON.stringify({ patient_uploaded: true }))
+    .lastInsertRowid;
+
+  return Number(
+    db
+      .prepare(`
+        INSERT INTO lab_report_attachments (
+          report_id, patient_id, consultation_id, original_name, stored_name,
+          mime_type, file_size, relative_path, uploaded_by_user_id
+        )
+        VALUES (?, ?, NULL, ?, ?, 'application/pdf', ?, ?, NULL)
+      `)
+      .run(reportId, patientId, "xray.pdf", storedName, contents.length, storedName)
+      .lastInsertRowid,
+  );
+}
+
+test("a report uploaded for a dependent is filed on the dependent's chart", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("upload"),
+      password: "secret123",
+      full_name: "Upload Guardian",
+      phone: "57001133",
+      national_id: uniqueNationalId("upl"),
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  const token = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
+
+  const created = await api("POST", "/api/patient-portal/dependents", {
+    token,
+    body: {
+      full_name: "Upload Child",
+      relationship: "Daughter",
+      date_of_birth: "2016-04-02",
+      gender: "F",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const childId = created.data.dependent.id;
+
+  const upload = await uploadPatientReport({
+    token,
+    actingPatientId: childId,
+    name: "Child blood test",
+  });
+  assert.equal(upload.status, 201, JSON.stringify(upload.data));
+  const attachmentId = Number(upload.data.report.id);
+  assert.ok(attachmentId, "expected an attachment id");
+
+  const childRecords = await api("GET", "/api/patient-portal/health-records", {
+    token,
+    headers: { "X-OCS-Patient-Id": String(childId) },
+  });
+  assert.equal(childRecords.status, 200, JSON.stringify(childRecords.data));
+  assert.ok(
+    childRecords.data.reports.some((report) => Number(report.id) === attachmentId),
+    "expected the report on the dependent's chart",
+  );
+
+  const guardianRecords = await api("GET", "/api/patient-portal/health-records", { token });
+  assert.equal(guardianRecords.status, 200, JSON.stringify(guardianRecords.data));
+  assert.ok(
+    !guardianRecords.data.reports.some((report) => Number(report.id) === attachmentId),
+    "the guardian's own chart must not show the dependent's report",
+  );
+});
+
+test("a guardian can open a dependent's report but another patient cannot", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("download"),
+      password: "secret123",
+      full_name: "Download Guardian",
+      phone: "57001134",
+      national_id: uniqueNationalId("dwn"),
+      gender: "M",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  const token = reg.data.token;
+  await verifyPortalPatientForVisits(reg);
+
+  const created = await api("POST", "/api/patient-portal/dependents", {
+    token,
+    body: {
+      full_name: "Download Child",
+      relationship: "Son",
+      date_of_birth: "2015-01-09",
+      gender: "M",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+
+  const attachmentId = insertStoredAttachment(created.data.dependent.id, "Child x-ray");
+
+  // The download link carries a token but no acting-profile header, so the
+  // guardian must still be able to open a dependent's file.
+  const guardianDownload = await downloadPatientReport(attachmentId, token);
+  assert.equal(guardianDownload.status, 200);
+  assert.equal(guardianDownload.headers.get("content-type"), "application/pdf");
+
+  const stranger = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("stranger"),
+      password: "secret123",
+      full_name: "Unrelated Patient",
+      phone: "57001135",
+      national_id: uniqueNationalId("str"),
+      gender: "F",
+    },
+  });
+  assert.equal(stranger.status, 201, JSON.stringify(stranger.data));
+  await verifyPortalPatientForVisits(stranger);
+
+  const strangerDownload = await downloadPatientReport(attachmentId, stranger.data.token);
+  assert.equal(strangerDownload.status, 404);
+});
+
 function insertDirectoryPatient(label) {
   return db
     .prepare(`
@@ -1289,6 +1506,201 @@ test("admin can permanently delete a patient from recently deleted", async () =>
   });
   assert.equal(purged.status, 200, JSON.stringify(purged.data));
   assert.equal(db.prepare("SELECT id FROM patients WHERE id = ?").get(patientId), undefined);
+});
+
+function insertCompletedVisitContext(patientId, doctorId) {
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now'), '11:00', 'scheduled')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  const changeRequestId = db
+    .prepare(`
+      INSERT INTO appointment_change_requests (appointment_id, patient_id, request_type, patient_message)
+      VALUES (?, ?, 'reschedule', 'Please move this visit')
+    `)
+    .run(appointmentId, patientId).lastInsertRowid;
+
+  return { appointmentId, changeRequestId };
+}
+
+test("merging a patient moves change requests and family links", async () => {
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const targetId = insertDirectoryPatient("MergeTarget");
+  const sourceId = insertDirectoryPatient("MergeSource");
+  const dependentId = insertDirectoryPatient("MergeDependent");
+  db.prepare("UPDATE patients SET parent_patient_id = ? WHERE id = ?").run(sourceId, dependentId);
+
+  const { changeRequestId } = insertCompletedVisitContext(sourceId, doctorId);
+  const visitId = db
+    .prepare(`
+      INSERT INTO visit_requests (patient_id, visit_for, dependent_patient_id, address, reason)
+      VALUES (?, 'dependent', ?, 'Family Home', 'Fever')
+    `)
+    .run(sourceId, dependentId).lastInsertRowid;
+
+  const merged = await api("POST", `/api/patients/${targetId}/merge`, {
+    token: adminToken,
+    body: { source_id: sourceId },
+  });
+  assert.equal(merged.status, 200, JSON.stringify(merged.data));
+
+  const changeRequest = db
+    .prepare("SELECT patient_id FROM appointment_change_requests WHERE id = ?")
+    .get(changeRequestId);
+  assert.equal(Number(changeRequest.patient_id), targetId, "change request should follow the merge");
+
+  const dependent = db.prepare("SELECT parent_patient_id FROM patients WHERE id = ?").get(dependentId);
+  assert.equal(Number(dependent.parent_patient_id), targetId, "dependent should be reparented");
+
+  const visit = db.prepare("SELECT patient_id, dependent_patient_id FROM visit_requests WHERE id = ?").get(visitId);
+  assert.equal(Number(visit.patient_id), targetId);
+  assert.equal(Number(visit.dependent_patient_id), dependentId, "the dependent itself did not move");
+});
+
+test("purging a guardian keeps the dependent record but clears the link", async () => {
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const guardianId = insertDirectoryPatient("PurgeGuardian");
+  const dependentId = insertDirectoryPatient("PurgeDependent");
+  db.prepare("UPDATE patients SET parent_patient_id = ? WHERE id = ?").run(guardianId, dependentId);
+
+  const { changeRequestId } = insertCompletedVisitContext(guardianId, doctorId);
+  const dependentVisitId = db
+    .prepare(`
+      INSERT INTO visit_requests (patient_id, visit_for, dependent_patient_id, address, reason)
+      VALUES (?, 'dependent', ?, 'Family Home', 'Cough')
+    `)
+    .run(guardianId, dependentId).lastInsertRowid;
+
+  const removed = await api("DELETE", `/api/patients/${guardianId}`, { token: adminToken });
+  assert.equal(removed.status, 204, JSON.stringify(removed.data));
+
+  const purged = await api("DELETE", `/api/patients/${guardianId}/permanent`, { token: adminToken });
+  assert.equal(purged.status, 200, JSON.stringify(purged.data));
+  assert.equal(purged.data.detached_dependents, 1);
+
+  assert.equal(db.prepare("SELECT id FROM patients WHERE id = ?").get(guardianId), undefined);
+  assert.equal(
+    db.prepare("SELECT id FROM appointment_change_requests WHERE id = ?").get(changeRequestId),
+    undefined,
+  );
+  assert.equal(
+    db.prepare("SELECT id FROM visit_requests WHERE id = ?").get(dependentVisitId),
+    undefined,
+    "a visit booked for the dependent is purged with them",
+  );
+
+  const dependent = db.prepare("SELECT parent_patient_id FROM patients WHERE id = ?").get(dependentId);
+  assert.ok(dependent, "the dependent's own record must survive");
+  assert.equal(dependent.parent_patient_id, null);
+});
+
+test("emergency override never drives recorded stock negative", async () => {
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const patientId = insertDirectoryPatient("OverrideStock");
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now'), '12:00', 'completed')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  const consultationId = db
+    .prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, date('now'), 'Emergency dispensing')
+    `)
+    .run(appointmentId, patientId, doctorId).lastInsertRowid;
+
+  const itemId = db
+    .prepare(`
+      INSERT INTO inventory (
+        item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
+        stock_scope, owner_doctor_id
+      )
+      VALUES (?, 2, 0, 'unit', 10, 25, 'doctor', ?)
+    `)
+    .run(`Override Amoxicillin ${Date.now()}`, doctorId).lastInsertRowid;
+
+  const created = await api("POST", "/api/billing", {
+    token: adminToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [
+        {
+          description: "Amoxicillin",
+          amount: 125,
+          type: "Sale",
+          quantity: 5,
+          inventory_item_id: itemId,
+          emergency_override: true,
+        },
+      ],
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+
+  const stock = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId);
+  assert.equal(stock.quantity, 0, "recorded stock must stop at zero, not go negative");
+
+  const movement = db
+    .prepare(`
+      SELECT quantity, previous_quantity, next_quantity, meta_json
+      FROM inventory_movements
+      WHERE item_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `)
+    .get(itemId);
+  assert.equal(movement.previous_quantity, 2);
+  assert.equal(movement.next_quantity, 0);
+  assert.equal(movement.quantity, 2, "the ledger records what actually left stock");
+
+  const meta = JSON.parse(movement.meta_json);
+  assert.equal(meta.dispensed_quantity, 5);
+  assert.equal(meta.batch_shortfall, 3, "the gap is recorded for the auditor");
+});
+
+test("deleting a stock item leaves an audit record behind", async () => {
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const itemName = `Deletable Gauze ${Date.now()}`;
+  const itemId = db
+    .prepare(`
+      INSERT INTO inventory (
+        item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
+        stock_scope, owner_doctor_id
+      )
+      VALUES (?, 7, 0, 'unit', 5, 12, 'doctor', ?)
+    `)
+    .run(itemName, doctorId).lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO inventory_movements (item_id, movement_type, quantity, previous_quantity, next_quantity, note)
+    VALUES (?, 'out', 3, 10, 7, 'Dispensed in the field')
+  `).run(itemId);
+
+  const removed = await api("DELETE", `/api/inventory/items/${itemId}`, { token: adminToken });
+  assert.equal(removed.status, 204, JSON.stringify(removed.data));
+  assert.equal(db.prepare("SELECT id FROM inventory WHERE id = ?").get(itemId), undefined);
+
+  const audit = db
+    .prepare(`
+      SELECT item_name, quantity, meta_json
+      FROM inventory_audit_logs
+      WHERE action_type = 'delete_item' AND item_id = ?
+    `)
+    .get(itemId);
+  assert.ok(audit, "expected a delete_item audit row");
+  assert.equal(audit.item_name, itemName);
+  assert.equal(audit.quantity, 7);
+
+  const meta = JSON.parse(audit.meta_json);
+  assert.equal(meta.movements_discarded, 1, "the discarded ledger depth is recorded");
+  assert.equal(meta.quantity_at_deletion, 7);
 });
 
 test("doctors still cannot delete patients", async () => {

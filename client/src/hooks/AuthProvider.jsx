@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api, getStoredAuthToken, setStoredAuthToken } from "../lib/api.js";
-import { setOfflineQueueUserContext } from "../lib/inventoryOfflineSync.js";
-import { clearOfflineMutationsForUser } from "../lib/offlineQueue.js";
+import { flushOfflineQueue, setOfflineQueueUserContext } from "../lib/inventoryOfflineSync.js";
+import { clearOfflineMutationsForUser, countOfflineMutations } from "../lib/offlineQueue.js";
 import {
   clearPatientOfflineCache,
   prefetchPatientOfflineDirectory,
@@ -19,6 +19,22 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async ({ remote = true } = {}) => {
     const activeToken = getStoredAuthToken();
     const departingUserId = user?.id ?? null;
+
+    // A queued mutation is real stock and billing data captured offline, so try
+    // to drain it while this session's token is still valid.
+    let pendingOffline = 0;
+    if (departingUserId != null) {
+      try {
+        pendingOffline = await countOfflineMutations({ userId: departingUserId });
+        if (pendingOffline > 0) {
+          await flushOfflineQueue({ silent: true });
+          pendingOffline = await countOfflineMutations({ userId: departingUserId });
+        }
+      } catch {
+        // An unreadable queue counts as pending so we never delete blindly.
+        pendingOffline = 1;
+      }
+    }
 
     if (remote && activeToken) {
       try {
@@ -37,14 +53,21 @@ export function AuthProvider({ children }) {
     setUser(null);
     setHcmUnreadCount(0);
     // Detach the offline queue from this user immediately so any subsequent
-    // login on the same device starts with a clean scope.
+    // login on the same device starts with a clean scope. Entries stay scoped
+    // to their own user id, so they can only ever replay for that user.
     setOfflineQueueUserContext(null);
-    if (departingUserId != null) {
+    if (departingUserId != null && pendingOffline === 0) {
       try {
         await clearOfflineMutationsForUser(departingUserId);
       } catch {
         // Best effort cleanup only.
       }
+    }
+    if (pendingOffline > 0) {
+      toast.error(
+        `${pendingOffline} offline ${pendingOffline === 1 ? "update has" : "updates have"} not synced yet. They are kept on this device — sign back in here to finish syncing.`,
+        { duration: 9000 },
+      );
     }
     await clearPatientOfflineCache();
   }, [user?.id]);

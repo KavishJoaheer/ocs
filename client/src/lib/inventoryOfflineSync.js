@@ -184,12 +184,14 @@ export async function flushOfflineQueue({ silent = false } = {}) {
         break;
       }
 
-      await removeOfflineMutation(entry.id);
-      notifyQueueChanged();
+      // Server-side (5xx) or unknown failures are not the doctor's fault and
+      // are usually transient, so keep the entry queued for the next pass.
+      // Dropping it here would silently lose a real sale.
       if (!silent) {
         const label = entry.meta?.itemName || "inventory update";
-        toast.error(`Could not sync ${label}: ${error.message}`);
+        toast.error(`Could not sync ${label} yet: ${error.message}. It stays queued.`);
       }
+      break;
     }
   }
 

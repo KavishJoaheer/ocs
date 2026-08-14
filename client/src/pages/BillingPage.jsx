@@ -2424,6 +2424,12 @@ function BillingPage() {
                           </td>
                           <td className="px-5 py-3 text-sm text-slate-600">
                             {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
+                            {bill.updated_by_name ? (
+                              <span className="mt-0.5 block text-xs text-slate-400">
+                                Edited by {bill.updated_by_name}
+                                {bill.updated_at ? ` · ${formatDate(bill.updated_at)}` : ""}
+                              </span>
+                            ) : null}
                           </td>
                           <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">

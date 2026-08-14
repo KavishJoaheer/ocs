@@ -283,15 +283,14 @@ function applyInventoryTransactions({
     }
 
     const previousQuantity = available;
-    const nextQuantity = previousQuantity - qtyToDecrement;
-    const batchQty =
-      allowOverride && available < qtyToDecrement
-        ? Math.max(available, 0)
-        : qtyToDecrement;
-    if (batchQty > 0) {
-      consumeDoctorBatches(stockItem.id, batchQty);
-    }
-    if (qtyToDecrement > 0) {
+    // Recorded stock must never go negative. An emergency override dispenses
+    // more than the system knows about, so deduct what is on record and carry
+    // the gap on the movement as batch_shortfall instead.
+    const deductedFromStock = Math.max(0, Math.min(qtyToDecrement, previousQuantity));
+    const nextQuantity = previousQuantity - deductedFromStock;
+    const batchShortfall = qtyToDecrement - deductedFromStock;
+    if (deductedFromStock > 0) {
+      consumeDoctorBatches(stockItem.id, deductedFromStock);
       db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
         nextQuantity,
         stockItem.id,
@@ -308,7 +307,9 @@ function applyInventoryTransactions({
     if (qtyToDecrement > 0) {
       insertInventoryMovement({
         itemId: stockItem.id,
-        quantity: qtyToDecrement,
+        // The ledger records what left recorded stock, so a reversal restores
+        // the true prior quantity rather than inventing stock.
+        quantity: deductedFromStock,
         previousQuantity,
         nextQuantity,
         actionType,
@@ -324,10 +325,8 @@ function applyInventoryTransactions({
         meta: {
           item_name: stockItem.item_name,
           emergency_override: Boolean(line.emergency_override),
-          batch_shortfall:
-            allowOverride && available < qtyToDecrement
-              ? qtyToDecrement - Math.max(available, 0)
-              : 0,
+          dispensed_quantity: qtyToDecrement,
+          batch_shortfall: batchShortfall,
           performed_by_user_id: actor?.id || userId || null,
           performed_by_role: actor?.role || "",
           performed_by_name: actor?.full_name || actor?.username || "",
@@ -367,11 +366,13 @@ function getJoinedBillById(billId) {
         c.consultation_date,
         c.appointment_id,
         c.doctor_id,
-        d.full_name AS doctor_name
+        d.full_name AS doctor_name,
+        u.full_name AS updated_by_name
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
+      LEFT JOIN users u ON u.id = b.updated_by_user_id
       WHERE b.id = ?
         AND p.deleted_at IS NULL
     `)
@@ -458,11 +459,13 @@ router.get("/", (req, res) => {
         p.full_name AS patient_name,
         c.consultation_date,
         c.doctor_id,
-        d.full_name AS doctor_name
+        d.full_name AS doctor_name,
+        u.full_name AS updated_by_name
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
+      LEFT JOIN users u ON u.id = b.updated_by_user_id
       WHERE p.deleted_at IS NULL
         AND (@status = '' OR b.status = @status)
         AND (@patientId = '' OR CAST(b.patient_id AS TEXT) = @patientId)
@@ -746,7 +749,9 @@ router.put("/:id", (req, res) => {
       total_amount = ?,
       status = ?,
       payment_method = ?,
-      payment_date = ?
+      payment_date = ?,
+      updated_at = CURRENT_TIMESTAMP,
+      updated_by_user_id = ?
     WHERE id = ?
   `).run(
     JSON.stringify(items),
@@ -754,6 +759,7 @@ router.put("/:id", (req, res) => {
     status,
     paymentMethod,
     paymentDate || null,
+    req.auth?.id || null,
     billId,
   );
 
@@ -788,9 +794,11 @@ router.patch("/:id/pay", (req, res) => {
     UPDATE billing
     SET status = 'paid',
         payment_method = ?,
-        payment_date = ?
+        payment_date = ?,
+        updated_at = CURRENT_TIMESTAMP,
+        updated_by_user_id = ?
     WHERE id = ?
-  `).run(paymentMethod, paymentDate, billId);
+  `).run(paymentMethod, paymentDate, req.auth?.id || null, billId);
 
   if (existing?.patient_id) {
     publishPatientDataChange(existing.patient_id, { reason: "billing" });

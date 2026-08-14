@@ -20,7 +20,12 @@ function purgePatientRecordsSync(patientId) {
     .all(id)
     .map((row) => Number(row.id));
 
+  let detachedDependents = 0;
+
   const run = db.transaction(() => {
+    // Change requests cascade from both the patient and the appointment, but
+    // delete them first so the purge does not depend on the foreign_keys pragma.
+    db.prepare("DELETE FROM appointment_change_requests WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM lab_report_attachments WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM lab_reports WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM billing WHERE patient_id = ?").run(id);
@@ -29,7 +34,18 @@ function purgePatientRecordsSync(patientId) {
     db.prepare("DELETE FROM patient_revisions WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM patient_operator_access WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM visit_requests WHERE patient_id = ?").run(id);
+    // Visits a guardian booked for this patient are this patient's clinical data.
+    db.prepare("DELETE FROM visit_requests WHERE dependent_patient_id = ?").run(id);
     db.prepare("DELETE FROM patient_locations WHERE patient_id = ?").run(id);
+
+    // parent_patient_id has no foreign key, so dependents would keep pointing at
+    // a row that no longer exists. Detach them rather than deleting other
+    // patients' medical records as a side effect of this purge.
+    detachedDependents = Number(
+      db
+        .prepare("UPDATE patients SET parent_patient_id = NULL WHERE parent_patient_id = ?")
+        .run(id).changes || 0,
+    );
 
     if (patientUserIds.length) {
       const placeholders = patientUserIds.map(() => "?").join(", ");
@@ -51,6 +67,7 @@ function purgePatientRecordsSync(patientId) {
     id,
     full_name: patient.full_name,
     patient_identifier: patient.patient_identifier,
+    detached_dependents: detachedDependents,
   };
 }
 
