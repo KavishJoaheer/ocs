@@ -301,10 +301,20 @@ router.post("/change-password", requirePatientAuth, (req, res) => {
     return res.status(401).json({ error: "Current password is incorrect." });
   }
 
-  db.prepare("UPDATE patient_users SET password_hash = ? WHERE id = ?").run(
-    hashPassword(newPassword),
-    user.id,
-  );
+  db.transaction(() => {
+    db.prepare("UPDATE patient_users SET password_hash = ? WHERE id = ?").run(
+      hashPassword(newPassword),
+      user.id,
+    );
+    if (req.patientAuthSessionId) {
+      db.prepare("DELETE FROM patient_auth_sessions WHERE patient_user_id = ? AND id != ?").run(
+        user.id,
+        req.patientAuthSessionId,
+      );
+    } else {
+      db.prepare("DELETE FROM patient_auth_sessions WHERE patient_user_id = ?").run(user.id);
+    }
+  })();
 
   return res.json({ ok: true });
 });

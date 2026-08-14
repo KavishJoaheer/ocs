@@ -101,6 +101,22 @@ function getActiveVisitRequestForPatient(patientId) {
   return serializeVisitRequest(row, { includeStaffNotes: false });
 }
 
+function getActiveVisitRequestsForDependents(guardianId) {
+  const placeholders = ACTIVE_VISIT_STATUSES.map(() => "?").join(", ");
+  return db
+    .prepare(
+      `${VISIT_REQUEST_SELECT}
+       WHERE v.patient_id IN (
+         SELECT id FROM patients
+         WHERE parent_patient_id = ? AND deleted_at IS NULL
+       )
+         AND v.status IN (${placeholders})
+       ORDER BY v.created_at DESC, v.id DESC`,
+    )
+    .all(guardianId, ...ACTIVE_VISIT_STATUSES)
+    .map((row) => serializeVisitRequest(row, { includeStaffNotes: false }));
+}
+
 module.exports = {
   ACTIVE_VISIT_STATUSES,
   ALL_VISIT_STATUSES,
@@ -112,4 +128,5 @@ module.exports = {
   serializeVisitRequest,
   getVisitRequestById,
   getActiveVisitRequestForPatient,
+  getActiveVisitRequestsForDependents,
 };

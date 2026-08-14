@@ -2,12 +2,13 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
 import { api } from "../../lib/api.js";
+import { PRIMARY_PROFILE_ID } from "../../lib/familyProfiles.js";
 import ProfileListCard from "./ProfileListCard.jsx";
 
 const RELATIONSHIPS = ["Son", "Daughter", "Spouse", "Parent", "Sibling", "Other"];
 
 function ProfileFamilyCard() {
-  const { dependents, reloadDependents, activeProfile } = useFamilyProfile();
+  const { dependents, reloadDependents, activeProfile, activeProfileId, setActiveProfile } = useFamilyProfile();
   const [form, setForm] = useState({
     full_name: "",
     relationship: "Son",
@@ -15,6 +16,8 @@ function ProfileFamilyCard() {
     gender: "M",
   });
   const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
 
   if (!activeProfile?.isPrimary) {
     return (
@@ -39,14 +42,62 @@ function ProfileFamilyCard() {
     }
   }
 
+  async function handleRemove(row) {
+    if (removingId) return;
+    setRemovingId(row.id);
+    try {
+      await api.delete(`/patient-portal/dependents/${row.id}`);
+      if (String(activeProfileId) === String(row.id)) {
+        setActiveProfile(PRIMARY_PROFILE_ID);
+      }
+      await reloadDependents();
+      setConfirmId(null);
+      toast.success(`${row.full_name} was removed from your family list.`);
+    } catch (error) {
+      toast.error(error.message || "Could not remove this family member.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   return (
     <ProfileListCard title="Family members" subtitle="Add people you request home visits for.">
       {dependents.length ? (
         <ul className="space-y-2 px-5 pb-3">
           {dependents.map((row) => (
-            <li key={row.id} className="text-sm font-medium text-[#1a5c52]">
-              {row.full_name}
-              <span className="ml-2 text-xs font-normal text-[#8a9e9a]">{row.relationship}</span>
+            <li key={row.id} className="flex items-center justify-between gap-3 text-sm font-medium text-[#1a5c52]">
+              <span>
+                {row.full_name}
+                <span className="ml-2 text-xs font-normal text-[#8a9e9a]">{row.relationship}</span>
+              </span>
+              {confirmId === row.id ? (
+                <span className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={Boolean(removingId)}
+                    onClick={() => handleRemove(row)}
+                    className="text-xs font-semibold text-[#cf5b50] disabled:opacity-50"
+                  >
+                    {removingId === row.id ? "Removing..." : "Confirm"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(removingId)}
+                    onClick={() => setConfirmId(null)}
+                    className="text-xs font-medium text-[#8a9e9a]"
+                  >
+                    Keep
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmId(row.id)}
+                  className="shrink-0 text-xs font-medium text-[#8a9e9a] transition hover:text-[#cf5b50]"
+                >
+                  Remove
+                </button>
+              )}
             </li>
           ))}
         </ul>

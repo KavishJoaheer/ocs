@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import dayjs from "dayjs";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { ArrowRight } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { CLINIC_TEL_HREF } from "../lib/clinicContact.js";
-import { DEPENDENT_DASHBOARD } from "../lib/familyProfiles.js";
+import { pickVisibleActiveVisit } from "../lib/visitRequests.js";
 import VisitCancelPrompt from "../components/VisitCancelPrompt.jsx";
 import MobileDashboardHome from "../components/dashboard/MobileDashboardHome.jsx";
 import DesktopDashboardHome from "../components/dashboard/DesktopDashboardHome.jsx";
@@ -78,7 +77,11 @@ function ActiveVisitCard({ visit, onCancelled }) {
         </p>
       </div>
 
-      <p className="mt-3 font-display text-lg font-bold tracking-tight text-brand-dark-grey">
+      {visit.forName ? (
+        <p className="mt-3 text-sm font-medium text-brand-cool-grey">Visit for {visit.forName}</p>
+      ) : null}
+
+      <p className={`${visit.forName ? "mt-1" : "mt-3"} font-display text-lg font-bold tracking-tight text-brand-dark-grey`}>
         {visit.doctor || "Your doctor"}
       </p>
       <p className="mt-1 text-sm text-brand-cool-grey">
@@ -176,6 +179,9 @@ function MobileActiveVisit({ visit, onCancelled }) {
       <p className="mt-2 font-display text-[22px] font-bold leading-tight tracking-tight text-[#1a5c52]">
         {doctor} is on the way.
       </p>
+      {visit.forName ? (
+        <p className="mt-1 text-[13px] font-medium text-[#2d8f98]">Visit for {visit.forName}</p>
+      ) : null}
       <p className="mt-1 text-[13px] font-light text-[#5b7f8a]">
         Estimated arrival: {eta} minutes
       </p>
@@ -253,7 +259,7 @@ function PatientDashboard() {
       try {
         const visitData = await api.get("/patient-portal/visit-requests/active");
         if (!ignore) {
-          setActiveVisit(visitData.visit_request || null);
+          setActiveVisit(pickVisibleActiveVisit(visitData));
           setActiveVisitError(null);
         }
       } catch (error) {
@@ -269,7 +275,7 @@ function PatientDashboard() {
     return () => {
       ignore = true;
     };
-  }, [refreshKey, retryToken]);
+  }, [refreshKey, retryToken, activeProfileId]);
 
   function handleRetryDashboard() {
     setActiveVisitError(null);
@@ -280,7 +286,9 @@ function PatientDashboard() {
     setActiveVisit(null);
   }
 
-  const primaryActiveVisit = activeVisit
+  const firstName = activeProfile.firstName;
+  const isPrimaryProfile = activeProfile.isPrimary;
+  const mappedActiveVisit = activeVisit
     ? {
         id: activeVisit.id,
         status: activeVisit.status,
@@ -290,6 +298,10 @@ function PatientDashboard() {
             ? `${activeVisit.status_label} · Est. arrival ${activeVisit.eta_minutes} min`
             : activeVisit.status_label,
         stepIndex: VISIT_STATUS_STEP_INDEX[activeVisit.status] ?? 0,
+        forName:
+          isPrimaryProfile && Number(activeVisit.patient_id) !== Number(activeProfile.patientId)
+            ? activeVisit.dependent_name || activeVisit.patient_name
+            : null,
       }
     : null;
 
@@ -300,22 +312,11 @@ function PatientDashboard() {
     return "Good evening";
   })();
 
-  const firstName = activeProfile.firstName;
-  const dependentDashboard = DEPENDENT_DASHBOARD[activeProfileId];
-  const isPrimaryProfile = activeProfile.isPrimary;
-
-  const profileNextAppointment = isPrimaryProfile
-    ? nextAppointment
-    : dependentDashboard?.nextAppointment ?? null;
-  const profileLastConsultation = isPrimaryProfile
-    ? lastConsultation
-    : dependentDashboard?.lastConsultation ?? null;
-  const careTeamDoctorName = isPrimaryProfile
-    ? patient?.assigned_doctor_name || profileLastConsultation?.doctor_name || null
-    : dependentDashboard?.careTeamDoctorName ?? profileLastConsultation?.doctor_name ?? null;
-  const profileActiveVisit = isPrimaryProfile
-    ? primaryActiveVisit
-    : dependentDashboard?.activeVisit ?? null;
+  const profileNextAppointment = nextAppointment;
+  const profileLastConsultation = lastConsultation;
+  const careTeamDoctorName =
+    patient?.assigned_doctor_name || profileLastConsultation?.doctor_name || null;
+  const profileActiveVisit = mappedActiveVisit;
 
   const headline = isPrimaryProfile ? (
     <>
@@ -331,12 +332,12 @@ function PatientDashboard() {
 
   return (
     <>
-    {activeVisitError && isPrimaryProfile ? (
+    {activeVisitError ? (
       <ActiveVisitStatusWarning message={activeVisitError} onRetry={handleRetryDashboard} />
     ) : null}
     {/* ───────── Desktop dashboard ───────── */}
     <div className="max-lg:hidden">
-      {loading && isPrimaryProfile ? (
+      {loading ? (
         <div className="desktop-dashboard">
           <div className="desktop-dashboard-greeting">
             <div className="h-10 w-72 animate-pulse rounded-lg bg-[rgba(0,0,0,0.04)]" />
@@ -352,7 +353,7 @@ function PatientDashboard() {
             </div>
           </div>
         </div>
-      ) : loadError && isPrimaryProfile ? (
+      ) : loadError ? (
         <div className="desktop-card px-8 py-16">
           <DashboardErrorState message={loadError} onRetry={handleRetryDashboard} />
         </div>
@@ -374,12 +375,12 @@ function PatientDashboard() {
 
     {/* ───────── Mobile dashboard — native home experience ───────── */}
     <div key={`m-${activeProfileId}`} className="dashboard-profile-transition hidden max-lg:block">
-      {loading && isPrimaryProfile ? (
+      {loading ? (
         <div className="native-dashboard space-y-5 bg-[#F2F2F7]">
           <div className="squircle-outer h-20 animate-pulse bg-white/60" />
           <div className="squircle-outer h-32 animate-pulse bg-white/60" />
         </div>
-      ) : loadError && isPrimaryProfile ? (
+      ) : loadError ? (
         <div className="native-dashboard min-h-full bg-[#F2F2F7]">
           <DashboardErrorState message={loadError} onRetry={handleRetryDashboard} className="min-h-[60vh]" />
         </div>

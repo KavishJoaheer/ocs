@@ -53,8 +53,6 @@ export function buildDependentProfile(row, index = 0) {
   };
 }
 
-export const DEPENDENT_DASHBOARD = {};
-
 export function getDefaultProfileId() {
   return PRIMARY_PROFILE_ID;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { api } from "../../lib/api.js";
+import { pickVisibleActiveVisit } from "../../lib/visitRequests.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
 import VisitCancelPrompt from "../../components/VisitCancelPrompt.jsx";
 import VisitProgressTracker, {
@@ -59,7 +60,7 @@ function RequestVisitTracking() {
       try {
         const data = await api.get("/patient-portal/visit-requests/active");
         if (!ignore) {
-          setVisit(data.visit_request || null);
+          setVisit(pickVisibleActiveVisit(data));
         }
       } catch (error) {
         if (!ignore) {
@@ -151,6 +152,11 @@ function RequestVisitTracking() {
         <h2 className="visit-status-eta native-display text-[26px] leading-tight text-[#1a5c52] sm:text-[28px]">
           {etaHeading}
         </h2>
+        {visit.dependent_name || visit.visit_for === "dependent" ? (
+          <p className="mt-2 text-sm font-medium text-[#2d8f98]">
+            Tracking visit for {visit.dependent_name || visit.patient_name}
+          </p>
+        ) : null}
 
         {/* Doctor card */}
         <VisitDoctorCard doctorName={doctorName} />

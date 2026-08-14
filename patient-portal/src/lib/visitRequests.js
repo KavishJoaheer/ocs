@@ -14,3 +14,7 @@ export function canPatientCancelVisit(status) {
 export async function cancelPatientVisit(visitId) {
   return api.patch(`/patient-portal/visit-requests/${visitId}/cancel`);
 }
+
+export function pickVisibleActiveVisit(payload) {
+  return payload?.visit_request || payload?.family_visit_requests?.[0] || null;
+}

@@ -16,6 +16,7 @@ const { notifyStaffNewVisitRequest, notifyStaffVisitCancelled } = require("../li
 const {
   PATIENT_CANCELLABLE_STATUSES,
   getActiveVisitRequestForPatient,
+  getActiveVisitRequestsForDependents,
   getVisitRequestById,
 } = require("../lib/visitRequests");
 const {
@@ -825,10 +826,16 @@ router.get("/visit-requests/active", (req, res) => {
   const patientId = req.portalPatientId;
 
   if (!patientId) {
-    return res.json({ visit_request: null });
+    return res.json({ visit_request: null, family_visit_requests: [] });
   }
 
-  return res.json({ visit_request: getActiveVisitRequestForPatient(patientId) });
+  const guardianId = Number(req.patientAuth.patient_id || 0);
+  const isGuardianView = Boolean(guardianId) && Number(patientId) === guardianId;
+
+  return res.json({
+    visit_request: getActiveVisitRequestForPatient(patientId),
+    family_visit_requests: isGuardianView ? getActiveVisitRequestsForDependents(guardianId) : [],
+  });
 });
 
 router.post("/visit-requests", (req, res) => {
@@ -894,6 +901,9 @@ router.post("/visit-requests", (req, res) => {
     );
 
   publishPatientDataChange(patientId, { reason: "visit_request" });
+  if (guardianId && Number(patientId) !== guardianId) {
+    publishPatientDataChange(guardianId, { reason: "visit_request" });
+  }
 
   const visitRequest = getVisitRequestById(result.lastInsertRowid, { includeStaffNotes: false });
   void notifyStaffNewVisitRequest(visitRequest).catch((error) => {
@@ -913,11 +923,23 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
 
   const existing = db.prepare("SELECT * FROM visit_requests WHERE id = ?").get(requestId);
   const guardianId = Number(req.patientAuth.patient_id || 0);
+  const childVisit =
+    existing && guardianId
+      ? db
+          .prepare(
+            `
+              SELECT id FROM patients
+              WHERE id = ? AND parent_patient_id = ? AND deleted_at IS NULL
+            `,
+          )
+          .get(existing.patient_id, guardianId)
+      : null;
   const ownsVisit =
     existing &&
     (Number(existing.patient_id) === Number(patientId) ||
       Number(existing.patient_user_id) === Number(req.patientAuth.id) ||
-      Number(existing.patient_id) === guardianId);
+      Number(existing.patient_id) === guardianId ||
+      Boolean(childVisit));
 
   if (!existing || !ownsVisit) {
     return res.status(404).json({ error: "Visit request not found." });
@@ -933,7 +955,10 @@ router.patch("/visit-requests/:id/cancel", (req, res) => {
     WHERE id = ?
   `).run(requestId);
 
-  publishPatientDataChange(patientId, { reason: "visit_request" });
+  publishPatientDataChange(existing.patient_id, { reason: "visit_request" });
+  if (guardianId && Number(existing.patient_id) !== guardianId) {
+    publishPatientDataChange(guardianId, { reason: "visit_request" });
+  }
 
   const visitRequest = getVisitRequestById(requestId, { includeStaffNotes: false });
   void notifyStaffVisitCancelled(visitRequest).catch((error) => {

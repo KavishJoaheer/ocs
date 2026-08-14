@@ -349,11 +349,12 @@ function publishPatientDataChange(
 
   const patient = db
     .prepare(
-      "SELECT assigned_doctor_id, insurance_provider FROM patients WHERE id = ?",
+      "SELECT assigned_doctor_id, insurance_provider, parent_patient_id FROM patients WHERE id = ?",
     )
     .get(pid);
 
   const assignedDoctorId = patient?.assigned_doctor_id ? Number(patient.assigned_doctor_id) : null;
+  const parentPatientId = patient?.parent_patient_id ? Number(patient.parent_patient_id) : 0;
   const isLinkhamInsured = String(patient?.insurance_provider || "").trim().toLowerCase() === "linkham";
   const extraDoctorIds = new Set(
     (Array.isArray(notifyDoctorIds) ? notifyDoctorIds : [])
@@ -376,9 +377,10 @@ function publishPatientDataChange(
 
   let delivered = 0;
 
-  // 1) The patient's own portal sessions.
+  // 1) The patient's own portal sessions, plus the guardian if this is a dependent.
   for (const client of patientClients.values()) {
-    if (Number(client.patientId) !== pid) {
+    const clientPatientId = Number(client.patientId);
+    if (clientPatientId !== pid && !(parentPatientId && clientPatientId === parentPatientId)) {
       continue;
     }
     try {
