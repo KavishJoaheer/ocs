@@ -21,8 +21,13 @@ function formatEtaHeading(visit) {
     return "Your doctor has arrived";
   }
   if (visit.status === "en_route") {
-    const minutes = visit.eta_minutes ?? 25;
-    return `Arriving in approx. ${minutes} mins`;
+    const minutes = Number(visit.eta_minutes);
+    // Only quote a number the clinic actually entered. Inventing 25 minutes
+    // made patients wait on a window nobody set.
+    if (Number.isFinite(minutes) && minutes > 0) {
+      return `Arriving in approx. ${minutes} mins`;
+    }
+    return "Your doctor is on the way";
   }
   if (visit.status === "assigned") {
     return "Your doctor is preparing to leave";

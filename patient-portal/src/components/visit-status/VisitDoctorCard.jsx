@@ -15,17 +15,11 @@ function VisitDoctorCard({ doctorName, specialty = "General Practitioner", phone
 
   return (
     <article className="visit-status-doctor-card flex items-center gap-4">
-      <div className="relative shrink-0">
-        <div
-          className="flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(45,143,152,0.22)]"
-          aria-hidden="true"
-        >
-          {doctorInitials(doctorName)}
-        </div>
-        <span
-          className="absolute bottom-0 right-0 size-3.5 rounded-full border-2 border-white bg-[#34c759]"
-          aria-label="Doctor online"
-        />
+      <div
+        className="flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2d8f98] to-[#41c8c6] text-[15px] font-bold text-white shadow-[0_4px_14px_rgba(45,143,152,0.22)]"
+        aria-hidden="true"
+      >
+        {doctorInitials(doctorName)}
       </div>
 
       <div className="min-w-0 flex-1">
