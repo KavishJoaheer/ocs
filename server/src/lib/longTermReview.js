@@ -16,6 +16,8 @@ function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
         p.particularity,
         p.review_reason_note,
         p.review_due_date,
+        p.review_appointment_time,
+        p.assigned_doctor_id,
         p.created_at,
         d.full_name AS assigned_doctor_name,
         d.specialization AS assigned_doctor_specialization,
@@ -38,6 +40,8 @@ function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
         p.particularity,
         p.review_reason_note,
         p.review_due_date,
+        p.review_appointment_time,
+        p.assigned_doctor_id,
         p.created_at,
         d.full_name,
         d.specialization
@@ -67,7 +71,56 @@ function getLongTermReviewCount({ caseloadDoctorId } = {}) {
   return Number(row?.count || 0);
 }
 
+function syncReviewAppointmentSlot({ patientId, doctorId, date, time }) {
+  const pid = Number(patientId);
+  const did = Number(doctorId);
+  const day = String(date || "").trim();
+  const slot = String(time || "").trim();
+
+  if (!pid || !did || !day) {
+    return null;
+  }
+
+  const existing = db
+    .prepare(`
+      SELECT id
+      FROM appointments
+      WHERE patient_id = ?
+        AND appointment_date = ?
+        AND status = 'scheduled'
+      ORDER BY id DESC
+      LIMIT 1
+    `)
+    .get(pid, day);
+
+  if (slot) {
+    if (existing) {
+      db.prepare("UPDATE appointments SET doctor_id = ?, appointment_time = ? WHERE id = ?").run(
+        did,
+        slot,
+        existing.id,
+      );
+      return existing.id;
+    }
+
+    return db
+      .prepare(`
+        INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+        VALUES (?, ?, ?, ?, 'scheduled')
+      `)
+      .run(pid, did, day, slot).lastInsertRowid;
+  }
+
+  if (existing) {
+    db.prepare("UPDATE appointments SET doctor_id = ? WHERE id = ?").run(did, existing.id);
+    return existing.id;
+  }
+
+  return null;
+}
+
 module.exports = {
   getGlobalLongTermReviewPatients,
   getLongTermReviewCount,
+  syncReviewAppointmentSlot,
 };

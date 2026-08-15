@@ -123,14 +123,15 @@ function buildLongTermReviewAppointment(patient, patientId) {
   }
 
   const doctorName = patient.doctor_name || patient.assigned_doctor_name || null;
+  const reviewTime = String(patient.review_appointment_time || "").trim();
 
   return {
     id: `review-${patientId}`,
     patient_id: patientId,
     appointment_date: reviewDueDate,
-    appointment_time: "",
+    appointment_time: reviewTime,
     date: reviewDueDate,
-    time: "",
+    time: reviewTime,
     status: "scheduled",
     doctor_name: doctorName,
     kind: "review",
@@ -358,7 +359,13 @@ router.get("/appointments", (req, res) => {
   // patient sees the follow-up their care team booked.
   const patient = db
     .prepare(`
-      SELECT p.is_under_review, p.review_due_date, p.review_reason_note, d.full_name AS doctor_name
+      SELECT
+        p.is_under_review,
+        p.review_due_date,
+        p.review_appointment_time,
+        p.review_reason_note,
+        p.assigned_doctor_id,
+        d.full_name AS doctor_name
       FROM patients p
       LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
       WHERE p.id = ? AND p.deleted_at IS NULL
@@ -366,7 +373,13 @@ router.get("/appointments", (req, res) => {
     .get(patientId);
 
   const reviewAppointment = buildLongTermReviewAppointment(patient, patientId);
-  if (reviewAppointment) {
+  const hasMatchingSlot = appointments.some((row) => {
+    const sameDay = String(row.appointment_date || "").slice(0, 10) === String(patient?.review_due_date || "").trim();
+    const sameDoctor =
+      !patient?.assigned_doctor_id || Number(row.doctor_id) === Number(patient.assigned_doctor_id);
+    return sameDay && sameDoctor && String(row.status || "") === "scheduled";
+  });
+  if (reviewAppointment && !hasMatchingSlot) {
     appointments.unshift(reviewAppointment);
   }
 

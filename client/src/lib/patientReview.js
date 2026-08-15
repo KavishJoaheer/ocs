@@ -14,6 +14,24 @@ export function formatScheduledReviewDate(value) {
   return parsed.isValid() ? parsed.format("DD MMM, YYYY") : "";
 }
 
+export function formatReviewAppointmentTime(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return "";
+  }
+
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (!Number.isInteger(hours) || hours > 23) {
+    return "";
+  }
+
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes} ${suffix}`;
+}
+
 export function formatReviewDueShort(value) {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format("DD MMM") : "";

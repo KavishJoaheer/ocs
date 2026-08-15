@@ -1158,6 +1158,10 @@ function ensurePatientColumns() {
       sql: "ALTER TABLE patients ADD COLUMN review_due_date TEXT",
     },
     {
+      name: "review_appointment_time",
+      sql: "ALTER TABLE patients ADD COLUMN review_appointment_time TEXT",
+    },
+    {
       name: "insurance_provider",
       sql: "ALTER TABLE patients ADD COLUMN insurance_provider TEXT NOT NULL DEFAULT ''",
     },

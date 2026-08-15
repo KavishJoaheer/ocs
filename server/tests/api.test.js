@@ -2029,3 +2029,85 @@ test("doctors can flag long-term review only for caseload patients", async () =>
   const adminIds = (adminQueue.data.patients || []).map((row) => Number(row.id));
   assert.ok(adminIds.includes(Number(outsiderId)), "admin should see every review patient");
 });
+
+test("admin and operators can assign a review doctor and time", async () => {
+  const doctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "arun.dharee", password: "Welcome@123" },
+  });
+  assert.equal(doctorLogin.status, 200, JSON.stringify(doctorLogin.data));
+  const firstDoctorId = Number(doctorLogin.data.user?.doctor_id || 0);
+  assert.ok(firstDoctorId, "expected a doctor_id on the staff user");
+
+  const secondDoctor = db
+    .prepare("SELECT id FROM doctors WHERE id != ? AND deleted_at IS NULL AND is_active = 1 LIMIT 1")
+    .get(firstDoctorId);
+  assert.ok(secondDoctor?.id, "expected a second active doctor");
+
+  const patientId = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status, assigned_doctor_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created', ?)
+    `)
+    .run(
+      "Review Assign Patient",
+      "Review",
+      "Assign",
+      `STAFF-RA-${Date.now()}`,
+      41,
+      "1985-02-02",
+      "F",
+      "57009911",
+      "57009911",
+      "4 Assignment Road",
+      firstDoctorId,
+    ).lastInsertRowid;
+
+  const flagged = await api("PATCH", `/api/patients/${patientId}/long-term-review`, {
+    token: adminToken,
+    body: {
+      is_under_review: true,
+      review_reason_note: "General check-up",
+      review_due_date: "2026-09-20",
+    },
+  });
+  assert.equal(flagged.status, 200, JSON.stringify(flagged.data));
+
+  const doctorDenied = await api("PATCH", `/api/patients/${patientId}/review-assignment`, {
+    token: doctorLogin.data.token,
+    body: { review_appointment_time: "10:30" },
+  });
+  assert.equal(doctorDenied.status, 403, JSON.stringify(doctorDenied.data));
+
+  const operatorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(operatorLogin.status, 200, JSON.stringify(operatorLogin.data));
+  const timed = await api("PATCH", `/api/patients/${patientId}/review-assignment`, {
+    token: operatorLogin.data.token,
+    body: { review_appointment_time: "10:30" },
+  });
+  assert.equal(timed.status, 200, JSON.stringify(timed.data));
+  assert.equal(timed.data.review_appointment_time, "10:30");
+
+  const reassigned = await api("PATCH", `/api/patients/${patientId}/review-assignment`, {
+    token: adminToken,
+    body: { assigned_doctor_id: secondDoctor.id },
+  });
+  assert.equal(reassigned.status, 200, JSON.stringify(reassigned.data));
+  assert.equal(Number(reassigned.data.assigned_doctor_id), Number(secondDoctor.id));
+
+  const slot = db
+    .prepare(`
+      SELECT doctor_id, appointment_time, status
+      FROM appointments
+      WHERE patient_id = ? AND appointment_date = '2026-09-20' AND status = 'scheduled'
+      ORDER BY id DESC
+      LIMIT 1
+    `)
+    .get(patientId);
+  assert.ok(slot, "expected a scheduled review slot");
+  assert.equal(Number(slot.doctor_id), Number(secondDoctor.id));
+  assert.equal(String(slot.appointment_time).slice(0, 5), "10:30");
+});

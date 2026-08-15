@@ -3,9 +3,10 @@ import EmptyState from "./EmptyState.jsx";
 import StatusBadge from "./StatusBadge.jsx";
 import { LongTermReviewLogUpdateButton } from "./LongTermReviewLogUpdate.jsx";
 import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.jsx";
+import { useReviewAssignment } from "../hooks/useReviewAssignment.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { formatDate, truncate } from "../lib/format.js";
-import { formatScheduledReviewDate } from "../lib/patientReview.js";
+import { formatReviewAppointmentTime, formatScheduledReviewDate } from "../lib/patientReview.js";
 
 function formatReviewPatientMetaLine(patient) {
   const parts = [];
@@ -48,6 +49,9 @@ function LongTermReviewWorkspaceList({
 }) {
   const isMobile = useIsMobile();
   const { openLogUpdate, dialogs } = useLongTermReviewLogUpdate({ onUpdated: onPatientsChange });
+  const { canAssign, openAssignment, dialogs: assignmentDialogs } = useReviewAssignment({
+    onUpdated: onPatientsChange,
+  });
 
   if (!patients.length) {
     return <EmptyState title={emptyTitle} description={emptyDescription} />;
@@ -62,6 +66,7 @@ function LongTermReviewWorkspaceList({
             160,
           );
           const dueLabel = formatScheduledReviewDate(patient.review_due_date);
+          const timeLabel = formatReviewAppointmentTime(patient.review_appointment_time);
 
           return (
             <div
@@ -88,7 +93,10 @@ function LongTermReviewWorkspaceList({
 
                 <div className="min-w-0">
                   {dueLabel ? (
-                    <p className="text-sm font-bold text-amber-700">⏱ Due: {dueLabel}</p>
+                    <p className="text-sm font-bold text-amber-700">
+                      ⏱ Due: {dueLabel}
+                      {timeLabel ? ` · ${timeLabel}` : ""}
+                    </p>
                   ) : (
                     <p className="text-sm font-bold text-slate-500">⏱ Due date not set</p>
                   )}
@@ -103,6 +111,15 @@ function LongTermReviewWorkspaceList({
                     Open patient
                   </Link>
                   <LongTermReviewLogUpdateButton onClick={() => openLogUpdate(patient)} />
+                  {canAssign ? (
+                    <button
+                      type="button"
+                      onClick={() => openAssignment(patient)}
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-white"
+                    >
+                      Assignment
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -117,6 +134,7 @@ function LongTermReviewWorkspaceList({
       </div>
 
       {dialogs}
+      {assignmentDialogs}
     </>
   );
 }

@@ -19,6 +19,7 @@ const {
 } = require("../lib/locationTags.js");
 const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.js");
 const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
+const { syncReviewAppointmentSlot } = require("../lib/longTermReview");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 const {
   doctorCanAccessPatient,
@@ -150,6 +151,7 @@ function formatPatientRecord(patient) {
     is_under_review: parseBooleanField(patient.is_under_review),
     review_reason_note: reviewNote || null,
     review_due_date: String(patient.review_due_date ?? "").trim() || null,
+    review_appointment_time: String(patient.review_appointment_time ?? "").trim() || null,
     link_status: String(patient.link_status ?? "staff_created").trim() || "staff_created",
   };
 }
@@ -451,6 +453,26 @@ function normalizeReviewDueDate(value) {
   }
   const parsed = new Date(`${normalized}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? "" : normalized;
+}
+
+function normalizeReviewAppointmentTime(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) {
+    return "";
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) {
+    return "";
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 function getChangedFields(previousSnapshot, updatedSnapshot) {
@@ -1347,12 +1369,14 @@ router.patch("/:id/long-term-review", (req, res) => {
     SET
       is_under_review = ?,
       review_reason_note = ?,
-      review_due_date = ?
+      review_due_date = ?,
+      review_appointment_time = ?
     WHERE id = ?
   `).run(
     isUnderReview ? 1 : 0,
     reviewReasonNote || null,
     reviewDueDate || null,
+    isUnderReview ? existing.review_appointment_time || null : null,
     patientId,
   );
 
@@ -1361,6 +1385,78 @@ router.patch("/:id/long-term-review", (req, res) => {
     changedByUserId: req.auth.id,
   });
   publishPatientDataChange(patientId, { reason: "long_term_review" });
+
+  res.json(
+    formatPatientRecord({
+      ...getPatientById(patientId),
+      location_tags: getPatientLocationTags(patientId),
+    }),
+  );
+});
+
+router.patch("/:id/review-assignment", (req, res) => {
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({
+      error: "Only admin and operator accounts can assign a review doctor or time.",
+    });
+  }
+
+  const patientId = Number(req.params.id);
+  const existing = getPatientById(patientId);
+
+  if (!existing) {
+    return res.status(404).json({ error: "Patient not found." });
+  }
+
+  if (!parseBooleanField(existing.is_under_review)) {
+    return res.status(400).json({ error: "This patient is not on the review appointment queue." });
+  }
+
+  const changingDoctor = Object.prototype.hasOwnProperty.call(req.body || {}, "assigned_doctor_id");
+  const changingTime = Object.prototype.hasOwnProperty.call(req.body || {}, "review_appointment_time");
+
+  if (!changingDoctor && !changingTime) {
+    return res.status(400).json({ error: "Choose a doctor or a time of appointment." });
+  }
+
+  let nextDoctorId = existing.assigned_doctor_id ? Number(existing.assigned_doctor_id) : null;
+  if (changingDoctor) {
+    const assignedDoctor = getAssignedDoctorById(req.body.assigned_doctor_id);
+    if (!assignedDoctor) {
+      return res.status(400).json({ error: "Assigned doctor not found." });
+    }
+    nextDoctorId = Number(assignedDoctor.id);
+  }
+
+  let nextTime = String(existing.review_appointment_time || "").trim() || null;
+  if (changingTime) {
+    const normalizedTime = normalizeReviewAppointmentTime(req.body.review_appointment_time);
+    if (String(req.body.review_appointment_time ?? "").trim() && !normalizedTime) {
+      return res.status(400).json({ error: "Enter a valid time of appointment." });
+    }
+    nextTime = normalizedTime || null;
+  }
+
+  db.prepare(`
+    UPDATE patients
+    SET
+      assigned_doctor_id = ?,
+      review_appointment_time = ?
+    WHERE id = ?
+  `).run(nextDoctorId, nextTime, patientId);
+
+  syncReviewAppointmentSlot({
+    patientId,
+    doctorId: nextDoctorId,
+    date: existing.review_due_date,
+    time: nextTime,
+  });
+
+  publishLongTermReviewChange({
+    patientId,
+    changedByUserId: req.auth.id,
+  });
+  publishPatientDataChange(patientId, { reason: "review_assignment" });
 
   res.json(
     formatPatientRecord({
