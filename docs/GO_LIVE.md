@@ -159,7 +159,7 @@ Doctors who still have assigned patients are skipped (reported in the script out
 | Change default passwords for all live users (not `Welcome@123` / seed defaults) | ☐ |
 | Confirm operator accounts are read-only unless admin grants time-bound edit access | ☐ |
 | Confirm doctors cannot see global revenue (dashboard / live report) | ☐ |
-| Admin-only: team operations, patient delete, long-term review flag (operators can update LTR) | ☐ |
+| Admin-only: team operations, patient delete, review appointment flag (operators can update LTR) | ☐ |
 
 ---
 

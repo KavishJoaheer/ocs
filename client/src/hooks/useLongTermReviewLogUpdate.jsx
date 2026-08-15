@@ -29,7 +29,7 @@ export function useLongTermReviewLogUpdate({ onUpdated } = {}) {
         const nextNote = note || existingNote;
 
         if (!nextNote) {
-          toast.error("Add a note for this long term review.");
+          toast.error("Add a note for this review appointment.");
           setIsSaving(false);
           return;
         }

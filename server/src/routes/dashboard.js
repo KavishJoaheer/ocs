@@ -1184,7 +1184,7 @@ router.get("/operator-workspace", (req, res) => {
 
 router.get("/long-term-review", (req, res) => {
   if (!["admin", "doctor", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only clinical staff can open the long term review queue." });
+    return res.status(403).json({ error: "Only clinical staff can open the review appointment queue." });
   }
 
   const caseloadDoctorId = req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) : null;

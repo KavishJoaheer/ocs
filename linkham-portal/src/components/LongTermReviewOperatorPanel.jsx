@@ -109,12 +109,12 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
         patients={filteredReviewList}
         emptyDescription={
           selectedMonthIndex === "all"
-            ? "Patients flagged by the operator desk for long term review will appear here."
-            : `No long term review patients have a due date in ${filteredMonthLabel}.`
+            ? "Patients flagged by the operator desk for a review appointment will appear here."
+            : `No review appointment patients have a due date in ${filteredMonthLabel}.`
         }
         emptyTitle={
           selectedMonthIndex === "all"
-            ? "No long term review patients"
+            ? "No review appointment patients"
             : `No patients due in ${filteredMonthLabel}`
         }
         onPatientsChange={onPatientsChange}

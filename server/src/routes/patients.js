@@ -1307,7 +1307,7 @@ router.post("/:id/merge", (req, res) => {
 router.patch("/:id/long-term-review", (req, res) => {
   if (!["admin", "operator", "doctor"].includes(req.auth.role)) {
     return res.status(403).json({
-      error: "Only clinical staff can update long term review records.",
+      error: "Only clinical staff can update review appointment records.",
     });
   }
 

@@ -251,8 +251,8 @@ export function useLongTermReviewLogUpdate({ onUpdated } = {}) {
         description={
           closeReviewPatient
             ? closeReviewMode === "cancel"
-              ? `Cancel the scheduled review for ${closeReviewPatient.full_name} and remove them from the long term review queue?`
-              : `Mark the review for ${closeReviewPatient.full_name} as done and remove them from the long term review queue?`
+              ? `Cancel the scheduled review for ${closeReviewPatient.full_name} and remove them from the review appointment queue?`
+              : `Mark the review for ${closeReviewPatient.full_name} as done and remove them from the review appointment queue?`
             : ""
         }
         confirmLabel={

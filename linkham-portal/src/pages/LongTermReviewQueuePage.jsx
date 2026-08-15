@@ -10,13 +10,13 @@ export default function LongTermReviewQueuePage() {
   const { patients, loading, error, reload } = useLongTermReviewQueue();
 
   if (loading) {
-    return <LoadingState label="Loading long term review queue" />;
+    return <LoadingState label="Loading review appointment queue" />;
   }
 
   if (error) {
     return (
       <EmptyState
-        title="Long term review unavailable"
+        title="Review appointment unavailable"
         description={error}
       />
     );
@@ -30,7 +30,7 @@ export default function LongTermReviewQueuePage() {
     return (
       <div className="mx-auto w-full max-w-md space-y-4 pb-8">
         <header>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900">Long term review</h1>
+          <h1 className="text-xl font-bold tracking-tight text-gray-900">Review appointment</h1>
           <p className="mt-1 text-sm text-gray-500">
             Practice-wide chronic care follow-up queue.
           </p>
@@ -44,7 +44,7 @@ export default function LongTermReviewQueuePage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Clinical follow-up"
-        title="Long term review"
+        title="Review appointment"
         description="Practice-wide queue of patients flagged for chronic care follow-up."
       />
       {queue}

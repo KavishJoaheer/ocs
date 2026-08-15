@@ -809,14 +809,14 @@ function DoctorWorkspacePage({ workspaceKey }) {
         patients={assignedPatients}
         emptyTitle={
           underReviewFilter
-            ? "No long term review patients"
+            ? "No review appointment patients"
             : subscribedFilter
               ? "No health plan subscribers"
               : undefined
         }
         emptyDescription={
           underReviewFilter
-            ? "Assigned patients flagged for long-term review will appear here."
+            ? "Assigned patients flagged for a review appointment will appear here."
             : subscribedFilter
               ? "Assigned patients on an active health plan will appear here."
               : undefined
@@ -845,7 +845,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
           }
           subtitle={
             underReviewFilter
-              ? "Assigned patients flagged for long-term review. Log updates without leaving this list."
+              ? "Assigned patients flagged for a review appointment. Log updates without leaving this list."
               : subscribedFilter
                 ? "Read-only view of your assigned patients on an active health plan."
                 : "Assigned patient records linked to this doctor account."

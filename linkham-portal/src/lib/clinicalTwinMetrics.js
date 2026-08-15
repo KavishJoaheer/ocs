@@ -27,7 +27,7 @@ export function getClinicalTwinMetricCopy(role) {
   switch (role) {
     case "doctor":
       return {
-        longTermReview: "Practice-wide patients flagged for long-term review",
+        longTermReview: "Practice-wide patients flagged for a review appointment"
         healthPlans: "Assigned patients on an active health plan",
       };
     case "operator":

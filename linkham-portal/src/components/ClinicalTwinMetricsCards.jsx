@@ -52,7 +52,7 @@ function ClinicalTwinMetricsCards({
     >
       <ClinicalTwinMetricCard
         to={routes.longTermReview}
-        label="Long term review"
+        label="Review appointment"
         value={longTermReviewCount}
         subtext={copy.longTermReview}
         accent="amber"

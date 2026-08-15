@@ -125,9 +125,9 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
         <div className="grid grid-cols-2 gap-4">
           <DoctorMobileSplitCard to="/visit-requests" label="Visit requests" icon={ClipboardList} />
           <DoctorMobileSplitCard
-            to="/doctor/current-week-roster"
-            label="This week's roster"
-            icon={CalendarClock}
+            to="/doctor/long-term-review"
+            label="Review appointment"
+            icon={Activity}
           />
         </div>
 
@@ -253,10 +253,10 @@ function MobileLauncher({
         description: "Follow up on unpaid consultation bills.",
       },
       {
-        label: "Long term review",
+        label: "Review appointment",
         icon: Activity,
         to: "/operator/long-term-review",
-        description: "Patients flagged for long-term operator follow-up.",
+        description: "Patients flagged for a review appointment.",
       },
     );
   }
@@ -909,7 +909,7 @@ function DoctorMetricsRow({ dashboard }) {
       />
       <DoctorMetricCard
         to="/doctor/long-term-review"
-        label="Long Term Review"
+        label="Review appointment"
         value={longTermCount}
         variant="longTerm"
       />
@@ -1197,7 +1197,7 @@ function LabDashboardView({ dashboard, user, onStatusChange, isSavingStatus }) {
             to: "/consultations",
           },
           {
-            eyebrow: "Long-term review",
+            eyebrow: "Review appointment",
             icon: UsersRound,
             title: "Patient review",
             to: "/patients",
@@ -1333,7 +1333,7 @@ function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
       </AdminExecutiveCard>
 
       <AdminExecutiveCard
-        title="Long Term Review"
+        title="Review appointment"
         to="/admin/long-term-review"
         accent="amber"
         anchorAccent="amber"

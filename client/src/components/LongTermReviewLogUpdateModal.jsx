@@ -58,7 +58,7 @@ export function LongTermReviewLogUpdateModal({ open, patient, onClose, onSubmit,
 
           const trimmedNote = note.trim();
           if (!closesReview(selectedAction) && !trimmedNote) {
-            toast.error("Add a note for this long term review.");
+            toast.error("Add a note for this review appointment.");
             return;
           }
 
@@ -123,7 +123,7 @@ export function LongTermReviewLogUpdateModal({ open, patient, onClose, onSubmit,
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-relaxed outline-none transition focus:border-ocs-teal focus:bg-white focus:ring-2 focus:ring-ocs-teal/20"
               />
               <span className="block text-xs text-slate-500">
-                This note appears on the patient&apos;s Long term review flag.
+                This note appears on the patient&apos;s review appointment flag.
               </span>
             </label>
           </div>

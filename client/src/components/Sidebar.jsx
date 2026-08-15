@@ -1,6 +1,7 @@
 import {
   Activity,
   BellRing,
+  CalendarClock,
   CalendarDays,
   ClipboardList,
   CreditCard,
@@ -67,22 +68,31 @@ const navItems = [
     },
   },
   {
+    to: "/doctor/current-week-roster",
+    label: "This week's roster",
+    icon: CalendarClock,
+    roles: ["doctor"],
+    mobileDrawerOnly: true,
+    isActiveWhen: (location) => location.pathname === "/doctor/current-week-roster",
+  },
+  {
     to: "/doctor/long-term-review",
-    label: "Long term review",
+    label: "Review appointment",
     icon: Activity,
     roles: ["doctor"],
+    hideInMobileDrawer: true,
     isActiveWhen: (location) => location.pathname === "/doctor/long-term-review",
   },
   {
     to: "/operator/long-term-review",
-    label: "Long term review",
+    label: "Review appointment",
     icon: Activity,
     roles: ["operator"],
     isActiveWhen: (location) => location.pathname === "/operator/long-term-review",
   },
   {
     to: "/admin/long-term-review",
-    label: "Long term review",
+    label: "Review appointment",
     icon: Activity,
     roles: ["admin"],
     isActiveWhen: (location) => location.pathname === "/admin/long-term-review",
@@ -235,8 +245,19 @@ function Sidebar() {
     return 0;
   }
 
+  const persistentNavItems = useMemo(
+    () => visibleNavItems.filter((item) => !item.mobileDrawerOnly),
+    [visibleNavItems],
+  );
+
   const drawerNavItems = useMemo(
-    () => visibleNavItems.filter((item) => !bottomPaths.has(item.to) && !desktopOnlyPaths.has(item.to)),
+    () =>
+      visibleNavItems.filter(
+        (item) =>
+          !bottomPaths.has(item.to) &&
+          !desktopOnlyPaths.has(item.to) &&
+          !item.hideInMobileDrawer,
+      ),
     [visibleNavItems, bottomPaths],
   );
 
@@ -394,7 +415,7 @@ function Sidebar() {
             className="flex gap-3 overflow-x-auto pb-2"
             style={{ paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
           >
-          {visibleNavItems.map((item) => (
+          {persistentNavItems.map((item) => (
             <SidebarLink
               key={item.to}
               item={item}
@@ -444,7 +465,7 @@ function Sidebar() {
               Navigation
             </p>
             <nav className="mt-3 space-y-2">
-              {visibleNavItems.map((item) => (
+              {persistentNavItems.map((item) => (
                 <SidebarLink
                   key={item.to}
                   item={item}

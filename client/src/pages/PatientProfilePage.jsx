@@ -106,7 +106,7 @@ function LongTermReviewAlertBanner({ note, dueDate, actions }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#ba5a32]">
-            Long term review — operator desk flag
+            Review appointment — operator desk flag
           </p>
           {scheduledLabel ? (
             <p className="mt-1 text-xs font-semibold text-[#6e2f14]">Target date: {scheduledLabel}</p>
@@ -151,7 +151,7 @@ function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
     <Modal
       open={open}
       onClose={onClose}
-      title="Flag for long term review"
+      title="Flag for review appointment"
       description="Set the target review date and reason for continuous follow-up tracking."
       size="md"
     >
@@ -237,7 +237,7 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
       onClick={onRequestFlag}
       className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      🔍 Flag for Long Term Review
+      🔍 Flag for Review Appointment
     </button>
   );
 }
@@ -1672,7 +1672,7 @@ function PatientProfilePage() {
           : current,
       );
       toast.success(
-        isUnderReview ? "Patient flagged for long term review." : "Long term review flag removed.",
+        isUnderReview ? "Patient flagged for a review appointment." : "Review appointment flag removed.",
       );
       setLongTermReviewModalOpen(false);
     } catch (error) {

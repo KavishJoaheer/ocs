@@ -25,7 +25,7 @@ export function useLongTermReviewQueue({ enabled = true } = {}) {
       return rows;
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : "Could not load the long term review queue.";
+        err instanceof ApiError ? err.message : "Could not load the review appointment queue.";
       setError(message);
       setPatients([]);
       return [];

@@ -37,8 +37,8 @@ function formatAssignedDoctorLine(patient) {
 function LongTermReviewWorkspaceList({
   patients,
   onPatientsChange,
-  emptyTitle = "No long term review patients",
-  emptyDescription = "Patients flagged by the operator desk for long term review will appear here.",
+  emptyTitle = "No review appointment patients",
+  emptyDescription = "Patients flagged by the operator desk for a review appointment will appear here.",
 }) {
   const { openLogUpdate, dialogs } = useLongTermReviewLogUpdate({ onUpdated: onPatientsChange });
 

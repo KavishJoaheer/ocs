@@ -85,7 +85,7 @@ const pageMeta = {
     helper: "Review all patients currently assigned to this doctor account.",
   },
   "/doctor/long-term-review": {
-    label: "Long term review",
+    label: "Review appointment",
     helper: "Practice-wide chronic care follow-up queue.",
   },
   "/operator/current-week-roster": {
@@ -113,11 +113,11 @@ const pageMeta = {
     helper: "Review unpaid consultation billing across all doctors from the operator workspace.",
   },
   "/operator/long-term-review": {
-    label: "Long term review",
+    label: "Review appointment",
     helper: "Practice-wide chronic care follow-up queue.",
   },
   "/admin/long-term-review": {
-    label: "Long term review",
+    label: "Review appointment",
     helper: "Practice-wide chronic care follow-up queue.",
   },
   "/consultations": {

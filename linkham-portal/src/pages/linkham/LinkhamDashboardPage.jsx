@@ -124,7 +124,7 @@ export default function LinkhamDashboardPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm lg:col-span-2">
           <div className="border-b border-gray-50 pb-2">
-            <h3 className="text-sm font-extrabold text-gray-800">Due Long Term Reviews</h3>
+            <h3 className="text-sm font-extrabold text-gray-800">Due Review Appointments</h3>
             <p className="text-xs text-gray-400">
               Chronic care appointments matching Linkham insured policies.
             </p>
@@ -148,7 +148,7 @@ export default function LinkhamDashboardPage() {
           ) : (
             <EmptyState
               title="No due reviews"
-              description="Linkham insured patients with scheduled long-term reviews will appear here."
+              description="Linkham insured patients with scheduled review appointments will appear here."
             />
           )}
         </div>
