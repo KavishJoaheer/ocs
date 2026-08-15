@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import LongTermReviewWorkspaceList from "./LongTermReviewWorkspaceList.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
@@ -156,15 +155,6 @@ function LongTermReviewOperatorPanel({
                 ▼
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              to="/patients"
-              className="rounded-xl bg-[#557373] px-4 py-2 text-xs font-bold text-white transition-all hover:bg-[#435c5c]"
-            >
-              Open patients
-            </Link>
           </div>
         </div>
       </div>
