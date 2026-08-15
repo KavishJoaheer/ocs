@@ -41,14 +41,7 @@ export default function LongTermReviewQueuePage() {
   );
 
   if (isMobile) {
-    return (
-      <div className="mx-auto w-full max-w-md space-y-4 pb-8">
-        <header>
-          <h1 className="text-xl font-bold tracking-tight text-ocs-slate">Review appointment</h1>
-        </header>
-        {queue}
-      </div>
-    );
+    return <div className="mx-auto w-full max-w-md pb-8">{queue}</div>;
   }
 
   return (
