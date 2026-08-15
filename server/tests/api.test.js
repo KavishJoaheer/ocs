@@ -2090,16 +2090,22 @@ test("admin and operators can assign a review doctor and time", async () => {
   });
   assert.equal(timed.status, 200, JSON.stringify(timed.data));
   assert.equal(timed.data.review_appointment_time, "10:30");
+  assert.equal(Number(timed.data.assigned_doctor_id), firstDoctorId);
 
   const reassigned = await api("PATCH", `/api/patients/${patientId}/review-assignment`, {
     token: adminToken,
-    body: { assigned_doctor_id: secondDoctor.id },
+    body: { review_assigned_doctor_id: secondDoctor.id },
   });
   assert.equal(reassigned.status, 200, JSON.stringify(reassigned.data));
-  assert.equal(Number(reassigned.data.assigned_doctor_id), Number(secondDoctor.id));
+  assert.equal(
+    Number(reassigned.data.assigned_doctor_id),
+    firstDoctorId,
+    "patient's regular assigned doctor should stay the same",
+  );
+  assert.equal(Number(reassigned.data.review_assigned_doctor_id), Number(secondDoctor.id));
   assert.ok(
-    String(reassigned.data.assigned_doctor_name || "").trim(),
-    "review card should show the newly assigned doctor",
+    String(reassigned.data.review_assigned_doctor_name || "").trim(),
+    "review card should show the newly assigned review doctor",
   );
 
   const previousDoctorQueue = await api("GET", "/api/dashboard/long-term-review", {
@@ -2138,10 +2144,11 @@ test("admin and operators can assign a review doctor and time", async () => {
     (row) => Number(row.id) === Number(patientId),
   );
   assert.ok(nextReview, "newly assigned doctor should see the review on their card");
-  assert.equal(Number(nextReview.assigned_doctor_id), Number(secondDoctor.id));
+  assert.equal(Number(nextReview.assigned_doctor_id), firstDoctorId);
+  assert.equal(Number(nextReview.review_assigned_doctor_id), Number(secondDoctor.id));
   assert.equal(
-    String(nextReview.assigned_doctor_name || "").trim(),
-    String(reassigned.data.assigned_doctor_name || "").trim(),
+    String(nextReview.review_assigned_doctor_name || "").trim(),
+    String(reassigned.data.review_assigned_doctor_name || "").trim(),
   );
 
   const nextDoctorHome = await api("GET", "/api/dashboard", { token: secondDoctorLogin.data.token });

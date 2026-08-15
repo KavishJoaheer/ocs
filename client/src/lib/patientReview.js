@@ -1,5 +1,15 @@
 import dayjs from "dayjs";
 
+export function getReviewDoctorId(patient) {
+  return Number(patient?.review_assigned_doctor_id || patient?.assigned_doctor_id || 0) || null;
+}
+
+export function getReviewDoctorName(patient) {
+  return String(
+    patient?.review_assigned_doctor_name || patient?.assigned_doctor_name || "",
+  ).trim();
+}
+
 export function isPatientUnderReview(patient) {
   const value = patient?.is_under_review;
   return value === true || value === 1 || value === "1";

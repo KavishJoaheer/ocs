@@ -122,7 +122,8 @@ function buildLongTermReviewAppointment(patient, patientId) {
     return null;
   }
 
-  const doctorName = patient.doctor_name || patient.assigned_doctor_name || null;
+  const doctorName =
+    patient.review_doctor_name || patient.doctor_name || patient.assigned_doctor_name || null;
   const reviewTime = String(patient.review_appointment_time || "").trim();
 
   return {
@@ -213,9 +214,13 @@ router.get("/dashboard", (req, res) => {
 
   const patient = db
     .prepare(`
-      SELECT p.*, d.full_name AS assigned_doctor_name
+      SELECT
+        p.*,
+        d.full_name AS assigned_doctor_name,
+        rd.full_name AS review_doctor_name
       FROM patients p
       LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
+      LEFT JOIN doctors rd ON rd.id = COALESCE(p.review_assigned_doctor_id, p.assigned_doctor_id)
       WHERE p.id = ? AND p.deleted_at IS NULL
     `)
     .get(patientId);
@@ -365,9 +370,13 @@ router.get("/appointments", (req, res) => {
         p.review_appointment_time,
         p.review_reason_note,
         p.assigned_doctor_id,
-        d.full_name AS doctor_name
+        p.review_assigned_doctor_id,
+        d.full_name AS assigned_doctor_name,
+        rd.full_name AS review_doctor_name,
+        rd.full_name AS doctor_name
       FROM patients p
       LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
+      LEFT JOIN doctors rd ON rd.id = COALESCE(p.review_assigned_doctor_id, p.assigned_doctor_id)
       WHERE p.id = ? AND p.deleted_at IS NULL
     `)
     .get(patientId);
@@ -375,8 +384,10 @@ router.get("/appointments", (req, res) => {
   const reviewAppointment = buildLongTermReviewAppointment(patient, patientId);
   const hasMatchingSlot = appointments.some((row) => {
     const sameDay = String(row.appointment_date || "").slice(0, 10) === String(patient?.review_due_date || "").trim();
-    const sameDoctor =
-      !patient?.assigned_doctor_id || Number(row.doctor_id) === Number(patient.assigned_doctor_id);
+    const reviewDoctorId = Number(
+      patient?.review_assigned_doctor_id || patient?.assigned_doctor_id || 0,
+    );
+    const sameDoctor = !reviewDoctorId || Number(row.doctor_id) === reviewDoctorId;
     return sameDay && sameDoctor && String(row.status || "") === "scheduled";
   });
   if (reviewAppointment && !hasMatchingSlot) {

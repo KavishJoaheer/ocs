@@ -6,7 +6,11 @@ import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.
 import { useReviewAssignment } from "../hooks/useReviewAssignment.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { formatDate, truncate } from "../lib/format.js";
-import { formatReviewAppointmentTime, formatScheduledReviewDate } from "../lib/patientReview.js";
+import {
+  formatReviewAppointmentTime,
+  formatScheduledReviewDate,
+  getReviewDoctorName,
+} from "../lib/patientReview.js";
 
 function formatReviewPatientMetaLine(patient) {
   const parts = [];
@@ -23,21 +27,21 @@ function formatReviewPatientMetaLine(patient) {
 }
 
 function formatAssignedDoctorLine(patient) {
-  if (!patient.assigned_doctor_name) {
+  const name = getReviewDoctorName(patient);
+  if (!name) {
     return "Not assigned";
   }
 
-  const name = String(patient.assigned_doctor_name).trim();
   const withoutPrefix = name.replace(/^dr\.?\s+/i, "").trim();
   return withoutPrefix ? `Dr ${withoutPrefix}` : "Not assigned";
 }
 
 function formatMobileAssignedDoctorLine(patient) {
-  if (!patient.assigned_doctor_name) {
+  const name = getReviewDoctorName(patient);
+  if (!name) {
     return "Not assigned";
   }
 
-  const name = String(patient.assigned_doctor_name).trim();
   return /^dr\.?\s/i.test(name) ? name : `Dr ${name}`;
 }
 

@@ -638,9 +638,7 @@ function getDoctorWorkspacePayload(doctorId) {
     `)
     .all(doctorId);
 
-  const longTermReviewAssignedCount = assignedPatients.filter(
-    (patient) => Number(patient.is_under_review) === 1,
-  ).length;
+  const longTermReviewAssignedCount = getLongTermReviewCount({ caseloadDoctorId: doctorId });
   const subscribedAssignedCount = assignedPatients.filter(
     (patient) => Number(patient.is_subscribed) === 1,
   ).length;

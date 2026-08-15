@@ -14,6 +14,10 @@ function doctorCanAccessPatient(patient, auth) {
     return true;
   }
 
+  if (Number(patient.review_assigned_doctor_id) === doctorId) {
+    return true;
+  }
+
   const patientId = Number(patient.id);
   if (!patientId) {
     return false;
@@ -54,6 +58,7 @@ function getDoctorCaseloadFilterSql(alias = "p") {
   return `
     AND (
       ${alias}.assigned_doctor_id = @caseloadDoctorId
+      OR ${alias}.review_assigned_doctor_id = @caseloadDoctorId
       OR EXISTS (
         SELECT 1 FROM visit_requests vr
         WHERE vr.patient_id = ${alias}.id AND vr.assigned_doctor_id = @caseloadDoctorId

@@ -970,6 +970,7 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON auth_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_patients_assigned_doctor ON patients(assigned_doctor_id);
+    CREATE INDEX IF NOT EXISTS idx_patients_review_assigned_doctor ON patients(review_assigned_doctor_id);
     CREATE INDEX IF NOT EXISTS idx_patients_deleted_at ON patients(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_doctors_active ON doctors(is_active);
     CREATE INDEX IF NOT EXISTS idx_doctors_deleted_at ON doctors(deleted_at);
@@ -1160,6 +1161,10 @@ function ensurePatientColumns() {
     {
       name: "review_appointment_time",
       sql: "ALTER TABLE patients ADD COLUMN review_appointment_time TEXT",
+    },
+    {
+      name: "review_assigned_doctor_id",
+      sql: "ALTER TABLE patients ADD COLUMN review_assigned_doctor_id INTEGER",
     },
     {
       name: "insurance_provider",

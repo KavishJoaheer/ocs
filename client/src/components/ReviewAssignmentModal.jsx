@@ -1,7 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
-import { formatScheduledReviewDate } from "../lib/patientReview.js";
+import { formatScheduledReviewDate, getReviewDoctorId } from "../lib/patientReview.js";
 
 const ASSIGNMENT_ACTIONS = [
   { key: "reassign-doctor", label: "Re-assign doctor", icon: "🩺" },
@@ -26,7 +26,7 @@ export function ReviewAssignmentModal({
     setSyncedDeps({ open, patient });
     if (open && patient) {
       setSelectedAction(null);
-      setDoctorId(patient.assigned_doctor_id ? String(patient.assigned_doctor_id) : "");
+      setDoctorId(getReviewDoctorId(patient) ? String(getReviewDoctorId(patient)) : "");
       setAppointmentTime(String(patient.review_appointment_time || "").trim().slice(0, 5));
     }
   }
@@ -53,7 +53,7 @@ export function ReviewAssignmentModal({
               toast.error("Select a doctor.");
               return;
             }
-            onSubmit({ action: selectedAction, assigned_doctor_id: Number(doctorId) });
+            onSubmit({ action: selectedAction, review_assigned_doctor_id: Number(doctorId) });
             return;
           }
 
@@ -99,7 +99,10 @@ export function ReviewAssignmentModal({
 
         {selectedAction === "reassign-doctor" ? (
           <label className="block space-y-2 border-t border-slate-100 pt-4">
-            <span className="text-sm font-semibold text-slate-700">Assigned doctor</span>
+            <span className="text-sm font-semibold text-slate-700">Review doctor</span>
+            <span className="block text-xs font-normal text-slate-500">
+              This only changes who is assigned to this review. The patient's regular doctor stays the same.
+            </span>
             <select
               value={doctorId}
               onChange={(event) => setDoctorId(event.target.value)}

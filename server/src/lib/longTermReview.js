@@ -2,8 +2,14 @@ const { db } = require("../db");
 
 function getAssignedReviewFilterSql(alias = "p") {
   return `
-    AND ${alias}.assigned_doctor_id = @caseloadDoctorId
+    AND COALESCE(${alias}.review_assigned_doctor_id, ${alias}.assigned_doctor_id) = @caseloadDoctorId
   `;
+}
+
+function resolveReviewDoctorId(patient) {
+  return (
+    Number(patient?.review_assigned_doctor_id || patient?.assigned_doctor_id || 0) || null
+  );
 }
 
 function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
@@ -23,12 +29,16 @@ function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
         p.review_due_date,
         p.review_appointment_time,
         p.assigned_doctor_id,
+        p.review_assigned_doctor_id,
         p.created_at,
         d.full_name AS assigned_doctor_name,
         d.specialization AS assigned_doctor_specialization,
+        rd.full_name AS review_assigned_doctor_name,
+        rd.specialization AS review_assigned_doctor_specialization,
         MAX(c.consultation_date) AS last_consultation_date
       FROM patients p
       LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
+      LEFT JOIN doctors rd ON rd.id = COALESCE(p.review_assigned_doctor_id, p.assigned_doctor_id)
       LEFT JOIN consultations c ON c.patient_id = p.id
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
@@ -47,9 +57,12 @@ function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
         p.review_due_date,
         p.review_appointment_time,
         p.assigned_doctor_id,
+        p.review_assigned_doctor_id,
         p.created_at,
         d.full_name,
-        d.specialization
+        d.specialization,
+        rd.full_name,
+        rd.specialization
       ORDER BY
         CASE
           WHEN p.review_due_date IS NULL OR trim(p.review_due_date) = '' THEN 1
@@ -127,5 +140,6 @@ function syncReviewAppointmentSlot({ patientId, doctorId, date, time }) {
 module.exports = {
   getGlobalLongTermReviewPatients,
   getLongTermReviewCount,
+  resolveReviewDoctorId,
   syncReviewAppointmentSlot,
 };

@@ -45,7 +45,7 @@ export function useReviewAssignment({ onUpdated } = {}) {
     };
   }, [assignmentPatient, canAssign]);
 
-  async function handleSubmit({ action, assigned_doctor_id, review_appointment_time }) {
+  async function handleSubmit({ action, review_assigned_doctor_id, review_appointment_time }) {
     if (!assignmentPatient || isSaving) {
       return;
     }
@@ -54,7 +54,7 @@ export function useReviewAssignment({ onUpdated } = {}) {
     try {
       const body =
         action === "reassign-doctor"
-          ? { assigned_doctor_id }
+          ? { review_assigned_doctor_id }
           : { review_appointment_time };
 
       const updated = await api.patch(`/patients/${assignmentPatient.id}/review-assignment`, body);

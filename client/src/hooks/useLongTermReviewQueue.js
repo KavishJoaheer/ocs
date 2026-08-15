@@ -13,6 +13,12 @@ function mergeReviewPatient(row, updated) {
     assigned_doctor_name: updated.assigned_doctor_name ?? row.assigned_doctor_name,
     assigned_doctor_specialization:
       updated.assigned_doctor_specialization ?? row.assigned_doctor_specialization,
+    review_assigned_doctor_id:
+      updated.review_assigned_doctor_id ?? row.review_assigned_doctor_id,
+    review_assigned_doctor_name:
+      updated.review_assigned_doctor_name ?? row.review_assigned_doctor_name,
+    review_assigned_doctor_specialization:
+      updated.review_assigned_doctor_specialization ?? row.review_assigned_doctor_specialization,
     review_appointment_time: updated.review_appointment_time ?? row.review_appointment_time,
     review_due_date: updated.review_due_date ?? row.review_due_date,
     review_reason_note: updated.review_reason_note ?? row.review_reason_note,

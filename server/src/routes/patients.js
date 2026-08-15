@@ -19,7 +19,7 @@ const {
 } = require("../lib/locationTags.js");
 const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.js");
 const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
-const { syncReviewAppointmentSlot } = require("../lib/longTermReview");
+const { resolveReviewDoctorId, syncReviewAppointmentSlot } = require("../lib/longTermReview");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 const {
   doctorCanAccessPatient,
@@ -152,6 +152,11 @@ function formatPatientRecord(patient) {
     review_reason_note: reviewNote || null,
     review_due_date: String(patient.review_due_date ?? "").trim() || null,
     review_appointment_time: String(patient.review_appointment_time ?? "").trim() || null,
+    review_assigned_doctor_id: patient.review_assigned_doctor_id
+      ? Number(patient.review_assigned_doctor_id)
+      : null,
+    review_assigned_doctor_name: patient.review_assigned_doctor_name || "",
+    review_assigned_doctor_specialization: patient.review_assigned_doctor_specialization || "",
     link_status: String(patient.link_status ?? "staff_created").trim() || "staff_created",
   };
 }
@@ -394,9 +399,12 @@ function getPatientById(patientId, { includeDeleted = false } = {}) {
       SELECT
         p.*,
         d.full_name AS assigned_doctor_name,
-        d.specialization AS assigned_doctor_specialization
+        d.specialization AS assigned_doctor_specialization,
+        rd.full_name AS review_assigned_doctor_name,
+        rd.specialization AS review_assigned_doctor_specialization
       FROM patients p
       LEFT JOIN doctors d ON d.id = p.assigned_doctor_id
+      LEFT JOIN doctors rd ON rd.id = COALESCE(p.review_assigned_doctor_id, p.assigned_doctor_id)
       WHERE p.id = ?
         AND (? = 1 OR p.deleted_at IS NULL)
     `)
@@ -1370,13 +1378,15 @@ router.patch("/:id/long-term-review", (req, res) => {
       is_under_review = ?,
       review_reason_note = ?,
       review_due_date = ?,
-      review_appointment_time = ?
+      review_appointment_time = ?,
+      review_assigned_doctor_id = ?
     WHERE id = ?
   `).run(
     isUnderReview ? 1 : 0,
     reviewReasonNote || null,
     reviewDueDate || null,
     isUnderReview ? existing.review_appointment_time || null : null,
+    isUnderReview ? existing.review_assigned_doctor_id || null : null,
     patientId,
   );
 
@@ -1412,21 +1422,24 @@ router.patch("/:id/review-assignment", (req, res) => {
     return res.status(400).json({ error: "This patient is not on the review appointment queue." });
   }
 
-  const changingDoctor = Object.prototype.hasOwnProperty.call(req.body || {}, "assigned_doctor_id");
+  const requestedReviewDoctorId =
+    req.body?.review_assigned_doctor_id ?? req.body?.assigned_doctor_id;
+  const changingDoctor = Object.prototype.hasOwnProperty.call(req.body || {}, "review_assigned_doctor_id")
+    || Object.prototype.hasOwnProperty.call(req.body || {}, "assigned_doctor_id");
   const changingTime = Object.prototype.hasOwnProperty.call(req.body || {}, "review_appointment_time");
 
   if (!changingDoctor && !changingTime) {
     return res.status(400).json({ error: "Choose a doctor or a time of appointment." });
   }
 
-  const previousDoctorId = existing.assigned_doctor_id ? Number(existing.assigned_doctor_id) : null;
+  const previousDoctorId = resolveReviewDoctorId(existing);
   let nextDoctorId = previousDoctorId;
   if (changingDoctor) {
-    const assignedDoctor = getAssignedDoctorById(req.body.assigned_doctor_id);
-    if (!assignedDoctor) {
+    const reviewDoctor = getAssignedDoctorById(requestedReviewDoctorId);
+    if (!reviewDoctor) {
       return res.status(400).json({ error: "Assigned doctor not found." });
     }
-    nextDoctorId = Number(assignedDoctor.id);
+    nextDoctorId = Number(reviewDoctor.id);
   }
 
   let nextTime = String(existing.review_appointment_time || "").trim() || null;
@@ -1441,10 +1454,10 @@ router.patch("/:id/review-assignment", (req, res) => {
   db.prepare(`
     UPDATE patients
     SET
-      assigned_doctor_id = ?,
+      review_assigned_doctor_id = ?,
       review_appointment_time = ?
     WHERE id = ?
-  `).run(nextDoctorId, nextTime, patientId);
+  `).run(changingDoctor ? nextDoctorId : existing.review_assigned_doctor_id || null, nextTime, patientId);
 
   syncReviewAppointmentSlot({
     patientId,
