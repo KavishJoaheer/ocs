@@ -212,7 +212,7 @@ test.describe("OCS smoke", () => {
     await page.setViewportSize({ width: 390, height: 844 });
 
     await page.goto(`${PATIENT_BASE}/billing`);
-    await expect(page.getByRole("heading", { name: /billing & payments/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /^billing$/i })).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByText(/total billed|no bills found/i).first()).toBeVisible();
