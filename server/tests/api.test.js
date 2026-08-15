@@ -2097,6 +2097,60 @@ test("admin and operators can assign a review doctor and time", async () => {
   });
   assert.equal(reassigned.status, 200, JSON.stringify(reassigned.data));
   assert.equal(Number(reassigned.data.assigned_doctor_id), Number(secondDoctor.id));
+  assert.ok(
+    String(reassigned.data.assigned_doctor_name || "").trim(),
+    "review card should show the newly assigned doctor",
+  );
+
+  const previousDoctorQueue = await api("GET", "/api/dashboard/long-term-review", {
+    token: doctorLogin.data.token,
+  });
+  assert.equal(previousDoctorQueue.status, 200, JSON.stringify(previousDoctorQueue.data));
+  const previousIds = (previousDoctorQueue.data.patients || []).map((row) => Number(row.id));
+  assert.equal(
+    previousIds.includes(Number(patientId)),
+    false,
+    "previous doctor should no longer see the reassigned review",
+  );
+
+  const secondDoctorUser = db
+    .prepare(`
+      SELECT username
+      FROM users
+      WHERE doctor_id = ?
+        AND role = 'doctor'
+        AND deleted_at IS NULL
+        AND is_active = 1
+      LIMIT 1
+    `)
+    .get(secondDoctor.id);
+  assert.ok(secondDoctorUser?.username, "expected a login for the newly assigned doctor");
+  const secondDoctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: secondDoctorUser.username, password: "Welcome@123" },
+  });
+  assert.equal(secondDoctorLogin.status, 200, JSON.stringify(secondDoctorLogin.data));
+
+  const nextDoctorQueue = await api("GET", "/api/dashboard/long-term-review", {
+    token: secondDoctorLogin.data.token,
+  });
+  assert.equal(nextDoctorQueue.status, 200, JSON.stringify(nextDoctorQueue.data));
+  const nextReview = (nextDoctorQueue.data.patients || []).find(
+    (row) => Number(row.id) === Number(patientId),
+  );
+  assert.ok(nextReview, "newly assigned doctor should see the review on their card");
+  assert.equal(Number(nextReview.assigned_doctor_id), Number(secondDoctor.id));
+  assert.equal(
+    String(nextReview.assigned_doctor_name || "").trim(),
+    String(reassigned.data.assigned_doctor_name || "").trim(),
+  );
+
+  const nextDoctorHome = await api("GET", "/api/dashboard", { token: secondDoctorLogin.data.token });
+  assert.equal(nextDoctorHome.status, 200, JSON.stringify(nextDoctorHome.data));
+  assert.equal(
+    Number(nextDoctorHome.data.summary?.longTermReviewCount || 0),
+    Number(nextDoctorQueue.data.count || 0),
+    "doctor home review card should match their assigned review queue",
+  );
 
   const slot = db
     .prepare(`

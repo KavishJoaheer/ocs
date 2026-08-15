@@ -57,12 +57,12 @@ export function useReviewAssignment({ onUpdated } = {}) {
           ? { assigned_doctor_id }
           : { review_appointment_time };
 
-      await api.patch(`/patients/${assignmentPatient.id}/review-assignment`, body);
+      const updated = await api.patch(`/patients/${assignmentPatient.id}/review-assignment`, body);
       toast.success(
         action === "reassign-doctor" ? "Doctor re-assigned." : "Time of appointment saved.",
       );
       setAssignmentPatient(null);
-      await onUpdated?.();
+      await onUpdated?.(updated);
     } catch (error) {
       toast.error(error.message || "Could not save this assignment.");
     } finally {

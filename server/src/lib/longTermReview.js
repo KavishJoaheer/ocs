@@ -1,9 +1,14 @@
 const { db } = require("../db");
-const { getDoctorCaseloadFilterSql } = require("./patientAccess");
+
+function getAssignedReviewFilterSql(alias = "p") {
+  return `
+    AND ${alias}.assigned_doctor_id = @caseloadDoctorId
+  `;
+}
 
 function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
   const scopedDoctorId = Number(caseloadDoctorId) || 0;
-  const caseloadSql = scopedDoctorId > 0 ? getDoctorCaseloadFilterSql("p") : "";
+  const caseloadSql = scopedDoctorId > 0 ? getAssignedReviewFilterSql("p") : "";
   const stmt = db.prepare(`
       SELECT
         p.id,
@@ -58,7 +63,7 @@ function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
 
 function getLongTermReviewCount({ caseloadDoctorId } = {}) {
   const scopedDoctorId = Number(caseloadDoctorId) || 0;
-  const caseloadSql = scopedDoctorId > 0 ? getDoctorCaseloadFilterSql("p") : "";
+  const caseloadSql = scopedDoctorId > 0 ? getAssignedReviewFilterSql("p") : "";
   const stmt = db.prepare(`
       SELECT COUNT(*) AS count
       FROM patients p

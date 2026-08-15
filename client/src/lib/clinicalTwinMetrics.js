@@ -52,12 +52,15 @@ export function resolveClinicalTwinCounts(role, { dashboard, operatorMetrics } =
   }
 
   if (role === "doctor") {
-    const summary = dashboard?.summary || dashboard?.doctorWorkspace?.summary || {};
+    const workspaceSummary = dashboard?.doctorWorkspace?.summary || {};
+    const summary = dashboard?.summary || {};
     return {
       longTermReviewCount: Number(
-        summary.longTermReviewCount ?? summary.longTermReviewAssignedCount ?? 0,
+        workspaceSummary.longTermReviewAssignedCount ?? summary.longTermReviewCount ?? 0,
       ),
-      healthPlansCount: Number(summary.subscribedAssignedCount ?? 0),
+      healthPlansCount: Number(
+        workspaceSummary.subscribedAssignedCount ?? summary.subscribedAssignedCount ?? 0,
+      ),
     };
   }
 

@@ -7,7 +7,12 @@ import { useLongTermReviewQueue } from "../hooks/useLongTermReviewQueue.js";
 
 export default function LongTermReviewQueuePage() {
   const isMobile = useIsMobile();
-  const { patients, loading, error, reload } = useLongTermReviewQueue();
+  const { patients, loading, error, reload, applyPatient } = useLongTermReviewQueue();
+
+  async function handlePatientsChange(updated) {
+    applyPatient(updated);
+    await reload();
+  }
 
   if (loading) {
     return <LoadingState label="Loading review appointment queue" />;
@@ -23,7 +28,7 @@ export default function LongTermReviewQueuePage() {
   }
 
   const queue = (
-    <LongTermReviewOperatorPanel patients={patients} onPatientsChange={reload} />
+    <LongTermReviewOperatorPanel patients={patients} onPatientsChange={handlePatientsChange} />
   );
 
   if (isMobile) {

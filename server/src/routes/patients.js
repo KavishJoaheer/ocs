@@ -1419,7 +1419,8 @@ router.patch("/:id/review-assignment", (req, res) => {
     return res.status(400).json({ error: "Choose a doctor or a time of appointment." });
   }
 
-  let nextDoctorId = existing.assigned_doctor_id ? Number(existing.assigned_doctor_id) : null;
+  const previousDoctorId = existing.assigned_doctor_id ? Number(existing.assigned_doctor_id) : null;
+  let nextDoctorId = previousDoctorId;
   if (changingDoctor) {
     const assignedDoctor = getAssignedDoctorById(req.body.assigned_doctor_id);
     if (!assignedDoctor) {
@@ -1456,7 +1457,10 @@ router.patch("/:id/review-assignment", (req, res) => {
     patientId,
     changedByUserId: req.auth.id,
   });
-  publishPatientDataChange(patientId, { reason: "review_assignment" });
+  publishPatientDataChange(patientId, {
+    reason: "review_assignment",
+    notifyDoctorIds: [previousDoctorId, nextDoctorId],
+  });
 
   res.json(
     formatPatientRecord({

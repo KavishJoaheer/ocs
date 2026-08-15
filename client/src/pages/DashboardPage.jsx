@@ -51,7 +51,7 @@ function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
 }
 
-function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false }) {
+function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false, count = null }) {
   return (
     <Link
       to={to}
@@ -68,6 +68,9 @@ function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false 
       </div>
       <div className="mt-3 min-w-0">
         <p className="text-[15px] font-bold leading-snug tracking-tight text-slate-800">{label}</p>
+        {count != null ? (
+          <p className="mt-1 text-2xl font-black tabular-nums text-slate-900">{count}</p>
+        ) : null}
       </div>
       <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-ocs-teal/60" strokeWidth={2} />
     </Link>
@@ -98,11 +101,12 @@ function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
   );
 }
 
-function DoctorMobileLauncher({ user, latestHcmPost = null }) {
+function DoctorMobileLauncher({ user, dashboard = null, latestHcmPost = null }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
   const showLowStockStrip = !loading && lowStockCount > 0;
   const { pendingCount: supplyPendingCount } = useDoctorSupplyRequests();
+  const reviewCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
 
   useEffect(() => {
     if (user?.role === "doctor" && user?.id) {
@@ -128,6 +132,7 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
             to="/doctor/long-term-review"
             label="Review appointment"
             icon={Activity}
+            count={reviewCount}
           />
         </div>
 
@@ -169,7 +174,7 @@ function MobileLauncher({
 
   if (isDoctor) {
     return (
-      <DoctorMobileLauncher user={user} latestHcmPost={latestHcmPost} />
+      <DoctorMobileLauncher user={user} dashboard={dashboard} latestHcmPost={latestHcmPost} />
     );
   }
 

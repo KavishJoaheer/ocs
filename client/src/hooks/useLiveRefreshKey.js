@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PATIENTS_LIVE_EVENT } from "../lib/inventorySync.js";
+import { LONG_TERM_REVIEW_EVENT, PATIENTS_LIVE_EVENT } from "../lib/inventorySync.js";
 
 /**
  * Returns a counter that increments whenever the realtime stream reports a
@@ -16,7 +16,11 @@ export function useLiveRefreshKey() {
   useEffect(() => {
     const bump = () => setRefreshKey((value) => value + 1);
     window.addEventListener(PATIENTS_LIVE_EVENT, bump);
-    return () => window.removeEventListener(PATIENTS_LIVE_EVENT, bump);
+    window.addEventListener(LONG_TERM_REVIEW_EVENT, bump);
+    return () => {
+      window.removeEventListener(PATIENTS_LIVE_EVENT, bump);
+      window.removeEventListener(LONG_TERM_REVIEW_EVENT, bump);
+    };
   }, []);
 
   return refreshKey;

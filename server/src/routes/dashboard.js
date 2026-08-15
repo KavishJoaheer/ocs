@@ -1098,11 +1098,14 @@ router.get("/", (_req, res) => {
     });
   }
 
+  const doctorCaseloadId = req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) : 0;
   const summary = {
     totalPatients,
     todaysAppointments,
     pendingBills,
-    longTermReviewCount: getLongTermReviewCount(),
+    longTermReviewCount: getLongTermReviewCount({
+      caseloadDoctorId: doctorCaseloadId > 0 ? doctorCaseloadId : null,
+    }),
     activeSubscriptionPatientsCount: getActiveSubscriptionPatientsCount(),
   };
 
