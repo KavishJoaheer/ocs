@@ -90,12 +90,6 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
 
           <div className="flex items-center gap-2">
             <Link
-              to="/"
-              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 transition-all hover:bg-gray-50"
-            >
-              Back to dashboard
-            </Link>
-            <Link
               to="/patients"
               className="rounded-xl bg-[#557373] px-4 py-2 text-xs font-bold text-white transition-all hover:bg-[#435c5c]"
             >
