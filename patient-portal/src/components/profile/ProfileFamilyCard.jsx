@@ -34,6 +34,7 @@ function ProfileFamilyCard() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     try {
       await api.post("/patient-portal/dependents", form);

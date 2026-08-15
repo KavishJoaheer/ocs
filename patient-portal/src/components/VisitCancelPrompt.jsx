@@ -19,6 +19,7 @@ function VisitCancelPrompt({
   }
 
   async function handleCancel() {
+    if (cancelling) return;
     setCancelling(true);
     try {
       await cancelPatientVisit(visitId);

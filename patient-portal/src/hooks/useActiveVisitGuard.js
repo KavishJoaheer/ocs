@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
+import { pickVisibleActiveVisit } from "../lib/visitRequests.js";
 
 /**
  * Returns a function that checks for an active visit request and redirects to
@@ -13,7 +14,7 @@ export function useActiveVisitGuard() {
   return useCallback(async () => {
     try {
       const data = await api.get("/patient-portal/visit-requests/active");
-      if (data.visit_request) {
+      if (pickVisibleActiveVisit(data)) {
         navigate("/request-visit/tracking", { replace: true });
         return false;
       }

@@ -15,11 +15,19 @@ const FamilyProfileContext = createContext(null);
 export function FamilyProfileProvider({ children }) {
   const { user } = usePatientAuth();
   const refreshKey = useLiveRefreshKey();
+  const userKey = user?.id ?? user?.patient_id ?? null;
   const [dependents, setDependents] = useState([]);
+  const [loadedForUser, setLoadedForUser] = useState(null);
   const [activeProfileId, setActiveProfileId] = useState(() => {
     const stored = getActingPatientId();
     return stored || getDefaultProfileId();
   });
+  const dependentsReady = loadedForUser != null && loadedForUser === userKey;
+
+  if (loadedForUser != null && loadedForUser !== userKey) {
+    setLoadedForUser(null);
+    setDependents([]);
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -28,19 +36,23 @@ export function FamilyProfileProvider({ children }) {
         const data = await api.get("/patient-portal/dependents");
         if (!ignore) {
           setDependents(data.dependents || []);
+          setLoadedForUser(userKey);
         }
       } catch {
-        // Keep the last good list. Clearing here made a network blip look like
-        // the guardian had no family members.
+        // Keep the last good list. Do not mark ready on a failed first fetch,
+        // or a stored dependent id would be wiped while dependents is still [].
       }
     }
-    if (user) {
+    if (userKey) {
       void loadDependents();
+    } else {
+      setDependents([]);
+      setLoadedForUser(null);
     }
     return () => {
       ignore = true;
     };
-  }, [user, refreshKey]);
+  }, [user, userKey, refreshKey]);
 
   const profiles = useMemo(() => {
     const primary = buildPrimaryProfile(user);
@@ -59,14 +71,24 @@ export function FamilyProfileProvider({ children }) {
   }, []);
 
   const activeProfile = useMemo(
-    () => profiles.find((profile) => profile.id === activeProfileId) || profiles[0],
+    () => profiles.find((profile) => String(profile.id) === String(activeProfileId)) || profiles[0],
     [profiles, activeProfileId],
   );
+
+  useEffect(() => {
+    if (!dependentsReady) return;
+    if (!activeProfileId || activeProfileId === PRIMARY_PROFILE_ID) return;
+    const known = profiles.some((profile) => String(profile.id) === String(activeProfileId));
+    if (!known) {
+      setActiveProfile(PRIMARY_PROFILE_ID);
+    }
+  }, [dependentsReady, profiles, activeProfileId, setActiveProfile]);
 
   const reloadDependents = useCallback(async () => {
     const data = await api.get("/patient-portal/dependents");
     setDependents(data.dependents || []);
-  }, []);
+    setLoadedForUser(userKey);
+  }, [userKey]);
 
   const value = useMemo(
     () => ({

@@ -5,6 +5,7 @@ import { Headphones } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { CLINIC_TEL_DISPLAY, CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
 import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
+import { pickVisibleActiveVisit } from "../../lib/visitRequests.js";
 import { URGENCY_META } from "./urgency.js";
 
 function RequestVisitAwaiting() {
@@ -30,7 +31,7 @@ function RequestVisitAwaiting() {
           return;
         }
 
-        if (data.visit_request) {
+        if (pickVisibleActiveVisit(data)) {
           navigate("/request-visit/tracking", { replace: true });
         }
       } catch {

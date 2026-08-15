@@ -1187,9 +1187,11 @@ router.get("/long-term-review", (req, res) => {
     return res.status(403).json({ error: "Only clinical staff can open the long term review queue." });
   }
 
+  const caseloadDoctorId = req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
+
   res.json({
-    patients: getGlobalLongTermReviewPatients(),
-    count: getLongTermReviewCount(),
+    patients: getGlobalLongTermReviewPatients({ caseloadDoctorId }),
+    count: getLongTermReviewCount({ caseloadDoctorId }),
   });
 });
 

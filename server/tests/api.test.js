@@ -1945,3 +1945,87 @@ test("soft-deleted patients do not appear on the visit-request board", async () 
   const ids = (board.data.visit_requests || []).map((row) => Number(row.patient_id));
   assert.equal(ids.includes(patientId), false);
 });
+
+test("doctors can flag long-term review only for caseload patients", async () => {
+  const doctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "arun.dharee", password: "Welcome@123" },
+  });
+  assert.equal(doctorLogin.status, 200, JSON.stringify(doctorLogin.data));
+  const doctorToken = doctorLogin.data.token;
+  const doctorId = Number(doctorLogin.data.user?.doctor_id || 0);
+  assert.ok(doctorId, "expected a doctor_id on the staff user");
+
+  const caseloadId = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status, assigned_doctor_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created', ?)
+    `)
+    .run(
+      "LTR Caseload Patient",
+      "LTR",
+      "Caseload",
+      `STAFF-LTR-IN-${Date.now()}`,
+      48,
+      "1978-03-03",
+      "F",
+      "57008811",
+      "57008811",
+      "1 Review Lane",
+      doctorId,
+    ).lastInsertRowid;
+  const outsiderId = insertDirectoryPatient("LtrOutsider");
+
+  const allowed = await api("PATCH", `/api/patients/${caseloadId}/long-term-review`, {
+    token: doctorToken,
+    body: {
+      is_under_review: true,
+      review_reason_note: "Follow-up blood pressure",
+      review_due_date: "2026-09-01",
+    },
+  });
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.data));
+  assert.equal(Boolean(allowed.data.is_under_review), true);
+
+  const denied = await api("PATCH", `/api/patients/${outsiderId}/long-term-review`, {
+    token: doctorToken,
+    body: {
+      is_under_review: true,
+      review_reason_note: "Should not work",
+      review_due_date: "2026-09-01",
+    },
+  });
+  assert.equal(denied.status, 403, JSON.stringify(denied.data));
+
+  const operatorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(operatorLogin.status, 200, JSON.stringify(operatorLogin.data));
+  const operatorDenied = await api("PATCH", `/api/patients/${caseloadId}/long-term-review`, {
+    token: operatorLogin.data.token,
+    body: { is_under_review: false },
+  });
+  assert.equal(operatorDenied.status, 403, JSON.stringify(operatorDenied.data));
+
+  const adminFlag = await api("PATCH", `/api/patients/${outsiderId}/long-term-review`, {
+    token: adminToken,
+    body: {
+      is_under_review: true,
+      review_reason_note: "Admin follow-up",
+      review_due_date: "2026-09-02",
+    },
+  });
+  assert.equal(adminFlag.status, 200, JSON.stringify(adminFlag.data));
+
+  const doctorQueue = await api("GET", "/api/dashboard/long-term-review", { token: doctorToken });
+  assert.equal(doctorQueue.status, 200, JSON.stringify(doctorQueue.data));
+  const doctorIds = (doctorQueue.data.patients || []).map((row) => Number(row.id));
+  assert.ok(doctorIds.includes(Number(caseloadId)), "doctor should see their caseload review");
+  assert.equal(doctorIds.includes(Number(outsiderId)), false, "doctor should not see out-of-caseload reviews");
+
+  const adminQueue = await api("GET", "/api/dashboard/long-term-review", { token: adminToken });
+  assert.equal(adminQueue.status, 200, JSON.stringify(adminQueue.data));
+  const adminIds = (adminQueue.data.patients || []).map((row) => Number(row.id));
+  assert.ok(adminIds.includes(Number(outsiderId)), "admin should see every review patient");
+});

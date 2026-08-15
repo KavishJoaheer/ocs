@@ -221,15 +221,16 @@ function PatientFormModal({
     enabled: open,
   });
 
-  const [resetSyncDeps, setResetSyncDeps] = useState({ open, patient, mode });
+  const patientId = patient?.id ?? null;
+  const [resetSyncDeps, setResetSyncDeps] = useState({ open, patientId, mode });
   const [draftRestoreSignal, setDraftRestoreSignal] = useState(0);
 
   if (
     resetSyncDeps.open !== open ||
-    resetSyncDeps.patient !== patient ||
+    resetSyncDeps.patientId !== patientId ||
     resetSyncDeps.mode !== mode
   ) {
-    setResetSyncDeps({ open, patient, mode });
+    setResetSyncDeps({ open, patientId, mode });
 
     if (open) {
       setWizardStep(0);

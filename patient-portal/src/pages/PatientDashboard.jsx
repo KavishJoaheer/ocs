@@ -17,6 +17,7 @@ const VISIT_STATUS_STEP_INDEX = {
   assigned: 1,
   en_route: 2,
   arrived: 3,
+  in_consultation: 3,
 };
 
 const VISIT_STEPS = [

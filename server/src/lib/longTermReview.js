@@ -1,8 +1,10 @@
 const { db } = require("../db");
+const { getDoctorCaseloadFilterSql } = require("./patientAccess");
 
-function getGlobalLongTermReviewPatients() {
-  return db
-    .prepare(`
+function getGlobalLongTermReviewPatients({ caseloadDoctorId } = {}) {
+  const scopedDoctorId = Number(caseloadDoctorId) || 0;
+  const caseloadSql = scopedDoctorId > 0 ? getDoctorCaseloadFilterSql("p") : "";
+  const stmt = db.prepare(`
       SELECT
         p.id,
         p.full_name,
@@ -24,6 +26,7 @@ function getGlobalLongTermReviewPatients() {
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
         AND p.is_under_review = 1
+        ${caseloadSql}
       GROUP BY
         p.id,
         p.full_name,
@@ -45,20 +48,22 @@ function getGlobalLongTermReviewPatients() {
         END ASC,
         p.review_due_date ASC,
         p.full_name ASC
-    `)
-    .all();
+    `);
+  return scopedDoctorId > 0 ? stmt.all({ caseloadDoctorId: scopedDoctorId }) : stmt.all();
 }
 
-function getLongTermReviewCount() {
-  const row = db
-    .prepare(`
+function getLongTermReviewCount({ caseloadDoctorId } = {}) {
+  const scopedDoctorId = Number(caseloadDoctorId) || 0;
+  const caseloadSql = scopedDoctorId > 0 ? getDoctorCaseloadFilterSql("p") : "";
+  const stmt = db.prepare(`
       SELECT COUNT(*) AS count
       FROM patients p
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
         AND p.is_under_review = 1
-    `)
-    .get();
+        ${caseloadSql}
+    `);
+  const row = scopedDoctorId > 0 ? stmt.get({ caseloadDoctorId: scopedDoctorId }) : stmt.get();
   return Number(row?.count || 0);
 }
 

@@ -44,6 +44,7 @@ function AppointmentChangeSheet({ open, appointment, requestType, onClose }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitting) return;
     if (isReschedule && preferredDate < tomorrowIso()) {
       toast.error("Please choose a date from tomorrow onwards.");
       return;

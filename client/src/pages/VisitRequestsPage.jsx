@@ -159,21 +159,25 @@ function BoardCard({
   isDoctor = false,
 }) {
   const [eta, setEta] = useState(request.eta_minutes != null ? String(request.eta_minutes) : "");
-  // Re-sync the editable ETA when the server value changes (React's recommended
-  // "adjust state during render" pattern, no effect needed).
+  // Re-sync the editable ETA when the server value changes, but never while
+  // the dispatcher is mid-edit — a 15s poll would otherwise snap the field back.
   const [syncedEta, setSyncedEta] = useState(request.eta_minutes);
+  const [etaDirty, setEtaDirty] = useState(false);
   if (request.eta_minutes !== syncedEta) {
     setSyncedEta(request.eta_minutes);
-    setEta(request.eta_minutes != null ? String(request.eta_minutes) : "");
+    if (!etaDirty) {
+      setEta(request.eta_minutes != null ? String(request.eta_minutes) : "");
+    }
   }
 
   const escalate = request.status === "pending" || request.status === "acknowledged";
   const advance = nextStatus(request.status, { isDoctor });
 
   function update(payload) {
-    onUpdate(request.id, payload).catch((error) =>
-      toast.error(error?.message || "Could not update the visit request."),
-    );
+    return onUpdate(request.id, payload).catch((error) => {
+      toast.error(error?.message || "Could not update the visit request.");
+      throw error;
+    });
   }
 
   return (
@@ -239,10 +243,17 @@ function BoardCard({
               type="number"
               min="0"
               value={eta}
-              onChange={(event) => setEta(event.target.value)}
+              onChange={(event) => {
+                setEtaDirty(true);
+                setEta(event.target.value);
+              }}
               onBlur={() => {
                 const next = eta === "" ? null : Number(eta);
-                if (next !== (request.eta_minutes ?? null)) update({ eta_minutes: next });
+                if (next === (request.eta_minutes ?? null)) {
+                  setEtaDirty(false);
+                  return;
+                }
+                void update({ eta_minutes: next }).finally(() => setEtaDirty(false));
               }}
               placeholder="ETA"
               className="w-full rounded-lg border border-[rgba(65,200,198,0.25)] bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none focus:border-[#2d8f98]"
@@ -368,22 +379,36 @@ function DispatchBoard({ requests, doctors, onUpdate, now, columns, canAssignDoc
   );
 }
 
-function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }) {
-  const [draft, setDraft] = useState({
+function draftFromRequest(request) {
+  return {
     status: request.status,
     assigned_doctor_id: request.assigned_doctor_id ? String(request.assigned_doctor_id) : "",
     eta_minutes: request.eta_minutes != null ? String(request.eta_minutes) : "",
     staff_notes: request.staff_notes || "",
-  });
-  const [saving, setSaving] = useState(false);
+  };
+}
 
-  const dirty =
-    draft.status !== request.status ||
-    draft.assigned_doctor_id !== (request.assigned_doctor_id ? String(request.assigned_doctor_id) : "") ||
-    draft.eta_minutes !== (request.eta_minutes != null ? String(request.eta_minutes) : "") ||
-    draft.staff_notes !== (request.staff_notes || "");
+function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }) {
+  const [draft, setDraft] = useState(() => draftFromRequest(request));
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const serverKey = `${request.id}|${request.status}|${request.assigned_doctor_id}|${request.eta_minutes}|${request.staff_notes}`;
+  const [syncedKey, setSyncedKey] = useState(serverKey);
+
+  if (serverKey !== syncedKey) {
+    setSyncedKey(serverKey);
+    if (!dirty) {
+      setDraft(draftFromRequest(request));
+    }
+  }
+
+  function updateDraft(patch) {
+    setDirty(true);
+    setDraft((current) => ({ ...current, ...patch }));
+  }
 
   async function handleSave() {
+    if (saving) return;
     setSaving(true);
     try {
       await onUpdate(request.id, {
@@ -393,6 +418,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
         staff_notes: draft.staff_notes,
       });
       toast.success("Visit request updated.");
+      setDirty(false);
     } catch (error) {
       toast.error(error?.message || "Could not update the visit request.");
     } finally {
@@ -444,7 +470,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Status</span>
           <select
             value={draft.status}
-            onChange={(e) => setDraft((c) => ({ ...c, status: e.target.value }))}
+            onChange={(e) => updateDraft({ status: e.target.value })}
             className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
           >
             {STATUS_OPTIONS.map((option) => (
@@ -460,7 +486,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Doctor</span>
             <select
               value={draft.assigned_doctor_id}
-              onChange={(e) => setDraft((c) => ({ ...c, assigned_doctor_id: e.target.value }))}
+              onChange={(e) => updateDraft({ assigned_doctor_id: e.target.value })}
               className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
             >
               <option value="">Unassigned</option>
@@ -481,7 +507,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
               type="number"
               min="0"
               value={draft.eta_minutes}
-              onChange={(e) => setDraft((c) => ({ ...c, eta_minutes: e.target.value }))}
+              onChange={(e) => updateDraft({ eta_minutes: e.target.value })}
               placeholder="e.g. 25"
               className="w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
             />
@@ -493,7 +519,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
         <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Internal notes</span>
         <textarea
           value={draft.staff_notes}
-          onChange={(e) => setDraft((c) => ({ ...c, staff_notes: e.target.value }))}
+          onChange={(e) => updateDraft({ staff_notes: e.target.value })}
           rows={2}
           placeholder="Add coordination notes for the team"
           className="w-full resize-none rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"

@@ -491,7 +491,7 @@ function BillingStatusFields({
   );
 }
 
-function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
+function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSaving }) {
   const isMobile = useIsMobile();
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -499,10 +499,11 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
   const [items, setItems] = useState([createEmptyLineItem()]);
   const [inventoryOptions, setInventoryOptions] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [syncedDeps, setSyncedDeps] = useState({ open, bill });
+  const billId = bill?.id ?? null;
+  const [syncedDeps, setSyncedDeps] = useState({ open, billId });
 
-  if (syncedDeps.open !== open || syncedDeps.bill !== bill) {
-    setSyncedDeps({ open, bill });
+  if (syncedDeps.open !== open || syncedDeps.billId !== billId) {
+    setSyncedDeps({ open, billId });
     if (open && bill) {
       setStatus(bill.status);
       setPaymentMethod(bill.payment_method || "");
@@ -607,6 +608,12 @@ function EditBillingModal({ open, bill, onClose, onSubmit, isSaving }) {
       size="xl"
     >
       <form className="min-w-0 w-full max-w-full space-y-5" onSubmit={handleSubmit}>
+        {stale ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            This bill was updated elsewhere. Your unsaved edits are still here. Review before
+            saving, or close and reopen to load the latest version.
+          </div>
+        ) : null}
         <div className="rounded-[26px] border border-sky-100 bg-sky-50/70 p-4">
           <p className="text-lg font-semibold text-slate-950">{bill.patient_name}</p>
           <p className="mt-1 text-sm text-slate-600">
@@ -2061,6 +2068,16 @@ function BillingPage() {
 
       setBills(billingData);
       setPatientSummary(summaryData);
+      setEditor((current) => {
+        if (!current?.bill) return current;
+        const rows = Array.isArray(billingData) ? billingData : [];
+        const fresh = rows.find((row) => Number(row.id) === Number(current.bill.id));
+        if (!fresh) return current;
+        const changedElsewhere =
+          String(fresh.updated_at || "") !== String(current.bill.updated_at || "") ||
+          String(fresh.status || "") !== String(current.bill.status || "");
+        return changedElsewhere ? { ...current, stale: true } : current;
+      });
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -2579,6 +2596,7 @@ function BillingPage() {
       <EditBillingModal
         open={Boolean(editor)}
         bill={editor?.bill}
+        stale={Boolean(editor?.stale)}
         onClose={() => setEditor(null)}
         onSubmit={handleSave}
         isSaving={isSaving}
