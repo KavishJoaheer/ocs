@@ -11,7 +11,6 @@ export function useAppointmentChangeCount() {
 
   useEffect(() => {
     if (!enabled) {
-      setCount(0);
       return undefined;
     }
 

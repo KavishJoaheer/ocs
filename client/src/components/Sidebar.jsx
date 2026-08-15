@@ -159,6 +159,8 @@ const navItems = [
   },
 ];
 
+const DESKTOP_ONLY_PATHS = new Set(["/appointments"]);
+
 function resolveNavTarget(to) {
   const [pathname, search = ""] = String(to || "").split("?");
   return search ? { pathname, search: `?${search}` } : pathname;
@@ -237,8 +239,6 @@ function Sidebar() {
     return new Set(paths);
   }, [user.role]);
 
-  const desktopOnlyPaths = new Set(["/appointments"]);
-
   function navBadgeCount(item) {
     if (item.to === "/hcm-news") return hcmUnreadCount;
     if (item.to === "/visit-requests") return appointmentChangeCount;
@@ -255,7 +255,7 @@ function Sidebar() {
       visibleNavItems.filter(
         (item) =>
           !bottomPaths.has(item.to) &&
-          !desktopOnlyPaths.has(item.to) &&
+          !DESKTOP_ONLY_PATHS.has(item.to) &&
           !item.hideInMobileDrawer,
       ),
     [visibleNavItems, bottomPaths],
