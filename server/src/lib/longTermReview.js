@@ -1,4 +1,5 @@
 const { db } = require("../db");
+const { getDoctorUserId, sendPushToUser } = require("./push");
 
 function getAssignedReviewFilterSql(alias = "p") {
   return `
@@ -137,9 +138,37 @@ function syncReviewAppointmentSlot({ patientId, doctorId, date, time }) {
   return null;
 }
 
+function notifyReviewDoctorAssigned({
+  patientId,
+  patientName,
+  doctorId,
+  previousDoctorId = null,
+} = {}) {
+  const nextId = Number(doctorId || 0);
+  const previousId = Number(previousDoctorId || 0);
+  if (!nextId || nextId === previousId) {
+    return { ok: false, skipped: true, reason: "doctor_unchanged" };
+  }
+
+  const userId = getDoctorUserId(nextId);
+  if (!userId) {
+    return { ok: false, skipped: true, reason: "missing_doctor_user" };
+  }
+
+  const name = String(patientName || "a patient").trim() || "a patient";
+  return sendPushToUser(userId, {
+    title: "Review appointment assigned",
+    body: `You have been assigned the review for ${name}.`,
+    url: "/doctor/long-term-review",
+    icon: "/icon-192.png",
+    tag: `review-assigned-${Number(patientId) || nextId}`,
+  });
+}
+
 module.exports = {
   getGlobalLongTermReviewPatients,
   getLongTermReviewCount,
+  notifyReviewDoctorAssigned,
   resolveReviewDoctorId,
   syncReviewAppointmentSlot,
 };

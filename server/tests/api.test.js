@@ -2024,6 +2024,18 @@ test("doctors can flag long-term review only for caseload patients", async () =>
   assert.ok(doctorIds.includes(Number(caseloadId)), "doctor should see their caseload review");
   assert.equal(doctorIds.includes(Number(outsiderId)), false, "doctor should not see out-of-caseload reviews");
 
+  const doctorAllQueue = await api("GET", "/api/dashboard/long-term-review?view=all", {
+    token: doctorToken,
+  });
+  assert.equal(doctorAllQueue.status, 200, JSON.stringify(doctorAllQueue.data));
+  const doctorAllIds = (doctorAllQueue.data.patients || []).map((row) => Number(row.id));
+  assert.ok(doctorAllIds.includes(Number(outsiderId)), "doctors can browse other doctors' reviews");
+  const outsiderRow = (doctorAllQueue.data.patients || []).find(
+    (row) => Number(row.id) === Number(outsiderId),
+  );
+  assert.equal(Boolean(outsiderRow?.is_mine), false);
+  assert.equal(Boolean(outsiderRow?.can_manage), false);
+
   const adminQueue = await api("GET", "/api/dashboard/long-term-review", { token: adminToken });
   assert.equal(adminQueue.status, 200, JSON.stringify(adminQueue.data));
   const adminIds = (adminQueue.data.patients || []).map((row) => Number(row.id));
@@ -2118,6 +2130,16 @@ test("admin and operators can assign a review doctor and time", async () => {
     false,
     "previous doctor should no longer see the reassigned review",
   );
+
+  const previousDoctorAllQueue = await api("GET", "/api/dashboard/long-term-review?view=all", {
+    token: doctorLogin.data.token,
+  });
+  assert.equal(previousDoctorAllQueue.status, 200, JSON.stringify(previousDoctorAllQueue.data));
+  const previousAllReview = (previousDoctorAllQueue.data.patients || []).find(
+    (row) => Number(row.id) === Number(patientId),
+  );
+  assert.ok(previousAllReview, "previous doctor can still view the review under All doctors");
+  assert.equal(Boolean(previousAllReview.is_mine), false);
 
   const secondDoctorUser = db
     .prepare(`

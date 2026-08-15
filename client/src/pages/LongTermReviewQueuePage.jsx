@@ -1,13 +1,17 @@
+import { useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LongTermReviewOperatorPanel from "../components/LongTermReviewOperatorPanel.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLongTermReviewQueue } from "../hooks/useLongTermReviewQueue.js";
 
 export default function LongTermReviewQueuePage() {
   const isMobile = useIsMobile();
-  const { patients, loading, error, reload, applyPatient } = useLongTermReviewQueue();
+  const { user } = useAuth();
+  const [scope, setScope] = useState(user?.role === "doctor" ? "mine" : "all");
+  const { patients, loading, error, reload, applyPatient } = useLongTermReviewQueue({ scope });
 
   async function handlePatientsChange(updated) {
     applyPatient(updated);
@@ -28,7 +32,12 @@ export default function LongTermReviewQueuePage() {
   }
 
   const queue = (
-    <LongTermReviewOperatorPanel patients={patients} onPatientsChange={handlePatientsChange} />
+    <LongTermReviewOperatorPanel
+      patients={patients}
+      scope={scope}
+      onScopeChange={setScope}
+      onPatientsChange={handlePatientsChange}
+    />
   );
 
   if (isMobile) {

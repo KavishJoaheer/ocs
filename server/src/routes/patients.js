@@ -19,7 +19,7 @@ const {
 } = require("../lib/locationTags.js");
 const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.js");
 const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
-const { resolveReviewDoctorId, syncReviewAppointmentSlot } = require("../lib/longTermReview");
+const { notifyReviewDoctorAssigned, resolveReviewDoctorId, syncReviewAppointmentSlot } = require("../lib/longTermReview");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 const {
   doctorCanAccessPatient,
@@ -1396,6 +1396,14 @@ router.patch("/:id/long-term-review", (req, res) => {
   });
   publishPatientDataChange(patientId, { reason: "long_term_review" });
 
+  if (isUnderReview && !parseBooleanField(existing.is_under_review)) {
+    void notifyReviewDoctorAssigned({
+      patientId,
+      patientName: existing.full_name,
+      doctorId: resolveReviewDoctorId(existing),
+    });
+  }
+
   res.json(
     formatPatientRecord({
       ...getPatientById(patientId),
@@ -1474,6 +1482,15 @@ router.patch("/:id/review-assignment", (req, res) => {
     reason: "review_assignment",
     notifyDoctorIds: [previousDoctorId, nextDoctorId],
   });
+
+  if (changingDoctor) {
+    void notifyReviewDoctorAssigned({
+      patientId,
+      patientName: existing.full_name,
+      doctorId: nextDoctorId,
+      previousDoctorId,
+    });
+  }
 
   res.json(
     formatPatientRecord({

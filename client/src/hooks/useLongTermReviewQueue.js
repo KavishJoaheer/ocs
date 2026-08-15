@@ -26,7 +26,18 @@ function mergeReviewPatient(row, updated) {
   };
 }
 
-export function useLongTermReviewQueue({ enabled = true } = {}) {
+function buildReviewQueuePath(scope) {
+  const value = String(scope || "").trim();
+  if (value === "all") {
+    return "/dashboard/long-term-review?view=all";
+  }
+  if (value && value !== "mine") {
+    return `/dashboard/long-term-review?reviewDoctorId=${encodeURIComponent(value)}`;
+  }
+  return "/dashboard/long-term-review";
+}
+
+export function useLongTermReviewQueue({ enabled = true, scope = "mine" } = {}) {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(Boolean(enabled));
   const [error, setError] = useState(null);
@@ -50,7 +61,7 @@ export function useLongTermReviewQueue({ enabled = true } = {}) {
     setError(null);
 
     try {
-      const data = await api.get("/dashboard/long-term-review");
+      const data = await api.get(buildReviewQueuePath(scope));
       const rows = Array.isArray(data?.patients) ? data.patients : [];
       setPatients(rows);
       return rows;
@@ -63,7 +74,7 @@ export function useLongTermReviewQueue({ enabled = true } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, scope]);
 
   useEffect(() => {
     void reload();

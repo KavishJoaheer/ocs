@@ -48,6 +48,7 @@ function formatMobileAssignedDoctorLine(patient) {
 function LongTermReviewWorkspaceList({
   patients,
   onPatientsChange,
+  showMineBadge = false,
   emptyTitle = "No review appointment patients",
   emptyDescription = "Patients flagged by the operator desk for a review appointment will appear here.",
 }) {
@@ -72,6 +73,9 @@ function LongTermReviewWorkspaceList({
           const dueLabel = formatScheduledReviewDate(patient.review_due_date);
           const timeLabel = formatReviewAppointmentTime(patient.review_appointment_time);
 
+          const canManage = patient.can_manage !== false;
+          const showYours = showMineBadge && patient.is_mine;
+
           return (
             <div
               key={patient.id}
@@ -79,7 +83,14 @@ function LongTermReviewWorkspaceList({
             >
               <div className="grid gap-4 md:grid-cols-4 md:items-center">
                 <div className="min-w-0 space-y-1">
-                  <p className="text-lg font-semibold text-slate-950">{patient.full_name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-lg font-semibold text-slate-950">{patient.full_name}</p>
+                    {showYours ? (
+                      <span className="rounded-full bg-ocs-teal/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-ocs-teal">
+                        Yours
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-sm text-[#4f6f7a]">{formatReviewPatientMetaLine(patient)}</p>
                 </div>
 
@@ -108,13 +119,17 @@ function LongTermReviewWorkspaceList({
 
                 <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
                   {isMobile ? <StatusBadge value={patient.status} /> : null}
-                  <Link
-                    className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
-                    to={`/patients/${patient.id}`}
-                  >
-                    Open patient
-                  </Link>
-                  <LongTermReviewLogUpdateButton onClick={() => openLogUpdate(patient)} />
+                  {canManage ? (
+                    <Link
+                      className="rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                      to={`/patients/${patient.id}`}
+                    >
+                      Open patient
+                    </Link>
+                  ) : null}
+                  {canManage ? (
+                    <LongTermReviewLogUpdateButton onClick={() => openLogUpdate(patient)} />
+                  ) : null}
                   {canAssign ? (
                     <button
                       type="button"

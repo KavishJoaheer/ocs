@@ -9,7 +9,9 @@ const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const {
   getGlobalLongTermReviewPatients,
   getLongTermReviewCount,
+  resolveReviewDoctorId,
 } = require("../lib/longTermReview");
+const { doctorCanAccessPatient } = require("../lib/patientAccess");
 const {
   getTodayLocal,
   offsetLocalDate,
@@ -1188,11 +1190,54 @@ router.get("/long-term-review", (req, res) => {
     return res.status(403).json({ error: "Only clinical staff can open the review appointment queue." });
   }
 
-  const caseloadDoctorId = req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
+  const ownDoctorId = Number(req.auth.doctor_id || 0);
+  const view = String(req.query.view || "").trim().toLowerCase();
+  const requestedDoctorId = Number(req.query.reviewDoctorId);
+  let caseloadDoctorId = null;
+
+  if (Number.isInteger(requestedDoctorId) && requestedDoctorId > 0) {
+    const reviewDoctor = db
+      .prepare("SELECT id FROM doctors WHERE id = ? AND deleted_at IS NULL")
+      .get(requestedDoctorId);
+    if (!reviewDoctor) {
+      return res.status(400).json({ error: "Doctor not found." });
+    }
+    caseloadDoctorId = requestedDoctorId;
+  } else if (req.auth.role === "doctor" && view !== "all") {
+    if (!ownDoctorId) {
+      return res.json({
+        patients: [],
+        count: 0,
+        mine_count: 0,
+        view: "mine",
+      });
+    }
+    caseloadDoctorId = ownDoctorId;
+  }
+
+  const patients = getGlobalLongTermReviewPatients({ caseloadDoctorId }).map((row) => ({
+    ...row,
+    can_manage: req.auth.role !== "doctor" || doctorCanAccessPatient(row, req.auth),
+    is_mine:
+      req.auth.role === "doctor" &&
+      ownDoctorId > 0 &&
+      Number(resolveReviewDoctorId(row)) === ownDoctorId,
+  }));
+
+  const mineCount =
+    req.auth.role === "doctor" && ownDoctorId > 0
+      ? getLongTermReviewCount({ caseloadDoctorId: ownDoctorId })
+      : getLongTermReviewCount();
 
   res.json({
-    patients: getGlobalLongTermReviewPatients({ caseloadDoctorId }),
-    count: getLongTermReviewCount({ caseloadDoctorId }),
+    patients,
+    count: patients.length,
+    mine_count: mineCount,
+    view: caseloadDoctorId && req.auth.role === "doctor" && caseloadDoctorId === ownDoctorId && view !== "all"
+      ? "mine"
+      : requestedDoctorId > 0
+        ? "doctor"
+        : "all",
   });
 });
 

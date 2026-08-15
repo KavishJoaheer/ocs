@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import LongTermReviewWorkspaceList from "./LongTermReviewWorkspaceList.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
+import { api } from "../lib/api.js";
 import { parsePatientReviewDueMonth } from "../lib/patientReview.js";
 
 const CALENDAR_MONTH_OPTIONS = [
@@ -18,6 +20,9 @@ const CALENDAR_MONTH_OPTIONS = [
   { value: "12", label: "December" },
 ];
 
+const FILTER_SELECT_CLASS =
+  "w-full cursor-pointer appearance-none rounded-xl border border-gray-200/80 bg-white py-2 pl-3.5 pr-10 text-xs font-bold text-gray-700 shadow-sm focus:border-[#557373] focus:outline-none";
+
 function monthLabelFromIndex(monthIndex) {
   return CALENDAR_MONTH_OPTIONS.find((option) => option.value === monthIndex)?.label || monthIndex;
 }
@@ -32,8 +37,37 @@ function filterPatientsByMonthIndex(patients, selectedMonthIndex) {
   );
 }
 
-function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
+function LongTermReviewOperatorPanel({
+  patients = [],
+  scope = "all",
+  onScopeChange,
+  onPatientsChange,
+}) {
+  const { user } = useAuth();
+  const isDoctor = user?.role === "doctor";
   const [selectedMonthIndex, setSelectedMonthIndex] = useState("all");
+  const [doctors, setDoctors] = useState([]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    api
+      .get("/doctors")
+      .then((rows) => {
+        if (ignore) return;
+        const list = Array.isArray(rows) ? rows : [];
+        setDoctors(list.filter((doctor) => doctor.is_active !== 0 && !doctor.deleted_at));
+      })
+      .catch(() => {
+        if (!ignore) {
+          setDoctors([]);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const filteredReviewList = useMemo(
     () => filterPatientsByMonthIndex(patients, selectedMonthIndex),
@@ -41,6 +75,8 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
   );
 
   const filteredMonthLabel = monthLabelFromIndex(selectedMonthIndex);
+  const heading =
+    isDoctor && scope === "mine" ? "Your reviews" : "Review Appointments";
 
   return (
     <div className="space-y-6">
@@ -49,10 +85,49 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
           <span className="text-4xl font-black tracking-tight text-gray-900 tabular-nums">
             {filteredReviewList.length}
           </span>
-          <h2 className="text-lg font-extrabold tracking-wide text-gray-800">Review Appointments</h2>
+          <h2 className="text-lg font-extrabold tracking-wide text-gray-800">{heading}</h2>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-4">
+          <div className="flex min-w-[180px] flex-col gap-1">
+            <label
+              className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400"
+              htmlFor="long-term-review-doctor-filter"
+            >
+              View reviews
+            </label>
+            <div className="relative">
+              <select
+                id="long-term-review-doctor-filter"
+                value={scope}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (isDoctor && Number(value) === Number(user?.doctor_id)) {
+                    onScopeChange?.("mine");
+                    return;
+                  }
+                  onScopeChange?.(value);
+                }}
+                className={FILTER_SELECT_CLASS}
+              >
+                {isDoctor ? <option value="mine">My reviews</option> : null}
+                <option value="all">All doctors</option>
+                {doctors.map((doctor) => (
+                  <option key={doctor.id} value={String(doctor.id)}>
+                    {doctor.full_name}
+                    {doctor.specialization ? ` — ${doctor.specialization}` : ""}
+                  </option>
+                ))}
+              </select>
+              <div
+                className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-[9px] text-gray-400"
+                aria-hidden
+              >
+                ▼
+              </div>
+            </div>
+          </div>
+
           <div className="flex min-w-[180px] flex-col gap-1">
             <label
               className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400"
@@ -65,7 +140,7 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
                 id="long-term-review-month-filter"
                 value={selectedMonthIndex}
                 onChange={(event) => setSelectedMonthIndex(event.target.value)}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-gray-200/80 bg-white py-2 pl-3.5 pr-10 text-xs font-bold text-gray-700 shadow-sm focus:border-[#557373] focus:outline-none"
+                className={FILTER_SELECT_CLASS}
               >
                 <option value="all">All Months</option>
                 {CALENDAR_MONTH_OPTIONS.map((option) => (
@@ -102,15 +177,20 @@ function LongTermReviewOperatorPanel({ patients = [], onPatientsChange }) {
 
       <LongTermReviewWorkspaceList
         patients={filteredReviewList}
+        showMineBadge={isDoctor && scope !== "mine"}
         emptyDescription={
-          selectedMonthIndex === "all"
-            ? "Patients flagged by the operator desk for a review appointment will appear here."
-            : `No review appointment patients have a due date in ${filteredMonthLabel}.`
+          selectedMonthIndex !== "all"
+            ? `No review appointment patients have a due date in ${filteredMonthLabel}.`
+            : scope === "mine"
+              ? "Reviews assigned to you will appear here."
+              : "Patients flagged for a review appointment will appear here."
         }
         emptyTitle={
-          selectedMonthIndex === "all"
-            ? "No review appointment patients"
-            : `No patients due in ${filteredMonthLabel}`
+          selectedMonthIndex !== "all"
+            ? `No patients due in ${filteredMonthLabel}`
+            : scope === "mine"
+              ? "No reviews assigned to you"
+              : "No review appointment patients"
         }
         onPatientsChange={onPatientsChange}
       />
