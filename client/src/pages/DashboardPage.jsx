@@ -9,7 +9,6 @@ import {
   CreditCard,
   DollarSign,
   Package,
-  Search,
   ShieldCheck,
   Stethoscope,
   UserPlus,
@@ -17,7 +16,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import LowStockBanner from "../components/LowStockBanner.jsx";
 import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.jsx";
@@ -37,6 +36,7 @@ import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetrics.js";
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
+import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
 import {
   closePreviewTab,
@@ -490,19 +490,24 @@ function DoctorDashboardTile({
   );
 }
 
-function OperationsDashboardDesktopHeader({ title, roleBadge, statusMarkup, beforeStatus }) {
+function OperationsDashboardDesktopHeader({ title, subtitle, roleBadge, statusMarkup, beforeStatus }) {
   return (
     <div className="mb-2 hidden items-start justify-between gap-4 border-b border-[rgba(65,200,198,0.14)] pb-3 md:flex">
       <div className="min-w-0 flex-1 pr-4">
         <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-[2.125rem] md:leading-snug">
           {title}
         </h1>
+        {subtitle ? (
+          <p className="mt-1 text-sm font-medium text-slate-500">{subtitle}</p>
+        ) : null}
       </div>
       <div className="flex min-w-0 shrink-0 flex-col items-end gap-2">
-        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
-          <ShieldCheck className="size-3.5 shrink-0" />
-          <span className="truncate">{roleBadge}</span>
-        </div>
+        {roleBadge ? (
+          <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2d8f98]">
+            <ShieldCheck className="size-3.5 shrink-0" />
+            <span className="truncate">{roleBadge}</span>
+          </div>
+        ) : null}
         <div className="flex max-w-full flex-wrap items-center justify-end gap-2 rounded-2xl border border-[rgba(65,200,198,0.2)] bg-white/92 px-3 py-1.5 sm:gap-2.5 sm:px-3.5">
           {beforeStatus}
           <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400">
@@ -705,37 +710,6 @@ function RecentActivityPanel({ dashboard }) {
   );
 }
 
-function DoctorPatientQuickSearch() {
-  const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-
-  function submit() {
-    const trimmed = query.trim();
-    navigate(trimmed ? `/patients?search=${encodeURIComponent(trimmed)}` : "/patients");
-  }
-
-  return (
-    <div className="relative hidden min-w-0 max-w-[11rem] flex-1 md:block lg:max-w-[14rem]">
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
-      <input
-        type="search"
-        enterKeyHint="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            submit();
-          }
-        }}
-        placeholder="Search patients…"
-        aria-label="Search patients"
-        className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#2d8f98]"
-      />
-    </div>
-  );
-}
-
 function OperatorScheduledVisitsMetricCard() {
   return (
     <PersonalOperationOverviewCard
@@ -840,11 +814,15 @@ function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero =
   return <div className={classes}>{content}</div>;
 }
 
-function countDoctorScheduledVisitsToday(dashboard) {
+function getDoctorVisitsToday(dashboard) {
   const today = dashboard?.doctorWorkspace?.periods?.today || dashboard?.periods?.today || "";
   const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
 
-  return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled").length;
+  return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled");
+}
+
+function countDoctorScheduledVisitsToday(dashboard) {
+  return getDoctorVisitsToday(dashboard).length;
 }
 
 const doctorMetricVariants = {
@@ -902,7 +880,7 @@ function DoctorMetricsRow({ dashboard }) {
     <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
       <DoctorMetricCard
         to="/appointments"
-        label="Scheduled Visits"
+        label="Visits today"
         value={visitsToday}
         variant="scheduled"
       />
@@ -914,7 +892,7 @@ function DoctorMetricsRow({ dashboard }) {
       />
       <DoctorMetricCard
         to="/doctor/long-term-review"
-        label="Review appointment"
+        label="Reviews due"
         value={longTermCount}
         variant="longTerm"
       />
@@ -962,37 +940,64 @@ function OperatorPersonalOperationUpdates({ metrics }) {
   );
 }
 
-function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert }) {
-  const rosterUpdateLabel = `Next roster update on ${dayjs().endOf("month").format("MMMM D")}`;
+function DoctorDashboardTwinPanels({
+  monthLabel,
+  onOpenRosterPdf,
+  lowStockAlert,
+  visitsToday = [],
+}) {
   const lowStockCount = Number(lowStockAlert?.total_items || 0);
 
   return (
     <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
-      <div className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
-        <div className="flex items-center justify-between border-b border-gray-50 pb-3">
-          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Active Shifts</span>
-          <span className="rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-600">
-            {monthLabel} Roster
-          </span>
-        </div>
-        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
-              <CalendarClock className="size-5" strokeWidth={2} aria-hidden="true" />
-            </div>
-            <div className="flex min-w-0 flex-col">
-              <span className="text-sm font-semibold text-gray-800">Monthly schedule view active</span>
-              <span className="text-xs text-gray-400">{rosterUpdateLabel}</span>
-            </div>
-          </div>
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
+          <span className="text-sm font-semibold text-slate-800">Today’s visits</span>
           <button
             type="button"
             onClick={onOpenRosterPdf}
-            className="whitespace-nowrap rounded-xl bg-ocs-teal px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-ocs-teal/90"
+            className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
           >
-            Open Calendar ➔
+            {monthLabel} roster
           </button>
         </div>
+        {visitsToday.length ? (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {visitsToday.map((visit) => {
+              const timeLabel =
+                formatReviewAppointmentTime(visit.appointment_time) ||
+                String(visit.appointment_time || "").slice(0, 5);
+              const place = String(visit.location || "").trim();
+
+              return (
+                <li key={visit.id}>
+                  <Link
+                    to={`/patients/${visit.patient_id}`}
+                    className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold tabular-nums text-slate-900">{timeLabel}</p>
+                      <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
+                        {visit.patient_name}
+                      </p>
+                      {place ? (
+                        <p className="mt-0.5 truncate text-xs text-slate-500">{place}</p>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Open</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">No visits booked today.</p>
+            <Link to="/appointments" className="text-xs font-semibold text-ocs-teal">
+              Appointments
+            </Link>
+          </div>
+        )}
       </div>
 
       {lowStockAlert?.triggered ? (
@@ -1001,24 +1006,23 @@ function DoctorDashboardTwinPanels({ monthLabel, onOpenRosterPdf, lowStockAlert 
           className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 border-l-4 border-l-ocs-yellow bg-white p-6 shadow-sm transition-colors hover:shadow-md lg:col-span-2"
         >
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-600">Inventory alerts</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-600">Bag stock</span>
             <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
               {lowStockCount} at or below par
             </span>
           </div>
-          <div className="mt-4 flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ocs-yellow/10 text-ocs-yellow">
-              <BellRing className="size-4" strokeWidth={2} aria-hidden="true" />
-            </div>
-            <span className="min-w-0 text-xs font-semibold leading-normal text-slate-700">
-              {lowStockCount} item{lowStockCount === 1 ? "" : "s"} are currently low in your bag. Tap to restock.
-            </span>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="min-w-0 text-xs font-semibold leading-normal text-slate-700">
+              {lowStockCount} item{lowStockCount === 1 ? "" : "s"} are currently low in your bag.
+              Open inventory to restock.
+            </p>
+            <span className="shrink-0 text-xs font-semibold text-ocs-yellow-dark">Restock</span>
           </div>
         </Link>
       ) : (
         <div className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between border-b border-gray-50 pb-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Inventory alerts</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Bag stock</span>
             <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
           </div>
           <p className="mt-4 text-xs font-medium leading-normal text-gray-400">
@@ -1047,8 +1051,6 @@ function DoctorDashboardView({
 
       <div className="relative z-10 space-y-6">
         <OperationsDashboardDesktopHeader
-          beforeStatus={<DoctorPatientQuickSearch />}
-          roleBadge="Doctor workspace"
           statusMarkup={
             <OperationStatusSelector
               align="right"
@@ -1058,7 +1060,8 @@ function DoctorDashboardView({
               value={user.operation_status}
             />
           }
-          title="Operations Dashboard"
+          subtitle={dayjs().format("dddd D MMMM")}
+          title="Today"
         />
 
         {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
@@ -1066,9 +1069,10 @@ function DoctorDashboardView({
         <DoctorMetricsRow dashboard={dashboard} />
 
         <DoctorDashboardTwinPanels
+          lowStockAlert={lowStockAlert}
           monthLabel={monthLabel}
           onOpenRosterPdf={onOpenRosterPdf}
-          lowStockAlert={lowStockAlert}
+          visitsToday={getDoctorVisitsToday(dashboard)}
         />
       </div>
     </section>
