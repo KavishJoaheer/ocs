@@ -1015,7 +1015,7 @@ function PatientsPage() {
                                 <PortalAccountBadge patient={patient} mobile />
                               </p>
                               {dueLabel ? (
-                                <span className="shrink-0 rounded-full bg-ocs-yellow/15 px-2 py-0.5 text-xs font-bold text-ocs-yellow-dark">
+                                <span className="shrink-0 rounded-full bg-ocs-slate/10 px-2 py-0.5 text-xs font-bold text-ocs-slate">
                                   Due {dueLabel}
                                 </span>
                               ) : isDischarged ? (
@@ -1028,7 +1028,7 @@ function PatientsPage() {
                               {formatMobilePatientMetaLine(patient)}
                             </p>
                             {showAssignedDoctor ? (
-                              <p className="mt-1 text-xs font-medium text-ocs-yellow-dark">
+                              <p className="mt-1 text-xs font-medium text-ocs-grey">
                                 {displayText(patient.assigned_doctor_name, "Not assigned")}
                               </p>
                             ) : null}
