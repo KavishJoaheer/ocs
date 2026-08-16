@@ -4,7 +4,6 @@ import {
   ChevronDown,
   CreditCard,
   Globe,
-  IdCard,
   MoreVertical,
   Plus,
   RotateCcw,
@@ -13,7 +12,6 @@ import {
   Sparkles,
   SquarePen,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -1202,11 +1200,9 @@ function PatientsPage() {
                             </tr>
                           ) : (
                             <tr>
-                              <th className="w-[19%] px-4 py-2.5">Patient</th>
-                              <th className="w-[20%] px-4 py-2.5">Patient details</th>
-                              <th className="w-[16%] px-4 py-2.5">Next of kin</th>
-                              <th className="w-[22%] px-4 py-2.5">Clinical</th>
-                              <th className="w-[10%] px-4 py-2.5">Created</th>
+                              <th className="w-[44%] px-4 py-2.5">Patient</th>
+                              <th className="w-[28%] px-4 py-2.5">Contact</th>
+                              <th className="w-[20%] px-4 py-2.5">Doctor</th>
                               <th className="sticky right-0 z-10 w-12 bg-[#2f4749] px-2 py-2.5 text-right text-white shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                                 <span className="sr-only">Row actions</span>
                               </th>
@@ -1217,6 +1213,10 @@ function PatientsPage() {
                           {patients.map((patient) => {
                             const reviewNote = String(patient.review_reason_note || "").trim();
                             const dueLabel = formatReviewTimelineDate(patient.review_due_date);
+                            const dueShort = isPatientUnderReview(patient)
+                              ? formatReviewDueShort(patient.review_due_date)
+                              : "";
+                            const status = String(patient.status || "").toLowerCase();
 
                             return (
                             <tr
@@ -1283,107 +1283,47 @@ function PatientsPage() {
                                 </>
                               ) : (
                                 <>
-                              <td className="max-w-0 px-4 py-2 align-top">
-                                <div className="flex min-w-0 items-start gap-2">
-                                  <div className="shrink-0 rounded-xl bg-sky-50 p-2 text-sky-700">
-                                    <UserRound className="size-4" />
-                                  </div>
-                                  <div className="min-w-0 space-y-0.5">
-                                    <p className="flex flex-wrap items-center gap-y-1 truncate font-semibold leading-tight text-slate-950">
-                                      <span className="truncate">{patient.full_name}</span>
+                              <td className="max-w-0 px-4 py-2.5 align-top">
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="min-w-0 flex flex-wrap items-center gap-y-1">
+                                      <span className="font-semibold leading-snug text-slate-950">
+                                        {patient.full_name}
+                                      </span>
                                       {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
                                       <PortalAccountBadge patient={patient} desktop />
                                     </p>
-                                    <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500">
-                                      <IdCard className="size-3.5 shrink-0" />
-                                      <PatientCareNumber patient={patient} className="truncate" />
-                                    </p>
-                                    <p className="truncate text-xs text-slate-500">
-                                      ID: {displayText(patient.patient_id_number)}
-                                    </p>
-                                    <p className="truncate text-xs text-slate-500">
-                                      {patient.gender}
-                                      {patient.date_of_birth
-                                        ? ` · ${formatAgeFromDateOfBirth(patient.date_of_birth)}`
-                                        : ""}
-                                    </p>
+                                    {dueShort ? (
+                                      <span className="shrink-0 rounded-full bg-ocs-slate/10 px-2 py-0.5 text-xs font-bold text-ocs-slate">
+                                        Due {dueShort}
+                                      </span>
+                                    ) : status === "discharged" ? (
+                                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                                        Out
+                                      </span>
+                                    ) : status === "pending_approval" ? (
+                                      <StatusBadge value={patient.status} />
+                                    ) : null}
                                   </div>
+                                  <p className="text-xs leading-snug text-slate-500">
+                                    {formatMobilePatientMetaLine(patient)}
+                                  </p>
                                 </div>
                               </td>
 
-                              <td className="max-w-0 px-4 py-2 align-top">
+                              <td className="max-w-0 px-4 py-2.5 align-top">
                                 <p className="truncate text-sm font-medium leading-tight text-slate-800">
                                   {displayText(patient.patient_contact_number)}
                                 </p>
-                                <p
-                                  className="mt-0.5 line-clamp-1 break-words text-xs leading-snug text-slate-500"
-                                  title={patient.address || undefined}
-                                >
-                                  {displayText(patient.address)}
-                                </p>
-                                <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-slate-500">
+                                <p className="mt-0.5 truncate text-xs leading-snug text-slate-500">
                                   {displayText(patient.location, "Location not selected")}
                                 </p>
                               </td>
 
-                              <td className="max-w-0 px-4 py-2 align-top">
-                                <p className="truncate text-sm font-semibold leading-tight text-slate-900">
-                                  {displayText(patient.next_of_kin_name)}
+                              <td className="max-w-0 px-4 py-2.5 align-top">
+                                <p className="truncate text-sm font-medium leading-snug text-ocs-grey">
+                                  {displayText(patient.assigned_doctor_name, "Not assigned")}
                                 </p>
-                                <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-slate-500">
-                                  {displayText(patient.next_of_kin_relationship)}
-                                </p>
-                                <p className="mt-0.5 truncate text-xs leading-snug text-slate-500">
-                                  {displayText(patient.next_of_kin_contact_number)}
-                                </p>
-                              </td>
-
-                              <td className="max-w-0 px-4 py-2 align-top">
-                                <div className="flex min-w-0 items-start gap-2">
-                                  <StatusBadge value={patient.status} />
-                                  <div className="min-w-0 flex-1 space-y-0.5">
-                                    <p
-                                      className="line-clamp-1 text-xs leading-snug text-slate-600"
-                                      title={displayText(patient.assigned_doctor_name, "Not assigned")}
-                                    >
-                                      {displayText(patient.assigned_doctor_name, "Not assigned")}
-                                    </p>
-                                    <p
-                                      className="line-clamp-1 text-xs leading-snug text-slate-600"
-                                      title={
-                                        patient.status === "active"
-                                          ? displayText(
-                                              patient.ongoing_treatment,
-                                              "Ongoing treatment not recorded",
-                                            )
-                                          : displayText(
-                                              patient.drug_allergy_history,
-                                              "Allergy history not recorded",
-                                            )
-                                      }
-                                    >
-                                      {patient.status === "active"
-                                        ? displayText(
-                                            patient.ongoing_treatment,
-                                            "Ongoing treatment not recorded",
-                                          )
-                                        : displayText(
-                                            patient.drug_allergy_history,
-                                            "Allergy history not recorded",
-                                          )}
-                                    </p>
-                                    {isPatientUnderReview(patient) &&
-                                    formatReviewDueShort(patient.review_due_date) ? (
-                                      <p className="text-xs font-medium text-amber-700">
-                                        ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </td>
-
-                              <td className="px-4 py-2 align-top text-xs leading-snug text-slate-500">
-                                {formatDate(patient.created_at)}
                               </td>
                                 </>
                               )}
