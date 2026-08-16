@@ -1,12 +1,12 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  ChevronDown,
   CreditCard,
   Globe,
   IdCard,
   MoreVertical,
   Plus,
-  RefreshCw,
   RotateCcw,
   Search,
   ShieldAlert,
@@ -39,7 +39,6 @@ import {
 import {
   formatAgeFromDateOfBirth,
   formatDate,
-  statusLabel,
 } from "../lib/format.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import { isPatientSubscribed } from "../lib/patientSubscription.js";
@@ -132,27 +131,6 @@ function PortalAccountBadge({ patient, onDark = false, desktop = false, mobile =
   );
 }
 
-function MobilePatientStatusPill({ value }) {
-  const normalized = String(value || "").trim().toLowerCase();
-  const isUnderReview = normalized === "under_review";
-  const isActive = normalized === "active";
-
-  return (
-    <span
-      className={cx(
-        "inline-flex shrink-0 rounded-lg border px-2 py-0.5 text-[11px] font-bold capitalize",
-        isUnderReview && "border-ocs-yellow/30 bg-ocs-yellow/10 text-ocs-yellow-dark",
-        isActive && "border-emerald-200 bg-emerald-50 text-emerald-700",
-        !isUnderReview &&
-          !isActive &&
-          "border-slate-200 bg-slate-50 text-slate-600",
-      )}
-    >
-      {statusLabel(value)}
-    </span>
-  );
-}
-
 function formatMobilePatientGender(gender) {
   if (gender === "M") return "Male";
   if (gender === "F") return "Female";
@@ -220,6 +198,101 @@ function formatAssignedClinicianLine(patient) {
   }
 
   return patient.assigned_doctor_name;
+}
+
+function formatDoctorFilterShortName(fullName) {
+  const normalized = String(fullName || "").trim();
+  if (!normalized) {
+    return "All";
+  }
+
+  const withoutTitle = normalized.replace(/^(dr|doctor)\.?\s+/i, "");
+  return withoutTitle.split(/\s+/)[0] || normalized;
+}
+
+function MobileDoctorFilter({ doctors, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = doctors.find((doctor) => String(doctor.id) === String(value));
+  const shortLabel = selected ? formatDoctorFilterShortName(selected.full_name) : "All";
+  const options = [{ id: "", full_name: "All doctors" }, ...doctors];
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    function handleKey(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50"
+    >
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left"
+      >
+        <span className="text-[11px] font-semibold text-slate-400">Doctor</span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-slate-700">{shortLabel}</span>
+          <ChevronDown
+            className={cx("size-4 text-slate-400 transition", open && "rotate-180")}
+            aria-hidden
+          />
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-slate-100" role="listbox">
+          {options.map((doctor, index) => {
+            const optionValue = doctor.id === "" ? "" : String(doctor.id);
+            const active = String(value || "") === optionValue;
+
+            return (
+              <button
+                key={doctor.id || "all"}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onChange(optionValue);
+                  setOpen(false);
+                }}
+                className={cx(
+                  "flex w-full px-3.5 py-2.5 text-left text-sm",
+                  index > 0 && "border-t border-slate-100",
+                  active ? "bg-white font-semibold text-slate-800" : "font-medium text-slate-600",
+                )}
+              >
+                {doctor.full_name}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function PatientsPage() {
@@ -561,6 +634,16 @@ function PatientsPage() {
     );
   }, [canCreatePatients]);
 
+  const mobileAddButton = canCreatePatients ? (
+    <Link
+      to="/patients/add"
+      className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-2xl bg-ocs-slate px-3.5 text-sm font-semibold text-white transition hover:bg-ocs-slate/90 active:scale-95"
+    >
+      <Plus className="size-4" />
+      Add
+    </Link>
+  ) : null;
+
   async function handleSave(payload) {
     setIsSaving(true);
 
@@ -634,7 +717,7 @@ function PatientsPage() {
   }
 
   const searchField = (
-    <label className="relative block w-full max-w-xl">
+    <label className={cx("relative block w-full", !isMobile && "max-w-xl")}>
       <Search
         className={cx(
           "pointer-events-none absolute left-4 -translate-y-1/2 text-slate-400",
@@ -649,7 +732,7 @@ function PatientsPage() {
         }}
         placeholder={
           isMobile
-            ? "Search by name or OCS ID..."
+            ? "Name or OCS ID"
             : "Search by OCS care number, patient ID, name, assigned doctor, location, or next of kin"
         }
         className={cx(
@@ -692,8 +775,8 @@ function PatientsPage() {
     const baseTabs = [
       { id: "all", label: "All" },
       { id: "active", label: "Active" },
-      { id: "discharged", label: "Discharged" },
-      { id: "under_review", label: "Under Review" },
+      { id: "discharged", label: isMobile ? "Out" : "Discharged" },
+      { id: "under_review", label: isMobile ? "Review" : "Under Review" },
     ];
 
     if (isMobile) {
@@ -715,60 +798,68 @@ function PatientsPage() {
     }
   }, [isMobile, statusFilter]);
 
+  const statusTabBar = !myAssignedFilterActive ? (
+    <div
+      className={cx(
+        "flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm",
+        isMobile && "w-full",
+      )}
+    >
+      {patientStatusTabs.map((status) => (
+        <button
+          key={status.id}
+          type="button"
+          onClick={() => {
+            setStatusFilter(status.id);
+            setPage(1);
+          }}
+          className={cx(
+            "rounded-xl font-semibold transition",
+            isMobile ? "min-w-0 flex-1 whitespace-nowrap px-1.5 py-2 text-xs" : "px-4 py-2 text-sm",
+            statusFilter === status.id
+              ? status.id === "active"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                : status.id === "discharged"
+                  ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
+                  : status.id === "under_review"
+                    ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
+                    : status.id === "pending_approval"
+                      ? "bg-red-600 text-white shadow-md shadow-red-600/20"
+                      : status.id === "recently_deleted"
+                        ? "bg-rose-700 text-white shadow-md shadow-rose-700/20"
+                        : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
+              : "text-slate-600 hover:bg-slate-50",
+          )}
+        >
+          <span className="flex items-center justify-center gap-2">
+            {status.label}
+            {!isMobile && status.id === "pending_approval" && pendingApprovalCount > 0 ? (
+              <span
+                className={cx(
+                  "flex min-w-[20px] items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  statusFilter === status.id
+                    ? "bg-white text-red-600"
+                    : "bg-red-500 text-white",
+                )}
+              >
+                {pendingApprovalCount}
+              </span>
+            ) : null}
+          </span>
+        </button>
+      ))}
+    </div>
+  ) : (
+    <span className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
+      Active assigned cases only
+    </span>
+  );
+
   const statusFilters = (
     <div className="flex flex-wrap items-center gap-2">
-      {!myAssignedFilterActive ? (
-        <div className="flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
-          {patientStatusTabs.map((status) => (
-            <button
-              key={status.id}
-              type="button"
-              onClick={() => {
-                setStatusFilter(status.id);
-                setPage(1);
-              }}
-              className={cx(
-                "rounded-xl px-4 py-2 text-sm font-semibold transition",
-                statusFilter === status.id
-                  ? status.id === "active"
-                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                    : status.id === "discharged"
-                      ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
-                      : status.id === "under_review"
-                        ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
-                        : status.id === "pending_approval"
-                          ? "bg-red-600 text-white shadow-md shadow-red-600/20"
-                          : status.id === "recently_deleted"
-                            ? "bg-rose-700 text-white shadow-md shadow-rose-700/20"
-                            : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-                  : "text-slate-600 hover:bg-slate-50",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                {status.label}
-                {!isMobile && status.id === "pending_approval" && pendingApprovalCount > 0 ? (
-                  <span
-                    className={cx(
-                      "flex min-w-[20px] items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-bold",
-                      statusFilter === status.id
-                        ? "bg-white text-red-600"
-                        : "bg-red-500 text-white",
-                    )}
-                  >
-                    {pendingApprovalCount}
-                  </span>
-                ) : null}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <span className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
-          Active assigned cases only
-        </span>
-      )}
+      {statusTabBar}
 
-      {!myAssignedFilterActive && !isRecentlyDeletedView ? (
+      {!isMobile && !myAssignedFilterActive && !isRecentlyDeletedView ? (
         <select
         value={doctorIdFilter}
         onChange={(event) => {
@@ -803,30 +894,24 @@ function PatientsPage() {
     >
       {isMobile ? (
         <header className="space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <h1 className="text-xl font-bold tracking-tight text-ocs-slate">Patient Directory</h1>
-            <div className="flex items-center gap-2">
-              {isDoctorMobile ? (
-                <button
-                  type="button"
-                  onClick={() => void handleMobileDirectoryRefresh()}
-                  disabled={loading || refreshing}
-                  className="grid size-10 place-items-center rounded-xl border border-[#557373]/20 bg-white text-[#557373] transition hover:bg-[#557373]/10 active:scale-95 disabled:opacity-50"
-                  aria-label="Refresh patient directory"
-                >
-                  <RefreshCw className={cx("size-4", refreshing && "animate-spin")} strokeWidth={2.25} />
-                </button>
-              ) : null}
-              {headerActions}
-            </div>
+          <h1 className="sr-only">Patients</h1>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">{searchField}</div>
+            {mobileAddButton}
           </div>
           {offlineDirectoryActive && isDoctorMobile ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-amber-200/80 bg-[#557373]/15 px-3.5 py-2.5 text-xs font-semibold text-gray-800">
-              <span aria-hidden>⚠️</span>
-              <span>Offline Mode — Displaying cached directory</span>
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-[#557373]/15 px-3.5 py-2.5 text-xs font-semibold text-gray-800">
+              <span>Offline — showing cached directory</span>
+              <button
+                type="button"
+                onClick={() => void handleMobileDirectoryRefresh()}
+                disabled={loading || refreshing}
+                className="shrink-0 rounded-lg px-2 py-1 font-bold text-[#557373] transition hover:bg-white/60 disabled:opacity-50"
+              >
+                Retry
+              </button>
             </div>
           ) : null}
-          {searchField}
         </header>
       ) : (
         <PageHeader title="Patients" actions={headerActions} />
@@ -846,7 +931,7 @@ function PatientsPage() {
             : undefined
         }
         actions={
-          refreshing ? (
+          !isMobile && refreshing ? (
             <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
               Refreshing...
             </span>
@@ -878,7 +963,17 @@ function PatientsPage() {
               </div>
             ) : (
               <div className="mb-3 space-y-3">
-                {statusFilters}
+                {statusTabBar}
+                {!myAssignedFilterActive ? (
+                  <MobileDoctorFilter
+                    doctors={doctors}
+                    value={doctorIdFilter}
+                    onChange={(nextDoctorId) => {
+                      setDoctorIdFilter(nextDoctorId);
+                      setPage(1);
+                    }}
+                  />
+                ) : null}
                 {subscriberFilterBadge}
                 {myAssignedFilterBadge}
                 {user.role === "operator" ? (
@@ -894,40 +989,45 @@ function PatientsPage() {
                 {isMobile ? (
                   /* ── Mobile: card list ── */
                   <div className="flex flex-col pb-8">
-                    {patients.map((patient) => (
+                    {patients.map((patient) => {
+                      const dueLabel = isPatientUnderReview(patient)
+                        ? formatReviewDueShort(patient.review_due_date)
+                        : "";
+                      const isDischarged =
+                        String(patient.status || "").toLowerCase() === "discharged";
+                      const showAssignedDoctor = !doctorIdFilter && !myAssignedFilterActive;
+
+                      return (
                       <div
                         key={patient.id}
-                        className="mb-3 flex min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all active:scale-[0.99]"
+                        className="mb-3 flex min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all active:scale-[0.99]"
                       >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="grid size-11 shrink-0 place-items-center rounded-full border border-ocs-teal/20 bg-ocs-teal/10 text-ocs-teal"
-                            aria-hidden
-                          >
-                            <UserRound className="size-5" strokeWidth={2} />
-                          </div>
-
+                        <div className="flex min-w-0 flex-1 items-start gap-2">
                           <Link to={`/patients/${patient.id}`} className="min-w-0 flex-1">
-                            <p className="flex flex-wrap items-center gap-y-1 break-words">
-                              <span className="text-base font-bold text-slate-700">
-                                {patient.full_name}
-                              </span>
-                              {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
-                              <PortalAccountBadge patient={patient} mobile />
-                            </p>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 flex flex-wrap items-center gap-y-1 break-words">
+                                <span className="text-base font-bold text-slate-700">
+                                  {patient.full_name}
+                                </span>
+                                {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
+                                <PortalAccountBadge patient={patient} mobile />
+                              </p>
+                              {dueLabel ? (
+                                <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                                  Due {dueLabel}
+                                </span>
+                              ) : isDischarged ? (
+                                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                                  Out
+                                </span>
+                              ) : null}
+                            </div>
                             <p className="mt-1 break-words text-xs font-medium text-ocs-grey">
                               {formatMobilePatientMetaLine(patient)}
                             </p>
-
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                              <MobilePatientStatusPill value={patient.status} />
-                              <span className="text-xs font-medium text-ocs-grey">
+                            {showAssignedDoctor ? (
+                              <p className="mt-1 text-xs font-medium text-ocs-grey">
                                 {displayText(patient.assigned_doctor_name, "Not assigned")}
-                              </span>
-                            </div>
-                            {isPatientUnderReview(patient) && formatReviewDueShort(patient.review_due_date) ? (
-                              <p className="mt-1.5 text-xs font-medium text-ocs-yellow-dark">
-                                ⏱️ Due: {formatReviewDueShort(patient.review_due_date)}
                               </p>
                             ) : null}
 
@@ -968,7 +1068,8 @@ function PatientsPage() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
 
                     {pagination ? (
                       <div className="mt-5 flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center sm:justify-between">
