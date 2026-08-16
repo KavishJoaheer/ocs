@@ -245,7 +245,7 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
   return (
     <div
       ref={rootRef}
-      className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50"
+      className="overflow-hidden rounded-xl border border-ocs-yellow bg-ocs-yellow/10"
     >
       <button
         type="button"
@@ -254,17 +254,17 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
         onClick={() => setOpen((current) => !current)}
         className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left"
       >
-        <span className="text-[11px] font-semibold text-slate-400">Doctor</span>
+        <span className="text-[11px] font-semibold text-ocs-yellow-dark">Doctor</span>
         <span className="flex items-center gap-1.5">
-          <span className="text-sm font-semibold text-slate-700">{shortLabel}</span>
+          <span className="text-sm font-semibold text-ocs-slate">{shortLabel}</span>
           <ChevronDown
-            className={cx("size-4 text-slate-400 transition", open && "rotate-180")}
+            className={cx("size-4 text-ocs-yellow-dark transition", open && "rotate-180")}
             aria-hidden
           />
         </span>
       </button>
       {open ? (
-        <div className="border-t border-slate-100" role="listbox">
+        <div className="border-t border-ocs-yellow/30" role="listbox">
           {options.map((doctor, index) => {
             const optionValue = doctor.id === "" ? "" : String(doctor.id);
             const active = String(value || "") === optionValue;
@@ -281,8 +281,10 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
                 }}
                 className={cx(
                   "flex w-full px-3.5 py-2.5 text-left text-sm",
-                  index > 0 && "border-t border-slate-100",
-                  active ? "bg-white font-semibold text-slate-800" : "font-medium text-slate-600",
+                  index > 0 && "border-t border-ocs-yellow/20",
+                  active
+                    ? "bg-ocs-yellow font-semibold text-ocs-slate"
+                    : "font-medium text-slate-600",
                 )}
               >
                 {doctor.full_name}
@@ -1000,7 +1002,7 @@ function PatientsPage() {
                       return (
                       <div
                         key={patient.id}
-                        className="mb-3 flex min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all active:scale-[0.99]"
+                        className="mb-3 flex min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-100 border-l-[3px] border-l-ocs-yellow bg-white p-4 shadow-sm transition-all active:scale-[0.99]"
                       >
                         <div className="flex min-w-0 flex-1 items-start gap-2">
                           <Link to={`/patients/${patient.id}`} className="min-w-0 flex-1">
@@ -1013,7 +1015,7 @@ function PatientsPage() {
                                 <PortalAccountBadge patient={patient} mobile />
                               </p>
                               {dueLabel ? (
-                                <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                                <span className="shrink-0 rounded-full bg-ocs-yellow/15 px-2 py-0.5 text-xs font-bold text-ocs-yellow-dark">
                                   Due {dueLabel}
                                 </span>
                               ) : isDischarged ? (
@@ -1026,7 +1028,7 @@ function PatientsPage() {
                               {formatMobilePatientMetaLine(patient)}
                             </p>
                             {showAssignedDoctor ? (
-                              <p className="mt-1 text-xs font-medium text-ocs-grey">
+                              <p className="mt-1 text-xs font-medium text-ocs-yellow-dark">
                                 {displayText(patient.assigned_doctor_name, "Not assigned")}
                               </p>
                             ) : null}
