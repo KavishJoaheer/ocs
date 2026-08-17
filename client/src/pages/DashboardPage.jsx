@@ -162,6 +162,148 @@ function DoctorMobileLauncher({ user, dashboard = null, latestHcmPost = null }) 
   );
 }
 
+function getOperatorBoardCounts(metrics) {
+  return {
+    visitRequests: Number(metrics?.visit_requests?.active_count ?? 0),
+    unassignedRequests: Number(metrics?.visit_requests?.unassigned_count ?? 0),
+    reviews: Number(metrics?.long_term_review?.active_followup_count ?? 0),
+    unpaidThisWeek: Number(metrics?.pending_payment?.unpaid_this_week_count ?? 0),
+    visitsThisWeek: Number(metrics?.scheduled_visits?.this_week ?? 0),
+    healthPlans: Number(metrics?.health_plans?.active_subscribers_count ?? 0),
+    doctorsThisWeek: Number(metrics?.coverage?.doctors_this_week ?? 0),
+    onCall: Number(metrics?.coverage?.on_call_count ?? 0),
+  };
+}
+
+function OperatorMobileLauncher({
+  user,
+  dashboard,
+  operatorMetrics,
+  latestHcmPost = null,
+}) {
+  const firstName = (user.full_name || "").split(" ")[0] || "there";
+  const counts = getOperatorBoardCounts(operatorMetrics);
+  const ocsLowStock = dashboard?.ocs_low_stock_alert;
+  const ocsLowCount = Number(ocsLowStock?.total_items || 0);
+  const monthLabel = dayjs().format("MMMM");
+
+  const listCards = [
+    {
+      label: "This week's coverage",
+      description:
+        counts.doctorsThisWeek === 1
+          ? "1 doctor on this week"
+          : `${counts.doctorsThisWeek} doctors on this week`,
+      icon: CalendarClock,
+      to: "/operator/current-week-roster",
+    },
+    {
+      label: `${monthLabel} roster`,
+      description: "Open the full monthly doctor schedule.",
+      icon: ClipboardList,
+      to: "/operator/monthly-roster",
+    },
+    {
+      label: "Patient Directory",
+      description: "Search and open existing patient records.",
+      icon: UsersRound,
+      to: "/patients",
+    },
+    {
+      label: "Add a Patient",
+      description: "Register a new patient into the OCS system.",
+      icon: UserPlus,
+      to: "/patients/add",
+    },
+    {
+      label: "Inventory",
+      description: ocsLowStock?.triggered
+        ? `${ocsLowCount} below min`
+        : "Warehouse stock is at or above min.",
+      icon: Package,
+      to: "/inventory",
+    },
+    {
+      label: "Billing",
+      description: "Check billing status and payment follow-up.",
+      icon: CreditCard,
+      to: "/operator/billing-status",
+    },
+  ];
+
+  return (
+    <div className="flex min-h-[60svh] w-full min-w-0 flex-col">
+      <h1 className="text-[1.6rem] font-bold tracking-tight text-ocs-slate">
+        Hello, {firstName}
+      </h1>
+      <p className="mt-1 text-sm text-ocs-grey">{buildDoctorMobileDateLabel()}</p>
+
+      {latestHcmPost ? (
+        <div className="mt-4">
+          <HcmBulletinBanner post={latestHcmPost} />
+        </div>
+      ) : null}
+
+      {ocsLowStock?.triggered ? (
+        <div className="mt-4">
+          <LowStockBanner alert={ocsLowStock} compact variant="ocs" />
+        </div>
+      ) : null}
+
+      <div className="mt-5 grid grid-cols-2 gap-4">
+        <DoctorMobileSplitCard
+          to="/visit-requests"
+          label="Visit requests"
+          icon={ClipboardList}
+          count={counts.visitRequests}
+        />
+        <DoctorMobileSplitCard
+          to="/operator/long-term-review"
+          label="Reviews due"
+          icon={Activity}
+          count={counts.reviews}
+        />
+        <DoctorMobileSplitCard
+          to="/operator/pending-payment"
+          label="Unpaid this week"
+          icon={CreditCard}
+          count={counts.unpaidThisWeek}
+        />
+        <DoctorMobileSplitCard
+          to="/operator/scheduled-visits"
+          label="Visits this week"
+          icon={CalendarClock}
+          count={counts.visitsThisWeek}
+        />
+      </div>
+
+      <div className="mt-6 flex flex-1 flex-col gap-3.5 overflow-y-auto">
+        {listCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Link
+              key={card.label}
+              to={card.to}
+              className="group flex w-full items-center gap-5 rounded-[24px] border border-slate-100 bg-white px-5 py-6 shadow-sm transition duration-150 active:scale-[0.97] active:bg-slate-50/80"
+            >
+              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal shadow-sm">
+                <Icon className="size-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[1.05rem] font-bold tracking-tight text-slate-800">
+                  {card.label}
+                </p>
+                <p className="mt-0.5 text-sm leading-6 text-ocs-grey">{card.description}</p>
+              </div>
+              <ArrowUpRight className="size-5 shrink-0 text-ocs-teal/60 transition group-active:translate-x-0.5 group-active:-translate-y-0.5" />
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MobileLauncher({
   user,
   dashboard,
@@ -177,7 +319,18 @@ function MobileLauncher({
     );
   }
 
-  const showClinicalTwin = ["admin", "operator"].includes(user.role);
+  if (user.role === "operator") {
+    return (
+      <OperatorMobileLauncher
+        user={user}
+        dashboard={dashboard}
+        operatorMetrics={operatorMetrics}
+        latestHcmPost={latestHcmPost}
+      />
+    );
+  }
+
+  const showClinicalTwin = user.role === "admin";
   const clinicalCounts = showClinicalTwin
     ? resolveClinicalTwinCounts(user.role, { dashboard, operatorMetrics })
     : null;
@@ -186,7 +339,7 @@ function MobileLauncher({
 
   const cards = [];
 
-  if (["admin", "operator"].includes(user.role)) {
+  if (user.role === "admin") {
     cards.push({
       label: "Visit requests",
       icon: ClipboardList,
@@ -195,16 +348,7 @@ function MobileLauncher({
     });
   }
 
-  if (user.role === "operator") {
-    cards.push({
-      label: "This week's coverage",
-      icon: CalendarClock,
-      to: "/operator/current-week-roster",
-      description: "This week's visits and who is available for emergency coverage.",
-    });
-  }
-
-  if (["admin", "doctor", "operator"].includes(user.role)) {
+  if (["admin", "doctor"].includes(user.role)) {
     cards.push({
       label: "Patient Directory",
       icon: UsersRound,
@@ -213,7 +357,7 @@ function MobileLauncher({
     });
   }
 
-  if (["admin", "doctor", "operator"].includes(user.role)) {
+  if (["admin", "doctor"].includes(user.role)) {
     cards.push({
       label: "Add a Patient",
       icon: UserPlus,
@@ -229,53 +373,18 @@ function MobileLauncher({
       to: "/billing",
       description: "Open bills, payments, and consultation finance.",
     });
-  } else if (user.role === "operator") {
-    cards.push({
-      label: "Billing",
-      icon: CreditCard,
-      to: "/operator/billing-status",
-      description: "Check billing status and payment follow-up.",
-    });
-    const monthLabel = dayjs().format("MMMM");
-    cards.push(
-      {
-        label: "Scheduled visits",
-        icon: CalendarClock,
-        to: "/operator/scheduled-visits",
-        description: "Track future visits across all doctors.",
-      },
-      {
-        label: `${monthLabel} roster`,
-        icon: ClipboardList,
-        to: "/operator/monthly-roster",
-        description: "Open the full monthly doctor schedule.",
-      },
-      {
-        label: "Pending payment",
-        icon: CreditCard,
-        to: "/operator/pending-payment",
-        description: "Follow up on unpaid consultation bills.",
-      },
-      {
-        label: "Review appointment",
-        icon: Activity,
-        to: "/operator/long-term-review",
-        description: "Patients flagged for a review appointment.",
-      },
-    );
   }
 
-  if (["admin", "doctor", "operator"].includes(user.role)) {
+  if (["admin", "doctor"].includes(user.role)) {
     const ocsLowStock = dashboard?.ocs_low_stock_alert;
     const ocsLowCount = Number(ocsLowStock?.total_items || 0);
-    const isWarehouseRole = user.role === "admin" || user.role === "operator";
 
     cards.push({
       label: "Inventory",
       icon: Package,
       to: "/inventory",
       description:
-        isWarehouseRole && ocsLowStock?.triggered
+        user.role === "admin" && ocsLowStock?.triggered
           ? `${ocsLowCount} item${ocsLowCount === 1 ? "" : "s"} at or below par level`
           : "Check supplies and restock your medical kit.",
     });
@@ -296,7 +405,7 @@ function MobileLauncher({
       </h1>
       <p className="mt-1 text-sm text-ocs-grey">What would you like to do?</p>
 
-      {["admin", "operator"].includes(user.role) ? (
+      {user.role === "admin" ? (
         <div className="mt-4">
           <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
         </div>
@@ -709,110 +818,6 @@ function RecentActivityPanel({ dashboard }) {
   );
 }
 
-function OperatorScheduledVisitsMetricCard() {
-  return (
-    <PersonalOperationOverviewCard
-      hero
-      icon={CalendarClock}
-      title="Scheduled visits"
-      to="/operator/scheduled-visits"
-    />
-  );
-}
-
-function PersonalOperationOverviewCard({ title, subtitle, accent = false, hero = false, to, icon: Icon, metricLine }) {
-  const classes = cx(
-    "group relative overflow-hidden rounded-[30px] border px-5 py-5 transition duration-200 md:px-6 md:py-5",
-    hero
-      ? "border-gray-100 bg-white shadow-sm"
-      : accent
-        ? "border-ocs-yellow/20 bg-white text-slate-700"
-        : "border-gray-200 bg-white",
-    to ? "block cursor-pointer hover:border-gray-200" : "",
-    hero && to ? "hover:shadow-md" : "",
-  );
-
-  const content = (
-    <>
-      <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.12),transparent_68%)] blur-2xl" />
-
-      <div className="relative z-10 flex h-full flex-col">
-        <div className="flex items-start justify-between gap-4">
-          <div
-            className={cx(
-              "flex size-12 shrink-0 items-center justify-center rounded-2xl border",
-              hero
-                ? "border-slate-200 bg-ocs-teal/10 text-ocs-teal"
-                : accent
-                  ? "border-ocs-yellow/30 bg-ocs-yellow/10 text-ocs-yellow"
-                  : "border-gray-200 bg-slate-50 text-ocs-grey",
-            )}
-          >
-            {Icon ? <Icon className="size-5" /> : null}
-          </div>
-
-          {to ? (
-            <span
-              className={cx(
-                "inline-flex size-9 items-center justify-center rounded-full border transition",
-                hero
-                  ? "border-slate-200 bg-white text-ocs-teal group-hover:border-ocs-teal/30"
-                  : accent
-                    ? "border-ocs-yellow/30 bg-white text-ocs-yellow"
-                    : "border-gray-200 bg-white text-ocs-teal group-hover:border-ocs-teal/30",
-              )}
-            >
-              <ArrowUpRight className="size-4" />
-            </span>
-          ) : null}
-        </div>
-
-        <p
-          className={cx(
-            "text-base font-medium leading-snug tracking-tight",
-            hero ? "text-ocs-slate" : accent ? "text-slate-700" : "text-ocs-slate",
-            metricLine ? "mt-4" : subtitle ? "mt-7" : "mt-5",
-          )}
-        >
-          {title}
-        </p>
-        {metricLine ? (
-          <p className={cx("mt-2 text-sm font-semibold leading-snug", hero ? "text-ocs-teal" : "text-slate-600")}>
-            {metricLine}
-          </p>
-        ) : null}
-        {subtitle ? (
-          <p className={cx("mt-4 max-w-[14rem] text-sm leading-7 md:text-[1.01rem]", hero ? "text-ocs-grey" : "text-ocs-grey")}>
-            {subtitle}
-          </p>
-        ) : null}
-
-        <div
-          className={cx(
-            "h-[3px] w-16 rounded-full",
-            metricLine ? "mt-5" : subtitle ? "mt-6" : "mt-5",
-            hero
-              ? "bg-ocs-teal/30"
-              : accent
-                ? "bg-ocs-yellow"
-                : "bg-ocs-teal/40",
-          )}
-        />
-      </div>
-    </>
-  );
-
-  if (to) {
-    return (
-      <Link className={classes} to={to}>
-        {content}
-      </Link>
-    );
-  }
-
-  return <div className={classes}>{content}</div>;
-}
-
 function getDoctorVisitsToday(dashboard) {
   const today = dashboard?.doctorWorkspace?.periods?.today || dashboard?.periods?.today || "";
   const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
@@ -895,46 +900,6 @@ function DoctorMetricsRow({ dashboard }) {
         value={longTermCount}
         variant="longTerm"
       />
-    </div>
-  );
-}
-
-function OperatorPersonalOperationUpdates({ metrics }) {
-  const pendingBills = Number(metrics?.pending_payment?.unpaid_bills_count ?? 0);
-  const clinicalCounts = resolveClinicalTwinCounts("operator", { operatorMetrics: metrics });
-
-  return (
-    <div className="relative overflow-hidden rounded-[42px] border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_22%),radial-gradient(circle_at_bottom_right,rgba(65,200,198,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.97),rgba(236,248,248,0.94))] p-5 md:p-7">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_88%_16%,rgba(241,188,53,0.08),transparent_18%),radial-gradient(circle_at_70%_88%,rgba(65,200,198,0.08),transparent_18%)]" />
-
-      <div className="relative z-10">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Coordination flow
-        </p>
-        <h3 className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
-          Personal operation updates
-        </h3>
-
-        <div className="mt-4 h-px w-full bg-[linear-gradient(90deg,rgba(65,200,198,0.3),rgba(241,188,53,0.22),transparent)]" />
-
-        <ClinicalTwinMetricsCards
-          role="operator"
-          longTermReviewCount={clinicalCounts.longTermReviewCount}
-          healthPlansCount={clinicalCounts.healthPlansCount}
-          className="mt-4"
-        />
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <OperatorScheduledVisitsMetricCard />
-          <PersonalOperationOverviewCard
-            accent
-            icon={CreditCard}
-            metricLine={`${pendingBills} unpaid bill${pendingBills === 1 ? "" : "s"}`}
-            title="Pending payment"
-            to="/operator/pending-payment"
-          />
-        </div>
-      </div>
     </div>
   );
 }
@@ -1078,75 +1043,333 @@ function DoctorDashboardView({
   );
 }
 
-function OperatorDashboardView({ user, dashboard, operatorMetrics, onStatusChange, isSavingStatus }) {
-  const monthLabel = dayjs().format("MMMM");
+const operatorMetricVariants = {
+  requests: {
+    card: "border border-gray-100 bg-white shadow-sm hover:shadow-md",
+    label: "text-slate-600",
+    value: "text-ocs-teal",
+    anchorTheme: "doctor-primary",
+  },
+  reviews: {
+    card: "border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] hover:bg-[#f7e6db]",
+    label: "text-[#ba5a32]",
+    value: "text-[#6e2f14]",
+    anchorTheme: "doctor-terracotta",
+  },
+  unpaid: {
+    card: "border border-rose-100 bg-rose-50/70 hover:bg-rose-50",
+    label: "text-rose-500",
+    value: "text-slate-900",
+  },
+  visits: {
+    card: "border border-gray-100 bg-white shadow-sm hover:shadow-md",
+    label: "text-slate-600",
+    value: "text-ocs-teal",
+    anchorTheme: "doctor-primary",
+  },
+};
+
+function OperatorMetricCard({ to, label, value, variant }) {
+  const styles = operatorMetricVariants[variant];
 
   return (
-    <section className="relative mx-auto w-full min-w-0 max-w-[1180px] overflow-x-hidden overflow-y-hidden rounded-3xl border border-[rgba(65,200,198,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(65,200,198,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(241,188,53,0.14),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(231,247,246,0.94)_100%)] p-3 shadow-[0_36px_100px_rgba(34,72,91,0.14)] md:rounded-[56px] md:p-5 lg:p-7">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.72),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.52),transparent_20%),radial-gradient(circle_at_28%_82%,rgba(65,200,198,0.08),transparent_18%)]" />
+    <Link
+      to={to}
+      className={cx(
+        "group relative flex cursor-pointer flex-col rounded-2xl p-6 transition-all duration-300 ease-in-out",
+        styles.card,
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className={cx("text-xs font-bold uppercase tracking-widest", styles.label)}>{label}</span>
+        {styles.anchorTheme ? <MetricNavAnchor theme={styles.anchorTheme} /> : null}
+      </div>
+      <p className={cx("mt-4 text-4xl font-black tabular-nums", styles.value)}>{value}</p>
+    </Link>
+  );
+}
 
-      <div className="relative z-10">
-        <OperationsDashboardDesktopHeader
-          roleBadge="Operator workspace"
-          statusMarkup={
-            <OperationStatusSelector
-              align="right"
-              className="mt-0"
-              disabled={isSavingStatus}
-              onChange={onStatusChange}
-              options={["active", "offline"]}
-              value={user.operation_status}
-            />
-          }
-          title="Operations Dashboard"
-        />
+function OperatorMetricsRow({ counts }) {
+  return (
+    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <OperatorMetricCard
+        to="/visit-requests"
+        label="Visit requests"
+        value={counts.visitRequests}
+        variant="requests"
+      />
+      <OperatorMetricCard
+        to="/operator/long-term-review"
+        label="Reviews due"
+        value={counts.reviews}
+        variant="reviews"
+      />
+      <OperatorMetricCard
+        to="/operator/pending-payment"
+        label="Unpaid this week"
+        value={counts.unpaidThisWeek}
+        variant="unpaid"
+      />
+      <OperatorMetricCard
+        to="/operator/scheduled-visits"
+        label="Visits this week"
+        value={counts.visitsThisWeek}
+        variant="visits"
+      />
+    </div>
+  );
+}
 
-        <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
+function OperatorTodayStrip({ metrics }) {
+  const unassigned = Array.isArray(metrics?.visit_requests?.unassigned)
+    ? metrics.visit_requests.unassigned
+    : [];
+  const upcoming = Array.isArray(metrics?.upcoming_visits) ? metrics.upcoming_visits : [];
+  const unassignedCount = Number(metrics?.visit_requests?.unassigned_count ?? unassigned.length);
 
-        <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
-          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-4">
-              <div className="rounded-[34px] border border-[rgba(65,200,198,0.16)] bg-white/74 p-5 shadow-[0_16px_34px_rgba(34,72,91,0.06)] md:p-6">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Shared roster
-                </p>
-                <p className="mt-2 text-lg font-semibold tracking-tight text-ocs-slate md:text-xl">
-                  Doctor shifts
-                </p>
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
+        <span className="text-sm font-semibold text-slate-800">Today</span>
+        <Link to="/visit-requests" className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate">
+          Visit requests
+        </Link>
+      </div>
 
-                <div className="mt-4 space-y-4">
-                  <DoctorDashboardTile
-                    eyebrow="Weekly coverage"
-                    icon={CalendarClock}
-                    size="hero"
-                    title="This week's coverage"
-                    to="/operator/current-week-roster"
-                  />
-                  <DoctorDashboardTile
-                    eyebrow="Monthly view"
-                    icon={ClipboardList}
-                    size="compact"
-                    title={`${monthLabel} roster`}
-                    to="/operator/monthly-roster"
-                  />
+      {unassigned.length ? (
+        <ul className="mt-3 divide-y divide-slate-100">
+          {unassigned.map((request) => (
+            <li key={`request-${request.id}`}>
+              <Link
+                to="/visit-requests"
+                className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-snug text-slate-800">
+                    {request.patient_name}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {request.urgency === "emergency"
+                      ? "Emergency · unassigned"
+                      : request.urgency === "urgent"
+                        ? "Urgent · unassigned"
+                        : "Unassigned visit request"}
+                  </p>
                 </div>
-              </div>
+                <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Assign</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">
+            {unassignedCount === 0
+              ? "No unassigned visit requests."
+              : "No unassigned visit requests in this list."}
+          </p>
+          <Link to="/visit-requests" className="text-xs font-semibold text-ocs-teal">
+            Board
+          </Link>
+        </div>
+      )}
 
-              <DoctorDashboardTile
-                dark
-                eyebrow="Health care manager"
-                icon={BellRing}
-                size="hero"
-                title="Updates from HCM"
-                to="/hcm-news"
-              />
+      <div className="mt-5 border-t border-gray-50 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-slate-800">Next visits</span>
+          <Link
+            to="/operator/scheduled-visits"
+            className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
+          >
+            Schedule
+          </Link>
+        </div>
+        {upcoming.length ? (
+          <ul className="mt-2 divide-y divide-slate-100">
+            {upcoming.map((visit) => {
+              const timeLabel =
+                formatReviewAppointmentTime(visit.appointment_time) ||
+                String(visit.appointment_time || "").slice(0, 5);
+              const dateLabel = visit.appointment_date
+                ? dayjs(visit.appointment_date).format("ddd D MMM")
+                : "";
+
+              return (
+                <li key={`visit-${visit.id}`}>
+                  <Link
+                    to={visit.patient_id ? `/patients/${visit.patient_id}` : "/operator/scheduled-visits"}
+                    className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold tabular-nums text-slate-900">
+                        {dateLabel}
+                        {timeLabel ? ` · ${timeLabel}` : ""}
+                      </p>
+                      <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
+                        {visit.patient_name}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {visit.doctor_name}
+                        {visit.location ? ` · ${visit.location}` : ""}
+                      </p>
+                    </div>
+                    <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Open</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500">No upcoming scheduled visits.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OperatorToolsColumn({
+  counts,
+  monthLabel,
+  lowStockAlert,
+  rosterMeta,
+  onOpenRosterPdf,
+  hcmUnreadCount = 0,
+}) {
+  const coverageLabel =
+    counts.doctorsThisWeek === 1
+      ? "1 doctor on this week"
+      : `${counts.doctorsThisWeek} doctors on this week`;
+  const onCallLabel =
+    counts.onCall === 1 ? "1 on call" : `${counts.onCall} on call`;
+
+  return (
+    <div className="flex flex-col gap-4 lg:col-span-2">
+      <Link
+        to="/operator/current-week-roster"
+        className="flex min-h-[132px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-colors hover:shadow-md"
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
+            Doctor shifts
+          </span>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+            {onCallLabel}
+          </span>
+        </div>
+        <p className="mt-4 text-sm font-semibold leading-normal text-slate-800">{coverageLabel}</p>
+      </Link>
+
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold text-slate-800">Follow-up</p>
+        <div className="mt-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-800">{monthLabel} roster</p>
+              <Link
+                to="/operator/monthly-roster"
+                className="text-xs font-semibold text-slate-400 hover:text-ocs-slate"
+              >
+                Open roster
+              </Link>
             </div>
-
-            <OperatorPersonalOperationUpdates metrics={operatorMetrics} />
+            <button
+              type="button"
+              onClick={onOpenRosterPdf}
+              disabled={!rosterMeta?.has_roster}
+              className="shrink-0 rounded-xl bg-ocs-teal px-3 py-2 text-xs font-semibold text-white transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Download PDF
+            </button>
           </div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+            <p className="text-sm font-medium text-slate-800">Health plans</p>
+            <Link
+              to="/patients?filter=subscribed"
+              className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
+            >
+              {counts.healthPlans} subscribed
+            </Link>
+          </div>
+          {lowStockAlert?.triggered ? null : (
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+              <p className="text-sm font-medium text-slate-800">Warehouse</p>
+              <Link
+                to="/inventory"
+                className="text-xs font-semibold text-slate-400 hover:text-ocs-slate"
+              >
+                Stock is fine
+              </Link>
+            </div>
+          )}
+          {hcmUnreadCount > 0 ? (
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+              <p className="text-sm font-medium text-slate-800">HCM</p>
+              <Link
+                to="/hcm-news"
+                className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
+              >
+                {hcmUnreadCount} unread
+              </Link>
+            </div>
+          ) : null}
         </div>
       </div>
-    </section>
+    </div>
+  );
+}
+
+function OperatorDashboardView({
+  user,
+  dashboard,
+  operatorMetrics,
+  onStatusChange,
+  isSavingStatus,
+  latestHcmPost = null,
+  rosterMeta = null,
+  onOpenRosterPdf,
+  hcmUnreadCount = 0,
+}) {
+  const monthLabel = dayjs().format("MMMM");
+  const counts = getOperatorBoardCounts(operatorMetrics);
+  const lowStockAlert = dashboard?.ocs_low_stock_alert;
+
+  return (
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-[2.125rem]">
+            Today
+          </h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">{dayjs().format("dddd D MMMM")}</p>
+        </div>
+        <OperationStatusSelector
+          align="right"
+          className="mt-0"
+          disabled={isSavingStatus}
+          onChange={onStatusChange}
+          options={["active", "offline"]}
+          value={user.operation_status}
+        />
+      </div>
+
+      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
+
+      <LowStockBanner alert={lowStockAlert} compact variant="ocs" />
+
+      <OperatorMetricsRow counts={counts} />
+
+      <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
+        <OperatorTodayStrip metrics={operatorMetrics} />
+        <OperatorToolsColumn
+          counts={counts}
+          hcmUnreadCount={hcmUnreadCount}
+          lowStockAlert={lowStockAlert}
+          monthLabel={monthLabel}
+          onOpenRosterPdf={onOpenRosterPdf}
+          rosterMeta={rosterMeta}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1500,7 +1723,7 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
 
 
 function DashboardPage() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, hcmUnreadCount } = useAuth();
   const isMobile = useIsMobile();
   const isOperator = user.role === "operator";
   const { metrics: operatorMetrics } = useOperatorDashboardMetrics(isOperator);
@@ -1539,7 +1762,7 @@ function DashboardPage() {
         }
 
         let bulletinPost = null;
-        if (user.role === "doctor") {
+        if (user.role === "doctor" || user.role === "operator") {
           try {
             const hcm = await api.get("/hcm-news");
             const newestPost = hcm.posts?.[0] || null;
@@ -1659,10 +1882,13 @@ function DashboardPage() {
     return (
       <OperatorDashboardView
         dashboard={dashboard}
-        operatorMetrics={operatorMetrics}
+        hcmUnreadCount={hcmUnreadCount}
         isSavingStatus={isSavingStatus}
+        latestHcmPost={latestHcmPost}
         onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
+        operatorMetrics={operatorMetrics}
+        rosterMeta={rosterMeta}
         user={user}
       />
     );

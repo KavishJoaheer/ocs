@@ -1604,6 +1604,25 @@ function insertDirectoryPatient(label) {
     ).lastInsertRowid;
 }
 
+test("operator dashboard metrics include visit requests and this-week unpaid", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+
+  const metrics = await api("GET", "/api/v1/operator/dashboard-metrics", {
+    token: login.data.token,
+  });
+  assert.equal(metrics.status, 200, JSON.stringify(metrics.data));
+  assert.equal(typeof metrics.data.visit_requests?.active_count, "number");
+  assert.equal(typeof metrics.data.visit_requests?.unassigned_count, "number");
+  assert.ok(Array.isArray(metrics.data.visit_requests?.unassigned));
+  assert.equal(typeof metrics.data.pending_payment?.unpaid_this_week_count, "number");
+  assert.equal(typeof metrics.data.scheduled_visits?.this_week, "number");
+  assert.equal(typeof metrics.data.coverage?.doctors_this_week, "number");
+  assert.ok(Array.isArray(metrics.data.upcoming_visits));
+});
+
 test("operator can delete a patient without admin permission", async () => {
   const login = await api("POST", "/api/auth/login", {
     body: { username: "operator01", password: "Welcome@123" },
