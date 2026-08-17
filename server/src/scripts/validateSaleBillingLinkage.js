@@ -16,7 +16,7 @@ const Database = require("better-sqlite3");
 const tmpFile = path.join(os.tmpdir(), `linkage-${Date.now()}.db`);
 process.env.DB_PATH = tmpFile;
 
-const { db, initializeDatabase } = require("../db");
+const { db, initializeDatabase, ensureBillingForConsultation } = require("../db");
 const { applyInventoryTransactionsForTest, runLinkageScenario } = (() => {
   // Re-export the closures we need from billing.js by spawning a small
   // adapter; billing.js wraps applyInventoryTransactions in module scope and
@@ -189,6 +189,210 @@ const partial = runLinkageScenario.findUnbilledSaleCredit({
 });
 if (partial.matched.length !== 0 || partial.consumedQty !== 0) {
   fail("Partial-match guard failed — a 5-qty Sale was credited against a 3-qty bill");
+}
+
+const { getTodayLocal, normalizeBillingItems, calculateBillingTotal } = require("../lib/utils");
+
+function createConsultationBill(forPatientId, forDoctorId) {
+  const today = getTodayLocal();
+  const appointmentId = Number(
+    db
+      .prepare(
+        `
+          INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+          VALUES (?, ?, ?, '09:00', 'completed')
+        `,
+      )
+      .run(forPatientId, forDoctorId, today).lastInsertRowid,
+  );
+  const consultationId = Number(
+    db
+      .prepare(
+        `
+          INSERT INTO consultations (
+            appointment_id, patient_id, doctor_id, consultation_date, doctor_notes
+          )
+          VALUES (?, ?, ?, ?, 'Auto-bill linkage test')
+        `,
+      )
+      .run(appointmentId, forPatientId, forDoctorId, today).lastInsertRowid,
+  );
+  const billingId = Number(ensureBillingForConsultation(consultationId, forPatientId));
+  return { appointmentId, consultationId, billingId };
+}
+
+function insertPendingSale({ forItemId, forPatientId, forDoctorId, qty, previousQty }) {
+  return Number(
+    movementInsert.run(
+      forItemId,
+      qty,
+      previousQty,
+      previousQty - qty,
+      JSON.stringify({
+        stock_out_reason: "Sale",
+        billing_status: "Pending Manual Entry",
+        patient_id: forPatientId,
+        doctor_id: forDoctorId,
+      }),
+    ).lastInsertRowid,
+  );
+}
+
+function readBill(billingId) {
+  const row = db.prepare("SELECT items, total_amount, status FROM billing WHERE id = ?").get(billingId);
+  return {
+    ...row,
+    items: normalizeBillingItems(row.items),
+    total_amount: Number(row.total_amount),
+  };
+}
+
+// 8. Sale deduct after an unpaid consultation bill exists → line is added
+// automatically and stock is not deducted again by the helper.
+const billedPatientId = Number(
+  patientInsert.run("Auto Bill Patient", 40, "1111", "Test Addr", doctorId).lastInsertRowid,
+);
+const billedItemId = Number(
+  inventoryInsert.run("Galvus Met 50/1000", 20, 2, 2, 15, doctorId).lastInsertRowid,
+);
+db.prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?").run(billedItemId);
+const { billingId: liveBillId } = createConsultationBill(billedPatientId, doctorId);
+const liveMovementId = insertPendingSale({
+  forItemId: billedItemId,
+  forPatientId: billedPatientId,
+  forDoctorId: doctorId,
+  qty: 1,
+  previousQty: 20,
+});
+const liveAttach = runLinkageScenario.attachSaleDeductToPatientBill({
+  patientId: billedPatientId,
+  doctorId,
+  item: { id: billedItemId, item_name: "Galvus Met 50/1000", selling_price: 15 },
+  quantity: 1,
+  movementId: liveMovementId,
+});
+if (!liveAttach.attached || Number(liveAttach.billingId) !== liveBillId) {
+  fail(`Expected Sale deduct to attach to bill ${liveBillId}, got ${JSON.stringify(liveAttach)}`);
+}
+const liveBill = readBill(liveBillId);
+const galvusLine = liveBill.items.find((line) => Number(line.inventory_item_id) === billedItemId);
+if (!galvusLine || Number(galvusLine.quantity) !== 1 || Number(galvusLine.amount) !== 15) {
+  fail(`Expected Galvus Met line qty 1 amount 15, got ${JSON.stringify(galvusLine)}`);
+}
+if (liveBill.total_amount !== calculateBillingTotal(liveBill.items)) {
+  fail(`Bill total_amount ${liveBill.total_amount} does not match items`);
+}
+const bagAfterAutoAttach = Number(
+  db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(billedItemId).quantity,
+);
+if (bagAfterAutoAttach !== 19) {
+  fail(`Auto-attach must not deduct bag again (expected 19, got ${bagAfterAutoAttach})`);
+}
+const liveMeta = JSON.parse(
+  db.prepare("SELECT meta_json FROM inventory_movements WHERE id = ?").get(liveMovementId).meta_json,
+);
+if (liveMeta.billing_status !== "Billed" || Number(liveMeta.billing_id) !== liveBillId) {
+  fail(`Expected movement billed against ${liveBillId}, got ${JSON.stringify(liveMeta)}`);
+}
+
+// 9. A second Sale of the same item merges onto the existing bill line.
+db.prepare("UPDATE inventory SET quantity = quantity - 2 WHERE id = ?").run(billedItemId);
+const mergeMovementId = insertPendingSale({
+  forItemId: billedItemId,
+  forPatientId: billedPatientId,
+  forDoctorId: doctorId,
+  qty: 2,
+  previousQty: 19,
+});
+const mergeAttach = runLinkageScenario.attachSaleDeductToPatientBill({
+  patientId: billedPatientId,
+  doctorId,
+  item: { id: billedItemId, item_name: "Galvus Met 50/1000", selling_price: 15 },
+  quantity: 2,
+  movementId: mergeMovementId,
+});
+if (!mergeAttach.attached) fail("Expected second Sale deduct to merge onto the unpaid bill");
+const mergedBill = readBill(liveBillId);
+const mergedLine = mergedBill.items.find((line) => Number(line.inventory_item_id) === billedItemId);
+if (!mergedLine || Number(mergedLine.quantity) !== 3 || Number(mergedLine.amount) !== 45) {
+  fail(`Expected merged Galvus line qty 3 amount 45, got ${JSON.stringify(mergedLine)}`);
+}
+
+// 10. Sale deduct before any consultation stays pending, then lands on the
+// bill when the consultation is saved.
+const laterPatientId = Number(
+  patientInsert.run("Later Bill Patient", 41, "2222", "Test Addr", doctorId).lastInsertRowid,
+);
+const laterItemId = Number(
+  inventoryInsert.run("Aspirin 100mg", 10, 2, 1, 8, doctorId).lastInsertRowid,
+);
+db.prepare("UPDATE inventory SET quantity = quantity - 2 WHERE id = ?").run(laterItemId);
+const laterMovementId = insertPendingSale({
+  forItemId: laterItemId,
+  forPatientId: laterPatientId,
+  forDoctorId: doctorId,
+  qty: 2,
+  previousQty: 10,
+});
+const beforeConsult = runLinkageScenario.attachSaleDeductToPatientBill({
+  patientId: laterPatientId,
+  doctorId,
+  item: { id: laterItemId, item_name: "Aspirin 100mg", selling_price: 8 },
+  quantity: 2,
+  movementId: laterMovementId,
+});
+if (beforeConsult.attached) {
+  fail("Sale deduct with no consultation must stay pending, not invent a bill");
+}
+const laterPendingMeta = JSON.parse(
+  db.prepare("SELECT meta_json FROM inventory_movements WHERE id = ?").get(laterMovementId).meta_json,
+);
+if (laterPendingMeta.billing_status !== "Pending Manual Entry") {
+  fail(`Expected pending status before consultation, got ${laterPendingMeta.billing_status}`);
+}
+const { billingId: laterBillId } = createConsultationBill(laterPatientId, doctorId);
+const laterBill = readBill(laterBillId);
+const aspirinLine = laterBill.items.find((line) => Number(line.inventory_item_id) === laterItemId);
+if (!aspirinLine || Number(aspirinLine.quantity) !== 2 || Number(aspirinLine.amount) !== 16) {
+  fail(`Expected Aspirin line qty 2 amount 16 after consultation save, got ${JSON.stringify(aspirinLine)}`);
+}
+const laterBilledMeta = JSON.parse(
+  db.prepare("SELECT meta_json FROM inventory_movements WHERE id = ?").get(laterMovementId).meta_json,
+);
+if (laterBilledMeta.billing_status !== "Billed" || Number(laterBilledMeta.billing_id) !== laterBillId) {
+  fail(`Expected pending Sale to bill on consultation save, got ${JSON.stringify(laterBilledMeta)}`);
+}
+
+// 11. A paid bill is left alone — the Sale stays pending for the next unpaid bill.
+const paidPatientId = Number(
+  patientInsert.run("Paid Bill Patient", 42, "3333", "Test Addr", doctorId).lastInsertRowid,
+);
+const paidItemId = Number(
+  inventoryInsert.run("Betadine 10ml", 10, 2, 1, 12, doctorId).lastInsertRowid,
+);
+const { billingId: paidBillId } = createConsultationBill(paidPatientId, doctorId);
+db.prepare("UPDATE billing SET status = 'paid', payment_method = 'cash' WHERE id = ?").run(paidBillId);
+db.prepare("UPDATE inventory SET quantity = quantity - 1 WHERE id = ?").run(paidItemId);
+const paidMovementId = insertPendingSale({
+  forItemId: paidItemId,
+  forPatientId: paidPatientId,
+  forDoctorId: doctorId,
+  qty: 1,
+  previousQty: 10,
+});
+const paidAttach = runLinkageScenario.attachSaleDeductToPatientBill({
+  patientId: paidPatientId,
+  doctorId,
+  item: { id: paidItemId, item_name: "Betadine 10ml", selling_price: 12 },
+  quantity: 1,
+  movementId: paidMovementId,
+});
+if (paidAttach.attached) {
+  fail("Must not append a Sale line onto an already-paid bill");
+}
+const paidBill = readBill(paidBillId);
+if (paidBill.items.some((line) => Number(line.inventory_item_id) === paidItemId)) {
+  fail("Paid bill must not gain an inventory Sale line");
 }
 
 cleanup();

@@ -914,8 +914,8 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
       title="Stock Out"
       description={
         isSale
-          ? "Record a direct sale from your medical bag. This is counted in the doctor sales report."
-          : "Record wastage or expiry from your medical bag. For billed patient sales, use the Billing page."
+          ? "Record a sale from your medical bag. Quantity × selling price is added to the patient's unpaid consultation bill."
+          : "Record wastage or expiry from your medical bag."
       }
       size="lg"
     >
@@ -942,11 +942,11 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
       >
         {isSale ? (
           <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-xs text-teal-900">
-            This sale is recorded in the <strong>doctor sales report</strong>. To link stock removal to a patient invoice, use the <strong>Billing</strong> page instead.
+            This deducts bag stock and adds the item to the patient&apos;s unpaid bill. If this visit has no consultation yet, the line is added when the note is saved.
           </div>
         ) : (
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
-            To bill a patient for an item, open the consultation on the <strong>Billing</strong> page — stock and revenue are recorded together there.
+            Wasted and expired stock is logged as operational loss. It is not added to the patient bill.
           </div>
         )}
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
@@ -2706,8 +2706,7 @@ function MobileDoctorDeductSheet({
           </div>
           {isSale ? (
             <p className="mt-1 block text-[10px] leading-tight text-gray-400">
-              Selecting Sale logs this product usage for corporate inventory tracking. Remember to add this item
-              manually inside the Billing tab when calculating the patient&apos;s final consultation charges.
+              Sale deducts bag stock and adds quantity × selling price to this patient&apos;s unpaid bill. If there is no consultation yet, the line is added when the visit is saved.
             </p>
           ) : null}
         </div>
@@ -3829,13 +3828,18 @@ export default function InventoryPage() {
         `/inventory/items/${item.id}/actions${inventoryListQuery}`,
         requestBody,
       );
+      const saleBilling = next?.sale_billing;
       commitInventoryData(next);
       setStockOut(null);
       toast.success(
         isSale
-          ? payload.patient_label
-            ? `Sale allocated to ${payload.patient_label} for Admin audit.`
-            : "Sale recorded in your sales report."
+          ? saleBilling?.attached
+            ? payload.patient_label
+              ? `Stock deducted and added to ${payload.patient_label}'s bill.`
+              : "Stock deducted and added to the patient's bill."
+            : payload.patient_label
+              ? `Stock deducted for ${payload.patient_label}. It will be added to the bill when the consultation is saved.`
+              : "Stock deducted. It will be added to the bill when the consultation is saved."
           : payload.reason === "Expired"
             ? "Expired stock logged."
             : "Stock out recorded.",
@@ -3988,12 +3992,7 @@ export default function InventoryPage() {
 
     const stockOutReason =
       reason === "Sale" ? "Sale" : reason === "Expired" ? "Expired" : "Wasted";
-    const note =
-      reason === "Sale"
-        ? "Pending Manual Entry"
-        : reason === "Damage"
-          ? "Damage"
-          : "";
+    const note = reason === "Damage" ? "Damage" : "";
 
     if (stockOutReason === "Sale" && !patient_id) {
       toast.error("Select an assigned patient before logging this Sale.");
@@ -4044,13 +4043,18 @@ export default function InventoryPage() {
       }
 
       const next = await api.post(endpoint, payload);
+      const saleBilling = next?.sale_billing;
       commitInventoryData(next);
       setMobileDeductItem(null);
       if (reason === "Sale") {
         toast.success(
-          patient_label
-            ? `Sale allocated to ${patient_label} for Admin audit.`
-            : "Sale transaction recorded successfully for Admin audit.",
+          saleBilling?.attached
+            ? patient_label
+              ? `Stock deducted and added to ${patient_label}'s bill.`
+              : "Stock deducted and added to the patient's bill."
+            : patient_label
+              ? `Stock deducted for ${patient_label}. It will be added to the bill when the consultation is saved.`
+              : "Stock deducted. It will be added to the bill when the consultation is saved.",
         );
       } else if (reason === "Expired") {
         toast.success("Expired stock logged to operational loss.");

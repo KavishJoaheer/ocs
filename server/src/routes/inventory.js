@@ -16,9 +16,11 @@ const {
   handleInventoryStream,
   publishInventoryChange,
   publishInventoryResyncBroadcast,
+  publishPatientDataChange,
 } = require("../lib/inventoryRealtime");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
+const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
@@ -708,6 +710,7 @@ function recordMovement({
   });
 
   void publishInventoryChange({ itemId, changedByUserId: userId });
+  return movementId;
 }
 
 function summarize(items, doctorId = null) {
@@ -1996,6 +1999,7 @@ router.post("/items/:id/actions", (req, res) => {
   const nextQuantity = movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
   if (nextQuantity < 0) return res.status(400).json({ error: "Cannot remove more stock than available." });
 
+  let saleBilling = null;
   try {
     db.transaction(() => {
       if (movementType === "in") {
@@ -2027,7 +2031,7 @@ router.post("/items/:id/actions", (req, res) => {
         nextQuantity,
         Number(req.body.expected_version ?? item.row_version ?? 0),
       );
-      recordMovement({
+      const movementId = recordMovement({
         itemId,
         movementType,
         quantity,
@@ -2068,6 +2072,16 @@ router.post("/items/:id/actions", (req, res) => {
             : {}),
         }),
       });
+
+      if (actionType === "stock_out" && stockOutReason === "Sale" && salePatient) {
+        saleBilling = attachSaleDeductToPatientBill({
+          patientId: salePatient.id,
+          doctorId,
+          item,
+          quantity,
+          movementId,
+        });
+      }
     })();
   } catch (error) {
     if (error instanceof InventoryVersionConflictError) {
@@ -2079,7 +2093,18 @@ router.post("/items/:id/actions", (req, res) => {
     return res.status(400).json({ error: error?.message || "Unable to process My Stock action." });
   }
 
-  res.status(201).json(getPayload(req));
+  if (saleBilling?.attached && salePatient?.id) {
+    try {
+      publishPatientDataChange(salePatient.id, { reason: "billing" });
+    } catch (publishError) {
+      console.warn("[inventory] publishPatientDataChange failed:", publishError?.message || publishError);
+    }
+  }
+
+  res.status(201).json({
+    ...getPayload(req),
+    sale_billing: saleBilling,
+  });
 });
 
 router.post("/restock", (req, res) => {

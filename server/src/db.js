@@ -2364,31 +2364,43 @@ function ensureBillingForConsultation(consultationId, patientId) {
     .prepare("SELECT id FROM billing WHERE consultation_id = ?")
     .get(consultationId);
 
+  let billId;
   if (existingBill) {
-    return existingBill.id;
+    billId = existingBill.id;
+  } else {
+    const feeAmount = getDefaultConsultationFeeAmount();
+    const items = normalizeBillingItems([
+      {
+        description: "Day Consultation",
+        amount: feeAmount,
+      },
+    ]);
+
+    const insert = db.prepare(`
+      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method)
+      VALUES (?, ?, ?, ?, 'unpaid', NULL)
+    `);
+
+    const result = insert.run(
+      consultationId,
+      patientId,
+      JSON.stringify(items),
+      calculateBillingTotal(items),
+    );
+    billId = result.lastInsertRowid;
   }
 
-  const feeAmount = getDefaultConsultationFeeAmount();
-  const items = normalizeBillingItems([
-    {
-      description: "Day Consultation",
-      amount: feeAmount,
-    },
-  ]);
+  try {
+    const { attachPendingSalesToConsultationBill } = require("./lib/saleBillingLinkage");
+    attachPendingSalesToConsultationBill(Number(consultationId), Number(billId));
+  } catch (error) {
+    console.warn(
+      "[billing] attaching pending sale deducts failed:",
+      error?.message || error,
+    );
+  }
 
-  const insert = db.prepare(`
-    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method)
-    VALUES (?, ?, ?, ?, 'unpaid', NULL)
-  `);
-
-  const result = insert.run(
-    consultationId,
-    patientId,
-    JSON.stringify(items),
-    calculateBillingTotal(items),
-  );
-
-  return result.lastInsertRowid;
+  return billId;
 }
 
 module.exports = {
