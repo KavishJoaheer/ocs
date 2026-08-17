@@ -14,6 +14,7 @@ import {
   RotateCw,
   ShieldCheck,
   Star,
+  Truck,
   UsersRound,
   X,
 } from "lucide-react";
@@ -43,8 +44,14 @@ const navItems = [
     roles: ["admin", "doctor", "operator", "lab_tech", "accountant"],
   },
   {
+    to: "/visit-requests",
+    label: "Visit requests",
+    icon: ClipboardList,
+    roles: ["admin", "doctor", "operator"],
+  },
+  {
     to: "/patients",
-    label: "Patient",
+    label: "Patients",
     icon: UsersRound,
     roles: ["admin", "doctor", "operator", "lab_tech"],
     isActiveWhen: (location) => {
@@ -98,22 +105,16 @@ const navItems = [
     isActiveWhen: (location) => location.pathname === "/admin/long-term-review",
   },
   {
-    to: "/hcm-news",
-    label: "HCM news",
-    icon: BellRing,
-    roles: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+    to: "/appointments",
+    label: "Appointments",
+    icon: CalendarDays,
+    roles: ["admin", "doctor"],
   },
   {
     to: "/operator/billing-status",
     label: "Billing status",
     icon: CreditCard,
     roles: ["operator"],
-  },
-  {
-    to: "/appointments",
-    label: "Appointments",
-    icon: CalendarDays,
-    roles: ["admin", "doctor"],
   },
   {
     to: "/billing",
@@ -134,27 +135,27 @@ const navItems = [
     roles: ["admin", "doctor", "operator"],
   },
   {
-    to: "/supply-requests",
-    label: "Supply requests",
-    icon: Package,
-    roles: ["doctor"],
-  },
-  {
-    to: "/visit-requests",
-    label: "Visit requests",
-    icon: ClipboardList,
-    roles: ["admin", "doctor", "operator"],
-  },
-  {
     to: "/stock-history",
     label: "Stock history",
     icon: RotateCw,
     roles: ["admin", "operator"],
   },
   {
+    to: "/supply-requests",
+    label: "Supply requests",
+    icon: Truck,
+    roles: ["doctor"],
+  },
+  {
+    to: "/hcm-news",
+    label: "HCM news",
+    icon: BellRing,
+    roles: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+  },
+  {
     to: "/team-operations",
     label: "Team operations",
-    icon: UsersRound,
+    icon: ShieldCheck,
     roles: ["admin"],
   },
 ];
