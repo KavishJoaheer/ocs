@@ -45,7 +45,6 @@ import {
 } from "../lib/fileBlobViewer.js";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
-import OperatorAccessAdminCard from "../components/OperatorAccessAdminCard.jsx";
 
 function buildDoctorMobileDateLabel() {
   return dayjs().format("dddd, MMMM D");
@@ -1354,7 +1353,6 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
   const visitsToday = getAdminVisitsToday(dashboard);
   const unpaidCount = Number(dashboard?.summary?.pendingBills ?? 0);
   const totalPatients = Number(dashboard?.summary?.totalPatients ?? 0);
-  const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
   const monthLabel = dayjs().format("MMMM");
   const visibleVisits = visitsToday.slice(0, 8);
 
@@ -1481,9 +1479,6 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
                   Download PDF
                 </button>
               </div>
-              <div className="border-t border-slate-100 pt-3">
-                <OperatorAccessAdminCard compact />
-              </div>
               <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
                 <p className="text-sm font-medium text-slate-800">Health plans</p>
                 <Link
@@ -1498,12 +1493,12 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-slate-400">
-          Practice · {totalPatients} patients
-          {dashboard?.summary?.totalRevenue != null ? ` · ${formatCurrency(totalRevenue)} paid lifetime` : ""}
-        </p>
-        <Link to="/live-report" className="text-xs font-semibold text-ocs-teal hover:underline">
+      <div className="flex items-end justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-6 py-5 shadow-sm">
+        <Link to="/patients" className="min-w-0 transition hover:opacity-90">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Practice patients</p>
+          <p className="mt-1 text-3xl font-black tabular-nums tracking-tight text-ocs-teal">{totalPatients}</p>
+        </Link>
+        <Link to="/live-report" className="shrink-0 text-xs font-semibold text-ocs-teal hover:underline">
           Live report
         </Link>
       </div>
