@@ -77,7 +77,12 @@ function PeriodControls({ period, onPeriodChange, anchorDate, onAnchorDateChange
   const dateLabel = PERIOD_OPTIONS.find((option) => option.id === period)?.dateLabel || "Date";
 
   return (
-    <div className={cx("flex min-w-0 flex-col gap-2", compact ? "" : "sm:flex-row sm:items-center")}>
+    <div
+      className={cx(
+        "flex min-w-0 items-center gap-2",
+        compact ? "flex-col items-stretch sm:flex-row" : "flex-row",
+      )}
+    >
       <div
         className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1"
         role="group"
@@ -89,7 +94,8 @@ function PeriodControls({ period, onPeriodChange, anchorDate, onAnchorDateChange
             type="button"
             onClick={() => onPeriodChange(option.id)}
             className={cx(
-              "min-h-10 shrink-0 rounded-xl px-3 text-sm font-semibold transition",
+              "shrink-0 rounded-xl px-3.5 text-sm font-semibold transition",
+              compact ? "min-h-10" : "min-h-9",
               period === option.id
                 ? "bg-white text-ocs-slate shadow-sm"
                 : "text-slate-500 hover:text-slate-800",
@@ -99,17 +105,97 @@ function PeriodControls({ period, onPeriodChange, anchorDate, onAnchorDateChange
           </button>
         ))}
       </div>
-      <label className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5">
-        <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <label className="flex min-h-9 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5">
+        <span
+          className={cx(
+            "shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400",
+            !compact && "sr-only",
+          )}
+        >
           {dateLabel}
         </span>
         <input
           type="date"
           value={anchorDate}
           onChange={(event) => onAnchorDateChange(event.target.value)}
-          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none accent-ocs-teal"
+          className="min-w-0 bg-transparent text-sm font-semibold text-slate-700 outline-none accent-ocs-teal"
         />
       </label>
+    </div>
+  );
+}
+
+function EmptyPanel({ title, detail }) {
+  return (
+    <div className="flex min-h-32 flex-col items-center justify-center rounded-2xl bg-slate-50 px-6 py-8 text-center md:min-h-40">
+      <p className="text-sm font-semibold text-slate-600">{title}</p>
+      {detail ? <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">{detail}</p> : null}
+    </div>
+  );
+}
+
+function StatementStat({ label, value, tone = "default", to }) {
+  const className = cx(
+    "flex h-full min-h-[6.5rem] flex-col justify-center gap-2 px-5 py-5 xl:min-h-[7.5rem]",
+    tone === "unpaid" && "bg-rose-50/60",
+    to && "transition hover:bg-rose-50",
+  );
+  const body = (
+    <>
+      <p
+        className={cx(
+          "text-[11px] font-bold uppercase tracking-widest",
+          tone === "unpaid" ? "text-rose-500" : "text-slate-400",
+        )}
+      >
+        {label}
+      </p>
+      <p className="text-2xl font-black tabular-nums tracking-tight text-slate-900">{value}</p>
+    </>
+  );
+  if (to) {
+    return (
+      <Link to={to} className={className}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={className}>{body}</div>;
+}
+
+function DesktopBillTable({ rows, onOpen }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-100">
+      <table className="min-w-full text-left text-sm">
+        <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          <tr>
+            <th className="px-4 py-3 font-bold">Patient</th>
+            <th className="px-4 py-3 font-bold">Consultation</th>
+            <th className="px-4 py-3 text-right font-bold">Amount</th>
+            <th className="px-4 py-3 text-right font-bold">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.bill_id}
+              className="cursor-pointer border-t border-slate-100 hover:bg-slate-50/80"
+              onClick={() => onOpen(row)}
+            >
+              <td className="px-4 py-3 font-semibold text-slate-900">{row.patient_name}</td>
+              <td className="px-4 py-3 text-slate-500">{formatDate(row.consultation_date)}</td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">
+                {formatCurrency(row.total_amount)}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex justify-end">
+                  <StatusBadge value={row.status} />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -153,9 +239,7 @@ function LocationVolumeBars({ rows }) {
   );
 
   if (!displayRows.length) {
-    return (
-      <p className="py-8 text-center text-sm text-slate-400">No visits in this period.</p>
-    );
+    return <EmptyPanel title="No locations in this period" detail="Home locations appear after a consultation note is saved." />;
   }
 
   return (
@@ -168,8 +252,8 @@ function LocationVolumeBars({ rows }) {
             <p className="w-[38%] min-w-0 truncate text-sm font-medium text-ocs-slate" title={row.location}>
               {row.location}
             </p>
-            <div className="h-2 min-w-0 flex-1 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-ocs-teal" style={{ width: `${widthPercent}%` }} />
+            <div className="h-2 min-w-0 flex-1 rounded-full bg-slate-100 md:h-2.5">
+              <div className="h-2 rounded-full bg-ocs-teal md:h-2.5" style={{ width: `${widthPercent}%` }} />
             </div>
             <p className="w-8 shrink-0 text-right text-sm font-bold tabular-nums text-ocs-slate">{count}</p>
           </div>
@@ -183,13 +267,18 @@ function VisitVolumeChart({ period, rows }) {
   const data = useMemo(() => chartRowsForPeriod(period, rows), [period, rows]);
 
   if (!data.length || data.every((row) => Number(row.patient_count || 0) === 0)) {
-    return <p className="py-8 text-center text-sm text-slate-400">No visits in this period.</p>;
+    return (
+      <EmptyPanel
+        title="No visits in this period"
+        detail="The chart fills in as consultation notes are saved."
+      />
+    );
   }
 
   return (
-    <div className="h-52 w-full min-w-0 sm:h-60">
+    <div className="h-56 w-full min-w-0 md:h-64 xl:h-72">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} width={28} axisLine={false} tickLine={false} />
@@ -198,7 +287,7 @@ function VisitVolumeChart({ period, rows }) {
             formatter={(value) => [value, "Visits"]}
             contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }}
           />
-          <Bar dataKey="patient_count" fill="#2d8f98" radius={[6, 6, 0, 0]} maxBarSize={36} />
+          <Bar dataKey="patient_count" fill="#2d8f98" radius={[6, 6, 0, 0]} maxBarSize={40} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -328,7 +417,7 @@ export default function LiveReportPage() {
     report?.volumeReport?.rangeStart,
     report?.volumeReport?.rangeEnd,
   );
-  const visibleBills = billsExpanded ? revenueRows : revenueRows.slice(0, isMobile ? 8 : 6);
+  const visibleBills = billsExpanded ? revenueRows : revenueRows.slice(0, 8);
   const doctors = report?.doctors || [];
 
   function openBill(row) {
@@ -347,24 +436,23 @@ export default function LiveReportPage() {
 
   const doctorShareLabel = `${percentLabel(shareRates.doctor)} of paid`;
   const ocsShareLabel = `${percentLabel(shareRates.ocs)} of paid`;
-  const transportHint = `Rs ${shareRates.transportPerPatient} × ${uniquePatientCount} patient${
-    uniquePatientCount === 1 ? "" : "s"
-  } seen`;
 
   return (
-    <div className={cx("space-y-5", refreshing && "opacity-80")}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className={cx("space-y-5 md:space-y-6", refreshing && "opacity-80")}>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Analytics</p>
-          <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ocs-slate md:text-3xl">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 md:hidden">
+            Analytics
+          </p>
+          <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ocs-slate md:mt-0 md:text-3xl">
             Live report
           </h1>
-          <p className="mt-1.5 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-slate-500">
             {rangeLabel || "Selected period"}
             {report.volumeReport?.entityLabel ? ` · ${report.volumeReport.entityLabel}` : ""}
           </p>
         </div>
-        <div className="flex min-w-0 flex-col gap-2 lg:items-end">
+        <div className="flex min-w-0 flex-col gap-2 md:items-end">
           {isAdmin && doctors.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5" role="group">
@@ -420,116 +508,218 @@ export default function LiveReportPage() {
       </div>
 
       {isDoctor ? (
-        <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white">
-          <div className="border-l-4 border-l-ocs-teal px-5 py-5 sm:px-6">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Your net</p>
-            <p className="mt-2 text-4xl font-black tabular-nums tracking-tight text-ocs-teal">
-              {formatCurrency(statement.doctorNetRevenue || 0)}
-            </p>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              {doctorShareLabel} ({formatCurrency(statement.doctorCommission || 0)}) plus transport
-              ({transportHint}). Unpaid bills are listed separately and are not in this net.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4">
-            <div className="bg-white p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Paid</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
-                {formatCurrency(statement.paidRevenue || 0)}
-              </p>
-            </div>
-            <Link to="/billing?status=unpaid" className="bg-white p-4 hover:bg-rose-50/40">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-400">Unpaid</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
-                {formatCurrency(statement.unpaidRevenue || 0)}
-              </p>
-            </Link>
-            <div className="bg-white p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Visits</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{visitCount}</p>
-            </div>
-            <div className="bg-white p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Patients</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{uniquePatientCount}</p>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section className="space-y-3">
-          <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white">
-            <div className="border-l-4 border-l-ocs-teal px-5 py-5 sm:px-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                Billed this period
-              </p>
+        <>
+          <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white md:hidden">
+            <div className="border-l-4 border-l-ocs-teal px-5 py-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Your net</p>
               <p className="mt-2 text-4xl font-black tabular-nums tracking-tight text-ocs-teal">
-                {formatCurrency(statement.totalRevenue || 0)}
+                {formatCurrency(statement.doctorNetRevenue || 0)}
               </p>
-              <p className="mt-2 text-sm text-slate-500">
-                Shares below are {ocsShareLabel} / {doctorShareLabel}. Transport is {transportHint}.
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {doctorShareLabel} plus transport. Unpaid is separate.
               </p>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="Paid" value={formatCurrency(statement.paidRevenue || 0)} />
-            <StatTile
-              label="Unpaid"
-              value={formatCurrency(statement.unpaidRevenue || 0)}
-              tone="unpaid"
-              to="/billing?status=unpaid"
-            />
-            <StatTile
-              label={`OCS share (${percentLabel(shareRates.ocs)})`}
-              value={formatCurrency(statement.ocsCommission || 0)}
-              hint="Of paid"
-            />
-            <StatTile
-              label={`Doctor share (${percentLabel(shareRates.doctor)})`}
-              value={formatCurrency(statement.doctorCommission || 0)}
-              hint="Of paid"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            <StatTile label="Doctor net" value={formatCurrency(statement.doctorNetRevenue || 0)} hint="Share + transport" />
-            <StatTile label="Visits" value={visitCount} hint="Consultation notes" />
-            <StatTile label="Patients seen" value={uniquePatientCount} />
-          </div>
-        </section>
+            <div className="grid grid-cols-2 gap-px bg-slate-100">
+              <div className="bg-white p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Paid</p>
+                <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
+                  {formatCurrency(statement.paidRevenue || 0)}
+                </p>
+              </div>
+              <Link to="/billing?status=unpaid" className="bg-white p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-400">Unpaid</p>
+                <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
+                  {formatCurrency(statement.unpaidRevenue || 0)}
+                </p>
+              </Link>
+              <div className="bg-white p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Visits</p>
+                <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{visitCount}</p>
+              </div>
+              <div className="bg-white p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Patients</p>
+                <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{uniquePatientCount}</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="hidden overflow-hidden rounded-2xl border border-slate-100 bg-white md:block">
+            <div className="grid xl:grid-cols-12">
+              <div className="flex flex-col justify-center border-l-4 border-l-ocs-teal px-6 py-5 xl:col-span-4 xl:py-6">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Your net</p>
+                <p className="mt-2 text-4xl font-black tabular-nums tracking-tight text-ocs-teal">
+                  {formatCurrency(statement.doctorNetRevenue || 0)}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  {doctorShareLabel} + Rs {shareRates.transportPerPatient} per patient seen
+                </p>
+              </div>
+              <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
+                <StatementStat label="Paid" value={formatCurrency(statement.paidRevenue || 0)} />
+                <StatementStat
+                  label="Unpaid"
+                  value={formatCurrency(statement.unpaidRevenue || 0)}
+                  tone="unpaid"
+                  to="/billing?status=unpaid"
+                />
+                <StatementStat label="Visits" value={visitCount} />
+                <StatementStat label="Patients" value={uniquePatientCount} />
+              </div>
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          <section className="space-y-3 md:hidden">
+            <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white">
+              <div className="border-l-4 border-l-ocs-teal px-5 py-5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Billed this period
+                </p>
+                <p className="mt-2 text-4xl font-black tabular-nums tracking-tight text-ocs-teal">
+                  {formatCurrency(statement.totalRevenue || 0)}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <StatTile label="Paid" value={formatCurrency(statement.paidRevenue || 0)} />
+              <StatTile
+                label="Unpaid"
+                value={formatCurrency(statement.unpaidRevenue || 0)}
+                tone="unpaid"
+                to="/billing?status=unpaid"
+              />
+              <StatTile
+                label={`OCS share (${percentLabel(shareRates.ocs)})`}
+                value={formatCurrency(statement.ocsCommission || 0)}
+                hint="Of paid"
+              />
+              <StatTile
+                label={`Doctor share (${percentLabel(shareRates.doctor)})`}
+                value={formatCurrency(statement.doctorCommission || 0)}
+                hint="Of paid"
+              />
+            </div>
+          </section>
+
+          <section className="hidden overflow-hidden rounded-2xl border border-slate-100 bg-white md:block">
+            <div className="grid xl:grid-cols-12">
+              <div className="flex flex-col justify-center border-l-4 border-l-ocs-teal px-6 py-5 xl:col-span-4 xl:py-6">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                  Billed this period
+                </p>
+                <p className="mt-2 text-4xl font-black tabular-nums tracking-tight text-ocs-teal">
+                  {formatCurrency(statement.totalRevenue || 0)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  {ocsShareLabel} / {doctorShareLabel}
+                </p>
+              </div>
+              <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
+                <StatementStat label="Paid" value={formatCurrency(statement.paidRevenue || 0)} />
+                <StatementStat
+                  label="Unpaid"
+                  value={formatCurrency(statement.unpaidRevenue || 0)}
+                  tone="unpaid"
+                  to="/billing?status=unpaid"
+                />
+                <StatementStat
+                  label={`OCS ${percentLabel(shareRates.ocs)}`}
+                  value={formatCurrency(statement.ocsCommission || 0)}
+                />
+                <StatementStat
+                  label={`Doctor ${percentLabel(shareRates.doctor)}`}
+                  value={formatCurrency(statement.doctorCommission || 0)}
+                />
+              </div>
+            </div>
+          </section>
+        </>
       )}
 
-      <section className="rounded-3xl border border-slate-100 bg-white p-5">
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-ocs-slate">Bills</h2>
-            <p className="mt-0.5 text-xs text-slate-500">By consultation date. Tap a row to open billing.</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-start">
+        <section className="rounded-2xl border border-slate-100 bg-white p-5 md:col-span-7 md:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-ocs-slate">Bills</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {isMobile ? "Tap a row to open billing." : "Click a row to open billing."}
+              </p>
+            </div>
+            <Link to="/billing" className="text-xs font-semibold text-ocs-teal hover:underline">
+              Open billing
+            </Link>
           </div>
-          <Link to="/billing" className="text-xs font-semibold text-ocs-teal hover:underline">
-            Open billing
-          </Link>
-        </div>
-        {revenueRows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400">No bills in this period.</p>
-        ) : (
-          <div>
-            {visibleBills.map((row) => (
-              <BillRow key={row.bill_id} row={row} onOpen={openBill} />
-            ))}
-          </div>
-        )}
-        {revenueRows.length > (isMobile ? 8 : 6) ? (
-          <div className="mt-3 flex justify-center">
-            <button
-              type="button"
-              onClick={() => setBillsExpanded((current) => !current)}
-              className="min-h-10 rounded-2xl bg-ocs-teal px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-            >
-              {billsExpanded ? "Show less" : `View all ${revenueRows.length}`}
-            </button>
-          </div>
-        ) : null}
-      </section>
+          {revenueRows.length === 0 ? (
+            <EmptyPanel
+              title="No bills in this period"
+              detail="Consultation bills and bag sales will show up here."
+            />
+          ) : isMobile ? (
+            <div>
+              {visibleBills.map((row) => (
+                <BillRow key={row.bill_id} row={row} onOpen={openBill} />
+              ))}
+            </div>
+          ) : (
+            <DesktopBillTable rows={visibleBills} onOpen={openBill} />
+          )}
+          {revenueRows.length > 8 ? (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setBillsExpanded((current) => !current)}
+                className="min-h-10 rounded-2xl bg-ocs-teal px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                {billsExpanded ? "Show less" : `View all ${revenueRows.length}`}
+              </button>
+            </div>
+          ) : null}
+        </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section className="rounded-3xl border border-slate-100 bg-white p-5">
+        <section
+          className={cx(
+            "rounded-2xl border border-slate-100 bg-white p-5 md:col-span-5 md:p-6",
+            patientsSeen.length === 0 && "hidden md:block",
+          )}
+        >
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-ocs-slate">Patients seen</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {uniquePatientCount} unique patient{uniquePatientCount === 1 ? "" : "s"} with a saved note
+            </p>
+          </div>
+          {patientsSeen.length ? (
+            <div className="divide-y divide-slate-100">
+              {patientsSeen.slice(0, isMobile ? 8 : 10).map((patient) => (
+                <Link
+                  key={patient.patient_id}
+                  to={`/patients/${patient.patient_id}`}
+                  className="flex items-center gap-3 py-3 hover:bg-slate-50/80"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-slate-900">{patient.patient_name}</p>
+                    <p className="text-xs text-slate-500">
+                      {patient.patient_identifier
+                        ? `${patient.patient_identifier} · ${formatDate(patient.consultation_date)}`
+                        : formatDate(patient.consultation_date)}
+                    </p>
+                  </div>
+                  <ChevronRight className="size-4 text-slate-300" aria-hidden />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyPanel
+              title="No patients seen yet"
+              detail="People appear here after you save a consultation note."
+            />
+          )}
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="rounded-2xl border border-slate-100 bg-white p-5 md:p-6">
           <div className="mb-4 flex items-center gap-2">
             <Users className="size-4 text-ocs-teal" aria-hidden />
             <div>
@@ -549,7 +739,7 @@ export default function LiveReportPage() {
           )}
         </section>
 
-        <section className="rounded-3xl border border-slate-100 bg-white p-5">
+        <section className="rounded-2xl border border-slate-100 bg-white p-5 md:p-6">
           <div className="mb-4 flex items-center gap-2">
             <MapPin className="size-4 text-ocs-teal" aria-hidden />
             <div>
@@ -561,40 +751,10 @@ export default function LiveReportPage() {
         </section>
       </div>
 
-      {patientsSeen.length ? (
-        <section className="rounded-3xl border border-slate-100 bg-white p-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-ocs-slate">Patients seen</h2>
-              <p className="text-xs text-slate-500">
-                {uniquePatientCount} unique patient{uniquePatientCount === 1 ? "" : "s"} with a saved note
-              </p>
-            </div>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {patientsSeen.slice(0, isMobile ? 8 : 12).map((patient) => (
-              <Link
-                key={patient.patient_id}
-                to={`/patients/${patient.patient_id}`}
-                className="flex items-center gap-3 py-3 hover:bg-slate-50/80"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-slate-900">{patient.patient_name}</p>
-                  <p className="text-xs text-slate-500">
-                    {patient.patient_identifier || "No care number"} · last note {formatDate(patient.consultation_date)}
-                  </p>
-                </div>
-                <ChevronRight className="size-4 text-slate-300" aria-hidden />
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {Array.isArray(statement.paymentMethodBreakdown) &&
       statement.paymentMethodBreakdown.some((row) => Number(row.amount || 0) > 0) &&
       !isDoctor ? (
-        <section className="rounded-3xl border border-slate-100 bg-white p-5">
+        <section className="rounded-2xl border border-slate-100 bg-white p-5 md:p-6">
           <h2 className="text-base font-semibold text-ocs-slate">Paid by method</h2>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {statement.paymentMethodBreakdown.map((row) => (
