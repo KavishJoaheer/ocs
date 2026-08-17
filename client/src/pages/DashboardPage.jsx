@@ -1365,9 +1365,11 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">{dayjs().format("dddd D MMMM")}</p>
         </div>
-        <p className="shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Clinic-wide
-        </p>
+        <Link to="/patients" className="shrink-0 text-right transition hover:opacity-90">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Live Patients</p>
+          <p className="mt-1 text-3xl font-black tabular-nums tracking-tight text-ocs-teal">{totalPatients}</p>
+          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-gray-400">Clinic wide</p>
+        </Link>
       </div>
 
       <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
@@ -1491,16 +1493,6 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="flex items-end justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-6 py-5 shadow-sm">
-        <Link to="/patients" className="min-w-0 transition hover:opacity-90">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Practice patients</p>
-          <p className="mt-1 text-3xl font-black tabular-nums tracking-tight text-ocs-teal">{totalPatients}</p>
-        </Link>
-        <Link to="/live-report" className="shrink-0 text-xs font-semibold text-ocs-teal hover:underline">
-          Revenue Report
-        </Link>
       </div>
     </div>
   );
