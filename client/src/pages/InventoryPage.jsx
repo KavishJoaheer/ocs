@@ -926,7 +926,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
           const qty = Number(quantity || 0);
           if (!Number.isInteger(qty) || qty <= 0) return;
           if (saleRequiresPatient) {
-            toast.error("Select an assigned patient before recording a Sale.");
+            toast.error("Select a patient before recording a Sale.");
             return;
           }
           onSubmit({
@@ -992,8 +992,8 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               >
                 <option value="" disabled>
                   {assignedPatients.length
-                    ? "Select assigned patient..."
-                    : "No assigned patients available"}
+                    ? "Select patient..."
+                    : "No patients available"}
                 </option>
                 {assignedPatients.map((patient) => (
                   <option key={patient.id} value={patient.id}>
@@ -1004,7 +1004,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               </select>
               {!assignedPatients.length ? (
                 <p className="text-[11px] leading-tight text-rose-600">
-                  Connect to the clinic network to refresh your assigned patient roster, then retry.
+                  Connect to the clinic network to refresh your patient list, then retry.
                 </p>
               ) : null}
             </label>
@@ -2656,7 +2656,7 @@ function MobileDoctorDeductSheet({
             return;
           }
           if (saleRequiresPatient) {
-            toast.error("Select an assigned patient before saving.");
+            toast.error("Select a patient before saving.");
             return;
           }
           onSubmit({
@@ -2728,8 +2728,8 @@ function MobileDoctorDeductSheet({
               >
                 <option value="" disabled>
                   {assignedPatients.length
-                    ? "Select assigned patient..."
-                    : "No assigned patients available"}
+                    ? "Select patient..."
+                    : "No patients available"}
                 </option>
                 {assignedPatients.map((patient) => (
                   <option key={patient.id} value={patient.id}>
@@ -2744,7 +2744,7 @@ function MobileDoctorDeductSheet({
             </div>
             {!assignedPatients.length ? (
               <p className="mt-1 text-[10px] leading-tight text-rose-500">
-                Connect to the clinic Wi-Fi to refresh your assigned patient list, then retry.
+                Connect to the clinic Wi-Fi to refresh your patient list, then retry.
               </p>
             ) : null}
           </div>
@@ -3804,7 +3804,7 @@ export default function InventoryPage() {
     const item = stockOut.item;
     const isSale = payload.reason === "Sale";
     if (isSale && !payload.patient_id) {
-      toast.error("Select an assigned patient before recording a Sale.");
+      toast.error("Select a patient before recording a Sale.");
       return;
     }
 
@@ -3995,7 +3995,7 @@ export default function InventoryPage() {
     const note = reason === "Damage" ? "Damage" : "";
 
     if (stockOutReason === "Sale" && !patient_id) {
-      toast.error("Select an assigned patient before logging this Sale.");
+      toast.error("Select a patient before logging this Sale.");
       return;
     }
 

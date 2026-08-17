@@ -21,6 +21,7 @@ const {
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
+const { doctorCanAccessPatient } = require("../lib/patientAccess");
 
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
@@ -1966,24 +1967,23 @@ router.post("/items/:id/actions", (req, res) => {
     const requestedPatientId = Number(req.body.patient_id || 0);
     if (!Number.isInteger(requestedPatientId) || requestedPatientId <= 0) {
       return res.status(400).json({
-        error: "Select an assigned patient before logging a Sale deduction.",
+        error: "Select a patient before logging a Sale deduction.",
       });
     }
 
     const patientRow = db
       .prepare(`
-        SELECT id, full_name, patient_identifier
+        SELECT *
         FROM patients
         WHERE id = ?
           AND deleted_at IS NULL
-          AND assigned_doctor_id = ?
           AND COALESCE(status, 'active') = 'active'
       `)
-      .get(requestedPatientId, doctorId);
+      .get(requestedPatientId);
 
-    if (!patientRow?.id) {
+    if (!patientRow?.id || !doctorCanAccessPatient(patientRow, req.auth)) {
       return res.status(404).json({
-        error: "Selected patient is not on your active assigned roster.",
+        error: "Selected patient is not on your active caseload.",
       });
     }
 

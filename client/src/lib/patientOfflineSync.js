@@ -33,6 +33,7 @@ export function mapOfflineRecordToPatient(record) {
     date_of_birth: record.date_of_birth || "",
     location: record.location || record.address_location || "",
     assigned_doctor_id: record.assigned_doctor_id ?? null,
+    review_assigned_doctor_id: record.review_assigned_doctor_id ?? null,
     assigned_doctor_name: record.assigned_doctor_name || "",
     offline_directory: {
       patient_id: record.patient_id,
@@ -202,9 +203,8 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
     patient_identifier: String(entry?.patient_identifier || entry?.patient_id || "").trim(),
   });
 
-  // Filter the encrypted offline cache to match the server's Sale validator
-  // (assigned_doctor_id === doctorId AND status === 'active'). Without this
-  // the picker can surface scheduled-only patients that the server then 404s.
+  // Filter the encrypted offline cache to the doctor's caseload when possible
+  // (assigned or review doctor). Visit/consultation links are not in the cache.
   const readCacheRows = async () => {
     try {
       const cached = await getPatientDirectoryCache(userId);
@@ -221,7 +221,10 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
           if (!doctorId) {
             return true;
           }
-          return Number(entry.assigned_doctor_id) === Number(doctorId);
+          return (
+            Number(entry.assigned_doctor_id) === Number(doctorId) ||
+            Number(entry.review_assigned_doctor_id) === Number(doctorId)
+          );
         })
         .map(normalizeRow)
         .filter((row) => row.id && row.full_name);
@@ -231,16 +234,11 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
     }
   };
 
-  // Online path: always hit the live roster so newly assigned patients show
-  // up immediately and de-assigned ones disappear. Only fall back to the
-  // local cache when the network is unavailable or the request fails — a
-  // successful empty response is authoritative and must NOT be masked by
-  // stale cached rows.
+  // Online: use the doctor's caseload list (assigned, review, visits), not
+  // assigned_doctor_id only. filter=my_assigned still pins assigned_doctor_id.
   if (!isBrowserOffline() && doctorId) {
     try {
       const params = new URLSearchParams({
-        filter: "my_assigned",
-        doctorId: String(doctorId),
         status: "active",
         limit: "500",
       });

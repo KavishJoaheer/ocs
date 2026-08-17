@@ -3,7 +3,7 @@ export function getClinicalTwinMetricRoutes(role) {
     case "admin":
       return {
         longTermReview: "/admin/long-term-review",
-        healthPlans: "/live-report",
+        healthPlans: "/patients?filter=subscribed",
       };
     case "operator":
       return {

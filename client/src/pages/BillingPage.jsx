@@ -1996,6 +1996,16 @@ function CreateBillingModal({
   );
 }
 
+function canWriteBill(user, bill) {
+  if (user?.role === "admin" || user?.role === "accountant") {
+    return true;
+  }
+  if (user?.role !== "doctor") {
+    return false;
+  }
+  return Number(bill?.doctor_id) === Number(user?.doctor_id);
+}
+
 function BillingPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2231,6 +2241,10 @@ function BillingPage() {
   }
 
   async function handleQuickMarkPaid(bill, paymentMethod = "cash") {
+    if (!canWriteBill(user, bill)) {
+      toast.error("You can only mark paid on bills from your own consultations.");
+      return;
+    }
     setIsSaving(true);
 
     try {
@@ -2455,7 +2469,7 @@ function BillingPage() {
                           </td>
                           <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
-                              {bill.status === "unpaid" && canMarkPaid ? (
+                              {bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
                                 <button
                                   type="button"
                                   disabled={isSaving}
@@ -2473,6 +2487,7 @@ function BillingPage() {
                                 <Eye className="size-4 shrink-0" />
                                 View
                               </button>
+                              {canWriteBill(user, bill) ? (
                               <button
                                 type="button"
                                 onClick={() => setEditor({ bill })}
@@ -2481,6 +2496,7 @@ function BillingPage() {
                               >
                                 <SquarePen className="size-4" />
                               </button>
+                              ) : null}
                             </div>
                           </td>
                         </tr>
@@ -2515,7 +2531,7 @@ function BillingPage() {
                       <StatusBadge value={bill.status} />
                     </div>
                     <div className="mt-4 flex flex-col gap-2">
-                      {bill.status === "unpaid" && canMarkPaid ? (
+                      {bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
                         <button
                           type="button"
                           disabled={isSaving}
@@ -2526,6 +2542,7 @@ function BillingPage() {
                           Mark paid (cash)
                         </button>
                       ) : null}
+                      {canWriteBill(user, bill) ? (
                       <button
                         type="button"
                         onClick={() => setEditor({ bill })}
@@ -2534,6 +2551,7 @@ function BillingPage() {
                         <SquarePen className="size-4" />
                         Edit invoice
                       </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}

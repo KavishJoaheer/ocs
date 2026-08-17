@@ -1079,7 +1079,7 @@ function DoctorDashboardView({
   );
 }
 
-function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSavingStatus }) {
+function OperatorDashboardView({ user, dashboard, operatorMetrics, onStatusChange, isSavingStatus }) {
   const monthLabel = dayjs().format("MMMM");
 
   return (
@@ -1101,6 +1101,8 @@ function OperatorDashboardView({ user, operatorMetrics, onStatusChange, isSaving
           }
           title="Operations Dashboard"
         />
+
+        <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
 
         <div className="mt-0 rounded-[24px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(240,251,250,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)] md:mt-3 md:rounded-[42px] md:p-5">
           <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1369,6 +1371,8 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
           Clinic-wide
         </p>
       </div>
+
+      <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
 
       <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
         <AdminMetricCard
