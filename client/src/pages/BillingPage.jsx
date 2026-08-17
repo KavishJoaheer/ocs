@@ -2111,6 +2111,11 @@ function BillingPage() {
     if (initialStatus && initialStatus !== statusFilter) {
       setStatusFilter(initialStatus);
     }
+    if (initialStatus === "paid") {
+      setMobileBillTab("paid");
+    } else if (initialStatus === "unpaid") {
+      setMobileBillTab("pending");
+    }
   }, [searchParams, statusFilter]);
 
   const refreshKey = useLiveRefreshKey();

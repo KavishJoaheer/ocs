@@ -1,0 +1,13 @@
+// Clinic settlement rules for Live Report. Mauritius has no DST.
+const CLINIC_UTC_OFFSET_HOURS = 4;
+
+const DOCTOR_COMMISSION_RATE = 0.4;
+const OCS_COMMISSION_RATE = 0.6;
+const TRANSPORT_BENEFIT_PER_PATIENT = 300;
+
+module.exports = {
+  CLINIC_UTC_OFFSET_HOURS,
+  DOCTOR_COMMISSION_RATE,
+  OCS_COMMISSION_RATE,
+  TRANSPORT_BENEFIT_PER_PATIENT,
+};

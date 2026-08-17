@@ -585,7 +585,7 @@ function DoctorWorkspacePage({ workspaceKey }) {
               </Link>
               <Link
                 className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
-                to="/doctor/pending-payment"
+                to="/billing?status=unpaid"
               >
                 Open pending payment
               </Link>
@@ -610,13 +610,13 @@ function DoctorWorkspacePage({ workspaceKey }) {
             </Link>
             <Link
               className="block rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
-              to="/doctor/scheduled-visits"
+              to="/appointments"
             >
               Scheduled visits
             </Link>
             <Link
               className="block rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
-              to="/doctor/assigned-patients"
+              to="/patients?filter=my_assigned"
             >
               Assigned patients
             </Link>

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AppShell from "./layouts/AppShell.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -35,6 +35,17 @@ function RouteFallback() {
       <span className="size-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-500" />
     </div>
   );
+}
+
+function DoctorAssignedPatientsRedirect() {
+  const [params] = useSearchParams();
+  if (params.get("filter") === "subscribed") {
+    return <Navigate to="/patients?filter=subscribed" replace />;
+  }
+  if (params.get("tab") === "under_review" || params.get("filter") === "under_review") {
+    return <Navigate to="/patients?tab=under_review" replace />;
+  }
+  return <Navigate to="/patients?filter=my_assigned" replace />;
 }
 
 function App() {
@@ -91,23 +102,23 @@ function App() {
             />
             <Route
               path="/doctor/scheduled-visits"
-              element={<DoctorWorkspacePage workspaceKey="scheduled-visits" />}
+              element={<Navigate to="/appointments" replace />}
             />
             <Route
               path="/doctor/pending-payment"
-              element={<DoctorWorkspacePage workspaceKey="pending-payment" />}
+              element={<Navigate to="/billing?status=unpaid" replace />}
             />
             <Route
               path="/doctor/patients-seen"
-              element={<DoctorWorkspacePage workspaceKey="patients-seen" />}
+              element={<Navigate to="/live-report" replace />}
             />
             <Route
               path="/doctor/patients-seen-april"
-              element={<Navigate to="/doctor/patients-seen" replace />}
+              element={<Navigate to="/live-report" replace />}
             />
             <Route
               path="/doctor/assigned-patients"
-              element={<DoctorWorkspacePage workspaceKey="assigned-patients" />}
+              element={<DoctorAssignedPatientsRedirect />}
             />
             <Route path="/doctor/long-term-review" element={<LongTermReviewQueuePage />} />
             <Route path="/supply-requests" element={<SupplyRequestsPage />} />

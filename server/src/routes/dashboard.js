@@ -18,6 +18,12 @@ const {
   parseBillingRow,
   toNumber,
 } = require("../lib/utils");
+const {
+  CLINIC_UTC_OFFSET_HOURS,
+  DOCTOR_COMMISSION_RATE,
+  OCS_COMMISSION_RATE,
+  TRANSPORT_BENEFIT_PER_PATIENT,
+} = require("../config/revenueShare");
 
 const router = express.Router();
 const DEFAULT_OPERATOR_ACCESS_HOURS = 24;
@@ -201,12 +207,16 @@ function createDateRangeSlots(startDate, endDate) {
   return slots;
 }
 
+function roundReportCurrency(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
 function getVolumeRows(period, range, doctorId = null) {
   if (period === "daily") {
     const grouped = db
       .prepare(`
         SELECT
-          CAST(strftime('%H', c.created_at) AS INTEGER) AS slot_hour,
+          CAST(strftime('%H', datetime(c.created_at, '+${CLINIC_UTC_OFFSET_HOURS} hours')) AS INTEGER) AS slot_hour,
           COUNT(*) AS patient_count
         FROM consultations c
         JOIN patients p ON p.id = c.patient_id
@@ -1242,31 +1252,39 @@ router.get("/long-term-review", (req, res) => {
 });
 
 router.get("/live-report", (req, res) => {
-  if (!["admin", "doctor", "accountant"].includes(req.auth.role)) {
+  if (!["admin", "doctor"].includes(req.auth.role)) {
     return res.status(403).json({ error: "Only authorized staff can open live reports." });
   }
 
-  const doctors = db
-    .prepare(`
-      SELECT
-        id,
-        full_name,
-        specialization
-      FROM doctors
-      WHERE deleted_at IS NULL
-        AND is_active = 1
-      ORDER BY full_name ASC
-    `)
-    .all();
+  if (req.auth.role === "doctor" && !Number(req.auth.doctor_id)) {
+    return res.status(403).json({ error: "Your account is not linked to a doctor profile." });
+  }
+
+  const doctors =
+    req.auth.role === "admin"
+      ? db
+          .prepare(`
+            SELECT
+              id,
+              full_name,
+              specialization
+            FROM doctors
+            WHERE deleted_at IS NULL
+              AND is_active = 1
+            ORDER BY full_name ASC
+          `)
+          .all()
+      : [];
 
   const requestedDoctorId = Number(req.query.doctorId);
-  const selectedDoctorId = req.auth.role === "doctor"
-    ? Number(req.auth.doctor_id || 0) || null
-    : Number.isInteger(requestedDoctorId) &&
-        requestedDoctorId > 0 &&
-        doctors.some((doctor) => Number(doctor.id) === requestedDoctorId)
-      ? requestedDoctorId
-      : null;
+  const selectedDoctorId =
+    req.auth.role === "doctor"
+      ? Number(req.auth.doctor_id)
+      : Number.isInteger(requestedDoctorId) &&
+          requestedDoctorId > 0 &&
+          doctors.some((doctor) => Number(doctor.id) === requestedDoctorId)
+        ? requestedDoctorId
+        : null;
 
   const locationRange = getReportRange(
     normalizeReportPeriod(req.query.locationPeriod, "monthly"),
@@ -1306,129 +1324,164 @@ router.get("/live-report", (req, res) => {
     0,
   );
 
+  const activityCounts = db
+    .prepare(`
+      SELECT
+        COUNT(*) AS visit_count,
+        COUNT(DISTINCT c.patient_id) AS unique_patient_count
+      FROM consultations c
+      JOIN patients p ON p.id = c.patient_id
+      WHERE p.deleted_at IS NULL
+        AND c.consultation_date BETWEEN @startDate AND @endDate
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    `)
+    .get({
+      startDate: doctorRange.start,
+      endDate: doctorRange.end,
+      doctorId: selectedDoctorId,
+    });
+
+  const visitCount = Number(activityCounts?.visit_count || 0);
+  const uniquePatientCount = Number(activityCounts?.unique_patient_count || 0);
+
+  const patientsSeen = db
+    .prepare(`
+      SELECT
+        p.id AS patient_id,
+        p.full_name AS patient_name,
+        p.patient_identifier,
+        MAX(c.consultation_date) AS consultation_date
+      FROM consultations c
+      JOIN patients p ON p.id = c.patient_id
+      WHERE p.deleted_at IS NULL
+        AND c.consultation_date BETWEEN @startDate AND @endDate
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      GROUP BY p.id, p.full_name, p.patient_identifier
+      ORDER BY consultation_date DESC, p.full_name ASC
+      LIMIT 40
+    `)
+    .all({
+      startDate: doctorRange.start,
+      endDate: doctorRange.end,
+      doctorId: selectedDoctorId,
+    });
+
   const doctorRows = getDoctorPatientCounts(doctorRange.start, doctorRange.end, selectedDoctorId);
-
   const volumeRows = getVolumeRows(doctorRange.period, doctorRange, selectedDoctorId);
-  const activeEntityLabel = selectedDoctorId
-    ? doctors.find((doctor) => Number(doctor.id) === Number(selectedDoctorId))?.full_name || "Selected doctor"
-    : "All doctors";
 
-  const includeFinancials = ["admin", "accountant", "doctor"].includes(req.auth.role);
-
-  let billingRevenueReport;
-  let revenueStatement;
-  let revenueReport;
-
-  if (includeFinancials) {
-    const revenueRanges = {
-      daily: getReportRange("daily", revenueAnchorDate),
-      weekly: getReportRange("weekly", revenueAnchorDate),
-      monthly: getReportRange("monthly", revenueAnchorDate),
-      annual: getReportRange("annual", revenueAnchorDate),
-    };
-
-    const revenueSummary = {
-      daily: getPaidRevenueTotal(
-        revenueRanges.daily.start,
-        revenueRanges.daily.end,
-        selectedDoctorId,
-      ),
-      weekly: getPaidRevenueTotal(
-        revenueRanges.weekly.start,
-        revenueRanges.weekly.end,
-        selectedDoctorId,
-      ),
-      monthly: getPaidRevenueTotal(
-        revenueRanges.monthly.start,
-        revenueRanges.monthly.end,
-        selectedDoctorId,
-      ),
-      annual: getPaidRevenueTotal(
-        revenueRanges.annual.start,
-        revenueRanges.annual.end,
-        selectedDoctorId,
-      ),
-    };
-
-    const revenueRows = db
-      .prepare(`
-        SELECT
-          p.id AS patient_id,
-          p.full_name AS patient_name,
-          b.id AS bill_id,
-          c.consultation_date,
-          b.total_amount,
-          b.status,
-          COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
-        FROM billing b
-        JOIN consultations c ON c.id = b.consultation_id
-        JOIN patients p ON p.id = b.patient_id
-        WHERE p.deleted_at IS NULL
-          AND c.consultation_date BETWEEN @startDate AND @endDate
-          AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
-        ORDER BY c.consultation_date DESC, b.id DESC
-      `)
-      .all({
-        startDate: doctorRange.start,
-        endDate: doctorRange.end,
-        doctorId: selectedDoctorId,
-      });
-
-    const totalRevenue = revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
-    const uniquePatients = new Set(revenueRows.map((row) => row.patient_id)).size;
-    const paidRevenue = revenueRows
-      .filter((row) => row.status === "paid")
-      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
-    const unpaidRevenue = revenueRows
-      .filter((row) => row.status !== "paid")
-      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0);
-    const doctorCommission = totalRevenue * 0.4;
-    const ocsCommission = totalRevenue * 0.6;
-    const transportBenefits = uniquePatients * 300;
-    const doctorNetRevenue = doctorCommission + transportBenefits;
-    const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
-      method,
-      amount: revenueRows
-        .filter((row) => row.status === "paid" && row.payment_method === method)
-        .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
-    }));
-
-    billingRevenueReport = {
-      rows: revenueRows,
-      period: doctorRange.period,
-      rangeLabel: doctorRange.label,
-    };
-
-    revenueStatement =
-      req.auth.role === "doctor"
-        ? {
-            totalRevenue,
-            doctorCommission,
-            transportBenefits,
-            doctorNetRevenue,
-            paidRevenue,
-            unpaidRevenue,
-            paymentMethodBreakdown,
-          }
-        : {
-            totalRevenue,
-            ocsCommission,
-            doctorCommission,
-            transportBenefits,
-            doctorNetRevenue,
-            paidRevenue,
-            unpaidRevenue,
-            paymentMethodBreakdown,
-          };
-
-    revenueReport = {
-      anchorDate: revenueAnchorDate,
-      ranges: revenueRanges,
-      summary: revenueSummary,
-    };
+  let activeEntityLabel = "All doctors";
+  if (selectedDoctorId) {
+    const named =
+      doctors.find((doctor) => Number(doctor.id) === Number(selectedDoctorId)) ||
+      db.prepare("SELECT full_name FROM doctors WHERE id = ?").get(selectedDoctorId);
+    activeEntityLabel = named?.full_name || "Selected doctor";
   }
 
-  const responseBody = {
+  const revenueRanges = {
+    daily: getReportRange("daily", revenueAnchorDate),
+    weekly: getReportRange("weekly", revenueAnchorDate),
+    monthly: getReportRange("monthly", revenueAnchorDate),
+    annual: getReportRange("annual", revenueAnchorDate),
+  };
+
+  const revenueSummary = {
+    daily: getPaidRevenueTotal(revenueRanges.daily.start, revenueRanges.daily.end, selectedDoctorId),
+    weekly: getPaidRevenueTotal(revenueRanges.weekly.start, revenueRanges.weekly.end, selectedDoctorId),
+    monthly: getPaidRevenueTotal(
+      revenueRanges.monthly.start,
+      revenueRanges.monthly.end,
+      selectedDoctorId,
+    ),
+    annual: getPaidRevenueTotal(revenueRanges.annual.start, revenueRanges.annual.end, selectedDoctorId),
+  };
+
+  const revenueRows = db
+    .prepare(`
+      SELECT
+        p.id AS patient_id,
+        p.full_name AS patient_name,
+        b.id AS bill_id,
+        c.consultation_date,
+        b.total_amount,
+        b.status,
+        COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
+      FROM billing b
+      JOIN consultations c ON c.id = b.consultation_id
+      JOIN patients p ON p.id = b.patient_id
+      WHERE p.deleted_at IS NULL
+        AND c.consultation_date BETWEEN @startDate AND @endDate
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      ORDER BY c.consultation_date DESC, b.id DESC
+    `)
+    .all({
+      startDate: doctorRange.start,
+      endDate: doctorRange.end,
+      doctorId: selectedDoctorId,
+    });
+
+  const totalRevenue = roundReportCurrency(
+    revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
+  );
+  const paidRevenue = roundReportCurrency(
+    revenueRows
+      .filter((row) => row.status === "paid")
+      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
+  );
+  const unpaidRevenue = roundReportCurrency(
+    revenueRows
+      .filter((row) => row.status !== "paid")
+      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
+  );
+  const doctorCommission = roundReportCurrency(paidRevenue * DOCTOR_COMMISSION_RATE);
+  const ocsCommission = roundReportCurrency(paidRevenue * OCS_COMMISSION_RATE);
+  const transportBenefits = roundReportCurrency(
+    uniquePatientCount * TRANSPORT_BENEFIT_PER_PATIENT,
+  );
+  const doctorNetRevenue = roundReportCurrency(doctorCommission + transportBenefits);
+  const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
+    method,
+    amount: roundReportCurrency(
+      revenueRows
+        .filter((row) => row.status === "paid" && row.payment_method === method)
+        .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
+    ),
+  }));
+
+  const shareRates = {
+    doctor: DOCTOR_COMMISSION_RATE,
+    ocs: OCS_COMMISSION_RATE,
+    transportPerPatient: TRANSPORT_BENEFIT_PER_PATIENT,
+    commissionOn: "paid",
+  };
+
+  const revenueStatement =
+    req.auth.role === "doctor"
+      ? {
+          paidRevenue,
+          unpaidRevenue,
+          doctorCommission,
+          transportBenefits,
+          doctorNetRevenue,
+          visitCount,
+          uniquePatientCount,
+          paymentMethodBreakdown,
+          shareRates,
+        }
+      : {
+          totalRevenue,
+          paidRevenue,
+          unpaidRevenue,
+          ocsCommission,
+          doctorCommission,
+          transportBenefits,
+          doctorNetRevenue,
+          visitCount,
+          uniquePatientCount,
+          paymentMethodBreakdown,
+          shareRates,
+        };
+
+  res.json({
     doctors,
     locationReport: {
       period: locationRange.period,
@@ -1455,17 +1508,26 @@ router.get("/live-report", (req, res) => {
       rangeEnd: doctorRange.end,
       rangeLabel: `${doctorRange.label} - ${activeEntityLabel}`,
       entityLabel: activeEntityLabel,
+      visitCount,
+      uniquePatientCount,
       rows: volumeRows,
     },
-  };
-
-  if (includeFinancials) {
-    responseBody.billingRevenueReport = billingRevenueReport;
-    responseBody.revenueStatement = revenueStatement;
-    responseBody.revenueReport = revenueReport;
-  }
-
-  res.json(responseBody);
+    patientsSeenReport: {
+      count: uniquePatientCount,
+      rows: patientsSeen,
+    },
+    billingRevenueReport: {
+      rows: revenueRows,
+      period: doctorRange.period,
+      rangeLabel: doctorRange.label,
+    },
+    revenueStatement,
+    revenueReport: {
+      anchorDate: revenueAnchorDate,
+      ranges: revenueRanges,
+      summary: revenueSummary,
+    },
+  });
 });
 
 router.put("/my-status", (req, res) => {

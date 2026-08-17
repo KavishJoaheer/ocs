@@ -13,7 +13,7 @@ export function getClinicalTwinMetricRoutes(role) {
     case "doctor":
       return {
         longTermReview: "/doctor/long-term-review",
-        healthPlans: "/doctor/assigned-patients?filter=subscribed",
+        healthPlans: "/patients?filter=subscribed",
       };
     default:
       return {
