@@ -116,6 +116,29 @@ function formatInventoryExpiry(value) {
   return parsed.isValid() ? parsed.format("D MMM YYYY") : "Not set";
 }
 
+function suggestedBagFillQty(currentQty, minQty, ocsAvailable) {
+  const need = Math.max(Number(minQty || 0) - Number(currentQty || 0), 0);
+  return Math.min(need, Math.max(0, Number(ocsAvailable || 0)));
+}
+
+function buildDoctorFillCandidate(myItem, source) {
+  if (!source?.id) return null;
+  const current = Number(myItem.quantity || 0);
+  const min = Number(myItem.minimum_quantity || 0);
+  const ocsAvailable = Number(source.quantity || 0);
+  const required = suggestedBagFillQty(current, min, ocsAvailable);
+  if (required <= 0) return null;
+  return {
+    ocs_item_id: Number(source.id),
+    item_name: myItem.item_name,
+    current_quantity: current,
+    par_level: min,
+    required_quantity: required,
+    ocs_available: ocsAvailable,
+    ocs_expiry: source.expiry_date || null,
+  };
+}
+
 function formatCompareMoney(amount, qty) {
   if (Number(qty || 0) > 0 && Number(amount || 0) === 0) return "Unpriced";
   return formatRupees(amount);
@@ -267,8 +290,8 @@ function excelSafeSheetTitle(title) {
 }
 
 const DOCTOR_MOBILE_STOCK_SCOPES = [
-  { id: "my", label: "My Stock" },
-  { id: "ocs", label: "OCS Stock" },
+  { id: "my", label: "My bag" },
+  { id: "ocs", label: "OCS depot" },
 ];
 
 function SummaryCard({ title, value, tone = "teal", hint, onClick, active = false }) {
@@ -852,102 +875,173 @@ function RestockModal({ open, doctors, item, presetDoctorId = null, presetDoctor
   );
 }
 
-function DoctorRestockModal({ open, item, isSaving, onClose, onSubmit }) {
-  const [quantity, setQuantity] = useState("1");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [syncedDeps, setSyncedDeps] = useState({ open, item });
+function DoctorRestockModal({ open, item, candidates = [], isSaving, onClose, onSubmit }) {
+  const isFill = !item;
+  const fillRows = isFill
+    ? (candidates || []).filter((row) => Number(row.required_quantity || 0) > 0 && Number(row.ocs_available || 0) > 0)
+    : [];
+  const available = Number(item?.ocs_available || 0);
+  const suggestedSingle = item
+    ? suggestedBagFillQty(item.current_quantity, item.par_level, item.ocs_available)
+    : 0;
 
-  if (syncedDeps.open !== open || syncedDeps.item !== item) {
-    setSyncedDeps({ open, item });
+  const [quantity, setQuantity] = useState("1");
+  const [qtyById, setQtyById] = useState({});
+  const [syncedDeps, setSyncedDeps] = useState({ open, item, fillKey: "" });
+  const fillKey = fillRows.map((row) => `${row.ocs_item_id}:${row.required_quantity}`).join("|");
+
+  if (syncedDeps.open !== open || syncedDeps.item !== item || syncedDeps.fillKey !== fillKey) {
+    setSyncedDeps({ open, item, fillKey });
     if (open) {
-      setQuantity("1");
-      setExpiryDate("");
+      const nextQty = suggestedSingle > 0 ? suggestedSingle : Math.min(1, available);
+      setQuantity(String(nextQty > 0 ? nextQty : "1"));
+      const nextMap = {};
+      fillRows.forEach((row) => {
+        nextMap[row.ocs_item_id] = String(row.required_quantity);
+      });
+      setQtyById(nextMap);
     }
   }
-
-  const available = Number(item?.ocs_available || 0);
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Restock My Inventory"
-      description="Transfer this item from Master Stock into your medical bag."
+      title={isFill ? "Fill bag from OCS" : `Restock ${item?.item_name || ""}`.trim()}
+      description={
+        isFill
+          ? "Pull enough from the depot to reach each line’s minimum. OCS sends the soonest batch."
+          : "Pull from the OCS depot into your bag. Quantity is suggested to reach min. Expiry comes from the depot batch."
+      }
       size="lg"
     >
       <form
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
+          if (isFill) {
+            const requests = fillRows
+              .map((row) => ({
+                ocs_item_id: Number(row.ocs_item_id),
+                quantity: Number(qtyById[row.ocs_item_id] || 0),
+                item_name: row.item_name,
+                ocs_available: Number(row.ocs_available || 0),
+              }))
+              .filter((row) => Number.isInteger(row.quantity) && row.quantity > 0);
+            if (!requests.length) {
+              toast.error("Set a quantity on at least one line.");
+              return;
+            }
+            onSubmit(requests);
+            return;
+          }
           const qty = Number(quantity || 0);
           if (!Number.isInteger(qty) || qty <= 0) return;
-          if (!expiryDate) {
-            toast.error("Select a batch expiry date.");
+          if (qty > available) {
+            toast.error("Requested quantity exceeds OCS depot stock.");
             return;
           }
           onSubmit({
             ocs_item_id: Number(item?.ocs_item_id || 0),
             quantity: qty,
-            expiry_date: expiryDate,
             item_name: item?.item_name || "",
             ocs_available: available,
           });
         }}
       >
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
-          <p className="mt-1 text-xs text-slate-600">OCS Master available: {available}</p>
-          <label className="mt-4 block space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Quantity to restock from Master Stock</span>
-            <input
-              type="number"
-              min="1"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
-            />
-          </label>
-          {Number(quantity || 0) > available ? (
-            <p className="mt-2 text-xs font-semibold text-rose-700">
-              Requested quantity exceeds OCS Master availability.
+        {isFill && fillRows.length === 0 ? (
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+            Nothing to pull. Either the bag is already at minimum, or the depot has none of those items.
+          </p>
+        ) : null}
+
+        {isFill && fillRows.length ? (
+          <div className="max-h-[min(24rem,50vh)] space-y-2 overflow-y-auto">
+            {fillRows.map((row) => (
+              <div key={row.ocs_item_id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{row.item_name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Bag {row.current_quantity} / {row.par_level} · Depot {row.ocs_available} · Exp{" "}
+                      {formatInventoryExpiry(row.ocs_expiry)}
+                    </p>
+                  </div>
+                  <label className="w-20 shrink-0">
+                    <span className="sr-only">Quantity for {row.item_name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={row.ocs_available}
+                      value={qtyById[row.ocs_item_id] ?? ""}
+                      onChange={(event) =>
+                        setQtyById((prev) => ({ ...prev, [row.ocs_item_id]: event.target.value }))
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-center text-sm"
+                    />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {!isFill ? (
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
+            <p className="mt-1 text-xs text-slate-600">
+              In bag: {Number(item?.current_quantity || 0)} / {Number(item?.par_level || 0)} · Depot available:{" "}
+              {available}
             </p>
-          ) : null}
-          <label className="mt-4 block space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Batch expiry date</span>
-            <input
-              required
-              type="date"
-              value={expiryDate}
-              onChange={(event) => setExpiryDate(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
-            />
-          </label>
-        </div>
+            <p className="mt-1 text-xs text-slate-600">
+              Depot batch expiry: {formatInventoryExpiry(item?.ocs_expiry)}
+            </p>
+            <label className="mt-4 block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Quantity to pull</span>
+              <input
+                type="number"
+                min="1"
+                max={available || undefined}
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+              />
+            </label>
+            {Number(quantity || 0) > available ? (
+              <p className="mt-2 text-xs font-semibold text-rose-700">
+                Requested quantity exceeds OCS depot stock.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={
-              isSaving || !item?.ocs_item_id || Number(quantity || 0) > available || !expiryDate
-            }
-            className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {isSaving ? "Restocking..." : "Restock My Inventory"}
-          </button>
+          {isFill && fillRows.length === 0 ? null : (
+            <button
+              type="submit"
+              disabled={
+                isSaving ||
+                (!isFill && (!item?.ocs_item_id || Number(quantity || 0) > available || Number(quantity || 0) < 1))
+              }
+              className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {isSaving ? "Restocking..." : isFill ? `Pull ${fillRows.length} line${fillRows.length === 1 ? "" : "s"}` : "Restock"}
+            </button>
+          )}
         </div>
       </form>
     </Modal>
   );
 }
 
-const STOCK_OUT_REASONS = ["Wasted", "Expired", "Sale"];
+const STOCK_OUT_REASONS = ["Sale", "Wasted", "Expired"];
 
 function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
-  const [reason, setReason] = useState("Wasted");
+  const [reason, setReason] = useState("Sale");
   const [note, setNote] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [syncedDeps, setSyncedDeps] = useState({ open, item });
@@ -956,7 +1050,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
     setSyncedDeps({ open, item });
     if (open) {
       setQuantity("1");
-      setReason("Wasted");
+      setReason("Sale");
       setNote("");
       setSelectedPatientId("");
     }
@@ -973,11 +1067,11 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
     <Modal
       open={open}
       onClose={onClose}
-      title="Stock Out"
+      title="Use from bag"
       description={
         isSale
-          ? "Record a sale from your medical bag. Quantity × selling price is added to the patient's unpaid consultation bill."
-          : "Record wastage or expiry from your medical bag."
+          ? "Deduct from your bag and add quantity × selling price to the patient’s unpaid bill."
+          : "Record waste or expiry from your medical bag. This is not billed to a patient."
       }
       size="lg"
     >
@@ -1013,7 +1107,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
         )}
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
-          <p className="mt-1 text-xs text-slate-600">Available in your stock: {available}</p>
+          <p className="mt-1 text-xs text-slate-600">Available in your bag: {available}</p>
 
           <label className="mt-4 block space-y-2">
             <span className="text-sm font-semibold text-slate-700">Quantity</span>
@@ -1099,18 +1193,19 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
             disabled={
               isSaving ||
               !item?.id ||
+              available < 1 ||
               !Number.isInteger(Number(quantity || 0)) ||
               Number(quantity || 0) <= 0 ||
               Number(quantity || 0) > available ||
               saleRequiresPatient
             }
-            className="rounded-2xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+            className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
           >
             {isSaving
-              ? "Recording..."
+              ? "Saving..."
               : isSale
-                ? "Confirm Allocation & Save"
-                : "Confirm Stock Out"}
+                ? "Confirm sale"
+                : "Confirm use"}
           </button>
         </div>
       </form>
@@ -1667,11 +1762,14 @@ function InventoryMobileActionTray({ quickAddTitle, quickAddDisabled, onQuickAdd
                   <button
                     key={entry.key}
                     type="button"
+                    disabled={entry.disabled}
                     className={cx(
                       INVENTORY_MOBILE_MENU_ITEM,
                       entry.danger ? "text-rose-700 hover:bg-rose-50" : "",
+                      entry.disabled ? "cursor-not-allowed opacity-40" : "",
                     )}
                     onClick={() => {
+                      if (entry.disabled) return;
                       closeMenu();
                       entry.onClick();
                     }}
@@ -1935,9 +2033,10 @@ function InventoryActionButtons({
     if (isDoctor && doctorViewIsMy && onStockOut) {
       menuItems.push({
         key: "stock-out",
-        label: "Stock Out",
+        label: "Use",
         icon: <Minus className="size-3.5" />,
         onClick: () => onStockOut(item),
+        disabled: Number(item.quantity || 0) < 1,
       });
     }
 
@@ -1989,18 +2088,19 @@ function InventoryActionButtons({
   }
 
   const btn =
-    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+    "inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
   const restockBtn =
-    "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#4FB8B3] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3aa6a1]";
+    "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#2d8f98] px-3 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40";
   const stockOutBtn =
-    "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl bg-orange-100 px-3 text-xs font-semibold text-orange-700 transition hover:bg-orange-200";
+    "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40";
   const adjustBtn = "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 text-xs font-semibold";
 
   return (
     <div className="ml-auto flex w-fit items-center justify-end gap-1.5">
       {!(isDoctor && doctorViewIsOcs) ? (
-        <button type="button" onClick={() => onEdit(item)} className={btn}>
+        <button type="button" onClick={() => onEdit(item)} className={btn} title="Edit item" aria-label="Edit item">
           <Pencil className="size-3.5 shrink-0" />
+          Edit
         </button>
       ) : null}
 
@@ -2012,9 +2112,14 @@ function InventoryActionButtons({
       ) : null}
 
       {isDoctor && doctorViewIsMy && onStockOut ? (
-        <button type="button" onClick={() => onStockOut(item)} className={stockOutBtn}>
+        <button
+          type="button"
+          onClick={() => onStockOut(item)}
+          disabled={Number(item.quantity || 0) < 1}
+          className={stockOutBtn}
+        >
           <Minus className="size-3.5 shrink-0" />
-          Stock Out
+          Use
         </button>
       ) : null}
 
@@ -2614,13 +2719,16 @@ function MobileQuickQuantitySheet({
 
 const MOBILE_DEDUCT_REASONS = [
   { id: "Sale", label: "Sale" },
-  { id: "Damage", label: "Damage" },
+  { id: "Damage", label: "Waste" },
   { id: "Expired", label: "Expired" },
 ];
 
 function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose, onSubmit }) {
+  const max = Math.max(0, Number(ocsAvailable || 0));
+  const suggested = item
+    ? suggestedBagFillQty(item.current_quantity, item.par_level, max)
+    : 0;
   const [quantity, setQuantity] = useState("1");
-  const [expiryDate, setExpiryDate] = useState("");
   const [syncedDeps, setSyncedDeps] = useState({
     open,
     itemId: item?.id,
@@ -2634,22 +2742,21 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
   ) {
     setSyncedDeps({ open, itemId: item?.id, ocsItemId: item?.ocs_item_id });
     if (open) {
-      setQuantity("1");
-      setExpiryDate("");
+      const nextQty = suggested > 0 ? suggested : Math.min(1, max);
+      setQuantity(String(nextQty > 0 ? nextQty : "1"));
     }
   }
 
   if (!open || !item) return null;
 
-  const max = Math.max(0, Number(ocsAvailable || 0));
   const qty = Number(quantity || 0);
 
   return (
     <MobileBottomSheet
       open={open}
       onClose={onClose}
-      title={`Restock Kit: ${item.item_name || "Item"}`}
-      subtitle={`Depot available: ${max}`}
+      title={`Restock ${item.item_name || "item"}`}
+      subtitle={`Depot available: ${max} · Batch exp ${formatInventoryExpiry(item.ocs_expiry)}`}
     >
       <form
         className="mt-4 space-y-4"
@@ -2657,18 +2764,14 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
           event.preventDefault();
           if (!Number.isInteger(qty) || qty <= 0) return;
           if (qty > max) {
-            toast.error("Quantity exceeds OCS master stock.");
+            toast.error("Quantity exceeds OCS depot stock.");
             return;
           }
-          if (!expiryDate) {
-            toast.error("Select a batch expiry date.");
-            return;
-          }
-          onSubmit({ quantity: qty, expiry_date: expiryDate });
+          onSubmit({ quantity: qty });
         }}
       >
         <label className="block space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Quantity to Pull</span>
+          <span className="text-sm font-semibold text-slate-700">Quantity to pull</span>
           <input
             required
             min="1"
@@ -2679,23 +2782,16 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
             className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
           />
         </label>
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Batch Expiry Date</span>
-          <input
-            required
-            type="date"
-            value={expiryDate}
-            onChange={(event) => setExpiryDate(event.target.value)}
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
-          />
-        </label>
+        <p className="text-xs text-slate-500">
+          In bag {Number(item.current_quantity || 0)} / {Number(item.par_level || 0)}. Expiry comes from the depot batch.
+        </p>
         <div className="grid gap-2 pt-1">
           <button
             type="submit"
-            disabled={isSaving || max < 1 || qty < 1 || qty > max || !expiryDate}
-            className="min-h-12 w-full rounded-2xl bg-teal-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+            disabled={isSaving || max < 1 || qty < 1 || qty > max}
+            className="min-h-12 w-full rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
           >
-            {isSaving ? "Restocking..." : "Pull from Master Stock"}
+            {isSaving ? "Restocking..." : "Restock"}
           </button>
           <button
             type="button"
@@ -2720,7 +2816,7 @@ function MobileDoctorDeductSheet({
   onSubmit,
 }) {
   const [quantity, setQuantity] = useState("1");
-  const [reason, setReason] = useState("Damage");
+  const [reason, setReason] = useState("Sale");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
@@ -2728,7 +2824,7 @@ function MobileDoctorDeductSheet({
     setSyncedDeps({ open, itemId: item?.id });
     if (open) {
       setQuantity("1");
-      setReason("Damage");
+      setReason("Sale");
       setSelectedPatientId("");
     }
   }
@@ -2748,7 +2844,7 @@ function MobileDoctorDeductSheet({
     <MobileBottomSheet
       open={open}
       onClose={onClose}
-      title={`Log Item Removal: ${item.item_name || "Item"}`}
+      title={`Use ${item.item_name || "item"}`}
       subtitle={`In your bag: ${max}`}
     >
       <form
@@ -2864,7 +2960,7 @@ function MobileDoctorDeductSheet({
               isSale ? "bg-teal-600" : "bg-rose-600",
             )}
           >
-            {isSaving ? "Saving..." : isSale ? "Confirm Allocation & Save" : "Confirm Removal"}
+            {isSaving ? "Saving..." : isSale ? "Confirm sale" : "Confirm use"}
           </button>
           <button
             type="button"
@@ -2880,54 +2976,33 @@ function MobileDoctorDeductSheet({
   );
 }
 
-function MobileTerracottaActionPill({
-  onDeduct,
+function MobileDoctorBagActions({
+  onUse,
   onRestock,
-  deductDisabled = false,
+  useDisabled = false,
   restockDisabled = false,
-  singlePlus = false,
-  deductLabel = "Deduct from bag",
-  restockLabel = "Restock from master",
+  restockOnly = false,
 }) {
-  const btnClass =
-    "flex h-8 w-10 items-center justify-center rounded-lg text-lg font-bold text-[#ba5a32] transition-all hover:bg-[#f5e3d7] active:scale-90 disabled:cursor-not-allowed disabled:opacity-40";
+  const restockBtn =
+    "inline-flex h-8 shrink-0 items-center rounded-xl bg-[#2d8f98] px-2.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40";
+  const useBtn =
+    "inline-flex h-8 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40";
 
-  if (singlePlus) {
+  if (restockOnly) {
     return (
-      <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
-        <button
-          type="button"
-          disabled={restockDisabled}
-          onClick={onRestock}
-          className={btnClass}
-          aria-label={restockLabel}
-        >
-          +
-        </button>
-      </div>
+      <button type="button" disabled={restockDisabled} onClick={onRestock} className={restockBtn}>
+        Restock
+      </button>
     );
   }
 
   return (
-    <div className="flex h-10 min-w-[92px] shrink-0 items-center justify-between overflow-hidden rounded-xl border border-[#f5e3d7] bg-[#fcf3ee] p-1 shadow-sm">
-      <button
-        type="button"
-        disabled={deductDisabled}
-        onClick={onDeduct}
-        className={btnClass}
-        aria-label={deductLabel}
-      >
-        −
+    <div className="flex shrink-0 flex-col gap-1">
+      <button type="button" disabled={useDisabled} onClick={onUse} className={useBtn}>
+        Use
       </button>
-      <div className="h-5 w-px bg-[#f5e3d7]" aria-hidden />
-      <button
-        type="button"
-        disabled={restockDisabled}
-        onClick={onRestock}
-        className={btnClass}
-        aria-label={restockLabel}
-      >
-        +
+      <button type="button" disabled={restockDisabled} onClick={onRestock} className={restockBtn}>
+        Restock
       </button>
     </div>
   );
@@ -2937,30 +3012,30 @@ function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock,
   const currentQuantity = Number(item.quantity || 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
-  const qtyTone = low ? "text-ocs-yellow-dark" : "text-emerald-700";
+  const qtyTone = low ? "text-rose-700" : "text-slate-900";
 
   return (
-    <div className="flex min-h-[72px] items-center justify-between rounded-2xl bg-white p-4 shadow-sm transition-all active:scale-[0.99]">
-      <div className="flex max-w-[65%] min-w-0 items-center gap-3">
+    <div className="flex min-h-[72px] items-center justify-between rounded-2xl bg-white p-4">
+      <div className="flex max-w-[68%] min-w-0 items-center gap-3">
         <span
           className={cx(
             "inline-block h-2 w-2 shrink-0 rounded-full",
-            low
-              ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]"
-              : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]",
+            low ? "bg-rose-500" : "bg-teal-500",
           )}
           aria-hidden
         />
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-sm font-bold tracking-wide text-slate-700">{item.item_name}</span>
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ocs-grey">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
             <span>
               {quantityLabel}{" "}
-              <span className={cx("font-bold", qtyTone)}>{currentQuantity}</span>
+              <span className={cx("font-bold tabular-nums", qtyTone)}>
+                {currentQuantity} / {parLevel}
+              </span>
             </span>
-            <span className="text-gray-200">•</span>
-            <span>
-              Min: <span className="font-bold text-gray-600">{parLevel}</span>
+            <span className="text-slate-300">·</span>
+            <span className={!item.expiry_date ? "text-slate-400" : ""}>
+              {formatInventoryExpiry(item.expiry_date)}
             </span>
           </div>
         </div>
@@ -2987,22 +3062,27 @@ function MobileDoctorBagLayout({
   onOpenRestockInventory,
   onOpenDeduct,
   onOpenRestock,
+  showLowStockOnly = false,
+  showMissingExpiryOnly = false,
+  onToggleLowStock,
+  onToggleMissingExpiry,
+  folderCounts,
+  bagItemCount = 0,
 }) {
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-4 py-3">
       <header className="flex items-start justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight text-ocs-slate">
-          {doctorViewIsOcs ? "OCS Stock" : "My Stock"}
+          {doctorViewIsOcs ? "OCS depot" : "My bag"}
         </h1>
         {!doctorViewIsOcs ? (
           <button
             type="button"
             onClick={onOpenRestockInventory}
-            disabled={!doctorRestockCandidates.length}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-ocs-slate px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-ocs-slate/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3.5 py-2.5 text-xs font-bold text-white"
           >
             <Truck className="size-4" />
-            Restock
+            Restock{doctorRestockCandidates.length ? ` (${doctorRestockCandidates.length})` : ""}
           </button>
         ) : null}
       </header>
@@ -3016,7 +3096,7 @@ function MobileDoctorBagLayout({
             className={cx(
               "min-h-11 flex-1 rounded-2xl px-3 py-2.5 text-sm font-bold transition",
               doctorContext === scope.id
-                ? "bg-ocs-yellow text-slate-900 shadow-sm"
+                ? "bg-[#2d8f98] text-white"
                 : "border border-slate-100 bg-white text-slate-500",
             )}
           >
@@ -3031,12 +3111,22 @@ function MobileDoctorBagLayout({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search by item name"
-          className="h-12 w-full rounded-2xl border border-slate-100 bg-slate-50 pl-11 pr-4 text-sm outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white"
+          className="h-12 w-full rounded-2xl border border-slate-100 bg-white pl-11 pr-4 text-sm outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98]"
         />
       </label>
 
       {folders.length ? (
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            onClick={() => onSelectedViewChange("all")}
+            className={cx(
+              "shrink-0 rounded-2xl px-3.5 py-2 text-xs font-bold transition",
+              selectedView === "all" ? "bg-[#2d8f98] text-white" : "border border-slate-100 bg-white text-slate-700",
+            )}
+          >
+            All ({bagItemCount})
+          </button>
           {folders.map((folder) => (
             <button
               key={folder.id}
@@ -3045,13 +3135,38 @@ function MobileDoctorBagLayout({
               className={cx(
                 "shrink-0 rounded-2xl px-3.5 py-2 text-xs font-bold transition",
                 selectedView === String(folder.id)
-                  ? "bg-ocs-teal text-white shadow-sm"
+                  ? "bg-[#2d8f98] text-white"
                   : "border border-slate-100 bg-white text-slate-700",
               )}
             >
-              {folder.name}
+              {folder.name} ({folderCounts?.get(String(folder.id)) || 0})
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {!doctorViewIsOcs ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onToggleLowStock}
+            className={cx(
+              "rounded-2xl px-3 py-1.5 text-xs font-semibold",
+              showLowStockOnly ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700",
+            )}
+          >
+            Below min
+          </button>
+          <button
+            type="button"
+            onClick={onToggleMissingExpiry}
+            className={cx(
+              "rounded-2xl px-3 py-1.5 text-xs font-semibold",
+              showMissingExpiryOnly ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700",
+            )}
+          >
+            Missing expiry
+          </button>
         </div>
       ) : null}
 
@@ -3066,20 +3181,19 @@ function MobileDoctorBagLayout({
                   <MobileInventoryStockCard
                     key={`mobile-bag-${item.id}`}
                     item={item}
-                    quantityLabel={doctorViewIsOcs ? "Available:" : "In Bag:"}
+                    quantityLabel={doctorViewIsOcs ? "Depot:" : "In bag:"}
                     actions={
                       doctorViewIsOcs ? (
-                        <MobileTerracottaActionPill
-                          singlePlus
+                        <MobileDoctorBagActions
+                          restockOnly
                           restockDisabled={!onOpenRestock}
                           onRestock={() => onOpenRestock?.(item)}
-                          restockLabel="Add to bag from depot"
                         />
                       ) : (
-                        <MobileTerracottaActionPill
-                          deductDisabled={!onOpenDeduct || currentQuantity < 1}
+                        <MobileDoctorBagActions
+                          useDisabled={!onOpenDeduct || currentQuantity < 1}
                           restockDisabled={!onOpenRestock}
-                          onDeduct={() => onOpenDeduct?.(item)}
+                          onUse={() => onOpenDeduct?.(item)}
                           onRestock={() => onOpenRestock?.(item)}
                         />
                       )
@@ -3121,7 +3235,7 @@ function MobileDoctorBagLayout({
             description={
               doctorViewIsOcs
                 ? "Try another category or search term."
-                : "Search or restock from OCS Master Stock to fill your medical bag."
+                : "Search or restock from the OCS depot to fill your bag."
             }
           />
         )}
@@ -3166,7 +3280,6 @@ export default function InventoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
-  const [consumptionPeriod, setConsumptionPeriod] = useState("month");
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
@@ -3265,6 +3378,15 @@ export default function InventoryPage() {
     }),
     [items],
   );
+  const bagItems = isDoctor ? data?.my_stock || [] : items;
+  const bagChaseCounts = useMemo(
+    () => ({
+      low: bagItems.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
+      near: bagItems.filter((item) => Boolean(item.is_near_expiry)).length,
+      missing: bagItems.filter((item) => !item.expiry_date).length,
+    }),
+    [bagItems],
+  );
   const compareRows = useMemo(() => {
     const rows = data?.compare_rows || [];
     return rows.filter(
@@ -3286,7 +3408,6 @@ export default function InventoryPage() {
   const staffDoctorBagTable = canManageOcs && !contextIsOcs;
   const inventoryActionsColWidth = doctorDesktopBagTable || staffDoctorBagTable ? "30%" : "32%";
   const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : "48rem";
-  const doctorConsumptionRows = data?.my_consumption_rows || [];
   const movements = data?.movements || [];
 
   const doctorRestockCandidates = useMemo(() => {
@@ -3295,25 +3416,12 @@ export default function InventoryPage() {
       (data.ocs_stock || []).map((item) => [`${item.folder_id}::${String(item.item_name || "").toLowerCase()}`, item]),
     );
     return (data.my_stock || [])
-      .map((myItem) => {
-        const parLevel = Number(myItem.minimum_quantity || 0);
-        const currentQuantity = Number(myItem.quantity || 0);
-        const ratio = parLevel > 0 ? currentQuantity / parLevel : 1;
-        if (parLevel <= 0 || ratio >= 0.5) return null;
-        const needed = Math.max(parLevel - currentQuantity, 0);
-        const source = ocsMap.get(`${myItem.folder_id}::${String(myItem.item_name || "").toLowerCase()}`);
-        const ocsAvailable = Number(source?.quantity || 0);
-        const transferQty = Math.min(needed, ocsAvailable);
-        if (!source?.id || transferQty <= 0) return null;
-        return {
-          ocs_item_id: Number(source.id),
-          item_name: myItem.item_name,
-          current_quantity: currentQuantity,
-          par_level: parLevel,
-          required_quantity: transferQty,
-          ocs_available: ocsAvailable,
-        };
-      })
+      .map((myItem) =>
+        buildDoctorFillCandidate(
+          myItem,
+          ocsMap.get(`${myItem.folder_id}::${String(myItem.item_name || "").toLowerCase()}`),
+        ),
+      )
       .filter(Boolean);
   }, [isDoctor, data]);
   const ocsByFolderAndName = useMemo(() => {
@@ -3324,10 +3432,6 @@ export default function InventoryPage() {
     return map;
   }, [data]);
 
-  const selectedConsumption = useMemo(
-    () => doctorConsumptionRows.find((row) => row.period_key === consumptionPeriod) || null,
-    [doctorConsumptionRows, consumptionPeriod],
-  );
   const parsedMovements = useMemo(
     () =>
       movements.map((movement) => ({
@@ -3457,12 +3561,17 @@ export default function InventoryPage() {
     if (!folders.length) return;
     const valid = selectedView === "all" || folders.some((f) => String(f.id) === String(selectedView));
     if (!selectedView || !valid) {
+      if (isDoctor) {
+        setSelectedView("all");
+        setActiveCategory("All");
+        return;
+      }
       const next = getDefaultFolderSelection(folders, items);
       if (!next) return;
       setSelectedView(String(next.id));
       if (next.name) setActiveCategory(next.name);
     }
-  }, [folders, items, selectedView]);
+  }, [folders, items, selectedView, isDoctor]);
 
   useEffect(() => {
     if (!folders.length || !selectedView) return;
@@ -3492,9 +3601,10 @@ export default function InventoryPage() {
     const shouldOpenRestock = searchParams.get("restock") === "alert";
     if (!shouldOpenRestock) return;
     if (doctorRestockCandidates.length) {
+      setDoctorRestockItem(null);
       setDoctorRestockOpen(true);
     } else {
-      toast("Stock levels look healthy — no restock needed right now.");
+      toast("OCS has no stock to fill lines that are below minimum.");
     }
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("restock");
@@ -3540,16 +3650,23 @@ export default function InventoryPage() {
   const mobileBagFilteredItems = useMemo(() => {
     if (!showMobileDoctorBag) return [];
     const needle = search.trim().toLowerCase();
+    const folderId = selectedView && selectedView !== "all" ? selectedView : "";
     const sourceStock = doctorViewIsOcs ? data?.ocs_stock || [] : data?.my_stock || [];
-    let rows = selectedView
-      ? sourceStock.filter((item) => String(item.folder_id) === String(selectedView))
+    let rows = folderId
+      ? sourceStock.filter((item) => String(item.folder_id) === String(folderId))
       : sourceStock;
     rows = rows.filter(
       (item) => !needle || String(item.item_name || "").toLowerCase().includes(needle),
     );
+    if (!doctorViewIsOcs && showLowStockOnly) {
+      rows = rows.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0));
+    }
+    if (!doctorViewIsOcs && showMissingExpiryOnly) {
+      rows = rows.filter((item) => !item.expiry_date);
+    }
     const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
     return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
-  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView]);
+  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView, showLowStockOnly, showMissingExpiryOnly]);
 
   const mobileBagPagedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -3620,15 +3737,33 @@ export default function InventoryPage() {
   function openDoctorRestockForItem(nextItem) {
     const source = ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
     if (!source?.id) {
-      toast.error("Item not available in OCS Master Stock.");
+      toast.error("Item not available in the OCS depot.");
+      return;
+    }
+    if (Number(source.quantity || 0) < 1) {
+      toast.error("OCS depot has none of this item.");
       return;
     }
     setDoctorRestockItem({
       ocs_item_id: Number(source.id),
       item_name: nextItem.item_name,
       ocs_available: Number(source.quantity || 0),
+      current_quantity: Number(nextItem.quantity || 0),
+      par_level: Number(nextItem.minimum_quantity || 0),
+      ocs_expiry: source.expiry_date || null,
     });
     setDoctorRestockOpen(true);
+  }
+
+  function openDoctorFillBag() {
+    setDoctorContext("my");
+    setDoctorRestockItem(null);
+    setDoctorRestockOpen(true);
+  }
+
+  function applyDoctorBagFilter(kind) {
+    setDoctorContext("my");
+    applyChaseFilter(kind);
   }
 
   function openStaffRestockForDoctorItem(nextItem) {
@@ -3831,7 +3966,6 @@ export default function InventoryPage() {
         items: requests.map((item) => ({
           ocs_item_id: Number(item.ocs_item_id),
           quantity: Number(item.required_quantity || item.quantity),
-          expiry_date: item.expiry_date ? String(item.expiry_date).trim() : null,
         })),
       });
       commitInventoryData(next);
@@ -4047,11 +4181,19 @@ export default function InventoryPage() {
 
   function resolveOcsSourceForBagItem(bagItem) {
     if (!bagItem) return null;
+    const myMatch = (data?.my_stock || []).find(
+      (row) =>
+        String(row.folder_id) === String(bagItem.folder_id) &&
+        String(row.item_name || "").toLowerCase() === String(bagItem.item_name || "").toLowerCase(),
+    );
     if (bagItem.stock_scope === "ocs" || doctorViewIsOcs) {
       return {
         ocs_item_id: Number(bagItem.id),
         item_name: bagItem.item_name,
         ocs_available: Number(bagItem.quantity || 0),
+        current_quantity: Number(myMatch?.quantity || 0),
+        par_level: Number(myMatch?.minimum_quantity || bagItem.minimum_quantity || 0),
+        ocs_expiry: bagItem.expiry_date || null,
       };
     }
     const source = ocsByFolderAndName.get(
@@ -4062,19 +4204,26 @@ export default function InventoryPage() {
       ocs_item_id: Number(source.id),
       item_name: bagItem.item_name,
       ocs_available: Number(source.quantity || 0),
+      current_quantity: Number(bagItem.quantity || 0),
+      par_level: Number(bagItem.minimum_quantity || 0),
+      ocs_expiry: source.expiry_date || null,
     };
   }
 
   function openMobileDoctorRestock(item) {
     const resolved = resolveOcsSourceForBagItem(item);
     if (!resolved?.ocs_item_id) {
-      toast.error("Item not available in OCS Master Stock.");
+      toast.error("Item not available in the OCS depot.");
+      return;
+    }
+    if (Number(resolved.ocs_available || 0) < 1) {
+      toast.error("OCS depot has none of this item.");
       return;
     }
     setMobileRestockTarget(resolved);
   }
 
-  async function saveMobileDoctorRestock({ quantity, expiry_date }) {
+  async function saveMobileDoctorRestock({ quantity }) {
     const target = mobileRestockTarget;
     if (!target?.ocs_item_id) return;
     const qty = Number(quantity || 0);
@@ -4090,7 +4239,6 @@ export default function InventoryPage() {
         {
           ocs_item_id: Number(target.ocs_item_id),
           quantity: qty,
-          expiry_date,
         },
       ],
     };
@@ -4327,9 +4475,15 @@ export default function InventoryPage() {
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
             doctorRestockCandidates={doctorRestockCandidates}
-            onOpenRestockInventory={() => setDoctorRestockOpen(true)}
+            onOpenRestockInventory={openDoctorFillBag}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
             onOpenRestock={openMobileDoctorRestock}
+            showLowStockOnly={showLowStockOnly}
+            showMissingExpiryOnly={showMissingExpiryOnly}
+            onToggleLowStock={() => applyDoctorBagFilter("low")}
+            onToggleMissingExpiry={() => applyDoctorBagFilter("missing")}
+            folderCounts={folderCounts}
+            bagItemCount={items.length}
           />
           <MobileDoctorDeductSheet
             open={Boolean(mobileDeductItem)}
@@ -4353,17 +4507,18 @@ export default function InventoryPage() {
       <PageHeader
         className={isOperator ? "mb-0" : undefined}
         eyebrow="Logistics"
-        title={isDoctor ? (doctorViewIsOcs ? "OCS Master Stock" : "My Stock") : "OCS Stock"}
+        title={isDoctor ? (doctorViewIsOcs ? "OCS depot" : "My bag") : "OCS Stock"}
         actions={
           isDoctor ? (
             <button
               type="button"
-              onClick={() => setDoctorRestockOpen(true)}
-              disabled={!doctorRestockCandidates.length}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] disabled:cursor-not-allowed disabled:opacity-50 lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
+              onClick={openDoctorFillBag}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               <Truck className="size-4" />
-              Restock My Inventory
+              {doctorRestockCandidates.length
+                ? `Fill bag (${doctorRestockCandidates.length})`
+                : "Fill bag"}
             </button>
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -4434,18 +4589,39 @@ export default function InventoryPage() {
             onClick={() => applyChaseFilter("missing")}
           />
         </div>
-      ) : (
+      ) : isDoctor ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-          <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} />
-          <SummaryCard title="Monthly Sales" value={formatRupees(summary.total_monthly_sales_rs || 0)} />
-          <SummaryCard title="Monthly Replenishments" value={formatRupees(summary.total_monthly_replenishments_rs || 0)} />
           <SummaryCard
-            title="Low / Near Expiry"
-            value={`${summary.low_stock_count || 0} / ${summary.near_expiry_count || 0}`}
+            title="Below min"
+            value={bagChaseCounts.low}
+            tone="rose"
+            hint="Click to filter"
+            active={doctorViewIsMy && showLowStockOnly}
+            onClick={() => applyDoctorBagFilter("low")}
+          />
+          <SummaryCard
+            title="Missing expiry"
+            value={bagChaseCounts.missing}
+            hint="Click to filter"
+            active={doctorViewIsMy && showMissingExpiryOnly}
+            onClick={() => applyDoctorBagFilter("missing")}
+          />
+          <SummaryCard
+            title="Near expiry"
+            value={bagChaseCounts.near}
             tone="amber"
+            hint="Within 90 days"
+            active={doctorViewIsMy && showNearExpiryOnly}
+            onClick={() => applyDoctorBagFilter("near")}
+          />
+          <SummaryCard
+            title="OCS can fill"
+            value={doctorRestockCandidates.length}
+            hint={doctorRestockCandidates.length ? "Click to pull" : "Depot empty or bag at min"}
+            onClick={openDoctorFillBag}
           />
         </div>
-      )}
+      ) : null}
 
       {canManageOcs ? (
         <div className="flex flex-wrap gap-2">
@@ -4507,7 +4683,9 @@ export default function InventoryPage() {
         className={isOperator ? "pb-3" : undefined}
         title={
           isDoctor
-            ? "My Stock Items"
+            ? doctorViewIsOcs
+              ? "OCS depot"
+              : "Bag items"
             : contextIsOcs
               ? "OCS Stock Items"
               : `${contextSearch || "Doctor"} - My Stock`
@@ -4520,16 +4698,16 @@ export default function InventoryPage() {
                 <button
                   type="button"
                   onClick={() => setDoctorContext("my")}
-                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsMy ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsMy ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
                 >
-                  My Stock (Default)
+                  My bag
                 </button>
                 <button
                   type="button"
                   onClick={() => setDoctorContext("ocs")}
-                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsOcs ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsOcs ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
                 >
-                  OCS Master Stock (Read-only)
+                  OCS depot
                 </button>
               </div>
             ) : (
@@ -4667,14 +4845,6 @@ export default function InventoryPage() {
                       const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
                       const expanded = Boolean(expandedRows[item.id]);
                       const batches = batchMap[item.id] || [];
-                      const parLevel = Number(item.minimum_quantity || 0);
-                      const quantity = Number(item.quantity || 0);
-                      const trafficTone =
-                        quantity <= 0
-                          ? "critical"
-                          : parLevel > 0 && quantity <= parLevel
-                            ? "warning"
-                            : "healthy";
                       return (
                         <Fragment key={item.id}>
                           <tr
@@ -4699,42 +4869,10 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              {doctorDesktopBagTable ? (
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className="font-medium tabular-nums text-slate-900">{item.quantity}</span>
-                                  <span
-                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                                      trafficTone === "critical"
-                                        ? "bg-ocs-yellow/20 text-yellow-800"
-                                        : trafficTone === "warning"
-                                          ? "bg-ocs-yellow/10 text-yellow-700"
-                                          : "bg-teal-100 text-teal-700"
-                                    }`}
-                                  >
-                                    {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="inline-flex items-center justify-center gap-2">
-                                  <span className="tabular-nums font-semibold text-slate-900">
-                                    {item.quantity}
-                                    <span className="font-medium text-slate-400"> / {item.minimum_quantity}</span>
-                                  </span>
-                                  {isDoctor && doctorViewIsMy ? (
-                                    <span
-                                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
-                                        trafficTone === "critical"
-                                          ? "bg-ocs-yellow/20 text-yellow-800"
-                                          : trafficTone === "warning"
-                                            ? "bg-ocs-yellow/10 text-yellow-700"
-                                            : "bg-teal-100 text-teal-700"
-                                      }`}
-                                    >
-                                      {trafficTone === "critical" ? "Critical" : trafficTone === "warning" ? "Below 50%" : "Healthy"}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              )}
+                              <span className="tabular-nums font-semibold text-slate-900">
+                                {item.quantity}
+                                <span className="font-medium text-slate-400"> / {item.minimum_quantity}</span>
+                              </span>
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>
                             <td
@@ -4841,8 +4979,8 @@ export default function InventoryPage() {
               canManageOcs && contextIsOcs
                 ? "Add stock in Consumable or pick another category when adding a new item."
                 : isDoctor && doctorViewIsMy
-                  ? "Open OCS Master Stock to add items to your bag, or pick another category."
-                  : "Try another category, search term, or restock from OCS Master Stock."
+                  ? "Open the OCS depot to pull items into your bag, or pick another category."
+                  : "Try another category, search term, or restock from the OCS depot."
             }
           />
         )}
@@ -4863,42 +5001,7 @@ export default function InventoryPage() {
       </SectionCard>
       ) : null}
 
-      {isDoctor ? (
-        <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
-          <SectionCard title="My Consumption Record">
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => setConsumptionPeriod("week")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "week" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Week</button>
-            <button type="button" onClick={() => setConsumptionPeriod("month")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "month" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>This Month</button>
-            <button type="button" onClick={() => setConsumptionPeriod("ytd")} className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${consumptionPeriod === "ytd" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}>Year to Date</button>
-          </div>
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.2em]">
-                <tr>
-                  <th className="px-3 py-2 text-left">Period</th>
-                  <th className="px-3 py-2 text-left">Patient Volume</th>
-                  <th className="px-3 py-2 text-left">Stock Consumption (Rs)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedConsumption ? (
-                  <tr className="border-t border-slate-200/70 text-xs">
-                    <td className="px-3 py-2">{selectedConsumption.period}</td>
-                    <td className="px-3 py-2">{selectedConsumption.patient_volume}</td>
-                    <td className="px-3 py-2">{formatRupees(selectedConsumption.stock_consumption_rs)}</td>
-                  </tr>
-                ) : (
-                  <tr className="border-t border-slate-200/70 text-xs">
-                    <td className="px-3 py-2 text-slate-500" colSpan={3}>No consumption record available yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-        <LiveActivitySection movements={parsedMovements} />
-        </div>
-      ) : isAdmin && logisticsTab === "bags" ? (
+      {isDoctor ? null : isAdmin && logisticsTab === "bags" ? (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -5056,6 +5159,7 @@ export default function InventoryPage() {
       <DoctorRestockModal
         open={doctorRestockOpen}
         item={doctorRestockItem}
+        candidates={doctorRestockCandidates}
         isSaving={isSaving}
         onClose={() => {
           setDoctorRestockOpen(false);
