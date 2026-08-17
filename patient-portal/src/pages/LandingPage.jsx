@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const AMBIENT_BLUR_CROSSES = [
   {
@@ -190,13 +190,19 @@ function LandingPage() {
               MOBILE: full-width vertical stack for thumb reach
               TABLET+ (md): side-by-side capsule row
             */}
-            <div className="mx-auto mt-8 flex w-full max-w-sm flex-col justify-center sm:mt-10 md:flex-row md:items-center md:justify-center">
+            <div className="mx-auto mt-8 flex w-full max-w-sm flex-col items-center justify-center sm:mt-10">
               <button
                 onClick={() => navigate("/login")}
                 className="glow-amber-capsule w-full touch-manipulation rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-10 py-4 text-center text-sm font-black tracking-wide text-[#14213d] transition-all duration-300 active:scale-[0.98] md:w-auto"
               >
                 Patient Portal →
               </button>
+              <Link
+                to="/register"
+                className="mt-4 text-xs font-bold text-gray-400 transition-colors hover:text-[#065a60]"
+              >
+                New here? Create your patient account →
+              </Link>
             </div>
           </FadeInSection>
         </div>
