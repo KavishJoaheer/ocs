@@ -183,6 +183,10 @@ function publishInventoryResyncBroadcast({ reason = "doctor_bag_matrix_clone" } 
   let delivered = 0;
 
   for (const client of clients.values()) {
+    if (String(client.role || "") === "linkham_admin") {
+      continue;
+    }
+
     try {
       writeSseEvent(client.res, "inventory_resync", event);
       delivered += 1;

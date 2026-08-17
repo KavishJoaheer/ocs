@@ -143,13 +143,38 @@ export default function LinkhamReportsPage() {
     return <LoadingState label="Loading analytics ledger" />;
   }
 
+  async function handleExportMonthCsv() {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const { blob, filename } = await api.getBlob(
+      `/linkham/claims/statement.csv?status=all&month=${encodeURIComponent(month)}`,
+    );
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename || `linkham-80pct-statement-${month}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
   return (
     <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-extrabold text-[#14213d]">Data & Analytics Ledger</h1>
-        <span className="text-xs font-medium text-gray-400">
-          Visual trends monitoring deployment operations and claims performance metrics.
-        </span>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-xl font-extrabold text-[#14213d]">Data & Analytics Ledger</h1>
+          <span className="text-xs font-medium text-gray-400">
+            Visit volume, claims outlay, and a monthly 80% statement for finance.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleExportMonthCsv()}
+          className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700"
+        >
+          This month CSV
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

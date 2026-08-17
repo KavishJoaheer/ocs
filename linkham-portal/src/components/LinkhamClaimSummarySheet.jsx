@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import LoadingState from "./LoadingState.jsx";
 import { api } from "../lib/api.js";
 import { formatDate, formatRupees } from "../lib/format.js";
+import { downloadLinkhamClaimSummaryPdf } from "../lib/linkhamExports.js";
 
 function MetadataField({ label, value, valueClassName = "", mono = false, span = 1 }) {
   const content =
@@ -174,7 +175,8 @@ export default function LinkhamClaimSummarySheet({ claimId, open, onClose }) {
                     label="Visit date"
                     value={summary.visit_date ? formatDate(summary.visit_date) : "Not set"}
                   />
-                  <MetadataField label="Attending doctor" value={summary.doctor_name} span={2} />
+                  <MetadataField label="Policy number" value={summary.policy_number} mono />
+                  <MetadataField label="Attending doctor" value={summary.doctor_name} />
                   <MetadataField label="Generated" value={generatedLabel} span={2} />
                 </div>
               </div>
@@ -222,7 +224,38 @@ export default function LinkhamClaimSummarySheet({ claimId, open, onClose }) {
                     summary.dispute_status === "Flagged_Review" ? "text-amber-700" : "text-emerald-700"
                   }
                 />
+                {summary.dispute_reason ? (
+                  <div className="mt-4">
+                    <MetadataField label="Reason for clinic" value={summary.dispute_reason} span={2} />
+                  </div>
+                ) : null}
+                {summary.reviewed_by_name ? (
+                  <div className="mt-4">
+                    <MetadataField
+                      label="Approved by"
+                      value={`${summary.reviewed_by_name}${summary.reviewed_at ? ` · ${new Date(summary.reviewed_at).toLocaleString()}` : ""}`}
+                      span={2}
+                    />
+                  </div>
+                ) : null}
+                {summary.settled_by_name ? (
+                  <div className="mt-4">
+                    <MetadataField
+                      label="Marked paid to OCS by"
+                      value={`${summary.settled_by_name}${summary.settled_at ? ` · ${new Date(summary.settled_at).toLocaleString()}` : ""}`}
+                      span={2}
+                    />
+                  </div>
+                ) : null}
               </div>
+
+              <button
+                type="button"
+                onClick={() => void downloadLinkhamClaimSummaryPdf(summary)}
+                className="w-full rounded-xl bg-[#065a60] px-4 py-2.5 text-xs font-bold text-white"
+              >
+                Download summary PDF
+              </button>
             </div>
           ) : (
             <p className="text-sm text-gray-500">Verification summary unavailable.</p>

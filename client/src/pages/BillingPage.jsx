@@ -2553,6 +2553,12 @@ function BillingPage() {
                                 {bill.updated_at ? ` · ${formatDate(bill.updated_at)}` : ""}
                               </span>
                             ) : null}
+                            {bill.dispute_status === "Flagged_Review" ? (
+                              <span className="mt-1 block text-xs font-semibold text-amber-800">
+                                Linkham flagged
+                                {bill.dispute_reason ? `: ${bill.dispute_reason}` : ""}
+                              </span>
+                            ) : null}
                           </td>
                           <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
@@ -2617,6 +2623,12 @@ function BillingPage() {
                       <p className="text-xl font-bold text-slate-700">{formatCurrency(bill.total_amount)}</p>
                       <StatusBadge value={bill.status} />
                     </div>
+                    {bill.dispute_status === "Flagged_Review" ? (
+                      <p className="mt-2 text-xs font-semibold text-amber-800">
+                        Linkham flagged
+                        {bill.dispute_reason ? `: ${bill.dispute_reason}` : ""}
+                      </p>
+                    ) : null}
                     <div className="mt-4 flex flex-col gap-2">
                       {bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
                         <button

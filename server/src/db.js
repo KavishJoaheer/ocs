@@ -1393,6 +1393,36 @@ function ensureBillingColumns() {
     `);
   }
 
+  if (!columns.includes("dispute_reason")) {
+    db.exec("ALTER TABLE billing ADD COLUMN dispute_reason TEXT");
+  }
+
+  if (!columns.includes("dispute_flagged_at")) {
+    db.exec("ALTER TABLE billing ADD COLUMN dispute_flagged_at TEXT");
+  }
+
+  if (!columns.includes("dispute_flagged_by_user_id")) {
+    db.exec(
+      "ALTER TABLE billing ADD COLUMN dispute_flagged_by_user_id INTEGER REFERENCES users(id)",
+    );
+  }
+
+  if (!columns.includes("linkham_claim_reviewed_by_user_id")) {
+    db.exec(
+      "ALTER TABLE billing ADD COLUMN linkham_claim_reviewed_by_user_id INTEGER REFERENCES users(id)",
+    );
+  }
+
+  if (!columns.includes("linkham_claim_settled_at")) {
+    db.exec("ALTER TABLE billing ADD COLUMN linkham_claim_settled_at TEXT");
+  }
+
+  if (!columns.includes("linkham_claim_settled_by_user_id")) {
+    db.exec(
+      "ALTER TABLE billing ADD COLUMN linkham_claim_settled_by_user_id INTEGER REFERENCES users(id)",
+    );
+  }
+
   // Read the column list again: the legacy rebuild above may have replaced the
   // table since the first PRAGMA.
   const auditColumns = db

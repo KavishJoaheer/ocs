@@ -1,10 +1,63 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import EmptyState from "../../components/EmptyState.jsx";
 import LinkhamBudgetExposureGauge from "../../components/LinkhamBudgetExposureGauge.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import { api } from "../../lib/api.js";
+import { formatDate, formatRupees } from "../../lib/format.js";
 import { LINKHAM_CLAIMS_EVENT, LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
+
+function MetricCard({ to, label, value, hint, tone = "slate" }) {
+  const valueClass =
+    tone === "gold"
+      ? "text-[#b45309]"
+      : tone === "teal"
+        ? "text-[#065a60]"
+        : "text-[#14213d]";
+  const body = (
+    <div className="flex min-h-[110px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-[#065a60]/30">
+      <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+        {label}
+      </span>
+      <div className="mt-2">
+        <span className={`text-3xl font-black tabular-nums ${valueClass}`}>{value}</span>
+        {hint ? <p className="mt-1 text-[11px] font-medium text-gray-500">{hint}</p> : null}
+      </div>
+    </div>
+  );
+
+  if (!to) {
+    return body;
+  }
+
+  return (
+    <Link to={to} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#065a60]">
+      {body}
+    </Link>
+  );
+}
+
+function QueueCard({ title, description, to, children, empty }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3 border-b border-gray-50 pb-2">
+        <div>
+          <h3 className="text-sm font-extrabold text-gray-800">{title}</h3>
+          <p className="text-xs text-gray-400">{description}</p>
+        </div>
+        {to ? (
+          <Link to={to} className="text-[11px] font-bold text-[#065a60] hover:underline">
+            Open
+          </Link>
+        ) : null}
+      </div>
+      {children?.length ? children : (
+        <p className="text-xs text-gray-400">{empty}</p>
+      )}
+    </div>
+  );
+}
 
 export default function LinkhamDashboardPage() {
   const [metrics, setMetrics] = useState(null);
@@ -53,33 +106,27 @@ export default function LinkhamDashboardPage() {
   }
 
   const dueReviews = Array.isArray(metrics?.dueLongTermReviews) ? metrics.dueLongTermReviews : [];
-  const hcmNews = Array.isArray(metrics?.hcmNews) ? metrics.hcmNews : [];
+  const flaggedClaims = Array.isArray(metrics?.flaggedClaims) ? metrics.flaggedClaims : [];
+  const missingPolicies = Array.isArray(metrics?.missingPolicies) ? metrics.missingPolicies : [];
   const budgetExposure = metrics?.budgetExposure || null;
   const showBudgetAlert = Boolean(budgetExposure?.thresholdWarningLevel);
+  const pendingCount = Number(metrics?.pendingClaimsCount || 0);
+  const outstanding = Number(metrics?.outstandingEightyLedger || 0);
 
   return (
     <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
       <div>
         <h1 className="text-xl font-extrabold text-[#14213d]">Operational Overview</h1>
         <span className="text-xs font-medium text-gray-400">
-          Real-time indicators for active Linkham corporate coverage metrics.
+          Coverage pool, unpaid 80% claims, and items that need a Linkham decision.
         </span>
       </div>
 
       {showBudgetAlert ? (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50 p-4">
-          <svg
-            className="mt-0.5 size-4 shrink-0 fill-none stroke-2 stroke-amber-700"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
           <div className="flex flex-col">
             <span className="text-xs font-bold text-amber-900">
-              Linkham Monthly Coverage Pool Reached 80%
+              Linkham monthly coverage pool reached 80%
             </span>
             <span className="mt-0.5 text-[11px] font-medium text-amber-700">
               OCS has automatically prioritized non-emergency chronic reviews to the first week of
@@ -91,49 +138,83 @@ export default function LinkhamDashboardPage() {
 
       <LinkhamBudgetExposureGauge exposure={budgetExposure} />
 
-      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="flex min-h-[110px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-            Patients Seen ({metrics?.currentMonthName || "Current month"})
-          </span>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#14213d]">
-              {metrics?.monthlySeenPatientsCount ?? 0}
-            </span>
-            <span className="rounded-lg bg-[#065a60]/10 px-2 py-0.5 text-[11px] font-bold text-[#065a60]">
-              Active Month
-            </span>
-          </div>
-        </div>
-
-        <div className="flex min-h-[110px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-            Pending Corporate Claims
-          </span>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#fca311]">
-              {metrics?.pendingClaimsCount ?? 0}
-            </span>
-            <span className="rounded-lg border border-[#fca311]/20 bg-[#fca311]/5 px-2 py-0.5 text-[11px] font-bold text-[#fca311]">
-              Awaiting Clearance
-            </span>
-          </div>
-        </div>
+      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          to="/linkham/patients"
+          label="Insured clients"
+          value={metrics?.totalInsuredClients ?? 0}
+          hint="Tagged Linkham charts"
+          tone="teal"
+        />
+        <MetricCard
+          label={`Patients seen (${metrics?.currentMonthName || "this month"})`}
+          value={metrics?.monthlySeenPatientsCount ?? 0}
+          hint="Distinct patients with a visit this month"
+        />
+        <MetricCard
+          to="/linkham/claims-clearance?status=pending"
+          label="Unpaid 80% to clear"
+          value={formatRupees(outstanding)}
+          hint={`${pendingCount} claim${pendingCount === 1 ? "" : "s"} awaiting clearance`}
+          tone="gold"
+        />
+        <MetricCard
+          to="/linkham/claims-clearance?status=approved"
+          label="Approved this month"
+          value={formatRupees(metrics?.monthlyClaimsSettled || 0)}
+          hint="Accepted 80% share, including paid to OCS"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm lg:col-span-2">
-          <div className="border-b border-gray-50 pb-2">
-            <h3 className="text-sm font-extrabold text-gray-800">Due Review Appointments</h3>
-            <p className="text-xs text-gray-400">
-              Chronic care appointments matching Linkham insured policies.
-            </p>
-          </div>
+        <QueueCard
+          title="Flagged claims"
+          description={`${Number(metrics?.flaggedClaimsCount || 0)} waiting on a clinic answer.`}
+          to="/linkham/claims-clearance?status=flagged"
+          empty="No flagged claims."
+        >
+          {flaggedClaims.map((claim) => (
+            <Link
+              key={claim.id}
+              to="/linkham/claims-clearance?status=flagged"
+              className="rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs"
+            >
+              <span className="block font-bold text-gray-800">{claim.patient_name}</span>
+              <span className="text-[10px] text-gray-500">
+                {formatRupees(claim.linkham_share_amount)} · {claim.dispute_reason || "Needs clarification"}
+              </span>
+            </Link>
+          ))}
+        </QueueCard>
 
+        <QueueCard
+          title="Missing policy numbers"
+          description={`${Number(metrics?.missingPolicyCount || 0)} charts still need a policy ID.`}
+          to="/linkham/patients?missingPolicy=1"
+          empty="Every insured client has a policy number."
+        >
+          {missingPolicies.map((client) => (
+            <Link
+              key={client.id}
+              to={`/linkham/patients?missingPolicy=1&open=${client.id}`}
+              className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 text-xs"
+            >
+              <span className="block font-bold text-gray-800">{client.full_name}</span>
+              <span className="text-[10px] text-gray-400">{client.case_number}</span>
+            </Link>
+          ))}
+        </QueueCard>
+
+        <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="border-b border-gray-50 pb-2">
+            <h3 className="text-sm font-extrabold text-gray-800">Due review appointments</h3>
+            <p className="text-xs text-gray-400">Chronic care reviews on Linkham-insured charts.</p>
+          </div>
           {dueReviews.length ? (
             dueReviews.map((review) => (
-              <div
+              <Link
                 key={review.id}
+                to={`/linkham/patients?open=${review.id}`}
                 className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 p-3 text-xs"
               >
                 <div>
@@ -143,39 +224,14 @@ export default function LinkhamDashboardPage() {
                 <span className="rounded-lg bg-[#fcf3ee] px-2.5 py-1 font-extrabold text-[#ba5a32]">
                   Due: {review.due_date_string}
                 </span>
-              </div>
+              </Link>
             ))
           ) : (
             <EmptyState
+              compact
               title="No due reviews"
               description="Linkham insured patients with scheduled review appointments will appear here."
             />
-          )}
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="border-b border-gray-50 pb-2">
-            <h3 className="text-sm font-extrabold text-gray-800">HCM News</h3>
-          </div>
-
-          {hcmNews.length ? (
-            hcmNews.map((post) => (
-              <div
-                key={post.id}
-                className="rounded-xl border border-teal-100/50 bg-teal-50/30 p-3 text-xs"
-              >
-                <span className="block font-bold text-teal-900">{post.title}</span>
-                <p className="mt-1 text-gray-600">{post.body}</p>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-xl border border-teal-100/50 bg-teal-50/30 p-3 text-xs">
-              <span className="block font-bold text-teal-900">System Performance Optimization</span>
-              <p className="mt-1 text-gray-600">
-                Real-time synchronization structures for third-party insurer coordination links are
-                fully operational.
-              </p>
-            </div>
           )}
         </div>
       </div>

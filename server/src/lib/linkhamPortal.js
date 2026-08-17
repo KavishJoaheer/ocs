@@ -1,6 +1,7 @@
 const { db } = require("../db");
 const { resolveIcd10FromText } = require("./icd10Lookup");
 const { isLinkhamInsuranceProvider } = require("./insuranceProvider");
+const { buildInsurerTreatmentSummaries } = require("./insurerClinicalSummary");
 const { getTodayLocal, offsetLocalDate } = require("./utils");
 
 const LINKHAM_PATIENT_SQL = "lower(trim(p.insurance_provider)) = 'linkham'";
@@ -75,22 +76,128 @@ function normalizeDisputeStatus(value) {
   return String(value || "Clean").trim() === "Flagged_Review" ? "Flagged_Review" : "Clean";
 }
 
+function hasPolicyNumber(value) {
+  return Boolean(String(value || "").trim());
+}
+
+function normalizeSearchTerm(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^#/, "")
+    .toLowerCase();
+}
+
+function csvEscape(value) {
+  const text = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function parseYearMonth(value) {
+  const normalized = String(value || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+  const [year, month] = normalized.split("-").map((part) => Number(part));
+  if (month < 1 || month > 12) {
+    return null;
+  }
+  const start = `${normalized}-01`;
+  const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  return { start, nextStart: nextMonth, label: normalized };
+}
+
+function normalizeClaimStatusFilter(value) {
+  const normalized = String(value || "pending").trim().toLowerCase();
+  if (["pending", "flagged", "approved", "settled", "all"].includes(normalized)) {
+    return normalized;
+  }
+  return "pending";
+}
+
+function claimStatusClauses(statusFilter) {
+  if (statusFilter === "pending") {
+    return [
+      `COALESCE(b.linkham_claim_status, 'pending') = 'pending'`,
+      `COALESCE(b.dispute_status, 'Clean') = 'Clean'`,
+    ];
+  }
+  if (statusFilter === "flagged") {
+    return [
+      `COALESCE(b.linkham_claim_status, 'pending') = 'pending'`,
+      `COALESCE(b.dispute_status, 'Clean') = 'Flagged_Review'`,
+    ];
+  }
+  if (statusFilter === "approved") {
+    return [`b.linkham_claim_status = 'approved'`];
+  }
+  if (statusFilter === "settled") {
+    return [`b.linkham_claim_status = 'settled'`];
+  }
+  return [];
+}
+
+const LINKHAM_CLAIM_SELECT = `
+  b.id,
+  b.total_amount,
+  b.status AS billing_status,
+  COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
+  COALESCE(b.dispute_status, 'Clean') AS dispute_status,
+  b.dispute_reason,
+  b.dispute_flagged_at,
+  b.linkham_claim_reviewed_at,
+  b.linkham_claim_settled_at,
+  c.consultation_date AS visit_date,
+  p.full_name AS patient_name,
+  p.patient_identifier,
+  p.insurance_policy_number,
+  p.patient_id_number,
+  d.full_name AS doctor_name,
+  reviewer.full_name AS reviewed_by_name,
+  settler.full_name AS settled_by_name,
+  flagger.full_name AS flagged_by_name
+`;
+
+const LINKHAM_CLAIM_FROM = `
+  FROM billing b
+  JOIN patients p ON p.id = b.patient_id
+  JOIN consultations c ON c.id = b.consultation_id
+  JOIN doctors d ON d.id = c.doctor_id
+  LEFT JOIN users reviewer ON reviewer.id = b.linkham_claim_reviewed_by_user_id
+  LEFT JOIN users settler ON settler.id = b.linkham_claim_settled_by_user_id
+  LEFT JOIN users flagger ON flagger.id = b.dispute_flagged_by_user_id
+`;
+
 function formatClaimRow(row) {
   const total = Number(row.total_amount || 0);
   const disputeStatus = normalizeDisputeStatus(row.dispute_status);
+  const policyNumber = String(row.insurance_policy_number || "").trim();
   return {
     id: Number(row.id),
     visit_date: row.visit_date || null,
     patient_name: row.patient_name,
     patient_identifier: row.patient_identifier || "",
+    patient_id_number: row.patient_id_number || "",
     id_short: row.patient_identifier || `BILL-${row.id}`,
+    policy_number: policyNumber,
+    has_policy_number: Boolean(policyNumber),
+    doctor_name: row.doctor_name || "",
     total_amount: roundMoney(total),
     patient_copay_amount: roundMoney(total * 0.2),
     linkham_share_amount: roundMoney(total * 0.8),
     billing_status: row.billing_status,
     linkham_claim_status: row.linkham_claim_status || "pending",
     dispute_status: disputeStatus,
+    dispute_reason: disputeStatus === "Flagged_Review" ? String(row.dispute_reason || "").trim() : "",
     copay_paid: row.billing_status === "paid",
+    reviewed_at: row.linkham_claim_reviewed_at || null,
+    reviewed_by_name: row.reviewed_by_name || "",
+    settled_at: row.linkham_claim_settled_at || null,
+    settled_by_name: row.settled_by_name || "",
+    flagged_at: row.dispute_flagged_at || null,
+    flagged_by_name: row.flagged_by_name || "",
   };
 }
 
@@ -273,6 +380,8 @@ function formatLinkhamClientRow(row) {
     patient_contact_number: row.patient_contact_number || "",
     insurance_provider: row.insurance_provider || "",
     insurance_policy_number: row.insurance_policy_number || "",
+    has_policy_number: hasPolicyNumber(row.insurance_policy_number),
+    coverage_status: hasPolicyNumber(row.insurance_policy_number) ? "verified" : "needs_policy",
     status: row.status || "active",
     created_at: row.created_at,
     age: ageFromDob ?? ageFromNic,
@@ -422,29 +531,6 @@ function listLinkhamDueLongTermReviews() {
       case_number: row.case_number || `PT-${row.id}`,
       due_date_string: formatReviewDueDate(row.review_due_date),
       review_due_date: row.review_due_date || null,
-    }));
-}
-
-function listLinkhamHcmNewsFeed(limit = 5) {
-  return db
-    .prepare(`
-      SELECT
-        post.id,
-        post.title,
-        post.body,
-        post.updated_at,
-        post.created_at
-      FROM hcm_news_posts post
-      WHERE post.status = 'active'
-      ORDER BY post.updated_at DESC, post.created_at DESC
-      LIMIT ?
-    `)
-    .all(Math.max(1, Number(limit) || 5))
-    .map((row) => ({
-      id: Number(row.id),
-      title: row.title || "Announcement",
-      body: row.body || "",
-      updated_at: row.updated_at || row.created_at,
     }));
 }
 
@@ -711,7 +797,32 @@ function getLinkhamDashboardMetrics() {
     monthlySeenPatientsCount,
     pendingClaimsCount,
     dueLongTermReviews: listLinkhamDueLongTermReviews(),
-    hcmNews: listLinkhamHcmNewsFeed(4),
+    flaggedClaimsCount: Number(
+      db
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM billing b
+          JOIN patients p ON p.id = b.patient_id
+          WHERE ${LINKHAM_PATIENT_SQL}
+            AND b.status = 'paid'
+            AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
+            AND COALESCE(b.dispute_status, 'Clean') = 'Flagged_Review'
+        `)
+        .get()?.count || 0,
+    ),
+    missingPolicyCount: Number(
+      db
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM patients p
+          WHERE p.deleted_at IS NULL
+            AND ${LINKHAM_PATIENT_SQL}
+            AND (p.insurance_policy_number IS NULL OR trim(p.insurance_policy_number) = '')
+        `)
+        .get()?.count || 0,
+    ),
+    flaggedClaims: listLinkhamClaims({ status: "flagged" }).slice(0, 8),
+    missingPolicies: listLinkhamPatients({ missingPolicy: true }).slice(0, 8),
     budgetExposure: getLinkhamBudgetExposure(),
     totalInsuredClients,
     monthlyClaimsSettled,
@@ -740,7 +851,25 @@ function getLinkhamAnalyticsReports({ seenTimeFilter = "month", claimsTimeFilter
   };
 }
 
-function listLinkhamPatients() {
+function listLinkhamPatients({ search = "", missingPolicy = false } = {}) {
+  const term = normalizeSearchTerm(search);
+  const params = {};
+  const filters = [`p.deleted_at IS NULL`, LINKHAM_PATIENT_SQL];
+
+  if (missingPolicy) {
+    filters.push("(p.insurance_policy_number IS NULL OR trim(p.insurance_policy_number) = '')");
+  }
+
+  if (term) {
+    params.search = `%${term}%`;
+    filters.push(`(
+      lower(p.full_name) LIKE @search
+      OR lower(COALESCE(p.patient_identifier, '')) LIKE @search
+      OR lower(COALESCE(p.patient_id_number, '')) LIKE @search
+      OR lower(COALESCE(p.insurance_policy_number, '')) LIKE @search
+    )`);
+  }
+
   return db
     .prepare(`
       SELECT
@@ -766,11 +895,10 @@ function listLinkhamPatients() {
           LIMIT 1
         ) AS village
       FROM patients p
-      WHERE p.deleted_at IS NULL
-        AND ${LINKHAM_PATIENT_SQL}
+      WHERE ${filters.join(" AND ")}
       ORDER BY p.created_at DESC, p.full_name ASC
     `)
-    .all()
+    .all(params)
     .map(formatLinkhamClientRow);
 }
 
@@ -873,30 +1001,12 @@ function getLinkhamPatientById(patientId) {
   }
 
   const client = formatLinkhamClientRow(row);
-  const treatmentContext = db
-    .prepare(`
-      SELECT
-        p.ongoing_treatment,
-        p.consultation_notes,
-        (
-          SELECT c.doctor_notes
-          FROM consultations c
-          WHERE c.patient_id = p.id
-          ORDER BY c.consultation_date DESC, c.id DESC
-          LIMIT 1
-        ) AS latest_doctor_notes
-      FROM patients p
-      WHERE p.id = ?
-    `)
-    .get(client.id);
-
-  // Chronological consultation notes used by insurer portal diagnosis summaries.
-  // We only ship doctor_notes + doctor name; vitals/medications are filtered out by the client-side parser.
   const caseHistoryRecords = db
     .prepare(`
       SELECT
         d.full_name AS doctor_name,
-        c.doctor_notes AS raw_text
+        c.doctor_notes AS raw_text,
+        c.consultation_date AS visit_date
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?
@@ -904,90 +1014,78 @@ function getLinkhamPatientById(patientId) {
         AND trim(c.doctor_notes) <> ''
       ORDER BY c.consultation_date ASC, c.id ASC
     `)
-    .all(client.id)
-    .map((r) => ({
-      doctor_name: r.doctor_name || "OCS Doctor",
-      raw_text: String(r.raw_text || "").trim(),
-    }))
-    .filter((r) => r.raw_text);
+    .all(client.id);
 
-  // Fallback: when there are no consultation rows, still attempt to parse patient-level consultation_notes.
-  const patientLevelNotes = String(treatmentContext?.consultation_notes || "").trim();
-  if (caseHistoryRecords.length === 0 && patientLevelNotes) {
-    caseHistoryRecords.push({
-      doctor_name: "OCS Doctor",
-      raw_text: patientLevelNotes,
-    });
-  }
-
-  const treatmentSummary = [
-    treatmentContext?.ongoing_treatment,
-    treatmentContext?.latest_doctor_notes,
-    treatmentContext?.consultation_notes,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .join(" · ");
-
+  const treatmentSummaries = buildInsurerTreatmentSummaries(caseHistoryRecords);
   const icd10Match = resolveIcd10FromText(
-    treatmentContext?.ongoing_treatment,
-    treatmentContext?.latest_doctor_notes,
-    treatmentContext?.consultation_notes,
+    ...treatmentSummaries.map((item) => item.diagnosis),
   );
 
   return {
     ...client,
-    treatment_summary: treatmentSummary,
-    case_history_records: caseHistoryRecords,
+    treatment_summaries: treatmentSummaries,
     active_icd10_code: icd10Match?.code || null,
     active_icd10_label: icd10Match?.label || null,
     financing: getLinkhamPatientFinancing(client.id),
   };
 }
 
-function listLinkhamClaims() {
+function buildClaimQueryFilters({ status = "all", month = "", search = "" } = {}) {
+  const statusFilter = normalizeClaimStatusFilter(status);
+  const monthBounds = parseYearMonth(month);
+  const term = normalizeSearchTerm(search);
+  const clauses = [LINKHAM_PATIENT_SQL, `b.status = 'paid'`];
+  const params = {};
+
+  clauses.push(...claimStatusClauses(statusFilter));
+
+  if (monthBounds) {
+    params.monthStart = monthBounds.start;
+    params.monthNext = monthBounds.nextStart;
+    clauses.push("c.consultation_date >= date(@monthStart)");
+    clauses.push("c.consultation_date < date(@monthNext)");
+  }
+
+  if (term) {
+    params.search = `%${term}%`;
+    clauses.push(`(
+      lower(p.full_name) LIKE @search
+      OR lower(COALESCE(p.patient_identifier, '')) LIKE @search
+      OR lower(COALESCE(p.insurance_policy_number, '')) LIKE @search
+    )`);
+  }
+
+  return {
+    statusFilter,
+    monthBounds,
+    whereSql: clauses.join(" AND "),
+    params,
+  };
+}
+
+function listLinkhamClaims(options = {}) {
+  const { whereSql, params } = buildClaimQueryFilters({
+    status: options.status == null ? "all" : options.status,
+    month: options.month,
+    search: options.search,
+  });
+
   return db
     .prepare(`
-      SELECT
-        b.id,
-        b.total_amount,
-        b.status AS billing_status,
-        COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
-        COALESCE(b.dispute_status, 'Clean') AS dispute_status,
-        c.consultation_date AS visit_date,
-        p.full_name AS patient_name,
-        p.patient_identifier
-      FROM billing b
-      JOIN patients p ON p.id = b.patient_id
-      JOIN consultations c ON c.id = b.consultation_id
-      WHERE ${LINKHAM_PATIENT_SQL}
-        AND b.status = 'paid'
+      SELECT ${LINKHAM_CLAIM_SELECT}
+      ${LINKHAM_CLAIM_FROM}
+      WHERE ${whereSql}
       ORDER BY c.consultation_date DESC, b.id DESC
     `)
-    .all()
+    .all(params)
     .map(formatClaimRow);
 }
 
 function getLinkhamClaimById(claimId) {
   const row = db
     .prepare(`
-      SELECT
-        b.id,
-        b.total_amount,
-        b.status AS billing_status,
-        COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
-        COALESCE(b.dispute_status, 'Clean') AS dispute_status,
-        b.payment_method,
-        b.payment_date,
-        c.consultation_date AS visit_date,
-        p.full_name AS patient_name,
-        p.patient_identifier,
-        p.patient_id_number,
-        d.full_name AS doctor_name
-      FROM billing b
-      JOIN patients p ON p.id = b.patient_id
-      JOIN consultations c ON c.id = b.consultation_id
-      JOIN doctors d ON d.id = c.doctor_id
+      SELECT ${LINKHAM_CLAIM_SELECT}
+      ${LINKHAM_CLAIM_FROM}
       WHERE b.id = ?
         AND ${LINKHAM_PATIENT_SQL}
     `)
@@ -997,13 +1095,7 @@ function getLinkhamClaimById(claimId) {
     return null;
   }
 
-  return {
-    ...formatClaimRow(row),
-    payment_method: row.payment_method,
-    payment_date: row.payment_date,
-    patient_id_number: row.patient_id_number || "",
-    doctor_name: row.doctor_name || "",
-  };
+  return formatClaimRow(row);
 }
 
 function summarizeLinkhamClaimsLedger(claims = []) {
@@ -1012,6 +1104,8 @@ function summarizeLinkhamClaimsLedger(claims = []) {
   const flaggedPendingClaims = pendingClaims.filter(
     (claim) => claim.dispute_status === "Flagged_Review",
   );
+  const approvedClaims = claims.filter((claim) => claim.linkham_claim_status === "approved");
+  const settledClaims = claims.filter((claim) => claim.linkham_claim_status === "settled");
 
   return {
     totalOutstandingClaims: roundMoney(
@@ -1020,28 +1114,63 @@ function summarizeLinkhamClaimsLedger(claims = []) {
     clearableBatchTotal: roundMoney(
       cleanPendingClaims.reduce((sum, claim) => sum + Number(claim.linkham_share_amount || 0), 0),
     ),
+    approvedShareTotal: roundMoney(
+      approvedClaims.reduce((sum, claim) => sum + Number(claim.linkham_share_amount || 0), 0),
+    ),
+    settledShareTotal: roundMoney(
+      settledClaims.reduce((sum, claim) => sum + Number(claim.linkham_share_amount || 0), 0),
+    ),
+    pendingCount: cleanPendingClaims.length,
     cleanPendingCount: cleanPendingClaims.length,
     flaggedPendingCount: flaggedPendingClaims.length,
+    approvedCount: approvedClaims.length,
+    settledCount: settledClaims.length,
   };
 }
 
-function setLinkhamClaimDisputeStatus(claimId, disputeStatus) {
+function setLinkhamClaimDisputeStatus(claimId, disputeStatus, { reason = "", userId = null } = {}) {
   const existing = getLinkhamClaimById(claimId);
   if (!existing) {
-    return null;
+    return { error: "not_found" };
+  }
+
+  if (existing.linkham_claim_status === "approved" || existing.linkham_claim_status === "settled") {
+    return { error: "locked" };
   }
 
   const normalizedStatus = normalizeDisputeStatus(disputeStatus);
-  db.prepare(`
-    UPDATE billing
-    SET dispute_status = ?
-    WHERE id = ?
-  `).run(normalizedStatus, Number(claimId));
+  const trimmedReason = String(reason || "").trim();
 
-  return getLinkhamClaimById(claimId);
+  if (normalizedStatus === "Flagged_Review" && !trimmedReason) {
+    return { error: "reason_required" };
+  }
+
+  if (normalizedStatus === "Flagged_Review") {
+    db.prepare(`
+      UPDATE billing
+      SET
+        dispute_status = 'Flagged_Review',
+        dispute_reason = ?,
+        dispute_flagged_at = CURRENT_TIMESTAMP,
+        dispute_flagged_by_user_id = ?
+      WHERE id = ?
+    `).run(trimmedReason.slice(0, 500), userId ? Number(userId) : null, Number(claimId));
+  } else {
+    db.prepare(`
+      UPDATE billing
+      SET
+        dispute_status = 'Clean',
+        dispute_reason = NULL,
+        dispute_flagged_at = NULL,
+        dispute_flagged_by_user_id = NULL
+      WHERE id = ?
+    `).run(Number(claimId));
+  }
+
+  return { claim: getLinkhamClaimById(claimId) };
 }
 
-function approveLinkhamClaim(claimId) {
+function approveLinkhamClaim(claimId, userId = null) {
   const existing = getLinkhamClaimById(claimId);
 
   if (!existing) {
@@ -1060,18 +1189,40 @@ function approveLinkhamClaim(claimId) {
     UPDATE billing
     SET
       linkham_claim_status = 'approved',
-      linkham_claim_reviewed_at = CURRENT_TIMESTAMP
+      linkham_claim_reviewed_at = CURRENT_TIMESTAMP,
+      linkham_claim_reviewed_by_user_id = ?
     WHERE id = ?
-  `).run(Number(claimId));
+  `).run(userId ? Number(userId) : null, Number(claimId));
 
   return getLinkhamClaimById(claimId);
 }
 
-function approveLinkhamCleanClaimsBatch() {
-  const cleanPendingClaims = listLinkhamClaims().filter(
-    (claim) =>
-      claim.linkham_claim_status === "pending" && claim.dispute_status === "Clean",
-  );
+function settleLinkhamClaim(claimId, userId = null) {
+  const existing = getLinkhamClaimById(claimId);
+  if (!existing) {
+    return null;
+  }
+  if (existing.linkham_claim_status === "settled") {
+    return existing;
+  }
+  if (existing.linkham_claim_status !== "approved") {
+    return null;
+  }
+
+  db.prepare(`
+    UPDATE billing
+    SET
+      linkham_claim_status = 'settled',
+      linkham_claim_settled_at = CURRENT_TIMESTAMP,
+      linkham_claim_settled_by_user_id = ?
+    WHERE id = ?
+  `).run(userId ? Number(userId) : null, Number(claimId));
+
+  return getLinkhamClaimById(claimId);
+}
+
+function approveLinkhamCleanClaimsBatch(userId = null) {
+  const cleanPendingClaims = listLinkhamClaims({ status: "pending" });
 
   if (!cleanPendingClaims.length) {
     return { approvedCount: 0, approvedClaims: [] };
@@ -1081,7 +1232,8 @@ function approveLinkhamCleanClaimsBatch() {
     UPDATE billing
     SET
       linkham_claim_status = 'approved',
-      linkham_claim_reviewed_at = CURRENT_TIMESTAMP
+      linkham_claim_reviewed_at = CURRENT_TIMESTAMP,
+      linkham_claim_reviewed_by_user_id = ?
     WHERE id = ?
       AND COALESCE(dispute_status, 'Clean') = 'Clean'
       AND COALESCE(linkham_claim_status, 'pending') = 'pending'
@@ -1091,7 +1243,7 @@ function approveLinkhamCleanClaimsBatch() {
 
   db.transaction(() => {
     cleanPendingClaims.forEach((claim) => {
-      const result = approveStatement.run(Number(claim.id));
+      const result = approveStatement.run(userId ? Number(userId) : null, Number(claim.id));
       if (result.changes > 0) {
         approvedClaims.push(getLinkhamClaimById(claim.id));
       }
@@ -1102,6 +1254,85 @@ function approveLinkhamCleanClaimsBatch() {
     approvedCount: approvedClaims.length,
     approvedClaims,
   };
+}
+
+function settleLinkhamApprovedClaimsBatch(userId = null, { month = "" } = {}) {
+  const approvedClaims = listLinkhamClaims({ status: "approved", month });
+  if (!approvedClaims.length) {
+    return { settledCount: 0, settledClaims: [] };
+  }
+
+  const settleStatement = db.prepare(`
+    UPDATE billing
+    SET
+      linkham_claim_status = 'settled',
+      linkham_claim_settled_at = CURRENT_TIMESTAMP,
+      linkham_claim_settled_by_user_id = ?
+    WHERE id = ?
+      AND linkham_claim_status = 'approved'
+  `);
+
+  const settledClaims = [];
+  db.transaction(() => {
+    approvedClaims.forEach((claim) => {
+      const result = settleStatement.run(userId ? Number(userId) : null, Number(claim.id));
+      if (result.changes > 0) {
+        settledClaims.push(getLinkhamClaimById(claim.id));
+      }
+    });
+  })();
+
+  return {
+    settledCount: settledClaims.length,
+    settledClaims,
+  };
+}
+
+function buildLinkhamStatementCsv(claims = []) {
+  const headers = [
+    "Visit date",
+    "Patient",
+    "OCS number",
+    "Policy number",
+    "Doctor",
+    "Total",
+    "Patient copay 20%",
+    "Linkham share 80%",
+    "Claim status",
+    "Dispute",
+    "Dispute reason",
+    "Approved by",
+    "Approved at",
+    "Settled by",
+    "Settled at",
+  ];
+
+  const lines = [headers.map(csvEscape).join(",")];
+  claims.forEach((claim) => {
+    lines.push(
+      [
+        claim.visit_date || "",
+        claim.patient_name || "",
+        claim.patient_identifier || "",
+        claim.policy_number || "",
+        claim.doctor_name || "",
+        claim.total_amount,
+        claim.patient_copay_amount,
+        claim.linkham_share_amount,
+        claim.linkham_claim_status || "",
+        claim.dispute_status || "",
+        claim.dispute_reason || "",
+        claim.reviewed_by_name || "",
+        claim.reviewed_at || "",
+        claim.settled_by_name || "",
+        claim.settled_at || "",
+      ]
+        .map(csvEscape)
+        .join(","),
+    );
+  });
+
+  return `${lines.join("\n")}\n`;
 }
 
 function backfillLinkhamInsuranceFromTags() {
@@ -1124,6 +1355,7 @@ module.exports = {
   approveLinkhamClaim,
   approveLinkhamCleanClaimsBatch,
   backfillLinkhamInsuranceFromTags,
+  buildLinkhamStatementCsv,
   getLinkhamAnalyticsReports,
   getLinkhamClaimById,
   getLinkhamDashboardMetrics,
@@ -1132,5 +1364,7 @@ module.exports = {
   listLinkhamClaims,
   listLinkhamPatients,
   setLinkhamClaimDisputeStatus,
+  settleLinkhamApprovedClaimsBatch,
+  settleLinkhamClaim,
   summarizeLinkhamClaimsLedger,
 };

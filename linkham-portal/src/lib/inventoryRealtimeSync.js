@@ -181,6 +181,9 @@ export function startInventoryRealtimeSync(user) {
   });
 
   source.addEventListener("inventory_resync", () => {
+    if (user.role === "linkham_admin") {
+      return;
+    }
     notifyDoctorBagInventoryUpdated();
     if (user.role === "admin" || user.role === "operator") {
       notifyOcsInventoryUpdated();
