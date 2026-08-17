@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
 import { api } from "../lib/api.js";
 
-function OperatorAccessAdminCard() {
+function OperatorAccessAdminCard({ compact = false }) {
   const [open, setOpen] = useState(false);
   const [payload, setPayload] = useState({ patients: [], operators: [], access: [] });
   const [loading, setLoading] = useState(true);
@@ -99,16 +99,32 @@ function OperatorAccessAdminCard() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="w-full rounded-xl border border-[rgba(65,200,198,0.22)] bg-white px-4 py-3 text-left transition hover:border-ocs-teal"
-      >
-        <p className="text-3xl font-black leading-none text-gray-900 tabular-nums">
-          {loading ? "—" : activeCount}
-        </p>
-        <p className="mt-1 text-xs font-medium text-gray-500">Active time-boxed operator grants</p>
-      </button>
+      {compact ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center justify-between gap-3 py-1 text-left"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800">Operator grants</p>
+            <p className="text-xs text-slate-400">
+              {loading ? "Loading…" : `${activeCount} active`}
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-ocs-teal">Manage</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full rounded-xl border border-[rgba(65,200,198,0.22)] bg-white px-4 py-3 text-left transition hover:border-ocs-teal"
+        >
+          <p className="text-3xl font-black leading-none text-gray-900 tabular-nums">
+            {loading ? "—" : activeCount}
+          </p>
+          <p className="mt-1 text-xs font-medium text-gray-500">Active time-boxed operator grants</p>
+        </button>
+      )}
       <Modal
         open={open}
         onClose={() => setOpen(false)}

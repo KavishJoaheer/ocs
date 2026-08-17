@@ -1005,10 +1005,12 @@ router.get("/", (_req, res) => {
     .prepare(`
       SELECT
         a.id,
+        a.patient_id,
         a.appointment_date,
         a.appointment_time,
         a.status,
         p.full_name AS patient_name,
+        p.location,
         d.full_name AS doctor_name,
         d.specialization
       FROM appointments a
@@ -1020,6 +1022,27 @@ router.get("/", (_req, res) => {
       LIMIT 10
     `)
     .all(today, nextWeek);
+
+  const todaysVisits = db
+    .prepare(`
+      SELECT
+        a.id,
+        a.patient_id,
+        a.appointment_date,
+        a.appointment_time,
+        a.status,
+        p.full_name AS patient_name,
+        p.location,
+        d.full_name AS doctor_name
+      FROM appointments a
+      JOIN patients p ON p.id = a.patient_id
+      JOIN doctors d ON d.id = a.doctor_id
+      WHERE a.appointment_date = ?
+        AND p.deleted_at IS NULL
+        AND LOWER(COALESCE(a.status, '')) != 'cancelled'
+      ORDER BY a.appointment_time ASC
+    `)
+    .all(today);
 
   const recentActivity = db
     .prepare(`
@@ -1126,6 +1149,7 @@ router.get("/", (_req, res) => {
   res.json({
     summary,
     upcomingAppointments,
+    todaysVisits,
     recentActivity,
     doctorStatuses,
     doctor_low_stock_alert: doctorLowStockAlert,

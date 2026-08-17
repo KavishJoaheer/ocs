@@ -1297,114 +1297,212 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
 
 
 
-function AdminExecutiveCard({ title, to, accent, anchorAccent = "teal", hoverAccent, children }) {
-  return (
-    <div
-      className={cx(
-        "group flex h-full min-h-[168px] flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-200 ease-in-out",
-        accent === "amber" && "border-l-4 border-l-amber-500",
-        accent === "teal" && "border-l-4 border-l-teal-500",
-        hoverAccent === "amber" && "hover:bg-amber-50/20",
-        hoverAccent === "teal" && "hover:bg-teal-50/20",
-      )}
-    >
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{title}</span>
-        {to ? (
-          <Link to={to} className="shrink-0" aria-label={`Open ${title}`}>
-            <MetricNavAnchor accent={anchorAccent} />
-          </Link>
-        ) : null}
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col pt-4">{children}</div>
-    </div>
+function getAdminVisitsToday(dashboard) {
+  if (Array.isArray(dashboard?.todaysVisits)) return dashboard.todaysVisits;
+  const today = dayjs().format("YYYY-MM-DD");
+  return (dashboard?.upcomingAppointments || []).filter(
+    (visit) =>
+      String(visit.appointment_date || "").slice(0, 10) === today &&
+      String(visit.status || "").toLowerCase() !== "cancelled",
   );
 }
 
-function AdminExecutiveGrid({ dashboard, onOpenRosterPdf, rosterMeta }) {
-  const counts = resolveClinicalTwinCounts("admin", { dashboard });
-  const totalPatients = Number(dashboard?.summary?.totalPatients ?? 0);
-  const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
+const adminMetricVariants = {
+  visits: {
+    card: "border border-gray-100 bg-white shadow-sm hover:shadow-md",
+    label: "text-slate-600",
+    value: "text-ocs-teal",
+    anchorTheme: "doctor-primary",
+  },
+  unpaid: {
+    card: "border border-rose-100 bg-rose-50/70 hover:bg-rose-50",
+    label: "text-rose-500",
+    value: "text-slate-900",
+  },
+  reviews: {
+    card: "border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] hover:bg-[#f7e6db]",
+    label: "text-[#ba5a32]",
+    value: "text-[#6e2f14]",
+    anchorTheme: "doctor-terracotta",
+  },
+};
+
+function AdminMetricCard({ to, label, value, variant }) {
+  const styles = adminMetricVariants[variant];
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-stretch gap-6 p-6 md:grid-cols-2">
-      <AdminExecutiveCard title="Practice Statistics" to="/admin/finance" anchorAccent="teal">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs font-medium text-gray-500">Total Patients</p>
-            <p className="mt-1 text-3xl font-black leading-none text-gray-900 tabular-nums">{totalPatients}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-500">Total Revenue</p>
-            <p className="mt-1 text-3xl font-black leading-none text-gray-900 tabular-nums">{formatCurrency(totalRevenue)}</p>
-          </div>
-        </div>
-      </AdminExecutiveCard>
-
-      <AdminExecutiveCard
-        title="Review appointment"
-        to="/admin/long-term-review"
-        accent="amber"
-        anchorAccent="amber"
-        hoverAccent="amber"
-      >
-        <p className="text-3xl font-black leading-none text-gray-900 tabular-nums">{counts.longTermReviewCount}</p>
-        <p className="mt-1 text-xs font-medium text-gray-500">
-          Patients under active surveillance tracking
-        </p>
-      </AdminExecutiveCard>
-
-      <AdminExecutiveCard
-        title="Health Plans & Subscriptions"
-        to="/patients?filter=subscribed"
-        accent="teal"
-        anchorAccent="teal"
-        hoverAccent="teal"
-      >
-        <p className="text-3xl font-black leading-none text-gray-900 tabular-nums">{counts.healthPlansCount}</p>
-        <p className="mt-1 text-xs font-medium text-gray-500">
-          Active premium subscriber base across Mauritius
-        </p>
-      </AdminExecutiveCard>
-
-      <AdminExecutiveCard title="Roster Management" to="/admin/roster" anchorAccent="teal">
-        <div className="flex h-full min-h-[100px] w-full flex-col items-center justify-center">
-          <button
-            type="button"
-            onClick={onOpenRosterPdf}
-            disabled={!rosterMeta?.has_roster}
-            className="w-full rounded-xl bg-ocs-teal p-3.5 text-sm font-semibold text-white transition-all hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            📥 Download Current Roster PDF
-          </button>
-        </div>
-      </AdminExecutiveCard>
-
-      <AdminExecutiveCard title="Operator chart access" anchorAccent="teal">
-        <OperatorAccessAdminCard />
-      </AdminExecutiveCard>
-    </div>
+    <Link
+      to={to}
+      className={cx(
+        "group relative flex cursor-pointer flex-col rounded-2xl p-6 transition-all duration-300 ease-in-out",
+        styles.card,
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className={cx("text-xs font-bold uppercase tracking-widest", styles.label)}>{label}</span>
+        <MetricNavAnchor theme={styles.anchorTheme} />
+      </div>
+      <p className={cx("mt-4 text-4xl font-black tabular-nums", styles.value)}>{value}</p>
+    </Link>
   );
 }
 
 function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
+  const counts = resolveClinicalTwinCounts("admin", { dashboard });
+  const visitsToday = getAdminVisitsToday(dashboard);
+  const unpaidCount = Number(dashboard?.summary?.pendingBills ?? 0);
+  const totalPatients = Number(dashboard?.summary?.totalPatients ?? 0);
+  const totalRevenue = Number(dashboard?.summary?.totalRevenue ?? 0);
+  const monthLabel = dayjs().format("MMMM");
+  const visibleVisits = visitsToday.slice(0, 8);
+
   return (
-    <div className="w-full">
-      <div className="hidden justify-end px-6 pt-6 md:flex">
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(65,200,198,0.18)] bg-white/78 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2d8f98] shadow-[0_12px_28px_rgba(34,72,91,0.08)]">
-          <ShieldCheck className="size-4" />
-          Admin workspace
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-[2.125rem]">
+            Today
+          </h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">{dayjs().format("dddd D MMMM")}</p>
+        </div>
+        <p className="shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          Clinic-wide
+        </p>
+      </div>
+
+      <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
+        <AdminMetricCard
+          to="/appointments"
+          label="Visits today"
+          value={visitsToday.length}
+          variant="visits"
+        />
+        <AdminMetricCard
+          to="/billing?status=unpaid"
+          label="Unpaid bills"
+          value={unpaidCount}
+          variant="unpaid"
+        />
+        <AdminMetricCard
+          to="/admin/long-term-review"
+          label="Reviews due"
+          value={counts.longTermReviewCount}
+          variant="reviews"
+        />
+      </div>
+
+      <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
+          <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
+            <span className="text-sm font-semibold text-slate-800">Today’s visits</span>
+            <Link to="/appointments" className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate">
+              Appointments
+            </Link>
+          </div>
+          {visibleVisits.length ? (
+            <ul className="mt-3 divide-y divide-slate-100">
+              {visibleVisits.map((visit) => {
+                const timeLabel =
+                  formatReviewAppointmentTime(visit.appointment_time) ||
+                  String(visit.appointment_time || "").slice(0, 5);
+                const place = String(visit.location || "").trim();
+
+                return (
+                  <li key={visit.id}>
+                    <Link
+                      to={visit.patient_id ? `/patients/${visit.patient_id}` : "/appointments"}
+                      className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold tabular-nums text-slate-900">{timeLabel}</p>
+                        <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
+                          {visit.patient_name}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                          {visit.doctor_name}
+                          {place ? ` · ${place}` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Open</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">No visits booked today.</p>
+              <Link to="/appointments" className="text-xs font-semibold text-ocs-teal">
+                Appointments
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <Link
+            to="/billing?status=unpaid"
+            className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 border-l-4 border-l-ocs-teal bg-white p-6 shadow-sm transition-colors hover:shadow-md"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-600">Unpaid</span>
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                {unpaidCount} bill{unpaidCount === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="min-w-0 text-xs font-semibold leading-normal text-slate-700">
+                Open billing to collect. Not counted in doctor net until paid.
+              </p>
+              <span className="shrink-0 text-xs font-semibold text-ocs-teal">Open billing</span>
+            </div>
+          </Link>
+
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold text-slate-800">Tools</p>
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800">{monthLabel} roster</p>
+                  <Link to="/admin/roster" className="text-xs font-semibold text-slate-400 hover:text-ocs-slate">
+                    Open roster
+                  </Link>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenRosterPdf}
+                  disabled={!rosterMeta?.has_roster}
+                  className="shrink-0 rounded-xl bg-ocs-teal px-3 py-2 text-xs font-semibold text-white transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Download PDF
+                </button>
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <OperatorAccessAdminCard compact />
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                <p className="text-sm font-medium text-slate-800">Health plans</p>
+                <Link
+                  to="/patients?filter=subscribed"
+                  className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
+                >
+                  {counts.healthPlansCount} subscribed
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="px-6 pb-2 pt-2 md:pt-0">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">OCS M&#201;DECINS</p>
-        <h1 className="mt-1.5 font-display text-xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-2xl">
-          Operations Dashboard
-        </h1>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-slate-400">
+          Practice · {totalPatients} patients
+          {dashboard?.summary?.totalRevenue != null ? ` · ${formatCurrency(totalRevenue)} paid lifetime` : ""}
+        </p>
+        <Link to="/live-report" className="text-xs font-semibold text-ocs-teal hover:underline">
+          Live report
+        </Link>
       </div>
-
-      <AdminExecutiveGrid dashboard={dashboard} onOpenRosterPdf={onOpenRosterPdf} rosterMeta={rosterMeta} />
     </div>
   );
 }

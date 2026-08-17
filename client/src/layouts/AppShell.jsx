@@ -173,7 +173,7 @@ function AppShell() {
   const hideLinkhamTopHeader = isLinkhamPortal;
   const userRole = user?.role;
   const alwaysHideTopHeader =
-    (isDashboard && (userRole === "doctor" || userRole === "operator")) ||
+    (isDashboard && (userRole === "doctor" || userRole === "operator" || userRole === "admin")) ||
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
     (isMobile && isInventory && userRole === "doctor") ||
     (isMobile && isSupplyRequests && userRole === "doctor");
