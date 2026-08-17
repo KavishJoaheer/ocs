@@ -23,7 +23,7 @@ const {
   buildHealthRecordsPayload,
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
-const { parseBillingRow, serializePatientBillingRows, offsetLocalDate } = require("../lib/utils");
+const { parseBillingRow, serializePatientBillingRows, offsetLocalDate, getTodayLocal } = require("../lib/utils");
 const {
   isVerifiedPatientPortalAccount,
   requireConfirmedChartAccess,
@@ -225,15 +225,17 @@ router.get("/dashboard", (req, res) => {
     `)
     .get(patientId);
 
+  const today = getTodayLocal();
+
   const upcomingCount = db
     .prepare(`
       SELECT COUNT(*) AS count
       FROM appointments
       WHERE patient_id = ?
-        AND appointment_date >= date('now')
+        AND appointment_date >= ?
         AND status = 'scheduled'
     `)
-    .get(patientId);
+    .get(patientId, today);
 
   const pendingBills = db
     .prepare(`
@@ -251,12 +253,12 @@ router.get("/dashboard", (req, res) => {
       FROM appointments a
       JOIN doctors d ON d.id = a.doctor_id
       WHERE a.patient_id = ?
-        AND a.appointment_date >= date('now')
+        AND a.appointment_date >= ?
         AND a.status = 'scheduled'
       ORDER BY a.appointment_date ASC, a.appointment_time ASC
       LIMIT 1
     `)
-    .get(patientId);
+    .get(patientId, today);
 
   const dbNextAppointment = serializeDashboardNextAppointment(nextAppointmentRow);
   const reviewAppointment = buildLongTermReviewAppointment(patient, patientId);

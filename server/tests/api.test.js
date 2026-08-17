@@ -19,6 +19,7 @@ const assert = require("node:assert/strict");
 const { createApp } = require("../src/app");
 const { db, labReportAttachmentsDir } = require("../src/db");
 const { parseMauritianID } = require("../src/lib/nicParser");
+const { getTodayLocal } = require("../src/lib/utils");
 
 let server;
 let baseUrl;
@@ -877,6 +878,82 @@ test("patient dashboard returns stats and recent activity", async () => {
   assert.ok(dashboard.data.next_appointment.date);
   assert.equal(dashboard.data.next_appointment.time, "11:00");
   assert.ok(dashboard.data.next_appointment.doctor_name);
+});
+
+test("patient dashboard upcoming uses clinic-local today", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("local-today"),
+      password: "secret123",
+      full_name: "Local Today Tester",
+      phone: "57006666",
+      national_id: uniqueNationalId("api"),
+      date_of_birth: "1982-02-02",
+      gender: "M",
+    },
+  });
+  const token = reg.data.token;
+  const patientId = (await api("GET", "/api/patient-portal/profile", { token })).data.profile.id;
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const today = getTodayLocal();
+
+  db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '08:00', 'scheduled')
+  `).run(patientId, doctorId, today);
+
+  db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, '1999-01-01', '09:00', 'scheduled')
+  `).run(patientId, doctorId);
+
+  const dashboard = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.data));
+  assert.equal(dashboard.data.stats.upcoming_appointments, 1);
+  assert.equal(String(dashboard.data.next_appointment.date).slice(0, 10), today);
+});
+
+test("staff booking and cancelling an appointment stays on the patient dashboard", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("staff-book"),
+      password: "secret123",
+      full_name: "Staff Book Tester",
+      phone: "57008888",
+      national_id: uniqueNationalId("api"),
+      date_of_birth: "1979-09-09",
+      gender: "F",
+    },
+  });
+  const token = reg.data.token;
+  const patientId = (await api("GET", "/api/patient-portal/profile", { token })).data.profile.id;
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+
+  const created = await api("POST", "/api/appointments", {
+    token: adminToken,
+    body: {
+      patient_id: patientId,
+      doctor_id: doctorId,
+      appointment_date: getTodayLocal(),
+      appointment_time: "14:00",
+      status: "scheduled",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+
+  const afterBook = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(afterBook.data.stats.upcoming_appointments, 1);
+
+  const cancelled = await api("PATCH", `/api/appointments/${created.data.id}/status`, {
+    token: adminToken,
+    body: { status: "cancelled" },
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  assert.equal(cancelled.data.status, "cancelled");
+
+  const afterCancel = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(afterCancel.data.stats.upcoming_appointments, 0);
+  assert.equal(afterCancel.data.next_appointment, null);
 });
 
 test("patient dashboard prefers structured patient_diagnosis over clinical notes", async () => {
