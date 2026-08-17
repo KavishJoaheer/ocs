@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
   const refreshHcmUnreadCount = useCallback(async ({ silent = false } = {}) => {
     const activeToken = getStoredAuthToken();
 
-    if (!activeToken || !user || user.role === "admin") {
+    if (!activeToken || !user || user.role === "admin" || user.role === "linkham_admin") {
       setHcmUnreadCount(0);
       return 0;
     }
@@ -185,7 +185,7 @@ export function AuthProvider({ children }) {
     let ignore = false;
 
     async function bootstrapUnread() {
-      if (!token || !user || user.role === "admin") {
+      if (!token || !user || user.role === "admin" || user.role === "linkham_admin") {
         if (!ignore) {
           setHcmUnreadCount(0);
         }
@@ -197,7 +197,7 @@ export function AuthProvider({ children }) {
 
     bootstrapUnread();
 
-    if (!token || !user || user.role === "admin") {
+    if (!token || !user || user.role === "admin" || user.role === "linkham_admin") {
       return () => {
         ignore = true;
       };

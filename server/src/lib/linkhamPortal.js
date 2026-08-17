@@ -765,6 +765,34 @@ function getLinkhamDashboardMetrics() {
       .get()?.count || 0,
   );
 
+  const pendingCleanCount = Number(
+    db
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM billing b
+        JOIN patients p ON p.id = b.patient_id
+        WHERE ${LINKHAM_PATIENT_SQL}
+          AND b.status = 'paid'
+          AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
+          AND COALESCE(b.dispute_status, 'Clean') = 'Clean'
+      `)
+      .get()?.count || 0,
+  );
+
+  const monthlyApprovedAmount = roundMoney(
+    db
+      .prepare(`
+        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        FROM billing b
+        JOIN patients p ON p.id = b.patient_id
+        WHERE ${LINKHAM_PATIENT_SQL}
+          AND b.status = 'paid'
+          AND b.linkham_claim_status = 'approved'
+          AND date(COALESCE(b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) >= date(?)
+      `)
+      .get(monthStart)?.total || 0,
+  );
+
   const monthlyClaimsSettled = roundMoney(
     db
       .prepare(`
@@ -792,10 +820,26 @@ function getLinkhamDashboardMetrics() {
       .get()?.total || 0,
   );
 
+  const outstandingCleanEightyLedger = roundMoney(
+    db
+      .prepare(`
+        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        FROM billing b
+        JOIN patients p ON p.id = b.patient_id
+        WHERE ${LINKHAM_PATIENT_SQL}
+          AND b.status = 'paid'
+          AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
+          AND COALESCE(b.dispute_status, 'Clean') = 'Clean'
+      `)
+      .get()?.total || 0,
+  );
+
   return {
     currentMonthName,
     monthlySeenPatientsCount,
     pendingClaimsCount,
+    pendingCleanCount,
+    monthlyApprovedAmount,
     dueLongTermReviews: listLinkhamDueLongTermReviews(),
     flaggedClaimsCount: Number(
       db
@@ -827,6 +871,8 @@ function getLinkhamDashboardMetrics() {
     totalInsuredClients,
     monthlyClaimsSettled,
     outstandingEightyLedger,
+    outstandingCleanEightyLedger,
+    currentMonthKey: monthStart.slice(0, 7),
   };
 }
 
@@ -1042,8 +1088,24 @@ function buildClaimQueryFilters({ status = "all", month = "", search = "" } = {}
   if (monthBounds) {
     params.monthStart = monthBounds.start;
     params.monthNext = monthBounds.nextStart;
-    clauses.push("c.consultation_date >= date(@monthStart)");
-    clauses.push("c.consultation_date < date(@monthNext)");
+    if (statusFilter === "approved") {
+      clauses.push(
+        "date(COALESCE(b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) >= date(@monthStart)",
+      );
+      clauses.push(
+        "date(COALESCE(b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) < date(@monthNext)",
+      );
+    } else if (statusFilter === "settled") {
+      clauses.push(
+        "date(COALESCE(b.linkham_claim_settled_at, b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) >= date(@monthStart)",
+      );
+      clauses.push(
+        "date(COALESCE(b.linkham_claim_settled_at, b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) < date(@monthNext)",
+      );
+    } else {
+      clauses.push("c.consultation_date >= date(@monthStart)");
+      clauses.push("c.consultation_date < date(@monthNext)");
+    }
   }
 
   if (term) {

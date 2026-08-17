@@ -14,7 +14,7 @@ import toast from "react-hot-toast";
 import LinkhamMauritiusHeatmap from "../../components/LinkhamMauritiusHeatmap.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import { api } from "../../lib/api.js";
-import { LINKHAM_CLAIMS_EVENT } from "../../lib/inventorySync.js";
+import { LINKHAM_CLAIMS_EVENT, LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
 import { formatRupees } from "../../lib/format.js";
 import { linkhamChartStyles } from "../../lib/linkhamTheme.js";
 
@@ -105,9 +105,11 @@ export default function LinkhamReportsPage() {
     };
 
     window.addEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
+    window.addEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
     return () => {
       ignore = true;
       window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
+      window.removeEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
     };
   }, [seenTimeFilter, claimsTimeFilter]);
 

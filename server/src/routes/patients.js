@@ -1,6 +1,7 @@
 const express = require("express");
 const { db, ensureBillingForConsultation } = require("../db");
 const {
+  publishLinkhamClaimsChange,
   publishLinkhamPatientsChange,
   publishLongTermReviewChange,
   publishPatientDataChange,
@@ -244,6 +245,10 @@ function notifyLinkhamPatientsIfNeeded(
 
   publishLinkhamPatientsChange({
     patientId,
+    changedByUserId: userId,
+  });
+  publishLinkhamClaimsChange({
+    claimId: null,
     changedByUserId: userId,
   });
 }

@@ -8,7 +8,7 @@ const TMP_DB = path.join(os.tmpdir(), `ocs-linkham-test-${process.pid}-${Date.no
 process.env.DB_PATH = TMP_DB;
 process.env.NODE_ENV = "test";
 
-const { test, before, after } = require("node:test");
+const { test, before, after, describe } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createApp } = require("../src/app");
@@ -131,6 +131,70 @@ function seedLinkhamVisit() {
   return { patientId, billingId, caseNumber: `OCS-LH-${stamp}` };
 }
 
+function seedLinkhamVisitWithBill({ name, amount, status }) {
+  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+  const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const [firstName, lastName] = String(name).split(" ");
+  const patientId = Number(
+    db
+      .prepare(`
+        INSERT INTO patients (
+          full_name, first_name, last_name, patient_identifier, patient_id_number,
+          age, date_of_birth, gender, contact_number, patient_contact_number,
+          address, insurance_provider, insurance_policy_number, link_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Linkham', 'LH-SYNC-001', 'staff_created')
+      `)
+      .run(
+        name,
+        firstName,
+        lastName,
+        `OCS-LH-SYNC-${stamp}`,
+        `B280669${String(stamp).replace(/\D/g, "").slice(-6)}F`,
+        41,
+        "1985-01-12",
+        "M",
+        "52520001",
+        "52520001",
+        "Port Louis",
+      ).lastInsertRowid,
+  );
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now'), '10:00', 'completed')
+    `)
+    .run(patientId, doctorId).lastInsertRowid;
+
+  const consultationId = db
+    .prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, date('now'), 'Impression: Coverage sync check')
+    `)
+    .run(appointmentId, patientId, doctorId).lastInsertRowid;
+
+  const billingId = Number(
+    db
+      .prepare(`
+        INSERT INTO billing (
+          consultation_id, patient_id, items, total_amount, status, payment_method, payment_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ${status === "paid" ? "date('now')" : "NULL"})
+      `)
+      .run(
+        consultationId,
+        patientId,
+        JSON.stringify([{ description: "Home visit", amount }]),
+        amount,
+        status,
+        status === "paid" ? "cash" : null,
+      ).lastInsertRowid,
+  );
+
+  return { patientId, billingId };
+}
+
+describe("linkham portal", { concurrency: false }, () => {
+
 test("linkham admin cannot open staff clinical, booking, billing, lab or inventory APIs", async () => {
   const forbidden = [
     "/api/patients",
@@ -251,4 +315,83 @@ test("statement CSV is finance lines only", async () => {
   assert.match(response.text, /Lisa Soobrayen/);
   assert.equal(response.text.includes("Nebulizer"), false);
   assert.equal(response.text.includes("metformin"), false);
+});
+
+test("home pending and flagged counts match the claim tabs they open", async () => {
+  const dashboard = await api("GET", "/api/linkham/dashboard", { token: linkhamToken });
+  const pending = await api("GET", "/api/linkham/claims?status=pending", { token: linkhamToken });
+  const flagged = await api("GET", "/api/linkham/claims?status=flagged", { token: linkhamToken });
+  const approved = await api(
+    "GET",
+    `/api/linkham/claims?status=approved&month=${encodeURIComponent(dashboard.data.currentMonthKey)}`,
+    { token: linkhamToken },
+  );
+
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.data));
+  assert.equal(pending.status, 200);
+  assert.equal(flagged.status, 200);
+  assert.equal(Number(dashboard.data.pendingCleanCount), pending.data.claims.length);
+  assert.equal(Number(dashboard.data.flaggedClaimsCount), flagged.data.claims.length);
+  const approvedShare = (approved.data.claims || []).reduce(
+    (sum, claim) => sum + Number(claim.linkham_share_amount || 0),
+    0,
+  );
+  assert.equal(
+    Number(dashboard.data.monthlyApprovedAmount),
+    Number(approvedShare.toFixed(2)),
+  );
+});
+
+test("staff payment of a Linkham bill becomes a claim, and a flag reason reaches staff billing", async () => {
+  const staffLogin = await api("POST", "/api/auth/login", {
+    body: { username: "shravan.joaheer", password: "Welcome@123" },
+  });
+  assert.equal(staffLogin.status, 200, JSON.stringify(staffLogin.data));
+  const staffToken = staffLogin.data.token;
+
+  const unpaid = seedLinkhamVisitWithBill({
+    name: "Ravi Synccheck",
+    amount: 4000,
+    status: "unpaid",
+  });
+
+  const beforePay = await api("GET", "/api/linkham/claims?status=pending", { token: linkhamToken });
+  assert.equal(
+    (beforePay.data.claims || []).some((claim) => claim.id === unpaid.billingId),
+    false,
+    "unpaid bills must stay off the insurer ledger",
+  );
+
+  const paid = await api("PATCH", `/api/billing/${unpaid.billingId}/pay`, {
+    token: staffToken,
+    body: { payment_method: "cash" },
+  });
+  assert.equal(paid.status, 200, JSON.stringify(paid.data));
+
+  const afterPay = await api("GET", "/api/linkham/claims?status=pending", { token: linkhamToken });
+  const pendingClaim = (afterPay.data.claims || []).find((claim) => claim.id === unpaid.billingId);
+  assert.ok(pendingClaim, "paid Linkham bill should appear on the pending tab");
+  assert.equal(Number(pendingClaim.linkham_share_amount), 3200);
+
+  const flagged = await api("PATCH", `/api/linkham/claims/${unpaid.billingId}/dispute`, {
+    token: linkhamToken,
+    body: { dispute_status: "Flagged_Review", reason: "Need referral letter for this visit." },
+  });
+  assert.equal(flagged.status, 200, JSON.stringify(flagged.data));
+
+  const pendingAfterFlag = await api("GET", "/api/linkham/claims?status=pending", {
+    token: linkhamToken,
+  });
+  const flaggedList = await api("GET", "/api/linkham/claims?status=flagged", { token: linkhamToken });
+  assert.equal(
+    (pendingAfterFlag.data.claims || []).some((claim) => claim.id === unpaid.billingId),
+    false,
+  );
+  assert.ok((flaggedList.data.claims || []).some((claim) => claim.id === unpaid.billingId));
+
+  const staffBill = await api("GET", `/api/billing/${unpaid.billingId}`, { token: staffToken });
+  assert.equal(staffBill.status, 200, JSON.stringify(staffBill.data));
+  assert.equal(staffBill.data.dispute_status, "Flagged_Review");
+  assert.match(staffBill.data.dispute_reason, /referral letter/);
+});
 });

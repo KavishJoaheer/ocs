@@ -3,6 +3,7 @@ import { AlertTriangle, BellRing, X } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   PushPermissionDeniedError,
+  canSubscribeToPush,
   dismissPushBanner,
   fetchPushConfiguration,
   getPushBannerCopy,
@@ -19,12 +20,13 @@ function PushNotificationBanner({ role, className = "" }) {
   const [isEnabling, setIsEnabling] = useState(false);
   const copy = getPushBannerCopy(role);
   const recovery = getPushPermissionRecoveryInstructions();
+  const pushAllowed = canSubscribeToPush(role);
 
   useEffect(() => {
     let cancelled = false;
 
     async function evaluateVisibility() {
-      if (!isPushSupported() || isPushBannerDismissed()) {
+      if (!pushAllowed || !isPushSupported() || isPushBannerDismissed()) {
         if (!cancelled) {
           setVisible(false);
           setIsDenied(false);
@@ -56,7 +58,7 @@ function PushNotificationBanner({ role, className = "" }) {
       cancelled = true;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [pushAllowed]);
 
   if (!visible) {
     return null;

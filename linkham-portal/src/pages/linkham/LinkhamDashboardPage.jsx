@@ -110,8 +110,10 @@ export default function LinkhamDashboardPage() {
   const missingPolicies = Array.isArray(metrics?.missingPolicies) ? metrics.missingPolicies : [];
   const budgetExposure = metrics?.budgetExposure || null;
   const showBudgetAlert = Boolean(budgetExposure?.thresholdWarningLevel);
-  const pendingCount = Number(metrics?.pendingClaimsCount || 0);
-  const outstanding = Number(metrics?.outstandingEightyLedger || 0);
+  const outstanding = Number(metrics?.outstandingCleanEightyLedger || 0);
+  const approvedMonth = metrics?.currentMonthKey
+    ? `/linkham/claims-clearance?status=approved&month=${encodeURIComponent(metrics.currentMonthKey)}`
+    : "/linkham/claims-clearance?status=approved";
 
   return (
     <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
@@ -155,14 +157,18 @@ export default function LinkhamDashboardPage() {
           to="/linkham/claims-clearance?status=pending"
           label="Unpaid 80% to clear"
           value={formatRupees(outstanding)}
-          hint={`${pendingCount} claim${pendingCount === 1 ? "" : "s"} awaiting clearance`}
+          hint={`${Number(metrics?.pendingCleanCount || 0)} ready to clear${
+            Number(metrics?.flaggedClaimsCount || 0)
+              ? ` · ${metrics.flaggedClaimsCount} flagged`
+              : ""
+          }`}
           tone="gold"
         />
         <MetricCard
-          to="/linkham/claims-clearance?status=approved"
+          to={approvedMonth}
           label="Approved this month"
-          value={formatRupees(metrics?.monthlyClaimsSettled || 0)}
-          hint="Accepted 80% share, including paid to OCS"
+          value={formatRupees(metrics?.monthlyApprovedAmount || 0)}
+          hint="Accepted 80%, not yet marked paid to OCS"
         />
       </div>
 

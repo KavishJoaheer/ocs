@@ -6,7 +6,12 @@ const {
   normalizeBillingItems,
   parseBillingRow,
 } = require("../lib/utils");
-const { publishInventoryChange, publishPatientDataChange } = require("../lib/inventoryRealtime");
+const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
+const {
+  publishInventoryChange,
+  publishLinkhamClaimsChange,
+  publishPatientDataChange,
+} = require("../lib/inventoryRealtime");
 const {
   findUnbilledSaleCredit,
   markSaleMovementsBilled,
@@ -48,6 +53,22 @@ function ensureActivityHistoryTable() {
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
   `);
+}
+
+function notifyLinkhamBillingIfNeeded(patientId, userId) {
+  const pid = Number(patientId || 0);
+  if (!pid) {
+    return;
+  }
+
+  const patient = db.prepare("SELECT insurance_provider FROM patients WHERE id = ?").get(pid);
+  if (!isLinkhamInsuranceProvider(patient?.insurance_provider)) {
+    return;
+  }
+
+  publishLinkhamClaimsChange({
+    changedByUserId: userId || null,
+  });
 }
 
 function normalizePaymentMethod(value) {
@@ -691,6 +712,7 @@ router.post("/", (req, res) => {
   }
 
   publishPatientDataChange(patientId, { reason: "billing" });
+  notifyLinkhamBillingIfNeeded(patientId, req.auth?.id);
 
   res.status(201).json(getJoinedBillById(createdId));
   } catch (error) {
@@ -765,6 +787,7 @@ router.put("/:id", (req, res) => {
 
   if (existing?.patient_id) {
     publishPatientDataChange(existing.patient_id, { reason: "billing" });
+    notifyLinkhamBillingIfNeeded(existing.patient_id, req.auth?.id);
   }
 
   res.json(getJoinedBillById(billId));
@@ -802,6 +825,7 @@ router.patch("/:id/pay", (req, res) => {
 
   if (existing?.patient_id) {
     publishPatientDataChange(existing.patient_id, { reason: "billing" });
+    notifyLinkhamBillingIfNeeded(existing.patient_id, req.auth?.id);
   }
 
   res.json(getJoinedBillById(billId));

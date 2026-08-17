@@ -6,7 +6,7 @@ import LinkhamClaimsLedger from "../../components/LinkhamClaimsLedger.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { api } from "../../lib/api.js";
-import { LINKHAM_CLAIMS_EVENT } from "../../lib/inventorySync.js";
+import { LINKHAM_CLAIMS_EVENT, LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
 import { downloadLinkhamStatementPdf } from "../../lib/linkhamExports.js";
 
 const STATUS_VALUES = new Set(["pending", "flagged", "approved", "settled"]);
@@ -80,7 +80,11 @@ export default function LinkhamClaimsClearancePage() {
       void reloadClaims();
     };
     window.addEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
-    return () => window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
+    window.addEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
+    return () => {
+      window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
+      window.removeEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
+    };
   }, [reloadClaims]);
 
   const visibleClaims = useMemo(() => {
