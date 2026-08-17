@@ -41,6 +41,11 @@ import {
   formatRupees,
 } from "../lib/format.js";
 import { cx, formControlClass, pageContainerClass } from "../lib/utils.js";
+import {
+  getPeriodRange,
+  normalizeReportPeriod,
+  periodToBillingPreset,
+} from "../lib/reportPeriod.js";
 
 function billingPageTodayInputValue() {
   const now = new Date();
@@ -2029,8 +2034,12 @@ function BillingPage() {
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",
   );
-  const [adminBillingPreset, setAdminBillingPreset] = useState("monthly");
-  const [adminBillingAnchorDate, setAdminBillingAnchorDate] = useState(() => billingPageTodayInputValue());
+  const [adminBillingPreset, setAdminBillingPreset] = useState(() =>
+    periodToBillingPreset(searchParams.get("period") || "monthly"),
+  );
+  const [adminBillingAnchorDate, setAdminBillingAnchorDate] = useState(
+    () => searchParams.get("date") || billingPageTodayInputValue(),
+  );
 
   const adminBillingDateRange = useMemo(() => {
     if (user?.role !== "admin") {
@@ -2038,6 +2047,16 @@ function BillingPage() {
     }
     return getAdminBillingDateRange(adminBillingPreset, adminBillingAnchorDate);
   }, [user?.role, adminBillingPreset, adminBillingAnchorDate]);
+
+  const linkedDateRange = useMemo(() => {
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+    if (dateFrom && dateTo) return { from: dateFrom, to: dateTo };
+    const period = searchParams.get("period");
+    const date = searchParams.get("date");
+    if (period && date) return getPeriodRange(normalizeReportPeriod(period), date);
+    return null;
+  }, [searchParams]);
 
   function handleAdminBillingPresetChange(next) {
     setAdminBillingPreset(next);
@@ -2061,6 +2080,9 @@ function BillingPage() {
       if (user?.role === "admin" && adminBillingDateRange) {
         filterQuery.set("dateFrom", adminBillingDateRange.from);
         filterQuery.set("dateTo", adminBillingDateRange.to);
+      } else if (linkedDateRange) {
+        filterQuery.set("dateFrom", linkedDateRange.from);
+        filterQuery.set("dateTo", linkedDateRange.to);
       }
 
       const queryString = filterQuery.toString();
@@ -2068,6 +2090,9 @@ function BillingPage() {
       if (user?.role === "admin" && adminBillingDateRange) {
         summaryQuery.set("dateFrom", adminBillingDateRange.from);
         summaryQuery.set("dateTo", adminBillingDateRange.to);
+      } else if (linkedDateRange) {
+        summaryQuery.set("dateFrom", linkedDateRange.from);
+        summaryQuery.set("dateTo", linkedDateRange.to);
       }
       const summaryQueryString = summaryQuery.toString();
 
@@ -2132,11 +2157,46 @@ function BillingPage() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, refreshKey]);
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, refreshKey]);
 
   useEffect(() => {
     loadReferenceData();
   }, [user?.id, user?.doctor_id, user?.role]);
+
+  useEffect(() => {
+    const billId = Number(searchParams.get("billId") || 0);
+    if (!Number.isInteger(billId) || billId <= 0) return undefined;
+
+    const match = bills.find((row) => Number(row.id) === billId);
+    if (match) {
+      setEditor({ bill: match });
+      const next = new URLSearchParams(searchParams);
+      next.delete("billId");
+      setSearchParams(next, { replace: true });
+      return undefined;
+    }
+
+    if (loading) return undefined;
+
+    let ignore = false;
+    api
+      .get(`/billing/${billId}`)
+      .then((bill) => {
+        if (!ignore && bill) setEditor({ bill });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (ignore) return;
+        const next = new URLSearchParams(searchParams);
+        if (!next.get("billId")) return;
+        next.delete("billId");
+        setSearchParams(next, { replace: true });
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [bills, loading, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!openCreateInvoice || !patientIdFilter || !canCreateBills) {

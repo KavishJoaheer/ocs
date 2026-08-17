@@ -314,15 +314,22 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
       SELECT
         d.id AS doctor_id,
         d.full_name AS doctor_name,
+        COUNT(c.id) AS visit_count,
         COUNT(DISTINCT c.patient_id) AS patient_count
       FROM doctors d
       LEFT JOIN consultations c
         ON c.doctor_id = d.id
        AND c.consultation_date BETWEEN @startDate AND @endDate
+       AND EXISTS (
+         SELECT 1
+         FROM patients p
+         WHERE p.id = c.patient_id
+           AND p.deleted_at IS NULL
+       )
       WHERE d.deleted_at IS NULL
         AND (@doctorId IS NULL OR d.id = @doctorId)
       GROUP BY d.id, d.full_name
-      HAVING @doctorId IS NOT NULL OR patient_count > 0
+      HAVING @doctorId IS NOT NULL OR COUNT(c.id) > 0
       ORDER BY patient_count DESC, doctor_name ASC
     `)
     .all({
@@ -332,8 +339,75 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
     })
     .map((row) => ({
       ...row,
+      visit_count: Number(row.visit_count || 0),
       patient_count: Number(row.patient_count || 0),
     }));
+}
+
+function buildDoctorBreakdown(activityRows, revenueRows) {
+  const byId = new Map();
+
+  for (const row of activityRows || []) {
+    const doctorId = Number(row.doctor_id);
+    if (!doctorId) continue;
+    byId.set(doctorId, {
+      doctor_id: doctorId,
+      doctor_name: row.doctor_name,
+      visit_count: Number(row.visit_count || 0),
+      unique_patient_count: Number(row.patient_count || 0),
+      billed: 0,
+      paid: 0,
+      unpaid: 0,
+    });
+  }
+
+  for (const bill of revenueRows || []) {
+    const doctorId = Number(bill.doctor_id);
+    if (!doctorId) continue;
+    if (!byId.has(doctorId)) {
+      byId.set(doctorId, {
+        doctor_id: doctorId,
+        doctor_name: bill.doctor_name || "Doctor",
+        visit_count: 0,
+        unique_patient_count: 0,
+        billed: 0,
+        paid: 0,
+        unpaid: 0,
+      });
+    }
+    const entry = byId.get(doctorId);
+    const amount = toNumber(bill.total_amount, 0);
+    entry.billed += amount;
+    if (bill.status === "paid") entry.paid += amount;
+    else entry.unpaid += amount;
+  }
+
+  return [...byId.values()]
+    .map((entry) => {
+      const billed = roundReportCurrency(entry.billed);
+      const paid = roundReportCurrency(entry.paid);
+      const unpaid = roundReportCurrency(entry.unpaid);
+      const doctorCommission = roundReportCurrency(paid * DOCTOR_COMMISSION_RATE);
+      const transportBenefits = roundReportCurrency(
+        entry.unique_patient_count * TRANSPORT_BENEFIT_PER_PATIENT,
+      );
+      return {
+        ...entry,
+        billed,
+        paid,
+        unpaid,
+        doctorCommission,
+        transportBenefits,
+        doctorNetRevenue: roundReportCurrency(doctorCommission + transportBenefits),
+        ocsRemainder: roundReportCurrency(paid - (doctorCommission + transportBenefits)),
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.paid - left.paid ||
+        right.unique_patient_count - left.unique_patient_count ||
+        String(left.doctor_name || "").localeCompare(String(right.doctor_name || "")),
+    );
 }
 
 function getPaidRevenueTotal(startDate, endDate, doctorId = null) {
@@ -1319,6 +1393,16 @@ router.get("/live-report", (req, res) => {
     req.query.doctorDate,
   );
   const revenueAnchorDate = formatLocalSqlDate(getReferenceDate(req.query.revenueDate));
+  const dateBasis =
+    String(req.query.dateBasis || "visit")
+      .trim()
+      .toLowerCase() === "payment"
+      ? "payment"
+      : "visit";
+  const billDateSql =
+    dateBasis === "payment"
+      ? `CASE WHEN b.status = 'paid' THEN substr(COALESCE(NULLIF(b.payment_date, ''), b.created_at), 1, 10) ELSE date(c.consultation_date) END`
+      : `date(c.consultation_date)`;
 
   const locationDistribution = db
     .prepare(`
@@ -1382,7 +1466,7 @@ router.get("/live-report", (req, res) => {
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       GROUP BY p.id, p.full_name, p.patient_identifier
       ORDER BY consultation_date DESC, p.full_name ASC
-      LIMIT 40
+      LIMIT 100
     `)
     .all({
       startDate: doctorRange.start,
@@ -1424,16 +1508,21 @@ router.get("/live-report", (req, res) => {
       SELECT
         p.id AS patient_id,
         p.full_name AS patient_name,
+        p.patient_identifier,
         b.id AS bill_id,
         c.consultation_date,
+        c.doctor_id,
+        d.full_name AS doctor_name,
         b.total_amount,
         b.status,
+        b.payment_date,
         COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
       FROM billing b
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
+      LEFT JOIN doctors d ON d.id = c.doctor_id
       WHERE p.deleted_at IS NULL
-        AND c.consultation_date BETWEEN @startDate AND @endDate
+        AND (${billDateSql}) BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       ORDER BY c.consultation_date DESC, b.id DESC
     `)
@@ -1442,6 +1531,8 @@ router.get("/live-report", (req, res) => {
       endDate: doctorRange.end,
       doctorId: selectedDoctorId,
     });
+
+  const doctorBreakdown = buildDoctorBreakdown(doctorRows, revenueRows);
 
   const totalRevenue = roundReportCurrency(
     revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
@@ -1458,10 +1549,15 @@ router.get("/live-report", (req, res) => {
   );
   const doctorCommission = roundReportCurrency(paidRevenue * DOCTOR_COMMISSION_RATE);
   const ocsCommission = roundReportCurrency(paidRevenue * OCS_COMMISSION_RATE);
+  const transportPatientCount = selectedDoctorId
+    ? uniquePatientCount
+    : doctorBreakdown.reduce((sum, row) => sum + Number(row.unique_patient_count || 0), 0);
   const transportBenefits = roundReportCurrency(
-    uniquePatientCount * TRANSPORT_BENEFIT_PER_PATIENT,
+    transportPatientCount * TRANSPORT_BENEFIT_PER_PATIENT,
   );
   const doctorNetRevenue = roundReportCurrency(doctorCommission + transportBenefits);
+  const ocsRemainder = roundReportCurrency(paidRevenue - doctorNetRevenue);
+  const collectionRate = totalRevenue > 0 ? roundReportCurrency(paidRevenue / totalRevenue) : 0;
   const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
     method,
     amount: roundReportCurrency(
@@ -1478,31 +1574,30 @@ router.get("/live-report", (req, res) => {
     commissionOn: "paid",
   };
 
+  const statementCore = {
+    dateBasis,
+    billedRevenue: totalRevenue,
+    paidRevenue,
+    unpaidRevenue,
+    doctorCommission,
+    transportBenefits,
+    transportPatientCount,
+    doctorNetRevenue,
+    visitCount,
+    uniquePatientCount,
+    collectionRate,
+    paymentMethodBreakdown,
+    shareRates,
+  };
+
   const revenueStatement =
     req.auth.role === "doctor"
-      ? {
-          paidRevenue,
-          unpaidRevenue,
-          doctorCommission,
-          transportBenefits,
-          doctorNetRevenue,
-          visitCount,
-          uniquePatientCount,
-          paymentMethodBreakdown,
-          shareRates,
-        }
+      ? statementCore
       : {
+          ...statementCore,
           totalRevenue,
-          paidRevenue,
-          unpaidRevenue,
           ocsCommission,
-          doctorCommission,
-          transportBenefits,
-          doctorNetRevenue,
-          visitCount,
-          uniquePatientCount,
-          paymentMethodBreakdown,
-          shareRates,
+          ocsRemainder,
         };
 
   res.json({
@@ -1523,7 +1618,7 @@ router.get("/live-report", (req, res) => {
       rangeEnd: doctorRange.end,
       rangeLabel: doctorRange.label,
       selectedDoctorId,
-      rows: doctorRows,
+      rows: doctorBreakdown,
     },
     volumeReport: {
       period: doctorRange.period,
@@ -1544,6 +1639,7 @@ router.get("/live-report", (req, res) => {
       rows: revenueRows,
       period: doctorRange.period,
       rangeLabel: doctorRange.label,
+      dateBasis,
     },
     revenueStatement,
     revenueReport: {
