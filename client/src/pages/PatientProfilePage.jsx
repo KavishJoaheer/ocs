@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
 import {
   ArrowLeft,
+  CalendarCheck,
   CalendarClock,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
   CreditCard,
   FileText,
+  Flag,
   FlaskConical,
   GitMerge,
   History,
@@ -225,7 +226,8 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
         onClick={onUnflag}
         className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        👤 Under Active Review
+        <CalendarCheck className="size-4" />
+        Under Active Review
       </button>
     );
   }
@@ -237,7 +239,8 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
       onClick={onRequestFlag}
       className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      🔍 Flag for Review Appointment
+      <Flag className="size-4" />
+      Flag for Review Appointment
     </button>
   );
 }
@@ -1370,7 +1373,6 @@ function PatientProfilePage() {
   const [consultationEditorId, setConsultationEditorId] = useState(null);
   const [consultationDraft, setConsultationDraft] = useState(() => getConsultationDraft());
   const [isSavingConsultation, setIsSavingConsultation] = useState(false);
-  const [expandedConsultations, setExpandedConsultations] = useState({});
   const [showAllConsultations, setShowAllConsultations] = useState(false);
   const [consultationComposerOpen, setConsultationComposerOpen] = useState(false);
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
@@ -1701,7 +1703,6 @@ function PatientProfilePage() {
     setConsultationNoteViewer(null);
     setConsultationEditorId(consultation.id);
     setConsultationDraft(getConsultationDraft(consultation));
-    setExpandedConsultations((current) => ({ ...current, [consultation.id]: true }));
   }
 
   function handleConsultationEditCancel() {
@@ -2071,6 +2072,7 @@ function PatientProfilePage() {
               ))}
             </div>
           </div>
+          {activeTab === "summary" ? (
           <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {canFlagLongTermReviewAccess ? (
               <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
@@ -2103,7 +2105,7 @@ function PatientProfilePage() {
               </button>
             ) : null}
           </div>
-
+          ) : null}
 
           {activeTab === "summary" && (
             <div className="space-y-4 rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-4">
@@ -2285,7 +2287,6 @@ function PatientProfilePage() {
                     const isEditing = consultationEditorId === consultation.id;
                     const canEditRow = canEditConsultation(consultation);
                     const note = consultation.doctor_notes || "";
-                    const isExpanded = expandedConsultations[consultation.id] || isEditing;
                     return (
                       <div
                         key={consultation.id}
@@ -2294,11 +2295,7 @@ function PatientProfilePage() {
                         <button
                           type="button"
                           onClick={() =>
-                            !isEditing &&
-                            setExpandedConsultations((prev) => ({
-                              ...prev,
-                              [consultation.id]: !prev[consultation.id],
-                            }))
+                            !isEditing && setConsultationNoteViewer(consultation)
                           }
                           className="flex w-full min-w-0 items-center justify-between gap-3 p-4"
                           style={{ minHeight: 48 }}
@@ -2309,146 +2306,136 @@ function PatientProfilePage() {
                           <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-slate-900">
                             {formatMobileDoctorName(consultation.doctor_name)}
                           </span>
-                          {isExpanded ? (
-                            <ChevronUp className="size-4 shrink-0 text-slate-400" />
-                          ) : (
-                            <ChevronDown className="size-4 shrink-0 text-slate-400" />
+                          {isEditing ? null : (
+                            <ChevronRight className="size-4 shrink-0 text-slate-400" />
                           )}
                         </button>
 
-                        {!isExpanded && note && (
-                          <p className="line-clamp-2 px-4 pb-4 break-words text-sm leading-snug text-slate-600">
-                            {formatConsultationNoteForDisplay(note)}
-                          </p>
-                        )}
-
-                        {isExpanded && (
+                        {isEditing ? (
                           <div className="space-y-3 border-t border-slate-100 p-4">
-                            {isEditing ? (
+                            {user.role === "admin" && (
                               <div className="space-y-3">
-                                {user.role === "admin" && (
-                                  <div className="space-y-3">
-                                    <label className="space-y-2">
-                                      <span className="text-sm font-semibold text-slate-700">
-                                        Doctor
-                                      </span>
-                                      <select
-                                        value={consultationDraft.doctor_id}
-                                        onChange={(event) =>
-                                          setConsultationDraft((current) => ({
-                                            ...current,
-                                            doctor_id: event.target.value,
-                                          }))
-                                        }
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
-                                      >
-                                        <option value="">Select doctor</option>
-                                        {doctors.map((doctor) => (
-                                          <option key={doctor.id} value={doctor.id}>
-                                            {doctor.full_name} - {doctor.specialization}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label className="space-y-2">
-                                      <span className="text-sm font-semibold text-slate-700">
-                                        Consultation date
-                                      </span>
-                                      <input
-                                        type="date"
-                                        value={consultationDraft.consultation_date}
-                                        onChange={(event) =>
-                                          setConsultationDraft((current) => ({
-                                            ...current,
-                                            consultation_date: event.target.value,
-                                          }))
-                                        }
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
-                                      />
-                                    </label>
-                                  </div>
-                                )}
-
-                                <textarea
-                                  rows="7"
-                                  value={consultationDraft.doctor_notes}
-                                  onChange={(event) =>
-                                    setConsultationDraft((current) => ({
-                                      ...current,
-                                      doctor_notes: event.target.value,
-                                    }))
-                                  }
-                                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
-                                  placeholder="Update the clinical note for this consultation."
-                                />
-                                <div className="flex justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={handleConsultationEditCancel}
-                                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-                                    style={{ minHeight: 48 }}
+                                <label className="space-y-2">
+                                  <span className="text-sm font-semibold text-slate-700">
+                                    Doctor
+                                  </span>
+                                  <select
+                                    value={consultationDraft.doctor_id}
+                                    onChange={(event) =>
+                                      setConsultationDraft((current) => ({
+                                        ...current,
+                                        doctor_id: event.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                   >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={isSavingConsultation}
-                                    onClick={() => handleConsultationSave(consultation)}
-                                    className="rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                    style={{ minHeight: 48 }}
-                                  >
-                                    {isSavingConsultation ? "Saving..." : "Save changes"}
-                                  </button>
-                                </div>
+                                    <option value="">Select doctor</option>
+                                    {doctors.map((doctor) => (
+                                      <option key={doctor.id} value={doctor.id}>
+                                        {doctor.full_name} - {doctor.specialization}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="space-y-2">
+                                  <span className="text-sm font-semibold text-slate-700">
+                                    Consultation date
+                                  </span>
+                                  <input
+                                    type="date"
+                                    value={consultationDraft.consultation_date}
+                                    onChange={(event) =>
+                                      setConsultationDraft((current) => ({
+                                        ...current,
+                                        consultation_date: event.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
+                                  />
+                                </label>
                               </div>
-                            ) : (
-                              <>
-                                <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">
-                                  {formatConsultationNoteForDisplay(note) || "No note recorded."}
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => setConsultationNoteViewer(consultation)}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
-                                    style={{ minHeight: 48 }}
-                                  >
-                                    Open
-                                  </button>
-                                  {canModifyClinicalData && canEditRow && !isEditing ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleConsultationEditStart(consultation)}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
-                                      style={{ minHeight: 48 }}
-                                    >
-                                      <SquarePen className="size-4" />
-                                      Edit
-                                    </button>
-                                  ) : canModifyClinicalData && !canEditRow && !isEditing ? (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1 text-xs font-medium text-slate-500"
-                                      title="You can only edit notes you authored"
-                                    >
-                                      <LockKeyhole className="size-3 shrink-0 text-slate-400" aria-hidden />
-                                      View only
-                                    </span>
-                                  ) : null}
-                                  {user.role === "admin" && canEditRow ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setConsultationToDelete(consultation)}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600"
-                                      style={{ minHeight: 48 }}
-                                    >
-                                      <Trash2 className="size-4" />
-                                      Delete
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </>
                             )}
+
+                            <textarea
+                              rows="7"
+                              value={consultationDraft.doctor_notes}
+                              onChange={(event) =>
+                                setConsultationDraft((current) => ({
+                                  ...current,
+                                  doctor_notes: event.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
+                              placeholder="Update the clinical note for this consultation."
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={handleConsultationEditCancel}
+                                className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                                style={{ minHeight: 48 }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingConsultation}
+                                onClick={() => handleConsultationSave(consultation)}
+                                className="rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                style={{ minHeight: 48 }}
+                              >
+                                {isSavingConsultation ? "Saving..." : "Save changes"}
+                              </button>
+                            </div>
                           </div>
+                        ) : (
+                          <>
+                            {note ? (
+                              <button
+                                type="button"
+                                onClick={() => setConsultationNoteViewer(consultation)}
+                                className="w-full px-4 pb-3 text-left"
+                              >
+                                <p className="line-clamp-2 break-words text-sm leading-snug text-slate-600">
+                                  {formatConsultationNoteForDisplay(note)}
+                                </p>
+                              </button>
+                            ) : (
+                              <p className="px-4 pb-3 text-sm text-slate-500">No note recorded.</p>
+                            )}
+                            <div className="flex flex-wrap gap-2 px-4 pb-4">
+                              {canModifyClinicalData && canEditRow ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleConsultationEditStart(consultation)}
+                                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
+                                  style={{ minHeight: 48 }}
+                                >
+                                  <SquarePen className="size-4" />
+                                  Edit
+                                </button>
+                              ) : canModifyClinicalData && !canEditRow ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-1 text-xs font-medium text-slate-500"
+                                  title="You can only edit notes you authored"
+                                >
+                                  <LockKeyhole className="size-3 shrink-0 text-slate-400" aria-hidden />
+                                  View only
+                                </span>
+                              ) : null}
+                              {user.role === "admin" && canEditRow ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setConsultationToDelete(consultation)}
+                                  className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600"
+                                  style={{ minHeight: 48 }}
+                                >
+                                  <Trash2 className="size-4" />
+                                  Delete
+                                </button>
+                              ) : null}
+                            </div>
+                          </>
                         )}
                       </div>
                     );
@@ -3288,17 +3275,15 @@ function PatientProfilePage() {
         <Modal
           open
           onClose={() => setConsultationNoteViewer(null)}
-          title={`${formatDate(consultationNoteViewer.consultation_date)} · ${consultationNoteViewer.doctor_name}`}
-          description={`${consultationNoteViewer.specialization || "General practice"} · Consultation note`}
+          title={`${formatDate(consultationNoteViewer.consultation_date)} · ${formatDoctorDisplayName(consultationNoteViewer.doctor_name) || consultationNoteViewer.doctor_name}`}
+          description="Consultation note"
           size="lg"
         >
-          <div className="space-y-5">
-            <div className="max-h-[min(60vh,28rem)] overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
-              <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">
-                {formatConsultationNoteForDisplay(consultationNoteViewer.doctor_notes) ||
-                  "No note recorded."}
-              </p>
-            </div>
+          <div className="flex min-h-0 flex-col gap-4">
+            <p className="whitespace-pre-line break-words text-sm leading-snug text-slate-800">
+              {formatConsultationNoteForDisplay(consultationNoteViewer.doctor_notes) ||
+                "No note recorded."}
+            </p>
             <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
@@ -3307,7 +3292,17 @@ function PatientProfilePage() {
               >
                 Close
               </button>
-              {canManageConsultations ? (
+              {canModifyClinicalData && canEditConsultation(consultationNoteViewer) ? (
+                <button
+                  type="button"
+                  onClick={() => handleConsultationEditStart(consultationNoteViewer)}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+                >
+                  <SquarePen className="size-4" />
+                  Edit
+                </button>
+              ) : null}
+              {canManageConsultations && !isMobile ? (
                 <Link
                   to={`/consultations/${consultationNoteViewer.id}`}
                   onClick={() => setConsultationNoteViewer(null)}
