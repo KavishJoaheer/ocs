@@ -128,13 +128,16 @@ function LandingPage() {
             className="h-9 w-auto object-contain"
           />
         </a>
-        <div className="flex items-center gap-4 text-xs font-semibold tracking-wide text-[#3b595c]">
+        <div className="flex items-center text-xs font-semibold tracking-wide text-[#3b595c]">
           <a
             href={STAFF_PORTAL_URL}
             className="transition-colors hover:text-[#065a60]"
           >
             Staff Login
           </a>
+          <span className="mx-1.5 text-[#f7ba24]" aria-hidden="true">
+            |
+          </span>
           <a
             href={INSURANCE_PORTAL_URL}
             className="transition-colors hover:text-[#065a60]"
