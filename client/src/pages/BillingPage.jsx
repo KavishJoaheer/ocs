@@ -2327,6 +2327,15 @@ function BillingPage() {
     setSearchParams(nextParams);
   }
 
+  function clearPeriodFilter() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("period");
+    nextParams.delete("date");
+    nextParams.delete("dateFrom");
+    nextParams.delete("dateTo");
+    setSearchParams(nextParams);
+  }
+
   if (loading) {
     return <LoadingState label="Loading billing" />;
   }
@@ -2372,6 +2381,24 @@ function BillingPage() {
           <BillingStat icon={DollarSign} label="Total billed" value={formatRupees(billingDashboardTotals.totalBilled)} />
           <BillingStat icon={CreditCard} label="Collected" value={formatRupees(billingDashboardTotals.collected)} />
           <BillingStat icon={ReceiptText} label="Outstanding" value={formatRupees(billingDashboardTotals.outstanding)} />
+        </div>
+      ) : null}
+
+      {user?.role !== "admin" && linkedDateRange ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Period filter from Revenue Report</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Showing bills from {formatDate(linkedDateRange.from)} to {formatDate(linkedDateRange.to)}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={clearPeriodFilter}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white"
+          >
+            Show all dates
+          </button>
         </div>
       ) : null}
 

@@ -134,6 +134,7 @@ function PeriodControls({
             <input
               type="month"
               value={String(anchorDate || today).slice(0, 7)}
+              max={String(today).slice(0, 7)}
               onChange={(event) => onAnchorDateChange(`${event.target.value}-01`)}
               className="min-w-0 bg-transparent text-sm font-semibold text-slate-700 outline-none accent-ocs-teal"
             />
@@ -469,14 +470,6 @@ export default function LiveReportPage() {
   }
 
   useEffect(() => {
-    if (searchParams.get("period") && searchParams.get("date")) return;
-    const next = new URLSearchParams(searchParams);
-    if (!next.get("period")) next.set("period", "monthly");
-    if (!next.get("date")) next.set("date", today);
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, today]);
-
-  useEffect(() => {
     let ignore = false;
     async function loadReport() {
       if (hasReportRef.current) setRefreshing(true);
@@ -521,7 +514,18 @@ export default function LiveReportPage() {
     setBillQuery("");
     setPatientsVisible(PATIENT_PAGE_SIZE);
     setPatientQuery("");
-  }, [anchorDate, period, doctorScope, selectedDoctorId, dateBasis, billStatusFilter]);
+  }, [anchorDate, period, doctorScope, selectedDoctorId, dateBasis]);
+
+  useEffect(() => {
+    if (!report) return;
+    if (searchParams.get("period") && searchParams.get("date")) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (!next.get("period")) next.set("period", period);
+      if (!next.get("date")) next.set("date", anchorDate);
+      return next;
+    }, { replace: true });
+  }, [anchorDate, period, report, searchParams, setSearchParams]);
 
   const doctors = report?.doctors || [];
 
@@ -829,7 +833,9 @@ export default function LiveReportPage() {
                   {formatCurrency(collected)}
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
-                  {formatCurrency(billed)} billed · {collectionPercent(collectionRate)} collected
+                  {dateBasis === "payment"
+                    ? "Cash that landed in this window"
+                    : `${formatCurrency(billed)} billed · ${collectionPercent(collectionRate)} collected`}
                   {` · ${visitCount} visit${visitCount === 1 ? "" : "s"} · ${uniquePatientCount} patient${uniquePatientCount === 1 ? "" : "s"}`}
                 </p>
               </div>
@@ -865,7 +871,9 @@ export default function LiveReportPage() {
                   {formatCurrency(collected)}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  {formatCurrency(billed)} billed · {collectionPercent(collectionRate)} collected
+                  {dateBasis === "payment"
+                    ? "Cash that landed in this window"
+                    : `${formatCurrency(billed)} billed · ${collectionPercent(collectionRate)} collected`}
                 </p>
               </div>
               <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
@@ -897,7 +905,7 @@ export default function LiveReportPage() {
           <div className="mb-4">
             <h2 className="text-base font-semibold text-ocs-slate">Doctors this period</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Net is 40% of that doctor’s paid plus Rs {shareRates.transportPerPatient} per patient they
+              Net is 40% of that doctor's paid plus Rs {shareRates.transportPerPatient} per patient they
               saw. Click a row to open their report.
             </p>
           </div>
