@@ -260,16 +260,16 @@ function HighlightStat({ icon: Icon, label, value, compact = false }) {
   }
 
   return (
-    <div className="max-w-full min-w-0 rounded-[22px] border border-transparent bg-white px-4 py-3.5 shadow-md">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="shrink-0 rounded-xl bg-ocs-teal/10 p-2.5 text-ocs-teal">
-          <Icon className="size-5" />
+    <div className="max-w-full min-w-0 rounded-2xl border border-transparent bg-white px-3 py-2.5 shadow-md">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="shrink-0 rounded-lg bg-ocs-teal/10 p-2 text-ocs-teal">
+          <Icon className="size-4" />
         </div>
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-ocs-grey">
             {label}
           </p>
-          <p className="mt-0.5 break-words text-xl font-bold text-slate-800">{value}</p>
+          <p className="mt-0.5 break-words text-lg font-bold text-slate-800">{value}</p>
         </div>
       </div>
     </div>
@@ -362,7 +362,7 @@ function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
       <dt className="text-xs font-semibold text-ocs-grey">{label}</dt>
       <dd
         className={cx(
-          "mt-1 break-words text-sm leading-snug",
+          "mt-0.5 break-words text-sm leading-snug",
           isEmpty ? "text-ocs-grey" : emphasize ? "font-bold text-slate-800" : "font-medium text-slate-800",
         )}
       >
@@ -375,11 +375,11 @@ function ProfileDlItem({ label, value, emphasize = false, emptyLabel }) {
 function ClinicalGridItem({ label, value }) {
   const { text, isEmpty } = profileLine(value);
   return (
-    <div className="min-w-0 border-b border-gray-100 pb-3">
+    <div className="min-w-0 border-b border-gray-100 pb-2">
       <p className="text-xs font-bold uppercase tracking-widest text-ocs-grey">{label}</p>
       <p
         className={cx(
-          "mt-1 whitespace-pre-line break-words text-sm leading-snug",
+          "mt-0.5 whitespace-pre-line break-words text-sm leading-snug",
           isEmpty ? "text-ocs-grey" : "text-slate-800",
         )}
       >
@@ -438,7 +438,7 @@ function formatDoctorDisplayName(name) {
 }
 
 const DESKTOP_SECTION_TITLE_CLASS =
-  "inline-block rounded-full border border-white/60 bg-slate-200/40 px-4 py-2 text-lg font-semibold text-ocs-slate shadow-sm backdrop-blur-md";
+  "inline-block rounded-full border border-white/60 bg-slate-200/40 px-3 py-1 text-sm font-semibold text-ocs-slate";
 
 const MOBILE_TABS = [
   { key: "summary", label: "Summary" },
@@ -1919,7 +1919,7 @@ function PatientProfilePage() {
   ];
 
   return (
-    <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:bg-slate-50">
+    <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:space-y-4 md:bg-slate-50">
       {isMobile && (
         <div
           className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
@@ -1966,10 +1966,11 @@ function PatientProfilePage() {
 
       <div className="hidden md:block">
         <PageHeader
+          align="center"
           title={
-            <div className="mb-4 flex w-full flex-col gap-1 border-b border-gray-100 pb-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-montserrat text-3xl font-semibold text-ocs-slate md:text-4xl">
+            <div className="flex w-full flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-montserrat text-3xl font-semibold text-ocs-slate">
                   {data.patient.full_name}
                 </span>
                 {data.patient.patient_identifier ? (
@@ -1983,17 +1984,17 @@ function PatientProfilePage() {
                 )}
                 <PatientLinkhamPolicyBadge patient={data.patient} />
                 <LinkStatusBadge status={data.patient.link_status} />
+                <span className="text-sm font-normal text-ocs-grey">
+                  📍 {profileAddressLabel} • Age: {profileAgeLabel}
+                </span>
               </div>
               {isPatientSubscribed(data.patient) ? (
                 <HealthPlanBadge className="ml-0" />
               ) : null}
-              <span className="text-sm text-ocs-grey">
-                📍 {profileAddressLabel} • Age: {profileAgeLabel}
-              </span>
             </div>
           }
           actions={(
-            <div className="flex flex-row flex-wrap items-center justify-end gap-3">
+            <div className="flex flex-row flex-wrap items-center justify-end gap-2">
               {canFlagLongTermReviewAccess ? (
                 <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
               ) : null}
@@ -2018,7 +2019,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setPatientEditorOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                 >
                   <SquarePen className="size-4" />
                   Edit patient
@@ -2028,7 +2029,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-teal/90"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-teal/90"
                 >
                   <Plus className="size-4" />
                   New Consultation Note
@@ -2664,7 +2665,7 @@ function PatientProfilePage() {
         </>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             <HighlightStat
               icon={CalendarClock}
               label="Appointments"
@@ -2682,9 +2683,9 @@ function PatientProfilePage() {
             />
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-12">
-            <SectionCard className="xl:col-span-7" title="Patient details" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid items-stretch gap-2 xl:grid-cols-12">
+            <SectionCard compact className="h-full xl:col-span-7" title="Patient details" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
                 <ProfileDlItem label="Patient ID" value={data.patient.patient_id_number} emphasize />
                 <ProfileDlItem label="First name" value={data.patient.first_name} emphasize />
                 <ProfileDlItem label="Last name" value={data.patient.last_name} emphasize />
@@ -2717,8 +2718,8 @@ function PatientProfilePage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-5" title="Next of kin" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <SectionCard compact className="h-full xl:col-span-5" title="Next of kin" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                 <ProfileDlItem label="Name" value={data.patient.next_of_kin_name} emphasize />
                 <ProfileDlItem label="Relationship" value={data.patient.next_of_kin_relationship} />
                 <ProfileDlItem label="Phone" value={data.patient.next_of_kin_contact_number} />
@@ -2726,13 +2727,13 @@ function PatientProfilePage() {
               </dl>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-7" title="Clinical history" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
+            <SectionCard compact className="h-full xl:col-span-7" title="Clinical history" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
               <LongTermReviewAlertBanner
                 note={data.patient.review_reason_note}
                 dueDate={data.patient.review_due_date}
                 actions={longTermReviewLogAction}
               />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
                 <ClinicalGridItem label="Past surgical history" value={data.patient.past_surgical_history} />
                 <ClinicalGridItem label="Drug history" value={data.patient.drug_history} />
@@ -2740,7 +2741,7 @@ function PatientProfilePage() {
               </div>
             </SectionCard>
 
-            <SectionCard className="xl:col-span-5" title="Particularity" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
+            <SectionCard compact className="h-full xl:col-span-5" title="Particularity" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
               <p
                 className={cx(
                   "whitespace-pre-wrap break-words text-xs leading-snug",
@@ -2753,6 +2754,7 @@ function PatientProfilePage() {
           </div>
 
           <SectionCard
+            compact
             id="consultation-notes"
             className="scroll-mt-28"
             title="Consultation notes"
@@ -2762,7 +2764,7 @@ function PatientProfilePage() {
                 <button
                   type="button"
                   onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
                 >
                   <Plus className="size-4" />
                   Add consultation note
@@ -2771,43 +2773,42 @@ function PatientProfilePage() {
             }
           >
             {data.consultations.length ? (
-              <div className="space-y-4">
-                <div className="overflow-hidden rounded-[28px] border border-transparent bg-white shadow-md">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="w-[11%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ocs-slate">
-                            Date
-                          </th>
-                          <th className="w-[17%] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ocs-slate">
-                            Doctor
-                          </th>
-                          <th className="min-w-0 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ocs-slate">
-                            Consultation note
-                          </th>
-                          <th className="w-[28%] px-4 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-ocs-slate">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {visibleConsultations.map((consultation) => {
-                          const isEditing = consultationEditorId === consultation.id;
-                          const canEditRow = canEditConsultation(consultation);
-                          const note = consultation.doctor_notes || "";
+              <div className="space-y-2">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="w-[11%] px-3 py-2 text-xs font-bold uppercase tracking-wider text-ocs-slate">
+                          Date
+                        </th>
+                        <th className="w-[17%] px-3 py-2 text-xs font-bold uppercase tracking-wider text-ocs-slate">
+                          Doctor
+                        </th>
+                        <th className="min-w-0 px-3 py-2 text-xs font-bold uppercase tracking-wider text-ocs-slate">
+                          Consultation note
+                        </th>
+                        <th className="w-[28%] px-3 py-2 text-right text-xs font-bold uppercase tracking-wider text-ocs-slate">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {visibleConsultations.map((consultation) => {
+                        const isEditing = consultationEditorId === consultation.id;
+                        const canEditRow = canEditConsultation(consultation);
+                        const note = consultation.doctor_notes || "";
 
-                          return (
-                            <tr key={consultation.id} className="align-top">
-                              <td className="px-4 py-2.5 text-sm font-semibold text-slate-900">
-                                {formatDate(consultation.consultation_date)}
-                              </td>
-                              <td className="px-4 py-2.5 text-sm text-slate-600">
-                                <p className="text-sm font-bold text-slate-900">
-                                  {formatDoctorDisplayName(consultation.doctor_name)}
-                                </p>
-                              </td>
-                              <td className="min-w-0 max-w-0 px-4 py-2.5">
+                        return (
+                          <tr key={consultation.id} className="align-top">
+                            <td className="px-3 py-2 text-sm font-semibold text-slate-900">
+                              {formatDate(consultation.consultation_date)}
+                            </td>
+                            <td className="px-3 py-2 text-sm text-slate-600">
+                              <p className="text-sm font-bold text-slate-900">
+                                {formatDoctorDisplayName(consultation.doctor_name)}
+                              </p>
+                            </td>
+                            <td className="min-w-0 max-w-0 px-3 py-2">
                                 {isEditing ? (
                                   <div className="space-y-3">
                                     {user.role === "admin" ? (
@@ -2892,7 +2893,7 @@ function PatientProfilePage() {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-2.5">
+                              <td className="px-3 py-2">
                                 <div className="flex justify-end gap-2">
                                   <button
                                     type="button"
@@ -2936,7 +2937,6 @@ function PatientProfilePage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
                 </div>
 
                 {data.consultations.length > CONSULTATION_ROWS_LIMIT ? (
@@ -2944,7 +2944,7 @@ function PatientProfilePage() {
                     <button
                       type="button"
                       onClick={() => setShowAllConsultations((current) => !current)}
-                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                     >
                       {showAllConsultations
                         ? "Show fewer consultation notes"
@@ -2955,6 +2955,7 @@ function PatientProfilePage() {
               </div>
             ) : (
               <EmptyState
+                compact
                 title="No consultations recorded"
                 description="Consultation notes will appear here as soon as a doctor completes a visit and saves the note."
               />
@@ -2962,14 +2963,15 @@ function PatientProfilePage() {
           </SectionCard>
 
           <SectionCard
-        title="Medical & Lab Reports"
+            compact
+            title="Medical & Lab Reports"
             titleClassName={DESKTOP_SECTION_TITLE_CLASS}
             actions={
               canManageLabReports ? (
                   <button
                     type="button"
                     onClick={() => setReportEditor({ id: null })}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
                   >
                   <Plus className="size-4" />
                   Add Medical & Lab Report
@@ -2978,11 +2980,11 @@ function PatientProfilePage() {
             }
           >
             {data.labReports.length ? (
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-3 xl:grid-cols-2">
                 {data.labReports.map((report) => (
                   <article
                     key={report.id}
-                    className="rounded-[26px] border border-transparent bg-white p-5 shadow-md"
+                    className="rounded-2xl border border-transparent bg-white p-4 shadow-md"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -3060,21 +3062,21 @@ function PatientProfilePage() {
                 ))}
               </div>
             ) : (
-              <EmptyState
-                title="No Medical & Lab Reports yet"
-                description="Add a Medical & Lab Report here to keep investigations, consultation notes, and uploaded files together on the same patient profile."
-              />
+              <p className="text-sm leading-snug text-ocs-grey">
+                No Medical & Lab Reports yet. Add a Medical & Lab Report here to keep investigations, consultation notes, and uploaded files together on the same patient profile.
+              </p>
             )}
           </SectionCard>
 
           {showPatientBillingUi ? (
             <SectionCard
+              compact
               title="Billing history"
               titleClassName={DESKTOP_SECTION_TITLE_CLASS}
               actions={
                 <Link
                   to={`/billing?patientId=${id}`}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                 >
                   <CreditCard className="size-4" />
                   Open billing workspace
@@ -3132,6 +3134,7 @@ function PatientProfilePage() {
                 </div>
               ) : (
                 <EmptyState
+                  compact
                   title="No billing records"
                   description="Bills are created automatically when a consultation is saved."
                 />

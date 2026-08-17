@@ -1,7 +1,9 @@
-function PageHeader({ eyebrow, title, description, actions, className = "" }) {
+function PageHeader({ eyebrow, title, description, actions, align = "end", className = "" }) {
   return (
     <div
-      className={`flex w-full min-w-0 max-w-full flex-col gap-3 md:flex-row md:items-end md:justify-between ${className}`.trim()}
+      className={`flex w-full min-w-0 max-w-full flex-col gap-3 md:flex-row md:justify-between ${
+        align === "center" ? "md:items-center" : "md:items-end"
+      } ${className}`.trim()}
     >
       <div className="min-w-0">
         {eyebrow ? (
@@ -9,7 +11,7 @@ function PageHeader({ eyebrow, title, description, actions, className = "" }) {
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="mt-1 flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-3xl">
+        <h1 className={`${eyebrow ? "mt-1 " : ""}flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-3xl`}>
           {title}
         </h1>
         {description ? (
