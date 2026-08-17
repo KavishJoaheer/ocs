@@ -123,7 +123,7 @@ const navItems = [
   },
   {
     to: "/live-report",
-    label: "Live report",
+    label: "Revenue Report",
     icon: PieChart,
     roles: ["admin", "doctor"],
   },
@@ -147,7 +147,7 @@ const navItems = [
   },
   {
     to: "/stock-history",
-    label: "Live Activity",
+    label: "Stock history",
     icon: RotateCw,
     roles: ["admin", "operator"],
   },

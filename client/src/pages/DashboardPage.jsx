@@ -1499,7 +1499,7 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
           <p className="mt-1 text-3xl font-black tabular-nums tracking-tight text-ocs-teal">{totalPatients}</p>
         </Link>
         <Link to="/live-report" className="shrink-0 text-xs font-semibold text-ocs-teal hover:underline">
-          Live report
+          Revenue Report
         </Link>
       </div>
     </div>

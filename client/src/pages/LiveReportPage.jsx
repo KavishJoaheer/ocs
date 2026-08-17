@@ -427,10 +427,10 @@ export default function LiveReportPage() {
     navigate(`/billing?${params.toString()}`);
   }
 
-  if (loading && !report) return <LoadingState label="Loading live report" />;
+  if (loading && !report) return <LoadingState label="Loading revenue report" />;
   if (!report) {
     return (
-      <EmptyState title="Live report unavailable" description="Unable to load report data." />
+      <EmptyState title="Revenue report unavailable" description="Unable to load report data." />
     );
   }
 
@@ -445,7 +445,7 @@ export default function LiveReportPage() {
             Analytics
           </p>
           <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ocs-slate md:mt-0 md:text-3xl">
-            Live report
+            Revenue Report
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             {rangeLabel || "Selected period"}

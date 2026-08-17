@@ -263,7 +263,7 @@ function StockActivityPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Inventory"
-        title="Stock Activity Log"
+        title="Stock history"
         actions={
           user?.role === "admin" ? (
             <button

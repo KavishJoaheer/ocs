@@ -1396,7 +1396,7 @@ function LiveActivitySection({
   return (
     <SectionCard className="min-w-0">
       <div className="mb-4 flex min-w-0 flex-col space-y-3 border-b border-gray-100 pb-4">
-        <h3 className="text-base font-bold text-gray-900">Live Activity</h3>
+        <h3 className="text-base font-bold text-gray-900">Stock history</h3>
         {showStaffFilters ? (
           <div className="flex w-full min-w-0 flex-col gap-3">
             <InventoryPeriodFilter
