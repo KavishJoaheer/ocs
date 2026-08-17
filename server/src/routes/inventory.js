@@ -889,6 +889,39 @@ function movementPeriodSql(movementAlias = "m") {
   )`;
 }
 
+function getCompareMetricByDoctor(params, periodSql, whereExtra) {
+  return db
+    .prepare(
+      `
+        SELECT
+          i.owner_doctor_id AS doctor_id,
+          COALESCE(SUM(m.quantity * i.cost_price), 0) AS amount,
+          COALESCE(SUM(m.quantity), 0) AS qty,
+          COALESCE(SUM(CASE WHEN COALESCE(i.cost_price, 0) = 0 THEN m.quantity ELSE 0 END), 0) AS unpriced_qty
+        FROM inventory_movements m
+        JOIN inventory i ON i.id = m.item_id
+        WHERE i.stock_scope = 'doctor'
+          AND i.owner_doctor_id IS NOT NULL
+          AND ${periodSql}
+          AND (${whereExtra})
+        GROUP BY i.owner_doctor_id
+      `,
+    )
+    .all(params);
+}
+
+function indexCompareMetric(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    map.set(Number(row.doctor_id), {
+      amount: roundCurrency(row.amount),
+      qty: Number(row.qty || 0),
+      unpriced_qty: Number(row.unpriced_qty || 0),
+    });
+  }
+  return map;
+}
+
 function getCompareRows(dateFrom = "", dateTo = "") {
   const from = String(dateFrom || "").trim();
   const to = String(dateTo || "").trim();
@@ -900,102 +933,118 @@ function getCompareRows(dateFrom = "", dateTo = "") {
     dateTo: to || null,
   };
 
-  return db
-    .prepare(`
-      SELECT
-        d.id AS doctor_id,
-        d.full_name AS doctor_name,
+  const restocked = indexCompareMetric(
+    getCompareMetricByDoctor(params, periodSql, `m.action_type = 'restock_in'`),
+  );
+  const consumedSales = indexCompareMetric(
+    getCompareMetricByDoctor(
+      params,
+      periodSql,
+      `
         (
-          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
-          FROM inventory_movements m
-          JOIN inventory i ON i.id = m.item_id
-          WHERE i.stock_scope = 'doctor'
-            AND i.owner_doctor_id = d.id
-            AND m.action_type = 'restock_in'
-            AND ${periodSql}
-        ) AS total_restocked,
-        (
-          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
-          FROM inventory_movements m
-          JOIN inventory i ON i.id = m.item_id
-          WHERE i.stock_scope = 'doctor'
-            AND i.owner_doctor_id = d.id
-            AND ${periodSql}
-            AND (
-              (
-                m.action_type = 'sell'
-                AND EXISTS (
-                  SELECT 1
-                  FROM consultations c
-                  JOIN billing b ON b.consultation_id = c.id
-                  WHERE c.doctor_id = d.id
-                    AND b.status IN ('paid', 'unpaid')
-                    AND (
-                      c.id = CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER)
-                      OR (
-                        m.reference_type = 'appointment'
-                        AND c.appointment_id = m.reference_id
-                      )
-                    )
+          m.action_type = 'sell'
+          AND EXISTS (
+            SELECT 1
+            FROM consultations c
+            JOIN billing b ON b.consultation_id = c.id
+            WHERE c.doctor_id = i.owner_doctor_id
+              AND b.status IN ('paid', 'unpaid')
+              AND (
+                c.id = CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER)
+                OR (
+                  m.reference_type = 'appointment'
+                  AND c.appointment_id = m.reference_id
                 )
               )
-              OR (
-                m.action_type = 'stock_out'
-                AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'sale'
-              )
-            )
-        ) AS consumed_sales,
-        (
-          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
-          FROM inventory_movements m
-          JOIN inventory i ON i.id = m.item_id
-          WHERE i.stock_scope = 'doctor'
-            AND i.owner_doctor_id = d.id
-            AND ${periodSql}
-            AND (
-              m.action_type = 'wastage'
-              OR (
-                m.action_type = 'stock_out'
-                AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'wasted'
-              )
-            )
-        ) AS consumed_wasted,
-        (
-          SELECT COALESCE(SUM(m.quantity * i.cost_price), 0)
-          FROM inventory_movements m
-          JOIN inventory i ON i.id = m.item_id
-          WHERE i.stock_scope = 'doctor'
-            AND i.owner_doctor_id = d.id
-            AND ${periodSql}
-            AND (
-              m.action_type = 'expired'
-              OR (
-                m.action_type = 'stock_out'
-                AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'expired'
-              )
-            )
-        ) AS consumed_expired
-      FROM doctors d
-      WHERE d.deleted_at IS NULL
-      ORDER BY d.full_name ASC
-    `)
-    .all(params)
+          )
+        )
+        OR (
+          m.action_type = 'stock_out'
+          AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'sale'
+        )
+      `,
+    ),
+  );
+  const consumedWasted = indexCompareMetric(
+    getCompareMetricByDoctor(
+      params,
+      periodSql,
+      `
+        m.action_type = 'wastage'
+        OR (
+          m.action_type = 'stock_out'
+          AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'wasted'
+        )
+      `,
+    ),
+  );
+  const consumedExpired = indexCompareMetric(
+    getCompareMetricByDoctor(
+      params,
+      periodSql,
+      `
+        m.action_type = 'expired'
+        OR (
+          m.action_type = 'stock_out'
+          AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'expired'
+        )
+      `,
+    ),
+  );
+
+  const bagOnHandRows = db
+    .prepare(
+      `
+        SELECT
+          owner_doctor_id AS doctor_id,
+          COALESCE(SUM(quantity), 0) AS qty,
+          COALESCE(SUM(quantity * cost_price), 0) AS amount,
+          COALESCE(SUM(CASE WHEN COALESCE(cost_price, 0) = 0 THEN quantity ELSE 0 END), 0) AS unpriced_qty
+        FROM inventory
+        WHERE stock_scope = 'doctor'
+          AND owner_doctor_id IS NOT NULL
+        GROUP BY owner_doctor_id
+      `,
+    )
+    .all();
+  const bagOnHand = indexCompareMetric(bagOnHandRows);
+
+  const emptyMetric = { amount: 0, qty: 0, unpriced_qty: 0 };
+
+  return db
+    .prepare(
+      `
+        SELECT id AS doctor_id, full_name AS doctor_name
+        FROM doctors
+        WHERE deleted_at IS NULL
+        ORDER BY full_name ASC
+      `,
+    )
+    .all()
     .map((row) => {
-      const totalRestocked = roundCurrency(row.total_restocked);
-      const consumedSales = roundCurrency(row.consumed_sales);
-      const consumedWasted = roundCurrency(row.consumed_wasted);
-      const consumedExpired = roundCurrency(row.consumed_expired);
-      const remainingInBag = roundCurrency(
-        totalRestocked - consumedSales - consumedWasted - consumedExpired,
-      );
+      const doctorId = Number(row.doctor_id);
+      const restock = restocked.get(doctorId) || emptyMetric;
+      const sales = consumedSales.get(doctorId) || emptyMetric;
+      const wasted = consumedWasted.get(doctorId) || emptyMetric;
+      const expired = consumedExpired.get(doctorId) || emptyMetric;
+      const onHand = bagOnHand.get(doctorId) || emptyMetric;
+      const remainingInBag = roundCurrency(restock.amount - sales.amount - wasted.amount - expired.amount);
       return {
-        doctor_id: row.doctor_id,
+        doctor_id: doctorId,
         doctor_name: row.doctor_name,
-        total_restocked: totalRestocked,
-        consumed_sales: consumedSales,
-        consumed_wasted: consumedWasted,
-        consumed_expired: consumedExpired,
+        total_restocked: restock.amount,
+        total_restocked_qty: restock.qty,
+        consumed_sales: sales.amount,
+        consumed_sales_qty: sales.qty,
+        consumed_wasted: wasted.amount,
+        consumed_wasted_qty: wasted.qty,
+        consumed_expired: expired.amount,
+        consumed_expired_qty: expired.qty,
         remaining_in_bag: remainingInBag,
+        bag_on_hand: onHand.amount,
+        bag_on_hand_qty: onHand.qty,
+        unpriced_qty: restock.unpriced_qty + sales.unpriced_qty + wasted.unpriced_qty + expired.unpriced_qty + onHand.unpriced_qty,
+        variance_rs: roundCurrency(onHand.amount - remainingInBag),
       };
     });
 }
@@ -1634,6 +1683,9 @@ router.post("/items/:id/ocs-actions", (req, res) => {
   if (actionType === "stock_in") {
     const costPrice = roundCurrency(req.body.cost_price ?? item.cost_price);
     const expiryDate = String(req.body.expiry_date || "").trim() || null;
+    if (!expiryDate) {
+      return res.status(400).json({ error: "Batch expiry date is required." });
+    }
     const nextQuantity = previousQuantity + quantity;
 
     db.transaction(() => {

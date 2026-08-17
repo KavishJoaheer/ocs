@@ -26,7 +26,7 @@ import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -110,6 +110,52 @@ function getInventoryDateRange(preset, anchorDateStr) {
   }
 }
 
+function formatInventoryExpiry(value) {
+  if (!value) return "Not set";
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format("D MMM YYYY") : "Not set";
+}
+
+function formatCompareMoney(amount, qty) {
+  if (Number(qty || 0) > 0 && Number(amount || 0) === 0) return "Unpriced";
+  return formatRupees(amount);
+}
+
+function formatCompareQty(qty) {
+  const count = Number(qty || 0);
+  return `${count} u`;
+}
+
+function InventoryStatusChips({ item }) {
+  const quantity = Number(item.quantity || 0);
+  const parLevel = Number(item.minimum_quantity || 0);
+  const isLow = quantity <= parLevel;
+  const missingExpiry = !item.expiry_date;
+  const nearExpiry = Boolean(item.is_near_expiry);
+
+  if (!isLow && !missingExpiry && !nearExpiry) return null;
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {isLow ? (
+        <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+          Low
+        </span>
+      ) : null}
+      {nearExpiry ? (
+        <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+          Near expiry
+        </span>
+      ) : null}
+      {missingExpiry ? (
+        <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+          Missing expiry
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function formatInventoryPeriodLabel(preset, dateFrom, dateTo) {
   const from = dayjs(dateFrom);
   const to = dayjs(dateTo);
@@ -183,6 +229,8 @@ function InventoryPeriodFilter({ preset, anchorDate, onPresetChange, onAnchorDat
 
 function inventorySortModeLabel(mode) {
   switch (mode) {
+    case "name_asc":
+      return "Name (A–Z)";
     case "qty_asc":
       return "Qty (Lowest)";
     case "qty_desc":
@@ -223,18 +271,30 @@ const DOCTOR_MOBILE_STOCK_SCOPES = [
   { id: "ocs", label: "OCS Stock" },
 ];
 
-function SummaryCard({ title, value, tone = "teal" }) {
-  const valueToneClass = tone === "amber" ? "text-amber-700" : "text-slate-950";
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_16px_36px_rgba(34,72,91,0.06)] md:rounded-3xl md:p-5">
+function SummaryCard({ title, value, tone = "teal", hint, onClick, active = false }) {
+  const valueToneClass = tone === "amber" ? "text-amber-700" : tone === "rose" ? "text-rose-700" : "text-slate-950";
+  const className = cx(
+    "rounded-2xl border bg-white p-3 md:rounded-3xl md:p-5",
+    active ? "border-ocs-teal/50 ring-2 ring-ocs-teal/20" : "border-slate-200/80",
+    onClick && "cursor-pointer text-left transition hover:border-ocs-teal/40 hover:bg-slate-50",
+  );
+  const body = (
+    <>
       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{title}</p>
-      <p
-        className={`mt-1.5 text-lg font-semibold leading-tight tabular-nums md:mt-2.5 md:text-2xl ${valueToneClass}`}
-      >
+      <p className={`mt-1.5 text-lg font-semibold leading-tight tabular-nums md:mt-2.5 md:text-2xl ${valueToneClass}`}>
         {value}
       </p>
-    </div>
+      {hint ? <p className="mt-1 text-[11px] text-slate-400">{hint}</p> : null}
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
 
 function OperatorInventoryLogisticsGrid({
@@ -550,7 +610,7 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
     setSyncedDeps({ open, item });
     if (open) {
       setQuantity("1");
-      setExpiryDate("");
+      setExpiryDate(item?.expiry_date || "");
       setCostPrice(String(item?.cost_price ?? 0));
     }
   }
@@ -559,8 +619,8 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
     <Modal
       open={open}
       onClose={onClose}
-      title={`Stock In${item ? ` - ${item.item_name}` : ""}`}
-      description="Add a new inventory batch using FEFO-safe batch tracking."
+      title={`Receive stock${item ? ` - ${item.item_name}` : ""}`}
+      description="Add a batch to OCS. Quantity and expiry are required so FEFO can track it."
       size="lg"
       innerScroll={false}
     >
@@ -571,6 +631,7 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
           const qty = Number(quantity || 0);
           const cost = Number(costPrice || 0);
           if (!Number.isInteger(qty) || qty <= 0) return toast.error("Quantity must be a whole number greater than 0.");
+          if (!expiryDate) return toast.error("Set the batch expiry date.");
           if (cost < 0) return toast.error("Cost price must be zero or more.");
           onSubmit({ quantity: qty, expiry_date: expiryDate, cost_price: cost });
         }}
@@ -590,8 +651,9 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Batch Expiry Date</span>
+            <span className="text-sm font-semibold text-slate-700">Batch expiry date</span>
             <input
+              required
               type="date"
               value={expiryDate}
               onChange={(event) => setExpiryDate(event.target.value)}
@@ -618,7 +680,7 @@ function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
             Cancel
           </button>
           <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Saving..." : "Stock In"}
+            {isSaving ? "Saving..." : "Receive"}
           </button>
         </div>
       </form>
@@ -1186,11 +1248,18 @@ function buildLiveActivityExportRow(movement) {
 function buildCompareReconciliationExportRows(compareRows = []) {
   return compareRows.map((row) => ({
     Doctor: row.doctor_name || "",
-    "Total Restocked (Rs)": Number(row.total_restocked || 0),
-    "Consumed: Sales (Rs)": Number(row.consumed_sales || 0),
-    "Consumed: Wasted (Rs)": Number(row.consumed_wasted || 0),
-    "Consumed: Expired (Rs)": Number(row.consumed_expired || 0),
-    "Remaining in Bag (Rs)": Number(row.remaining_in_bag || 0),
+    "Restocked (units)": Number(row.total_restocked_qty || 0),
+    "Restocked (Rs)": Number(row.total_restocked || 0),
+    "Sold (units)": Number(row.consumed_sales_qty || 0),
+    "Sold (Rs)": Number(row.consumed_sales || 0),
+    "Wasted (units)": Number(row.consumed_wasted_qty || 0),
+    "Wasted (Rs)": Number(row.consumed_wasted || 0),
+    "Expired (units)": Number(row.consumed_expired_qty || 0),
+    "Expired (Rs)": Number(row.consumed_expired || 0),
+    "Period remaining (Rs)": Number(row.remaining_in_bag || 0),
+    "On hand (units)": Number(row.bag_on_hand_qty || 0),
+    "On hand (Rs)": Number(row.bag_on_hand || 0),
+    "Variance (Rs)": Number(row.variance_rs || 0),
   }));
 }
 
@@ -1262,16 +1331,34 @@ function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, perio
   toast.success("Inventory history exported.");
 }
 
-function CompareRemainingCell({ value }) {
+function CompareMetricCell({ amount, qty }) {
+  return (
+    <div className="text-right">
+      <p className="tabular-nums text-slate-900">{formatCompareQty(qty)}</p>
+      <p className="text-[11px] text-slate-400">{formatCompareMoney(amount, qty)}</p>
+    </div>
+  );
+}
+
+function CompareRemainingCell({ value, variance, qty }) {
   const amount = Number(value || 0);
-  if (amount < 0) {
-    return (
-      <span className="rounded bg-red-50 px-2 py-0.5 font-bold text-red-600">
-        {formatRupees(amount)}
+  const drift = Number(variance || 0);
+  const broken = Math.abs(drift) >= 0.5;
+  return (
+    <div className="text-right">
+      <span
+        className={cx(
+          "tabular-nums",
+          amount < 0 || broken ? "rounded bg-red-50 px-2 py-0.5 font-bold text-red-600" : "text-slate-800",
+        )}
+      >
+        {formatCompareMoney(amount, qty)}
       </span>
-    );
-  }
-  return <span className="text-slate-800">{formatRupees(amount)}</span>;
+      {broken ? (
+        <p className="mt-0.5 text-[11px] font-semibold text-rose-600">Off by {formatRupees(drift)}</p>
+      ) : null}
+    </div>
+  );
 }
 
 function MovementActivityLine({ movement }) {
@@ -1332,8 +1419,17 @@ function MovementActivityLine({ movement }) {
     );
   }
 
+  const kindTone =
+    kind === "allocation"
+      ? "border-l-[#2d8f98]"
+      : kind === "consumption"
+        ? "border-l-amber-400"
+        : kind === "correction"
+          ? "border-l-rose-300"
+          : "border-l-slate-200";
+
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 py-1.5 text-sm last:border-b-0">
+    <div className={cx("flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-100 border-l-2 py-1.5 pl-2 text-sm last:border-b-0", kindTone)}>
       <span className="shrink-0 text-xs text-gray-400">{timeLabel}</span>
       <span className="shrink-0 text-xs text-gray-400" aria-hidden>
         •
@@ -1348,6 +1444,8 @@ function LiveActivitySection({
   maxRows = 55,
   scrollClassName = "max-h-80",
   showStaffFilters = false,
+  hidePeriodFilter = false,
+  preview = false,
   staffOptions = [],
   activityStaffUserId = "",
   onActivityStaffUserIdChange,
@@ -1396,16 +1494,30 @@ function LiveActivitySection({
   return (
     <SectionCard className="min-w-0">
       <div className="mb-4 flex min-w-0 flex-col space-y-3 border-b border-gray-100 pb-4">
-        <h3 className="text-base font-bold text-gray-900">Stock history</h3>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Stock history</h3>
+            {preview ? (
+              <p className="mt-0.5 text-xs text-slate-500">Latest moves this period</p>
+            ) : null}
+          </div>
+          {preview ? (
+            <Link to="/stock-history" className="shrink-0 text-xs font-semibold text-ocs-teal hover:underline">
+              Open Stock history
+            </Link>
+          ) : null}
+        </div>
         {showStaffFilters ? (
           <div className="flex w-full min-w-0 flex-col gap-3">
-            <InventoryPeriodFilter
-              preset={periodPreset}
-              anchorDate={periodAnchorDate}
-              onPresetChange={onPeriodPresetChange}
-              onAnchorDateChange={onPeriodAnchorDateChange}
-              className="w-full max-w-none"
-            />
+            {hidePeriodFilter ? null : (
+              <InventoryPeriodFilter
+                preset={periodPreset}
+                anchorDate={periodAnchorDate}
+                onPresetChange={onPeriodPresetChange}
+                onAnchorDateChange={onPeriodAnchorDateChange}
+                className="w-full max-w-none"
+              />
+            )}
             <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
               <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -1452,7 +1564,7 @@ function LiveActivitySection({
                 className="inline-flex w-full min-h-10 shrink-0 items-center justify-center gap-2 self-stretch rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#3aa6a1] sm:w-auto"
               >
                 <Download className="size-4 shrink-0" />
-                <span className="whitespace-nowrap">📥 Download History Excel</span>
+                <span className="whitespace-nowrap">Download history</span>
               </button>
             </div>
           </div>
@@ -1623,11 +1735,13 @@ function InventoryOcsMasterActions({
   }
 
   const receiveBtn =
-    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20";
+    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 text-[11px] font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20";
+  const restockBtn =
+    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 text-[11px] font-semibold text-white transition hover:bg-[#3aa6a1]";
   const editBtn =
-    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
   const moreBtn =
-    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
 
   if (touchWrap) {
     const menuItems = [
@@ -1677,7 +1791,7 @@ function InventoryOcsMasterActions({
   }
 
   return (
-    <div className="ml-auto flex w-fit items-center justify-end gap-1.5">
+    <div className="ml-auto flex w-fit flex-wrap items-center justify-end gap-1.5">
       <button
         type="button"
         title="Receive stock"
@@ -1685,8 +1799,21 @@ function InventoryOcsMasterActions({
         className={receiveBtn}
         onClick={() => onStockIn(item)}
       >
-        <Plus className="size-4 shrink-0" />
+        <Plus className="size-3.5 shrink-0" />
+        Receive
       </button>
+      {!omitRestock ? (
+        <button
+          type="button"
+          title="Restock to a doctor bag"
+          aria-label="Restock to a doctor bag"
+          className={restockBtn}
+          onClick={() => onRestockDoctor(item)}
+        >
+          <Truck className="size-3.5 shrink-0" />
+          Restock
+        </button>
+      ) : null}
       <button
         type="button"
         title="Edit item"
@@ -1694,7 +1821,8 @@ function InventoryOcsMasterActions({
         className={editBtn}
         onClick={() => onEdit(item)}
       >
-        <Pencil className="size-4 shrink-0" />
+        <Pencil className="size-3.5 shrink-0" />
+        Edit
       </button>
       <div className="relative shrink-0" ref={menuRef}>
         <button
@@ -1705,7 +1833,8 @@ function InventoryOcsMasterActions({
           className={moreBtn}
           onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
         >
-          <MoreVertical className="size-4 shrink-0" />
+          <MoreVertical className="size-3.5 shrink-0" />
+          More
         </button>
         {menuOpen && menuPosition && typeof document !== "undefined"
           ? createPortal(
@@ -1714,30 +1843,6 @@ function InventoryOcsMasterActions({
                 className="fixed z-[100] min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
                 style={{ top: menuPosition.top, left: menuPosition.left }}
               >
-                <button
-                  type="button"
-                  className={INVENTORY_MOBILE_MENU_ITEM}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onEdit(item);
-                  }}
-                >
-                  <Pencil className="size-3.5 shrink-0 text-slate-500" />
-                  Edit item
-                </button>
-                {!omitRestock ? (
-                  <button
-                    type="button"
-                    className={INVENTORY_MOBILE_MENU_ITEM}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onRestockDoctor(item);
-                    }}
-                  >
-                    <Truck className="size-3.5 shrink-0 text-slate-500" />
-                    Restock / Transfer
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className={`${INVENTORY_MOBILE_MENU_ITEM} text-rose-700 hover:bg-rose-50`}
@@ -3032,6 +3137,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef(null);
   const [selectedView, setSelectedView] = useState("");
   const [activeCategory, setActiveCategory] = useState("Consumable");
   const [operatorAddOpen, setOperatorAddOpen] = useState(false);
@@ -3055,6 +3161,7 @@ export default function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
+  const [showMissingExpiryOnly, setShowMissingExpiryOnly] = useState(false);
   const [sortMode, setSortMode] = useState("expiry_asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRows, setExpandedRows] = useState({});
@@ -3142,13 +3249,42 @@ export default function InventoryPage() {
     ],
   );
   const summary = data?.summary || {};
+  const folderCounts = useMemo(() => {
+    const map = new Map();
+    for (const item of items) {
+      const id = String(item.folder_id);
+      map.set(id, (map.get(id) || 0) + 1);
+    }
+    return map;
+  }, [items]);
+  const chaseCounts = useMemo(
+    () => ({
+      low: items.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
+      near: items.filter((item) => Boolean(item.is_near_expiry)).length,
+      missing: items.filter((item) => !item.expiry_date).length,
+    }),
+    [items],
+  );
+  const compareRows = useMemo(() => {
+    const rows = data?.compare_rows || [];
+    return rows.filter(
+      (row) =>
+        Number(row.total_restocked_qty || 0) > 0 ||
+        Number(row.consumed_sales_qty || 0) > 0 ||
+        Number(row.consumed_wasted_qty || 0) > 0 ||
+        Number(row.consumed_expired_qty || 0) > 0 ||
+        Number(row.bag_on_hand_qty || 0) > 0 ||
+        Number(row.total_restocked || 0) !== 0 ||
+        Number(row.variance_rs || 0) !== 0,
+    );
+  }, [data?.compare_rows]);
   const pageSize = 50;
   const inventoryTableScrollClass = isOperator
     ? "max-h-[min(calc(100svh-16rem),960px)]"
     : "max-h-[560px]";
   const doctorDesktopBagTable = isDoctor && doctorViewIsMy;
   const staffDoctorBagTable = canManageOcs && !contextIsOcs;
-  const inventoryActionsColWidth = doctorDesktopBagTable || staffDoctorBagTable ? "30%" : "18%";
+  const inventoryActionsColWidth = doctorDesktopBagTable || staffDoctorBagTable ? "30%" : "32%";
   const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : "48rem";
   const doctorConsumptionRows = data?.my_consumption_rows || [];
   const movements = data?.movements || [];
@@ -3245,7 +3381,7 @@ export default function InventoryPage() {
         onPeriodAnchorDateChange: setAdminPeriodAnchor,
         dateFrom: adminPeriodRange.from,
         dateTo: adminPeriodRange.to,
-        compareRows: data?.compare_rows || [],
+        compareRows,
       }
     : {};
 
@@ -3299,10 +3435,27 @@ export default function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPeriodPreset, adminPeriodAnchor, activityStaffUserId]);
 
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key !== "/") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const tag = String(target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      setLogisticsTab("stock");
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Default category: first folder with stock, else Consumable (pills may list all categories on OCS view).
   useEffect(() => {
     if (!folders.length) return;
-    const valid = folders.some((f) => String(f.id) === String(selectedView));
+    const valid = selectedView === "all" || folders.some((f) => String(f.id) === String(selectedView));
     if (!selectedView || !valid) {
       const next = getDefaultFolderSelection(folders, items);
       if (!next) return;
@@ -3350,15 +3503,21 @@ export default function InventoryPage() {
 
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    const source = selectedView ? items.filter((item) => String(item.folder_id) === String(selectedView)) : items;
+    const folderId = selectedView && selectedView !== "all" ? selectedView : "";
+    const source = folderId ? items.filter((item) => String(item.folder_id) === String(folderId)) : items;
     return source
       .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
       .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
-      .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry));
-  }, [items, search, selectedView, showLowStockOnly, showNearExpiryOnly]);
+      .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry))
+      .filter((item) => !showMissingExpiryOnly || !item.expiry_date);
+  }, [items, search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly]);
 
   const sortedItems = useMemo(() => {
     const rows = [...filteredItems];
+    if (sortMode === "name_asc") {
+      rows.sort((a, b) => String(a.item_name || "").localeCompare(String(b.item_name || ""), undefined, { sensitivity: "base" }));
+      return rows;
+    }
     if (sortMode === "qty_asc") {
       rows.sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
       return rows;
@@ -3410,7 +3569,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, sortMode, doctorContext]);
+  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly, sortMode, doctorContext]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -3498,6 +3657,26 @@ export default function InventoryPage() {
     openStaffRestockForDoctorItem(nextItem);
   }
 
+  function applyChaseFilter(kind) {
+    const next =
+      (kind === "low" && showLowStockOnly) ||
+      (kind === "near" && showNearExpiryOnly) ||
+      (kind === "missing" && showMissingExpiryOnly)
+        ? ""
+        : kind;
+    setLogisticsTab("stock");
+    setSelectedView("all");
+    setShowLowStockOnly(next === "low");
+    setShowNearExpiryOnly(next === "near");
+    setShowMissingExpiryOnly(next === "missing");
+  }
+
+  function openDoctorBagFromCompare(doctorId) {
+    setSelectedContextDoctorId(String(doctorId));
+    setLogisticsTab("stock");
+    setSelectedView("all");
+  }
+
   function downloadAdminStockExcel() {
     if (!isAdmin) return;
     if (!sortedItems.length) {
@@ -3546,6 +3725,7 @@ export default function InventoryPage() {
       { Field: "Search text", Value: search.trim() || "—" },
       { Field: "Show low stock only", Value: showLowStockOnly ? "Yes" : "No" },
       { Field: "Show near expiry only", Value: showNearExpiryOnly ? "Yes" : "No" },
+      { Field: "Show missing expiry only", Value: showMissingExpiryOnly ? "Yes" : "No" },
       { Field: "Sort order", Value: inventorySortModeLabel(sortMode) },
       { Field: "Exported rows", Value: String(sortedItems.length) },
     ];
@@ -3749,6 +3929,10 @@ export default function InventoryPage() {
     if (!addStock?.item) return;
     const quantity = Number(payload?.quantity || 0);
     if (!Number.isInteger(quantity) || quantity <= 0) return;
+    if (!String(payload?.expiry_date || "").trim()) {
+      toast.error("Set the batch expiry date.");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -3760,7 +3944,7 @@ export default function InventoryPage() {
       });
       commitInventoryData(next);
       setAddStock(null);
-      toast.success("Stock In recorded.");
+      toast.success("Stock received.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -4223,6 +4407,33 @@ export default function InventoryPage() {
             setShowLowStockOnly(false);
           }}
         />
+      ) : isAdmin ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+          <SummaryCard title="Warehouse value" value={formatRupees(summary.total_amount_rs || 0)} />
+          <SummaryCard
+            title="Low stock"
+            value={chaseCounts.low}
+            tone="rose"
+            hint="Click to filter"
+            active={showLowStockOnly}
+            onClick={() => applyChaseFilter("low")}
+          />
+          <SummaryCard
+            title="Near expiry"
+            value={chaseCounts.near}
+            tone="amber"
+            hint="Within 90 days"
+            active={showNearExpiryOnly}
+            onClick={() => applyChaseFilter("near")}
+          />
+          <SummaryCard
+            title="Missing expiry"
+            value={chaseCounts.missing}
+            hint="Click to filter"
+            active={showMissingExpiryOnly}
+            onClick={() => applyChaseFilter("missing")}
+          />
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <SummaryCard title="Total Stock Value" value={formatRupees(summary.total_amount_rs || 0)} />
@@ -4242,6 +4453,7 @@ export default function InventoryPage() {
             { id: "stock", label: "Stock" },
             { id: "shipments", label: "Shipments", badge: pendingStagingCount },
             { id: "count", label: "Count" },
+            ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -4301,7 +4513,7 @@ export default function InventoryPage() {
               : `${contextSearch || "Doctor"} - My Stock`
         }
       >
-        <div className="mb-4 space-y-3 border-b border-slate-100 pb-4">
+        <div className="sticky top-0 z-20 mb-4 space-y-3 border-b border-slate-100 bg-white pb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {isDoctor ? (
               <div className="flex shrink-0 flex-wrap gap-2">
@@ -4322,7 +4534,7 @@ export default function InventoryPage() {
               </div>
             ) : (
               <select
-                aria-label="Stock context"
+                aria-label="Stock location"
                 value={selectedContextDoctorId}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -4332,10 +4544,10 @@ export default function InventoryPage() {
                 }}
                 className="w-full shrink-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 sm:w-56"
               >
-                <option value="">OCS Stock</option>
+                <option value="">OCS warehouse</option>
                 {doctorOptions.map((doctor) => (
                   <option key={`ctx-doctor-${doctor.id}`} value={String(doctor.id)}>
-                    {doctor.full_name}
+                    {doctor.full_name} bag
                   </option>
                 ))}
               </select>
@@ -4343,9 +4555,10 @@ export default function InventoryPage() {
             <label className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <input
+                ref={searchInputRef}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by item name"
+                placeholder="Search by item name  (press / )"
                 className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
               />
             </label>
@@ -4359,8 +4572,28 @@ export default function InventoryPage() {
                 Add New Item
               </button>
             ) : null}
+            {isAdmin && contextIsOcs ? (
+              <button
+                type="button"
+                onClick={() => setEditor({ item: null })}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#2d8f98] px-4 py-2.5 text-xs font-semibold text-white hover:opacity-90"
+              >
+                <Plus className="size-3.5" />
+                Add item
+              </button>
+            ) : null}
           </div>
           <div className="-mx-1 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedView("all");
+                setActiveCategory("All");
+              }}
+              className={`shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold sm:text-sm ${selectedView === "all" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+            >
+              All ({items.length})
+            </button>
             {categoryFolders.map((folder) => (
               <button
                 key={folder.id}
@@ -4371,32 +4604,39 @@ export default function InventoryPage() {
                 }}
                 className={`shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold sm:text-sm ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
               >
-                {folder.name}
+                {folder.name} ({folderCounts.get(String(folder.id)) || 0})
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowLowStockOnly((prev) => !prev)}
-            className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
-          >
-            Show Low Stock
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNearExpiryOnly((prev) => !prev)}
-            className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
-          >
-            Show Near Expiry
-          </button>
-          <select value={sortMode} onChange={(event) => setSortMode(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
-            <option value="expiry_asc">Sort: Expiry (Soonest)</option>
-            <option value="qty_asc">Sort: Qty (Lowest)</option>
-            <option value="qty_desc">Sort: Qty (Highest)</option>
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => applyChaseFilter("low")}
+              className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+            >
+              Low stock ({chaseCounts.low})
+            </button>
+            <button
+              type="button"
+              onClick={() => applyChaseFilter("near")}
+              className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+            >
+              Near expiry ({chaseCounts.near})
+            </button>
+            <button
+              type="button"
+              onClick={() => applyChaseFilter("missing")}
+              className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showMissingExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+            >
+              Missing expiry ({chaseCounts.missing})
+            </button>
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+              <option value="name_asc">Sort: Name (A–Z)</option>
+              <option value="expiry_asc">Sort: Expiry (Soonest)</option>
+              <option value="qty_asc">Sort: Qty (Lowest)</option>
+              <option value="qty_desc">Sort: Qty (Highest)</option>
+            </select>
+          </div>
         </div>
 
         {pagedItems.length ? (
@@ -4456,6 +4696,7 @@ export default function InventoryPage() {
                                   {item.item_name}
                                 </span>
                               </div>
+                              <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
                               {doctorDesktopBagTable ? (
@@ -4475,7 +4716,10 @@ export default function InventoryPage() {
                                 </div>
                               ) : (
                                 <div className="inline-flex items-center justify-center gap-2">
-                                  <span>{item.quantity}</span>
+                                  <span className="tabular-nums font-semibold text-slate-900">
+                                    {item.quantity}
+                                    <span className="font-medium text-slate-400"> / {item.minimum_quantity}</span>
+                                  </span>
                                   {isDoctor && doctorViewIsMy ? (
                                     <span
                                       className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${
@@ -4493,8 +4737,15 @@ export default function InventoryPage() {
                               )}
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>
-                            <td className="truncate px-3 py-1.5 align-middle text-center" title={item.expiry_date || "Not set"}>
-                              {item.expiry_date || "Not set"}
+                            <td
+                              className={cx(
+                                "truncate px-3 py-1.5 align-middle text-center",
+                                !item.expiry_date && "text-slate-400",
+                                item.is_near_expiry && "font-semibold text-amber-800",
+                              )}
+                              title={item.expiry_date || "Not set"}
+                            >
+                              {formatInventoryExpiry(item.expiry_date)}
                             </td>
                             <td
                               className="sticky right-0 z-10 bg-white px-3 py-2 align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]"
@@ -4647,79 +4898,124 @@ export default function InventoryPage() {
         </SectionCard>
         <LiveActivitySection movements={parsedMovements} />
         </div>
-      ) : isAdmin ? (
-        <div className="hidden md:grid md:grid-cols-1 md:gap-6 lg:grid-cols-2">
+      ) : isAdmin && logisticsTab === "bags" ? (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-ocs-slate">Doctor bags</h2>
+              <p className="text-xs text-slate-500">
+                {formatInventoryPeriodLabel(adminPeriodPreset, adminPeriodRange.from, adminPeriodRange.to)}
+                . One period for both tables. Click a doctor to open their bag.
+              </p>
+            </div>
+            <InventoryPeriodFilter
+              preset={adminPeriodPreset}
+              anchorDate={adminPeriodAnchor}
+              onPresetChange={setAdminPeriodPreset}
+              onAnchorDateChange={setAdminPeriodAnchor}
+              className="shrink-0"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <SectionCard
-            title="Admin Compare Tool"
-            subtitle={formatInventoryPeriodLabel(adminPeriodPreset, adminPeriodRange.from, adminPeriodRange.to)}
+            title="Bag movement"
+            subtitle="Units first, rupees second. Unpriced means cost is missing."
             actions={
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <InventoryPeriodFilter
-                  preset={adminPeriodPreset}
-                  anchorDate={adminPeriodAnchor}
-                  onPresetChange={setAdminPeriodPreset}
-                  onAnchorDateChange={setAdminPeriodAnchor}
-                  className="shrink-0"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    downloadCompareReconciliationExcel({
-                      compareRows: data?.compare_rows || [],
-                      periodLabel: formatInventoryPeriodLabel(
-                        adminPeriodPreset,
-                        adminPeriodRange.from,
-                        adminPeriodRange.to,
-                      ),
-                      startDate: adminPeriodRange.from,
-                      endDate: adminPeriodRange.to,
-                    })
-                  }
-                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
-                >
-                  <Download className="size-4 shrink-0 text-[#1f7f7b]" />
-                  📥 Download Compare Excel
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  downloadCompareReconciliationExcel({
+                    compareRows,
+                    periodLabel: formatInventoryPeriodLabel(
+                      adminPeriodPreset,
+                      adminPeriodRange.from,
+                      adminPeriodRange.to,
+                    ),
+                    startDate: adminPeriodRange.from,
+                    endDate: adminPeriodRange.to,
+                  })
+                }
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
+              >
+                <Download className="size-4 shrink-0 text-[#1f7f7b]" />
+                Download compare
+              </button>
             }
           >
+          {compareRows.length === 0 ? (
+            <EmptyState
+              title="No bag movement this period"
+              description="Restocks, sales, and waste will show here. Doctors with empty bags are hidden."
+            />
+          ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs sm:tracking-[0.15em]">
+              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-3 py-2 text-left">Doctor</th>
-                  <th className="px-3 py-2 text-right">Total Restocked (Rs)</th>
-                  <th className="px-3 py-2 text-right">Consumed: Sales (Rs)</th>
-                  <th className="px-3 py-2 text-right">Consumed: Wasted (Rs)</th>
-                  <th className="px-3 py-2 text-right">Consumed: Expired (Rs)</th>
-                  <th className="px-3 py-2 text-right">Remaining in Bag (Rs)</th>
+                  <th className="px-3 py-2 text-right">Restocked</th>
+                  <th className="px-3 py-2 text-right">Sold</th>
+                  <th className="px-3 py-2 text-right">Wasted</th>
+                  <th className="px-3 py-2 text-right">Expired</th>
+                  <th className="px-3 py-2 text-right">On hand</th>
                 </tr>
               </thead>
               <tbody>
-                {(data.compare_rows || []).map((row) => (
-                  <tr key={row.doctor_id} className="border-t border-slate-200/70 text-xs">
+                {compareRows.map((row) => (
+                  <tr
+                    key={row.doctor_id}
+                    tabIndex={0}
+                    role="button"
+                    className="cursor-pointer border-t border-slate-200/70 text-xs hover:bg-slate-50"
+                    onClick={() => openDoctorBagFromCompare(row.doctor_id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openDoctorBagFromCompare(row.doctor_id);
+                      }
+                    }}
+                  >
                     <td className="px-3 py-2 font-medium text-slate-900">{row.doctor_name}</td>
-                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.total_restocked)}</td>
-                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.consumed_sales)}</td>
-                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.consumed_wasted)}</td>
-                    <td className="px-3 py-2 text-right text-slate-800">{formatRupees(row.consumed_expired)}</td>
-                    <td className="px-3 py-2 text-right">
-                      <CompareRemainingCell value={row.remaining_in_bag} />
+                    <td className="px-3 py-2">
+                      <CompareMetricCell amount={row.total_restocked} qty={row.total_restocked_qty} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <CompareMetricCell amount={row.consumed_sales} qty={row.consumed_sales_qty} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <CompareMetricCell amount={row.consumed_wasted} qty={row.consumed_wasted_qty} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <CompareMetricCell amount={row.consumed_expired} qty={row.consumed_expired_qty} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <CompareRemainingCell
+                        value={row.bag_on_hand}
+                        variance={row.variance_rs}
+                        qty={row.bag_on_hand_qty}
+                      />
+                      <p className="mt-0.5 text-right text-[11px] text-slate-400">
+                        {formatCompareQty(row.bag_on_hand_qty)}
+                      </p>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )}
         </SectionCard>
         <LiveActivitySection
           movements={parsedMovements}
-          maxRows={55}
+          maxRows={10}
+          preview
+          hidePeriodFilter
           scrollClassName="max-h-[min(28rem,55vh)]"
           {...liveActivityStaffFilterProps}
         />
         </div>
-      ) : !isOperator ? (
+        </div>
+      ) : !isOperator && !isAdmin ? (
         <div className="hidden md:block">
           <LiveActivitySection movements={parsedMovements} />
         </div>
