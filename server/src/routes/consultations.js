@@ -3,7 +3,7 @@ const { reverseInventoryForConsultation } = require("../lib/inventoryReversal");
 const { db, ensureBillingForConsultation } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { parseBillingRow, toNumber } = require("../lib/utils");
-const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
+const { canViewConsultationNotes } = require("../lib/patientAccess");
 
 const router = express.Router();
 
@@ -158,14 +158,13 @@ router.get("/", (req, res) => {
     Number.isInteger(requestedDoctorId) && requestedDoctorId > 0
       ? requestedDoctorId
       : null;
-  const caseloadDoctorId =
-    req.auth?.role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
 
   if (req.auth?.role === "doctor") {
-    if (!caseloadDoctorId) {
+    const ownDoctorId = Number(req.auth.doctor_id || 0);
+    if (!ownDoctorId) {
       return res.json([]);
     }
-    doctorScoped = null;
+    doctorScoped = ownDoctorId;
   }
 
   const consultations = db
@@ -202,12 +201,10 @@ router.get("/", (req, res) => {
       JOIN appointments a ON a.id = c.appointment_id
       WHERE p.deleted_at IS NULL
         AND (@doctorScoped IS NULL OR c.doctor_id = @doctorScoped)
-        ${caseloadDoctorId ? getDoctorCaseloadFilterSql("p") : ""}
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
     .all({
       doctorScoped,
-      ...(caseloadDoctorId ? { caseloadDoctorId } : {}),
     })
     .map((consultation) => ({
       ...consultation,
@@ -225,12 +222,9 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Consultation not found." });
   }
 
-  const consultationPatient = db
-    .prepare("SELECT * FROM patients WHERE id = ? AND deleted_at IS NULL")
-    .get(consultation.patient_id);
-  if (!doctorCanAccessPatient(consultationPatient, req.auth)) {
+  if (!canViewConsultationNotes(req.auth) && req.auth?.role !== "lab_tech") {
     return res.status(403).json({
-      error: doctorPatientAccessError(req.auth),
+      error: "Only doctors can view consultation notes.",
     });
   }
 

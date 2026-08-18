@@ -56,12 +56,14 @@ import { sanitizeLocationTagsForDisplay } from "../lib/locationTags.js";
 import {
   canEditConsultationNote,
   canManageConsultationNotes,
+  canViewConsultationNotes,
   isOperatorConsultationViewOnly,
 } from "../lib/consultationAccess.js";
 import { canBillPatientForUser } from "../lib/access.js";
 import {
   canDeleteLabReportAttachment,
   canManageLabReportsForUser,
+  canViewLabReportsForUser,
 } from "../lib/labReportAccess.js";
 import {
   formatAgeFromDateOfBirth,
@@ -1385,6 +1387,8 @@ function PatientProfilePage() {
   const [longTermReviewModalOpen, setLongTermReviewModalOpen] = useState(false);
   const [isSavingLongTermReview, setIsSavingLongTermReview] = useState(false);
   const canModifyClinicalData = user.role === "doctor" || user.role === "admin";
+  const canViewConsultations = canViewConsultationNotes(user);
+  const canViewLabReports = canViewLabReportsForUser(user);
   const canManageLabReports = canManageLabReportsForUser(user);
   const canManageConsultations =
     canManageConsultationNotes(user) && !isOperatorConsultationViewOnly(user);
@@ -1433,15 +1437,25 @@ function PatientProfilePage() {
     (user.role === "lab_tech" && canManageLabReports);
 
   const mobileProfileTabs = useMemo(
-    () => MOBILE_TABS.filter((tab) => tab.key !== "billing" || showPatientBillingUi),
-    [showPatientBillingUi],
+    () =>
+      MOBILE_TABS.filter((tab) => {
+        if (tab.key === "billing") return showPatientBillingUi;
+        if (tab.key === "notes") return canViewConsultations;
+        if (tab.key === "reports") return canViewLabReports;
+        return true;
+      }),
+    [showPatientBillingUi, canViewConsultations, canViewLabReports],
   );
 
   useEffect(() => {
-    if (activeTab === "billing" && !showPatientBillingUi) {
+    if (
+      (activeTab === "billing" && !showPatientBillingUi) ||
+      (activeTab === "notes" && !canViewConsultations) ||
+      (activeTab === "reports" && !canViewLabReports)
+    ) {
       setActiveTab("summary");
     }
-  }, [activeTab, showPatientBillingUi]);
+  }, [activeTab, showPatientBillingUi, canViewConsultations, canViewLabReports]);
 
   const refreshKey = useLiveRefreshKey();
 
@@ -1818,16 +1832,20 @@ function PatientProfilePage() {
     : "Unassigned";
   const patientContactNumber =
     data.patient.patient_contact_number || data.patient.contact_number || "Not recorded";
+  const consultations = data.consultations || [];
+  const labReports = data.labReports || [];
   const visibleConsultations = showAllConsultations
-    ? data.consultations
-    : data.consultations.slice(0, CONSULTATION_ROWS_LIMIT);
+    ? consultations
+    : consultations.slice(0, CONSULTATION_ROWS_LIMIT);
   const hiddenConsultationCount = Math.max(
-    data.consultations.length - visibleConsultations.length,
+    consultations.length - visibleConsultations.length,
     0,
   );
-  const lastVisitDate = data.consultations[0]?.consultation_date
-    ? formatDate(data.consultations[0].consultation_date)
-    : "Not recorded";
+  const lastVisitDate = consultations[0]?.consultation_date
+    ? formatDate(consultations[0].consultation_date)
+    : data.appointments[0]?.appointment_date
+      ? formatDate(data.appointments[0].appointment_date)
+      : "Not recorded";
   const profileAgeLabel = data.patient.date_of_birth
     ? formatAgeFromDateOfBirth(data.patient.date_of_birth)
     : "Not recorded";
@@ -2109,25 +2127,29 @@ function PatientProfilePage() {
 
           {activeTab === "summary" && (
             <div className="space-y-4 rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-4">
-              <div className="grid min-w-0 grid-cols-3 gap-2">
+              <div className={cx("grid min-w-0 gap-2", canViewConsultations || canViewLabReports ? "grid-cols-3" : "grid-cols-1")}>
                 <HighlightStat
                   compact
                   icon={CalendarClock}
                   label="Appointments"
                   value={data.appointments.length}
                 />
-                <HighlightStat
-                  compact
-                  icon={FileText}
-                  label="Consultations"
-                  value={data.consultations.length}
-                />
-                <HighlightStat
-                  compact
-                  icon={FlaskConical}
-                  label="Lab Reports"
-                  value={data.labReports.length}
-                />
+                {canViewConsultations ? (
+                  <HighlightStat
+                    compact
+                    icon={FileText}
+                    label="Consultations"
+                    value={consultations.length}
+                  />
+                ) : null}
+                {canViewLabReports ? (
+                  <HighlightStat
+                    compact
+                    icon={FlaskConical}
+                    label="Lab Reports"
+                    value={labReports.length}
+                  />
+                ) : null}
               </div>
 
               <SectionCard title="Patient details" variant="demographic">
@@ -2267,7 +2289,7 @@ function PatientProfilePage() {
             </div>
           )}
 
-          {activeTab === "notes" && (
+          {activeTab === "notes" && canViewConsultations && (
             <div className="space-y-4">
               {canModifyClinicalData && (
                 <button
@@ -2281,7 +2303,7 @@ function PatientProfilePage() {
                 </button>
               )}
 
-              {data.consultations.length ? (
+              {consultations.length ? (
                 <div className="space-y-3">
                   {visibleConsultations.map((consultation) => {
                     const isEditing = consultationEditorId === consultation.id;
@@ -2441,7 +2463,7 @@ function PatientProfilePage() {
                     );
                   })}
 
-                  {data.consultations.length > CONSULTATION_ROWS_LIMIT ? (
+                  {consultations.length > CONSULTATION_ROWS_LIMIT ? (
                     <div className="flex justify-center">
                       <button
                         type="button"
@@ -2465,7 +2487,7 @@ function PatientProfilePage() {
             </div>
           )}
 
-          {activeTab === "reports" && (
+          {activeTab === "reports" && canViewLabReports && (
             <div className="space-y-4">
               {(canModifyClinicalData || user.role === "lab_tech") && canManageLabReports && (
                 <button
@@ -2479,9 +2501,9 @@ function PatientProfilePage() {
                 </button>
               )}
 
-              {data.labReports.length ? (
+              {labReports.length ? (
                 <div className="space-y-4">
-                  {data.labReports.map((report) => (
+                  {labReports.map((report) => (
                     <article
                       key={report.id}
                       className="rounded-[26px] border border-slate-200/80 bg-white p-5"
@@ -2658,16 +2680,20 @@ function PatientProfilePage() {
               label="Appointments"
               value={data.appointments.length}
             />
-            <HighlightStat
-              icon={FlaskConical}
-              label="Medical & Lab Reports"
-              value={data.labReports.length}
-            />
-            <HighlightStat
-              icon={History}
-              label="Last visit date"
-              value={lastVisitDate}
-            />
+            {canViewLabReports ? (
+              <HighlightStat
+                icon={FlaskConical}
+                label="Medical & Lab Reports"
+                value={labReports.length}
+              />
+            ) : null}
+            {canViewConsultations ? (
+              <HighlightStat
+                icon={History}
+                label="Last visit date"
+                value={lastVisitDate}
+              />
+            ) : null}
           </div>
 
           <div className="grid items-stretch gap-2 xl:grid-cols-12">
@@ -2740,6 +2766,7 @@ function PatientProfilePage() {
             </SectionCard>
           </div>
 
+          {canViewConsultations ? (
           <SectionCard
             compact
             id="consultation-notes"
@@ -2759,7 +2786,7 @@ function PatientProfilePage() {
               ) : null
             }
           >
-            {data.consultations.length ? (
+            {consultations.length ? (
               <div className="space-y-2">
                 <div className="overflow-x-auto">
                   <table className="min-w-full table-fixed divide-y divide-slate-200 text-left">
@@ -2926,7 +2953,7 @@ function PatientProfilePage() {
                     </table>
                 </div>
 
-                {data.consultations.length > CONSULTATION_ROWS_LIMIT ? (
+                {consultations.length > CONSULTATION_ROWS_LIMIT ? (
                   <div className="flex justify-center">
                     <button
                       type="button"
@@ -2948,7 +2975,9 @@ function PatientProfilePage() {
               />
             )}
           </SectionCard>
+          ) : null}
 
+          {canViewLabReports ? (
           <SectionCard
             compact
             title="Medical & Lab Reports"
@@ -2966,9 +2995,9 @@ function PatientProfilePage() {
               ) : null
             }
           >
-            {data.labReports.length ? (
+            {labReports.length ? (
               <div className="grid gap-3 xl:grid-cols-2">
-                {data.labReports.map((report) => (
+                {labReports.map((report) => (
                   <article
                     key={report.id}
                     className="rounded-2xl border border-transparent bg-white p-4 shadow-md"
@@ -3054,6 +3083,7 @@ function PatientProfilePage() {
               </p>
             )}
           </SectionCard>
+          ) : null}
 
           {showPatientBillingUi ? (
             <SectionCard
@@ -3253,7 +3283,7 @@ function PatientProfilePage() {
       <LabReportModal
         open={Boolean(reportEditor)}
         report={reportEditor}
-        consultations={data.consultations}
+        consultations={consultations}
         user={user}
         onDeleteAttachment={handleDeleteLabReportAttachment}
         onDownloadAttachment={handleOpenLabReportAttachment}

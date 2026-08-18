@@ -1,5 +1,9 @@
-export function canManageLabReportsForUser(user) {
+export function canViewLabReportsForUser(user) {
   return ["admin", "doctor", "lab_tech"].includes(user?.role);
+}
+
+export function canManageLabReportsForUser(user) {
+  return canViewLabReportsForUser(user);
 }
 
 /** Lab report file attachments use `uploaded_by_user_id` as the uploader. */

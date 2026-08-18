@@ -6,7 +6,7 @@ const multer = require("multer");
 const { db, labReportAttachmentsDir } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { parsePatientReportMeta } = require("../lib/healthRecords");
-const { doctorCanAccessPatient, doctorPatientAccessError } = require("../lib/patientAccess");
+const { canViewLabMedicalReports } = require("../lib/patientAccess");
 
 const router = express.Router();
 
@@ -211,8 +211,8 @@ function ensureConsultationMatchesPatient(patientId, consultationId) {
   return { consultation };
 }
 
-function ensureDoctorPatientAccess(patient, auth) {
-  return doctorCanAccessPatient(patient, auth);
+function ensureLabReportAccess(auth) {
+  return canViewLabMedicalReports(auth);
 }
 
 function saveAttachments({ reportId, patientId, consultationId, files, uploadedByUserId }) {
@@ -280,6 +280,12 @@ function getAttachmentById(attachmentId) {
 }
 
 router.get("/patient-uploads", (req, res) => {
+  if (!ensureLabReportAccess(req.auth)) {
+    return res.status(403).json({
+      error: "You do not have access to Medical & Lab Reports.",
+    });
+  }
+
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
 
   const reports = db
@@ -322,9 +328,9 @@ router.get("/", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+  if (!ensureLabReportAccess(req.auth)) {
     return res.status(403).json({
-      error: "You can only access Medical & Lab Reports for patients assigned to your doctor profile.",
+      error: "You do not have access to Medical & Lab Reports.",
     });
   }
 
@@ -347,10 +353,10 @@ router.post("/", upload.array("attachments", MAX_ATTACHMENTS_PER_REQUEST), (req,
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+  if (!ensureLabReportAccess(req.auth)) {
     cleanupUploadedFiles(req.files);
     return res.status(403).json({
-      error: "You can only add Medical & Lab Reports for patients assigned to your doctor profile.",
+      error: "You do not have access to Medical & Lab Reports.",
     });
   }
 
@@ -440,10 +446,10 @@ router.put("/:id", upload.array("attachments", MAX_ATTACHMENTS_PER_REQUEST), (re
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+  if (!ensureLabReportAccess(req.auth)) {
     cleanupUploadedFiles(req.files);
     return res.status(403).json({
-      error: "You can only edit Medical & Lab Reports for patients assigned to your doctor profile.",
+      error: "You do not have access to Medical & Lab Reports.",
     });
   }
 
@@ -509,9 +515,9 @@ router.get("/attachments/:attachmentId/download", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+  if (!ensureLabReportAccess(req.auth)) {
     return res.status(403).json({
-      error: "You can only access Medical & Lab Report files for patients assigned to your doctor profile.",
+      error: "You do not have access to Medical & Lab Reports.",
     });
   }
 
@@ -556,9 +562,9 @@ router.delete("/attachments/:attachmentId", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
+  if (!ensureLabReportAccess(req.auth)) {
     return res.status(403).json({
-      error: "You can only access Medical & Lab Report files for patients assigned to your doctor profile.",
+      error: "You do not have access to Medical & Lab Reports.",
     });
   }
 

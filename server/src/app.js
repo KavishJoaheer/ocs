@@ -239,7 +239,7 @@ function createApp() {
     "/api/consultations",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "lab_tech", "accountant"],
+      GET: ["admin", "doctor", "lab_tech"],
       POST: ["admin", "doctor"],
       PUT: ["admin", "doctor"],
       DELETE: ["admin"],
@@ -261,7 +261,7 @@ function createApp() {
     "/api/lab-reports",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+      GET: ["admin", "doctor", "lab_tech"],
       POST: ["admin", "doctor", "lab_tech"],
       PUT: ["admin", "doctor", "lab_tech"],
       DELETE: ["admin"],

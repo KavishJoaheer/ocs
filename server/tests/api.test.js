@@ -2290,3 +2290,124 @@ test("admin and operators can assign a review doctor and time", async () => {
   assert.equal(Number(slot.doctor_id), Number(secondDoctor.id));
   assert.equal(String(slot.appointment_time).slice(0, 5), "10:30");
 });
+
+test("OCS VP directory is shared; only doctors see consultation notes and lab reports", async () => {
+  const doctorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "arun.dharee", password: "Welcome@123" },
+  });
+  assert.equal(doctorLogin.status, 200, JSON.stringify(doctorLogin.data));
+  const doctorToken = doctorLogin.data.token;
+  const viewingDoctorId = Number(doctorLogin.data.user?.doctor_id || 0);
+  assert.ok(viewingDoctorId, "expected a doctor_id on the staff user");
+
+  const otherDoctor = db
+    .prepare("SELECT id FROM doctors WHERE id != ? AND deleted_at IS NULL AND is_active = 1 LIMIT 1")
+    .get(viewingDoctorId);
+  assert.ok(otherDoctor?.id, "expected a second active doctor");
+
+  const stamp = Date.now();
+  const identifier = `STAFF-VPDIR-${stamp}`;
+  const patientId = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status, assigned_doctor_id,
+        consultation_notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created', ?, ?)
+    `)
+    .run(
+      `Vp Directory ${stamp}`,
+      "Vp",
+      "Directory",
+      identifier,
+      41,
+      "1985-02-02",
+      "M",
+      "57009911",
+      "57009911",
+      "9 Shared Street",
+      otherDoctor.id,
+      "Registration note: keep this clinical.",
+    ).lastInsertRowid;
+
+  const appointmentId = db
+    .prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, date('now'), '09:00', 'completed')
+    `)
+    .run(patientId, otherDoctor.id).lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, date('now'), ?)
+  `).run(appointmentId, patientId, otherDoctor.id, "Private consult: hypertension follow-up.");
+
+  db.prepare(`
+    INSERT INTO lab_reports (patient_id, report_title, report_date, report_details)
+    VALUES (?, ?, date('now'), ?)
+  `).run(patientId, "FBC", "Hb 13.2; keep this lab result private.");
+
+  const directory = await api("GET", `/api/patients?search=${encodeURIComponent(identifier)}&limit=15`, {
+    token: doctorToken,
+  });
+  assert.equal(directory.status, 200, JSON.stringify(directory.data));
+  const directoryIds = (directory.data.items || []).map((row) => Number(row.id));
+  assert.ok(directoryIds.includes(Number(patientId)), "doctors should see patients assigned to other doctors");
+
+  const doctorProfile = await api("GET", `/api/patients/${patientId}`, { token: doctorToken });
+  assert.equal(doctorProfile.status, 200, JSON.stringify(doctorProfile.data));
+  assert.equal(doctorProfile.data.consultations?.length > 0, true);
+  assert.match(String(doctorProfile.data.consultations[0].doctor_notes || ""), /hypertension/i);
+  assert.equal(doctorProfile.data.labReports?.length > 0, true);
+  assert.match(String(doctorProfile.data.labReports[0].report_details || ""), /Hb 13.2/i);
+  assert.match(String(doctorProfile.data.patient.consultation_notes || ""), /Registration note/i);
+
+  const operatorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(operatorLogin.status, 200, JSON.stringify(operatorLogin.data));
+  const operatorToken = operatorLogin.data.token;
+
+  const operatorDirectory = await api("GET", `/api/patients?search=${encodeURIComponent(identifier)}&limit=15`, {
+    token: operatorToken,
+  });
+  assert.equal(operatorDirectory.status, 200, JSON.stringify(operatorDirectory.data));
+  const operatorIds = (operatorDirectory.data.items || []).map((row) => Number(row.id));
+  assert.ok(operatorIds.includes(Number(patientId)), "operators should see the shared directory");
+  const operatorListRow = (operatorDirectory.data.items || []).find(
+    (row) => Number(row.id) === Number(patientId),
+  );
+  assert.equal(operatorListRow.consultation_notes, undefined);
+
+  const operatorProfile = await api("GET", `/api/patients/${patientId}`, { token: operatorToken });
+  assert.equal(operatorProfile.status, 200, JSON.stringify(operatorProfile.data));
+  assert.equal(operatorProfile.data.consultations?.length || 0, 0);
+  assert.equal(operatorProfile.data.labReports?.length || 0, 0);
+  assert.equal(operatorProfile.data.patient.consultation_notes, undefined);
+
+  const operatorLabs = await api("GET", `/api/lab-reports?patientId=${patientId}`, {
+    token: operatorToken,
+  });
+  assert.equal(operatorLabs.status, 403);
+
+  const labTechLogin = await api("POST", "/api/auth/login", {
+    body: { username: "labtech01", password: "Welcome@123" },
+  });
+  assert.equal(labTechLogin.status, 200, JSON.stringify(labTechLogin.data));
+  const labTechProfile = await api("GET", `/api/patients/${patientId}`, {
+    token: labTechLogin.data.token,
+  });
+  assert.equal(labTechProfile.status, 200, JSON.stringify(labTechProfile.data));
+  assert.equal(labTechProfile.data.consultations?.length || 0, 0);
+  assert.equal(labTechProfile.data.labReports?.length > 0, true);
+
+  const created = await api("POST", `/api/patients/${patientId}/consultations`, {
+    token: doctorToken,
+    body: {
+      consultation_date: "2026-08-18",
+      appointment_time: "11:15",
+      doctor_notes: "Covering doctor note on another doctor's patient.",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+});

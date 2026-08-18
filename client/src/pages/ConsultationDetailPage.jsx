@@ -17,7 +17,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
-import { canEditConsultationNote } from "../lib/consultationAccess.js";
+import { canEditConsultationNote, canViewConsultationNotes } from "../lib/consultationAccess.js";
 import {
   formatCurrency,
   formatDate,
@@ -44,7 +44,7 @@ function ConsultationDetailPage() {
   const editBaselineRef = useRef(null);
 
   const canEdit = consultation && canEditConsultationNote(user, consultation);
-  const canViewConsultationNotes = user.role === "admin" || user.role === "doctor";
+  const canViewNotes = canViewConsultationNotes(user);
   const refreshKey = useLiveRefreshKey();
   const hasUnsavedNote =
     isEditing &&
@@ -427,7 +427,7 @@ function ConsultationDetailPage() {
                 <SquarePen className="size-4" />
                 Edit consultation
               </button>
-            ) : canViewConsultationNotes && !isEditing ? (
+            ) : canViewNotes && !isEditing ? (
               <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 View only
               </span>

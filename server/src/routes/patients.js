@@ -25,7 +25,8 @@ const { parseBillingRow, toPagination } = require("../lib/utils");
 const {
   doctorCanAccessPatient,
   doctorPatientAccessError,
-  getDoctorCaseloadFilterSql,
+  canViewConsultationNotes,
+  canViewLabMedicalReports,
 } = require("../lib/patientAccess");
 
 const router = express.Router();
@@ -139,14 +140,14 @@ function parseBooleanField(value) {
   return value === true || value === 1 || value === "1" || value === "true";
 }
 
-function formatPatientRecord(patient) {
+function formatPatientRecord(patient, auth) {
   if (!patient) {
     return patient;
   }
 
   const reviewNote = String(patient.review_reason_note ?? "").trim();
 
-  return {
+  const record = {
     ...patient,
     is_subscribed: parseBooleanField(patient.is_subscribed),
     is_under_review: parseBooleanField(patient.is_under_review),
@@ -160,6 +161,12 @@ function formatPatientRecord(patient) {
     review_assigned_doctor_specialization: patient.review_assigned_doctor_specialization || "",
     link_status: String(patient.link_status ?? "staff_created").trim() || "staff_created",
   };
+
+  if (!canViewConsultationNotes(auth)) {
+    delete record.consultation_notes;
+  }
+
+  return record;
 }
 
 function normalizePatientPayload(body) {
@@ -948,8 +955,6 @@ router.get("/", (req, res) => {
     pageLimitCeiling,
   );
   const operatorUserId = req.auth?.role === "operator" ? Number(req.auth.id) : null;
-  const restrictDoctorList = req.auth?.role === "doctor";
-  const caseloadDoctorId = restrictDoctorList ? Number(req.auth.doctor_id || 0) : null;
 
   const filters = {
     search,
@@ -960,14 +965,12 @@ router.get("/", (req, res) => {
     underReview: underReview ? 1 : 0,
     subscribed: subscribed ? 1 : 0,
     pendingApproval: pendingApproval ? 1 : 0,
-    caseloadDoctorId,
   };
   const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
   const subscribedFilterSql = "AND (@subscribed = 0 OR p.is_subscribed = 1)";
   const pendingApprovalFilterSql =
     "AND (@pendingApproval = 0 OR (p.link_status IN ('pending_review', 'self_registered') AND EXISTS (SELECT 1 FROM patient_users pu WHERE pu.patient_id = p.id)))";
   const linkhamFilterSql = getLinkhamPatientFilterSql(req.auth?.role);
-  const doctorCaseloadSql = restrictDoctorList ? getDoctorCaseloadFilterSql("p") : "";
   const listOrderSql = underReview
     ? `ORDER BY
         CASE
@@ -1008,7 +1011,6 @@ router.get("/", (req, res) => {
         ${subscribedFilterSql}
         ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
-        ${doctorCaseloadSql}
     `)
     .get(filters).count;
 
@@ -1062,7 +1064,6 @@ router.get("/", (req, res) => {
         ${subscribedFilterSql}
         ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
-        ${doctorCaseloadSql}
       GROUP BY p.id, d.full_name, d.specialization
       ${listOrderSql}
       LIMIT @limit OFFSET @offset
@@ -1076,7 +1077,7 @@ router.get("/", (req, res) => {
         operator_edit_allowed: Boolean(patient.operator_edit_allowed),
         has_portal_account: Boolean(patient.has_portal_account),
         location_tags: getPatientLocationTags(patient.id),
-      }),
+      }, req.auth),
     ),
     pagination: {
       page,
@@ -1149,12 +1150,6 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
-    return res.status(403).json({
-      error: doctorPatientAccessError(req.auth),
-    });
-  }
-
   const appointments = db
     .prepare(`
       SELECT
@@ -1201,7 +1196,10 @@ router.get("/:id", (req, res) => {
     .all({ patientId })
     .map(parseBillingRow);
 
-  const labReports = getLabReportsByPatientId(patientId);
+  const labReports = canViewLabMedicalReports(req.auth)
+    ? getLabReportsByPatientId(patientId)
+    : [];
+  const visibleConsultations = canViewConsultationNotes(req.auth) ? consultations : [];
   const revisions = getPatientRevisions(patientId);
   const operatorAccess = getPatientOperatorAccess(patientId);
   const operatorOptions = req.auth.role === "admin" ? getOperatorOptions() : [];
@@ -1210,9 +1208,9 @@ router.get("/:id", (req, res) => {
     patient: formatPatientRecord({
       ...patient,
       location_tags: getPatientLocationTags(patientId),
-    }),
+    }, req.auth),
     appointments,
-    consultations,
+    consultations: visibleConsultations,
     bills,
     labReports,
     revisions,
@@ -1248,7 +1246,7 @@ router.patch("/:id/verify-link", (req, res) => {
     formatPatientRecord({
       ...getPatientById(patientId),
       location_tags: getPatientLocationTags(patientId),
-    }),
+    }, req.auth),
   );
 });
 
@@ -1335,7 +1333,7 @@ router.post("/:id/merge", (req, res) => {
     formatPatientRecord({
       ...getPatientById(targetId),
       location_tags: getPatientLocationTags(targetId),
-    }),
+    }, req.auth),
   );
 });
 
@@ -1413,7 +1411,7 @@ router.patch("/:id/long-term-review", (req, res) => {
     formatPatientRecord({
       ...getPatientById(patientId),
       location_tags: getPatientLocationTags(patientId),
-    }),
+    }, req.auth),
   );
 });
 
@@ -1501,7 +1499,7 @@ router.patch("/:id/review-assignment", (req, res) => {
     formatPatientRecord({
       ...getPatientById(patientId),
       location_tags: getPatientLocationTags(patientId),
-    }),
+    }, req.auth),
   );
 });
 
@@ -1659,12 +1657,6 @@ router.put("/:id", (req, res) => {
   if (req.auth.role === "operator" && !operatorMayEditPatient(patientId, req.auth)) {
     return res.status(403).json({
       error: "Operator edit access for this patient has expired or was not granted.",
-    });
-  }
-
-  if (req.auth.role !== "operator" && !ensureDoctorPatientAccess(existing, req.auth)) {
-    return res.status(403).json({
-      error: doctorPatientAccessError(req.auth),
     });
   }
 
@@ -1855,12 +1847,6 @@ router.post("/:id/consultations", (req, res) => {
 
   if (!patient) {
     return res.status(404).json({ error: "Patient not found." });
-  }
-
-  if (!ensureDoctorPatientAccess(patient, req.auth)) {
-    return res.status(403).json({
-      error: doctorPatientAccessError(req.auth),
-    });
   }
 
   const consultationDate = String(req.body.consultation_date ?? "").trim();

@@ -21,7 +21,6 @@ const {
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("../lib/utils");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
-const { doctorCanAccessPatient } = require("../lib/patientAccess");
 
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
@@ -2033,9 +2032,9 @@ router.post("/items/:id/actions", (req, res) => {
       `)
       .get(requestedPatientId);
 
-    if (!patientRow?.id || !doctorCanAccessPatient(patientRow, req.auth)) {
+    if (!patientRow?.id) {
       return res.status(404).json({
-        error: "Selected patient is not on your active caseload.",
+        error: "Selected patient was not found.",
       });
     }
 

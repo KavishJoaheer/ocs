@@ -234,8 +234,7 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
     }
   };
 
-  // Online: use the doctor's caseload list (assigned, review, visits), not
-  // assigned_doctor_id only. filter=my_assigned still pins assigned_doctor_id.
+  // Online: the shared OCS VP directory. filter=my_assigned still pins assigned_doctor_id.
   if (!isBrowserOffline() && doctorId) {
     try {
       const params = new URLSearchParams({

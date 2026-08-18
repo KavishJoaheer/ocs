@@ -54,6 +54,14 @@ function doctorPatientAccessError(auth) {
   return "You do not have access to this patient record.";
 }
 
+function canViewConsultationNotes(auth) {
+  return auth?.role === "admin" || auth?.role === "doctor";
+}
+
+function canViewLabMedicalReports(auth) {
+  return ["admin", "doctor", "lab_tech"].includes(auth?.role);
+}
+
 function getDoctorCaseloadFilterSql(alias = "p") {
   return `
     AND (
@@ -78,5 +86,7 @@ function getDoctorCaseloadFilterSql(alias = "p") {
 module.exports = {
   doctorCanAccessPatient,
   doctorPatientAccessError,
+  canViewConsultationNotes,
+  canViewLabMedicalReports,
   getDoctorCaseloadFilterSql,
 };
