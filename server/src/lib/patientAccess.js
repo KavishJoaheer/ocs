@@ -62,6 +62,10 @@ function canViewLabMedicalReports(auth) {
   return ["admin", "doctor", "lab_tech"].includes(auth?.role);
 }
 
+function canViewStaffBilling(auth) {
+  return ["admin", "doctor", "accountant"].includes(auth?.role);
+}
+
 function getDoctorCaseloadFilterSql(alias = "p") {
   return `
     AND (
@@ -88,5 +92,6 @@ module.exports = {
   doctorPatientAccessError,
   canViewConsultationNotes,
   canViewLabMedicalReports,
+  canViewStaffBilling,
   getDoctorCaseloadFilterSql,
 };

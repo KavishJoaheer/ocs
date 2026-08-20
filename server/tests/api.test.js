@@ -1767,6 +1767,80 @@ test("operator cannot permanently delete a patient", async () => {
   assert.ok(db.prepare("SELECT id FROM patients WHERE id = ?").get(patientId));
 });
 
+test("operators can edit a patient profile and reassign the doctor", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  const operatorToken = login.data.token;
+
+  const doctors = db
+    .prepare("SELECT id FROM doctors WHERE deleted_at IS NULL AND is_active = 1 ORDER BY id ASC LIMIT 2")
+    .all();
+  assert.ok(doctors.length >= 2, "expected two active doctors");
+  const patientId = db
+    .prepare(`
+      INSERT INTO patients (
+        full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+        contact_number, patient_contact_number, address, link_status, assigned_doctor_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staff_created', ?)
+    `)
+    .run(
+      "Operator Reassign Patient",
+      "Operator",
+      "Reassign",
+      `STAFF-OP-REASSIGN-${Date.now()}`,
+      36,
+      "1990-01-01",
+      "F",
+      "57007777",
+      "57007777",
+      "9 Directory Street",
+      doctors[0].id,
+    ).lastInsertRowid;
+
+  const updated = await api("PUT", `/api/patients/${patientId}`, {
+    token: operatorToken,
+    body: {
+      first_name: "Reassigned",
+      last_name: "Patient",
+      gender: "F",
+      date_of_birth: "1990-01-01",
+      patient_contact_number: "57007777",
+      address: "12 Operator Street",
+      assigned_doctor_id: doctors[1].id,
+      status: "active",
+    },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+  assert.equal(updated.data.first_name, "Reassigned");
+  assert.equal(updated.data.address, "12 Operator Street");
+  assert.equal(Number(updated.data.assigned_doctor_id), Number(doctors[1].id));
+});
+
+test("operators can delete warehouse stock items", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  const operatorToken = login.data.token;
+
+  const itemName = `Operator Delete Stock ${Date.now()}`;
+  const itemId = db
+    .prepare(`
+      INSERT INTO inventory (
+        item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
+        stock_scope
+      )
+      VALUES (?, 4, 0, 'unit', 8, 15, 'ocs')
+    `)
+    .run(itemName).lastInsertRowid;
+
+  const removed = await api("DELETE", `/api/inventory/items/${itemId}`, { token: operatorToken });
+  assert.equal(removed.status, 204, JSON.stringify(removed.data));
+  assert.equal(db.prepare("SELECT id FROM inventory WHERE id = ?").get(itemId), undefined);
+});
+
 test("admin can permanently delete a patient from recently deleted", async () => {
   const patientId = insertDirectoryPatient("AdminPurge");
 
@@ -2110,12 +2184,6 @@ test("doctors can flag long-term review only for caseload patients", async () =>
   assert.equal(operatorUpdated.status, 200, JSON.stringify(operatorUpdated.data));
   assert.equal(operatorUpdated.data.review_due_date, "2026-09-15");
 
-  const operatorProfileEdit = await api("PUT", `/api/patients/${caseloadId}`, {
-    token: operatorToken,
-    body: { first_name: "ShouldNotSave" },
-  });
-  assert.equal(operatorProfileEdit.status, 403, JSON.stringify(operatorProfileEdit.data));
-
   const adminFlag = await api("PATCH", `/api/patients/${outsiderId}/long-term-review`, {
     token: adminToken,
     body: {
@@ -2349,15 +2417,27 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
     `)
     .run(patientId, otherDoctor.id).lastInsertRowid;
 
-  db.prepare(`
-    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
-    VALUES (?, ?, ?, date('now'), ?)
-  `).run(appointmentId, patientId, otherDoctor.id, "Private consult: hypertension follow-up.");
+  const consultationId = db
+    .prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, date('now'), ?)
+    `)
+    .run(appointmentId, patientId, otherDoctor.id, "Private consult: hypertension follow-up.")
+    .lastInsertRowid;
 
   db.prepare(`
     INSERT INTO lab_reports (patient_id, report_title, report_date, report_details)
     VALUES (?, ?, date('now'), ?)
   `).run(patientId, "FBC", "Hb 13.2; keep this lab result private.");
+
+  db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+    VALUES (?, ?, ?, 500, 'unpaid')
+  `).run(
+    consultationId,
+    patientId,
+    JSON.stringify([{ description: "Consultation", amount: 500 }]),
+  );
 
   const directory = await api("GET", `/api/patients?search=${encodeURIComponent(identifier)}&limit=15`, {
     token: doctorToken,
@@ -2373,6 +2453,7 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
   assert.equal(doctorProfile.data.labReports?.length > 0, true);
   assert.match(String(doctorProfile.data.labReports[0].report_details || ""), /Hb 13.2/i);
   assert.match(String(doctorProfile.data.patient.consultation_notes || ""), /Registration note/i);
+  assert.equal(doctorProfile.data.bills?.length > 0, true);
 
   const operatorLogin = await api("POST", "/api/auth/login", {
     body: { username: "operator01", password: "Welcome@123" },
@@ -2395,7 +2476,12 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
   assert.equal(operatorProfile.status, 200, JSON.stringify(operatorProfile.data));
   assert.equal(operatorProfile.data.consultations?.length || 0, 0);
   assert.equal(operatorProfile.data.labReports?.length || 0, 0);
+  assert.equal(operatorProfile.data.bills?.length || 0, 0);
   assert.equal(operatorProfile.data.patient.consultation_notes, undefined);
+  assert.equal(operatorProfile.data.operator_can_edit, true);
+
+  const operatorBilling = await api("GET", "/api/billing", { token: operatorToken });
+  assert.equal(operatorBilling.status, 403, JSON.stringify(operatorBilling.data));
 
   const operatorLabs = await api("GET", `/api/lab-reports?patientId=${patientId}`, {
     token: operatorToken,

@@ -27,6 +27,7 @@ const {
   doctorPatientAccessError,
   canViewConsultationNotes,
   canViewLabMedicalReports,
+  canViewStaffBilling,
 } = require("../lib/patientAccess");
 
 const router = express.Router();
@@ -646,7 +647,7 @@ function resolveAssignedDoctorIdForUpdate(existing, payload, auth) {
     ? Number(existing.assigned_doctor_id)
     : null;
 
-  if (auth.role !== "admin") {
+  if (auth.role !== "admin" && auth.role !== "operator") {
     return {
       assignedDoctorId: existingAssignedDoctorId,
       assignedDoctorName: existing.assigned_doctor_name || "",
@@ -1181,20 +1182,22 @@ router.get("/:id", (req, res) => {
     `)
     .all({ patientId });
 
-  const bills = db
-    .prepare(`
-      SELECT
-        b.*,
-        c.consultation_date,
-        d.full_name AS doctor_name
-      FROM billing b
-      JOIN consultations c ON c.id = b.consultation_id
-      JOIN doctors d ON d.id = c.doctor_id
-      WHERE b.patient_id = @patientId
-      ORDER BY b.created_at DESC
-    `)
-    .all({ patientId })
-    .map(parseBillingRow);
+  const bills = canViewStaffBilling(req.auth)
+    ? db
+        .prepare(`
+          SELECT
+            b.*,
+            c.consultation_date,
+            d.full_name AS doctor_name
+          FROM billing b
+          JOIN consultations c ON c.id = b.consultation_id
+          JOIN doctors d ON d.id = c.doctor_id
+          WHERE b.patient_id = @patientId
+          ORDER BY b.created_at DESC
+        `)
+        .all({ patientId })
+        .map(parseBillingRow)
+    : [];
 
   const labReports = canViewLabMedicalReports(req.auth)
     ? getLabReportsByPatientId(patientId)
@@ -1216,7 +1219,7 @@ router.get("/:id", (req, res) => {
     revisions,
     operatorAccess,
     operatorOptions,
-    operator_can_edit: operatorMayEditPatient(patientId, req.auth),
+    operator_can_edit: req.auth.role === "operator",
   });
 });
 
@@ -1646,12 +1649,6 @@ router.put("/:id", (req, res) => {
 
   if (!existing) {
     return res.status(404).json({ error: "Patient not found." });
-  }
-
-  if (req.auth.role === "operator" && !operatorMayEditPatient(patientId, req.auth)) {
-    return res.status(403).json({
-      error: "Operator edit access for this patient has expired or was not granted.",
-    });
   }
 
   const payload = normalizePatientPayload(req.body);

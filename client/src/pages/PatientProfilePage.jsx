@@ -1405,13 +1405,7 @@ function PatientProfilePage() {
     if (!data) {
       return false;
     }
-    if (["admin", "doctor"].includes(user.role)) {
-      return true;
-    }
-    if (user.role === "operator") {
-      return Boolean(data.operator_can_edit);
-    }
-    return false;
+    return ["admin", "doctor", "operator"].includes(user.role);
   }, [data, user.role]);
 
   useEffect(() => {
@@ -1466,7 +1460,7 @@ function PatientProfilePage() {
       try {
         const [response, doctorOptions] = await Promise.all([
           api.get(`/patients/${id}`),
-          user.role === "admin" ? api.get("/doctors") : Promise.resolve([]),
+          user.role === "admin" || user.role === "operator" ? api.get("/doctors") : Promise.resolve([]),
         ]);
 
         if (!ignore) {
@@ -1490,7 +1484,7 @@ function PatientProfilePage() {
     return () => {
       ignore = true;
     };
-  }, [id, refreshKey]);
+  }, [id, refreshKey, user.role]);
 
   async function handleSaveLabReport(payload) {
     if (!data?.patient?.id) {
@@ -1624,7 +1618,7 @@ function PatientProfilePage() {
     try {
       const [response, doctorOptions] = await Promise.all([
         api.get(`/patients/${id}`),
-        user.role === "admin" ? api.get("/doctors") : Promise.resolve(doctors),
+        user.role === "admin" || user.role === "operator" ? api.get("/doctors") : Promise.resolve(doctors),
       ]);
 
       setData(response);
@@ -3270,7 +3264,7 @@ function PatientProfilePage() {
 
       <PatientFormModal
         canEditPatientIdentifier={user.role === "admin"}
-        canSelectAssignedDoctor={user.role === "admin"}
+        canSelectAssignedDoctor={user.role === "admin" || user.role === "operator"}
         doctors={doctors}
         isSaving={isSavingPatient}
         mode="edit"

@@ -20,7 +20,6 @@ const InventoryPage = lazy(() => import("./pages/InventoryPage.jsx"));
 const SupplyRequestsPage = lazy(() => import("./pages/SupplyRequestsPage.jsx"));
 const LabWorkspacePage = lazy(() => import("./pages/LabWorkspacePage.jsx"));
 const LiveReportPage = lazy(() => import("./pages/LiveReportPage.jsx"));
-const OperatorBillingStatusPage = lazy(() => import("./pages/OperatorBillingStatusPage.jsx"));
 const OperatorWorkspacePage = lazy(() => import("./pages/OperatorWorkspacePage.jsx"));
 const LongTermReviewQueuePage = lazy(() => import("./pages/LongTermReviewQueuePage.jsx"));
 const PatientProfilePage = lazy(() => import("./pages/PatientProfilePage.jsx"));
@@ -127,7 +126,7 @@ function App() {
           <Route element={<ProtectedRoute roles={["operator"]} />}>
             <Route
               path="/operator/billing-status"
-              element={<OperatorBillingStatusPage />}
+              element={<Navigate to="/" replace />}
             />
             <Route
               path="/operator/current-week-roster"
@@ -147,7 +146,7 @@ function App() {
             />
             <Route
               path="/operator/pending-payment"
-              element={<OperatorWorkspacePage workspaceKey="pending-payment" />}
+              element={<Navigate to="/" replace />}
             />
             <Route path="/operator/long-term-review" element={<LongTermReviewQueuePage />} />
           </Route>

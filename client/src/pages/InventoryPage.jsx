@@ -1,14 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle,
   Calendar,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   ClipboardList,
-  Clock,
   Download,
   Inbox,
   Minus,
@@ -318,59 +315,6 @@ function SummaryCard({ title, value, tone = "teal", hint, onClick, active = fals
     );
   }
   return <div className={className}>{body}</div>;
-}
-
-function OperatorInventoryLogisticsGrid({
-  lowStockCount,
-  nearExpiryCount,
-  showLowStockOnly,
-  showNearExpiryOnly,
-  onToggleLowStock,
-  onToggleNearExpiry,
-}) {
-  return (
-    <div className="mb-6 grid w-full grid-cols-1 gap-6 md:grid-cols-2">
-      <button
-        type="button"
-        onClick={onToggleLowStock}
-        className={cx(
-          "flex w-full items-center justify-between rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-6 text-left shadow-sm transition hover:shadow-md",
-          showLowStockOnly && "ring-2 ring-[#8fa382]/40",
-        )}
-      >
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#8fa382]">Low Stock Alerts</p>
-          <p className="mt-1.5 text-3xl font-black tabular-nums text-[#3b4733]">{lowStockCount}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-2xl bg-[#e6ebd9] p-3 text-[#5a7353]">
-            <AlertTriangle className="size-6" strokeWidth={2.25} aria-hidden />
-          </div>
-          <ChevronRight className="size-5 text-[#8fa382]" aria-hidden />
-        </div>
-      </button>
-
-      <button
-        type="button"
-        onClick={onToggleNearExpiry}
-        className={cx(
-          "flex w-full items-center justify-between rounded-2xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-6 text-left shadow-sm transition hover:shadow-md",
-          showNearExpiryOnly && "ring-2 ring-[#d9744b]/35",
-        )}
-      >
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#ba5a32]">Near Expiry Items</p>
-          <p className="mt-1.5 text-3xl font-black tabular-nums text-[#6e2f14]">{nearExpiryCount}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-2xl bg-[#f5e3d7] p-3 text-[#ba5a32]">
-            <Clock className="size-6" strokeWidth={2.25} aria-hidden />
-          </div>
-          <ChevronRight className="size-5 text-[#ba5a32]" aria-hidden />
-        </div>
-      </button>
-    </div>
-  );
 }
 
 function operatorItemFormState(folderId) {
@@ -2984,20 +2928,20 @@ function MobileDoctorBagActions({
   restockOnly = false,
 }) {
   const restockBtn =
-    "inline-flex h-8 shrink-0 items-center rounded-xl bg-[#2d8f98] px-2.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40";
+    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400";
   const useBtn =
-    "inline-flex h-8 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40";
+    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm font-bold text-slate-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400";
 
   if (restockOnly) {
     return (
-      <button type="button" disabled={restockDisabled} onClick={onRestock} className={restockBtn}>
+      <button type="button" disabled={restockDisabled} onClick={onRestock} className={`${restockBtn} w-full`}>
         Restock
       </button>
     );
   }
 
   return (
-    <div className="flex shrink-0 flex-col gap-1">
+    <div className="grid w-full grid-cols-2 gap-2">
       <button type="button" disabled={useDisabled} onClick={onUse} className={useBtn}>
         Use
       </button>
@@ -3015,33 +2959,44 @@ function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock,
   const qtyTone = low ? "text-rose-700" : "text-slate-900";
 
   return (
-    <div className="flex min-h-[72px] items-center justify-between rounded-2xl bg-white p-4">
-      <div className="flex max-w-[68%] min-w-0 items-center gap-3">
+    <div className="flex flex-col gap-3 rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex min-w-0 items-start gap-2.5">
         <span
           className={cx(
-            "inline-block h-2 w-2 shrink-0 rounded-full",
+            "mt-1.5 inline-block size-2.5 shrink-0 rounded-full",
             low ? "bg-rose-500" : "bg-teal-500",
           )}
           aria-hidden
         />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-bold tracking-wide text-slate-700">{item.item_name}</span>
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-[15px] font-bold leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
+            {item.item_name}
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
             <span>
               {quantityLabel}{" "}
               <span className={cx("font-bold tabular-nums", qtyTone)}>
                 {currentQuantity} / {parLevel}
               </span>
             </span>
-            <span className="text-slate-300">·</span>
+            <span className="px-1.5 text-slate-300" aria-hidden>
+              ·
+            </span>
             <span className={!item.expiry_date ? "text-slate-400" : ""}>
               {formatInventoryExpiry(item.expiry_date)}
             </span>
-          </div>
+          </p>
         </div>
       </div>
       {actions}
     </div>
+  );
+}
+
+function mobileBagChipClass(active) {
+  return cx(
+    "shrink-0 select-none whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold",
+    active ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700",
   );
 }
 
@@ -3070,110 +3025,87 @@ function MobileDoctorBagLayout({
   bagItemCount = 0,
 }) {
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-4 py-3">
-      <header className="flex items-start justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight text-ocs-slate">
-          {doctorViewIsOcs ? "OCS depot" : "My bag"}
-        </h1>
+    <div className="mx-auto flex w-full min-w-0 max-w-md flex-col gap-2.5 bg-slate-50">
+      <header className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 rounded-2xl bg-slate-200/80 p-1">
+          {DOCTOR_MOBILE_STOCK_SCOPES.map((scope) => (
+            <button
+              key={scope.id}
+              type="button"
+              onClick={() => onDoctorContextChange(scope.id)}
+              className={cx(
+                "min-h-10 min-w-0 flex-1 rounded-xl px-2 text-sm font-bold transition",
+                doctorContext === scope.id ? "bg-[#2d8f98] text-white shadow-sm" : "text-slate-600",
+              )}
+            >
+              {scope.label}
+            </button>
+          ))}
+        </div>
         {!doctorViewIsOcs ? (
           <button
             type="button"
             onClick={onOpenRestockInventory}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3.5 py-2.5 text-xs font-bold text-white"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
           >
-            <Truck className="size-4" />
-            Restock{doctorRestockCandidates.length ? ` (${doctorRestockCandidates.length})` : ""}
+            <Truck className="size-4 shrink-0" />
+            Fill{doctorRestockCandidates.length ? ` ${doctorRestockCandidates.length}` : ""}
           </button>
         ) : null}
       </header>
 
-      <div className="flex gap-2">
-        {DOCTOR_MOBILE_STOCK_SCOPES.map((scope) => (
-          <button
-            key={scope.id}
-            type="button"
-            onClick={() => onDoctorContextChange(scope.id)}
-            className={cx(
-              "min-h-11 flex-1 rounded-2xl px-3 py-2.5 text-sm font-bold transition",
-              doctorContext === scope.id
-                ? "bg-[#2d8f98] text-white"
-                : "border border-slate-100 bg-white text-slate-500",
-            )}
-          >
-            {scope.label}
-          </button>
-        ))}
-      </div>
-
-      <label className="relative block w-full">
-        <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+      <label className="relative block w-full min-w-0">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by item name"
-          className="h-12 w-full rounded-2xl border border-slate-100 bg-white pl-11 pr-4 text-sm outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98]"
+          placeholder="Search items"
+          enterKeyHint="search"
+          autoCapitalize="none"
+          autoCorrect="off"
+          className="h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white pl-10 pr-3 text-base outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-[#2d8f98]"
         />
       </label>
 
-      {folders.length ? (
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="ocs-h-scroll pb-0.5">
+        <button
+          type="button"
+          onClick={() => onSelectedViewChange("all")}
+          className={mobileBagChipClass(selectedView === "all" || selectedView === "")}
+        >
+          All ({bagItemCount})
+        </button>
+        {folders.map((folder) => (
           <button
+            key={folder.id}
             type="button"
-            onClick={() => onSelectedViewChange("all")}
-            className={cx(
-              "shrink-0 rounded-2xl px-3.5 py-2 text-xs font-bold transition",
-              selectedView === "all" ? "bg-[#2d8f98] text-white" : "border border-slate-100 bg-white text-slate-700",
-            )}
+            onClick={() => onSelectedViewChange(String(folder.id))}
+            className={mobileBagChipClass(selectedView === String(folder.id))}
           >
-            All ({bagItemCount})
+            {folder.name} ({folderCounts?.get(String(folder.id)) || 0})
           </button>
-          {folders.map((folder) => (
-            <button
-              key={folder.id}
-              type="button"
-              onClick={() => onSelectedViewChange(String(folder.id))}
-              className={cx(
-                "shrink-0 rounded-2xl px-3.5 py-2 text-xs font-bold transition",
-                selectedView === String(folder.id)
-                  ? "bg-[#2d8f98] text-white"
-                  : "border border-slate-100 bg-white text-slate-700",
-              )}
-            >
-              {folder.name} ({folderCounts?.get(String(folder.id)) || 0})
+        ))}
+        {!doctorViewIsOcs ? (
+          <>
+            <button type="button" onClick={onToggleLowStock} className={mobileBagChipClass(showLowStockOnly)}>
+              Below min
             </button>
-          ))}
-        </div>
-      ) : null}
+            <button
+              type="button"
+              onClick={onToggleMissingExpiry}
+              className={mobileBagChipClass(showMissingExpiryOnly)}
+            >
+              Missing expiry
+            </button>
+          </>
+        ) : null}
+        <span className="w-1 shrink-0" aria-hidden />
+      </div>
 
-      {!doctorViewIsOcs ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onToggleLowStock}
-            className={cx(
-              "rounded-2xl px-3 py-1.5 text-xs font-semibold",
-              showLowStockOnly ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700",
-            )}
-          >
-            Below min
-          </button>
-          <button
-            type="button"
-            onClick={onToggleMissingExpiry}
-            className={cx(
-              "rounded-2xl px-3 py-1.5 text-xs font-semibold",
-              showMissingExpiryOnly ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700",
-            )}
-          >
-            Missing expiry
-          </button>
-        </div>
-      ) : null}
-
-      <div className="flex min-h-0 flex-1 flex-col pb-8">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {mobileBagPagedItems.length ? (
           <>
-            <div className="mt-2 flex w-full flex-col gap-3.5">
+            <div className="flex w-full min-w-0 flex-col gap-2.5">
               {mobileBagPagedItems.map((item) => {
                 const currentQuantity = Number(item.quantity || 0);
 
@@ -3204,7 +3136,7 @@ function MobileDoctorBagLayout({
             </div>
 
             {mobileBagTotalPages > 1 ? (
-              <div className="flex items-center justify-between gap-3 pt-3">
+              <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-sm text-slate-500">
                   Page {currentPage} of {mobileBagTotalPages}
                 </p>
@@ -3213,7 +3145,7 @@ function MobileDoctorBagLayout({
                     type="button"
                     disabled={currentPage <= 1}
                     onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
                   >
                     Previous
                   </button>
@@ -3221,7 +3153,7 @@ function MobileDoctorBagLayout({
                     type="button"
                     disabled={currentPage >= mobileBagTotalPages}
                     onClick={() => setCurrentPage((prev) => Math.min(mobileBagTotalPages, prev + 1))}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
                   >
                     Next
                   </button>
@@ -3301,6 +3233,7 @@ export default function InventoryPage() {
   const isOperator = user.role === "operator";
   const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
+  const canUseAdminInventory = isAdmin || isOperator;
   const folders = data?.folders || [];
   const pendingStagingCount = useMemo(
     () => (Array.isArray(data?.staging) ? data.staging.filter((row) => row.status === "pending").length : 0),
@@ -3327,7 +3260,7 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
-  const showDeleteStockItem = (canManageOcs && contextIsOcs) || (isAdmin && !contextIsOcs && !isMobile);
+  const showDeleteStockItem = (canManageOcs && contextIsOcs) || (canUseAdminInventory && !contextIsOcs && !isMobile);
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
     () => getInventoryDateRange(adminPeriodPreset, adminPeriodAnchor),
@@ -3348,7 +3281,7 @@ export default function InventoryPage() {
         contextDoctorId: selectedContextDoctorId,
         doctorContext,
         includeDoctorContext: isDoctor,
-        includeAdminFilters: isAdmin,
+        includeAdminFilters: canUseAdminInventory,
         adminPeriodRange,
         activityStaffUserId,
       }),
@@ -3356,7 +3289,7 @@ export default function InventoryPage() {
       selectedContextDoctorId,
       doctorContext,
       isDoctor,
-      isAdmin,
+      canUseAdminInventory,
       adminPeriodRange,
       activityStaffUserId,
     ],
@@ -3459,7 +3392,7 @@ export default function InventoryPage() {
           contextDoctorId,
           doctorContext: nextDoctorContext,
           includeDoctorContext: isDoctor,
-          includeAdminFilters: isAdmin,
+          includeAdminFilters: canUseAdminInventory,
           adminPeriodRange,
           activityStaffUserId,
         })}`,
@@ -3473,7 +3406,7 @@ export default function InventoryPage() {
     }
   }
 
-  const liveActivityStaffFilterProps = isAdmin
+  const liveActivityStaffFilterProps = canUseAdminInventory
     ? {
         showStaffFilters: true,
         staffOptions: data?.activity_staff || [],
@@ -3534,7 +3467,7 @@ export default function InventoryPage() {
   }, [mobileDeductItem, stockOut, user?.id, user?.doctor_id, user?.role]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canUseAdminInventory) return;
     load(selectedContextDoctorId, doctorContext, { silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminPeriodPreset, adminPeriodAnchor, activityStaffUserId]);
@@ -3813,7 +3746,7 @@ export default function InventoryPage() {
   }
 
   function downloadAdminStockExcel() {
-    if (!isAdmin) return;
+    if (!canUseAdminInventory) return;
     if (!sortedItems.length) {
       toast.error("No stock rows match the current filters.");
       return;
@@ -4522,7 +4455,7 @@ export default function InventoryPage() {
             </button>
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {isAdmin ? (
+              {canUseAdminInventory ? (
                 <>
                   <button
                     type="button"
@@ -4547,22 +4480,7 @@ export default function InventoryPage() {
         }
       />
 
-      {isOperator ? (
-        <OperatorInventoryLogisticsGrid
-          lowStockCount={Number(summary.low_stock_count || 0)}
-          nearExpiryCount={Number(summary.near_expiry_count || 0)}
-          showLowStockOnly={showLowStockOnly}
-          showNearExpiryOnly={showNearExpiryOnly}
-          onToggleLowStock={() => {
-            setShowLowStockOnly((prev) => !prev);
-            setShowNearExpiryOnly(false);
-          }}
-          onToggleNearExpiry={() => {
-            setShowNearExpiryOnly((prev) => !prev);
-            setShowLowStockOnly(false);
-          }}
-        />
-      ) : isAdmin ? (
+      {canUseAdminInventory ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <SummaryCard title="Warehouse value" value={formatRupees(summary.total_amount_rs || 0)} />
           <SummaryCard
@@ -4629,7 +4547,7 @@ export default function InventoryPage() {
             { id: "stock", label: "Stock" },
             { id: "shipments", label: "Shipments", badge: pendingStagingCount },
             { id: "count", label: "Count" },
-            ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
+            ...(canUseAdminInventory ? [{ id: "bags", label: "Bags" }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -4740,17 +4658,7 @@ export default function InventoryPage() {
                 className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
               />
             </label>
-            {isOperator && contextIsOcs ? (
-              <button
-                type="button"
-                onClick={() => setOperatorAddOpen(true)}
-                className="bg-teal-600 text-white text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-teal-700 transition-colors shadow-sm flex items-center gap-1.5 ml-auto shrink-0"
-              >
-                <Plus className="size-3.5" />
-                Add New Item
-              </button>
-            ) : null}
-            {isAdmin && contextIsOcs ? (
+            {canUseAdminInventory && contextIsOcs ? (
               <button
                 type="button"
                 onClick={() => setEditor({ item: null })}
@@ -5001,7 +4909,7 @@ export default function InventoryPage() {
       </SectionCard>
       ) : null}
 
-      {isDoctor ? null : isAdmin && logisticsTab === "bags" ? (
+      {isDoctor ? null : canUseAdminInventory && logisticsTab === "bags" ? (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -5118,7 +5026,7 @@ export default function InventoryPage() {
         />
         </div>
         </div>
-      ) : !isOperator && !isAdmin ? (
+      ) : !canUseAdminInventory ? (
         <div className="hidden md:block">
           <LiveActivitySection movements={parsedMovements} />
         </div>

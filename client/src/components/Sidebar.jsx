@@ -111,12 +111,6 @@ const navItems = [
     roles: ["admin", "doctor"],
   },
   {
-    to: "/operator/billing-status",
-    label: "Billing status",
-    icon: CreditCard,
-    roles: ["operator"],
-  },
-  {
     to: "/billing",
     label: "Billing",
     icon: CreditCard,

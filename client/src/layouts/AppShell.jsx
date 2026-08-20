@@ -184,6 +184,7 @@ function AppShell() {
     location.pathname === "/billing" || location.pathname === "/admin/finance";
   const isLiveReport = location.pathname === "/live-report";
   const isVisitRequests = location.pathname === "/visit-requests";
+  const inventoryDoctorMobile = isMobile && isInventory && userRole === "doctor";
   const hideDesktopTopHeader =
     !isMobile &&
     (isPatientProfile ||
@@ -298,7 +299,11 @@ function AppShell() {
           ) : null}
 
           <div
-            className={`ocs-page w-full min-w-0 max-w-full overflow-x-hidden overscroll-x-none px-4 py-3 sm:px-6 md:px-5 md:py-6 lg:px-8 ${usesCompactDesktopPagePadding ? "lg:py-6" : "lg:py-8"}`}
+            className={`ocs-page w-full min-w-0 max-w-full px-4 sm:px-6 md:px-5 md:py-6 lg:px-8 ${
+              inventoryDoctorMobile
+                ? "overflow-x-visible py-2"
+                : "overflow-x-hidden overscroll-x-none py-3"
+            } ${usesCompactDesktopPagePadding ? "lg:py-6" : "lg:py-8"}`}
             style={{
               paddingBottom: `max(1.5rem, var(--sab))`,
               paddingLeft: `max(1rem, var(--sal))`,

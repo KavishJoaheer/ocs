@@ -265,7 +265,7 @@ function StockActivityPage() {
         eyebrow="Inventory"
         title="Stock history"
         actions={
-          user?.role === "admin" ? (
+          user?.role === "admin" || user?.role === "operator" ? (
             <button
               type="button"
               onClick={handleExportCsv}

@@ -20,7 +20,7 @@ const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilte
 
 const router = express.Router();
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
-const BILLING_READ_ROLES = new Set(["admin", "doctor", "accountant", "operator"]);
+const BILLING_READ_ROLES = new Set(["admin", "doctor", "accountant"]);
 const BILLING_WRITE_ROLES = new Set(["admin", "doctor", "accountant"]);
 
 router.use((req, res, next) => {

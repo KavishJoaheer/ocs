@@ -954,12 +954,6 @@ function PatientsPage() {
                     Permanent delete removes the patient and linked clinical records.
                   </div>
                 ) : null}
-
-                {user.role === "operator" ? (
-                  <div className="rounded-[24px] border border-sky-100 bg-sky-50/75 px-4 py-3 text-sm text-sky-900">
-                    Operators can add and update patient records. Only admins can delete patients.
-                  </div>
-                ) : null}
               </div>
             ) : (
               <div className="mb-3 space-y-3">
@@ -976,11 +970,6 @@ function PatientsPage() {
                 ) : null}
                 {subscriberFilterBadge}
                 {myAssignedFilterBadge}
-                {user.role === "operator" ? (
-                  <div className="rounded-[20px] border border-sky-100 bg-sky-50/75 px-3 py-2.5 text-sm text-sky-900">
-                    Operators can add and update patient records. Only admins can delete patients.
-                  </div>
-                ) : null}
               </div>
             )}
 
@@ -1569,7 +1558,7 @@ function PatientsPage() {
 
       <PatientFormModal
         canEditPatientIdentifier={canEditPatientIdentifier}
-        canSelectAssignedDoctor={user.role === "admin"}
+        canSelectAssignedDoctor={user.role === "admin" || user.role === "operator"}
         doctors={doctors}
         isSaving={isSaving}
         mode={editor?.mode}

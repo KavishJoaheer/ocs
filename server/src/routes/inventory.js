@@ -28,12 +28,16 @@ const router = express.Router();
 const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
 const NEAR_EXPIRY_DAYS = 90;
 
+function isWarehouseManager(role) {
+  return role === "admin" || role === "operator";
+}
+
 router.get("/stream", (req, res) => {
   handleInventoryStream(req, res);
 });
 
 router.post("/resync-broadcast", (req, res) => {
-  if (req.auth.role !== "admin") {
+  if (!isWarehouseManager(req.auth.role)) {
     return res.status(403).json({ error: "Only administrators can broadcast inventory resync." });
   }
   const result = publishInventoryResyncBroadcast();
@@ -772,7 +776,7 @@ function summarize(items, doctorId = null) {
 }
 
 function stripFinancialSummaryFields(summary, role) {
-  if (!summary || role === "admin" || role === "accountant") {
+  if (!summary || isWarehouseManager(role) || role === "accountant") {
     return summary;
   }
 
@@ -805,7 +809,7 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
   const filterActorRole = String(activityFilters.actorRole || "").trim().toLowerCase();
   const dateFrom = String(activityFilters.dateFrom || "").trim();
   const dateTo = String(activityFilters.dateTo || "").trim();
-  const rowLimit = role === "admin" && (dateFrom || dateTo) ? 2000 : 200;
+  const rowLimit = isWarehouseManager(role) && (dateFrom || dateTo) ? 2000 : 200;
 
   const rows = db
     .prepare(`
@@ -843,7 +847,7 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
     });
 
   const filtered =
-    role === "admin" && filterActorRole
+    isWarehouseManager(role) && filterActorRole
       ? rows.filter((row) => {
           let meta = {};
           try {
@@ -873,10 +877,7 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
     return {
       ...row,
       meta_json: JSON.stringify(enrichedMeta),
-      visible_target_doctor_name:
-        role === "operator" && row.action_type === "restock_out"
-          ? "Doctor (hidden)"
-          : row.target_doctor_name,
+      visible_target_doctor_name: row.target_doctor_name,
     };
   });
 }
@@ -1127,8 +1128,8 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
       dateFrom: activityDateFrom,
       dateTo: activityDateTo,
     }),
-    activity_staff: role === "admin" ? getActivityStaffList() : [],
-    staging: role === "admin" || role === "operator" ? db.prepare(`
+    activity_staff: isWarehouseManager(role) ? getActivityStaffList() : [],
+    staging: isWarehouseManager(role) ? db.prepare(`
       SELECT s.*, f.name AS folder_name
       FROM inventory_staging s
       LEFT JOIN inventory_folders f ON f.id = s.folder_id
@@ -1136,7 +1137,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
       LIMIT 200
     `).all() : [],
     compare_rows:
-      role === "admin" ? getCompareRows(activityDateFrom, activityDateTo) : [],
+      isWarehouseManager(role) ? getCompareRows(activityDateFrom, activityDateTo) : [],
     my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],
   };
 }
@@ -1435,7 +1436,7 @@ router.get("/activity-history", (req, res) => {
 
 router.get("/activity-history/export.csv", (req, res) => {
   ensureInfrastructure();
-  if (String(req.auth?.role || "").toLowerCase() !== "admin") {
+  if (!isWarehouseManager(String(req.auth?.role || "").toLowerCase())) {
     return res.status(403).json({ error: "Only admin can export stock activity." });
   }
 
@@ -1858,7 +1859,7 @@ router.get("/items/:id/batches", (req, res) => {
 
 router.post("/bulk/remove", (req, res) => {
   ensureInfrastructure();
-  if (req.auth.role !== "admin") {
+  if (!isWarehouseManager(req.auth.role)) {
     return res.status(403).json({
       error: "Bulk write-off on master inventory is restricted to administrators.",
     });
@@ -1922,7 +1923,7 @@ router.post("/bulk/remove", (req, res) => {
 
 router.post("/bulk/edit", (req, res) => {
   ensureInfrastructure();
-  if (req.auth.role !== "admin") {
+  if (!isWarehouseManager(req.auth.role)) {
     return res.status(403).json({
       error: "Bulk schema edits on master inventory are restricted to administrators.",
     });
@@ -2672,10 +2673,10 @@ router.delete("/items/:id", (req, res) => {
   ensureInfrastructure();
   const role = req.auth.role;
   const isDoctor = role === "doctor";
-  const isAdmin = role === "admin";
+  const canManageMaster = isWarehouseManager(role);
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
 
-  if (!isAdmin && !isDoctor) {
+  if (!canManageMaster && !isDoctor) {
     return res.status(403).json({
       error: "Only admin or the owning doctor can delete inventory items.",
     });
@@ -2691,7 +2692,7 @@ router.delete("/items/:id", (req, res) => {
     String(item.stock_scope || "") === "ocs" &&
     (item.owner_doctor_id == null || item.owner_doctor_id === "");
 
-  if (isOcsMaster && !isAdmin) {
+  if (isOcsMaster && !canManageMaster) {
     return res.status(403).json({
       error: "Master inventory deletion is restricted to administrators.",
     });

@@ -223,12 +223,6 @@ function OperatorMobileLauncher({
       icon: Package,
       to: "/inventory",
     },
-    {
-      label: "Billing",
-      description: "Check billing status and payment follow-up.",
-      icon: CreditCard,
-      to: "/operator/billing-status",
-    },
   ];
 
   return (
@@ -262,12 +256,6 @@ function OperatorMobileLauncher({
           label="Reviews due"
           icon={Activity}
           count={counts.reviews}
-        />
-        <DoctorMobileSplitCard
-          to="/operator/pending-payment"
-          label="Unpaid this week"
-          icon={CreditCard}
-          count={counts.unpaidThisWeek}
         />
         <DoctorMobileSplitCard
           to="/operator/scheduled-visits"
@@ -1091,7 +1079,7 @@ function OperatorMetricCard({ to, label, value, variant }) {
 
 function OperatorMetricsRow({ counts }) {
   return (
-    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <OperatorMetricCard
         to="/visit-requests"
         label="Visit requests"
@@ -1103,12 +1091,6 @@ function OperatorMetricsRow({ counts }) {
         label="Reviews due"
         value={counts.reviews}
         variant="reviews"
-      />
-      <OperatorMetricCard
-        to="/operator/pending-payment"
-        label="Unpaid this week"
-        value={counts.unpaidThisWeek}
-        variant="unpaid"
       />
       <OperatorMetricCard
         to="/operator/scheduled-visits"
