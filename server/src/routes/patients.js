@@ -1351,12 +1351,6 @@ router.patch("/:id/long-term-review", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  if (req.auth.role === "operator" && !operatorMayEditPatient(patientId, req.auth)) {
-    return res.status(403).json({
-      error: "Operator edit access for this patient has expired or was not granted.",
-    });
-  }
-
   if (req.auth.role !== "operator" && !ensureDoctorPatientAccess(existing, req.auth)) {
     return res.status(403).json({
       error: doctorPatientAccessError(req.auth),

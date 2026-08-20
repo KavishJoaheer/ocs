@@ -2098,11 +2098,23 @@ test("doctors can flag long-term review only for caseload patients", async () =>
     body: { username: "operator01", password: "Welcome@123" },
   });
   assert.equal(operatorLogin.status, 200, JSON.stringify(operatorLogin.data));
-  const operatorDenied = await api("PATCH", `/api/patients/${caseloadId}/long-term-review`, {
-    token: operatorLogin.data.token,
-    body: { is_under_review: false },
+  const operatorToken = operatorLogin.data.token;
+  const operatorUpdated = await api("PATCH", `/api/patients/${caseloadId}/long-term-review`, {
+    token: operatorToken,
+    body: {
+      is_under_review: true,
+      review_reason_note: "Operator rescheduled the review",
+      review_due_date: "2026-09-15",
+    },
   });
-  assert.equal(operatorDenied.status, 403, JSON.stringify(operatorDenied.data));
+  assert.equal(operatorUpdated.status, 200, JSON.stringify(operatorUpdated.data));
+  assert.equal(operatorUpdated.data.review_due_date, "2026-09-15");
+
+  const operatorProfileEdit = await api("PUT", `/api/patients/${caseloadId}`, {
+    token: operatorToken,
+    body: { first_name: "ShouldNotSave" },
+  });
+  assert.equal(operatorProfileEdit.status, 403, JSON.stringify(operatorProfileEdit.data));
 
   const adminFlag = await api("PATCH", `/api/patients/${outsiderId}/long-term-review`, {
     token: adminToken,
