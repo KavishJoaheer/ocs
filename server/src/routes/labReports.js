@@ -16,6 +16,8 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
   "image/png",
   "image/webp",
   "image/gif",
+  "image/heic",
+  "image/heif",
 ]);
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS_PER_REQUEST = 5;
@@ -45,12 +47,22 @@ const upload = multer({
     files: MAX_ATTACHMENTS_PER_REQUEST,
   },
   fileFilter(_req, file, callback) {
-    if (!ALLOWED_ATTACHMENT_TYPES.has(file.mimetype)) {
-      callback(new Error("Only PDF and image files are allowed."));
+    if (ALLOWED_ATTACHMENT_TYPES.has(file.mimetype)) {
+      callback(null, true);
       return;
     }
 
-    callback(null, true);
+    const extension = path.extname(file.originalname || "").toLowerCase();
+    const typeMissing = !file.mimetype || file.mimetype === "application/octet-stream";
+    if (
+      typeMissing &&
+      [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"].includes(extension)
+    ) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error("Only PDF and image files are allowed."));
   },
 });
 

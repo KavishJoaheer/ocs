@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CalendarCheck,
   CalendarClock,
+  Camera,
   ChevronRight,
   CreditCard,
   FileText,
@@ -65,6 +66,13 @@ import {
   canManageLabReportsForUser,
   canViewLabReportsForUser,
 } from "../lib/labReportAccess.js";
+import {
+  LAB_REPORT_CAMERA_ACCEPT,
+  LAB_REPORT_LIBRARY_ACCEPT,
+  LAB_REPORT_MAX_NEW_FILES,
+  labReportFileKey,
+  mergeLabReportFiles,
+} from "../lib/labReportFiles.js";
 import {
   formatAgeFromDateOfBirth,
   formatCurrency,
@@ -611,6 +619,34 @@ function getConsultationDraft(consultation) {
   };
 }
 
+function LabReportFilePickerButton({ accept, capture, disabled, icon: Icon, label, multiple, onFiles }) {
+  return (
+    <label
+      className={`relative inline-flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-2xl border px-3 py-2.5 text-sm font-semibold transition ${
+        disabled
+          ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+          : "border-slate-200 bg-white text-ocs-slate hover:border-ocs-teal hover:text-ocs-teal"
+      }`}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className="truncate">{label}</span>
+      <input
+        accept={accept}
+        className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        disabled={disabled}
+        multiple={Boolean(multiple)}
+        type="file"
+        {...(capture ? { capture } : {})}
+        onChange={(event) => {
+          const picker = event.currentTarget;
+          onFiles(Array.from(picker.files || []));
+          picker.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
 function LabReportModal({
   open,
   report,
@@ -624,8 +660,10 @@ function LabReportModal({
 }) {
   const [form, setForm] = useState(getEmptyLabReport());
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const selectedFilesRef = useRef([]);
   const isEditing = Boolean(report?.id);
   const [syncedDeps, setSyncedDeps] = useState({ open, report, isEditing });
+  selectedFilesRef.current = selectedFiles;
 
   if (
     syncedDeps.open !== open ||
@@ -651,6 +689,18 @@ function LabReportModal({
   const selectedConsultation = form.consultation_id
     ? consultations.find((consultation) => consultation.id === Number(form.consultation_id)) || null
     : null;
+
+  function handleIncomingFiles(incoming) {
+    if (!incoming?.length) {
+      return;
+    }
+
+    const result = mergeLabReportFiles(selectedFilesRef.current, incoming);
+    setSelectedFiles(result.files);
+    if (result.skippedOverflow) {
+      toast.error(`You can attach up to ${result.max} files at a time.`);
+    }
+  }
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -752,20 +802,31 @@ function LabReportModal({
           />
         </label>
 
-        <label className="block space-y-2">
+        <div className="block space-y-2">
           <span className="text-sm font-semibold text-slate-700">Upload files</span>
-          <input
-            type="file"
-            multiple
-            accept=".pdf,image/*"
-            onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
-            className="w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 outline-none transition file:mr-4 file:rounded-xl file:border file:border-slate-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ocs-slate hover:border-slate-300 focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20 md:file:hover:border-ocs-teal md:file:hover:text-ocs-teal"
-          />
+          <div className="flex gap-2">
+            <LabReportFilePickerButton
+              accept={LAB_REPORT_LIBRARY_ACCEPT}
+              disabled={selectedFiles.length >= LAB_REPORT_MAX_NEW_FILES}
+              icon={Paperclip}
+              label={selectedFiles.length ? "Add more files" : "Add files"}
+              multiple
+              onFiles={handleIncomingFiles}
+            />
+            <LabReportFilePickerButton
+              accept={LAB_REPORT_CAMERA_ACCEPT}
+              capture="environment"
+              disabled={selectedFiles.length >= LAB_REPORT_MAX_NEW_FILES}
+              icon={Camera}
+              label="Take photo"
+              onFiles={handleIncomingFiles}
+            />
+          </div>
           <p className="text-xs leading-5 text-slate-500">
-            Upload PDF or image files. These files will be linked to this Medical & Lab Report and
-            to the selected consultation when one is chosen.
+            PDF or image files. Each new photo or file is added to the list — it does not replace
+            files already attached. You can add up to {LAB_REPORT_MAX_NEW_FILES} files.
           </p>
-        </label>
+        </div>
 
         {selectedFiles.length ? (
           <div className="space-y-2 rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-4">
@@ -775,7 +836,7 @@ function LabReportModal({
             <div className="space-y-2">
               {selectedFiles.map((file, index) => (
                 <div
-                  key={`${file.name}-${index}`}
+                  key={labReportFileKey(file) || `${file.name}-${index}`}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3"
                 >
                   <div className="min-w-0">
