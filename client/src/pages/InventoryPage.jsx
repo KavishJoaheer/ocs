@@ -2,12 +2,9 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 import {
   Calendar,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  ClipboardList,
   Download,
-  Inbox,
   Minus,
   MinusCircle,
   MoreVertical,
@@ -33,6 +30,7 @@ import SectionCard from "../components/SectionCard.jsx";
 import InventoryStagingQueue from "../components/InventoryStagingQueue.jsx";
 import InventoryCsvImport from "../components/InventoryCsvImport.jsx";
 import InventoryStocktakePanel from "../components/InventoryStocktakePanel.jsx";
+import OperatorSupplyRequestsPanel from "../components/OperatorSupplyRequestsPanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api, ApiError } from "../lib/api.js";
@@ -42,7 +40,6 @@ import {
   notifyOcsInventoryUpdated,
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
-  SUPPLY_REQUESTS_EVENT,
 } from "../lib/inventorySync.js";
 import {
   applyOptimisticBagDeduct,
@@ -2305,213 +2302,6 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
   );
 }
 
-function OperatorRestockRequestsInbox({ refreshKey }) {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [updatingId, setUpdatingId] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const payload = await api.get("/restock-requests?status=pending,prepared");
-      setRequests(Array.isArray(payload?.requests) ? payload.requests : []);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Could not load restock requests.";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshKey]);
-
-  useEffect(() => {
-    const handleRefresh = () => {
-      void load();
-    };
-    window.addEventListener(SUPPLY_REQUESTS_EVENT, handleRefresh);
-    return () => window.removeEventListener(SUPPLY_REQUESTS_EVENT, handleRefresh);
-  }, [load]);
-
-  // Fallback poll when SSE is disconnected.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      load();
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [load]);
-
-  const handleMarkPrepared = async (request) => {
-    if (updatingId) return;
-    setUpdatingId(request.id);
-    try {
-      await api.patch(`/restock-requests/${request.id}`, { status: "prepared" });
-      toast.success("Marked as prepared. Doctor has been notified.");
-      await load();
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Could not update request.";
-      toast.error(message);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleDismiss = async (request) => {
-    if (updatingId) return;
-    const confirmed = window.confirm(
-      "Remove this restock request? This cannot be undone.",
-    );
-    if (!confirmed) return;
-
-    setUpdatingId(request.id);
-    try {
-      await api.delete(`/restock-requests/${request.id}`);
-      toast.success("Restock request removed.");
-      await load();
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Could not remove request.";
-      toast.error(message);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const pendingCount = requests.filter((row) => row.status === "pending").length;
-
-  return (
-    <SectionCard
-      title="Restock Requests"
-      subtitle={
-        loading
-          ? "Loading…"
-          : pendingCount > 0
-            ? `${pendingCount} pending pack${pendingCount === 1 ? "" : "s"} to prepare`
-            : "No pending packs"
-      }
-      actions={
-        <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#ba5a32]/10 px-3 py-1.5 text-xs font-bold text-[#ba5a32]">
-          <Inbox className="size-3.5" />
-          Inbox
-        </span>
-      }
-    >
-      {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : !requests.length && !loading ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
-          No active restock requests from doctors right now.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 lg:text-ocs-slate">
-              <tr>
-                <th className="px-3 py-2 text-left">Doctor</th>
-                <th className="px-3 py-2 text-left">Requested items</th>
-                <th className="px-3 py-2 text-left">Collection</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {requests.map((request) => {
-                const itemsSummary = request.items
-                  .map((item) => `${item.item_name} × ${item.quantity}`)
-                  .join(", ");
-                const isPrepared = request.status === "prepared";
-                return (
-                  <tr key={request.id} className="align-top">
-                    <td className="px-3 py-3 font-semibold text-slate-800">
-                      <div>Dr. {request.doctor_name}</div>
-                      <div className="text-[11px] font-normal text-slate-400">
-                        Sent {dayjs(request.created_at).format("DD MMM HH:mm")}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-slate-700">
-                      <div className="max-w-[28rem] break-words">{itemsSummary}</div>
-                      {request.note ? (
-                        <div className="mt-1 text-[11px] italic text-slate-500">
-                          “{request.note}”
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-3 text-slate-700">
-                      {dayjs(request.collection_date).format("ddd, DD MMM")}
-                    </td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={cx(
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
-                          isPrepared
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-amber-50 text-amber-700",
-                        )}
-                      >
-                        {isPrepared ? (
-                          <CheckCircle2 className="size-3" />
-                        ) : (
-                          <ClipboardList className="size-3" />
-                        )}
-                        {isPrepared ? "Prepared" : "Pending"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {isPrepared ? (
-                        <div className="flex flex-col items-end gap-2">
-                          <span className="text-[11px] text-slate-400">
-                            {request.prepared_by_name
-                              ? `By ${request.prepared_by_name}`
-                              : "Done"}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={updatingId === request.id}
-                            onClick={() => handleDismiss(request)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-                          >
-                            <Trash2 className="size-3" />
-                            {updatingId === request.id ? "Removing…" : "Remove"}
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-end">
-                          <button
-                            type="button"
-                            disabled={updatingId === request.id}
-                            onClick={() => handleMarkPrepared(request)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
-                          >
-                            {updatingId === request.id ? "Saving…" : "Mark as Prepared"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={updatingId === request.id}
-                            onClick={() => handleDismiss(request)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-                          >
-                            <Trash2 className="size-3.5" />
-                            Dismiss
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </SectionCard>
-  );
-}
-
 function MobileBottomSheet({ open, onClose, title, subtitle, children }) {
   if (!open) return null;
 
@@ -3195,7 +2985,6 @@ export default function InventoryPage() {
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
   const [doctorRestockItem, setDoctorRestockItem] = useState(null);
-  const [restockRequestsRefreshKey] = useState(0);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState(null);
   const [addStock, setAddStock] = useState(null);
@@ -4575,7 +4364,7 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs && logisticsTab === "stock" ? (
-        <OperatorRestockRequestsInbox refreshKey={restockRequestsRefreshKey} />
+        <OperatorSupplyRequestsPanel />
       ) : null}
 
       {canManageOcs && logisticsTab === "shipments" ? (

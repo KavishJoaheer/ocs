@@ -11,8 +11,12 @@ export default function RestockRequestModal({
   catalogItems,
   isSaving,
   editingRequest = null,
+  mode = null,
 }) {
-  const isEditing = Boolean(editingRequest?.id);
+  const resolvedMode =
+    mode || (editingRequest?.id ? "edit" : "create");
+  const isEditing = resolvedMode === "edit";
+  const isAmending = resolvedMode === "amend";
   const [items, setItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -130,11 +134,19 @@ export default function RestockRequestModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={isEditing ? "Edit Supply Request" : "Request Supply from OCS"}
+      title={
+        isAmending
+          ? "Request Changes"
+          : isEditing
+            ? "Edit Supply Request"
+            : "Request Supply from OCS"
+      }
       description={
-        isEditing
-          ? "Update items or collection day while your request is still pending."
-          : "Choose stock items and a target collection day. Operators will prepare your pack."
+        isAmending
+          ? "Propose updates for operator review. The accepted request stays unchanged until they accept your changes."
+          : isEditing
+            ? "Update items or collection day while your request is still pending."
+            : "Choose stock items and a target collection day. Operators will prepare your pack."
       }
       size="md"
     >
@@ -284,7 +296,13 @@ export default function RestockRequestModal({
             disabled={isSaving || items.length === 0}
             className="min-h-11 rounded-2xl bg-[#ba5a32] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#9d4a28] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? "Saving…" : isEditing ? "Save changes" : "Submit request"}
+            {isSaving
+              ? "Saving…"
+              : isAmending
+                ? "Submit change request"
+                : isEditing
+                  ? "Save changes"
+                  : "Submit request"}
           </button>
         </div>
       </div>

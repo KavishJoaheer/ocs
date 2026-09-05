@@ -582,11 +582,7 @@ function createInventoryMovementsTable() {
   `);
 }
 
-function createRestockRequestsTable() {
-  // Collection day is restricted at the schema level so any future writer
-  // (script, migration, manual edit) is forced to honour the logistics
-  // calendar (Mon / Wed / Fri / Sat = 1 / 3 / 5 / 6).
-  db.exec(`
+const RESTOCK_REQUESTS_CREATE_SQL = `
     CREATE TABLE IF NOT EXISTS restock_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       doctor_id INTEGER NOT NULL,
@@ -594,17 +590,36 @@ function createRestockRequestsTable() {
       collection_date TEXT NOT NULL,
       collection_day INTEGER NOT NULL CHECK (collection_day IN (1, 3, 5, 6)),
       status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'prepared', 'cancelled')),
+        CHECK (status IN ('pending', 'accepted', 'ready', 'completed', 'cancelled')),
       note TEXT NOT NULL DEFAULT '',
-      prepared_at TEXT,
-      prepared_by_user_id INTEGER,
+      accepted_at TEXT,
+      accepted_by_user_id INTEGER,
+      ready_at TEXT,
+      ready_by_user_id INTEGER,
+      completed_at TEXT,
+      completed_by_user_id INTEGER,
+      cancelled_at TEXT,
+      cancelled_by_user_id INTEGER,
+      cancelled_reason TEXT NOT NULL DEFAULT '',
+      archived_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE RESTRICT,
       FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (prepared_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      FOREIGN KEY (accepted_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (ready_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (completed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (cancelled_by_user_id) REFERENCES users(id) ON DELETE SET NULL
     );
+`;
 
+function createRestockRequestsTable() {
+  // Collection day is restricted at the schema level so any future writer
+  // (script, migration, manual edit) is forced to honour the logistics
+  // calendar (Mon / Wed / Fri / Sat = 1 / 3 / 5 / 6).
+  db.exec(RESTOCK_REQUESTS_CREATE_SQL);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS restock_request_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       request_id INTEGER NOT NULL,
@@ -612,10 +627,260 @@ function createRestockRequestsTable() {
       item_name TEXT NOT NULL,
       quantity INTEGER NOT NULL CHECK (quantity > 0),
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE CASCADE,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
       FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
     );
   `);
+
+  migrateRestockRequestsSchemaIfNeeded();
+}
+
+function restockRequestsTableSql() {
+  return (
+    db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'restock_requests'")
+      .get()?.sql || ""
+  );
+}
+
+function restockRequestColumnNames(tableName = "restock_requests") {
+  return db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+}
+
+function ensureRestockRequestAuxiliaryTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS restock_request_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      previous_status TEXT,
+      new_status TEXT,
+      actor_user_id INTEGER,
+      actor_role TEXT,
+      actor_display_name TEXT,
+      reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+      FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS restock_request_amendments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'rejected')),
+      proposed_collection_date TEXT NOT NULL,
+      proposed_collection_day INTEGER NOT NULL CHECK (proposed_collection_day IN (1, 3, 5, 6)),
+      proposed_note TEXT NOT NULL DEFAULT '',
+      submitted_by_user_id INTEGER NOT NULL,
+      submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      reviewed_by_user_id INTEGER,
+      reviewed_at TEXT,
+      review_reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+      FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS restock_request_amendment_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      amendment_id INTEGER NOT NULL,
+      inventory_id INTEGER,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (amendment_id) REFERENCES restock_request_amendments(id) ON DELETE CASCADE,
+      FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_restock_request_events_request
+      ON restock_request_events(request_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_restock_request_amendments_request
+      ON restock_request_amendments(request_id, status);
+    CREATE INDEX IF NOT EXISTS idx_restock_request_amendment_items_amendment
+      ON restock_request_amendment_items(amendment_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_amendments_one_pending
+      ON restock_request_amendments(request_id)
+      WHERE status = 'pending';
+  `);
+}
+
+function rebuildRestockRequestsTableIfNeeded() {
+  const tableSql = restockRequestsTableSql();
+  if (!tableSql) {
+    return;
+  }
+
+  const hasLegacyPreparedStatus = /'prepared'/.test(tableSql);
+  const hasNewStatuses = /'accepted'/.test(tableSql) && /'ready'/.test(tableSql) && /'completed'/.test(tableSql);
+  if (!hasLegacyPreparedStatus && hasNewStatuses) {
+    return;
+  }
+
+  db.pragma("foreign_keys = OFF");
+  try {
+    const migrate = db.transaction(() => {
+      db.exec("ALTER TABLE restock_requests RENAME TO restock_requests_legacy");
+      db.exec(RESTOCK_REQUESTS_CREATE_SQL.replace("IF NOT EXISTS ", ""));
+
+      const legacyCols = new Set(restockRequestColumnNames("restock_requests_legacy"));
+      const selectReadyAt = legacyCols.has("ready_at")
+        ? "ready_at"
+        : legacyCols.has("prepared_at")
+          ? "prepared_at"
+          : "NULL";
+      const selectReadyBy = legacyCols.has("ready_by_user_id")
+        ? "ready_by_user_id"
+        : legacyCols.has("prepared_by_user_id")
+          ? "prepared_by_user_id"
+          : "NULL";
+      const selectAcceptedAt = legacyCols.has("accepted_at") ? "accepted_at" : "NULL";
+      const selectAcceptedBy = legacyCols.has("accepted_by_user_id") ? "accepted_by_user_id" : "NULL";
+      const selectCompletedAt = legacyCols.has("completed_at") ? "completed_at" : "NULL";
+      const selectCompletedBy = legacyCols.has("completed_by_user_id") ? "completed_by_user_id" : "NULL";
+      const selectCancelledAt = legacyCols.has("cancelled_at")
+        ? "cancelled_at"
+        : "CASE WHEN status = 'cancelled' THEN COALESCE(updated_at, created_at) ELSE NULL END";
+      const selectCancelledBy = legacyCols.has("cancelled_by_user_id") ? "cancelled_by_user_id" : "NULL";
+      const selectCancelledReason = legacyCols.has("cancelled_reason") ? "cancelled_reason" : "''";
+      const selectArchivedAt = legacyCols.has("archived_at")
+        ? "archived_at"
+        : "CASE WHEN status = 'cancelled' THEN COALESCE(updated_at, created_at) ELSE NULL END";
+
+      db.exec(`
+        INSERT INTO restock_requests (
+          id,
+          doctor_id,
+          requested_by_user_id,
+          collection_date,
+          collection_day,
+          status,
+          note,
+          accepted_at,
+          accepted_by_user_id,
+          ready_at,
+          ready_by_user_id,
+          completed_at,
+          completed_by_user_id,
+          cancelled_at,
+          cancelled_by_user_id,
+          cancelled_reason,
+          archived_at,
+          created_at,
+          updated_at
+        )
+        SELECT
+          id,
+          doctor_id,
+          requested_by_user_id,
+          collection_date,
+          collection_day,
+          CASE status WHEN 'prepared' THEN 'ready' ELSE status END,
+          note,
+          ${selectAcceptedAt},
+          ${selectAcceptedBy},
+          ${selectReadyAt},
+          ${selectReadyBy},
+          ${selectCompletedAt},
+          ${selectCompletedBy},
+          ${selectCancelledAt},
+          ${selectCancelledBy},
+          ${selectCancelledReason},
+          ${selectArchivedAt},
+          created_at,
+          updated_at
+        FROM restock_requests_legacy
+      `);
+
+      db.exec("DROP TABLE restock_requests_legacy");
+    });
+    migrate();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+}
+
+function ensureRestockRequestColumns() {
+  if (!tableExists("restock_requests")) {
+    return;
+  }
+
+  const columns = restockRequestColumnNames();
+  const requiredColumns = [
+    { name: "accepted_at", sql: "ALTER TABLE restock_requests ADD COLUMN accepted_at TEXT" },
+    {
+      name: "accepted_by_user_id",
+      sql: "ALTER TABLE restock_requests ADD COLUMN accepted_by_user_id INTEGER",
+    },
+    { name: "ready_at", sql: "ALTER TABLE restock_requests ADD COLUMN ready_at TEXT" },
+    {
+      name: "ready_by_user_id",
+      sql: "ALTER TABLE restock_requests ADD COLUMN ready_by_user_id INTEGER",
+    },
+    { name: "completed_at", sql: "ALTER TABLE restock_requests ADD COLUMN completed_at TEXT" },
+    {
+      name: "completed_by_user_id",
+      sql: "ALTER TABLE restock_requests ADD COLUMN completed_by_user_id INTEGER",
+    },
+    { name: "cancelled_at", sql: "ALTER TABLE restock_requests ADD COLUMN cancelled_at TEXT" },
+    {
+      name: "cancelled_by_user_id",
+      sql: "ALTER TABLE restock_requests ADD COLUMN cancelled_by_user_id INTEGER",
+    },
+    {
+      name: "cancelled_reason",
+      sql: "ALTER TABLE restock_requests ADD COLUMN cancelled_reason TEXT NOT NULL DEFAULT ''",
+    },
+    { name: "archived_at", sql: "ALTER TABLE restock_requests ADD COLUMN archived_at TEXT" },
+  ];
+
+  requiredColumns.forEach((column) => {
+    if (!columns.includes(column.name)) {
+      db.exec(column.sql);
+    }
+  });
+
+  const updatedColumns = restockRequestColumnNames();
+  if (updatedColumns.includes("prepared_at") && updatedColumns.includes("ready_at")) {
+    db.exec(`
+      UPDATE restock_requests
+      SET ready_at = prepared_at
+      WHERE ready_at IS NULL AND prepared_at IS NOT NULL
+    `);
+  }
+  if (updatedColumns.includes("prepared_by_user_id") && updatedColumns.includes("ready_by_user_id")) {
+    db.exec(`
+      UPDATE restock_requests
+      SET ready_by_user_id = prepared_by_user_id
+      WHERE ready_by_user_id IS NULL AND prepared_by_user_id IS NOT NULL
+    `);
+  }
+
+  db.exec(`
+    UPDATE restock_requests
+    SET status = 'ready'
+    WHERE status = 'prepared'
+  `);
+
+  db.exec(`
+    UPDATE restock_requests
+    SET archived_at = COALESCE(archived_at, cancelled_at, completed_at, updated_at, created_at)
+    WHERE status IN ('completed', 'cancelled')
+      AND archived_at IS NULL
+  `);
+}
+
+function migrateRestockRequestsSchemaIfNeeded() {
+  if (!tableExists("restock_requests")) {
+    return;
+  }
+
+  rebuildRestockRequestsTableIfNeeded();
+  ensureRestockRequestColumns();
+  ensureRestockRequestAuxiliaryTables();
 }
 
 function migrateUsersSchemaIfNeeded() {
@@ -1009,8 +1274,11 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_restock_requests_doctor ON restock_requests(doctor_id);
     CREATE INDEX IF NOT EXISTS idx_restock_requests_status ON restock_requests(status);
     CREATE INDEX IF NOT EXISTS idx_restock_requests_collection_date ON restock_requests(collection_date);
+    CREATE INDEX IF NOT EXISTS idx_restock_requests_archived_at ON restock_requests(archived_at);
+    CREATE INDEX IF NOT EXISTS idx_restock_requests_doctor_status ON restock_requests(doctor_id, status);
     CREATE INDEX IF NOT EXISTS idx_restock_request_items_request ON restock_request_items(request_id);
     CREATE INDEX IF NOT EXISTS idx_restock_request_items_inventory ON restock_request_items(inventory_id);
+    CREATE INDEX IF NOT EXISTS idx_restock_request_items_name ON restock_request_items(item_name);
     CREATE INDEX IF NOT EXISTS idx_patient_users_email ON patient_users(email);
     CREATE INDEX IF NOT EXISTS idx_patient_users_patient_id ON patient_users(patient_id);
     CREATE INDEX IF NOT EXISTS idx_patient_auth_sessions_user ON patient_auth_sessions(patient_user_id);
@@ -2439,4 +2707,5 @@ module.exports = {
   labReportAttachmentsDir,
   rosterDir,
   initializeDatabase,
+  migrateRestockRequestsSchemaIfNeeded,
 };

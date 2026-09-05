@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
@@ -11,8 +11,12 @@ export default function RestockRequestModal({
   catalogItems,
   isSaving,
   editingRequest = null,
+  mode = null,
 }) {
-  const isEditing = Boolean(editingRequest?.id);
+  const resolvedMode =
+    mode || (editingRequest?.id ? "edit" : "create");
+  const isEditing = resolvedMode === "edit";
+  const isAmending = resolvedMode === "amend";
   const [items, setItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -21,31 +25,39 @@ export default function RestockRequestModal({
 
   const collectionOptions = useMemo(() => getValidCollectionDays(4), [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    setSearchQuery("");
-    setSuggestionsOpen(false);
+  const [syncedDeps, setSyncedDeps] = useState({ open, editingRequest, collectionOptions });
 
-    if (editingRequest) {
-      setItems(
-        (editingRequest.items || []).map((row) => ({
-          inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
-          item_name: row.item_name,
-          quantity: Number(row.quantity || 1),
-          ocs_available: row.inventory_quantity ?? null,
-        })),
-      );
-      setNote(String(editingRequest.note || ""));
-      const existingDate = String(editingRequest.collection_date || "");
-      const stillValid = collectionOptions.some((option) => option.iso === existingDate);
-      setCollectionDate(stillValid ? existingDate : collectionOptions[0]?.iso || "");
-      return;
+  if (
+    syncedDeps.open !== open ||
+    syncedDeps.editingRequest !== editingRequest ||
+    syncedDeps.collectionOptions !== collectionOptions
+  ) {
+    setSyncedDeps({ open, editingRequest, collectionOptions });
+
+    if (open) {
+      setSearchQuery("");
+      setSuggestionsOpen(false);
+
+      if (editingRequest) {
+        setItems(
+          (editingRequest.items || []).map((row) => ({
+            inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
+            item_name: row.item_name,
+            quantity: Number(row.quantity || 1),
+            ocs_available: row.inventory_quantity ?? null,
+          })),
+        );
+        setNote(String(editingRequest.note || ""));
+        const existingDate = String(editingRequest.collection_date || "");
+        const stillValid = collectionOptions.some((option) => option.iso === existingDate);
+        setCollectionDate(stillValid ? existingDate : collectionOptions[0]?.iso || "");
+      } else {
+        setItems([]);
+        setNote("");
+        setCollectionDate(collectionOptions[0]?.iso || "");
+      }
     }
-
-    setItems([]);
-    setNote("");
-    setCollectionDate(collectionOptions[0]?.iso || "");
-  }, [open, editingRequest, collectionOptions]);
+  }
 
   const selectedKeys = useMemo(
     () =>
@@ -122,11 +134,19 @@ export default function RestockRequestModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={isEditing ? "Edit Supply Request" : "Request Supply from OCS"}
+      title={
+        isAmending
+          ? "Request Changes"
+          : isEditing
+            ? "Edit Supply Request"
+            : "Request Supply from OCS"
+      }
       description={
-        isEditing
-          ? "Update items or collection day while your request is still pending."
-          : "Choose stock items and a target collection day. Operators will prepare your pack."
+        isAmending
+          ? "Propose updates for operator review. The accepted request stays unchanged until they accept your changes."
+          : isEditing
+            ? "Update items or collection day while your request is still pending."
+            : "Choose stock items and a target collection day. Operators will prepare your pack."
       }
       size="md"
     >
@@ -276,7 +296,13 @@ export default function RestockRequestModal({
             disabled={isSaving || items.length === 0}
             className="min-h-11 rounded-2xl bg-[#ba5a32] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#9d4a28] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? "Saving…" : isEditing ? "Save changes" : "Submit request"}
+            {isSaving
+              ? "Saving…"
+              : isAmending
+                ? "Submit change request"
+                : isEditing
+                  ? "Save changes"
+                  : "Submit request"}
           </button>
         </div>
       </div>

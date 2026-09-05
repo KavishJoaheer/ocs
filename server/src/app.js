@@ -309,6 +309,7 @@ function createApp() {
       POST: ["doctor"],
       PUT: ["doctor"],
       PATCH: ["admin", "operator", "doctor"],
+      DELETE: ["admin", "doctor", "operator"],
     }),
     restockRequestsRouter,
   );

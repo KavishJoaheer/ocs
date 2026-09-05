@@ -84,7 +84,7 @@ function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
         </span>
         {pendingCount > 0 ? (
           <span className="rounded-full border border-[#f5e3d7] bg-[#ba5a32]/10 px-2 py-0.5 text-[10px] font-extrabold text-[#ba5a32]">
-            {pendingCount} Pending
+            {pendingCount} Active
           </span>
         ) : null}
       </div>
@@ -100,7 +100,7 @@ function DoctorMobileLauncher({ user, latestHcmPost = null }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
   const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
   const showLowStockStrip = !loading && lowStockCount > 0;
-  const { pendingCount: supplyPendingCount } = useDoctorSupplyRequests();
+  const { activeCount: supplyPendingCount } = useDoctorSupplyRequests();
 
   useEffect(() => {
     if (user?.role === "doctor" && user?.id) {
