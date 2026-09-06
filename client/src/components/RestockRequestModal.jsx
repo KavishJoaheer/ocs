@@ -23,7 +23,24 @@ export default function RestockRequestModal({
   const [collectionDate, setCollectionDate] = useState("");
   const [note, setNote] = useState("");
 
-  const collectionOptions = useMemo(() => getValidCollectionDays(4), [open]);
+  const collectionOptions = useMemo(() => {
+    const days = getValidCollectionDays(4);
+    const existingDate = String(editingRequest?.collection_date || "");
+    if (open && existingDate && !days.some((option) => option.iso === existingDate)) {
+      const existing = new Date(`${existingDate}T00:00:00`);
+      return [
+        {
+          formatted: Number.isNaN(existing.getTime())
+            ? existingDate
+            : existing.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }),
+          iso: existingDate,
+          weekday: Number.isNaN(existing.getTime()) ? null : existing.getDay(),
+        },
+        ...days,
+      ];
+    }
+    return days;
+  }, [open, editingRequest]);
 
   const [syncedDeps, setSyncedDeps] = useState({ open, editingRequest, collectionOptions });
 
@@ -49,8 +66,7 @@ export default function RestockRequestModal({
         );
         setNote(String(editingRequest.note || ""));
         const existingDate = String(editingRequest.collection_date || "");
-        const stillValid = collectionOptions.some((option) => option.iso === existingDate);
-        setCollectionDate(stillValid ? existingDate : collectionOptions[0]?.iso || "");
+        setCollectionDate(existingDate || collectionOptions[0]?.iso || "");
       } else {
         setItems([]);
         setNote("");

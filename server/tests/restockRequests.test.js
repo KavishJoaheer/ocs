@@ -86,6 +86,25 @@ function requestPayload(overrides = {}) {
   };
 }
 
+async function pickReservedThenReady(requestId, token) {
+  const detail = await api("GET", `/api/restock-requests/${requestId}/fulfilment`, { token });
+  assert.equal(detail.status, 200, JSON.stringify(detail.data));
+  const lines = (detail.data.fulfilment?.items || []).map((line) => ({
+    id: line.id,
+    picked_quantity: Number(line.reserved_quantity || 0),
+    fulfilled_quantity: Number(line.reserved_quantity || 0),
+  }));
+  const picked = await api("PATCH", `/api/restock-requests/${requestId}/fulfilment`, {
+    token,
+    body: { lines },
+  });
+  assert.equal(picked.status, 200, JSON.stringify(picked.data));
+  return api("PATCH", `/api/restock-requests/${requestId}`, {
+    token,
+    body: { status: "ready" },
+  });
+}
+
 function startSseListener(streamToken) {
   const ac = new AbortController();
   let buffer = "";
@@ -157,6 +176,10 @@ before(async () => {
       `)
       .run(`Restock Test Gauze ${Date.now()}`).lastInsertRowid,
   );
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 40, '2028-12-01', 1, 0)
+  `).run(inventoryId);
 });
 
 after(async () => {
@@ -295,6 +318,10 @@ test("operator accepts a pending request", async () => {
   assert.equal(accepted.data.request.status, "accepted");
   assert.equal(accepted.data.request.status_labels.doctor, "Request Accepted");
   assert.ok(accepted.data.request.accepted_at);
+  const qtyAfterAccept = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(inventoryId).quantity;
+  assert.equal(qtyAfterAccept, 40);
+  assert.ok(accepted.data.request.fulfilment);
+  assert.equal(Number(accepted.data.request.fulfilment.items[0].reserved_quantity), 2);
 });
 
 test("doctor cannot edit or cancel after acceptance", async () => {
@@ -397,10 +424,7 @@ test("operator marks an accepted request ready and doctor observes it", async ()
       .count || 0,
   );
 
-  const ready = await api("PATCH", `/api/restock-requests/${acceptedId}`, {
-    token: operatorToken,
-    body: { status: "ready" },
-  });
+  const ready = await pickReservedThenReady(acceptedId, operatorToken);
   assert.equal(ready.status, 200, JSON.stringify(ready.data));
   assert.equal(ready.data.request.status, "ready");
   assert.equal(ready.data.request.status_labels.doctor, "Supply Ready");
@@ -440,10 +464,7 @@ test("only the owning doctor can confirm collection", async () => {
     body: { status: "accepted" },
   });
   assert.equal(accepted.status, 200);
-  const prepared = await api("PATCH", `/api/restock-requests/${tooSoon.data.request.id}`, {
-    token: operatorToken,
-    body: { status: "ready" },
-  });
+  const prepared = await pickReservedThenReady(tooSoon.data.request.id, operatorToken);
   assert.equal(prepared.status, 200);
   otherDoctorReadyId = tooSoon.data.request.id;
 
@@ -467,9 +488,10 @@ test("collection changes the request to completed with role-specific labels", as
   assert.equal(completed.data.request.status_labels.admin, "Completed");
   assert.ok(completed.data.request.completed_at);
   assert.ok(completed.data.request.archived_at);
+  assert.ok(completed.data.request.transfer_transaction_id);
 
   const qtyAfter = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(inventoryId).quantity;
-  assert.equal(qtyAfter, qtyBefore, "lifecycle transitions must not silently change inventory");
+  assert.equal(qtyAfter, qtyBefore - 5);
 
   const itemsStillThere = db
     .prepare("SELECT COUNT(*) AS count FROM restock_request_items WHERE request_id = ?")
@@ -589,10 +611,10 @@ test("real-time events refresh doctor and operator views", async () => {
 
 test("existing inventory quantities are not silently changed by lifecycle transitions", async () => {
   const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(inventoryId).quantity;
-  assert.equal(qty, 40);
+  assert.equal(qty, 35);
   const movements = Number(
     db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(inventoryId)
       .count || 0,
   );
-  assert.equal(movements, 0);
+  assert.ok(movements >= 1);
 });

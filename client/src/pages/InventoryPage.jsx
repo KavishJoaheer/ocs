@@ -31,6 +31,7 @@ import InventoryStagingQueue from "../components/InventoryStagingQueue.jsx";
 import InventoryCsvImport from "../components/InventoryCsvImport.jsx";
 import InventoryStocktakePanel from "../components/InventoryStocktakePanel.jsx";
 import OperatorSupplyRequestsPanel from "../components/OperatorSupplyRequestsPanel.jsx";
+import OperatorWorkQueuesPanel from "../components/OperatorWorkQueuesPanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api, ApiError } from "../lib/api.js";
@@ -354,7 +355,7 @@ function itemFormState(item, folders = []) {
   };
 }
 
-function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, onClose, onSubmit }) {
+function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, bagSettingsOnly = false, onClose, onSubmit }) {
   const [form, setForm] = useState(() => itemFormState(item, folders));
   const foldersRef = useRef(folders);
   useEffect(() => {
@@ -376,8 +377,12 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
     <Modal
       open={open}
       onClose={onClose}
-      title={item ? "Edit stock item" : "Add stock item"}
-      description="Save quantity, pricing, and expiry details."
+      title={bagSettingsOnly ? "Bag settings" : item ? "Edit stock item" : "Add stock item"}
+      description={
+        bagSettingsOnly
+          ? "Update the minimum/par quantity for this bag item. Quantity changes through documented stock movements only."
+          : "Save quantity, pricing, and expiry details."
+      }
       size="xl"
       innerScroll={false}
     >
@@ -385,19 +390,28 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
-          const payload = {
-            ...form,
-            folder_id: Number(form.folder_id || 0),
-            quantity: Number(form.quantity || 0),
-            minimum_quantity: Number(form.minimum_quantity || 0),
-            cost_price: Number(form.cost_price || 0),
-            selling_price: Number(form.selling_price || 0),
-          };
+          const payload = bagSettingsOnly
+            ? { minimum_quantity: Number(form.minimum_quantity || 0) }
+            : {
+                ...form,
+                folder_id: Number(form.folder_id || 0),
+                quantity: Number(form.quantity || 0),
+                minimum_quantity: Number(form.minimum_quantity || 0),
+                cost_price: Number(form.cost_price || 0),
+                selling_price: Number(form.selling_price || 0),
+              };
           if (!item) delete payload.adjustment_note;
           onSubmit(payload);
         }}
       >
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-24 pr-1">
+        {bagSettingsOnly ? (
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Minimum / par quantity</span>
+            <input required min="0" type="number" name="minimum_quantity" value={form.minimum_quantity} onChange={(event) => setForm((prev) => ({ ...prev, minimum_quantity: event.target.value }))} className={fieldClass(false)} />
+          </label>
+        ) : (
+        <>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Item Name</span>
@@ -434,7 +448,7 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Expiry Date</span>
-            <input type="date" name="expiry_date" value={form.expiry_date} onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))} className={fieldClass(false)} />
+            <input type="date" name="expiry_date" value={form.expiry_date} readOnly={masterReadOnly} onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))} className={fieldClass(masterReadOnly)} />
           </label>
         </div>
         <label className="space-y-2">
@@ -444,7 +458,7 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
         <div className="grid gap-4 md:grid-cols-3">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Current Quantity</span>
-            <input required min="0" type="number" name="quantity" value={form.quantity} onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))} className={fieldClass(false)} />
+            <input required min="0" type="number" name="quantity" value={form.quantity} readOnly={masterReadOnly} onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))} className={fieldClass(masterReadOnly)} />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Minimum Quantity</span>
@@ -452,7 +466,7 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
           </label>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Unit</span>
-            <input required name="unit" value={form.unit} onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))} className={fieldClass(false)} />
+            <input required name="unit" value={form.unit} readOnly={masterReadOnly} onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))} className={fieldClass(masterReadOnly)} />
           </label>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -491,10 +505,12 @@ function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, on
             <input name="adjustment_note" value={form.adjustment_note} onChange={(event) => setForm((prev) => ({ ...prev, adjustment_note: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
           </label>
         ) : null}
+        </>
+        )}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 py-4">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : item ? "Update Item" : "Add Item"}</button>
+          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : bagSettingsOnly ? "Save settings" : item ? "Update Item" : "Add Item"}</button>
         </div>
       </form>
     </Modal>
@@ -848,11 +864,11 @@ function DoctorRestockModal({ open, item, candidates = [], isSaving, onClose, on
     <Modal
       open={open}
       onClose={onClose}
-      title={isFill ? "Fill bag from OCS" : `Restock ${item?.item_name || ""}`.trim()}
+      title={isFill ? "Emergency stock transfer" : `Emergency stock transfer — ${item?.item_name || ""}`.trim()}
       description={
         isFill
-          ? "Pull enough from the depot to reach each line’s minimum. OCS sends the soonest batch."
-          : "Pull from the OCS depot into your bag. Quantity is suggested to reach min. Expiry comes from the depot batch."
+          ? "This bypasses the operator-prepared supply workflow. Operators and admins are notified."
+          : "This bypasses the operator-prepared supply workflow. Quantity is suggested to reach minimum. Operators and admins are notified."
       }
       size="lg"
     >
@@ -969,7 +985,7 @@ function DoctorRestockModal({ open, item, candidates = [], isSaving, onClose, on
               }
               className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {isSaving ? "Restocking..." : isFill ? `Pull ${fillRows.length} line${fillRows.length === 1 ? "" : "s"}` : "Restock"}
+              {isSaving ? "Transferring..." : isFill ? `Transfer ${fillRows.length} line${fillRows.length === 1 ? "" : "s"}` : "Confirm emergency transfer"}
             </button>
           )}
         </div>
@@ -1956,7 +1972,7 @@ function InventoryActionButtons({
     if (!(isDoctor && doctorViewIsOcs)) {
       menuItems.push({
         key: "edit",
-        label: "Edit item",
+        label: isDoctor ? "Bag settings" : "Edit item",
         icon: <Pencil className="size-3.5" />,
         onClick: () => onEdit(item),
       });
@@ -1965,7 +1981,7 @@ function InventoryActionButtons({
     if (isDoctor && !omitRestock) {
       menuItems.push({
         key: "restock",
-        label: "Restock",
+        label: "Emergency stock transfer",
         icon: <Truck className="size-3.5" />,
         onClick: () => onRestockMyInventory(item),
       });
@@ -2039,9 +2055,9 @@ function InventoryActionButtons({
   return (
     <div className="ml-auto flex w-fit items-center justify-end gap-1.5">
       {!(isDoctor && doctorViewIsOcs) ? (
-        <button type="button" onClick={() => onEdit(item)} className={btn} title="Edit item" aria-label="Edit item">
+        <button type="button" onClick={() => onEdit(item)} className={btn} title={isDoctor ? "Bag settings" : "Edit item"} aria-label={isDoctor ? "Bag settings" : "Edit item"}>
           <Pencil className="size-3.5 shrink-0" />
-          Edit
+          {isDoctor ? "Settings" : "Edit"}
         </button>
       ) : null}
 
@@ -2489,8 +2505,8 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
     <MobileBottomSheet
       open={open}
       onClose={onClose}
-      title={`Restock ${item.item_name || "item"}`}
-      subtitle={`Depot available: ${max} · Batch exp ${formatInventoryExpiry(item.ocs_expiry)}`}
+      title={`Emergency stock transfer — ${item.item_name || "item"}`}
+      subtitle={`This bypasses the operator workflow. Depot available: ${max} · Batch exp ${formatInventoryExpiry(item.ocs_expiry)}`}
     >
       <form
         className="mt-4 space-y-4"
@@ -2525,7 +2541,7 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
             disabled={isSaving || max < 1 || qty < 1 || qty > max}
             className="min-h-12 w-full rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
           >
-            {isSaving ? "Restocking..." : "Restock"}
+            {isSaving ? "Transferring..." : "Confirm emergency transfer"}
           </button>
           <button
             type="button"
@@ -3004,7 +3020,8 @@ export default function InventoryPage() {
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
-  const [logisticsTab, setLogisticsTab] = useState("stock");
+  const [logisticsTab, setLogisticsTab] = useState(user.role === "operator" ? "queues" : "stock");
+  const [emergencyRestockEnabled, setEmergencyRestockEnabled] = useState(false);
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
     (next, { silent = false } = {}) => {
@@ -3049,7 +3066,7 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
-  const showDeleteStockItem = (canManageOcs && contextIsOcs) || (canUseAdminInventory && !contextIsOcs && !isMobile);
+  const showDeleteStockItem = isAdmin && ((contextIsOcs) || (!contextIsOcs && !isMobile));
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
     () => getInventoryDateRange(adminPeriodPreset, adminPeriodAnchor),
@@ -3187,6 +3204,9 @@ export default function InventoryPage() {
         })}`,
       );
       commitInventoryData(payload, { silent: true });
+      if (isDoctor) {
+        setEmergencyRestockEnabled(Boolean(payload.emergency_restock_enabled));
+      }
     } catch (error) {
       toast.error(error.message);
       if (!silent) setData(null);
@@ -3601,15 +3621,17 @@ export default function InventoryPage() {
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
 
   async function saveItem(payload) {
-    if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
-      toast.error("Quantity must be zero or more.");
-      return;
+    if (!isDoctor || payload.quantity != null) {
+      if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
+        toast.error("Quantity must be zero or more.");
+        return;
+      }
     }
     if (!Number.isInteger(payload.minimum_quantity) || payload.minimum_quantity < 0) {
       toast.error("Minimum quantity must be zero or more.");
       return;
     }
-    if (Number(payload.selling_price || 0) < Number(payload.cost_price || 0)) {
+    if (payload.selling_price != null && Number(payload.selling_price || 0) < Number(payload.cost_price || 0)) {
       toast.error("Selling price cannot be lower than cost price.");
       return;
     }
@@ -3682,6 +3704,21 @@ export default function InventoryPage() {
       return;
     }
 
+    if (!emergencyRestockEnabled) {
+      toast.error("Use a supply request to replenish your bag.");
+      return;
+    }
+    const reason = window.prompt(
+      "Emergency stock transfer bypasses the operator-prepared workflow. Enter a reason (10–500 characters).",
+    );
+    if (!reason || reason.trim().length < 10 || reason.trim().length > 500) {
+      toast.error("A reason between 10 and 500 characters is required.");
+      return;
+    }
+    if (!window.confirm("This is an emergency stock transfer and will be reported to operators and admins. Continue?")) {
+      return;
+    }
+
     setIsSaving(true);
     try {
       const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
@@ -3689,6 +3726,8 @@ export default function InventoryPage() {
           ocs_item_id: Number(item.ocs_item_id),
           quantity: Number(item.required_quantity || item.quantity),
         })),
+        reason: reason.trim(),
+        confirm: true,
       });
       commitInventoryData(next);
       setDoctorRestockOpen(false);
@@ -4197,9 +4236,9 @@ export default function InventoryPage() {
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
             doctorRestockCandidates={doctorRestockCandidates}
-            onOpenRestockInventory={openDoctorFillBag}
+            onOpenRestockInventory={emergencyRestockEnabled ? openDoctorFillBag : undefined}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
-            onOpenRestock={openMobileDoctorRestock}
+            onOpenRestock={emergencyRestockEnabled ? openMobileDoctorRestock : undefined}
             showLowStockOnly={showLowStockOnly}
             showMissingExpiryOnly={showMissingExpiryOnly}
             onToggleLowStock={() => applyDoctorBagFilter("low")}
@@ -4232,19 +4271,27 @@ export default function InventoryPage() {
         title={isDoctor ? (doctorViewIsOcs ? "OCS depot" : "My bag") : "OCS Stock"}
         actions={
           isDoctor ? (
+            emergencyRestockEnabled ? (
             <button
               type="button"
               onClick={openDoctorFillBag}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+              className="inline-flex items-center gap-2 rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               <Truck className="size-4" />
-              {doctorRestockCandidates.length
-                ? `Fill bag (${doctorRestockCandidates.length})`
-                : "Fill bag"}
+              Emergency stock transfer
             </button>
+            ) : (
+              <Link
+                to="/supply-requests"
+                className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                <Truck className="size-4" />
+                Request supply
+              </Link>
+            )
           ) : (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {canUseAdminInventory ? (
+              {canUseAdminInventory && isAdmin ? (
                 <>
                   <button
                     type="button"
@@ -4324,8 +4371,8 @@ export default function InventoryPage() {
           <SummaryCard
             title="OCS can fill"
             value={doctorRestockCandidates.length}
-            hint={doctorRestockCandidates.length ? "Click to pull" : "Depot empty or bag at min"}
-            onClick={openDoctorFillBag}
+            hint="Request through Supply Requests"
+            onClick={() => (window.location.href = "/supply-requests")}
           />
         </div>
       ) : null}
@@ -4333,10 +4380,11 @@ export default function InventoryPage() {
       {canManageOcs ? (
         <div className="flex flex-wrap gap-2">
           {[
-            { id: "stock", label: "Stock" },
+            ...(isOperator ? [{ id: "queues", label: "Work queues" }] : []),
+            { id: "stock", label: isOperator ? "Warehouse stock" : "Stock" },
             { id: "shipments", label: "Shipments", badge: pendingStagingCount },
             { id: "count", label: "Count" },
-            ...(canUseAdminInventory ? [{ id: "bags", label: "Bags" }] : []),
+            ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -4363,7 +4411,14 @@ export default function InventoryPage() {
         </div>
       ) : null}
 
-      {canManageOcs && logisticsTab === "stock" ? (
+      {canManageOcs && logisticsTab === "queues" ? (
+        <OperatorWorkQueuesPanel
+          onOpenShipments={() => setLogisticsTab("shipments")}
+          onOpenCount={() => setLogisticsTab("count")}
+        />
+      ) : null}
+
+      {canManageOcs && logisticsTab === "stock" && isAdmin ? (
         <OperatorSupplyRequestsPanel />
       ) : null}
 
@@ -4372,6 +4427,7 @@ export default function InventoryPage() {
           <InventoryCsvImport onImported={() => load(undefined, undefined, { silent: true })} />
           <InventoryStagingQueue
             rows={data?.staging}
+            shipments={data?.shipments}
             onReleased={() => load(undefined, undefined, { silent: true })}
           />
         </>
@@ -4381,6 +4437,7 @@ export default function InventoryPage() {
         <InventoryStocktakePanel
           items={data?.ocs_stock || items}
           folders={folders}
+          sessions={data?.stocktake_sessions || []}
           onApplied={() => load(undefined, undefined, { silent: true })}
         />
       ) : null}
@@ -4447,7 +4504,7 @@ export default function InventoryPage() {
                 className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
               />
             </label>
-            {canUseAdminInventory && contextIsOcs ? (
+            {isAdmin && contextIsOcs ? (
               <button
                 type="button"
                 onClick={() => setEditor({ item: null })}
@@ -4598,6 +4655,8 @@ export default function InventoryPage() {
                                 onEdit={openItemEditor}
                                 onRestockDoctor={canManageOcs ? handleRestockDoctor : undefined}
                                 onRestockMyInventory={openDoctorRestockForItem}
+                                omitRestock={isDoctor ? !emergencyRestockEnabled : isOperator}
+
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                                 onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
@@ -4657,6 +4716,7 @@ export default function InventoryPage() {
                       onEdit={openItemEditor}
                       onRestockDoctor={canManageOcs ? handleRestockDoctor : undefined}
                       onRestockMyInventory={openDoctorRestockForItem}
+                      omitRestock={isDoctor ? !emergencyRestockEnabled : isOperator}
                       onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                       onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
                       onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
@@ -4824,6 +4884,7 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {isAdmin ? (
       <OperatorAddItemDrawer
         open={operatorAddOpen}
         folders={folders}
@@ -4833,12 +4894,14 @@ export default function InventoryPage() {
         onClose={() => setOperatorAddOpen(false)}
         onSubmit={saveItem}
       />
+      ) : null}
       <ItemModal
         open={Boolean(editor)}
         item={editor?.item}
         folders={folders}
         isSaving={isSaving}
-        lockMasterFields={Boolean(editor?.item) && isDoctor}
+        lockMasterFields={(Boolean(editor?.item) && isDoctor) || isOperator}
+        bagSettingsOnly={Boolean(editor?.item) && isDoctor}
         onClose={() => setEditor(null)}
         onSubmit={saveItem}
       />

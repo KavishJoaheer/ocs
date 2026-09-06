@@ -9,9 +9,16 @@ const EVENT_TYPES = {
   amendmentSubmitted: "amendment_submitted",
   amendmentAccepted: "amendment_accepted",
   amendmentRejected: "amendment_rejected",
+  assigned: "request_assigned",
+  pickingUpdated: "picking_updated",
+  shortageDetected: "shortage_detected",
+  shortageResolved: "shortage_resolved",
+  partialApproved: "partial_fulfilment_approved",
   ready: "supply_marked_ready",
   cancelled: "request_cancelled",
   completed: "supply_collected",
+  transferPosted: "inventory_transfer_posted",
+  reconciled: "fulfilment_reconciled",
 };
 
 const OPERATOR_TRANSITIONS = {

@@ -338,6 +338,21 @@ export default function SupplyRequestsPage() {
                       </p>
                     ) : null}
 
+                    {(request.status === "ready" || request.status === "accepted") &&
+                    request.fulfilment?.items?.length ? (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                        {(request.fulfilment.items || []).map((line) => (
+                          <p key={line.id || line.item_name}>
+                            {line.item_name}: requested {line.requested_quantity} · expected{" "}
+                            {line.fulfilled_quantity || line.reserved_quantity}
+                            {Number(line.shortage_quantity || 0) > 0
+                              ? ` · short ${line.shortage_quantity}`
+                              : ""}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+
                     {(request.status === "ready" || request.status === "completed") &&
                     (request.ready_by_name || request.prepared_by_name) ? (
                       <p className="text-[11px] font-medium text-emerald-700">
@@ -536,7 +551,7 @@ export default function SupplyRequestsPage() {
         onClose={() => setConfirmAction(null)}
         tone="default"
         title="Confirm supply collected?"
-        description="This records collection and dispatch, then moves the request into History."
+        description="This records collection, posts the inventory transfer into your bag, and moves the request into History."
         confirmLabel="Supply Collected"
         onConfirm={() =>
           confirmAction?.request

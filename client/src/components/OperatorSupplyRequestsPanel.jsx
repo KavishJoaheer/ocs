@@ -3,6 +3,7 @@ import { CheckCircle2, ClipboardList, Inbox } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
+import OperatorFulfilmentPanel from "./OperatorFulfilmentPanel.jsx";
 import SectionCard from "./SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api, ApiError } from "../lib/api.js";
@@ -74,6 +75,7 @@ export default function OperatorSupplyRequestsPanel() {
   const [amendmentTarget, setAmendmentTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
 
   const loadActive = useCallback(async () => {
     setLoading(true);
@@ -317,17 +319,15 @@ export default function OperatorSupplyRequestsPanel() {
                               <button
                                 type="button"
                                 disabled={busy || Boolean(pendingAmendment)}
-                                onClick={() =>
-                                  patchRequest(request, { status: "ready" }, "Supply marked ready.")
-                                }
+                                onClick={() => setFulfilmentRequest(request)}
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
                                 title={
                                   pendingAmendment
-                                    ? "Review the pending change request before marking supply ready."
+                                    ? "Review the pending change request before picking."
                                     : undefined
                                 }
                               >
-                                {busy ? "Saving…" : "Mark Supply Ready"}
+                                {busy ? "Saving…" : "Open fulfilment"}
                               </button>
                             ) : null}
                             {request.status === "ready" ? (
@@ -521,6 +521,20 @@ export default function OperatorSupplyRequestsPanel() {
                               {request.cancelled_reason ? ` · ${request.cancelled_reason}` : ""}
                             </div>
                           ) : null}
+                          {request.transfer_transaction_id ? (
+                            <div>Transfer {request.transfer_transaction_id}</div>
+                          ) : null}
+                          {(request.events || []).length ? (
+                            <ol className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+                              {request.events.map((event) => (
+                                <li key={event.id}>
+                                  {formatSupplyRequestTimestamp(event.created_at)} · {event.event_type}
+                                  {event.actor_display_name ? ` · ${event.actor_display_name}` : ""}
+                                  {event.reason ? ` · ${event.reason}` : ""}
+                                </li>
+                              ))}
+                            </ol>
+                          ) : null}
                         </td>
                         <td className="px-3 py-3">{statusBadge(request, role)}</td>
                       </tr>
@@ -700,6 +714,12 @@ export default function OperatorSupplyRequestsPanel() {
           </div>
         </div>
       </Modal>
+      <OperatorFulfilmentPanel
+        open={Boolean(fulfilmentRequest)}
+        request={fulfilmentRequest}
+        onClose={() => setFulfilmentRequest(null)}
+        onUpdated={loadActive}
+      />
     </>
   );
 }

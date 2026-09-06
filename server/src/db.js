@@ -796,10 +796,91 @@ function rebuildRestockRequestsTableIfNeeded() {
       `);
 
       db.exec("DROP TABLE restock_requests_legacy");
+      rebuildRestockRequestChildTablesIfNeeded();
     });
     migrate();
   } finally {
     db.pragma("foreign_keys = ON");
+  }
+}
+
+function rebuildRestockRequestChildTablesIfNeeded() {
+  const children = [
+    "restock_request_items",
+    "restock_request_events",
+    "restock_request_amendments",
+  ];
+  for (const name of children) {
+    if (!tableExists(name)) continue;
+    const sql =
+      db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)?.sql ||
+      "";
+    if (!/restock_requests_legacy/.test(sql)) continue;
+    db.exec(`ALTER TABLE ${name} RENAME TO ${name}_legacy_rebuild`);
+    if (name === "restock_request_items") {
+      db.exec(`
+        CREATE TABLE restock_request_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id INTEGER NOT NULL,
+          inventory_id INTEGER,
+          item_name TEXT NOT NULL,
+          quantity INTEGER NOT NULL CHECK (quantity > 0),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+          FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
+        );
+      `);
+    } else if (name === "restock_request_events") {
+      db.exec(`
+        CREATE TABLE restock_request_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id INTEGER NOT NULL,
+          event_type TEXT NOT NULL,
+          previous_status TEXT,
+          new_status TEXT,
+          actor_user_id INTEGER,
+          actor_role TEXT,
+          actor_display_name TEXT,
+          reason TEXT,
+          metadata_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+          FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+      `);
+    } else {
+      db.exec(`
+        CREATE TABLE restock_request_amendments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'accepted', 'rejected')),
+          proposed_collection_date TEXT NOT NULL,
+          proposed_collection_day INTEGER NOT NULL CHECK (proposed_collection_day IN (1, 3, 5, 6)),
+          proposed_note TEXT NOT NULL DEFAULT '',
+          submitted_by_user_id INTEGER NOT NULL,
+          submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          reviewed_by_user_id INTEGER,
+          reviewed_at TEXT,
+          review_reason TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+          FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+      `);
+    }
+    const cols = db
+      .prepare(`PRAGMA table_info(${name}_legacy_rebuild)`)
+      .all()
+      .map((col) => col.name);
+    const destCols = db.prepare(`PRAGMA table_info(${name})`).all().map((col) => col.name);
+    const shared = destCols.filter((col) => cols.includes(col));
+    db.exec(
+      `INSERT INTO ${name} (${shared.join(", ")}) SELECT ${shared.join(", ")} FROM ${name}_legacy_rebuild`,
+    );
+    db.exec(`DROP TABLE ${name}_legacy_rebuild`);
   }
 }
 
@@ -835,6 +916,26 @@ function ensureRestockRequestColumns() {
       sql: "ALTER TABLE restock_requests ADD COLUMN cancelled_reason TEXT NOT NULL DEFAULT ''",
     },
     { name: "archived_at", sql: "ALTER TABLE restock_requests ADD COLUMN archived_at TEXT" },
+    {
+      name: "assigned_to_user_id",
+      sql: "ALTER TABLE restock_requests ADD COLUMN assigned_to_user_id INTEGER",
+    },
+    {
+      name: "transfer_transaction_id",
+      sql: "ALTER TABLE restock_requests ADD COLUMN transfer_transaction_id TEXT",
+    },
+    {
+      name: "partial_fulfilment_approved",
+      sql: "ALTER TABLE restock_requests ADD COLUMN partial_fulfilment_approved INTEGER NOT NULL DEFAULT 0",
+    },
+    {
+      name: "partial_fulfilment_reason",
+      sql: "ALTER TABLE restock_requests ADD COLUMN partial_fulfilment_reason TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "fulfilment_locked_at",
+      sql: "ALTER TABLE restock_requests ADD COLUMN fulfilment_locked_at TEXT",
+    },
   ];
 
   requiredColumns.forEach((column) => {
@@ -881,6 +982,13 @@ function migrateRestockRequestsSchemaIfNeeded() {
   rebuildRestockRequestsTableIfNeeded();
   ensureRestockRequestColumns();
   ensureRestockRequestAuxiliaryTables();
+  if (typeof ensureInventoryOperationsSchema === "function") {
+    try {
+      ensureInventoryOperationsSchema();
+    } catch {
+      // Fulfilment tables depend on restock_requests existing first.
+    }
+  }
 }
 
 function migrateUsersSchemaIfNeeded() {
@@ -1916,6 +2024,200 @@ function ensureInventoryColumns() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_inventory_scope_owner ON inventory(stock_scope, owner_doctor_id);
+  `);
+
+  ensureInventoryOperationsSchema();
+}
+
+function ensureInventoryOperationsSchema() {
+  const batchCols = tableExists("inventory_batches")
+    ? db.prepare("PRAGMA table_info(inventory_batches)").all().map((column) => column.name)
+    : [];
+  if (tableExists("inventory_batches") && !batchCols.includes("is_non_expiring")) {
+    db.exec(
+      "ALTER TABLE inventory_batches ADD COLUMN is_non_expiring INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
+  const stagingCols = tableExists("inventory_staging")
+    ? db.prepare("PRAGMA table_info(inventory_staging)").all().map((column) => column.name)
+    : [];
+  if (tableExists("inventory_staging") && !stagingCols.includes("shipment_id")) {
+    db.exec("ALTER TABLE inventory_staging ADD COLUMN shipment_id INTEGER");
+  }
+  if (tableExists("inventory_staging") && !stagingCols.includes("exclude_reason")) {
+    db.exec(
+      "ALTER TABLE inventory_staging ADD COLUMN exclude_reason TEXT NOT NULL DEFAULT ''",
+    );
+  }
+  if (tableExists("inventory_staging") && !stagingCols.includes("is_non_expiring")) {
+    db.exec(
+      "ALTER TABLE inventory_staging ADD COLUMN is_non_expiring INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
+  const inventoryCols = tableExists("inventory")
+    ? db.prepare("PRAGMA table_info(inventory)").all().map((column) => column.name)
+    : [];
+  if (tableExists("inventory") && !inventoryCols.includes("archived_at")) {
+    db.exec("ALTER TABLE inventory ADD COLUMN archived_at TEXT");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS restock_request_fulfillments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open', 'picking', 'packed', 'posted', 'cancelled')),
+      has_shortage INTEGER NOT NULL DEFAULT 0,
+      partial_approved INTEGER NOT NULL DEFAULT 0,
+      partial_reason TEXT NOT NULL DEFAULT '',
+      assigned_to_user_id INTEGER,
+      packed_at TEXT,
+      packed_by_user_id INTEGER,
+      posted_at TEXT,
+      transfer_transaction_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+      FOREIGN KEY (assigned_to_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS restock_request_fulfillment_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fulfilment_id INTEGER NOT NULL,
+      request_item_id INTEGER,
+      inventory_id INTEGER,
+      item_name TEXT NOT NULL,
+      requested_quantity INTEGER NOT NULL CHECK (requested_quantity > 0),
+      reserved_quantity INTEGER NOT NULL DEFAULT 0,
+      shortage_quantity INTEGER NOT NULL DEFAULT 0,
+      picked_quantity INTEGER NOT NULL DEFAULT 0,
+      fulfilled_quantity INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (fulfilment_id) REFERENCES restock_request_fulfillments(id) ON DELETE CASCADE,
+      FOREIGN KEY (request_item_id) REFERENCES restock_request_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_reservations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      request_item_id INTEGER,
+      fulfilment_item_id INTEGER,
+      inventory_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'released', 'consumed')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_at TEXT,
+      consumed_at TEXT,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+      FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_reservation_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id INTEGER NOT NULL,
+      batch_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      expiry_date TEXT,
+      is_non_expiring INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reservation_id) REFERENCES inventory_reservations(id) ON DELETE CASCADE,
+      FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_shipments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier TEXT NOT NULL DEFAULT '',
+      delivery_note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'released', 'cancelled')),
+      total_rows INTEGER NOT NULL DEFAULT 0,
+      valid_rows INTEGER NOT NULL DEFAULT 0,
+      rejected_rows INTEGER NOT NULL DEFAULT 0,
+      imported_by_user_id INTEGER,
+      imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_by_user_id INTEGER,
+      released_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (imported_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (released_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_stocktake_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope TEXT NOT NULL DEFAULT 'ocs',
+      folder_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'in_progress', 'submitted', 'approved', 'rejected', 'applied', 'cancelled')),
+      notes TEXT NOT NULL DEFAULT '',
+      created_by_user_id INTEGER,
+      assigned_counter_user_id INTEGER,
+      started_at TEXT,
+      submitted_at TEXT,
+      submitted_by_user_id INTEGER,
+      reviewed_by_user_id INTEGER,
+      reviewed_at TEXT,
+      review_reason TEXT NOT NULL DEFAULT '',
+      applied_at TEXT,
+      applied_transaction_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_stocktake_session_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      inventory_id INTEGER NOT NULL,
+      system_quantity INTEGER NOT NULL DEFAULT 0,
+      physical_quantity INTEGER,
+      variance INTEGER,
+      counted_by_user_id INTEGER,
+      counted_at TEXT,
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES inventory_stocktake_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE RESTRICT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_fulfillments_one_active
+      ON restock_request_fulfillments(request_id)
+      WHERE status IN ('open', 'picking', 'packed');
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_fulfillments_transfer
+      ON restock_request_fulfillments(transfer_transaction_id)
+      WHERE transfer_transaction_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_requests_transfer
+      ON restock_requests(transfer_transaction_id)
+      WHERE transfer_transaction_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_restock_fulfillments_request
+      ON restock_request_fulfillments(request_id, status);
+    CREATE INDEX IF NOT EXISTS idx_restock_fulfillment_items_fulfilment
+      ON restock_request_fulfillment_items(fulfilment_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_reservations_item_status
+      ON inventory_reservations(inventory_id, status);
+    CREATE INDEX IF NOT EXISTS idx_inventory_reservations_request
+      ON inventory_reservations(request_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_reservations_active_line
+      ON inventory_reservations(request_item_id)
+      WHERE status = 'active' AND request_item_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_inventory_reservation_batches_batch
+      ON inventory_reservation_batches(batch_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_shipments_status
+      ON inventory_shipments(status, imported_at);
+    CREATE INDEX IF NOT EXISTS idx_inventory_staging_shipment
+      ON inventory_staging(shipment_id, status);
+    CREATE INDEX IF NOT EXISTS idx_stocktake_sessions_status
+      ON inventory_stocktake_sessions(status, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_stocktake_session_item_unique
+      ON inventory_stocktake_session_items(session_id, inventory_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_stocktake_sessions_applied
+      ON inventory_stocktake_sessions(applied_transaction_id)
+      WHERE applied_transaction_id IS NOT NULL;
   `);
 }
 

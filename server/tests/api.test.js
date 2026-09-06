@@ -1818,7 +1818,7 @@ test("operators can edit a patient profile and reassign the doctor", async () =>
   assert.equal(Number(updated.data.assigned_doctor_id), Number(doctors[1].id));
 });
 
-test("operators can delete warehouse stock items", async () => {
+test("operators cannot delete warehouse stock items", async () => {
   const login = await api("POST", "/api/auth/login", {
     body: { username: "operator01", password: "Welcome@123" },
   });
@@ -1837,8 +1837,8 @@ test("operators can delete warehouse stock items", async () => {
     .run(itemName).lastInsertRowid;
 
   const removed = await api("DELETE", `/api/inventory/items/${itemId}`, { token: operatorToken });
-  assert.equal(removed.status, 204, JSON.stringify(removed.data));
-  assert.equal(db.prepare("SELECT id FROM inventory WHERE id = ?").get(itemId), undefined);
+  assert.equal(removed.status, 403, JSON.stringify(removed.data));
+  assert.ok(db.prepare("SELECT id FROM inventory WHERE id = ?").get(itemId));
 });
 
 test("admin can permanently delete a patient from recently deleted", async () => {

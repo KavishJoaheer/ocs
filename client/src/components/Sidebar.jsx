@@ -132,7 +132,7 @@ const navItems = [
     to: "/stock-history",
     label: "Stock history",
     icon: RotateCw,
-    roles: ["admin", "operator"],
+    roles: ["admin", "operator", "doctor"],
   },
   {
     to: "/supply-requests",

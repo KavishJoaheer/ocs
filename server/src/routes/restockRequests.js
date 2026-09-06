@@ -20,6 +20,22 @@ const {
   snapshotItems,
   supplyRequestStatusLabel,
 } = require("../lib/restockRequestWorkflow");
+const {
+  HttpError,
+  applyPicking,
+  assertCanMarkReady,
+  assignRequest,
+  fulfilmentDetail,
+  lockPackedFulfilment,
+  postCollectionTransfer,
+  productivityMetrics,
+  reconcileLegacyFulfilment,
+  releaseReservations,
+  replaceReservationsForAmendment,
+  reserveAcceptedRequest,
+  resolveShortages,
+  workQueues,
+} = require("../lib/restockFulfilment");
 
 function broadcastSupplyRequestChange(doctorId) {
   try {
@@ -259,6 +275,12 @@ function serializeRequest(row, extras = {}) {
     cancelled_reason: row.cancelled_reason || "",
     archived_at: row.archived_at,
     requested_by_name: row.requested_by_name || null,
+    assigned_to_user_id: row.assigned_to_user_id || null,
+    assigned_to_name: row.assigned_to_name || null,
+    transfer_transaction_id: row.transfer_transaction_id || extras.transferTransactionId || null,
+    partial_fulfilment_approved: Boolean(row.partial_fulfilment_approved),
+    partial_fulfilment_reason: row.partial_fulfilment_reason || "",
+    fulfilment: extras.fulfilment || null,
     items: extras.items || [],
     pending_amendment: extras.pendingAmendment || null,
     latest_amendment: extras.latestAmendment || null,
@@ -361,6 +383,11 @@ function listRequests({
         cancelled.full_name AS cancelled_by_name,
         r.cancelled_reason,
         r.archived_at,
+        r.assigned_to_user_id,
+        assigned.full_name AS assigned_to_name,
+        r.transfer_transaction_id,
+        r.partial_fulfilment_approved,
+        r.partial_fulfilment_reason,
         req.full_name AS requested_by_name
       FROM restock_requests r
       LEFT JOIN doctors d ON d.id = r.doctor_id
@@ -369,6 +396,7 @@ function listRequests({
       LEFT JOIN users ready ON ready.id = r.ready_by_user_id
       LEFT JOIN users completed ON completed.id = r.completed_by_user_id
       LEFT JOIN users cancelled ON cancelled.id = r.cancelled_by_user_id
+      LEFT JOIN users assigned ON assigned.id = r.assigned_to_user_id
       ${where}
       ORDER BY
         CASE r.status
@@ -433,6 +461,7 @@ function listRequests({
         latestAmendment: amendmentMaps.latestByRequest.get(row.id) || null,
         amendments: amendmentMaps.historyByRequest.get(row.id) || [],
         events: eventsByRequest.get(row.id) || [],
+        fulfilment: fulfilmentDetail(row.id),
       }),
     ),
   };
@@ -646,7 +675,11 @@ router.get("/", (req, res) => {
   const from = parseIsoDateQuery(req.query.from);
   const to = parseIsoDateQuery(req.query.to);
   const requestedDoctorId = Number(req.query.doctor_id || 0) || null;
-  const includeEvents = view === "history" || String(req.query.include_events || "") === "1";
+  const includeEvents =
+    view === "history" ||
+    String(req.query.include_events || "") === "1" ||
+    role === "operator" ||
+    role === "admin";
   const usePaging = view === "history";
   const limit = usePaging
     ? Math.min(
@@ -674,6 +707,19 @@ router.get("/", (req, res) => {
 
   if (role !== "doctor" && role !== "operator" && role !== "admin") {
     return res.status(403).json({ error: "Not authorised to read restock requests." });
+  }
+
+  if (view === "queues") {
+    if (role !== "operator" && role !== "admin") {
+      return res.status(403).json({ error: "Only operators or admins can view work queues." });
+    }
+    return res.json(workQueues());
+  }
+  if (view === "metrics") {
+    if (role !== "operator" && role !== "admin") {
+      return res.status(403).json({ error: "Only operators or admins can view inventory metrics." });
+    }
+    return res.json(productivityMetrics());
   }
 
   const result = listRequests({
@@ -706,6 +752,42 @@ router.get("/", (req, res) => {
   }
 
   return res.json(payload);
+});
+
+router.get("/queues", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can view work queues." });
+  }
+  return res.json(workQueues());
+});
+
+router.get("/metrics", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can view inventory metrics." });
+  }
+  return res.json(productivityMetrics());
+});
+
+router.get("/:id/fulfilment", (req, res) => {
+  const requestId = Number(req.params.id);
+  if (!requestId) {
+    return res.status(400).json({ error: "Invalid restock request id." });
+  }
+  const request = getRequestById(requestId);
+  if (!request) {
+    return res.status(404).json({ error: "Supply request not found." });
+  }
+  if (req.auth?.role === "doctor") {
+    const doctorId = getDoctorIdForUser(req.auth.id);
+    if (Number(request.doctor_id) !== Number(doctorId)) {
+      return res.status(403).json({ error: "You can only view your own supply requests." });
+    }
+  } else if (req.auth?.role !== "operator" && req.auth?.role !== "admin") {
+    return res.status(403).json({ error: "Not authorised to read restock requests." });
+  }
+  return res.json({ request, fulfilment: fulfilmentDetail(requestId) });
 });
 
 router.get("/:id", (req, res) => {
@@ -1138,6 +1220,7 @@ router.patch("/:id/amendments/:amendmentId", (req, res) => {
           requestId,
         );
         replaceRequestItems(requestId, proposedItems);
+        replaceReservationsForAmendment(requestId);
       }
 
       recordEvent({
@@ -1212,6 +1295,15 @@ router.patch("/:id", (req, res) => {
     return res.status(404).json({ error: "Supply request not found." });
   }
 
+  if (role === "doctor") {
+    const doctorId = getDoctorIdForUser(req.auth.id);
+    if (Number(existing.doctor_id) !== Number(doctorId)) {
+      return res.status(403).json({ error: "You can only change your own supply requests." });
+    }
+  } else if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators, admins, or the requesting doctor can update restock requests." });
+  }
+
   if (existing.status === nextStatus) {
     return res.json({ request: getRequestById(requestId) });
   }
@@ -1284,6 +1376,9 @@ router.patch("/:id", (req, res) => {
           status: 400,
         });
       }
+      if (nextStatus === "ready") {
+        assertCanMarkReady(requestId);
+      }
 
       let sql = `
         UPDATE restock_requests
@@ -1308,11 +1403,42 @@ router.patch("/:id", (req, res) => {
       sql += ` WHERE id = ? AND status = ?`;
       params.push(requestId, locked.status);
 
+      if (nextStatus === "completed") {
+        postCollectionTransfer({
+          request: locked,
+          actor,
+        });
+      }
+
       const result = db.prepare(sql).run(...params);
       if (!result.changes) {
         throw Object.assign(new Error("The supply request was updated by someone else. Refresh and try again."), {
           status: 409,
         });
+      }
+
+      if (nextStatus === "accepted") {
+        const reserved = reserveAcceptedRequest(requestId);
+        if (reserved.hasShortage) {
+          recordEvent({
+            requestId,
+            eventType: EVENT_TYPES.shortageDetected,
+            previousStatus: locked.status,
+            newStatus: nextStatus,
+            actor,
+            reason: null,
+            metadata: { lines: reserved.lines },
+          });
+        }
+      } else if (nextStatus === "ready") {
+        lockPackedFulfilment(requestId, req.auth.id);
+      } else if (nextStatus === "cancelled") {
+        releaseReservations(requestId);
+        db.prepare(`
+          UPDATE restock_request_fulfillments
+          SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+          WHERE request_id = ? AND status IN ('open', 'picking', 'packed')
+        `).run(requestId);
       }
 
       const items = db
@@ -1340,6 +1466,24 @@ router.patch("/:id", (req, res) => {
           items: snapshotItems(items),
         },
       });
+
+      if (nextStatus === "completed") {
+        const posted = getRequestById(requestId);
+        recordEvent({
+          requestId,
+          eventType: EVENT_TYPES.transferPosted,
+          previousStatus: "ready",
+          newStatus: "completed",
+          actor,
+          reason: null,
+          metadata: {
+            transfer_transaction_id: posted?.transfer_transaction_id || null,
+            receipt_reference: posted?.transfer_transaction_id
+              ? `/inventory/receipts/${posted.transfer_transaction_id}`
+              : null,
+          },
+        });
+      }
     })();
   } catch (error) {
     if (error.status) {
@@ -1400,6 +1544,134 @@ router.patch("/:id", (req, res) => {
 
   broadcastSupplyRequestChange(updated.doctor_id);
   return res.json({ request: updated });
+});
+
+router.patch("/:id/fulfilment", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can update fulfilment." });
+  }
+  const requestId = Number(req.params.id);
+  if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
+  const existing = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(requestId);
+  if (!existing) return res.status(404).json({ error: "Supply request not found." });
+  if (existing.status !== "accepted" && existing.status !== "ready") {
+    return res.status(400).json({ error: "Fulfilment can only be updated while the request is accepted or ready." });
+  }
+  const actor = actorFromAuth(req.auth);
+
+  try {
+    const detail = db.transaction(() => {
+      let next = null;
+      if (req.body?.resolve_shortages) {
+        const resolved = resolveShortages(requestId);
+        next = resolved.detail;
+        recordEvent({
+          requestId,
+          eventType: next?.has_shortage ? EVENT_TYPES.shortageDetected : EVENT_TYPES.shortageResolved,
+          previousStatus: existing.status,
+          newStatus: existing.status,
+          actor,
+          reason: null,
+          metadata: { lines: resolved.lines || [] },
+        });
+      }
+      next = applyPicking(requestId, {
+        lines: Array.isArray(req.body?.lines) ? req.body.lines : [],
+        partialApproved: Object.prototype.hasOwnProperty.call(req.body || {}, "partial_approved")
+          ? Boolean(req.body.partial_approved)
+          : Object.prototype.hasOwnProperty.call(req.body || {}, "partialApproved")
+            ? Boolean(req.body.partialApproved)
+            : undefined,
+        partialReason: req.body?.partial_reason || req.body?.partialReason || "",
+      });
+      if (req.body?.lock) {
+        lockPackedFulfilment(requestId, req.auth.id);
+        next = fulfilmentDetail(requestId);
+      }
+      recordEvent({
+        requestId,
+        eventType: req.body?.partial_approved ? EVENT_TYPES.partialApproved : EVENT_TYPES.pickingUpdated,
+        previousStatus: existing.status,
+        newStatus: existing.status,
+        actor,
+        reason: req.body?.partial_reason || req.body?.allocation_reason || null,
+        metadata: { fulfilment: next },
+      });
+      return next;
+    })();
+    const updated = getRequestById(requestId);
+    broadcastSupplyRequestChange(updated.doctor_id);
+    return res.json({ request: updated, fulfilment: detail });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
+
+router.post("/:id/assign", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can assign requests." });
+  }
+  const requestId = Number(req.params.id);
+  if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
+  const existing = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(requestId);
+  if (!existing) return res.status(404).json({ error: "Supply request not found." });
+  const assigneeId = req.body?.user_id === null ? null : Number(req.body?.user_id || req.auth.id);
+  assignRequest(requestId, assigneeId);
+  recordEvent({
+    requestId,
+    eventType: EVENT_TYPES.assigned,
+    previousStatus: existing.status,
+    newStatus: existing.status,
+    actor: actorFromAuth(req.auth),
+    reason: null,
+    metadata: { assigned_to_user_id: assigneeId },
+  });
+  const updated = getRequestById(requestId);
+  broadcastSupplyRequestChange(updated.doctor_id);
+  notifyBestEffort(
+    () =>
+      sendPushToRole("operator", {
+        title: "Supply request assigned",
+        body: `Request #${requestId} for Dr. ${updated.doctor_name} was assigned.`,
+        url: "/inventory",
+        icon: "/icon-192.png",
+        tag: `restock-request-${requestId}-assigned`,
+      }),
+    "restock request assign notify failed",
+  );
+  return res.json({ request: updated });
+});
+
+router.post("/:id/reconcile", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can reconcile fulfilment." });
+  }
+  const requestId = Number(req.params.id);
+  if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
+  try {
+    db.transaction(() => {
+      reconcileLegacyFulfilment(requestId);
+      recordEvent({
+        requestId,
+        eventType: EVENT_TYPES.reconciled,
+        previousStatus: db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(requestId)?.status,
+        newStatus: db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(requestId)?.status,
+        actor: actorFromAuth(req.auth),
+        reason: String(req.body?.reason || "").trim() || "Legacy fulfilment linkage",
+        metadata: fulfilmentDetail(requestId),
+      });
+    })();
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+  const updated = getRequestById(requestId);
+  broadcastSupplyRequestChange(updated.doctor_id);
+  return res.json({ request: updated, fulfilment: fulfilmentDetail(requestId) });
 });
 
 router.delete("/:id", (_req, res) => {

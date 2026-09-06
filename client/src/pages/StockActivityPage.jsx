@@ -278,6 +278,7 @@ function StockActivityPage() {
         }
       />
 
+      {user?.role === "doctor" ? null : (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -333,6 +334,7 @@ function StockActivityPage() {
           )}
         </article>
       </div>
+      )}
 
       <SectionCard title={`Activity (${total})`}>
         <div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
@@ -499,15 +501,26 @@ function StockActivityPage() {
                       </td>
                       <td className="sticky right-0 z-10 bg-white px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]">
                         {transactionId && isRestockTransfer ? (
-                          <button
-                            type="button"
-                            onClick={() => reprintReceipt(transactionId)}
-                            className="inline-grid size-9 place-items-center rounded-xl bg-transparent text-teal-600 transition hover:text-teal-800"
-                            title="Print receipt"
-                            aria-label="Print receipt"
-                          >
-                            <Printer className="size-4" />
-                          </button>
+                          <div className="flex justify-end gap-1">
+                            {meta.request_id ? (
+                              <a
+                                href={`/supply-requests`}
+                                className="inline-grid size-9 place-items-center rounded-xl text-teal-600"
+                                title="Open supply request"
+                              >
+                                <RotateCcw className="size-4" />
+                              </a>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => reprintReceipt(transactionId)}
+                              className="inline-grid size-9 place-items-center rounded-xl bg-transparent text-teal-600 transition hover:text-teal-800"
+                              title="Print receipt"
+                              aria-label="Print receipt"
+                            >
+                              <Printer className="size-4" />
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
                         )}
