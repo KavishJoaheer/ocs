@@ -57,6 +57,10 @@ const {
   isWarehouseViewer,
 } = require("../lib/inventoryAccess");
 const { availableToPromise } = require("../lib/restockFulfilment");
+const {
+  isAutomatedMovementMeta,
+  resolveAuditActor,
+} = require("../lib/auditActor");
 
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
@@ -430,9 +434,10 @@ function getItems({ stockScope, doctorId = null }) {
       minimum_quantity: Number(row.minimum_quantity || 0),
       cost_price: toNumber(row.cost_price, 0),
       selling_price: toNumber(row.selling_price, 0),
-      expiry_date: row.nearest_expiry_date || row.expiry_date || null,
+      expiry_date: row.nearest_expiry_date || null,
+      catalogue_expiry_date: row.expiry_date || null,
       current_cost_value: roundCurrency(Number(row.quantity || 0) * toNumber(row.cost_price, 0)),
-      is_near_expiry: isNearExpiry(row.nearest_expiry_date || row.expiry_date),
+      is_near_expiry: isNearExpiry(row.nearest_expiry_date),
     }));
 }
 
@@ -739,7 +744,12 @@ function recordMovement({
 
   const inserted = db.prepare("SELECT last_insert_rowid() AS id").get();
   const movementId = Number(inserted?.id || 0);
-  const actorName = String(enrichedMeta.performed_by_name || "");
+  const actorName = resolveAuditActor({
+    displayName: enrichedMeta.performed_by_name,
+    userId: userId || enrichedMeta.performed_by_user_id,
+    automated: isAutomatedMovementMeta(enrichedMeta),
+    required: true,
+  });
   const actorRole = String(enrichedMeta.performed_by_role || "");
   const sourceText = enrichedMeta.source_location || "";
   const destinationText = enrichedMeta.destination_location || "";
@@ -878,7 +888,8 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
     .prepare(`
       SELECT
         m.*, i.item_name, i.stock_scope, i.owner_doctor_id, f.name AS folder_name,
-        owner.full_name AS owner_doctor_name, target.full_name AS target_doctor_name
+        owner.full_name AS owner_doctor_name, target.full_name AS target_doctor_name,
+        recorder.full_name AS recorded_by_name, recorder.username AS recorded_by_username
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
@@ -886,6 +897,7 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
       LEFT JOIN doctors target
         ON m.reference_type = 'doctor'
        AND target.id = m.reference_id
+      LEFT JOIN users recorder ON recorder.id = m.recorded_by_user_id
       WHERE
         (
           (@role = 'doctor' AND i.stock_scope = 'doctor' AND i.owner_doctor_id = @doctorId)
@@ -937,9 +949,21 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
       ownerDoctorName: row.owner_doctor_name,
     });
     const enrichedMeta = { ...meta, ...locations };
+    const actorUserId = meta.performed_by_user_id || row.recorded_by_user_id || null;
+    const actorName = resolveAuditActor({
+      displayName: meta.performed_by_name || row.recorded_by_name || row.recorded_by_username,
+      userId: actorUserId,
+      automated: isAutomatedMovementMeta(meta) && !actorUserId,
+      required: true,
+    });
     return {
       ...row,
-      meta_json: JSON.stringify(enrichedMeta),
+      meta_json: JSON.stringify({
+        ...enrichedMeta,
+        performed_by_name: actorName,
+      }),
+      actor_name: actorName,
+      actor_display_name: actorName,
       visible_target_doctor_name: row.target_doctor_name,
     };
   });
@@ -1169,6 +1193,36 @@ function getDoctorConsumptionRecord(doctorId) {
   });
 }
 
+function getBagPricingSummary() {
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          owner_doctor_id,
+          LOWER(TRIM(item_name)) AS product_key,
+          id,
+          quantity,
+          cost_price
+        FROM inventory
+        WHERE stock_scope = 'doctor'
+          AND owner_doctor_id IS NOT NULL
+          AND archived_at IS NULL
+      `,
+    )
+    .all();
+  const unpricedRows = rows.filter((row) => Number(row.cost_price || 0) === 0 && Number(row.quantity || 0) > 0);
+  const uniqueProducts = new Set(unpricedRows.map((row) => row.product_key).filter(Boolean));
+  const affectedBags = new Set(unpricedRows.map((row) => Number(row.owner_doctor_id)));
+  const valuationComplete = uniqueProducts.size === 0;
+  return {
+    unpriced_catalogue_items: uniqueProducts.size,
+    unpriced_bag_item_instances: unpricedRows.length,
+    affected_doctor_bags: affectedBags.size,
+    unpriced_product_keys: [...uniqueProducts],
+    valuation_complete: valuationComplete,
+  };
+}
+
 function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   ensureInfrastructure();
   const role = req.auth.role;
@@ -1201,7 +1255,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   const shipmentStats = warehouseManager ? shipmentQueueStats(shipments) : null;
   const stocktakeStats = warehouseManager ? stocktakeQueueStats(stocktakeSessions) : null;
   const bagValue = compareRows.reduce((sum, row) => sum + Number(row.bag_on_hand || 0), 0);
-  const unpricedItems = compareRows.reduce((sum, row) => sum + Number(row.unpriced_qty || 0), 0);
+  const bagPricing = warehouseManager ? getBagPricingSummary() : null;
   const periodExceptions = compareRows.reduce(
     (sum, row) => sum + Number(row.exceptional_correction_qty || 0),
     0,
@@ -1228,7 +1282,14 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
           bags: {
             doctor_bags: compareRows.filter((row) => Number(row.bag_on_hand_qty || 0) > 0).length,
             total_bag_value: roundCurrency(bagValue),
-            unpriced_items: unpricedItems,
+            valuation_complete: Boolean(bagPricing?.valuation_complete),
+            unpriced_catalogue_items: Number(bagPricing?.unpriced_catalogue_items || 0),
+            unpriced_bag_item_instances: Number(bagPricing?.unpriced_bag_item_instances || 0),
+            affected_doctor_bags: Number(bagPricing?.affected_doctor_bags || 0),
+            unpriced_product_keys: Array.isArray(bagPricing?.unpriced_product_keys)
+              ? bagPricing.unpriced_product_keys
+              : [],
+            unpriced_items: Number(bagPricing?.unpriced_catalogue_items || 0),
             period_movements: periodMovements,
             period_exceptions: periodExceptions,
           },
@@ -1647,8 +1708,8 @@ router.post("/items", (req, res) => {
   const sellingPrice = roundCurrency(req.body.selling_price);
   const attributes = String(req.body.attributes || "").trim();
   const moaNotes = String(req.body.moa_notes || "").trim();
-  const isNonExpiring = parseNonExpiringFlag(req.body.is_non_expiring || req.body.non_expiring);
-  const expiryDate = isNonExpiring ? null : String(req.body.expiry_date || "").trim() || null;
+  // Catalogue expiry_date is deprecated. It is not an operational default for receipts or FEFO.
+  const expiryDate = null;
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
@@ -1714,7 +1775,6 @@ router.put("/items/:id", (req, res) => {
     if (fieldChanged("item_name", existing.item_name, req.body.item_name)) protectedAttempts.push("item_name");
     if (fieldChanged("folder_id", existing.folder_id, req.body.folder_id)) protectedAttempts.push("folder_id");
     if (fieldChanged("unit", existing.unit, req.body.unit)) protectedAttempts.push("unit");
-    if (fieldChanged("expiry_date", existing.expiry_date, req.body.expiry_date)) protectedAttempts.push("expiry_date");
     if (req.body.batches || req.body.batch_quantity) protectedAttempts.push("batches");
     if (protectedAttempts.length) {
       return res.status(400).json({
@@ -1729,7 +1789,7 @@ router.put("/items/:id", (req, res) => {
     if (isOcsMasterRow && fieldChanged("item_name", existing.item_name, req.body.item_name)) protectedAttempts.push("item_name");
     if (isOcsMasterRow && fieldChanged("folder_id", existing.folder_id, req.body.folder_id)) protectedAttempts.push("folder_id");
     if (isOcsMasterRow && fieldChanged("unit", existing.unit, req.body.unit)) protectedAttempts.push("unit");
-    if (isOcsMasterRow && fieldChanged("expiry_date", existing.expiry_date, req.body.expiry_date)) protectedAttempts.push("expiry_date");
+    if (req.body.batches || req.body.batch_quantity) protectedAttempts.push("batches");
     if (protectedAttempts.length) {
       return res.status(403).json({
         error: `Operators cannot change ${protectedAttempts.join(", ")} on inventory items.`,
@@ -1767,9 +1827,9 @@ router.put("/items/:id", (req, res) => {
     : roundCurrency(req.body.selling_price ?? existing.selling_price);
   const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
   const moaNotes = String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
-  const expiryDate = masterFieldsLocked
-    ? (String(existing.expiry_date || "").trim() || null)
-    : (String(req.body.expiry_date ?? existing.expiry_date ?? "").trim() || null);
+  // Deprecated catalogue expiry_date: preserve the historical column, never treat it as operational.
+  // Incoming expiry_date is ignored so catalogue editing cannot change batch expiry or nearest-expiry.
+  const expiryDate = String(existing.expiry_date || "").trim() || null;
   const adjustmentNote = String(req.body.adjustment_note || "").trim();
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });

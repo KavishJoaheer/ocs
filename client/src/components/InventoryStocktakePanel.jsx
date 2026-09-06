@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import SectionCard from "./SectionCard.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
-import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
 import { formatRupees } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
@@ -22,7 +22,7 @@ function formatSavedAt(value) {
 function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions = [], requestedStatus = "" }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(DENSE_TABLE_BREAKPOINT);
   const [folderId, setFolderId] = useState("");
   const [active, setActive] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -322,7 +322,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
           ) : null}
 
           {isMobile && !canEditCounts ? (
-            <div className="space-y-2 md:hidden">
+            <div className="space-y-2 lg:hidden">
               {rows.map((line) => (
                 <div key={line.id} className="rounded-2xl border border-slate-200 px-3 py-3 text-sm">
                   <p className="font-semibold text-slate-900">{line.item_name}</p>
@@ -393,7 +393,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
               <p className="text-sm text-slate-500">No remaining uncounted items.</p>
             )
           ) : isMobile ? null : (
-            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
+            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                   <tr>

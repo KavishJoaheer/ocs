@@ -2115,6 +2115,13 @@ function ensureInventoryOperationsSchema() {
     db.exec("ALTER TABLE inventory ADD COLUMN archived_at TEXT");
   }
 
+  const stocktakeCols = tableExists("inventory_stocktake_sessions")
+    ? db.prepare("PRAGMA table_info(inventory_stocktake_sessions)").all().map((column) => column.name)
+    : [];
+  if (tableExists("inventory_stocktake_sessions") && !stocktakeCols.includes("applied_by_user_id")) {
+    db.exec("ALTER TABLE inventory_stocktake_sessions ADD COLUMN applied_by_user_id INTEGER");
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS restock_request_fulfillments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2215,6 +2222,7 @@ function ensureInventoryOperationsSchema() {
       reviewed_at TEXT,
       review_reason TEXT NOT NULL DEFAULT '',
       applied_at TEXT,
+      applied_by_user_id INTEGER,
       applied_transaction_id TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

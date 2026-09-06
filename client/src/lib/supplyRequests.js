@@ -166,6 +166,104 @@ export function canDoctorConfirmCollection(request) {
   return normaliseSupplyRequestStatus(request?.status) === "ready";
 }
 
+export function isStaffSupplyRole(role) {
+  return role === "operator" || role === "admin";
+}
+
+export function canStaffCancelSupplyRequest(request, role) {
+  if (!isStaffSupplyRole(role)) return false;
+  if (request?.can_cancel === false) return false;
+  if (request?.can_cancel === true) return true;
+  const status = normaliseSupplyRequestStatus(request?.status);
+  return status === "pending" || status === "accepted" || status === "ready";
+}
+
+/**
+ * Single source of truth for staff request actions.
+ * Desktop rows, mobile/tablet cards and the detail drawer all consume this.
+ */
+export function getSupplyRequestActions({ request, role, busy = false } = {}) {
+  const status = normaliseSupplyRequestStatus(request?.status);
+  const pendingAmendment = Boolean(request?.pending_amendment);
+  const staff = isStaffSupplyRole(role);
+  const disabled = Boolean(busy);
+  const actions = [];
+
+  if (staff && status === "pending") {
+    actions.push({
+      id: "accept",
+      label: "Request Accepted",
+      kind: "primary",
+      disabled,
+    });
+  }
+
+  if (staff && status === "accepted" && pendingAmendment) {
+    actions.push({
+      id: "review_amendment",
+      label: "Review requested change",
+      kind: "primary",
+      disabled,
+    });
+  }
+
+  if (staff && status === "accepted" && !pendingAmendment) {
+    actions.push({
+      id: "fulfil",
+      label: "Open fulfilment",
+      kind: "primary",
+      disabled,
+    });
+  }
+
+  if (staff && status === "ready") {
+    actions.push({
+      id: "awaiting_collection",
+      label: "Waiting for the doctor to confirm collection",
+      kind: "info",
+      disabled: true,
+    });
+  }
+
+  if (canStaffCancelSupplyRequest(request, role)) {
+    actions.push({
+      id: "cancel",
+      label: "Cancel & archive",
+      kind: "danger",
+      disabled,
+    });
+  }
+
+  actions.push({
+    id: "details",
+    label: "View details",
+    kind: "secondary",
+    disabled: false,
+  });
+
+  if ((status === "completed" || status === "cancelled") && request?.receipt_available) {
+    actions.push({
+      id: "receipt",
+      label: "View receipt",
+      kind: "secondary",
+      disabled: false,
+    });
+  }
+
+  return actions;
+}
+
+export function splitSupplyRequestCardActions(actions = []) {
+  const rows = Array.isArray(actions) ? actions : [];
+  const primary = rows.find((action) => action.kind === "primary") || null;
+  const details = rows.find((action) => action.id === "details") || null;
+  const overflow = rows.filter(
+    (action) => action !== primary && action !== details && action.kind !== "info",
+  );
+  const info = rows.find((action) => action.kind === "info") || null;
+  return { primary, details, overflow, info };
+}
+
 export function summarizeActiveSupplyRequests(requests = [], role = "operator") {
   const rows = Array.isArray(requests) ? requests : [];
   const pending = rows.filter((row) => normaliseSupplyRequestStatus(row.status) === "pending").length;
@@ -198,5 +296,10 @@ export function summarizeActiveSupplyRequests(requests = [], role = "operator") 
 
 export async function fetchSupplyRequestDetail(id) {
   const payload = await api.get(`/restock-requests/${id}`);
-  return payload?.request || null;
+  const request = payload?.request || null;
+  if (!request) return null;
+  if (!request.fulfilment && payload?.fulfilment) {
+    return { ...request, fulfilment: payload.fulfilment };
+  }
+  return request;
 }

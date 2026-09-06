@@ -2,6 +2,7 @@ const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("./utils");
 const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast, publishSupplyRequestChange } = require("./inventoryRealtime");
+const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 
 function createTransferTransactionId() {
   return `TX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -658,6 +659,12 @@ function recordTransferMovement({
     metaJson,
   );
   const movementId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+  const actorName = resolveAuditActor({
+    displayName: meta?.performed_by_name,
+    userId: userId || meta?.performed_by_user_id,
+    automated: isAutomatedMovementMeta(meta || {}) && !(userId || meta?.performed_by_user_id),
+    required: true,
+  });
   db.prepare(`
     INSERT INTO inventory_activity_history (
       movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
@@ -665,8 +672,8 @@ function recordTransferMovement({
     ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     movementId || null,
-    userId || null,
-    meta?.performed_by_name || "",
+    userId || meta?.performed_by_user_id || null,
+    actorName,
     meta?.performed_by_role || "",
     actionType,
     item?.item_name || "",

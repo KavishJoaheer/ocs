@@ -6,6 +6,7 @@ const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast } = require("./inventoryRealtime");
 const { isEnvTrue } = require("./envFlags");
 const { availableToPromise } = require("./restockFulfilment");
+const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 
 const CSV_REQUIRED_HEADERS = [
   "folder",
@@ -383,6 +384,12 @@ function recordOpsMovement({
     metaJson,
   );
   const movementId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+  const actorName = resolveAuditActor({
+    displayName: meta.performed_by_name,
+    userId: userId || meta.performed_by_user_id,
+    automated: isAutomatedMovementMeta(meta) && !(userId || meta.performed_by_user_id),
+    required: true,
+  });
   db.prepare(`
     INSERT INTO inventory_activity_history (
       movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
@@ -390,8 +397,8 @@ function recordOpsMovement({
     ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     movementId || null,
-    userId || null,
-    meta.performed_by_name || "",
+    userId || meta.performed_by_user_id || null,
+    actorName,
     meta.performed_by_role || "",
     actionType,
     item?.item_name || "",
@@ -988,6 +995,10 @@ function serializeStocktakeSession(session, { revealSystem = false } = {}) {
     open_variance_value: ["submitted", "approved", "applied"].includes(session.status)
       ? openVarianceValue
       : null,
+    created_by_name: resolveAuditActor({ userId: session.created_by_user_id }),
+    submitted_by_name: resolveAuditActor({ userId: session.submitted_by_user_id }),
+    reviewed_by_name: resolveAuditActor({ userId: session.reviewed_by_user_id }),
+    applied_by_name: resolveAuditActor({ userId: session.applied_by_user_id }),
   };
 }
 
@@ -1004,6 +1015,8 @@ function listStocktakeSessions() {
         s.*,
         u.full_name AS created_by_name,
         counter.full_name AS assigned_counter_name,
+        reviewer.full_name AS reviewed_by_name,
+        applier.full_name AS applied_by_name,
         f.name AS folder_name,
         (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id) AS item_count,
         (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id AND si.physical_quantity IS NOT NULL) AS counted_count,
@@ -1015,6 +1028,8 @@ function listStocktakeSessions() {
       FROM inventory_stocktake_sessions s
       LEFT JOIN users u ON u.id = s.created_by_user_id
       LEFT JOIN users counter ON counter.id = s.assigned_counter_user_id
+      LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by_user_id
+      LEFT JOIN users applier ON applier.id = s.applied_by_user_id
       LEFT JOIN inventory_folders f ON f.id = s.folder_id
       ORDER BY s.created_at DESC, s.id DESC
       LIMIT 100
@@ -1266,6 +1281,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           transaction_id: transactionId,
           previous_quantity: previous,
           counted_quantity: next,
+          performed_by_user_id: userId,
           performed_by_name: actor.displayName || "",
           performed_by_role: actor.role || "",
           reference_type: "stocktake_session",
@@ -1278,10 +1294,11 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       SET
         status = 'applied',
         applied_at = CURRENT_TIMESTAMP,
+        applied_by_user_id = ?,
         applied_transaction_id = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND applied_transaction_id IS NULL
-    `).run(transactionId, sessionId);
+    `).run(userId, transactionId, sessionId);
     if (!applied.changes) {
       return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
     }

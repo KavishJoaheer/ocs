@@ -74,12 +74,24 @@ export default function InventoryTabSummaries({
     return (
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <Card title="Doctor bags" value={data.doctor_bags || 0} />
-        <Card title="Total bag value" value={formatRupees(data.total_bag_value || 0)} />
         <Card
-          title="Unpriced items"
-          value={data.unpriced_items || 0}
+          title="Total bag value"
+          value={data.valuation_complete === false ? "Incomplete" : formatRupees(data.total_bag_value || 0)}
+          hint={
+            data.valuation_complete === false
+              ? `${Number(data.unpriced_catalogue_items || 0).toLocaleString()} product${Number(data.unpriced_catalogue_items || 0) === 1 ? "" : "s"} lack pricing`
+              : undefined
+          }
+        />
+        <Card
+          title="Unpriced products"
+          value={data.unpriced_catalogue_items ?? data.unpriced_items ?? 0}
           tone="amber"
-          hint="Open catalogue pricing"
+          hint={
+            Number(data.unpriced_bag_item_instances || 0) > 0
+              ? `${Number(data.unpriced_bag_item_instances).toLocaleString()} bag-item record${Number(data.unpriced_bag_item_instances) === 1 ? "" : "s"} across ${Number(data.affected_doctor_bags || 0)} bag${Number(data.affected_doctor_bags || 0) === 1 ? "" : "s"}`
+              : "Open catalogue pricing"
+          }
           onClick={onOpenUnpriced}
         />
         <Card title="Period movements / exceptions" value={`${data.period_movements || 0} / ${data.period_exceptions || 0}`} />

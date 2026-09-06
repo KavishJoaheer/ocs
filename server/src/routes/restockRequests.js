@@ -22,6 +22,7 @@ const {
   supplyRequestStatusLabel,
 } = require("../lib/restockRequestWorkflow");
 const { movementIdsForTransaction } = require("../lib/inventoryOperations");
+const { LEGACY_STAFF_LABEL, resolveAuditActor } = require("../lib/auditActor");
 const {
   HttpError,
   applyPicking,
@@ -149,7 +150,11 @@ function listEventsForRequestIds(requestIds) {
       new_status: row.new_status,
       actor_user_id: row.actor_user_id,
       actor_role: row.actor_role,
-      actor_display_name: row.actor_display_name,
+      actor_display_name: resolveAuditActor({
+        displayName: row.actor_display_name,
+        userId: row.actor_user_id,
+        required: true,
+      }),
       reason: row.reason,
       metadata: parseMetadata(row.metadata_json),
       created_at: row.created_at,
@@ -248,6 +253,40 @@ function listAmendmentsForRequestIds(requestIds) {
   return { pendingByRequest, latestByRequest, historyByRequest };
 }
 
+function namedActor(displayName, userId, { required = false } = {}) {
+  return resolveAuditActor({
+    displayName,
+    userId,
+    required,
+  });
+}
+
+function normalizeFulfilmentForDetail(fulfilment) {
+  if (!fulfilment) return null;
+  const items = (fulfilment.items || []).map((line) => {
+    const allocations = line.allocations || line.picked_batches || line.batches || [];
+    return {
+      ...line,
+      reserved_quantity: Number(line.reserved_quantity || 0),
+      fulfilled_quantity: Number(line.fulfilled_quantity || 0),
+      picked_quantity: Number(line.picked_quantity || 0),
+      shortage_quantity: Number(line.shortage_quantity || 0),
+      shortage_reason: line.shortage_reason || fulfilment.partial_reason || "",
+      picked_batches: allocations.map((batch) => ({
+        id: batch.id || null,
+        batch_id: batch.batch_id || batch.id || null,
+        expiry_date: batch.expiry_date || null,
+        is_non_expiring: Boolean(batch.is_non_expiring),
+        quantity: Number(batch.quantity || batch.quantity_picked || 0),
+      })),
+    };
+  });
+  return {
+    ...fulfilment,
+    items,
+  };
+}
+
 function serializeRequest(row, extras = {}) {
   const status = normaliseStatus(row.status);
   const transferTransactionId = row.transfer_transaction_id || extras.transferTransactionId || extras.fulfilment?.transfer_transaction_id || null;
@@ -255,6 +294,13 @@ function serializeRequest(row, extras = {}) {
   const createdEvent = events.find((event) => event.event_type === EVENT_TYPES.created);
   const originalItems = createdEvent?.metadata?.items || extras.items || [];
   const movements = transferTransactionId ? movementIdsForTransaction(transferTransactionId) : [];
+  const acceptedRequired = Boolean(row.accepted_at || row.accepted_by_user_id);
+  const readyRequired = Boolean(row.ready_at || row.ready_by_user_id);
+  const completedRequired = Boolean(row.completed_at || row.completed_by_user_id);
+  const cancelledRequired = Boolean(row.cancelled_at || row.cancelled_by_user_id);
+  const fulfilment = normalizeFulfilmentForDetail(extras.fulfilment || null);
+  const hasFulfilmentLines = Boolean(fulfilment?.items?.length);
+  const lifecycleHasFulfilment = ["accepted", "ready", "completed"].includes(status);
   return {
     id: row.id,
     doctor_id: row.doctor_id,
@@ -267,32 +313,37 @@ function serializeRequest(row, extras = {}) {
     updated_at: row.updated_at,
     accepted_at: row.accepted_at,
     accepted_by_user_id: row.accepted_by_user_id,
-    accepted_by_name: row.accepted_by_name || null,
+    accepted_by_name: namedActor(row.accepted_by_name, row.accepted_by_user_id, { required: acceptedRequired }),
     ready_at: row.ready_at,
     ready_by_user_id: row.ready_by_user_id,
-    ready_by_name: row.ready_by_name || null,
+    ready_by_name: namedActor(row.ready_by_name, row.ready_by_user_id, { required: readyRequired }),
     prepared_at: row.ready_at,
     prepared_by_user_id: row.ready_by_user_id,
-    prepared_by_name: row.ready_by_name || null,
+    prepared_by_name: namedActor(row.prepared_by_name || row.ready_by_name, row.ready_by_user_id, { required: readyRequired }),
     completed_at: row.completed_at,
     completed_by_user_id: row.completed_by_user_id,
-    completed_by_name: row.completed_by_name || null,
+    completed_by_name: namedActor(row.completed_by_name, row.completed_by_user_id, { required: completedRequired }),
     cancelled_at: row.cancelled_at,
     cancelled_by_user_id: row.cancelled_by_user_id,
-    cancelled_by_name: row.cancelled_by_name || null,
+    cancelled_by_name: namedActor(row.cancelled_by_name, row.cancelled_by_user_id, { required: cancelledRequired }),
     cancelled_reason: row.cancelled_reason || "",
     archived_at: row.archived_at,
-    requested_by_name: row.requested_by_name || null,
+    requested_by_name: namedActor(row.requested_by_name, row.requested_by_user_id, { required: Boolean(row.created_at) }),
     assigned_to_user_id: row.assigned_to_user_id || null,
-    assigned_to_name: row.assigned_to_name || null,
+    assigned_to_name: namedActor(row.assigned_to_name, row.assigned_to_user_id),
     transfer_transaction_id: transferTransactionId,
     receipt_available: Boolean(transferTransactionId),
-    movement_ids: movements.map((row) => row.id),
+    receipt_applicable: status === "completed" || Boolean(transferTransactionId),
+    movement_ids: movements.map((movement) => movement.id),
     movements,
     original_items: originalItems,
     partial_fulfilment_approved: Boolean(row.partial_fulfilment_approved),
     partial_fulfilment_reason: row.partial_fulfilment_reason || "",
-    fulfilment: extras.fulfilment || null,
+    fulfilment,
+    fulfilment_recorded: hasFulfilmentLines,
+    fulfilment_expected: lifecycleHasFulfilment,
+    timeline_available: events.length > 0,
+    can_cancel: canTransition("operator", status, "cancelled") || canTransition("admin", status, "cancelled"),
     items: extras.items || [],
     pending_amendment: extras.pendingAmendment || null,
     latest_amendment: extras.latestAmendment || null,
@@ -303,7 +354,7 @@ function serializeRequest(row, extras = {}) {
       label: event.event_label || supplyRequestEventLabel(event.event_type),
       event_type: event.event_type,
       at: event.created_at,
-      actor: event.actor_display_name,
+      actor: event.actor_display_name || LEGACY_STAFF_LABEL,
       role: event.actor_role,
       reason: event.reason || "",
       status: event.new_status,
@@ -410,6 +461,7 @@ function listRequests({
         r.transfer_transaction_id,
         r.partial_fulfilment_approved,
         r.partial_fulfilment_reason,
+        r.requested_by_user_id,
         req.full_name AS requested_by_name
       FROM restock_requests r
       LEFT JOIN doctors d ON d.id = r.doctor_id
@@ -832,7 +884,7 @@ router.get("/:id", (req, res) => {
     return res.status(403).json({ error: "Not authorised to read restock requests." });
   }
 
-  return res.json({ request });
+  return res.json({ request, fulfilment: request.fulfilment || fulfilmentDetail(requestId) });
 });
 
 router.post("/", (req, res) => {

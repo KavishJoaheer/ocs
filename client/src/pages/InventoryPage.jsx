@@ -5,12 +5,12 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Ellipsis,
   Minus,
   MinusCircle,
   MoreVertical,
   Pencil,
   Plus,
-  Printer,
   Search,
   Trash2,
   Truck,
@@ -37,6 +37,7 @@ import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx
 import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
 import InventoryTabSummaries from "../components/inventory/InventoryTabSummaries.jsx";
 import ItemEditorModal from "../components/inventory/ItemEditorModal.jsx";
+import TransferReceiptModal from "../components/inventory/TransferReceiptModal.jsx";
 import WriteOffStockModal from "../components/inventory/WriteOffStockModal.jsx";
 import {
   canApplyExceptionalCorrection,
@@ -70,6 +71,7 @@ import {
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
+import { printTransferReceipt } from "../lib/transferReceipt.js";
 
 dayjs.extend(isoWeek);
 
@@ -336,7 +338,6 @@ function operatorItemFormState(folderId) {
     item_name: "",
     quantity: "0",
     minimum_quantity: "0",
-    expiry_date: "",
     folder_id: folderId ? String(folderId) : "",
     unit: "unit",
     cost_price: "0",
@@ -1008,7 +1009,7 @@ function CompareRemainingCell({ value, variance, qty }) {
 
 function MovementActivityLine({ movement }) {
   const meta = movement.meta || {};
-  const staff = meta.performed_by_name || movement.actor_name || (movement.recorded_by_user_id || meta.performed_by_user_id ? "Staff" : "System");
+  const staff = meta.performed_by_name || movement.actor_display_name || movement.actor_name || "Legacy staff record";
   const qty = Math.abs(Number(movement.quantity ?? 0));
   const itemName = movement.item_name || "item";
   const unitLabel = qty === 1 ? "unit" : "units";
@@ -1665,32 +1666,7 @@ function InventoryActionButtons({
 }
 
 function RestockReceiptModal({ open, receipt, onClose, onPrint }) {
-  if (!receipt) return null;
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Restock completed"
-      description="Transfer saved successfully. You can print the stock transfer note now."
-      size="lg"
-    >
-      <div className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-900">Transaction ID: {receipt.transaction_id}</p>
-        <p className="text-xs text-slate-600">
-          Issued by {receipt.issued_by_name || "OCS User"} - Received by {receipt.received_by_name || "Doctor"}
-        </p>
-      </div>
-      <div className="mt-4 flex justify-end gap-3">
-        <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
-          Close
-        </button>
-        <button type="button" onClick={onPrint} className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white">
-          <Printer className="size-4" />
-          Print Restock Receipt
-        </button>
-      </div>
-    </Modal>
-  );
+  return <TransferReceiptModal open={open} receipt={receipt} onClose={onClose} onPrint={onPrint} />;
 }
 
 const MOBILE_STOCK_OUT_OPTIONS = [
@@ -1819,16 +1795,6 @@ function OperatorAddItemDrawer({ open, onClose, folders, activeFolderId, activeC
                 />
               </label>
             </div>
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Expiry Date</span>
-              <input
-                type="date"
-                name="expiry_date"
-                value={form.expiry_date}
-                onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))}
-                className={fieldClass}
-              />
-            </label>
             <label className="block space-y-2">
               <span className="text-sm font-semibold text-slate-700">Category</span>
               <select
@@ -2567,6 +2533,9 @@ export default function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [correction, setCorrection] = useState(null);
   const [stockFiltersOpen, setStockFiltersOpen] = useState(false);
+  const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
+  const headerActionsButtonRef = useRef(null);
+  const [unpricedFromBags, setUnpricedFromBags] = useState(false);
   const [showUnpricedOnly, setShowUnpricedOnly] = useState(false);
   const [stocktakeStatusFilter, setStocktakeStatusFilter] = useState("");
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
@@ -2814,6 +2783,31 @@ export default function InventoryPage() {
   }, [selectedContextDoctorId, doctorContext]);
 
   useEffect(() => {
+    setHeaderActionsOpen(false);
+  }, [logisticsTab]);
+
+  useEffect(() => {
+    if (!headerActionsOpen) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        setHeaderActionsOpen(false);
+        headerActionsButtonRef.current?.focus();
+      }
+    };
+    const onPointer = (event) => {
+      if (headerActionsButtonRef.current?.contains(event.target)) return;
+      if (event.target?.closest?.("[data-inventory-header-menu]")) return;
+      setHeaderActionsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [headerActionsOpen]);
+
+  useEffect(() => {
     if (user?.role !== "doctor" || !user?.id || !user?.doctor_id) {
       return;
     }
@@ -2917,17 +2911,37 @@ export default function InventoryPage() {
     setSearchParams(nextParams, { replace: true });
   }, [isDoctor, data, doctorRestockCandidates, searchParams, setSearchParams]);
 
+  const unpricedProductKeys = data?.tab_summaries?.bags?.unpriced_product_keys || [];
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const folderId = selectedView && selectedView !== "all" ? selectedView : "";
     const source = folderId ? items.filter((item) => String(item.folder_id) === String(folderId)) : items;
+    const unpricedKeys = new Set(
+      (Array.isArray(unpricedProductKeys) ? unpricedProductKeys : []).map((key) => String(key || "").trim().toLowerCase()).filter(Boolean),
+    );
     return source
       .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
       .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
       .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry))
       .filter((item) => !showMissingExpiryOnly || !item.expiry_date)
-      .filter((item) => !showUnpricedOnly || Number(item.cost_price || 0) === 0);
-  }, [items, search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showUnpricedOnly]);
+      .filter((item) => {
+        if (!showUnpricedOnly) return true;
+        if (unpricedFromBags && unpricedKeys.size) {
+          return unpricedKeys.has(String(item.item_name || "").trim().toLowerCase());
+        }
+        return Number(item.cost_price || 0) === 0;
+      });
+  }, [
+    items,
+    search,
+    selectedView,
+    showLowStockOnly,
+    showNearExpiryOnly,
+    showMissingExpiryOnly,
+    showUnpricedOnly,
+    unpricedFromBags,
+    unpricedProductKeys,
+  ]);
 
   const sortedItems = useMemo(() => {
     const rows = [...filteredItems];
@@ -3111,6 +3125,8 @@ export default function InventoryPage() {
     setShowLowStockOnly(next === "low");
     setShowNearExpiryOnly(next === "near");
     setShowMissingExpiryOnly(next === "missing");
+    setShowUnpricedOnly(false);
+    setUnpricedFromBags(false);
   }
 
   function openDoctorBagFromCompare(doctorId) {
@@ -3309,79 +3325,13 @@ export default function InventoryPage() {
     }
   }
 
-  function buildReceiptPrintHtml(receipt) {
-    const rows = (receipt.items || [])
-      .map(
-        (line) => `
-          <tr>
-            <td>${line.item_name || ""}</td>
-            <td>${line.batch_number || "N/A"} / ${line.expiry || "N/A"}</td>
-            <td>${line.quantity || 0}</td>
-            <td>${line.unit || "unit"}</td>
-          </tr>
-        `,
-      )
-      .join("");
-    return `
-      <html>
-        <head>
-          <title>Stock Transfer Note - ${receipt.transaction_id}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111; padding: 20px; }
-            .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
-            .logo { font-weight:700; font-size:18px; }
-            .meta { font-size:12px; margin: 12px 0; }
-            table { width:100%; border-collapse:collapse; margin-top:12px; font-size:12px; }
-            th, td { border:1px solid #111; padding:8px; text-align:left; }
-            .footer { margin-top:24px; font-size:12px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <div class="logo">OCS Medecins</div>
-              <div>Stock Transfer Note</div>
-            </div>
-            <div><strong>Transaction ID:</strong> ${receipt.transaction_id}</div>
-          </div>
-          <div class="meta">
-            <div><strong>Date & Time:</strong> ${receipt.date_time || ""}</div>
-            <div><strong>Issued By:</strong> ${receipt.issued_by_name || ""}</div>
-            <div><strong>Received By:</strong> ${receipt.received_by_name || ""}</div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Item Name</th>
-                <th>Batch Number / Expiry</th>
-                <th>Quantity Transferred</th>
-                <th>Unit</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows}
-            </tbody>
-          </table>
-          <div class="footer">
-            <div>Digital Signature: ____________________</div>
-            <div>Generated at: ${new Date().toLocaleString()}</div>
-          </div>
-        </body>
-      </html>
-    `;
-  }
-
   function printReceipt(receipt) {
     if (!receipt) return;
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) {
+    const printed = printTransferReceipt(receipt);
+    if (!printed) {
       toast.error("Unable to open print preview.");
       return;
     }
-    printWindow.document.write(buildReceiptPrintHtml(receipt));
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
     toast.success("Receipt generated successfully.");
   }
 
@@ -3890,25 +3840,74 @@ export default function InventoryPage() {
               </Link>
             )
           ) : (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {canUseAdminInventory && isAdmin ? (
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {canUseAdminInventory && isAdmin && logisticsTab === "stock" ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={downloadAdminStockExcel}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
-                  >
-                    <Download className="size-4 text-[#1f7f7b]" />
-                    Download Excel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditor({ item: null })}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
-                  >
-                    <Plus className="size-4" />
-                    Add catalogue item
-                  </button>
+                  <div className="hidden gap-2 lg:flex">
+                    <button
+                      type="button"
+                      onClick={downloadAdminStockExcel}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
+                    >
+                      <Download className="size-4 text-[#1f7f7b]" />
+                      Download inventory
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditor({ item: null })}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
+                    >
+                      <Plus className="size-4" />
+                      Add catalogue item
+                    </button>
+                  </div>
+                  <div className="relative lg:hidden">
+                    <button
+                      ref={headerActionsButtonRef}
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-expanded={headerActionsOpen}
+                      aria-label="Inventory actions"
+                      onClick={() => setHeaderActionsOpen((open) => !open)}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800"
+                    >
+                      <Ellipsis className="size-4" />
+                      Actions
+                    </button>
+                    {headerActionsOpen ? (
+                      <div
+                        data-inventory-header-menu="true"
+                        role="menu"
+                        aria-label="Inventory actions"
+                        className="absolute right-0 z-30 mt-2 w-56 rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          onClick={() => {
+                            setHeaderActionsOpen(false);
+                            downloadAdminStockExcel();
+                          }}
+                        >
+                          <Download className="size-4" />
+                          Download inventory
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          onClick={() => {
+                            setHeaderActionsOpen(false);
+                            setEditor({ item: null });
+                          }}
+                        >
+                          <Plus className="size-4" />
+                          Add catalogue item
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </>
               ) : null}
             </div>
@@ -3931,7 +3930,11 @@ export default function InventoryPage() {
           }}
           onOpenUnpriced={() => {
             setLogisticsTab("stock");
+            setSelectedView("all");
+            setActiveCategory("All");
+            setSearch("");
             setShowUnpricedOnly(true);
+            setUnpricedFromBags(true);
             setShowLowStockOnly(false);
             setShowNearExpiryOnly(false);
             setShowMissingExpiryOnly(false);
@@ -3972,26 +3975,33 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs ? (
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <div
+          role="tablist"
+          aria-label="Inventory sections"
+          className="grid grid-cols-4 gap-1 sm:gap-2 lg:flex lg:overflow-visible"
+        >
           {[
-            ...(isOperator ? [{ id: "queues", label: "Work queues" }] : []),
-            { id: "stock", label: isOperator ? "Warehouse stock" : "Stock" },
-            { id: "shipments", label: "Shipments", badge: pendingStagingCount },
-            { id: "count", label: "Count" },
-            ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
+            ...(isOperator ? [{ id: "queues", label: "Work queues", shortLabel: "Queues" }] : []),
+            { id: "stock", label: isOperator ? "Warehouse stock" : "Stock", shortLabel: "Stock" },
+            { id: "shipments", label: "Shipments", shortLabel: "Shipments", badge: pendingStagingCount },
+            { id: "count", label: "Count", shortLabel: "Count" },
+            ...(isAdmin ? [{ id: "bags", label: "Bags", shortLabel: "Bags" }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={logisticsTab === tab.id}
               aria-current={logisticsTab === tab.id ? "page" : undefined}
               onClick={() => setLogisticsTab(tab.id)}
-              className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${
+              className={`inline-flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-full px-1.5 text-[11px] font-semibold transition sm:px-3 sm:text-sm lg:shrink-0 lg:px-4 ${
                 logisticsTab === tab.id
                   ? "bg-[#2d8f98] text-white shadow-sm"
                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
-              {tab.label}
+              <span className="truncate lg:hidden">{tab.shortLabel || tab.label}</span>
+              <span className="hidden lg:inline">{tab.label}</span>
               {tab.badge > 0 ? (
                 <span
                   className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
@@ -4015,6 +4025,25 @@ export default function InventoryPage() {
 
       {canManageOcs && logisticsTab === "stock" && isAdmin ? (
         <OperatorSupplyRequestsPanel />
+      ) : null}
+
+      {canManageOcs && logisticsTab === "stock" && showUnpricedOnly ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>Showing unique catalogue products that need pricing.</p>
+          {unpricedFromBags ? (
+            <button
+              type="button"
+              onClick={() => {
+                setLogisticsTab("bags");
+                setShowUnpricedOnly(false);
+                setUnpricedFromBags(false);
+              }}
+              className="inline-flex min-h-11 items-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold"
+            >
+              Return to Bags
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {canManageOcs && logisticsTab === "shipments" ? (
@@ -4105,7 +4134,7 @@ export default function InventoryPage() {
               type="button"
               aria-expanded={stockFiltersOpen}
               onClick={() => setStockFiltersOpen((open) => !open)}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 md:hidden"
+              className="inline-flex min-h-11 shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 lg:hidden"
             >
               Filters
             </button>
@@ -4135,7 +4164,7 @@ export default function InventoryPage() {
               </button>
             ))}
           </div>
-          <div className={cx("flex flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden md:flex")}>
+          <div className={cx("flex flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden lg:flex")}>
             <button
               type="button"
               onClick={() => applyChaseFilter("low")}
@@ -4160,7 +4189,10 @@ export default function InventoryPage() {
             {isAdmin ? (
               <button
                 type="button"
-                onClick={() => setShowUnpricedOnly((value) => !value)}
+                onClick={() => {
+                  setShowUnpricedOnly((value) => !value);
+                  setUnpricedFromBags(false);
+                }}
                 className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showUnpricedOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
               >
                 Unpriced
@@ -4177,7 +4209,7 @@ export default function InventoryPage() {
 
         {pagedItems.length ? (
           <>
-            <div className="hidden rounded-3xl border border-slate-200/80 bg-white md:block">
+            <div className="hidden rounded-3xl border border-slate-200/80 bg-white lg:block">
               <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
                 <table className="w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
                   <colgroup>
@@ -4304,7 +4336,7 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            <div className="mt-2 flex w-full flex-col gap-3.5 bg-slate-50 px-1 py-3 md:hidden">
+            <div className="mt-2 flex w-full flex-col gap-3.5 bg-slate-50 px-1 py-3 lg:hidden">
               {pagedItems.map((item) => (
                 <MobileInventoryStockCard
                   key={`m-${item.id}`}
@@ -4416,7 +4448,7 @@ export default function InventoryPage() {
             />
           ) : (
           <>
-          <div className="space-y-3 md:hidden">
+          <div className="space-y-3 lg:hidden">
             {compareRows.map((row) => (
               <button
                 key={`bag-card-${row.doctor_id}`}
@@ -4446,7 +4478,7 @@ export default function InventoryPage() {
               </button>
             ))}
           </div>
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
+          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -4534,7 +4566,7 @@ export default function InventoryPage() {
         </div>
         </div>
       ) : !canUseAdminInventory ? (
-        <div className="hidden md:block">
+        <div className="hidden lg:block">
           <LiveActivitySection movements={parsedMovements} />
         </div>
       ) : null}

@@ -13,6 +13,8 @@ import {
   describeSupplyRequestItems,
   formatSupplyRequestCollectionDay,
   formatSupplyRequestTimestamp,
+  getSupplyRequestActions,
+  splitSupplyRequestCardActions,
   summarizeActiveSupplyRequests,
   supplyRequestStatusLabel,
   supplyRequestStatusTone,
@@ -58,6 +60,90 @@ function HistoryRequestProgress({ request, role }) {
         </div>
       ) : null}
       {request.transfer_transaction_id ? <div>Transfer {request.transfer_transaction_id}</div> : null}
+    </div>
+  );
+}
+
+function actionClass(kind, extra = "") {
+  if (kind === "primary") {
+    return cx("inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60", extra);
+  }
+  if (kind === "danger") {
+    return cx("inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 disabled:opacity-60", extra);
+  }
+  return cx("inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-60", extra);
+}
+
+function runSupplyRequestAction(action, request, handlers) {
+  if (!action || action.disabled) return;
+  if (action.id === "accept") handlers.onAccept(request);
+  if (action.id === "fulfil") handlers.onFulfil(request);
+  if (action.id === "review_amendment") handlers.onReviewAmendment(request);
+  if (action.id === "cancel") handlers.onCancel(request);
+  if (action.id === "details") handlers.onDetails(request);
+  if (action.id === "receipt") handlers.onReceipt?.(request);
+}
+
+function CompactRequestActions({ request, role, busy, layout = "card", handlers }) {
+  const actions = getSupplyRequestActions({ request, role, busy });
+  if (layout === "row") {
+    return (
+      <div className="flex flex-col items-end gap-2">
+        {actions.map((action) =>
+          action.kind === "info" ? (
+            <span key={action.id} className="max-w-[14rem] text-right text-[11px] text-slate-500">
+              {action.label}
+            </span>
+          ) : (
+            <button
+              key={action.id}
+              type="button"
+              disabled={action.disabled}
+              onClick={() => runSupplyRequestAction(action, request, handlers)}
+              className={actionClass(action.kind, "min-w-[9.5rem]")}
+            >
+              {busy && action.kind === "primary" ? "Saving…" : action.label}
+            </button>
+          ),
+        )}
+      </div>
+    );
+  }
+
+  const { primary, details, overflow, info } = splitSupplyRequestCardActions(actions);
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {info ? <p className="text-xs text-slate-500">{info.label}</p> : null}
+      {primary ? (
+        <button
+          type="button"
+          disabled={primary.disabled}
+          onClick={() => runSupplyRequestAction(primary, request, handlers)}
+          className={actionClass(primary.kind, "w-full")}
+        >
+          {busy ? "Saving…" : primary.label}
+        </button>
+      ) : null}
+      {details ? (
+        <button
+          type="button"
+          onClick={() => runSupplyRequestAction(details, request, handlers)}
+          className={actionClass("secondary", "w-full")}
+        >
+          {details.label}
+        </button>
+      ) : null}
+      {overflow.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          disabled={action.disabled}
+          onClick={() => runSupplyRequestAction(action, request, handlers)}
+          className={actionClass(action.kind, "w-full")}
+        >
+          {action.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -186,8 +272,7 @@ export default function OperatorSupplyRequestsPanel() {
     try {
       await api.patch(`/restock-requests/${request.id}`, body);
       toast.success(successMessage);
-      await loadActive();
-      if (tab === "history") await loadHistory();
+      await Promise.all([loadActive(), loadHistory()]);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not update request.");
     } finally {
@@ -198,6 +283,17 @@ export default function OperatorSupplyRequestsPanel() {
   const summaryLabel = summarizeActiveSupplyRequests(requests, role);
   const historyPage = Math.floor(historyOffset / HISTORY_PAGE_SIZE) + 1;
   const historyPages = Math.max(1, Math.ceil(history.total / HISTORY_PAGE_SIZE));
+  const requestHandlers = {
+    onAccept: (request) => patchRequest(request, { status: "accepted" }, "Request accepted."),
+    onFulfil: (request) => setFulfilmentRequest(request),
+    onReviewAmendment: (request) => setAmendmentTarget(request),
+    onCancel: (request) => {
+      setCancelTarget(request);
+      setCancelReason("");
+    },
+    onDetails: (request) => setDetailRequestId(request.id),
+    onReceipt: (request) => setDetailRequestId(request.id),
+  };
 
   return (
     <>
@@ -247,10 +343,9 @@ export default function OperatorSupplyRequestsPanel() {
             </div>
           ) : (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {requests.map((request) => {
                 const busy = updatingId === request.id;
-                const pendingAmendment = request.pending_amendment;
                 return (
                   <article key={request.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -262,26 +357,18 @@ export default function OperatorSupplyRequestsPanel() {
                     </div>
                     <p className="mt-2 break-words text-sm text-slate-700">{describeSupplyRequestItems(request.items)}</p>
                     <p className="mt-1 text-xs text-slate-500">{dayjs(request.collection_date).format("ddd, DD MMM")}</p>
-                    <div className="mt-3 flex flex-col gap-2">
-                      <button type="button" onClick={() => setDetailRequestId(request.id)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 text-sm font-semibold">
-                        View details
-                      </button>
-                      {request.status === "pending" ? (
-                        <button type="button" disabled={busy} onClick={() => patchRequest(request, { status: "accepted" }, "Request accepted.")} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] text-sm font-bold text-white disabled:opacity-60">
-                          {busy ? "Saving…" : "Request Accepted"}
-                        </button>
-                      ) : null}
-                      {request.status === "accepted" ? (
-                        <button type="button" disabled={busy || Boolean(pendingAmendment)} onClick={() => setFulfilmentRequest(request)} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] text-sm font-bold text-white disabled:opacity-60">
-                          {busy ? "Saving…" : "Open fulfilment"}
-                        </button>
-                      ) : null}
-                    </div>
+                    <CompactRequestActions
+                      request={request}
+                      role={role}
+                      busy={busy}
+                      layout="card"
+                      handlers={requestHandlers}
+                    />
                   </article>
                 );
               })}
             </div>
-            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
+            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 lg:text-ocs-slate">
                   <tr>
@@ -298,8 +385,8 @@ export default function OperatorSupplyRequestsPanel() {
                     const pendingAmendment = request.pending_amendment;
                     return (
                       <tr key={request.id} className="align-top">
-                        <td className="px-3 py-3 font-semibold text-slate-800">
-                          <div>Dr. {request.doctor_name}</div>
+                        <td className="min-w-0 px-3 py-3 font-semibold text-slate-800">
+                          <div className="break-words">Dr. {request.doctor_name}</div>
                           <div className="text-[11px] font-normal text-slate-400">
                             Sent {dayjs(request.created_at).format("DD MMM HH:mm")}
                           </div>
@@ -328,61 +415,13 @@ export default function OperatorSupplyRequestsPanel() {
                         </td>
                         <td className="px-3 py-3">{statusBadge(request, role)}</td>
                         <td className="px-3 py-3 text-right">
-                          <div className="flex flex-col items-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setDetailRequestId(request.id)}
-                              className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
-                            >
-                              View details
-                            </button>
-                            {request.status === "pending" ? (
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() =>
-                                  patchRequest(request, { status: "accepted" }, "Request accepted.")
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
-                              >
-                                {busy ? "Saving…" : "Request Accepted"}
-                              </button>
-                            ) : null}
-                            {request.status === "accepted" ? (
-                              <button
-                                type="button"
-                                disabled={busy || Boolean(pendingAmendment)}
-                                onClick={() => setFulfilmentRequest(request)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
-                                title={
-                                  pendingAmendment
-                                    ? "Review the pending change request before picking."
-                                    : undefined
-                                }
-                              >
-                                {busy ? "Saving…" : "Open fulfilment"}
-                              </button>
-                            ) : null}
-                            {request.status === "ready" ? (
-                              <span className="text-[11px] text-slate-400">
-                                Waiting for doctor to confirm collection
-                                {request.ready_by_name ? ` · prepared by ${request.ready_by_name}` : ""}
-                              </span>
-                            ) : null}
-                            {request.status !== "completed" && request.status !== "cancelled" ? (
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() => {
-                                  setCancelTarget(request);
-                                  setCancelReason("");
-                                }}
-                                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
-                              >
-                                Cancel & archive
-                              </button>
-                            ) : null}
-                          </div>
+                          <CompactRequestActions
+                            request={request}
+                            role={role}
+                            busy={busy}
+                            layout="row"
+                            handlers={requestHandlers}
+                          />
                         </td>
                       </tr>
                     );
@@ -512,7 +551,7 @@ export default function OperatorSupplyRequestsPanel() {
               </div>
             ) : (
               <>
-                <div className="space-y-3 md:hidden">
+                <div className="space-y-3 lg:hidden">
                   {history.requests.map((request) => (
                     <article key={request.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -531,17 +570,17 @@ export default function OperatorSupplyRequestsPanel() {
                       <div className="mt-2">
                         <HistoryRequestProgress request={request} role={role} />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setDetailRequestId(request.id)}
-                        className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 text-sm font-semibold"
-                      >
-                        View details
-                      </button>
+                      <CompactRequestActions
+                        request={request}
+                        role={role}
+                        busy={false}
+                        layout="card"
+                        handlers={requestHandlers}
+                      />
                     </article>
                   ))}
                 </div>
-                <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
+                <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                       <tr>
@@ -629,7 +668,10 @@ export default function OperatorSupplyRequestsPanel() {
         open={Boolean(amendmentTarget)}
         request={amendmentTarget}
         onClose={() => setAmendmentTarget(null)}
-        onReviewed={loadActive}
+        onReviewed={() => {
+          void loadActive();
+          void loadHistory();
+        }}
       />
 
       <Modal
@@ -696,13 +738,27 @@ export default function OperatorSupplyRequestsPanel() {
         open={Boolean(fulfilmentRequest)}
         request={fulfilmentRequest}
         onClose={() => setFulfilmentRequest(null)}
-        onUpdated={loadActive}
+        onUpdated={() => {
+          void loadActive();
+          void loadHistory();
+        }}
       />
       <SupplyRequestDetailDrawer
         open={Boolean(detailRequestId)}
         requestId={detailRequestId}
         role={role}
+        busy={updatingId === detailRequestId}
         onClose={() => setDetailRequestId(null)}
+        onAccept={(request) => requestHandlers.onAccept(request)}
+        onFulfil={(request) => {
+          setDetailRequestId(null);
+          requestHandlers.onFulfil(request);
+        }}
+        onReviewAmendment={(request) => {
+          setDetailRequestId(null);
+          requestHandlers.onReviewAmendment(request);
+        }}
+        onCancel={(request) => requestHandlers.onCancel(request)}
       />
     </>
   );

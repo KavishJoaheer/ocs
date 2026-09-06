@@ -1192,3 +1192,166 @@ test("human-triggered bag movements retain the acting user rather than System", 
   assert.notEqual(meta.performed_by_name, "System");
 });
 
+test("new human movements return the acting user name, not Staff or System", async () => {
+  const itemId = insertOcsItem({ name: `ActorHuman ${Date.now()}`, qty: 1 });
+  const received = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: "2029-01-01" },
+  });
+  assert.equal(received.status, 201, JSON.stringify(received.data));
+  const operatorName = db.prepare("SELECT full_name FROM users WHERE username = 'operator01'").get().full_name;
+  const payload = await api("GET", "/api/inventory", { token: adminToken });
+  assert.equal(payload.status, 200);
+  const movement = (payload.data.movements || []).find(
+    (row) => Number(row.item_id) === itemId && row.action_type === "stock_in",
+  );
+  assert.ok(movement, "stock_in movement should be listed");
+  assert.equal(movement.actor_name, operatorName);
+  assert.notEqual(movement.actor_name, "Staff");
+  assert.notEqual(movement.actor_name, "System");
+});
+
+test("automated movements display System", async () => {
+  const itemId = insertOcsItem({ name: `ActorSys ${Date.now()}`, qty: 2 });
+  db.prepare(
+    `INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity,
+      recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json
+    ) VALUES (?, 'in', 1, 2, 3, NULL, 'auto', 'adjustment', '', NULL, ?)`,
+  ).run(itemId, JSON.stringify({ automated: true }));
+  const payload = await api("GET", "/api/inventory", { token: adminToken });
+  const movement = (payload.data.movements || []).find(
+    (row) => Number(row.item_id) === itemId && String(row.note || "") === "auto",
+  );
+  assert.ok(movement);
+  assert.equal(movement.actor_name, "System");
+});
+
+test("legacy movements with no actor data display Legacy staff record", async () => {
+  const itemId = insertOcsItem({ name: `ActorLegacy ${Date.now()}`, qty: 2 });
+  db.prepare(
+    `INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity,
+      recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json
+    ) VALUES (?, 'out', 1, 2, 1, NULL, 'legacy-adjust', 'adjustment', '', NULL, '{}')`,
+  ).run(itemId);
+  const payload = await api("GET", "/api/inventory", { token: adminToken });
+  const movement = (payload.data.movements || []).find(
+    (row) => Number(row.item_id) === itemId && String(row.note || "") === "legacy-adjust",
+  );
+  assert.ok(movement);
+  assert.equal(movement.actor_name, "Legacy staff record");
+  assert.notEqual(movement.actor_name, "Staff");
+  assert.notEqual(movement.actor_name, "System");
+});
+
+test("stocktake approval and application record the responsible admin", async () => {
+  const itemId = insertOcsItem({ name: `CountActor ${Date.now()}`, qty: 4 });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemId] },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 6 }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  const approved = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  const adminName = db.prepare("SELECT full_name FROM users WHERE username = 'shravan.joaheer'").get().full_name;
+  assert.equal(approved.data.session.reviewed_by_name, adminName);
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  assert.equal(applied.data.session.applied_by_name, adminName);
+  const movement = db
+    .prepare(
+      `SELECT meta_json FROM inventory_movements WHERE action_type = 'adjustment' AND item_id = ? ORDER BY id DESC LIMIT 1`,
+    )
+    .get(itemId);
+  const meta = JSON.parse(movement.meta_json || "{}");
+  assert.equal(meta.performed_by_name, adminName);
+  assert.equal(Number(meta.performed_by_user_id), Number(db.prepare("SELECT id FROM users WHERE username = 'shravan.joaheer'").get().id));
+});
+
+test("catalogue metadata edits cannot change batch expiry or nearest expiry", async () => {
+  const itemId = insertOcsItem({ name: `CatExp ${Date.now()}`, qty: 3, expiry: "2028-06-01" });
+  db.prepare("UPDATE inventory SET expiry_date = '2019-01-01' WHERE id = ?").run(itemId);
+  const beforeBatches = db
+    .prepare("SELECT id, expiry_date FROM inventory_batches WHERE item_id = ? ORDER BY id")
+    .all(itemId);
+  const edited = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+    body: {
+      item_name: db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(itemId).item_name,
+      folder_id: folderId,
+      minimum_quantity: 0,
+      unit: "unit",
+      cost_price: 5,
+      selling_price: 10,
+      expiry_date: "2020-02-02",
+    },
+  });
+  assert.equal(edited.status, 200, JSON.stringify(edited.data));
+  const afterBatches = db
+    .prepare("SELECT id, expiry_date FROM inventory_batches WHERE item_id = ? ORDER BY id")
+    .all(itemId);
+  assert.deepEqual(
+    afterBatches.map((row) => row.expiry_date),
+    beforeBatches.map((row) => row.expiry_date),
+  );
+  const listed = (edited.data.ocs_stock || []).find((row) => Number(row.id) === itemId);
+  assert.ok(listed);
+  assert.equal(String(listed.expiry_date).startsWith("2028-06-01"), true);
+  const storedCatalogue = db.prepare("SELECT expiry_date FROM inventory WHERE id = ?").get(itemId);
+  assert.equal(storedCatalogue.expiry_date, "2019-01-01");
+});
+
+test("bags pricing summary distinguishes unique products from bag instances", async () => {
+  const product = `UnpricedSKU ${Date.now()}`;
+  const second = `PricedSKU ${Date.now()}`;
+  const doctorTwoId = db.prepare("SELECT doctor_id FROM users WHERE username = 'bhobun.muneshwarshing'").get().doctor_id;
+  db.prepare(
+    `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+     VALUES (?, ?, 2, 0, 'unit', 0, 10, 'doctor', ?)`,
+  ).run(product, folderId, doctorId);
+  db.prepare(
+    `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+     VALUES (?, ?, 3, 0, 'unit', 0, 10, 'doctor', ?)`,
+  ).run(product, folderId, doctorTwoId);
+  db.prepare(
+    `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+     VALUES (?, ?, 1, 0, 'unit', 12, 20, 'doctor', ?)`,
+  ).run(second, folderId, doctorId);
+
+  const incomplete = await api("GET", "/api/inventory", { token: adminToken });
+  assert.equal(incomplete.status, 200);
+  const bags = incomplete.data.tab_summaries?.bags;
+  assert.ok(bags);
+  assert.ok(bags.unpriced_catalogue_items >= 1);
+  assert.ok(bags.unpriced_bag_item_instances >= 2);
+  assert.ok(bags.unpriced_bag_item_instances > bags.unpriced_catalogue_items);
+  assert.ok(bags.affected_doctor_bags >= 2);
+  assert.equal(bags.valuation_complete, false);
+  const productKey = product.trim().toLowerCase();
+  assert.ok(Array.isArray(bags.unpriced_product_keys));
+  assert.equal(bags.unpriced_product_keys.filter((key) => key === productKey).length, 1);
+
+  db.prepare("UPDATE inventory SET cost_price = 9.5 WHERE stock_scope = 'doctor' AND COALESCE(cost_price, 0) = 0").run();
+  const complete = await api("GET", "/api/inventory", { token: adminToken });
+  const priced = complete.data.tab_summaries.bags;
+  assert.equal(priced.unpriced_catalogue_items, 0);
+  assert.equal(priced.unpriced_bag_item_instances, 0);
+  assert.equal(priced.affected_doctor_bags, 0);
+  assert.equal(priced.valuation_complete, true);
+  assert.ok(Number(priced.total_bag_value) > 0);
+});
+

@@ -20,7 +20,6 @@ function catalogueFormState(item, folders = []) {
     unit: item?.unit ?? "unit",
     cost_price: String(item?.cost_price ?? 0),
     selling_price: String(item?.selling_price ?? 0),
-    expiry_date: item?.expiry_date ?? "",
   };
 }
 
@@ -94,7 +93,6 @@ export default function ItemEditorModal({
             unit: form.unit,
             cost_price: Number(form.cost_price || 0),
             selling_price: Number(form.selling_price || 0),
-            expiry_date: form.expiry_date,
             quantity: item ? undefined : 0,
           });
         }}
@@ -219,20 +217,9 @@ export default function ItemEditorModal({
                       className={FIELD(false)}
                     />
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-slate-700">Default expiry behaviour</span>
-                    <input
-                      type="date"
-                      name="expiry_date"
-                      value={form.expiry_date}
-                      readOnly={masterReadOnly}
-                      onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))}
-                      className={FIELD(masterReadOnly)}
-                    />
-                    <p className="text-xs text-slate-500">
-                      This is a catalogue hint only. Receiving a batch still requires an explicit expiry or non-expiring flag.
-                    </p>
-                  </label>
+                  <p className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                    Expiry is recorded on each received batch. Catalogue items do not have an expiry date, and this editor cannot change existing batch expiry dates.
+                  </p>
                 </div>
               ) : null}
 

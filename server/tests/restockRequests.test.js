@@ -618,3 +618,78 @@ test("existing inventory quantities are not silently changed by lifecycle transi
   );
   assert.ok(movements >= 1);
 });
+
+test("request detail returns fulfilment, batches, movements, amendments and timeline when recorded", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({ note: "detail-audit", items: [{ inventory_id: inventoryId, item_name: "Test Gauze Pad", quantity: 1 }] }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const requestId = created.data.request.id;
+  const accepted = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const ready = await pickReservedThenReady(requestId, operatorToken);
+  assert.equal(ready.status, 200, JSON.stringify(ready.data));
+  const detail = await api("GET", `/api/restock-requests/${requestId}`, { token: operatorToken });
+  assert.equal(detail.status, 200, JSON.stringify(detail.data));
+  const request = detail.data.request;
+  assert.equal(request.status, "ready");
+  assert.equal(request.can_cancel, true);
+  assert.equal(request.fulfilment_recorded, true);
+  assert.equal(request.timeline_available, true);
+  assert.ok((request.timeline || []).length >= 2);
+  assert.ok((request.fulfilment?.items || []).length >= 1);
+  const line = request.fulfilment.items[0];
+  assert.ok(Number(line.reserved_quantity) >= 1);
+  assert.ok((line.picked_batches || []).length >= 1);
+  assert.ok(line.picked_batches[0].batch_id);
+  const operatorName = db.prepare("SELECT full_name FROM users WHERE username = 'operator01'").get().full_name;
+  assert.equal(request.accepted_by_name, operatorName);
+  assert.equal(request.ready_by_name, operatorName);
+});
+
+test("request cancellation detail uses the correct actor", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({ note: "cancel-actor", items: [{ inventory_id: inventoryId, item_name: "Test Gauze Pad", quantity: 1 }] }),
+  });
+  const requestId = created.data.request.id;
+  const cancelled = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: operatorToken,
+    body: { status: "cancelled", reason: "Doctor no longer needs this pack today." },
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  const detail = await api("GET", `/api/restock-requests/${requestId}`, { token: adminToken });
+  assert.equal(detail.status, 200);
+  const operatorName = db.prepare("SELECT full_name FROM users WHERE username = 'operator01'").get().full_name;
+  assert.equal(detail.data.request.cancelled_by_name, operatorName);
+  assert.notEqual(String(detail.data.request.cancelled_by_name || "").toLowerCase(), "staff");
+  assert.ok((detail.data.request.timeline || []).some((event) => /cancel/i.test(event.label)));
+});
+
+test("legacy request detail identifies unavailable fulfilment and timeline honestly", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const legacyId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note, cancelled_at, cancelled_reason)
+         VALUES (?, ?, ?, 1, 'cancelled', 'legacy-no-events', CURRENT_TIMESTAMP, 'legacy cancel')`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare("UPDATE restock_requests SET cancelled_by_user_id = NULL WHERE id = ?").run(legacyId);
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity)
+     VALUES (?, ?, 'Legacy gauze', 1)`,
+  ).run(legacyId, inventoryId);
+  const detail = await api("GET", `/api/restock-requests/${legacyId}`, { token: operatorToken });
+  assert.equal(detail.status, 200, JSON.stringify(detail.data));
+  assert.equal(detail.data.request.fulfilment_recorded, false);
+  assert.equal(detail.data.request.timeline_available, false);
+  assert.equal(detail.data.request.cancelled_by_name, "Legacy staff record");
+  assert.notEqual(String(detail.data.request.cancelled_by_name || "").toLowerCase(), "staff");
+});
+
