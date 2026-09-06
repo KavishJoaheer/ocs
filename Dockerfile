@@ -2,6 +2,9 @@ FROM node:22-bookworm-slim AS client-builder
 
 WORKDIR /app/client
 
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 COPY client/package*.json ./
 RUN npm install
 

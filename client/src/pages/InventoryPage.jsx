@@ -56,6 +56,7 @@ import { buildInventoryListQuery, getDefaultFolderSelection } from "../lib/inven
 import {
   notifyDoctorBagInventoryUpdated,
   notifyOcsInventoryUpdated,
+  notifySupplyRequestsUpdated,
   DOCTOR_BAG_INVENTORY_EVENT,
   OCS_INVENTORY_EVENT,
 } from "../lib/inventorySync.js";
@@ -3450,6 +3451,7 @@ export default function InventoryPage() {
       );
       commitInventoryData(next);
       setCorrection(null);
+      notifySupplyRequestsUpdated();
       toast.success(next?.idempotent ? "Correction already applied." : "Exceptional correction applied.");
     } catch (error) {
       toast.error(error.message);

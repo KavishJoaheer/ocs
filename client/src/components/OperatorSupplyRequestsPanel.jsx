@@ -6,6 +6,7 @@ import Modal from "./Modal.jsx";
 import OperatorAmendmentReviewPanel from "./OperatorAmendmentReviewPanel.jsx";
 import OperatorFulfilmentPanel from "./OperatorFulfilmentPanel.jsx";
 import SectionCard from "./SectionCard.jsx";
+import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequestHistoryFilters.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api, ApiError } from "../lib/api.js";
 import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
@@ -164,21 +165,14 @@ export default function OperatorSupplyRequestsPanel() {
     item_counts: [],
   });
   const [doctors, setDoctors] = useState([]);
+  const [operators, setOperators] = useState([]);
+  const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState(null);
   const [historyError, setHistoryError] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
-  const [filters, setFilters] = useState({
-    doctor_id: "",
-    status: "",
-    from: "",
-    to: "",
-    item: "",
-    request_id: "",
-    operator_id: "",
-    folder_id: "",
-  });
+  const [filters, setFilters] = useState({ ...EMPTY_HISTORY_FILTERS });
   const [historyOffset, setHistoryOffset] = useState(0);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -230,7 +224,10 @@ export default function OperatorSupplyRequestsPanel() {
         item_counts: Array.isArray(payload?.item_counts) ? payload.item_counts : [],
         completed_count: Number(payload?.completed_count || 0),
         cancelled_count: Number(payload?.cancelled_count || 0),
+        request_count: Number(payload?.request_count || 0),
       });
+      if (Array.isArray(payload?.operators)) setOperators(payload.operators);
+      if (Array.isArray(payload?.folders)) setFolders(payload.folders);
     } catch (err) {
       setHistoryError(err instanceof ApiError ? err.message : "Could not load supply request history.");
     } finally {
@@ -261,6 +258,18 @@ export default function OperatorSupplyRequestsPanel() {
       }
     }
     loadDoctors();
+    async function loadLookups() {
+      try {
+        const payload = await api.get("/restock-requests/history-lookups");
+        if (!ignore) {
+          setOperators(Array.isArray(payload?.operators) ? payload.operators : []);
+          setFolders(Array.isArray(payload?.folders) ? payload.folders : []);
+        }
+      } catch {
+        /* lookups remain optional until history loads */
+      }
+    }
+    loadLookups();
     return () => {
       ignore = true;
     };
@@ -448,93 +457,17 @@ export default function OperatorSupplyRequestsPanel() {
           )
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Doctor
-                <select
-                  value={filters.doctor_id}
-                  onChange={(event) => {
-                    setHistoryOffset(0);
-                    setFilters((current) => ({ ...current, doctor_id: event.target.value }));
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                >
-                  <option value="">All doctors</option>
-                  {doctors.map((doctor) => (
-                    <option key={doctor.id} value={doctor.id}>
-                      {doctor.full_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Outcome
-                <select
-                  value={filters.status}
-                  onChange={(event) => {
-                    setHistoryOffset(0);
-                    setFilters((current) => ({ ...current, status: event.target.value }));
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                >
-                  <option value="">Completed & cancelled</option>
-                  <option value="completed">
-                    {role === "operator" ? "Supply Dispatched" : "Completed"}
-                  </option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                From
-                <input
-                  type="date"
-                  value={filters.from}
-                  onChange={(event) => {
-                    setHistoryOffset(0);
-                    setFilters((current) => ({ ...current, from: event.target.value }));
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                />
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                To
-                <input
-                  type="date"
-                  value={filters.to}
-                  onChange={(event) => {
-                    setHistoryOffset(0);
-                    setFilters((current) => ({ ...current, to: event.target.value }));
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                />
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Item search
-                <input
-                  type="search"
-                  value={filters.item}
-                  onChange={(event) => {
-                    setHistoryOffset(0);
-                    setFilters((current) => ({ ...current, item: event.target.value }));
-                  }}
-                  placeholder="Item name"
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                />
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Request #
-                <input
-                  type="search"
-                  value={filters.request_id}
-                  onChange={(event) => {
-                    setHistoryOffset(0);
-                    setFilters((current) => ({ ...current, request_id: event.target.value }));
-                  }}
-                  placeholder="ID"
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                />
-              </label>
-            </div>
+            <SupplyRequestHistoryFilters
+              filters={filters}
+              doctors={doctors}
+              operators={operators}
+              folders={folders}
+              role={role}
+              onChange={(next) => {
+                setHistoryOffset(0);
+                setFilters(next);
+              }}
+            />
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs text-slate-500">
                 {history.completed_count || 0} completed · {history.cancelled_count || 0} cancelled

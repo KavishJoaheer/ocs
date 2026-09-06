@@ -145,6 +145,9 @@ export async function fetchSupplyRequestHistory(params = {}) {
     total: Number(payload?.total || 0),
     doctor_counts: Array.isArray(payload?.doctor_counts) ? payload.doctor_counts : [],
     item_counts: Array.isArray(payload?.item_counts) ? payload.item_counts : [],
+    completed_count: Number(payload?.completed_count || 0),
+    cancelled_count: Number(payload?.cancelled_count || 0),
+    request_count: Number(payload?.request_count || payload?.total || 0),
   };
 }
 

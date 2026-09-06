@@ -2440,6 +2440,15 @@ function ensureInventoryOperationsSchema() {
   if (tableExists("inventory_staging") && !stagingCols.includes("excluded_at")) {
     db.exec("ALTER TABLE inventory_staging ADD COLUMN excluded_at TEXT");
   }
+  if (tableExists("inventory_staging") && !stagingCols.includes("release_transaction_id")) {
+    db.exec("ALTER TABLE inventory_staging ADD COLUMN release_transaction_id TEXT");
+  }
+  if (tableExists("inventory_staging") && !stagingCols.includes("released_inventory_id")) {
+    db.exec("ALTER TABLE inventory_staging ADD COLUMN released_inventory_id INTEGER");
+  }
+  if (tableExists("inventory_staging") && !stagingCols.includes("released_batch_id")) {
+    db.exec("ALTER TABLE inventory_staging ADD COLUMN released_batch_id INTEGER");
+  }
   migrateStagingExcludedStatus();
 
   const inventoryCols = tableExists("inventory")
@@ -2480,6 +2489,12 @@ function ensureInventoryOperationsSchema() {
   }
   if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("conflict_detected_at")) {
     db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN conflict_detected_at TEXT");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("recounted_by_user_id")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN recounted_by_user_id INTEGER");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("recounted_at")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN recounted_at TEXT");
   }
   migrateStocktakeRecountStatus();
 
@@ -2603,6 +2618,8 @@ function ensureInventoryOperationsSchema() {
       conflict_reason TEXT NOT NULL DEFAULT '',
       conflict_live_quantity INTEGER,
       conflict_detected_at TEXT,
+      recounted_by_user_id INTEGER,
+      recounted_at TEXT,
       counted_by_user_id INTEGER,
       counted_at TEXT,
       reason TEXT NOT NULL DEFAULT '',
@@ -2638,6 +2655,8 @@ function ensureInventoryOperationsSchema() {
       ON inventory_shipments(status, imported_at);
     CREATE INDEX IF NOT EXISTS idx_inventory_staging_shipment
       ON inventory_staging(shipment_id, status);
+    CREATE INDEX IF NOT EXISTS idx_inventory_staging_release_tx
+      ON inventory_staging(release_transaction_id);
     CREATE INDEX IF NOT EXISTS idx_stocktake_sessions_status
       ON inventory_stocktake_sessions(status, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_stocktake_session_item_unique
@@ -3436,6 +3455,7 @@ module.exports = {
   labReportAttachmentsDir,
   rosterDir,
   initializeDatabase,
+  ensureInventoryOperationsSchema,
   inspectRestockRequestItemForeignKeys,
   migrateRestockRequestsSchemaIfNeeded,
   repairRestockRequestChildForeignKeysIfNeeded,

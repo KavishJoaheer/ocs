@@ -197,7 +197,7 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     await expect(page.getByRole("heading", { name: "OCS Stock" })).toBeVisible();
     await page.getByRole("button", { name: /^History/ }).click();
-    await expect(page.getByText("Supply Dispatched").first()).toBeVisible();
+    await expect(page.locator("span").filter({ hasText: /^Supply Dispatched$/ })).toBeVisible();
   });
 
   test("amendment accept and decline persist through the API", async ({ request }) => {
@@ -501,9 +501,44 @@ test.describe("Inventory workflow", () => {
     }
   });
 
+  test("stocktake counting is completed through the inventory Count UI", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E UI Count ${Date.now()}`,
+      quantity: 3,
+    });
+    const created = await request.post(`${API_BASE}/inventory/stocktake/sessions`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { item_ids: [item.id] },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const session = (await apiJson(created)).session;
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /^Count$/ }).click();
+    await expect(page.getByRole("button", { name: new RegExp(`#${session.id}`) })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
+    await expect(page.getByText(item.item_name)).toBeVisible();
+    const countInput = page.locator("table input[type='number']").first();
+    await countInput.fill("3");
+    await page.getByRole("button", { name: /Save progress/ }).click();
+    await expect(page.getByText(/Counts saved|Recount saved/i)).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Submit counts" }).click();
+    await expect(page.getByText(/Zero-variance session closed|Counts submitted for approval/i)).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
   test("stale clients see an update banner and do not auto-reload dirty forms", async ({ request, page }) => {
     const operator = await login(request, "operator01");
-    let sha = "boot-sha-inventory";
+    const deployedSha = `deployed-${Date.now()}`;
     await page.addInitScript(() => {
       window.__OCS_UPDATE_POLL_MS = 400;
     });
@@ -511,14 +546,314 @@ test.describe("Inventory workflow", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, git_sha: sha, version: sha }),
+        body: JSON.stringify({ ok: true, git_sha: deployedSha, version: deployedSha }),
       });
     });
     await injectStaffSession(page, operator.token);
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { name: "OCS Stock" })).toBeVisible({ timeout: 20_000 });
-    sha = "newer-sha-inventory";
-    await expect(page.getByText("Update available")).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByRole("button", { name: "Reload now" })).toBeVisible();
+    await expect(page.getByText("Update available")).toBeVisible({ timeout: 20_000 });
+    const embedded = await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__);
+    expect(embedded).toBeTruthy();
+    expect(embedded).not.toBe(deployedSha);
+    await page.evaluate(() => window.__OCS_UNSAVED_WORK__?.set("stocktake", true));
+    await expect(page.getByRole("button", { name: /Reload requires confirmation/ })).toBeVisible();
+    await page.getByRole("button", { name: /Reload requires confirmation/ }).click();
+    await expect(page.getByRole("button", { name: "Confirm reload" })).toBeVisible();
+    await expect(page).toHaveURL(/\/inventory/);
+  });
+
+  test("matching client and server SHAs hide the update banner", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.goto(`${STAFF_BASE}/inventory`);
+    const health = await request.get(`${API_BASE}/health`);
+    const healthBody = await apiJson(health);
+    await expect.poll(async () => page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__)).toBeTruthy();
+    const embedded = await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__);
+    expect(String(healthBody.git_sha || healthBody.version || "")).toBe(embedded);
+    await expect(page.getByText("Update available")).toHaveCount(0);
+  });
+
+  test("a live deployment, offline health, and successful reload keep the banner loop-free", async ({
+    request,
+    page,
+  }) => {
+    const operator = await login(request, "operator01");
+    let deployedSha = null;
+    let failHealth = false;
+    await page.addInitScript(() => {
+      window.__OCS_UPDATE_POLL_MS = 400;
+    });
+    await page.route("**/api/health", async (route) => {
+      if (failHealth) {
+        await route.abort("failed");
+        return;
+      }
+      if (deployedSha) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, git_sha: deployedSha, version: deployedSha }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await injectStaffSession(page, operator.token);
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect.poll(async () => page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__)).toBeTruthy();
+    const embedded = await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__);
+    await expect(page.getByText("Update available")).toHaveCount(0);
+    deployedSha = `live-${Date.now()}`;
+    await expect(page.getByText("Update available")).toBeVisible({ timeout: 10_000 });
+    failHealth = true;
+    await page.waitForTimeout(800);
+    await expect(page.getByText("Update available")).toBeVisible();
+    failHealth = false;
+    deployedSha = embedded;
+    await page.getByRole("button", { name: "Reload now" }).click();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByText("Update available")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__)).toBe(embedded);
+  });
+
+  test("exceptional correction previews unreserved, reserved, picked and ready stock", async ({
+    request,
+    page,
+  }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const doctor = await login(request, "arun.dharee");
+
+    async function openCorrection(itemName) {
+      await page.getByPlaceholder(/Search by item name/).fill(itemName);
+      const stockTable = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Item Name" }) });
+      const row = stockTable.locator("tbody tr").filter({ hasText: itemName }).filter({
+        has: page.getByRole("button", { name: "More actions" }),
+      });
+      await expect(row).toBeVisible({ timeout: 20_000 });
+      await row.evaluate((node) => node.scrollIntoView({ block: "center", inline: "nearest" }));
+      await row.getByRole("button", { name: "More actions" }).click();
+      await page.getByRole("menuitem", { name: "Exceptional inventory correction" }).click({ force: true });
+      await expect(page.getByRole("heading", { name: /Exceptional inventory correction/ })).toBeVisible();
+    }
+
+    const freeItem = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Corr Free ${Date.now()}`,
+      quantity: 8,
+    });
+    await injectStaffSession(page, admin.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect(page.getByRole("heading", { name: "OCS Stock", exact: true })).toBeVisible({
+      timeout: 25_000,
+    });
+    await openCorrection(freeItem.item_name);
+    await page.getByRole("spinbutton", { name: "Corrected quantity" }).fill("7");
+    await page.getByRole("textbox", { name: /Reason/ }).fill("Warehouse recount found extra units");
+    await page.getByRole("button", { name: "Review correction" }).click();
+    await expect(page.getByText("Available to promise")).toBeVisible();
+    await page.getByRole("button", { name: "Apply correction" }).click();
+    await expect(page.getByText("Exceptional correction applied.")).toBeVisible({ timeout: 15_000 });
+
+    const reservedItem = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Corr Reserved ${Date.now()}`,
+      quantity: 5,
+    });
+    const reservedReq = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "correction reserved",
+        items: [{ inventory_id: reservedItem.id, item_name: reservedItem.item_name, quantity: 4 }],
+      },
+    });
+    expect(reservedReq.ok(), await reservedReq.text()).toBeTruthy();
+    const reservedId = (await apiJson(reservedReq)).request.id;
+    const accepted = await request.patch(`${API_BASE}/restock-requests/${reservedId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    expect(accepted.ok(), await accepted.text()).toBeTruthy();
+
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openCorrection(reservedItem.item_name);
+    await page.getByRole("spinbutton", { name: "Corrected quantity" }).fill("1");
+    await page.getByRole("textbox", { name: /Reason/ }).fill("Warehouse recount found extra units");
+    await page.getByRole("button", { name: "Review correction" }).click();
+    await expect(page.getByText(/High risk: this will reduce reservations/)).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.getByRole("button", { name: "Review correction" })).toBeVisible();
+    await page.getByRole("button", { name: "Review correction" }).click();
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Reduce reservations and apply" }).click();
+    await expect(page.getByText("Exceptional correction applied.")).toBeVisible({ timeout: 15_000 });
+
+    const pickedItem = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Corr Picked ${Date.now()}`,
+      quantity: 6,
+    });
+    const pickedCreated = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "correction picked",
+        items: [{ inventory_id: pickedItem.id, item_name: pickedItem.item_name, quantity: 3 }],
+      },
+    });
+    const pickedId = (await apiJson(pickedCreated)).request.id;
+    await request.patch(`${API_BASE}/restock-requests/${pickedId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    await pickRequest(request, operator.token, pickedId, { fulfilledQuantity: 2 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openCorrection(pickedItem.item_name);
+    await page.getByRole("spinbutton", { name: "Corrected quantity" }).fill("1");
+    await page.getByRole("textbox", { name: /Reason/ }).fill("Warehouse recount found extra units");
+    await page.getByRole("button", { name: "Review correction" }).click();
+    await expect(page.getByText("This correction is blocked.")).toBeVisible();
+    await expect(page.getByText(new RegExp(`Request #${pickedId}`))).toBeVisible();
+
+    const readyItem = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Corr Ready ${Date.now()}`,
+      quantity: 6,
+    });
+    const readyCreated = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "correction ready",
+        items: [{ inventory_id: readyItem.id, item_name: readyItem.item_name, quantity: 2 }],
+      },
+    });
+    const readyId = (await apiJson(readyCreated)).request.id;
+    await request.patch(`${API_BASE}/restock-requests/${readyId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    await pickRequest(request, operator.token, readyId);
+    await request.patch(`${API_BASE}/restock-requests/${readyId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "ready" },
+    });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openCorrection(readyItem.item_name);
+    await page.getByRole("spinbutton", { name: "Corrected quantity" }).fill("1");
+    await page.getByRole("textbox", { name: /Reason/ }).fill("Warehouse recount found extra units");
+    await page.getByRole("button", { name: "Review correction" }).click();
+    await expect(page.getByText("This correction is blocked.")).toBeVisible();
+    await expect(page.getByText(new RegExp(`Request #${readyId}`))).toBeVisible();
+  });
+
+  test("doctor history shows scoped frequency totals and CSV export", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const doctor = await login(request, "arun.dharee");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Doc Hist ${Date.now()}`,
+      quantity: 4,
+    });
+    const created = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "doctor history",
+        items: [{ inventory_id: item.id, item_name: item.item_name, quantity: 2 }],
+      },
+    });
+    const requestId = (await apiJson(created)).request.id;
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    await pickRequest(request, operator.token, requestId);
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "ready" },
+    });
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: { status: "completed" },
+    });
+
+    await injectStaffSession(page, doctor.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/supply-requests`);
+    await page.getByRole("button", { name: /^History/ }).click();
+    await expect(page.getByText(/requests ·/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Most requested items")).toBeVisible();
+    await expect(page.getByText(item.item_name, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
+    const csvBox = await page.getByRole("button", { name: "Export CSV" }).boundingBox();
+    expect(csvBox?.height || 0).toBeGreaterThanOrEqual(44);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(page.getByText("Total", { exact: true })).toBeVisible();
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  });
+
+  test("operator history filters change displayed records, stats, and stay tappable", async ({
+    request,
+    page,
+  }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const doctor = await login(request, "arun.dharee");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Op Filter ${Date.now()}`,
+      quantity: 4,
+    });
+    const created = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "operator filters",
+        items: [{ inventory_id: item.id, item_name: item.item_name, quantity: 1 }],
+      },
+    });
+    const requestId = (await apiJson(created)).request.id;
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    await pickRequest(request, operator.token, requestId);
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "ready" },
+    });
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: { status: "completed" },
+    });
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("button", { name: /^History/ }).click();
+    await expect(page.getByLabel("Request #")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByLabel("Operator")).toBeVisible();
+    await expect(page.getByLabel("Folder / category")).toBeVisible();
+    await page.getByLabel("Request #").fill(String(requestId));
+    await expect(page.getByText("1 filter active")).toBeVisible();
+    await expect(page.getByText(/cancelled · 1 matching/)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect(page.getByText("No history filters applied")).toBeVisible();
+    await page.getByLabel("Item").fill(item.item_name);
+    await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 15_000 });
+    await page.setViewportSize({ width: 375, height: 812 });
+    const requestBox = await page.getByLabel("Request #").boundingBox();
+    expect(requestBox?.height || 0).toBeGreaterThanOrEqual(44);
   });
 });

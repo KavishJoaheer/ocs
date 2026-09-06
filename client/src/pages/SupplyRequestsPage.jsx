@@ -96,18 +96,29 @@ export default function SupplyRequestsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [historyOffset, setHistoryOffset] = useState(0);
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
 
   const historyParams = useMemo(
-    () => ({ limit: HISTORY_PAGE_SIZE, offset: historyOffset }),
-    [historyOffset],
+    () => ({
+      limit: HISTORY_PAGE_SIZE,
+      offset: historyOffset,
+      ...(historyFrom ? { from: historyFrom } : {}),
+      ...(historyTo ? { to: historyTo } : {}),
+    }),
+    [historyOffset, historyFrom, historyTo],
   );
 
   const {
     displayableRequests,
     historyRequests,
     historyTotal,
+    historyItemCounts,
+    historyCompletedCount,
+    historyCancelledCount,
+    historyRequestCount,
     loading,
     historyLoading,
     error,
@@ -455,18 +466,129 @@ export default function SupplyRequestsPage() {
               })}
             </div>
           )
-        ) : historyLoading ? (
-          <LoadingState label="Loading history" />
-        ) : historyError ? (
-          <div className="mx-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {historyError}
-          </div>
-        ) : historyRequests.length === 0 ? (
-          <div className="mx-1 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
-            <p>No collected or cancelled requests yet.</p>
-          </div>
         ) : (
           <div className="flex flex-col gap-3.5 px-1">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Date from
+                <input
+                  type="date"
+                  value={historyFrom}
+                  onChange={(event) => {
+                    setHistoryOffset(0);
+                    setHistoryFrom(event.target.value);
+                  }}
+                  className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Date to
+                <input
+                  type="date"
+                  value={historyTo}
+                  onChange={(event) => {
+                    setHistoryOffset(0);
+                    setHistoryTo(event.target.value);
+                  }}
+                  className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-3 gap-2 md:hidden">
+              <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total</p>
+                <p className="text-lg font-extrabold tabular-nums text-slate-900">{historyRequestCount}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Completed</p>
+                <p className="text-lg font-extrabold tabular-nums text-slate-900">{historyCompletedCount}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cancelled</p>
+                <p className="text-lg font-extrabold tabular-nums text-slate-900">{historyCancelledCount}</p>
+              </div>
+            </div>
+            <div className="hidden items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3 text-sm md:flex">
+              <p>
+                <strong>{historyRequestCount}</strong> requests · <strong>{historyCompletedCount}</strong> completed ·{" "}
+                <strong>{historyCancelledCount}</strong> cancelled
+              </p>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
+                onClick={() => {
+                  const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                  const params = new URLSearchParams({ view: "history" });
+                  if (historyFrom) params.set("from", historyFrom);
+                  if (historyTo) params.set("to", historyTo);
+                  void fetch(`/api/restock-requests/export?${params.toString()}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  }).then(async (response) => {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "my-supply-request-history.csv";
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  });
+                }}
+              >
+                Export CSV
+              </button>
+            </div>
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 md:hidden"
+              onClick={() => {
+                const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                const params = new URLSearchParams({ view: "history" });
+                if (historyFrom) params.set("from", historyFrom);
+                if (historyTo) params.set("to", historyTo);
+                void fetch(`/api/restock-requests/export?${params.toString()}`, {
+                  headers: token ? { Authorization: `Bearer ${token}` } : {},
+                }).then(async (response) => {
+                  const blob = await response.blob();
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = "my-supply-request-history.csv";
+                  link.click();
+                  URL.revokeObjectURL(url);
+                });
+              }}
+            >
+              Export CSV
+            </button>
+            {historyItemCounts.length ? (
+              <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Most requested items</p>
+                <ul className="mt-2 flex flex-col gap-1 text-sm text-slate-700">
+                  {historyItemCounts.slice(0, 8).map((row) => (
+                    <li key={row.item_name} className="flex justify-between gap-3">
+                      <span className="truncate">{row.item_name}</span>
+                      <span className="font-bold tabular-nums">
+                        {row.request_count} · qty {row.total_quantity || 0}
+                        {row.total_fulfilled != null ? ` / ${row.total_fulfilled} fulfilled` : ""}
+                        {row.shortage_quantity ? ` · shortage ${row.shortage_quantity}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {historyLoading ? (
+              <LoadingState label="Loading history" />
+            ) : historyError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {historyError}
+              </div>
+            ) : historyRequests.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
+                <p>No collected or cancelled requests match these dates.</p>
+              </div>
+            ) : (
+              <>
             {historyRequests.map((request) => (
               <article
                 key={request.id}
@@ -518,7 +640,7 @@ export default function SupplyRequestsPage() {
                   Previous
                 </button>
                 <span>
-                  Page {historyPage} of {historyPages}
+                  Page {historyPage} of {historyPages} · {historyTotal} records
                 </span>
                 <button
                   type="button"
@@ -530,6 +652,8 @@ export default function SupplyRequestsPage() {
                 </button>
               </div>
             ) : null}
+              </>
+            )}
           </div>
         )}
       </div>

@@ -22,6 +22,9 @@ export function useDoctorSupplyRequests({
     total: 0,
     doctor_counts: [],
     item_counts: [],
+    completed_count: 0,
+    cancelled_count: 0,
+    request_count: 0,
   });
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -80,7 +83,7 @@ export function useDoctorSupplyRequests({
       const message =
         err instanceof ApiError ? err.message : "Could not load supply request history.";
       setHistoryError(message);
-      setHistory({ requests: [], total: 0, doctor_counts: [], item_counts: [] });
+      setHistory({ requests: [], total: 0, doctor_counts: [], item_counts: [], completed_count: 0, cancelled_count: 0, request_count: 0 });
       return null;
     } finally {
       setHistoryLoading(false);
@@ -125,6 +128,9 @@ export function useDoctorSupplyRequests({
     historyTotal: history.total,
     historyDoctorCounts: history.doctor_counts,
     historyItemCounts: history.item_counts,
+    historyCompletedCount: history.completed_count,
+    historyCancelledCount: history.cancelled_count,
+    historyRequestCount: history.request_count,
     loading,
     historyLoading,
     error,

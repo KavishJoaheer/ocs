@@ -3,8 +3,22 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { env } from "node:process";
+import { execSync } from "node:child_process";
+
+function resolveClientBuildSha() {
+  const fromEnv = String(env.GIT_SHA || env.VITE_GIT_SHA || env.GITHUB_SHA || "").trim();
+  if (fromEnv) return fromEnv;
+  try {
+    return execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+  } catch {
+    return "dev";
+  }
+}
 
 export default defineConfig({
+  define: {
+    __OCS_CLIENT_BUILD_SHA__: JSON.stringify(resolveClientBuildSha()),
+  },
   plugins: [
     react(),
     tailwindcss(),

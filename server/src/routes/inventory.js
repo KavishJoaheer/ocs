@@ -39,6 +39,8 @@ const {
   parseCsvShipment,
   parseNonExpiringFlag,
   previewAllocations,
+  previewExceptionalCorrection,
+  recountStocktakeLines,
   releaseStagingRows,
   reviewStocktakeSession,
   saveStocktakeCounts,
@@ -2300,6 +2302,28 @@ router.get("/items/:id/allocation-preview", (req, res) => {
   }
 });
 
+router.post("/items/:id/exceptional-correction/preview", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertAdminCatalogueAction(req.auth, "preview an exceptional inventory correction");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+  try {
+    const preview = previewExceptionalCorrection({
+      itemId: Number(req.params.id),
+      nextQuantity: req.body?.next_quantity ?? req.body?.quantity,
+      delta: req.body?.delta,
+    });
+    return res.json({ preview });
+  } catch (error) {
+    return res.status(error.status || 400).json({
+      error: error.message,
+      impacted_requests: error.impacted_requests || undefined,
+    });
+  }
+});
+
 router.post("/items/:id/exceptional-correction", (req, res) => {
   ensureInfrastructure();
   try {
@@ -2316,6 +2340,8 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
       note: req.body?.note,
       confirm: req.body?.confirm,
       affectReservations: req.body?.affect_reservations === true || req.body?.impact_reservations === true,
+      expectedRowVersion: req.body?.expected_row_version ?? req.body?.row_version,
+      expectedQuantity: req.body?.expected_quantity,
       userId: req.auth.id,
       actor: {
         userId: req.auth.id,
@@ -3369,6 +3395,8 @@ router.post("/shipments/:id/release", (req, res) => {
       ...getPayload(req),
       shipment: result.shipment,
       receipt: result.receipt,
+      summary: result.summary,
+      transaction_id: result.transactionId || result.receipt?.transaction_id || null,
       idempotent: result.idempotent,
     });
   } catch (error) {
@@ -3420,6 +3448,24 @@ router.patch("/stocktake/sessions/:id", (req, res) => {
     return res.json({ session });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message, conflicts: error.conflicts });
+    throw error;
+  }
+});
+
+router.post("/stocktake/sessions/:id/recount", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Recount conflicted stocktake lines");
+    const session = recountStocktakeLines(Number(req.params.id), req.body?.lines || [], req.auth.id);
+    return res.json({ session });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.message,
+        conflicts: error.conflicts || undefined,
+        session: error.session || undefined,
+      });
+    }
     throw error;
   }
 });

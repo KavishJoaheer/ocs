@@ -22,3 +22,10 @@ export function subscribeUnsavedWork(listener) {
   listener(hasUnsavedWork());
   return () => listeners.delete(listener);
 }
+
+if (typeof window !== "undefined") {
+  window.__OCS_UNSAVED_WORK__ = {
+    set: setUnsavedWork,
+    has: hasUnsavedWork,
+  };
+}

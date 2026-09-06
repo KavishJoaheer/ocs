@@ -875,3 +875,155 @@ test("admin emergency override is required and audited for request acceptance", 
   void doctor;
 });
 
+test("history operator and folder filters change both records and aggregate stats", async () => {
+  const operator = db.prepare("SELECT id FROM users WHERE username = 'operator01'").get();
+  const folder = db.prepare("SELECT id FROM inventory_folders ORDER BY id ASC LIMIT 1").get();
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES (?, ?, 6, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run(`FilterItem ${Date.now()}`, folder.id).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 6, '2028-12-01', 1, 0)`,
+  ).run(itemId);
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: {
+      collection_date: collectionDate,
+      note: "filter stats",
+      items: [{ inventory_id: itemId, item_name: "FilterItem", quantity: 1 }],
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const accepted = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const fulfilment = await api("GET", `/api/restock-requests/${created.data.request.id}/fulfilment`, {
+    token: operatorToken,
+  });
+  const line = fulfilment.data.fulfilment.items[0];
+  await api("PATCH", `/api/restock-requests/${created.data.request.id}/fulfilment`, {
+    token: operatorToken,
+    body: {
+      lines: [{ id: line.id, picked_quantity: 1, fulfilled_quantity: 1 }],
+    },
+  });
+  await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "ready" },
+  });
+  await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+
+  const lookups = await api("GET", "/api/restock-requests/history-lookups", { token: operatorToken });
+  assert.equal(lookups.status, 200, JSON.stringify(lookups.data));
+  assert.ok((lookups.data.operators || []).some((row) => Number(row.id) === Number(operator.id)));
+  assert.ok((lookups.data.folders || []).some((row) => Number(row.id) === Number(folder.id)));
+
+  const byOperator = await api(
+    "GET",
+    `/api/restock-requests?view=history&operator_id=${operator.id}`,
+    { token: operatorToken },
+  );
+  assert.equal(byOperator.status, 200, JSON.stringify(byOperator.data));
+  assert.ok(Number(byOperator.data.request_count) >= 1);
+  assert.equal(Number(byOperator.data.request_count), Number(byOperator.data.total));
+  const byOtherOperator = await api("GET", "/api/restock-requests?view=history&operator_id=999999", {
+    token: operatorToken,
+  });
+  assert.equal(Number(byOtherOperator.data.total || 0), 0);
+  assert.equal(Number(byOtherOperator.data.request_count || 0), 0);
+
+  const byFolder = await api(
+    "GET",
+    `/api/restock-requests?view=history&folder_id=${folder.id}&request_id=${created.data.request.id}`,
+    { token: adminToken },
+  );
+  assert.equal(byFolder.status, 200, JSON.stringify(byFolder.data));
+  assert.equal(Number(byFolder.data.total), 1);
+  assert.equal(Number(byFolder.data.request_count), 1);
+  const missingFolder = await api("GET", "/api/restock-requests?view=history&folder_id=999999", {
+    token: adminToken,
+  });
+  assert.equal(Number(missingFolder.data.total || 0), 0);
+  assert.equal(Number(missingFolder.data.request_count || 0), 0);
+
+  const requestId = created.data.request.id;
+  const doctorId = created.data.request.doctor_id;
+  const itemName = created.data.request.items[0].item_name;
+  const byRequest = await api("GET", `/api/restock-requests?view=history&request_id=${requestId}`, {
+    token: operatorToken,
+  });
+  assert.equal(Number(byRequest.data.total), 1);
+  assert.equal(Number(byRequest.data.request_count), 1);
+  const byDoctor = await api("GET", `/api/restock-requests?view=history&doctor_id=${doctorId}&request_id=${requestId}`, {
+    token: operatorToken,
+  });
+  assert.equal(Number(byDoctor.data.total), 1);
+  assert.equal(Number(byDoctor.data.request_count), 1);
+  const otherDoctor = await api("GET", "/api/restock-requests?view=history&doctor_id=999999", {
+    token: operatorToken,
+  });
+  assert.equal(Number(otherDoctor.data.total || 0), 0);
+  assert.equal(Number(otherDoctor.data.request_count || 0), 0);
+  const byItem = await api(
+    "GET",
+    `/api/restock-requests?view=history&item=${encodeURIComponent(itemName)}`,
+    { token: operatorToken },
+  );
+  assert.ok(Number(byItem.data.total) >= 1);
+  assert.equal(Number(byItem.data.request_count), Number(byItem.data.total));
+  const missingItem = await api("GET", "/api/restock-requests?view=history&item=no-such-filter-item-xyz", {
+    token: operatorToken,
+  });
+  assert.equal(Number(missingItem.data.total || 0), 0);
+  assert.equal(Number(missingItem.data.request_count || 0), 0);
+  const completedOnly = await api("GET", `/api/restock-requests?view=history&status=completed&request_id=${requestId}`, {
+    token: operatorToken,
+  });
+  assert.equal(Number(completedOnly.data.total), 1);
+  assert.equal(Number(completedOnly.data.request_count), 1);
+  const cancelledOnly = await api("GET", `/api/restock-requests?view=history&status=cancelled&request_id=${requestId}`, {
+    token: operatorToken,
+  });
+  assert.equal(Number(cancelledOnly.data.total || 0), 0);
+  assert.equal(Number(cancelledOnly.data.request_count || 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const inRange = await api(
+    "GET",
+    `/api/restock-requests?view=history&from=${today}&to=${today}&request_id=${requestId}`,
+    { token: operatorToken },
+  );
+  assert.equal(Number(inRange.data.total), 1);
+  assert.equal(Number(inRange.data.request_count), 1);
+  const outOfRange = await api("GET", "/api/restock-requests?view=history&from=2099-01-01&to=2099-12-31", {
+    token: operatorToken,
+  });
+  assert.equal(Number(outOfRange.data.total || 0), 0);
+  assert.equal(Number(outOfRange.data.request_count || 0), 0);
+  const doctorLookups = await api("GET", "/api/restock-requests/history-lookups", { token: doctorToken });
+  assert.equal(doctorLookups.status, 403);
+
+  const doctorHistory = await api("GET", "/api/restock-requests?view=history", { token: doctorToken });
+  assert.equal(doctorHistory.status, 200);
+  assert.ok((doctorHistory.data.requests || []).every((row) => row.doctor_name));
+  const otherDoctorHistory = await api("GET", "/api/restock-requests?view=history", { token: doctorTwoToken });
+  const doctorIds = new Set((doctorHistory.data.requests || []).map((row) => row.id));
+  assert.ok((otherDoctorHistory.data.requests || []).every((row) => !doctorIds.has(row.id)));
+  const exportRes = await fetch(`${baseUrl}/api/restock-requests/export`, {
+    headers: { Authorization: `Bearer ${doctorToken}` },
+  });
+  assert.equal(exportRes.status, 200);
+  const csv = await exportRes.text();
+  assert.match(csv, /frequency_by_item/);
+  assert.doesNotMatch(csv, /bhobun/i);
+});
+

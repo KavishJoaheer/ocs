@@ -13,7 +13,7 @@ const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createApp } = require("../src/app");
-const { db } = require("../src/db");
+const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
 
@@ -1154,10 +1154,11 @@ test("excluded shipment rows become terminal and idle shipments leave the incomi
     token: operatorToken,
     body: { mode: "selected", row_ids: [drop.id] },
   });
-  assert.ok([200, 201, 400].includes(accidental.status));
-  if (accidental.status === 201) {
-    assert.equal(accidental.data.shipment.lines.find((line) => Number(line.id) === Number(drop.id)).status, "excluded");
-  }
+  assert.equal(accidental.status, 400, JSON.stringify(accidental.data));
+  assert.equal(
+    after.data.shipment.lines.find((line) => Number(line.id) === Number(drop.id)).status,
+    "excluded",
+  );
 });
 
 test("explicit zero stocktake can be submitted and blank stocktake cannot", async () => {
@@ -1739,9 +1740,24 @@ test("zero-variance stocktake after an intervening receipt requires recount", as
   });
   assert.equal(submitted.status, 409, JSON.stringify(submitted.data));
   assert.equal(submitted.data.session.status, "recount_required");
-  const recount = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+  const ordinarySave = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
     token: operatorToken,
     body: { lines: [{ id: lineId, physical_quantity: 6 }] },
+  });
+  assert.equal(ordinarySave.status, 409, JSON.stringify(ordinarySave.data));
+  const conflicted = submitted.data.session.items[0];
+  const recount = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/recount`, {
+    token: operatorToken,
+    body: {
+      lines: [
+        {
+          id: lineId,
+          physical_quantity: 6,
+          conflict_detected_at: conflicted.conflict_detected_at,
+          expected_row_version: conflicted.live_row_version,
+        },
+      ],
+    },
   });
   assert.equal(recount.status, 200, JSON.stringify(recount.data));
   const resubmit = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
@@ -1821,5 +1837,458 @@ test("history pagination returns frequency totals beyond the first page", async 
   assert.equal(next.data.requests.length, 1);
   assert.notEqual(next.data.requests[0].id, page.data.requests[0].id);
   assert.ok((page.data.item_counts || []).length >= 1);
+});
+
+test("stocktake keeps the session baseline until an explicit recount", async () => {
+  const itemId = insertOcsItem({ name: `BaseKeep ${Date.now()}`, qty: 4 });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemId] },
+  });
+  const sessionId = created.data.session.id;
+  const lineId = created.data.session.items[0].id;
+  const baselineVersion = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version;
+
+  await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 2, expiry_date: "2029-06-01" },
+  });
+  const savedAfterMove = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 4 }] },
+  });
+  assert.equal(savedAfterMove.status, 200, JSON.stringify(savedAfterMove.data));
+  const savedRow = db
+    .prepare("SELECT expected_quantity, expected_row_version, conflict_status FROM inventory_stocktake_session_items WHERE id = ?")
+    .get(lineId);
+  assert.equal(Number(savedRow.expected_quantity), 4);
+  assert.equal(Number(savedRow.expected_row_version), Number(baselineVersion));
+  assert.equal(savedRow.conflict_status, "");
+  const submitAfterCountMove = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitAfterCountMove.status, 409, JSON.stringify(submitAfterCountMove.data));
+
+  const itemB = insertOcsItem({ name: `SaveThenMove ${Date.now()}`, qty: 3 });
+  const createdB = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemB] },
+  });
+  const lineB = createdB.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${createdB.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineB, physical_quantity: 3 }] },
+  });
+  await api("POST", `/api/inventory/items/${itemB}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: "2029-06-01" },
+  });
+  const submitAfterSave = await api("POST", `/api/inventory/stocktake/sessions/${createdB.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitAfterSave.status, 409);
+
+  const itemC = insertOcsItem({ name: `ApplyMove ${Date.now()}`, qty: 5 });
+  const createdC = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemC] },
+  });
+  const lineC = createdC.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${createdC.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineC, physical_quantity: 6 }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${createdC.data.session.id}/submit`, { token: operatorToken });
+  await api("POST", `/api/inventory/stocktake/sessions/${createdC.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  await api("POST", `/api/inventory/items/${itemC}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: "2029-06-01" },
+  });
+  const applyBlocked = await api("POST", `/api/inventory/stocktake/sessions/${createdC.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applyBlocked.status, 409, JSON.stringify(applyBlocked.data));
+  assert.equal(applyBlocked.data.session.status, "recount_required");
+});
+
+test("stocktake recount is required, scoped, and rejects stale tokens", async () => {
+  const keep = insertOcsItem({ name: `KeepCount ${Date.now()}`, qty: 4 });
+  const conflict = insertOcsItem({ name: `NeedRecount ${Date.now()}`, qty: 4 });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [keep, conflict] },
+  });
+  const sessionId = created.data.session.id;
+  const keepLine = created.data.session.items.find((row) => Number(row.inventory_id) === keep);
+  const conflictLine = created.data.session.items.find((row) => Number(row.inventory_id) === conflict);
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: {
+      lines: [
+        { id: keepLine.id, physical_quantity: 4 },
+        { id: conflictLine.id, physical_quantity: 5 },
+      ],
+    },
+  });
+  await api("POST", `/api/inventory/items/${conflict}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: "2029-06-01" },
+  });
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitted.status, 409);
+  const again = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, { token: operatorToken });
+  assert.equal(again.status, 409, JSON.stringify(again.data));
+  const conflicted = again.data.session.items.find((row) => Number(row.id) === Number(conflictLine.id));
+  const kept = db
+    .prepare("SELECT physical_quantity, expected_quantity FROM inventory_stocktake_session_items WHERE id = ?")
+    .get(keepLine.id);
+  assert.equal(Number(kept.physical_quantity), 4);
+  assert.equal(Number(kept.expected_quantity), 4);
+
+  const staleToken = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/recount`, {
+    token: operatorToken,
+    body: {
+      lines: [
+        {
+          id: conflictLine.id,
+          physical_quantity: 6,
+          conflict_detected_at: "not-the-token",
+          expected_row_version: conflicted.live_row_version,
+        },
+      ],
+    },
+  });
+  assert.equal(staleToken.status, 409, JSON.stringify(staleToken.data));
+  const staleVersion = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/recount`, {
+    token: operatorToken,
+    body: {
+      lines: [
+        {
+          id: conflictLine.id,
+          physical_quantity: 6,
+          conflict_detected_at: conflicted.conflict_detected_at,
+          expected_row_version: Number(conflicted.live_row_version) - 1,
+        },
+      ],
+    },
+  });
+  assert.equal(staleVersion.status, 409, JSON.stringify(staleVersion.data));
+  const recounted = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/recount`, {
+    token: operatorToken,
+    body: {
+      lines: [
+        {
+          id: conflictLine.id,
+          physical_quantity: 6,
+          conflict_detected_at: conflicted.conflict_detected_at,
+          expected_row_version: conflicted.live_row_version,
+        },
+      ],
+    },
+  });
+  assert.equal(recounted.status, 200, JSON.stringify(recounted.data));
+  const after = recounted.data.session.items.find((row) => Number(row.id) === Number(conflictLine.id));
+  assert.notEqual(String(after.conflict_status || ""), "recount_required");
+  const keepAfter = recounted.data.session.items.find((row) => Number(row.id) === Number(keepLine.id));
+  assert.equal(Number(keepAfter.physical_quantity), 4);
+  assert.equal(Number(keepAfter.expected_quantity), 4);
+  const resubmit = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(resubmit.status, 200, JSON.stringify(resubmit.data));
+});
+
+test("zero-variance stocktake without movement still closes and apply rolls back unsafe lines", async () => {
+  const itemId = insertOcsItem({ name: `ZeroClean ${Date.now()}`, qty: 2 });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemId] },
+  });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: created.data.session.items[0].id, physical_quantity: 2 }] },
+  });
+  const closed = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(closed.status, 200, JSON.stringify(closed.data));
+  assert.equal(closed.data.session.status, "applied");
+
+  const reservedItem = insertOcsItem({ name: `UnsafeApply ${Date.now()}`, qty: 2 });
+  await createAcceptedRequest({ itemId: reservedItem, itemName: "UnsafeApply", quantity: 2 });
+  const unsafe = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [reservedItem] },
+  });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: unsafe.data.session.items[0].id, physical_quantity: 0 }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/submit`, { token: operatorToken });
+  await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 409, JSON.stringify(applied.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(reservedItem).quantity, 2);
+});
+
+test("exceptional correction preview and stale inventory are enforced", async () => {
+  const free = insertOcsItem({ name: `CorrFree ${Date.now()}`, qty: 8 });
+  const previewFree = await api("POST", `/api/inventory/items/${free}/exceptional-correction/preview`, {
+    token: adminToken,
+    body: { next_quantity: 7 },
+  });
+  assert.equal(previewFree.status, 200, JSON.stringify(previewFree.data));
+  assert.equal(previewFree.data.preview.requires_affect_reservations, false);
+  const appliedFree = await api("POST", `/api/inventory/items/${free}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 7,
+      reason: "Warehouse recount found extra units",
+      confirm: true,
+      expected_row_version: previewFree.data.preview.row_version,
+      expected_quantity: previewFree.data.preview.quantity,
+    },
+  });
+  assert.ok([200, 201].includes(appliedFree.status), JSON.stringify(appliedFree.data));
+
+  const reservedItem = insertOcsItem({ name: `CorrPrev ${Date.now()}`, qty: 5 });
+  await createAcceptedRequest({ itemId: reservedItem, itemName: "CorrPrev", quantity: 4 });
+  const previewReserved = await api("POST", `/api/inventory/items/${reservedItem}/exceptional-correction/preview`, {
+    token: adminToken,
+    body: { next_quantity: 1 },
+  });
+  assert.equal(previewReserved.status, 200, JSON.stringify(previewReserved.data));
+  assert.equal(previewReserved.data.preview.requires_affect_reservations, true);
+  assert.ok((previewReserved.data.preview.impacted_requests || []).length);
+
+  const stale = await api("POST", `/api/inventory/items/${reservedItem}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 1,
+      reason: "Warehouse recount found extra units",
+      confirm: true,
+      affect_reservations: true,
+      expected_row_version: 1,
+      expected_quantity: 99,
+    },
+  });
+  assert.equal(stale.status, 409, JSON.stringify(stale.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(reservedItem).quantity, 5);
+
+  const pickedItem = insertOcsItem({ name: `CorrPrevPick ${Date.now()}`, qty: 6 });
+  const pickedReq = await createAcceptedRequest({ itemId: pickedItem, itemName: "CorrPrevPick", quantity: 3 });
+  const pickedDetail = await api("GET", `/api/restock-requests/${pickedReq.id}/fulfilment`, {
+    token: operatorToken,
+  });
+  await api("PATCH", `/api/restock-requests/${pickedReq.id}/fulfilment`, {
+    token: operatorToken,
+    body: {
+      lines: [{ id: pickedDetail.data.fulfilment.items[0].id, picked_quantity: 2, fulfilled_quantity: 2 }],
+    },
+  });
+  const previewPicked = await api("POST", `/api/inventory/items/${pickedItem}/exceptional-correction/preview`, {
+    token: adminToken,
+    body: { next_quantity: 1 },
+  });
+  assert.equal(previewPicked.status, 200, JSON.stringify(previewPicked.data));
+  assert.equal(previewPicked.data.preview.requires_affect_reservations, false);
+  assert.ok((previewPicked.data.preview.blocking_requests || []).length);
+
+  const readyItem = insertOcsItem({ name: `CorrPrevReady ${Date.now()}`, qty: 6 });
+  const readyReq = await createAcceptedRequest({ itemId: readyItem, itemName: "CorrPrevReady", quantity: 2 });
+  await pickAndReady(readyReq.id);
+  const previewReady = await api("POST", `/api/inventory/items/${readyItem}/exceptional-correction/preview`, {
+    token: adminToken,
+    body: { next_quantity: 1 },
+  });
+  assert.equal(previewReady.status, 200, JSON.stringify(previewReady.data));
+  assert.ok((previewReady.data.preview.blocking_requests || []).some((row) => Number(row.request_id) === Number(readyReq.id)));
+});
+
+test("partial shipment releases keep per-transaction receipts", async () => {
+  const consumable = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable'").get().id;
+  const firstName = `PartA ${Date.now()}`;
+  const secondName = `PartB ${Date.now()}`;
+  const fullName = `PartFull ${Date.now()}`;
+  insertOcsItem({ name: firstName, qty: 0, folder: consumable });
+  insertOcsItem({ name: secondName, qty: 0, folder: consumable });
+  insertOcsItem({ name: fullName, qty: 0, folder: consumable });
+
+  const fullImport = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: [
+        "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+        `Consumable,${fullName},3,0,unit,1,2,2029-01-01`,
+      ].join("\n"),
+      supplier: "Full Co",
+    },
+  });
+  const fullId = fullImport.data.import_summary.shipment_id;
+  const fullLine = fullImport.data.shipment.lines[0].id;
+  const fullRelease = await api("POST", `/api/inventory/shipments/${fullId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [fullLine] },
+  });
+  assert.ok([200, 201].includes(fullRelease.status), JSON.stringify(fullRelease.data));
+  assert.equal(fullRelease.data.receipt.kind, "release_receipt");
+  assert.equal(fullRelease.data.receipt.total_quantity, 3);
+  const fullRetry = await api("POST", `/api/inventory/shipments/${fullId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [fullLine] },
+  });
+  assert.equal(fullRetry.data.idempotent, true);
+  assert.equal(fullRetry.data.receipt.transaction_id, fullRelease.data.receipt.transaction_id);
+
+  const csv = [
+    "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+    `Consumable,${firstName},2,0,unit,3,4,2029-01-01`,
+    `Consumable,${secondName},5,0,unit,2,3,2029-01-01`,
+  ].join("\n");
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: { csv_text: csv, supplier: "Split Co", delivery_note: "DN-77" },
+  });
+  const shipmentId = imported.data.import_summary.shipment_id;
+  const first = imported.data.shipment.lines.find((line) => line.item_name === firstName);
+  const second = imported.data.shipment.lines.find((line) => line.item_name === secondName);
+
+  const firstRelease = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [first.id] },
+  });
+  assert.ok([200, 201].includes(firstRelease.status), JSON.stringify(firstRelease.data));
+  assert.equal(firstRelease.data.receipt.total_quantity, 2);
+  assert.equal(firstRelease.data.receipt.total_value, 6);
+  assert.equal(firstRelease.data.receipt.lines.length, 1);
+  assert.equal(firstRelease.data.summary.total_quantity, 2);
+  const firstRetry = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [first.id] },
+  });
+  assert.equal(firstRetry.data.idempotent, true);
+  assert.equal(firstRetry.data.receipt.transaction_id, firstRelease.data.receipt.transaction_id);
+  assert.equal(firstRetry.data.receipt.total_quantity, 2);
+
+  const secondRelease = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [second.id] },
+  });
+  assert.ok([200, 201].includes(secondRelease.status), JSON.stringify(secondRelease.data));
+  assert.equal(secondRelease.data.receipt.total_quantity, 5);
+  assert.notEqual(secondRelease.data.receipt.transaction_id, firstRelease.data.receipt.transaction_id);
+  assert.equal(secondRelease.data.summary.total_quantity, 7);
+  assert.equal(secondRelease.data.summary.kind, "shipment_summary");
+  const qty = db
+    .prepare("SELECT quantity FROM inventory WHERE item_name = ? AND stock_scope = 'ocs'")
+    .get(firstName).quantity;
+  const qtyB = db
+    .prepare("SELECT quantity FROM inventory WHERE item_name = ? AND stock_scope = 'ocs'")
+    .get(secondName).quantity;
+  assert.equal(Number(qty), 2);
+  assert.equal(Number(qtyB), 5);
+});
+
+test("mixed pending, excluded and released shipment rows cannot be released together", async () => {
+  const consumable = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable'").get().id;
+  const pendingName = `MixPend ${Date.now()}`;
+  const releasedName = `MixRel ${Date.now()}`;
+  const excludedName = `MixEx ${Date.now()}`;
+  insertOcsItem({ name: pendingName, qty: 0, folder: consumable });
+  insertOcsItem({ name: releasedName, qty: 0, folder: consumable });
+  insertOcsItem({ name: excludedName, qty: 0, folder: consumable });
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: [
+        "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+        `Consumable,${releasedName},2,0,unit,1,2,2029-01-01`,
+        `Consumable,${pendingName},3,0,unit,1,2,2029-01-01`,
+        `Consumable,${excludedName},4,0,unit,1,2,2029-01-01`,
+      ].join("\n"),
+      supplier: "Mix Co",
+    },
+  });
+  const shipmentId = imported.data.import_summary.shipment_id;
+  const pending = imported.data.shipment.lines.find((line) => line.item_name === pendingName);
+  const releasedLine = imported.data.shipment.lines.find((line) => line.item_name === releasedName);
+  const excludedLine = imported.data.shipment.lines.find((line) => line.item_name === excludedName);
+
+  const excluded = await api("POST", `/api/inventory/shipments/${shipmentId}/exclude`, {
+    token: operatorToken,
+    body: { lines: [{ id: excludedLine.id, reason: "Wrong product on delivery note" }] },
+  });
+  assert.equal(excluded.status, 200, JSON.stringify(excluded.data));
+  const first = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [releasedLine.id] },
+  });
+  assert.ok([200, 201].includes(first.status), JSON.stringify(first.data));
+
+  const mixed = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [releasedLine.id, pending.id, excludedLine.id] },
+  });
+  assert.equal(mixed.status, 400, JSON.stringify(mixed.data));
+  assert.equal(
+    db.prepare("SELECT quantity FROM inventory WHERE item_name = ? AND stock_scope = 'ocs'").get(pendingName)
+      .quantity,
+    0,
+  );
+
+  const remaining = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [releasedLine.id, pending.id] },
+  });
+  assert.ok([200, 201].includes(remaining.status), JSON.stringify(remaining.data));
+  assert.equal(remaining.data.receipt.total_quantity, 3);
+  assert.equal(remaining.data.receipt.kind, "release_receipt");
+  assert.equal(remaining.data.summary.total_quantity, 5);
+  assert.equal(
+    db.prepare("SELECT quantity FROM inventory WHERE item_name = ? AND stock_scope = 'ocs'").get(pendingName)
+      .quantity,
+    3,
+  );
+  assert.equal(
+    db.prepare("SELECT quantity FROM inventory WHERE item_name = ? AND stock_scope = 'ocs'").get(releasedName)
+      .quantity,
+    2,
+  );
+  const after = await api("GET", `/api/inventory/shipments/${shipmentId}`, { token: operatorToken });
+  assert.equal(
+    after.data.shipment.lines.find((line) => Number(line.id) === Number(excludedLine.id)).status,
+    "excluded",
+  );
+});
+
+test("inventory operations schema adds release and recount columns on clean and upgraded databases", () => {
+  ensureInventoryOperationsSchema();
+  const staging = db.prepare("PRAGMA table_info(inventory_staging)").all().map((row) => row.name);
+  const stocktakeItems = db
+    .prepare("PRAGMA table_info(inventory_stocktake_session_items)")
+    .all()
+    .map((row) => row.name);
+  assert.ok(staging.includes("release_transaction_id"));
+  assert.ok(staging.includes("released_inventory_id"));
+  assert.ok(staging.includes("released_batch_id"));
+  assert.ok(stocktakeItems.includes("recounted_by_user_id"));
+  assert.ok(stocktakeItems.includes("recounted_at"));
+  ensureInventoryOperationsSchema();
+  assert.ok(
+    db
+      .prepare("PRAGMA table_info(inventory_staging)")
+      .all()
+      .some((row) => row.name === "release_transaction_id"),
+  );
 });
 

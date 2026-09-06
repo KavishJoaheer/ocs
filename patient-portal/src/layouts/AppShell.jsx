@@ -6,6 +6,7 @@ import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import PatientAccountLinkBanner from "../components/PatientAccountLinkBanner.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
 import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
+import "../lib/clientBuildSha.js";
 import {
   drainPendingServiceWorkerSubscription,
   listenForPushSubscriptionChanges,

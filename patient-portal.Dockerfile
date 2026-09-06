@@ -4,6 +4,8 @@ COPY patient-portal/package*.json ./patient-portal/
 WORKDIR /app/patient-portal
 RUN npm install
 COPY patient-portal ./
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 FROM nginx:alpine

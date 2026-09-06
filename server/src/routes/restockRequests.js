@@ -591,9 +591,13 @@ function parseIsoDateQuery(value) {
   return raw;
 }
 
-function historyStats({ doctorId, status, from, to, itemSearch, operatorId, folderId } = {}) {
+function historyStats({ doctorId, status, from, to, itemSearch, operatorId, folderId, requestId } = {}) {
   const filters = ["r.status IN ('completed', 'cancelled')"];
   const params = {};
+  if (requestId) {
+    filters.push("r.id = @request_id");
+    params.request_id = Number(requestId);
+  }
   if (doctorId) {
     filters.push("r.doctor_id = @doctor_id");
     params.doctor_id = doctorId;
@@ -722,6 +726,31 @@ function historyStats({ doctorId, status, from, to, itemSearch, operatorId, fold
     cancelled_count: Number(totals?.cancelled_count || 0),
     request_count: Number(totals?.request_count || 0),
   };
+}
+
+function historyLookups() {
+  const operators = db
+    .prepare(
+      `
+      SELECT id, full_name, username, role
+      FROM users
+      WHERE is_active = 1
+        AND deleted_at IS NULL
+        AND role IN ('operator', 'admin')
+      ORDER BY full_name COLLATE NOCASE ASC, username COLLATE NOCASE ASC
+    `,
+    )
+    .all();
+  const folders = db
+    .prepare(
+      `
+      SELECT id, name
+      FROM inventory_folders
+      ORDER BY name COLLATE NOCASE ASC
+    `,
+    )
+    .all();
+  return { operators, folders };
 }
 
 function normaliseItemsPayload(rawItems) {
@@ -867,7 +896,15 @@ router.get("/", (req, res) => {
 
   const scopedDoctorId = role === "doctor" ? getDoctorIdForUser(auth.id) : requestedDoctorId;
   if (role === "doctor" && !scopedDoctorId) {
-    return res.json({ requests: [], total: 0, doctor_counts: [], item_counts: [] });
+    return res.json({
+      requests: [],
+      total: 0,
+      doctor_counts: [],
+      item_counts: [],
+      completed_count: 0,
+      cancelled_count: 0,
+      request_count: 0,
+    });
   }
 
   if (role !== "doctor" && role !== "operator" && role !== "admin") {
@@ -919,8 +956,12 @@ router.get("/", (req, res) => {
         itemSearch: itemSearch || null,
         operatorId,
         folderId,
+        requestId,
       }),
     );
+    if (role === "operator" || role === "admin") {
+      Object.assign(payload, historyLookups());
+    }
   }
 
   return res.json(payload);
@@ -940,6 +981,14 @@ router.get("/metrics", (req, res) => {
     return res.status(403).json({ error: "Only operators or admins can view inventory metrics." });
   }
   return res.json(productivityMetrics());
+});
+
+router.get("/history-lookups", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can view history lookups." });
+  }
+  return res.json(historyLookups());
 });
 
 router.get("/export", (req, res) => {
@@ -973,6 +1022,7 @@ router.get("/export", (req, res) => {
     itemSearch: String(req.query.item || req.query.q || "").trim() || null,
     operatorId: role === "doctor" ? null : Number(req.query.operator_id || 0) || null,
     folderId: Number(req.query.folder_id || 0) || null,
+    requestId: Number(req.query.request_id || req.query.id || 0) || null,
   });
   const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const lines = [

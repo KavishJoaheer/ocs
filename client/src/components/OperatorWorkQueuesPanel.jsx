@@ -11,6 +11,7 @@ import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
 import { formatSupplyRequestCollectionDay, supplyRequestStatusLabel } from "../lib/supplyRequests.js";
 import { cx } from "../lib/utils.js";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
+import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequestHistoryFilters.jsx";
 
 const QUEUE_DEFS = [
   { id: "new_requests", label: "New requests", key: "new_requests" },
@@ -41,7 +42,10 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   const [detailRequestId, setDetailRequestId] = useState(null);
   const [history, setHistory] = useState({ requests: [], total: 0, doctor_counts: [], item_counts: [] });
   const [historyOffset, setHistoryOffset] = useState(0);
-  const [historyFilters, setHistoryFilters] = useState({ status: "", item: "", from: "", to: "" });
+  const [historyFilters, setHistoryFilters] = useState({ ...EMPTY_HISTORY_FILTERS });
+  const [doctors, setDoctors] = useState([]);
+  const [operators, setOperators] = useState([]);
+  const [folders, setFolders] = useState([]);
   const HISTORY_PAGE_SIZE = 50;
 
   const load = useCallback(async () => {
@@ -60,13 +64,21 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
         if (historyFilters.item.trim()) params.set("item", historyFilters.item.trim());
         if (historyFilters.from) params.set("from", historyFilters.from);
         if (historyFilters.to) params.set("to", historyFilters.to);
+        if (historyFilters.doctor_id) params.set("doctor_id", historyFilters.doctor_id);
+        if (historyFilters.operator_id) params.set("operator_id", historyFilters.operator_id);
+        if (historyFilters.folder_id) params.set("folder_id", historyFilters.folder_id);
+        if (historyFilters.request_id.trim()) params.set("request_id", historyFilters.request_id.trim());
         const archived = await api.get(`/restock-requests?${params.toString()}`);
         setHistory({
           requests: Array.isArray(archived?.requests) ? archived.requests : [],
           total: Number(archived?.total || 0),
           doctor_counts: Array.isArray(archived?.doctor_counts) ? archived.doctor_counts : [],
           item_counts: Array.isArray(archived?.item_counts) ? archived.item_counts : [],
+          completed_count: Number(archived?.completed_count || 0),
+          cancelled_count: Number(archived?.cancelled_count || 0),
         });
+        if (Array.isArray(archived?.operators)) setOperators(archived.operators);
+        if (Array.isArray(archived?.folders)) setFolders(archived.folders);
       }
     } catch (error) {
       toast.error(error.message || "Could not load work queues.");
@@ -85,6 +97,28 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
       window.clearInterval(timer);
     };
   }, [load]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadLookups() {
+      try {
+        const [doctorPayload, lookupPayload] = await Promise.all([
+          api.get("/doctors"),
+          api.get("/restock-requests/history-lookups"),
+        ]);
+        if (ignore) return;
+        setDoctors(Array.isArray(doctorPayload) ? doctorPayload : doctorPayload?.doctors || []);
+        setOperators(Array.isArray(lookupPayload?.operators) ? lookupPayload.operators : []);
+        setFolders(Array.isArray(lookupPayload?.folders) ? lookupPayload.folders : []);
+      } catch {
+        /* history filters remain usable without lookups */
+      }
+    }
+    void loadLookups();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const counts = queues?.counts || {};
   const waitingTotal = QUEUE_DEFS.filter((queue) => queue.kind !== "history").reduce(
@@ -212,47 +246,45 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
           </button>
         ) : active === "history" ? (
           <div className="space-y-3">
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <input
-                type="search"
-                value={historyFilters.item}
-                placeholder="Item or request search"
-                onChange={(event) => {
-                  setHistoryOffset(0);
-                  setHistoryFilters((current) => ({ ...current, item: event.target.value }));
+            <SupplyRequestHistoryFilters
+              filters={historyFilters}
+              doctors={doctors}
+              operators={operators}
+              folders={folders}
+              role={user?.role === "admin" ? "admin" : "operator"}
+              onChange={(next) => {
+                setHistoryOffset(0);
+                setHistoryFilters(next);
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-slate-500">
+                {history.completed_count || 0} completed · {history.cancelled_count || 0} cancelled · {history.total} matching
+              </p>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
+                onClick={() => {
+                  const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                  const params = new URLSearchParams({ view: "history" });
+                  Object.entries(historyFilters).forEach(([key, value]) => {
+                    if (String(value || "").trim()) params.set(key, String(value).trim());
+                  });
+                  void fetch(`/api/restock-requests/export?${params.toString()}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  }).then(async (response) => {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "supply-request-history.csv";
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  });
                 }}
-                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
-              />
-              <select
-                value={historyFilters.status}
-                onChange={(event) => {
-                  setHistoryOffset(0);
-                  setHistoryFilters((current) => ({ ...current, status: event.target.value }));
-                }}
-                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
               >
-                <option value="">Completed & cancelled</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <input
-                type="date"
-                value={historyFilters.from}
-                onChange={(event) => {
-                  setHistoryOffset(0);
-                  setHistoryFilters((current) => ({ ...current, from: event.target.value }));
-                }}
-                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
-              />
-              <input
-                type="date"
-                value={historyFilters.to}
-                onChange={(event) => {
-                  setHistoryOffset(0);
-                  setHistoryFilters((current) => ({ ...current, to: event.target.value }));
-                }}
-                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
-              />
+                Export CSV
+              </button>
             </div>
             {history.doctor_counts?.length || history.item_counts?.length ? (
               <div className="grid gap-3 md:grid-cols-2">

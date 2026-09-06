@@ -281,26 +281,37 @@ function actorMeta(actor = {}, extra = {}) {
   };
 }
 
-function applyExceptionalCorrection({
-  itemId,
-  nextQuantity = null,
-  delta = null,
-  reason,
-  note = "",
-  confirm,
-  userId,
-  actor = {},
-  affectReservations = false,
-}) {
-  if (confirm !== true && confirm !== "true") {
-    throw HttpError(400, "Confirm the exceptional inventory correction before applying it.");
-  }
-  const trimmedReason = String(reason || "").trim();
-  if (trimmedReason.length < 10) {
-    throw HttpError(400, "A reason of at least 10 characters is required for an exceptional correction.");
-  }
-  const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(Number(itemId));
-  if (!item) throw HttpError(404, "Stock item not found.");
+function previewReservationImpact(inventoryId, reduceBy) {
+  const needed = Math.max(0, Math.floor(Number(reduceBy) || 0));
+  const impacted = listImpactedActiveRequests(inventoryId);
+  let remaining = needed;
+  return impacted.map((row) => {
+    const reserved = Number(row.reserved_quantity || 0);
+    const requested = Number(row.requested_quantity || 0);
+    let reduced = 0;
+    if (!row.blocking && remaining > 0 && reserved > 0) {
+      reduced = Math.min(reserved, remaining);
+      remaining -= reduced;
+    }
+    const nextReserved = reserved - reduced;
+    return {
+      request_id: row.request_id,
+      request_number: row.request_id,
+      doctor_name: row.doctor_name || "Doctor",
+      reserved_quantity: reserved,
+      picked_quantity: Number(row.picked_quantity || 0),
+      fulfilled_quantity: Number(row.fulfilled_quantity || 0),
+      requested_quantity: requested,
+      status: row.status,
+      blocking: Boolean(row.blocking),
+      reduced_quantity: reduced,
+      remaining_reserved: nextReserved,
+      resulting_shortage: Math.max(0, requested - nextReserved),
+    };
+  });
+}
+
+function resolveCorrectionQuantity(item, { nextQuantity = null, delta = null } = {}) {
   const previous = Number(item.quantity || 0);
   let next = previous;
   if (nextQuantity != null && nextQuantity !== "") {
@@ -313,7 +324,72 @@ function applyExceptionalCorrection({
   if (!Number.isInteger(next) || next < 0) {
     throw HttpError(400, "Corrected quantity must be a whole number of zero or more.");
   }
-  const change = next - previous;
+  return { previous, next, change: next - previous };
+}
+
+function previewExceptionalCorrection({ itemId, nextQuantity = null, delta = null }) {
+  const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(Number(itemId));
+  if (!item) throw HttpError(404, "Stock item not found.");
+  const { previous, next, change } = resolveCorrectionQuantity(item, { nextQuantity, delta });
+  const atp = availableToPromise(itemId);
+  const reserved = reservedQuantityForItem(itemId);
+  const shortageNeed = change < 0 ? Math.max(0, Math.abs(change) - atp) : 0;
+  const impacted = previewReservationImpact(itemId, shortageNeed);
+  const blocking = impacted.filter((row) => row.blocking);
+  const affectsReservations = shortageNeed > 0 && blocking.length === 0;
+  return {
+    previous,
+    next,
+    change,
+    available_to_promise: atp,
+    reserved_quantity: reserved,
+    row_version: Number(item.row_version || 1),
+    quantity: previous,
+    affects_reservations: affectsReservations,
+    requires_affect_reservations: affectsReservations,
+    can_apply: blocking.length === 0 || change >= 0,
+    blocking_requests: blocking,
+    impacted_requests: impacted,
+  };
+}
+
+function applyExceptionalCorrection({
+  itemId,
+  nextQuantity = null,
+  delta = null,
+  reason,
+  note = "",
+  confirm,
+  userId,
+  actor = {},
+  affectReservations = false,
+  expectedRowVersion = null,
+  expectedQuantity = null,
+}) {
+  if (confirm !== true && confirm !== "true") {
+    throw HttpError(400, "Confirm the exceptional inventory correction before applying it.");
+  }
+  const trimmedReason = String(reason || "").trim();
+  if (trimmedReason.length < 10) {
+    throw HttpError(400, "A reason of at least 10 characters is required for an exceptional correction.");
+  }
+  const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(Number(itemId));
+  if (!item) throw HttpError(404, "Stock item not found.");
+  if (
+    expectedRowVersion != null &&
+    expectedRowVersion !== "" &&
+    Number(item.row_version || 1) !== Number(expectedRowVersion)
+  ) {
+    throw HttpError(409, "Inventory was updated on another device. Refresh and try again.");
+  }
+  if (
+    expectedQuantity != null &&
+    expectedQuantity !== "" &&
+    Number(item.quantity || 0) !== Number(expectedQuantity)
+  ) {
+    throw HttpError(409, "Inventory was updated on another device. Refresh and try again.");
+  }
+  const { previous, next, change } = resolveCorrectionQuantity(item, { nextQuantity, delta });
   if (change === 0) {
     return { item, previous, next, change: 0, idempotent: true, movementId: null };
   }
@@ -396,7 +472,12 @@ function applyExceptionalCorrection({
         },
       ];
     }
-    updateInventoryQuantity(itemId, next);
+    const qtyUpdate = updateInventoryQuantity(itemId, next, {
+      expectedVersion: Number(locked.row_version || 1),
+    });
+    if (!qtyUpdate.ok) {
+      throw HttpError(409, "Inventory was updated on another device. Refresh and try again.");
+    }
     assertBatchBalance(itemId);
     const movementId = recordOpsMovement({
       itemId,
@@ -579,11 +660,15 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
         .prepare(
           `
           UPDATE inventory_staging
-          SET status = 'released', released_by_user_id = ?, released_at = CURRENT_TIMESTAMP
+          SET
+            status = 'released',
+            released_by_user_id = ?,
+            released_at = CURRENT_TIMESTAMP,
+            release_transaction_id = ?
           WHERE id = ? AND status = 'pending'
         `,
         )
-        .run(userId, row.id);
+        .run(userId, transactionId, row.id);
       if (!claimed.changes) {
         const current = db.prepare("SELECT status FROM inventory_staging WHERE id = ?").get(row.id);
         if (String(current?.status) === "released") {
@@ -602,6 +687,12 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
         roundCurrency(row.cost_price || 0),
         Number(row.is_non_expiring || 0) === 1 ? 1 : 0,
       );
+      const batchId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+      db.prepare(`
+        UPDATE inventory_staging
+        SET released_inventory_id = ?, released_batch_id = ?
+        WHERE id = ?
+      `).run(result.id, batchId, row.id);
       const movementId = recordOpsMovement({
         itemId: result.id,
         movementType: "in",
@@ -793,11 +884,107 @@ function getShipment(id) {
   return decorateShipment(shipment);
 }
 
+function releasedLinesForTransaction(shipment, transactionId) {
+  const tx = String(transactionId || "");
+  if (!tx) return [];
+  return (shipment.lines || []).filter(
+    (line) => String(line.status) === "released" && String(line.release_transaction_id || "") === tx,
+  );
+}
+
+function buildReleaseReceipt(shipment, transactionId, lines) {
+  const quantity = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+  const value = lines.reduce(
+    (sum, line) => sum + Number(line.quantity || 0) * Number(line.cost_price || 0),
+    0,
+  );
+  return {
+    kind: "release_receipt",
+    shipment_id: shipment.id,
+    transaction_id: transactionId,
+    total_rows: lines.length,
+    total_quantity: quantity,
+    total_value: roundCurrency(value),
+    supplier: shipment.supplier || "",
+    delivery_note: shipment.delivery_note || "",
+    released_at: lines[0]?.released_at || shipment.released_at || null,
+    released_by_user_id: lines[0]?.released_by_user_id || shipment.released_by_user_id || null,
+    lines: lines.map((line) => ({
+      shipment_id: shipment.id,
+      staging_row_id: Number(line.id),
+      release_transaction_id: transactionId,
+      inventory_item_id: line.released_inventory_id || null,
+      batch_id: line.released_batch_id || null,
+      item_name: line.item_name,
+      quantity: Number(line.quantity || 0),
+      unit_cost: roundCurrency(line.cost_price || 0),
+      total_value: roundCurrency(Number(line.quantity || 0) * Number(line.cost_price || 0)),
+      expiry_date: line.expiry_date || null,
+      is_non_expiring: Number(line.is_non_expiring || 0) === 1,
+      supplier: shipment.supplier || "",
+      delivery_note: shipment.delivery_note || "",
+      released_by_user_id: line.released_by_user_id || null,
+      released_at: line.released_at || null,
+    })),
+  };
+}
+
+function shipmentReceipt(shipment, released = {}) {
+  const transactionId = released.transactionId || released.transaction_id || null;
+  if (!transactionId) return null;
+  return buildReleaseReceipt(shipment, transactionId, releasedLinesForTransaction(shipment, transactionId));
+}
+
+function shipmentCumulativeSummary(shipment) {
+  const lines = (shipment.lines || []).filter((line) => String(line.status) === "released");
+  const quantity = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+  const value = lines.reduce(
+    (sum, line) => sum + Number(line.quantity || 0) * Number(line.cost_price || 0),
+    0,
+  );
+  const transactionIds = [
+    ...new Set(lines.map((line) => line.release_transaction_id).filter(Boolean)),
+  ];
+  return {
+    kind: "shipment_summary",
+    shipment_id: shipment.id,
+    transaction_ids: transactionIds,
+    total_rows: lines.length,
+    total_quantity: quantity,
+    total_value: roundCurrency(value),
+    released_at: shipment.released_at || null,
+  };
+}
+
+function originalReceiptForRowIds(shipment, ids) {
+  const selected = new Set((ids || []).map(Number));
+  const lines = (shipment.lines || []).filter((line) => selected.has(Number(line.id)));
+  const txIds = [...new Set(lines.map((line) => line.release_transaction_id).filter(Boolean))];
+  if (txIds.length === 1) {
+    return {
+      transactionId: txIds[0],
+      receipt: shipmentReceipt(shipment, { transactionId: txIds[0] }),
+    };
+  }
+  return { transactionId: null, receipt: null };
+}
+
 function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelection = false }) {
   const shipment = getShipment(shipmentId);
   if (!shipment) throw HttpError(404, "Shipment not found.");
-  if (shipment.status === "released") {
-    return { shipment, idempotent: true, receipt: shipmentReceipt(shipment) };
+  const summary = () => shipmentCumulativeSummary(getShipment(shipment.id) || shipment);
+  if (shipment.status === "released" && !requireSelection) {
+    const releasedIds = (shipment.lines || [])
+      .filter((line) => String(line.status) === "released")
+      .map((line) => Number(line.id));
+    const original = originalReceiptForRowIds(shipment, releasedIds);
+    return {
+      shipment,
+      idempotent: true,
+      transactionId: original.transactionId,
+      receipt: original.receipt,
+      summary: summary(),
+    };
   }
   const incomingIds = Array.isArray(rowIds) ? rowIds : [];
   const normalizedIds = incomingIds
@@ -853,7 +1040,14 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
     if (ineligible.length) {
       throw HttpError(400, `Selected row(s) are not eligible for release: ${ineligible.join(", ")}.`);
     }
+    if (excluded.length) {
+      throw HttpError(
+        400,
+        `Selected row(s) are excluded and cannot be released: ${excluded.join(", ")}.`,
+      );
+    }
     if (!selectedPending.length && alreadyReleased.length === selectedIds.length) {
+      const original = originalReceiptForRowIds(shipment, alreadyReleased);
       return {
         shipment,
         idempotent: true,
@@ -862,7 +1056,9 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
         already_released: alreadyReleased,
         invalid: [],
         excluded,
-        receipt: shipmentReceipt(shipment),
+        transactionId: original.transactionId,
+        receipt: original.receipt,
+        summary: shipmentCumulativeSummary(shipment),
       };
     }
     if (!selectedPending.length) {
@@ -894,6 +1090,7 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
       invalid: ineligible,
       excluded,
       receipt: shipmentReceipt(next, released),
+      summary: shipmentCumulativeSummary(next),
     };
   }
   const selected = (shipment.lines || []).filter((line) => {
@@ -924,23 +1121,7 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
     idempotent: false,
     transactionId: released.transactionId,
     receipt: shipmentReceipt(next, released),
-  };
-}
-
-function shipmentReceipt(shipment, released = {}) {
-  const lines = (shipment.lines || []).filter((line) => line.status === "released");
-  const quantity = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
-  const value = lines.reduce(
-    (sum, line) => sum + Number(line.quantity || 0) * Number(line.cost_price || 0),
-    0,
-  );
-  return {
-    shipment_id: shipment.id,
-    transaction_id: released.transactionId || null,
-    total_rows: lines.length,
-    total_quantity: quantity,
-    total_value: roundCurrency(value),
-    released_at: shipment.released_at || null,
+    summary: shipmentCumulativeSummary(next),
   };
 }
 
@@ -1315,18 +1496,18 @@ function saveStocktakeCounts(sessionId, lines, userId) {
         .prepare("SELECT si.*, i.quantity, i.row_version FROM inventory_stocktake_session_items si JOIN inventory i ON i.id = si.inventory_id WHERE si.session_id = ? AND si.id = ?")
         .get(sessionId, line.id);
       if (!current) continue;
+      if (String(current.conflict_status || "") === "recount_required") {
+        throw HttpError(
+          409,
+          `Line #${line.id} has a detected conflict and can only be updated through an explicit recount.`,
+        );
+      }
+      const baselineQty = Number(current.expected_quantity ?? current.system_quantity ?? 0);
       db.prepare(`
         UPDATE inventory_stocktake_session_items
         SET
           physical_quantity = ?,
-          system_quantity = ?,
-          expected_quantity = ?,
-          expected_row_version = ?,
           variance = ? - ?,
-          conflict_status = '',
-          conflict_reason = '',
-          conflict_live_quantity = NULL,
-          conflict_detected_at = NULL,
           counted_by_user_id = ?,
           counted_at = CURRENT_TIMESTAMP,
           reason = ?,
@@ -1334,11 +1515,8 @@ function saveStocktakeCounts(sessionId, lines, userId) {
         WHERE session_id = ? AND id = ?
       `).run(
         physical,
-        Number(current.quantity || 0),
-        Number(current.quantity || 0),
-        Number(current.row_version || 1),
         physical,
-        Number(current.quantity || 0),
+        baselineQty,
         userId,
         String(line.reason || "").slice(0, 500),
         sessionId,
@@ -1358,6 +1536,96 @@ function saveStocktakeCounts(sessionId, lines, userId) {
         WHERE id = ?
       `).run(sessionId);
     }
+  })();
+  return getStocktakeSession(sessionId, { role: "operator" });
+}
+
+function recountStocktakeLines(sessionId, lines, userId) {
+  const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
+  if (!session) throw HttpError(404, "Stocktake session not found.");
+  if (session.status !== "recount_required") {
+    throw HttpError(400, "Only a conflicted stocktake session can receive a recount.");
+  }
+  if (!Array.isArray(lines) || !lines.length) {
+    throw HttpError(400, "Recount lines are required.");
+  }
+  db.transaction(() => {
+    for (const line of lines) {
+      const parsed = parseSubmittedPhysicalCount(line.physical_quantity);
+      if (parsed.kind === "invalid") {
+        throw HttpError(400, parsed.error);
+      }
+      if (parsed.kind === "missing") {
+        throw HttpError(400, "A recounted line must include a physical count, including explicit zero.");
+      }
+      const current = db
+        .prepare(
+          `
+          SELECT si.*, i.quantity, i.row_version
+          FROM inventory_stocktake_session_items si
+          JOIN inventory i ON i.id = si.inventory_id
+          WHERE si.session_id = ? AND si.id = ?
+        `,
+        )
+        .get(sessionId, line.id);
+      if (!current) {
+        throw HttpError(404, `Stocktake line #${line.id} was not found.`);
+      }
+      if (String(current.conflict_status || "") !== "recount_required") {
+        throw HttpError(409, `Line #${line.id} is not waiting for a recount.`);
+      }
+      const token = String(line.conflict_detected_at || line.conflict_id || "").trim();
+      if (!token || token !== String(current.conflict_detected_at || "")) {
+        throw HttpError(409, "This recount is stale. Reload the conflicted lines and recount again.");
+      }
+      const liveVersion = Number(current.row_version || 1);
+      const sentVersion = Number(line.expected_row_version);
+      if (!Number.isInteger(sentVersion) || sentVersion !== liveVersion) {
+        throw HttpError(
+          409,
+          "This recount is stale. The inventory version changed. Recount against the latest quantity.",
+        );
+      }
+      const liveQty = Number(current.quantity || 0);
+      const physical = parsed.value;
+      db.prepare(`
+        UPDATE inventory_stocktake_session_items
+        SET
+          physical_quantity = ?,
+          system_quantity = ?,
+          expected_quantity = ?,
+          expected_row_version = ?,
+          variance = ? - ?,
+          conflict_status = '',
+          conflict_reason = '',
+          conflict_live_quantity = NULL,
+          conflict_detected_at = NULL,
+          counted_by_user_id = ?,
+          counted_at = CURRENT_TIMESTAMP,
+          recounted_by_user_id = ?,
+          recounted_at = CURRENT_TIMESTAMP,
+          reason = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = ? AND id = ?
+      `).run(
+        physical,
+        liveQty,
+        liveQty,
+        liveVersion,
+        physical,
+        liveQty,
+        userId,
+        userId,
+        String(line.reason || "").slice(0, 500),
+        sessionId,
+        line.id,
+      );
+    }
+    db.prepare(`
+      UPDATE inventory_stocktake_sessions
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(sessionId);
   })();
   return getStocktakeSession(sessionId, { role: "operator" });
 }
@@ -1422,7 +1690,7 @@ function persistRecountRequired(sessionId, conflicts) {
           conflict_status = 'recount_required',
           conflict_reason = ?,
           conflict_live_quantity = ?,
-          conflict_detected_at = CURRENT_TIMESTAMP,
+          conflict_detected_at = COALESCE(NULLIF(conflict_detected_at, ''), CURRENT_TIMESTAMP),
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(conflict.reason, conflict.live_quantity ?? null, conflict.line_id);
@@ -1462,6 +1730,20 @@ function submitStocktakeSession(sessionId, userId) {
   const items = db
     .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
     .all(sessionId);
+  const openConflicts = items.filter((row) => String(row.conflict_status || "") === "recount_required");
+  if (openConflicts.length) {
+    const error = HttpError(
+      409,
+      `Stocktake cannot be submitted until ${openConflicts.length} conflicted line(s) are genuinely recounted.`,
+    );
+    error.conflicts = openConflicts.map((row) => ({
+      line_id: row.id,
+      inventory_id: row.inventory_id,
+      reason: row.conflict_reason || "Recount required.",
+    }));
+    error.session = getStocktakeSession(sessionId, { role: "operator" });
+    throw error;
+  }
   const conflicts = collectStocktakeConflicts(items);
   if (conflicts.length) {
     persistRecountRequired(sessionId, conflicts);
@@ -1746,11 +2028,15 @@ module.exports = {
   parseNonExpiringFlag,
   previewAllocations,
   releaseStagingRows,
+  recountStocktakeLines,
   reviewStocktakeSession,
   saveStocktakeCounts,
+  shipmentCumulativeSummary,
   shipmentQueueStats,
+  shipmentReceipt,
   stagingRowErrors,
   stocktakeQueueStats,
   submitStocktakeSession,
+  previewExceptionalCorrection,
   validateReceiptExpiry,
 };

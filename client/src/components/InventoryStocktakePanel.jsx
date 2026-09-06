@@ -39,14 +39,12 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const [rejectReason, setRejectReason] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [applying, setApplying] = useState(false);
+  const [editedIds, setEditedIds] = useState({});
 
   useEffect(() => {
-    setUnsavedWork(
-      "stocktake",
-      Boolean(active && ["draft", "in_progress", "recount_required"].includes(active.status)),
-    );
+    setUnsavedWork("stocktake", Object.keys(editedIds).length > 0);
     return () => setUnsavedWork("stocktake", false);
-  }, [active]);
+  }, [editedIds]);
 
   const scopedItems = useMemo(
     () => (folderId ? items.filter((item) => String(item.folder_id) === String(folderId)) : items),
@@ -79,6 +77,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       setConfirmFull(false);
       setMobileIndex(0);
       setFinalReview(false);
+      setEditedIds({});
       toast.success("Stocktake session started. System quantities stay hidden until you submit.");
     } catch (error) {
       toast.error(error.message || "Could not start a stocktake session.");
@@ -95,22 +94,23 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       setMobileIndex(0);
       setFinalReview(false);
       setReviewUncounted(false);
+      setEditedIds({});
     } catch (error) {
       toast.error(error.message || "Could not open this session.");
     }
   }
 
-  function countedLines() {
+  function editedLines() {
     return (active?.items || [])
-      .map((line) => {
-        if (isBlankCount(line.physical_quantity)) return null;
-        return {
-          id: line.id,
-          physical_quantity: line.physical_quantity,
-          reason: line.reason || "",
-        };
-      })
-      .filter(Boolean);
+      .filter((line) => editedIds[line.id] && !isBlankCount(line.physical_quantity))
+      .map((line) => ({
+        id: line.id,
+        physical_quantity: line.physical_quantity,
+        reason: line.reason || "",
+        conflict_detected_at: line.conflict_detected_at || "",
+        expected_row_version: line.live_row_version,
+        conflict: String(line.conflict_status || "") === "recount_required",
+      }));
   }
 
   function uncountedLines() {
@@ -121,16 +121,47 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     return ["rejected", "cancelled", "applied"].includes(status);
   }
 
+  async function persistEditedLines() {
+    const pending = editedLines();
+    const ordinary = pending.filter((line) => !line.conflict);
+    const recount = pending.filter((line) => line.conflict);
+    if (!ordinary.length && !recount.length) return active;
+    let session = active;
+    if (ordinary.length) {
+      const payload = await api.patch(`/inventory/stocktake/sessions/${active.id}`, {
+        lines: ordinary.map(({ id, physical_quantity, reason }) => ({ id, physical_quantity, reason })),
+      });
+      session = payload.session;
+    }
+    if (recount.length) {
+      const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/recount`, {
+        lines: recount.map((line) => ({
+          id: line.id,
+          physical_quantity: line.physical_quantity,
+          reason: line.reason,
+          conflict_detected_at: line.conflict_detected_at,
+          expected_row_version: line.expected_row_version,
+        })),
+      });
+      session = payload.session;
+    }
+    setActive(session);
+    setLastSavedAt(session?.last_saved_at || new Date().toISOString());
+    setEditedIds({});
+    return session;
+  }
+
   async function saveProgress({ silent = false } = {}) {
     if (!active) return;
+    const pending = editedLines();
+    if (!pending.length) {
+      if (!silent) toast.success("No new counts to save.");
+      return;
+    }
     setSaving(true);
     try {
-      const payload = await api.patch(`/inventory/stocktake/sessions/${active.id}`, {
-        lines: countedLines(),
-      });
-      setActive(payload.session);
-      setLastSavedAt(payload.session?.last_saved_at || new Date().toISOString());
-      if (!silent) toast.success("Counts saved.");
+      await persistEditedLines();
+      if (!silent) toast.success(pending.some((line) => line.conflict) ? "Recount saved." : "Counts saved.");
     } catch (error) {
       toast.error(error.message || "Could not save counts.");
       throw error;
@@ -155,11 +186,12 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     }
     setSaving(true);
     try {
-      await api.patch(`/inventory/stocktake/sessions/${active.id}`, {
-        lines: countedLines(),
-      });
+      if (Object.keys(editedIds).length) {
+        await persistEditedLines();
+      }
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`);
       setActive(payload.session);
+      setEditedIds({});
       toast.success(
         payload.session.status === "applied"
           ? "Zero-variance session closed."
@@ -229,6 +261,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   }
 
   function updateLine(id, physical_quantity) {
+    setEditedIds((current) => ({ ...current, [id]: true }));
     setActive((current) => ({
       ...current,
       items: current.items.map((row) => (row.id === id ? { ...row, physical_quantity } : row)),
@@ -497,7 +530,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                   onClick={() => void saveProgress().catch(() => {})}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold"
                 >
-                  {saving ? "Saving…" : lastSavedAt ? "Save progress" : "Save progress"}
+                  {saving ? "Saving…" : recountRequired ? "Save recount" : lastSavedAt ? "Save progress" : "Save progress"}
                 </button>
                 <button
                   type="button"

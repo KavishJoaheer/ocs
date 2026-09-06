@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CLIENT_BUILD_SHA } from "../lib/clientBuildSha.js";
 import { hasUnsavedWork, subscribeUnsavedWork } from "../lib/unsavedWork.js";
 import { api } from "../lib/api.js";
 
@@ -15,42 +16,54 @@ function buildIdentity(payload) {
 }
 
 export default function AppUpdateBanner() {
-  const bootShaRef = useRef("");
+  const clientSha = CLIENT_BUILD_SHA;
+  const bootShaRef = useRef(clientSha);
   const [availableSha, setAvailableSha] = useState("");
   const [dirty, setDirty] = useState(hasUnsavedWork());
+  const [confirmReload, setConfirmReload] = useState(false);
 
   useEffect(() => subscribeUnsavedWork(setDirty), []);
 
   useEffect(() => {
+    bootShaRef.current = clientSha;
+    if (typeof window !== "undefined") {
+      window.__OCS_CLIENT_BUILD_SHA__ = clientSha;
+    }
+  }, [clientSha]);
+
+  useEffect(() => {
     let cancelled = false;
-    async function check(initial = false) {
+    async function check() {
       try {
         const payload = await api.get("/health");
         const identity = buildIdentity(payload);
         if (!identity || cancelled) return;
-        if (initial && !bootShaRef.current) {
-          bootShaRef.current = identity;
-          return;
-        }
-        if (bootShaRef.current && identity !== bootShaRef.current) {
+        const local = bootShaRef.current || clientSha;
+        if (local && identity !== local) {
           const dismissed = window.sessionStorage.getItem(DISMISSED_SHA_KEY);
           if (dismissed !== identity) setAvailableSha(identity);
+        } else if (identity === local) {
+          setAvailableSha("");
         }
       } catch {
         /* offline or health unavailable must not loop-reload */
       }
     }
-    void check(true);
-    const timer = window.setInterval(() => void check(false), pollInterval());
+    void check();
+    const timer = window.setInterval(() => void check(), pollInterval());
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [clientSha]);
 
   if (!availableSha) return null;
 
   function reloadNow() {
+    if (dirty && !confirmReload) {
+      setConfirmReload(true);
+      return;
+    }
     window.sessionStorage.setItem(DISMISSED_SHA_KEY, availableSha);
     window.location.reload();
   }
@@ -62,7 +75,10 @@ export default function AppUpdateBanner() {
     >
       <p>
         <span className="font-semibold">Update available.</span> A newer OCS release is deployed.
-        {dirty ? " Finish or save the open form before reloading so counts and fulfilment are not lost." : " Reload to use the current version."}
+        {dirty
+          ? " Unsaved stocktake, fulfilment, shipment or correction work is open. Reloading now can lose those counts."
+          : " Reload to use the current version."}
+        {confirmReload ? " Confirm reload to discard unsaved work." : ""}
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -70,13 +86,14 @@ export default function AppUpdateBanner() {
           onClick={reloadNow}
           className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
         >
-          Reload now
+          {dirty && !confirmReload ? "Reload requires confirmation" : confirmReload ? "Confirm reload" : "Reload now"}
         </button>
         <button
           type="button"
           onClick={() => {
             window.sessionStorage.setItem(DISMISSED_SHA_KEY, availableSha);
             setAvailableSha("");
+            setConfirmReload(false);
           }}
           className="inline-flex min-h-11 items-center justify-center rounded-xl border border-teal-200 bg-white px-3 text-sm font-semibold text-teal-900"
         >
