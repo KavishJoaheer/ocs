@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import SectionCard from "./SectionCard.jsx";
@@ -7,6 +7,7 @@ import { ApiError, api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { requiresOperationalOverride, withOperationalOverride } from "../lib/inventoryAccess.js";
 import OperationalOverrideFields from "./inventory/OperationalOverrideFields.jsx";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
 
 function InventoryCsvImport({ onImported }) {
   const { user } = useAuth();
@@ -20,6 +21,11 @@ function InventoryCsvImport({ onImported }) {
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [lastResult, setLastResult] = useState(null);
+
+  useEffect(() => {
+    setUnsavedWork("shipment-import", Boolean(csvText.trim() || preview));
+    return () => setUnsavedWork("shipment-import", false);
+  }, [csvText, preview]);
 
   function readFile(file) {
     if (!file) return;

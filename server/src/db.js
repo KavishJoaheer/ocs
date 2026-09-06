@@ -2317,6 +2317,52 @@ function ensureInventoryColumns() {
   ensureInventoryOperationsSchema();
 }
 
+function migrateStocktakeRecountStatus() {
+  if (!tableExists("inventory_stocktake_sessions")) return;
+  const ddl =
+    db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inventory_stocktake_sessions'`).get()
+      ?.sql || "";
+  if (ddl.includes("recount_required")) return;
+
+  const columns = db.prepare("PRAGMA table_info(inventory_stocktake_sessions)").all().map((column) => column.name);
+  const columnList = columns.map((name) => `"${name}"`).join(", ");
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec(`
+    CREATE TABLE inventory_stocktake_sessions_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope TEXT NOT NULL DEFAULT 'ocs',
+      folder_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'in_progress', 'submitted', 'approved', 'rejected', 'applied', 'cancelled', 'recount_required')),
+      notes TEXT NOT NULL DEFAULT '',
+      created_by_user_id INTEGER,
+      assigned_counter_user_id INTEGER,
+      started_at TEXT,
+      submitted_at TEXT,
+      submitted_by_user_id INTEGER,
+      reviewed_by_user_id INTEGER,
+      reviewed_at TEXT,
+      review_reason TEXT NOT NULL DEFAULT '',
+      applied_at TEXT,
+      applied_by_user_id INTEGER,
+      applied_transaction_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL
+    );
+  `);
+  db.exec(
+    `INSERT INTO inventory_stocktake_sessions_migrated (${columnList}) SELECT ${columnList} FROM inventory_stocktake_sessions`,
+  );
+  db.exec("DROP TABLE inventory_stocktake_sessions");
+  db.exec("ALTER TABLE inventory_stocktake_sessions_migrated RENAME TO inventory_stocktake_sessions");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_stocktake_sessions_status ON inventory_stocktake_sessions(status, created_at)");
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_stocktake_sessions_applied ON inventory_stocktake_sessions(applied_transaction_id) WHERE applied_transaction_id IS NOT NULL",
+  );
+  db.exec("PRAGMA foreign_keys = ON");
+}
+
 function migrateStagingExcludedStatus() {
   if (!tableExists("inventory_staging")) return;
   const ddl =
@@ -2429,6 +2475,13 @@ function ensureInventoryOperationsSchema() {
       "ALTER TABLE inventory_stocktake_session_items ADD COLUMN conflict_reason TEXT NOT NULL DEFAULT ''",
     );
   }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("conflict_live_quantity")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN conflict_live_quantity INTEGER");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("conflict_detected_at")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN conflict_detected_at TEXT");
+  }
+  migrateStocktakeRecountStatus();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS restock_request_fulfillments (
@@ -2519,7 +2572,7 @@ function ensureInventoryOperationsSchema() {
       scope TEXT NOT NULL DEFAULT 'ocs',
       folder_id INTEGER,
       status TEXT NOT NULL DEFAULT 'draft'
-        CHECK (status IN ('draft', 'in_progress', 'submitted', 'approved', 'rejected', 'applied', 'cancelled')),
+        CHECK (status IN ('draft', 'in_progress', 'submitted', 'approved', 'rejected', 'applied', 'cancelled', 'recount_required')),
       notes TEXT NOT NULL DEFAULT '',
       created_by_user_id INTEGER,
       assigned_counter_user_id INTEGER,
@@ -2548,6 +2601,8 @@ function ensureInventoryOperationsSchema() {
       expected_quantity INTEGER,
       conflict_status TEXT NOT NULL DEFAULT '',
       conflict_reason TEXT NOT NULL DEFAULT '',
+      conflict_live_quantity INTEGER,
+      conflict_detected_at TEXT,
       counted_by_user_id INTEGER,
       counted_at TEXT,
       reason TEXT NOT NULL DEFAULT '',

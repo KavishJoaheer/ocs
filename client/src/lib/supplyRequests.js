@@ -186,14 +186,34 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
   const status = normaliseSupplyRequestStatus(request?.status);
   const pendingAmendment = Boolean(request?.pending_amendment);
   const staff = isStaffSupplyRole(role);
+  const isAdmin = role === "admin";
+  const isOperator = role === "operator";
   const disabled = Boolean(busy);
   const actions = [];
 
-  if (staff && status === "pending") {
+  if (isAdmin && (status === "pending" || status === "accepted")) {
+    actions.push({
+      id: "operator_required",
+      label: "An operator must perform routine warehouse actions for this request.",
+      kind: "info",
+      disabled: true,
+    });
+  }
+
+  if (isOperator && status === "pending") {
     actions.push({
       id: "accept",
       label: "Request Accepted",
       kind: "primary",
+      disabled,
+    });
+  }
+
+  if (isAdmin && status === "pending") {
+    actions.push({
+      id: "emergency_override_accept",
+      label: "Emergency operational override",
+      kind: "danger",
       disabled,
     });
   }
@@ -207,11 +227,20 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
     });
   }
 
-  if (staff && status === "accepted" && !pendingAmendment) {
+  if (isOperator && status === "accepted" && !pendingAmendment) {
     actions.push({
       id: "fulfil",
       label: "Open fulfilment",
       kind: "primary",
+      disabled,
+    });
+  }
+
+  if (isAdmin && status === "accepted" && !pendingAmendment) {
+    actions.push({
+      id: "emergency_override_fulfil",
+      label: "Emergency operational override",
+      kind: "danger",
       disabled,
     });
   }

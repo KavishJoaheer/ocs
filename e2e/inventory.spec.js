@@ -482,4 +482,43 @@ test.describe("Inventory workflow", () => {
       await expect(page.getByRole("button", { name: "New supply request" })).toBeVisible({ timeout: 20_000 });
     }
   });
+
+  test("inventory tabs stay readable at phone and tablet widths", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    for (const size of [
+      { width: 320, height: 720 },
+      { width: 375, height: 812 },
+      { width: 768, height: 900 },
+      { width: 1280, height: 800 },
+    ]) {
+      await page.setViewportSize(size);
+      await page.goto(`${STAFF_BASE}/inventory`);
+      await expect(page.getByRole("tab", { name: "Shipments" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("tab", { name: "Count" })).toBeVisible();
+      const box = await page.getByRole("tab", { name: "Shipments" }).boundingBox();
+      expect(box?.width || 0).toBeGreaterThan(44);
+    }
+  });
+
+  test("stale clients see an update banner and do not auto-reload dirty forms", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    let sha = "boot-sha-inventory";
+    await page.addInitScript(() => {
+      window.__OCS_UPDATE_POLL_MS = 400;
+    });
+    await page.route("**/api/health", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, git_sha: sha, version: sha }),
+      });
+    });
+    await injectStaffSession(page, operator.token);
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect(page.getByRole("heading", { name: "OCS Stock" })).toBeVisible({ timeout: 20_000 });
+    sha = "newer-sha-inventory";
+    await expect(page.getByText("Update available")).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByRole("button", { name: "Reload now" })).toBeVisible();
+  });
 });

@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
+import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import {
@@ -311,7 +312,10 @@ function AppShell() {
             }}
           >
             {user?.role ? (
-              <PushNotificationBanner role={user.role} className="mb-4 max-w-3xl" />
+              <>
+                <AppUpdateBanner />
+                <PushNotificationBanner role={user.role} className="mb-4 max-w-3xl" />
+              </>
             ) : null}
             <Outlet />
             {!hideBottomNav && (

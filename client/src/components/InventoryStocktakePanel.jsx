@@ -7,6 +7,9 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
 import { formatRupees } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
+import { canCountStocktake, canReviewStocktake, withOperationalOverride } from "../lib/inventoryAccess.js";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
+import EmergencyOverrideDialog from "./EmergencyOverrideDialog.jsx";
 
 function isBlankCount(value) {
   return value === null || value === undefined || String(value).trim() === "";
@@ -21,7 +24,9 @@ function formatSavedAt(value) {
 
 function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions = [], requestedStatus = "" }) {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const canCount = canCountStocktake(user);
+  const canReview = canReviewStocktake(user);
+  const [overrideOpen, setOverrideOpen] = useState(false);
   const isMobile = useIsMobile(DENSE_TABLE_BREAKPOINT);
   const [folderId, setFolderId] = useState("");
   const [active, setActive] = useState(null);
@@ -34,6 +39,14 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const [rejectReason, setRejectReason] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    setUnsavedWork(
+      "stocktake",
+      Boolean(active && ["draft", "in_progress", "recount_required"].includes(active.status)),
+    );
+    return () => setUnsavedWork("stocktake", false);
+  }, [active]);
 
   const scopedItems = useMemo(
     () => (folderId ? items.filter((item) => String(item.folder_id) === String(folderId)) : items),
@@ -154,6 +167,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       );
       await onApplied?.();
     } catch (error) {
+      if (error.status === 409 && error.data?.session) {
+        setActive(error.data.session);
+      }
       toast.error(error.message || "Could not submit this session.");
     } finally {
       setSaving(false);
@@ -188,6 +204,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       toast.success(payload.idempotent ? "Adjustments were already applied." : "Approved variances applied.");
       await onApplied?.();
     } catch (error) {
+      if (error.status === 409 && error.data?.session) {
+        setActive(error.data.session);
+      }
       toast.error(error.message || "Could not apply this session.");
     } finally {
       setApplying(false);
@@ -218,8 +237,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
 
   const rows = active?.items || [];
   const submitted = ["submitted", "approved", "rejected", "applied"].includes(active?.status);
-  const remainingUncounted = active && !submitted ? uncountedLines().length : 0;
-  const canEditCounts = active && ["draft", "in_progress"].includes(active.status);
+  const recountRequired = active?.status === "recount_required";
+  const remainingUncounted = active && (!submitted || recountRequired) ? uncountedLines().length : 0;
+  const canEditCounts = Boolean(canCount && active && ["draft", "in_progress", "recount_required"].includes(active.status));
   const counted = Number(active?.counted_count || rows.filter((row) => !isBlankCount(row.physical_quantity)).length);
   const total = Number(active?.item_count || rows.length);
   const progress = total ? Math.round((counted / total) * 100) : 0;
@@ -232,6 +252,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   }, [mobileRows.length, mobileIndex]);
 
   return (
+    <>
     <SectionCard
       title="Stocktake sessions"
       subtitle="Blind-count a category, submit together, and apply approved variances atomically."
@@ -261,14 +282,24 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          disabled={creating}
-          onClick={createSession}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
-        >
-          {confirmFull && !folderId ? "Confirm full-catalogue count" : "Start session"}
-        </button>
+        {canCount ? (
+          <button
+            type="button"
+            disabled={creating}
+            onClick={createSession}
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
+          >
+            {confirmFull && !folderId ? "Confirm full-catalogue count" : "Start session"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOverrideOpen(true)}
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800"
+          >
+            Emergency operational override
+          </button>
+        )}
       </div>
       <div className="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
         <p>Scope: <strong>{selectedFolderName}</strong></p>
@@ -280,6 +311,20 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
           </p>
         ) : null}
       </div>
+      {recountRequired ? (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">Recount required</p>
+          <p className="mt-1 text-xs">
+            Stock moved after this count. Recount the conflicted lines, then resubmit. Baseline, live quantity and the
+            latest movement time are shown only for those lines.
+          </p>
+        </div>
+      ) : null}
+      {!canCount && !active ? (
+        <p className="mb-4 text-sm text-slate-600">
+          Operators start, count and submit stocktake sessions. Administrators review discrepancies and apply approved variances.
+        </p>
+      ) : null}
 
       {sessions.length ? (
         <div className="mb-4 space-y-2">
@@ -401,6 +446,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                     {submitted ? <th className="px-3 py-2 text-right">System</th> : null}
                     <th className="px-3 py-2 text-right">Count</th>
                     {submitted ? <th className="px-3 py-2 text-right">Variance</th> : null}
+                    {recountRequired ? <th className="px-3 py-2 text-left">Conflict</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -422,6 +468,13 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                       </td>
                       {submitted ? (
                         <td className="px-3 py-2 text-right tabular-nums">{line.variance}</td>
+                      ) : null}
+                      {recountRequired ? (
+                        <td className="px-3 py-2 text-xs text-amber-800">
+                          {line.conflict_status === "recount_required"
+                            ? `${line.conflict_reason || "Recount this line."} Baseline ${line.expected_quantity ?? "—"} · live ${line.live_quantity ?? line.conflict_live_quantity ?? "—"}`
+                            : "No conflict"}
+                        </td>
                       ) : null}
                     </tr>
                   ))}
@@ -463,7 +516,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                 </button>
               </>
             ) : null}
-            {isAdmin && active.status === "submitted" ? (
+            {canReview && active.status === "submitted" ? (
               <>
                 <button
                   type="button"
@@ -489,7 +542,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                 </button>
               </>
             ) : null}
-            {isAdmin && active.status === "approved" && !isClosedSession(active.status) ? (
+            {canReview && active.status === "approved" && !isClosedSession(active.status) ? (
               <button
                 type="button"
                 disabled={applying}
@@ -512,6 +565,28 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         <p className="text-sm text-slate-500">Start a session or open a submitted variance from the list.</p>
       )}
     </SectionCard>
+    <EmergencyOverrideDialog
+      open={overrideOpen}
+      summary="This will start a stocktake session as an administrator. Operators should perform routine counting. The session still requires blind counts, concurrency checks, and approval."
+      onClose={() => setOverrideOpen(false)}
+      onConfirm={async (reason) => {
+        setCreating(true);
+        try {
+          const payload = await api.post("/inventory/stocktake/sessions", withOperationalOverride(
+            user,
+            { folder_id: folderId ? Number(folderId) : null },
+            reason,
+          ));
+          setActive(payload.session);
+          toast.success("Emergency stocktake session started.");
+        } catch (error) {
+          toast.error(error.message || "Could not start a stocktake session.");
+        } finally {
+          setCreating(false);
+        }
+      }}
+    />
+    </>
   );
 }
 

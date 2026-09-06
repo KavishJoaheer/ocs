@@ -786,7 +786,7 @@ test("stocktake blank counts stay null and explicit zero is stored", async () =>
       token: operatorToken,
       body: { lines: [{ id: blankLine, physical_quantity: value }] },
     });
-    if (value === null) {
+    if (value === null || value === "" || value === "  ") {
       assert.equal(bad.status, 200, JSON.stringify(bad.data));
       assert.equal(bad.data.session.items[0].physical_quantity, null);
     } else {
@@ -1608,5 +1608,218 @@ test("emergency restock rejects reserved and expired stock", async () => {
   });
   assert.equal(expired.status, 409);
   delete process.env.ENABLE_DOCTOR_EMERGENCY_RESTOCK;
+});
+
+test("correction against an unpicked accepted request can reduce reservations atomically", async () => {
+  const itemId = insertOcsItem({ name: `CorrUnpicked ${Date.now()}`, qty: 5 });
+  const request = await createAcceptedRequest({ itemId, itemName: "CorrUnpicked", quantity: 4 });
+  assert.equal(Number(request.fulfilment.items[0].picked_quantity || 0), 0);
+  const blocked = await api("POST", `/api/inventory/items/${itemId}/exceptional-correction`, {
+    token: adminToken,
+    body: { next_quantity: 1, reason: "Found a warehouse count error after receiving", confirm: true },
+  });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.ok((blocked.data.impacted_requests || []).length);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 5);
+  const ok = await api("POST", `/api/inventory/items/${itemId}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 1,
+      reason: "Found a warehouse count error after receiving",
+      confirm: true,
+      affect_reservations: true,
+    },
+  });
+  assert.ok([200, 201].includes(ok.status), JSON.stringify(ok.data));
+  const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  const batches = db
+    .prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS total FROM inventory_batches WHERE item_id = ?")
+    .get(itemId).total;
+  assert.equal(qty, 1);
+  assert.equal(batches, 1);
+  const reserved = db
+    .prepare(
+      "SELECT COALESCE(SUM(quantity), 0) AS total FROM inventory_reservations WHERE inventory_id = ? AND status = 'active'",
+    )
+    .get(itemId).total;
+  assert.equal(Number(reserved), 1);
+});
+
+test("correction is rejected against picked and ready requests", async () => {
+  const pickedItem = insertOcsItem({ name: `CorrPicked ${Date.now()}`, qty: 6 });
+  const pickedReq = await createAcceptedRequest({ itemId: pickedItem, itemName: "CorrPicked", quantity: 3 });
+  const detail = await api("GET", `/api/restock-requests/${pickedReq.id}/fulfilment`, { token: operatorToken });
+  const lineId = detail.data.fulfilment.items[0].id;
+  await api("PATCH", `/api/restock-requests/${pickedReq.id}/fulfilment`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, picked_quantity: 2, fulfilled_quantity: 2 }] },
+  });
+  const pickedCorr = await api("POST", `/api/inventory/items/${pickedItem}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 1,
+      reason: "Found a warehouse count error after receiving",
+      confirm: true,
+      affect_reservations: true,
+    },
+  });
+  assert.equal(pickedCorr.status, 409, JSON.stringify(pickedCorr.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pickedItem).quantity, 6);
+
+  const readyItem = insertOcsItem({ name: `CorrReady ${Date.now()}`, qty: 6 });
+  const readyReq = await createAcceptedRequest({ itemId: readyItem, itemName: "CorrReady", quantity: 2 });
+  await pickAndReady(readyReq.id);
+  const readyCorr = await api("POST", `/api/inventory/items/${readyItem}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 1,
+      reason: "Found a warehouse count error after receiving",
+      confirm: true,
+      affect_reservations: true,
+    },
+  });
+  assert.equal(readyCorr.status, 409, JSON.stringify(readyCorr.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(readyItem).quantity, 6);
+});
+
+test("selected shipment release rejects duplicates and is concurrent-safe", async () => {
+  const consumable = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable'").get().id;
+  const name = `DupRel ${Date.now()}`;
+  insertOcsItem({ name, qty: 0, folder: consumable });
+  const csv = [
+    "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+    `Consumable,${name},4,0,unit,1,2,2029-01-01`,
+  ].join("\n");
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: { csv_text: csv, supplier: "Dup Co" },
+  });
+  const shipmentId = imported.data.import_summary.shipment_id;
+  const lineId = imported.data.shipment.lines[0].id;
+  const dup = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [lineId, lineId] },
+  });
+  assert.equal(dup.status, 400, JSON.stringify(dup.data));
+  const [first, second] = await Promise.all([
+    api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+      token: operatorToken,
+      body: { mode: "selected", row_ids: [lineId] },
+    }),
+    api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+      token: operatorToken,
+      body: { mode: "selected", row_ids: [lineId] },
+    }),
+  ]);
+  assert.ok(first.status < 500 && second.status < 500, JSON.stringify({ first: first.data, second: second.data }));
+  const qty = db
+    .prepare("SELECT quantity FROM inventory WHERE item_name = ? AND stock_scope = 'ocs' AND owner_doctor_id IS NULL")
+    .get(name).quantity;
+  assert.equal(Number(qty), 4);
+});
+
+test("zero-variance stocktake after an intervening receipt requires recount", async () => {
+  const itemId = insertOcsItem({ name: `ZeroMove ${Date.now()}`, qty: 5 });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemId] },
+  });
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 5 }] },
+  });
+  const received = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: "2029-06-01" },
+  });
+  assert.equal(received.status, 201, JSON.stringify(received.data));
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitted.status, 409, JSON.stringify(submitted.data));
+  assert.equal(submitted.data.session.status, "recount_required");
+  const recount = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 6 }] },
+  });
+  assert.equal(recount.status, 200, JSON.stringify(recount.data));
+  const resubmit = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(resubmit.status, 200, JSON.stringify(resubmit.data));
+  assert.ok(["submitted", "applied"].includes(resubmit.data.session.status));
+});
+
+test("admin cannot start a routine stocktake without an operational override", async () => {
+  const itemId = insertOcsItem({ name: `AdminST ${Date.now()}`, qty: 2 });
+  const denied = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: adminToken,
+    body: { item_ids: [itemId] },
+  });
+  assert.equal(denied.status, 403);
+  const legacy = await api("POST", "/api/inventory/stocktake", {
+    token: operatorToken,
+    body: { item_id: itemId, physical_quantity: 2 },
+  });
+  assert.equal(legacy.status, 410);
+});
+
+test("multi-item collection receipt keeps line-specific identities", async () => {
+  const first = insertOcsItem({ name: `RcptA ${Date.now()}`, qty: 5 });
+  const second = insertOcsItem({ name: `RcptB ${Date.now()}`, qty: 5 });
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: {
+      collection_date: collectionDate,
+      note: "multi receipt",
+      items: [
+        { inventory_id: first, item_name: "RcptA", quantity: 2 },
+        { inventory_id: second, item_name: "RcptB", quantity: 1 },
+      ],
+    },
+  });
+  const accepted = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  await pickAndReady(created.data.request.id);
+  const collected = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(collected.status, 200, JSON.stringify(collected.data));
+  const tx = collected.data.request.transfer_transaction_id;
+  const receipt = await api("GET", `/api/inventory/receipts/${tx}`, { token: operatorToken });
+  assert.equal(receipt.status, 200, JSON.stringify(receipt.data));
+  const sourceIds = new Set((receipt.data.items || []).map((row) => Number(row.source_inventory_id)));
+  assert.ok(sourceIds.has(first));
+  assert.ok(sourceIds.has(second));
+});
+
+test("history pagination returns frequency totals beyond the first page", async () => {
+  const itemId = insertOcsItem({ name: `HistPage ${Date.now()}`, qty: 20 });
+  for (let i = 0; i < 3; i += 1) {
+    const request = await createAcceptedRequest({
+      itemId,
+      itemName: "HistPage",
+      quantity: 1,
+      note: `hist ${i}`,
+    });
+    await pickAndReady(request.id);
+    await api("PATCH", `/api/restock-requests/${request.id}`, {
+      token: doctorToken,
+      body: { status: "completed" },
+    });
+  }
+  const page = await api("GET", "/api/restock-requests?view=history&limit=1&offset=0", { token: operatorToken });
+  assert.equal(page.status, 200, JSON.stringify(page.data));
+  assert.equal(page.data.requests.length, 1);
+  assert.ok(Number(page.data.total) >= 3);
+  const next = await api("GET", "/api/restock-requests?view=history&limit=1&offset=1", { token: operatorToken });
+  assert.equal(next.data.requests.length, 1);
+  assert.notEqual(next.data.requests[0].id, page.data.requests[0].id);
+  assert.ok((page.data.item_counts || []).length >= 1);
 });
 

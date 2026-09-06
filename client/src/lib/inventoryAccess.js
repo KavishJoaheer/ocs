@@ -31,7 +31,7 @@ export function canImportShipments(user) {
 }
 
 export function canCountStocktake(user) {
-  return isOperatorUser(user) || isAdminUser(user);
+  return isOperatorUser(user);
 }
 
 export function canReviewStocktake(user) {

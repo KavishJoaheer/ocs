@@ -4,6 +4,9 @@ import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
 import { api } from "../lib/api.js";
 import { formatSupplyRequestCollectionDay } from "../lib/supplyRequests.js";
+import { useAuth } from "../hooks/useAuth.jsx";
+import { withOperationalOverride } from "../lib/inventoryAccess.js";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
 
 function qty(value) {
   if (value === null || value === undefined || value === "") return 0;
@@ -11,12 +14,15 @@ function qty(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export default function OperatorFulfilmentPanel({ request, open, onClose, onUpdated }) {
+export default function OperatorFulfilmentPanel({ request, open, onClose, onUpdated, emergencyOverride = false }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [detail, setDetail] = useState(null);
   const [lines, setLines] = useState([]);
   const [partialApproved, setPartialApproved] = useState(false);
   const [partialReason, setPartialReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [overrideReason, setOverrideReason] = useState(request?.__overrideReason || "");
 
   useEffect(() => {
     if (!open || !request?.id) return undefined;
@@ -30,8 +36,8 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         setLines(
           (fulfilment?.items || []).map((line) => ({
             id: line.id,
-            picked_quantity: qty(line.picked_quantity ?? line.reserved_quantity),
-            fulfilled_quantity: qty(line.fulfilled_quantity ?? line.reserved_quantity),
+            picked_quantity: qty(line.picked_quantity),
+            fulfilled_quantity: qty(line.fulfilled_quantity),
           })),
         );
         setPartialApproved(Boolean(fulfilment?.partial_approved));
@@ -41,10 +47,22 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
     return () => {
       cancelled = true;
     };
+  }, [open, request?.id, request?.__overrideReason]);
+
+  useEffect(() => {
+    setUnsavedWork("fulfilment", Boolean(open && request?.id));
+    return () => setUnsavedWork("fulfilment", false);
   }, [open, request?.id]);
 
+  const requireOverride = isAdmin || emergencyOverride || Boolean(request?.__override);
+  function withOverride(payload) {
+    if (!requireOverride) return payload;
+    return withOperationalOverride(user, payload, overrideReason || request?.__overrideReason || "");
+  }
+
   const hasShortage = Boolean(detail?.has_shortage);
-  const linkageRequired = Boolean(detail?.linkage_required);
+  const linkageRequired = Boolean(detail?.linkage_required) || Boolean(detail?.reconciliation_required);
+  const overrideBlocked = requireOverride && String(overrideReason || "").trim().length < 10;
 
   const summary = useMemo(
     () =>
@@ -63,12 +81,12 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
     if (!request?.id) return;
     setSaving(true);
     try {
-      await api.patch(`/restock-requests/${request.id}/fulfilment`, {
+      await api.patch(`/restock-requests/${request.id}/fulfilment`, withOverride({
         lines,
         partial_approved: partialApproved,
         partial_reason: partialReason,
         ...extra,
-      });
+      }));
       toast.success("Fulfilment updated.");
       await onUpdated?.();
     } catch (error) {
@@ -82,12 +100,12 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
     if (!request?.id) return;
     setSaving(true);
     try {
-      await api.patch(`/restock-requests/${request.id}/fulfilment`, {
+      await api.patch(`/restock-requests/${request.id}/fulfilment`, withOverride({
         lines,
         partial_approved: partialApproved,
         partial_reason: partialReason,
-      });
-      await api.patch(`/restock-requests/${request.id}`, { status: "ready" });
+      }));
+      await api.patch(`/restock-requests/${request.id}`, withOverride({ status: "ready" }));
       toast.success("Supply marked ready.");
       await onUpdated?.();
       onClose?.();
@@ -101,17 +119,17 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
   async function reconcile() {
     setSaving(true);
     try {
-      const payload = await api.post(`/restock-requests/${request.id}/reconcile`, {
+      const payload = await api.post(`/restock-requests/${request.id}/reconcile`, withOverride({
         reason: "Operator reconciled legacy fulfilment quantities and batches.",
-      });
+      }));
       const fulfilment = payload.fulfilment || payload.request?.fulfilment;
       if (fulfilment) {
         setDetail(fulfilment);
         setLines(
           (fulfilment.items || []).map((line) => ({
             id: line.id,
-            picked_quantity: qty(line.picked_quantity ?? line.reserved_quantity),
-            fulfilled_quantity: qty(line.fulfilled_quantity ?? line.reserved_quantity),
+            picked_quantity: qty(line.picked_quantity),
+            fulfilled_quantity: qty(line.fulfilled_quantity),
           })),
         );
         setPartialApproved(Boolean(fulfilment.partial_approved));
@@ -138,6 +156,21 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
       }
       size="xl"
     >
+      {requireOverride ? (
+        <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+          <p className="font-semibold">Emergency operational override</p>
+          <p className="mt-1 text-xs">
+            Routine picking and readiness are operator actions. Enter a reason of at least 10 characters to proceed.
+          </p>
+          <textarea
+            value={overrideReason}
+            onChange={(event) => setOverrideReason(event.target.value)}
+            rows={3}
+            className="mt-2 w-full rounded-xl border border-rose-200 px-3 py-2"
+            placeholder="Why an operator cannot complete this action now"
+          />
+        </div>
+      ) : null}
       {linkageRequired ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p className="font-semibold">Fulfilment linkage required</p>
@@ -146,7 +179,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
           </p>
           <button
             type="button"
-            disabled={saving}
+            disabled={saving || overrideBlocked}
             onClick={reconcile}
             className="mt-3 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
@@ -266,7 +299,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || overrideBlocked}
               onClick={() => save({ resolve_shortages: true })}
               className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
             >
@@ -274,7 +307,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
             </button>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || overrideBlocked}
               onClick={() => save()}
               className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
             >
@@ -283,7 +316,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
             </button>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || overrideBlocked}
               onClick={markReady}
               className="inline-flex items-center gap-1 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white"
             >

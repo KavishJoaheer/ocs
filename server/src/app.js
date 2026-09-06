@@ -355,8 +355,22 @@ function createApp() {
   const clientIndexPath = path.join(clientDistPath, "index.html");
 
   if (fs.existsSync(clientIndexPath)) {
-    app.use(express.static(clientDistPath));
+    app.use(
+      express.static(clientDistPath, {
+        setHeaders(res, filePath) {
+          const relativePath = path.relative(clientDistPath, filePath).split(path.sep).join("/");
+          if (relativePath === "index.html") {
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            return;
+          }
+          if (relativePath.startsWith("assets/")) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        },
+      }),
+    );
     app.get(/^\/(?!api(?:\/|$)).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       res.sendFile(clientIndexPath);
     });
   }

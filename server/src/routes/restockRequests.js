@@ -376,6 +376,8 @@ function listRequests({
   from,
   to,
   itemSearch,
+  operatorId,
+  folderId,
   limit,
   offset,
   includeEvents = false,
@@ -415,6 +417,30 @@ function listRequests({
       )
     `);
     params.item_search = `%${itemSearch.toLowerCase()}%`;
+  }
+  if (operatorId) {
+    filters.push(`
+      (
+        r.accepted_by_user_id = @operator_id
+        OR r.ready_by_user_id = @operator_id
+        OR r.assigned_to_user_id = @operator_id
+        OR r.completed_by_user_id = @operator_id
+        OR r.cancelled_by_user_id = @operator_id
+      )
+    `);
+    params.operator_id = Number(operatorId);
+  }
+  if (folderId) {
+    filters.push(`
+      EXISTS (
+        SELECT 1
+        FROM restock_request_items ri_folder
+        JOIN inventory inv_folder ON inv_folder.id = ri_folder.inventory_id
+        WHERE ri_folder.request_id = r.id
+          AND inv_folder.folder_id = @folder_id
+      )
+    `);
+    params.folder_id = Number(folderId);
   }
 
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
@@ -565,7 +591,7 @@ function parseIsoDateQuery(value) {
   return raw;
 }
 
-function historyStats({ doctorId, status, from, to, itemSearch } = {}) {
+function historyStats({ doctorId, status, from, to, itemSearch, operatorId, folderId } = {}) {
   const filters = ["r.status IN ('completed', 'cancelled')"];
   const params = {};
   if (doctorId) {
@@ -598,14 +624,51 @@ function historyStats({ doctorId, status, from, to, itemSearch } = {}) {
     `);
     params.item_search = `%${itemSearch.toLowerCase()}%`;
   }
+  if (operatorId) {
+    filters.push(`
+      (
+        r.accepted_by_user_id = @operator_id
+        OR r.ready_by_user_id = @operator_id
+        OR r.assigned_to_user_id = @operator_id
+        OR r.completed_by_user_id = @operator_id
+        OR r.cancelled_by_user_id = @operator_id
+      )
+    `);
+    params.operator_id = Number(operatorId);
+  }
+  if (folderId) {
+    filters.push(`
+      EXISTS (
+        SELECT 1
+        FROM restock_request_items ri_folder
+        JOIN inventory inv_folder ON inv_folder.id = ri_folder.inventory_id
+        WHERE ri_folder.request_id = r.id
+          AND inv_folder.folder_id = @folder_id
+      )
+    `);
+    params.folder_id = Number(folderId);
+  }
   const where = `WHERE ${filters.join(" AND ")}`;
+
+  const totals = db
+    .prepare(`
+      SELECT
+        COUNT(*) AS request_count,
+        SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+        SUM(CASE WHEN r.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
+      FROM restock_requests r
+      ${where}
+    `)
+    .get(params);
 
   const doctorCounts = db
     .prepare(`
       SELECT
         r.doctor_id,
         d.full_name AS doctor_name,
-        COUNT(*) AS request_count
+        COUNT(*) AS request_count,
+        SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+        SUM(CASE WHEN r.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
       FROM restock_requests r
       LEFT JOIN doctors d ON d.id = r.doctor_id
       ${where}
@@ -617,6 +680,8 @@ function historyStats({ doctorId, status, from, to, itemSearch } = {}) {
       doctor_id: row.doctor_id,
       doctor_name: row.doctor_name || "Doctor",
       request_count: Number(row.request_count || 0),
+      completed_count: Number(row.completed_count || 0),
+      cancelled_count: Number(row.cancelled_count || 0),
     }));
 
   const itemCounts = db
@@ -624,22 +689,39 @@ function historyStats({ doctorId, status, from, to, itemSearch } = {}) {
       SELECT
         ri.item_name,
         COUNT(DISTINCT ri.request_id) AS request_count,
-        SUM(ri.quantity) AS total_quantity
+        SUM(ri.quantity) AS total_quantity,
+        SUM(COALESCE(fi.fulfilled_quantity, 0)) AS total_fulfilled,
+        SUM(COALESCE(fi.shortage_quantity, 0)) AS shortage_quantity
       FROM restock_request_items ri
       JOIN restock_requests r ON r.id = ri.request_id
+      LEFT JOIN restock_request_fulfillments f
+        ON f.request_id = r.id AND f.status IN ('posted', 'packed', 'picking', 'open')
+      LEFT JOIN restock_request_fulfillment_items fi
+        ON fi.fulfilment_id = f.id
+       AND (
+         (ri.inventory_id IS NOT NULL AND fi.inventory_id = ri.inventory_id)
+         OR (ri.inventory_id IS NULL AND fi.item_name = ri.item_name)
+       )
       ${where}
       GROUP BY ri.item_name
       ORDER BY request_count DESC, ri.item_name ASC
-      LIMIT 50
     `)
     .all(params)
     .map((row) => ({
       item_name: row.item_name,
       request_count: Number(row.request_count || 0),
       total_quantity: Number(row.total_quantity || 0),
+      total_fulfilled: Number(row.total_fulfilled || 0),
+      shortage_quantity: Number(row.shortage_quantity || 0),
     }));
 
-  return { doctor_counts: doctorCounts, item_counts: itemCounts };
+  return {
+    doctor_counts: doctorCounts,
+    item_counts: itemCounts,
+    completed_count: Number(totals?.completed_count || 0),
+    cancelled_count: Number(totals?.cancelled_count || 0),
+    request_count: Number(totals?.request_count || 0),
+  };
 }
 
 function normaliseItemsPayload(rawItems) {
@@ -754,6 +836,10 @@ router.get("/", (req, res) => {
   const from = parseIsoDateQuery(req.query.from);
   const to = parseIsoDateQuery(req.query.to);
   const requestedDoctorId = Number(req.query.doctor_id || 0) || null;
+  const requestId = Number(req.query.request_id || req.query.id || 0) || null;
+  const operatorId =
+    role === "doctor" ? null : Number(req.query.operator_id || 0) || null;
+  const folderId = Number(req.query.folder_id || 0) || null;
   const includeEvents =
     view === "history" ||
     String(req.query.include_events || "") === "1" ||
@@ -804,9 +890,12 @@ router.get("/", (req, res) => {
   const result = listRequests({
     status: statuses,
     doctorId: scopedDoctorId,
+    requestId,
     from,
     to,
     itemSearch: itemSearch || null,
+    operatorId,
+    folderId,
     limit,
     offset,
     includeEvents,
@@ -815,9 +904,11 @@ router.get("/", (req, res) => {
   const payload = {
     requests: result.requests,
     total: result.total,
+    limit: usePaging ? limit : null,
+    offset: usePaging ? offset : 0,
   };
 
-  if (view === "history" && (role === "operator" || role === "admin")) {
+  if (view === "history") {
     Object.assign(
       payload,
       historyStats({
@@ -826,6 +917,8 @@ router.get("/", (req, res) => {
         from,
         to,
         itemSearch: itemSearch || null,
+        operatorId,
+        folderId,
       }),
     );
   }
@@ -847,6 +940,77 @@ router.get("/metrics", (req, res) => {
     return res.status(403).json({ error: "Only operators or admins can view inventory metrics." });
   }
   return res.json(productivityMetrics());
+});
+
+router.get("/export", (req, res) => {
+  const auth = req.auth;
+  const role = auth?.role;
+  if (role !== "doctor" && role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Not authorised to export restock history." });
+  }
+  const statusFilter = parseStatusFilter(req.query.status);
+  const statuses = (statusFilter || HISTORY_STATUSES).filter((value) => HISTORY_STATUSES.includes(value));
+  const scopedDoctorId = role === "doctor" ? getDoctorIdForUser(auth.id) : Number(req.query.doctor_id || 0) || null;
+  if (role === "doctor" && !scopedDoctorId) {
+    return res.status(400).json({ error: "No doctor profile is linked to this account." });
+  }
+  const result = listRequests({
+    status: statuses.length ? statuses : HISTORY_STATUSES,
+    doctorId: scopedDoctorId,
+    requestId: Number(req.query.request_id || req.query.id || 0) || null,
+    from: parseIsoDateQuery(req.query.from),
+    to: parseIsoDateQuery(req.query.to),
+    itemSearch: String(req.query.item || req.query.q || "").trim() || null,
+    operatorId: role === "doctor" ? null : Number(req.query.operator_id || 0) || null,
+    folderId: Number(req.query.folder_id || 0) || null,
+    includeEvents: false,
+  });
+  const stats = historyStats({
+    doctorId: scopedDoctorId,
+    status: statuses.length ? statuses : HISTORY_STATUSES,
+    from: parseIsoDateQuery(req.query.from),
+    to: parseIsoDateQuery(req.query.to),
+    itemSearch: String(req.query.item || req.query.q || "").trim() || null,
+    operatorId: role === "doctor" ? null : Number(req.query.operator_id || 0) || null,
+    folderId: Number(req.query.folder_id || 0) || null,
+  });
+  const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const lines = [
+    ["request_id", "doctor", "status", "created_at", "completed_at", "cancelled_at", "items", "quantity"].join(","),
+    ...result.requests.map((row) =>
+      [
+        row.id,
+        escapeCsv(row.doctor_name),
+        row.status,
+        row.created_at || "",
+        row.completed_at || "",
+        row.cancelled_at || "",
+        escapeCsv((row.items || []).map((item) => item.item_name).join("; ")),
+        (row.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+      ].join(","),
+    ),
+    "",
+    "frequency_by_doctor",
+    ["doctor", "request_count", "completed_count", "cancelled_count"].join(","),
+    ...(stats.doctor_counts || []).map((row) =>
+      [escapeCsv(row.doctor_name), row.request_count, row.completed_count, row.cancelled_count].join(","),
+    ),
+    "",
+    "frequency_by_item",
+    ["item", "request_count", "total_quantity", "total_fulfilled", "shortage_quantity"].join(","),
+    ...(stats.item_counts || []).map((row) =>
+      [
+        escapeCsv(row.item_name),
+        row.request_count,
+        row.total_quantity,
+        row.total_fulfilled,
+        row.shortage_quantity,
+      ].join(","),
+    ),
+  ];
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=\"supply-request-history.csv\"");
+  return res.send(lines.join("\n"));
 });
 
 router.get("/:id/fulfilment", (req, res) => {
@@ -1391,9 +1555,14 @@ router.patch("/:id", (req, res) => {
     return res.status(403).json({ error: "Only operators, admins, or the requesting doctor can update restock requests." });
   }
 
+  let operationalOverride = { override: false, reason: "" };
   if (role === "admin" && ["accepted", "ready"].includes(nextStatus)) {
     try {
-      assertRoutineOperatorAction(req.auth, req.body, nextStatus === "accepted" ? "Accept supply requests" : "Mark supply ready");
+      operationalOverride = assertRoutineOperatorAction(
+        req.auth,
+        req.body,
+        nextStatus === "accepted" ? "Accept supply requests" : "Mark supply ready",
+      );
     } catch (error) {
       return res.status(error.status || 403).json({ error: error.message });
     }
@@ -1555,10 +1724,13 @@ router.patch("/:id", (req, res) => {
         previousStatus: locked.status,
         newStatus: nextStatus,
         actor,
-        reason: nextStatus === "cancelled" ? reason : null,
+        reason: nextStatus === "cancelled" ? reason : operationalOverride.reason || null,
         metadata: {
           collection_date: locked.collection_date,
           items: snapshotItems(items),
+          operational_override: Boolean(operationalOverride.override),
+          override_reason: operationalOverride.reason || "",
+          override_by_user_id: operationalOverride.override ? req.auth.id : null,
         },
       });
 
@@ -1637,6 +1809,20 @@ router.patch("/:id", (req, res) => {
     );
   }
 
+  if (operationalOverride.override) {
+    notifyBestEffort(
+      () =>
+        sendPushToRole("operator", {
+          title: "Emergency operational override",
+          body: `An administrator ${nextStatus === "accepted" ? "accepted" : "marked ready"} request #${requestId}: ${operationalOverride.reason}`,
+          url: "/inventory",
+          icon: "/icon-192.png",
+          tag: `restock-request-${requestId}-override`,
+        }),
+      "restock operational override notify failed",
+    );
+  }
+
   broadcastSupplyRequestChange(updated.doctor_id);
   return res.json({ request: updated });
 });
@@ -1646,8 +1832,9 @@ router.patch("/:id/fulfilment", (req, res) => {
   if (role !== "operator" && role !== "admin") {
     return res.status(403).json({ error: "Only operators or admins can update fulfilment." });
   }
+  let fulfilmentOverride = { override: false, reason: "" };
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Update fulfilment");
+    fulfilmentOverride = assertRoutineOperatorAction(req.auth, req.body, "Update fulfilment");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -1695,12 +1882,29 @@ router.patch("/:id/fulfilment", (req, res) => {
         previousStatus: existing.status,
         newStatus: existing.status,
         actor,
-        reason: req.body?.partial_reason || req.body?.allocation_reason || null,
-        metadata: { fulfilment: next },
+        reason: req.body?.partial_reason || req.body?.allocation_reason || fulfilmentOverride.reason || null,
+        metadata: {
+          fulfilment: next,
+          operational_override: Boolean(fulfilmentOverride.override),
+          override_reason: fulfilmentOverride.reason || "",
+        },
       });
       return next;
     })();
     const updated = getRequestById(requestId);
+    if (fulfilmentOverride.override) {
+      notifyBestEffort(
+        () =>
+          sendPushToRole("operator", {
+            title: "Emergency operational override",
+            body: `An administrator updated fulfilment for request #${requestId}: ${fulfilmentOverride.reason}`,
+            url: "/inventory",
+            icon: "/icon-192.png",
+            tag: `restock-request-${requestId}-fulfil-override`,
+          }),
+        "fulfilment override notify failed",
+      );
+    }
     broadcastSupplyRequestChange(updated.doctor_id);
     return res.json({ request: updated, fulfilment: detail });
   } catch (error) {
@@ -1750,8 +1954,9 @@ router.post("/:id/reconcile", (req, res) => {
   if (role !== "operator" && role !== "admin") {
     return res.status(403).json({ error: "Only operators or admins can reconcile fulfilment." });
   }
+  let reconcileOverride = { override: false, reason: "" };
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Reconcile fulfilment");
+    reconcileOverride = assertRoutineOperatorAction(req.auth, req.body, "Reconcile fulfilment");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -1775,6 +1980,9 @@ router.post("/:id/reconcile", (req, res) => {
           outcome: recon.outcome,
           requested_quantity: recon.requested_quantity,
           reserved_quantity: recon.reserved_quantity,
+          operational_override: Boolean(reconcileOverride.override),
+          override_reason: reconcileOverride.reason || req.body?.override_reason || "",
+          legacy: true,
           demoted: recon.demoted,
           fulfilment: recon.fulfilment,
         },
@@ -1801,6 +2009,19 @@ router.post("/:id/reconcile", (req, res) => {
         "legacy reconcile doctor notify failed",
       );
     }
+  }
+  if (reconcileOverride.override) {
+    notifyBestEffort(
+      () =>
+        sendPushToRole("operator", {
+          title: "Emergency operational override",
+          body: `An administrator reconciled request #${requestId}: ${reconcileOverride.reason}`,
+          url: "/inventory",
+          icon: "/icon-192.png",
+          tag: `restock-request-${requestId}-reconcile-override`,
+        }),
+      "reconcile override notify failed",
+    );
   }
   broadcastSupplyRequestChange(updated.doctor_id);
   return res.json({

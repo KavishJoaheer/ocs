@@ -5,7 +5,7 @@ const {
   recordOcsCatalogExclusion,
 } = require("../lib/ocsCatalogExclusions");
 const { prepareOcsMasterInventoryIntegrity, assertOcsMasterItemNameAvailable } = require("../lib/dedupeOcsMasterInventory");
-const { maybeNotifyLowStock, sendPushToRole } = require("../lib/push");
+const { maybeNotifyLowStock, sendPushToRole, sendPushToUser } = require("../lib/push");
 const {
   InventoryVersionConflictError,
   assertInventoryQuantityUpdate,
@@ -82,6 +82,39 @@ router.post("/resync-broadcast", (req, res) => {
   }
   const result = publishInventoryResyncBroadcast();
   return res.json({ ok: true, delivered: result.delivered });
+});
+
+router.get("/data-quality.csv", (req, res) => {
+  ensureInfrastructure();
+  if (!isWarehouseManager(req.auth.role)) {
+    return res.status(403).json({ error: "Only operators or administrators can export data-quality queues." });
+  }
+  const kind = String(req.query.kind || "all").trim().toLowerCase();
+  const items = getItems({ stockScope: "ocs" });
+  const rows = [];
+  if (kind === "all" || kind === "low_stock") {
+    for (const item of items.filter((row) => Number(row.quantity || 0) <= Number(row.minimum_quantity || 0))) {
+      rows.push(["low_stock", item.id, item.item_name, item.quantity, item.minimum_quantity, item.expiry_date || ""]);
+    }
+  }
+  if (kind === "all" || kind === "missing_expiry") {
+    for (const item of items.filter((row) => row.missing_expiry)) {
+      rows.push(["missing_expiry", item.id, item.item_name, item.quantity, item.minimum_quantity, ""]);
+    }
+  }
+  if (kind === "all" || kind === "near_expiry") {
+    for (const item of items.filter((row) => row.is_near_expiry)) {
+      rows.push(["near_expiry", item.id, item.item_name, item.quantity, item.minimum_quantity, item.expiry_date || ""]);
+    }
+  }
+  const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const body = [
+    ["queue", "item_id", "item_name", "quantity", "minimum_quantity", "expiry_date"].join(","),
+    ...rows.map((row) => row.map(escapeCsv).join(",")),
+  ].join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="inventory-data-quality.csv"`);
+  return res.send(body);
 });
 
 let infrastructureReady = false;
@@ -307,25 +340,45 @@ function buildReceiptByTransaction(transactionId) {
   const inboundRows = rows.filter((row) => row.action_type === "restock_in");
   const primaryMeta = safeParseJson((sourceRows[0] || inboundRows[0] || rows[0]).meta_json, {});
   const itemRows = sourceRows.length ? sourceRows : inboundRows;
-  const items = itemRows.map((row) => {
+  const items = itemRows.flatMap((row) => {
     const meta = safeParseJson(row.meta_json, {});
     const allocations = Array.isArray(meta.transfer_allocations) ? meta.transfer_allocations : [];
+    const pairedInbound = inboundRows.find((inRow) => {
+      const inMeta = safeParseJson(inRow.meta_json, {});
+      if (meta.fulfilment_item_id && Number(inMeta.fulfilment_item_id) === Number(meta.fulfilment_item_id)) {
+        return true;
+      }
+      if (meta.destination_inventory_id && Number(inRow.item_id) === Number(meta.destination_inventory_id)) {
+        return true;
+      }
+      return Number(inMeta.catalogue_item_id || 0) === Number(meta.catalogue_item_id || row.item_id);
+    });
+    const destinationId =
+      Number(meta.destination_inventory_id || 0) || pairedInbound?.item_id || null;
+    const sourceId = Number(meta.source_inventory_id || 0) || row.item_id;
     if (!allocations.length) {
       return [
         {
           item_name: row.item_name,
+          catalogue_item_id: Number(meta.catalogue_item_id || row.item_id),
           inventory_id: row.item_id,
           batch_id: null,
-          batch_number: "N/A",
+          batch_number: null,
+          lot_unavailable: true,
           expiry: null,
           is_non_expiring: false,
           quantity: Number(row.quantity ?? 0),
-          unit: row.unit || "unit",
-          source_inventory_id: sourceRows[0]?.item_id || row.item_id,
-          destination_inventory_id: inboundRows.find((inRow) => {
-            const inMeta = safeParseJson(inRow.meta_json, {});
-            return String(inMeta.transaction_id || "") === String(transactionId);
-          })?.item_id || null,
+          requested_quantity: Number(meta.requested_quantity ?? row.quantity ?? 0),
+          reserved_quantity: Number(meta.reserved_quantity ?? 0),
+          picked_quantity: Number(meta.picked_quantity ?? 0),
+          fulfilled_quantity: Number(meta.fulfilled_quantity ?? row.quantity ?? 0),
+          transferred_quantity: Number(meta.transferred_quantity ?? row.quantity ?? 0),
+          unit: meta.unit || row.unit || "unit",
+          source_inventory_id: sourceId,
+          destination_inventory_id: destinationId,
+          reservation_id: meta.reservation_id || null,
+          fulfilment_item_id: meta.fulfilment_item_id || null,
+          allocation_id: null,
         },
       ];
     }
@@ -333,20 +386,31 @@ function buildReceiptByTransaction(transactionId) {
       const batch = allocation.batch_id
         ? db.prepare("SELECT id, expiry_date, is_non_expiring FROM inventory_batches WHERE id = ?").get(allocation.batch_id)
         : null;
+      const lot = allocation.lot_number || allocation.batch_number || null;
       return {
         item_name: row.item_name,
+        catalogue_item_id: Number(meta.catalogue_item_id || row.item_id),
         inventory_id: row.item_id,
         batch_id: allocation.batch_id || batch?.id || null,
-        batch_number: allocation.batch_id ? String(allocation.batch_id) : "N/A",
+        batch_number: lot,
+        lot_unavailable: !lot,
         expiry: allocation.expiry_date || batch?.expiry_date || null,
         is_non_expiring: Boolean(allocation.is_non_expiring || batch?.is_non_expiring),
         quantity: Number(allocation.quantity ?? 0),
-        unit: row.unit || "unit",
-        source_inventory_id: row.item_id,
-        destination_inventory_id: inboundRows[0]?.item_id || null,
+        requested_quantity: Number(meta.requested_quantity ?? 0),
+        reserved_quantity: Number(meta.reserved_quantity ?? 0),
+        picked_quantity: Number(meta.picked_quantity ?? 0),
+        fulfilled_quantity: Number(meta.fulfilled_quantity ?? allocation.quantity ?? 0),
+        transferred_quantity: Number(allocation.quantity ?? 0),
+        unit: meta.unit || row.unit || "unit",
+        source_inventory_id: sourceId,
+        destination_inventory_id: destinationId,
+        reservation_id: meta.reservation_id || null,
+        fulfilment_item_id: meta.fulfilment_item_id || null,
+        allocation_id: allocation.id || allocation.allocation_id || null,
       };
     });
-  }).flat();
+  });
 
   return {
     transaction_id: transactionId,
@@ -440,7 +504,15 @@ function getItems({ stockScope, doctorId = null }) {
           WHERE b.item_id = i.id
             AND b.quantity_remaining > 0
             AND b.expiry_date IS NOT NULL
-        ) AS nearest_expiry_date
+        ) AS nearest_expiry_date,
+        (
+          SELECT COUNT(*)
+          FROM inventory_batches b
+          WHERE b.item_id = i.id
+            AND b.quantity_remaining > 0
+            AND COALESCE(b.is_non_expiring, 0) = 0
+            AND (b.expiry_date IS NULL OR TRIM(b.expiry_date) = '')
+        ) AS missing_expiry_batches
       FROM inventory i
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
       WHERE i.stock_scope = @stockScope
@@ -462,6 +534,7 @@ function getItems({ stockScope, doctorId = null }) {
       catalogue_expiry_date: row.expiry_date || null,
       current_cost_value: roundCurrency(Number(row.quantity || 0) * toNumber(row.cost_price, 0)),
       is_near_expiry: isNearExpiry(row.nearest_expiry_date),
+      missing_expiry: Number(row.missing_expiry_batches || 0) > 0,
     }));
 }
 
@@ -1285,7 +1358,31 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
             warehouse_value: rawSummary.total_amount_rs,
             low_stock: Number(rawSummary.low_stock_count || 0),
             near_expiry: Number(rawSummary.near_expiry_count || 0),
-            missing_expiry: ocsStock.filter((item) => !item.expiry_date).length,
+            missing_expiry: ocsStock.filter((item) => item.missing_expiry).length,
+            reconciliation_required: Number(
+              db
+                .prepare(
+                  `
+                  SELECT COUNT(*) AS count
+                  FROM restock_requests r
+                  WHERE r.status IN ('accepted', 'ready')
+                    AND (
+                      NOT EXISTS (
+                        SELECT 1 FROM restock_request_fulfillments f
+                        WHERE f.request_id = r.id AND f.status IN ('open', 'picking', 'packed', 'posted')
+                      )
+                      OR EXISTS (
+                        SELECT 1 FROM restock_request_fulfillment_items fi
+                        JOIN restock_request_fulfillments f2 ON f2.id = fi.fulfilment_id
+                        WHERE f2.request_id = r.id
+                          AND fi.inventory_id IS NULL
+                          AND fi.requested_quantity > 0
+                      )
+                    )
+                `,
+                )
+                .get()?.count || 0,
+            ),
           },
           shipments: shipmentStats,
           count: stocktakeStats,
@@ -1307,6 +1404,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
       : null,
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
     near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
+    missing_expiry_items: activeItems.filter((item) => item.missing_expiry),
     movements: getMovements(role, doctorId, {
       userId: req.query.activityUserId,
       actorRole: req.query.activityRole,
@@ -2241,8 +2339,42 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
         note: String(req.body?.note || "").trim(),
         movement_id: result.movementId,
         allocations: result.allocations,
+        impacted_requests: result.impacted_requests,
+        reservation_adjustments: result.reservation_adjustments,
       }),
     });
+    for (const requestId of result.notify_request_ids || []) {
+      try {
+        const request = db.prepare("SELECT doctor_id FROM restock_requests WHERE id = ?").get(requestId);
+        const doctorUser = request?.doctor_id
+          ? db
+              .prepare(
+                `SELECT id FROM users WHERE doctor_id = ? AND role = 'doctor' AND is_active = 1 AND deleted_at IS NULL LIMIT 1`,
+              )
+              .get(request.doctor_id)
+          : null;
+        if (doctorUser?.id) {
+          void sendPushToUser(doctorUser.id, {
+            title: "Supply request stock changed",
+            body: `Reserved stock for request #${requestId} was reduced after an inventory correction.`,
+            url: "/supply-requests",
+          });
+        }
+      } catch {
+        /* notification must not roll back a valid correction */
+      }
+    }
+    if ((result.notify_request_ids || []).length) {
+      try {
+        void sendPushToRole("operator", {
+          title: "Inventory correction affected reservations",
+          body: `Request(s) ${(result.notify_request_ids || []).join(", ")} need picking or shortage review.`,
+          url: "/inventory",
+        });
+      } catch {
+        /* ignore */
+      }
+    }
     return res.status(result.idempotent ? 200 : 201).json({
       ...getPayload(req),
       correction: result,
@@ -3247,10 +3379,8 @@ router.post("/shipments/:id/release", (req, res) => {
 
 router.post("/stocktake/sessions", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can create stocktake sessions." });
-  }
   try {
+    assertRoutineOperatorAction(req.auth, req.body, "Start a stocktake session");
     const session = createStocktakeSession({
       folderId: req.body?.folder_id ? Number(req.body.folder_id) : null,
       itemIds: Array.isArray(req.body?.item_ids) ? req.body.item_ids : [],
@@ -3284,28 +3414,30 @@ router.get("/stocktake/sessions/:id", (req, res) => {
 
 router.patch("/stocktake/sessions/:id", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can update stocktake sessions." });
-  }
   try {
+    assertRoutineOperatorAction(req.auth, req.body, "Record stocktake counts");
     const session = saveStocktakeCounts(Number(req.params.id), req.body?.lines || [], req.auth.id);
     return res.json({ session });
   } catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (error.status) return res.status(error.status).json({ error: error.message, conflicts: error.conflicts });
     throw error;
   }
 });
 
 router.post("/stocktake/sessions/:id/submit", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can submit stocktake sessions." });
-  }
   try {
+    assertRoutineOperatorAction(req.auth, req.body, "Submit a stocktake session");
     const session = submitStocktakeSession(Number(req.params.id), req.auth.id);
     return res.json({ session });
   } catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.message,
+        conflicts: error.conflicts || undefined,
+        session: error.session || undefined,
+      });
+    }
     throw error;
   }
 });
@@ -3332,12 +3464,10 @@ router.post("/stocktake/sessions/:id/apply", (req, res) => {
     return res.status(403).json({ error: "Only an admin can apply stocktake adjustments." });
   }
   try {
-    const result = db.transaction(() =>
-      applyStocktakeSession(Number(req.params.id), req.auth.id, {
+    const result = applyStocktakeSession(Number(req.params.id), req.auth.id, {
         displayName: req.auth.full_name || req.auth.username || "",
         role: req.auth.role,
-      }),
-    )();
+      });
     return res.json({
       session: result.session,
       idempotent: result.idempotent,
@@ -3348,6 +3478,7 @@ router.post("/stocktake/sessions/:id/apply", (req, res) => {
       return res.status(error.status).json({
         error: error.message,
         conflicts: error.conflicts || undefined,
+        session: error.session || undefined,
       });
     }
     throw error;
@@ -3382,28 +3513,10 @@ router.get("/stocktake/sessions/:id/export.csv", (req, res) => {
 
 router.post("/stocktake", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can submit stocktake entries." });
-  }
-
-  const itemId = Number(req.body.item_id || 0);
-  const physicalQuantity = Number(req.body.physical_quantity || 0);
-  const note = String(req.body.note || "").trim();
-  if (!itemId || !Number.isInteger(physicalQuantity) || physicalQuantity < 0) {
-    return res.status(400).json({ error: "item_id and physical_quantity are required." });
-  }
-
-  const item = findItem(itemId, "ocs", null);
-  if (!item) return res.status(404).json({ error: "OCS stock item not found." });
-  const digitalQuantity = Number(item.quantity || 0);
-  const discrepancy = physicalQuantity - digitalQuantity;
-  db.prepare(`
-    INSERT INTO inventory_stocktakes (
-      item_id, physical_quantity, digital_quantity, discrepancy, note, created_by_user_id
-    )
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(itemId, physicalQuantity, digitalQuantity, discrepancy, note, req.auth.id);
-  res.status(201).json({ ok: true, discrepancy, legacy: true });
+  return res.status(410).json({
+    error: "One-row stocktake is no longer available. Use a stocktake session so counts stay blind, concurrent, and approved.",
+    use: "POST /api/inventory/stocktake/sessions",
+  });
 });
 
 router.delete("/items/:id", (req, res) => {

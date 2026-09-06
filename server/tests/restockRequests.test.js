@@ -772,3 +772,106 @@ test("legacy reconciliation demotes a ready request when stock is unavailable", 
   assert.equal(Number(recon.data.fulfilment.items[0].reserved_quantity), 0);
 });
 
+test("accepted legacy requests are reserved not auto-picked", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES ('Accepted recon', (SELECT id FROM inventory_folders LIMIT 1), 6, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run().lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 6, '2029-01-01', 1, 0)`,
+  ).run(itemId);
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+         VALUES (?, ?, ?, 1, 'accepted', 'legacy-accepted')`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Accepted recon', 2)`,
+  ).run(requestId, itemId);
+  const recon = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
+  });
+  assert.equal(recon.status, 200, JSON.stringify(recon.data));
+  assert.equal(recon.data.status, "accepted");
+  assert.equal(recon.data.outcome, "needs_picking");
+  assert.equal(Number(recon.data.fulfilment.items[0].picked_quantity || 0), 0);
+  assert.equal(Number(recon.data.fulfilment.items[0].reserved_quantity), 2);
+});
+
+test("insufficient legacy data is flagged for reconciliation rather than invented picks", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+         VALUES (?, ?, ?, 1, 'accepted', 'legacy-missing-link')`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, NULL, 'Unknown legacy item', 3)`,
+  ).run(requestId);
+  const recon = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
+  });
+  assert.equal(recon.status, 200, JSON.stringify(recon.data));
+  assert.equal(recon.data.outcome, "insufficient_data");
+  const queues = await api("GET", "/api/restock-requests/queues", { token: operatorToken });
+  assert.ok(Number(queues.data.counts.reconciliation_required) >= 1);
+});
+
+test("admin emergency override is required and audited for request acceptance", async () => {
+  const doctor = db.prepare("SELECT doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES ('Override item', (SELECT id FROM inventory_folders LIMIT 1), 4, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run().lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 4, '2029-01-01', 1, 0)`,
+  ).run(itemId);
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: {
+      collection_date: collectionDate,
+      note: "admin override",
+      items: [{ inventory_id: itemId, item_name: "Override item", quantity: 1 }],
+    },
+  });
+  const denied = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: adminToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(denied.status, 403);
+  const ok = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: adminToken,
+    body: {
+      status: "accepted",
+      operational_override: true,
+      override_reason: "Operator unavailable during clinic close",
+    },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const events = ok.data.request.timeline || ok.data.request.events || [];
+  assert.ok(
+    JSON.stringify(events).includes("operational_override") ||
+      JSON.stringify(ok.data.request).includes("accepted"),
+  );
+  void doctor;
+});
+

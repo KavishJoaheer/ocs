@@ -263,16 +263,166 @@ function listImpactedActiveRequests(inventoryId) {
         r.id AS request_id,
         r.status,
         d.full_name AS doctor_name,
-        res.quantity AS reserved_quantity
+        res.id AS reservation_id,
+        res.quantity AS reserved_quantity,
+        res.fulfilment_item_id,
+        COALESCE(fi.picked_quantity, 0) AS picked_quantity,
+        COALESCE(fi.fulfilled_quantity, 0) AS fulfilled_quantity,
+        COALESCE(fi.requested_quantity, 0) AS requested_quantity
       FROM inventory_reservations res
       JOIN restock_requests r ON r.id = res.request_id
+      LEFT JOIN restock_request_fulfillment_items fi ON fi.id = res.fulfilment_item_id
       LEFT JOIN doctors d ON d.id = r.doctor_id
       WHERE res.inventory_id = ?
         AND res.status = 'active'
-      ORDER BY r.id ASC
+      ORDER BY r.id ASC, res.id ASC
     `,
     )
-    .all(Number(inventoryId));
+    .all(Number(inventoryId))
+    .map((row) => ({
+      ...row,
+      blocking: String(row.status) === "ready" || Number(row.picked_quantity || 0) > 0,
+    }));
+}
+
+function recordInventoryRequestEvent({
+  requestId,
+  eventType,
+  previousStatus = null,
+  newStatus = null,
+  actor = {},
+  reason = null,
+  metadata = {},
+}) {
+  db.prepare(`
+    INSERT INTO restock_request_events (
+      request_id, event_type, previous_status, new_status,
+      actor_user_id, actor_role, actor_display_name, reason, metadata_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    Number(requestId),
+    eventType,
+    previousStatus || null,
+    newStatus || null,
+    actor.userId || null,
+    actor.role || null,
+    actor.displayName || null,
+    reason ? String(reason).slice(0, 500) : null,
+    JSON.stringify(metadata || {}),
+  );
+}
+
+function shrinkReservationBatches(reservationId, nextQuantity) {
+  const batches = db
+    .prepare(
+      `
+      SELECT * FROM inventory_reservation_batches
+      WHERE reservation_id = ?
+      ORDER BY id ASC
+    `,
+    )
+    .all(Number(reservationId));
+  let remaining = Math.max(0, Number(nextQuantity) || 0);
+  for (const batch of batches) {
+    const current = integerQty(batch.quantity) ?? 0;
+    if (remaining <= 0) {
+      db.prepare("DELETE FROM inventory_reservation_batches WHERE id = ?").run(batch.id);
+      continue;
+    }
+    if (current > remaining) {
+      db.prepare("UPDATE inventory_reservation_batches SET quantity = ? WHERE id = ?").run(
+        remaining,
+        batch.id,
+      );
+      remaining = 0;
+    } else {
+      remaining -= current;
+    }
+  }
+}
+
+function reduceReservationsForCorrection(inventoryId, deficit, { actor = {}, reason = "" } = {}) {
+  const needed = Math.max(0, Math.floor(Number(deficit) || 0));
+  if (needed <= 0) return { reduced: 0, request_ids: [] };
+  const impacted = listImpactedActiveRequests(inventoryId);
+  const blocking = impacted.filter((row) => row.blocking);
+  if (blocking.length) {
+    const error = HttpError(
+      409,
+      "Cannot correct stock that is reserved for a picked or Supply Ready request. Resolve those requests first.",
+    );
+    error.impacted_requests = impacted;
+    throw error;
+  }
+
+  let remaining = needed;
+  const touched = [];
+  for (const row of impacted) {
+    if (remaining <= 0) break;
+    const reserved = integerQty(row.reserved_quantity) ?? 0;
+    if (reserved <= 0) continue;
+    const take = Math.min(reserved, remaining);
+    const nextReserved = reserved - take;
+    remaining -= take;
+    if (nextReserved <= 0) {
+      db.prepare(`
+        UPDATE inventory_reservations
+        SET status = 'released', released_at = CURRENT_TIMESTAMP, quantity = 0
+        WHERE id = ?
+      `).run(row.reservation_id);
+      db.prepare("DELETE FROM inventory_reservation_batches WHERE reservation_id = ?").run(
+        row.reservation_id,
+      );
+    } else {
+      db.prepare("UPDATE inventory_reservations SET quantity = ? WHERE id = ?").run(
+        nextReserved,
+        row.reservation_id,
+      );
+      shrinkReservationBatches(row.reservation_id, nextReserved);
+    }
+    const requested = integerQty(row.requested_quantity) ?? 0;
+    const shortage = Math.max(0, requested - nextReserved);
+    if (row.fulfilment_item_id) {
+      db.prepare(`
+        UPDATE restock_request_fulfillment_items
+        SET
+          reserved_quantity = ?,
+          shortage_quantity = ?,
+          picked_quantity = 0,
+          fulfilled_quantity = 0,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(nextReserved, shortage, row.fulfilment_item_id);
+      db.prepare(`
+        UPDATE restock_request_fulfillments
+        SET has_shortage = 1, status = 'open', packed_at = NULL, packed_by_user_id = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE request_id = ? AND status IN ('open', 'picking', 'packed')
+      `).run(row.request_id);
+    }
+    recordInventoryRequestEvent({
+      requestId: row.request_id,
+      eventType: "reservation_reduced",
+      previousStatus: row.status,
+      newStatus: "accepted",
+      actor,
+      reason,
+      metadata: {
+        inventory_id: Number(inventoryId),
+        reduced_quantity: take,
+        remaining_reserved: nextReserved,
+        exceptional_correction: true,
+      },
+    });
+    touched.push({
+      request_id: row.request_id,
+      reduced_quantity: take,
+      remaining_reserved: nextReserved,
+    });
+  }
+  if (remaining > 0) {
+    throw HttpError(409, "Insufficient unreserved and releasable reserved stock for this correction.");
+  }
+  return { reduced: needed, request_ids: [...new Set(touched.map((row) => row.request_id))], lines: touched };
 }
 
 function releaseReservations(requestId) {
@@ -379,7 +529,7 @@ function createReservationsForRequest(requestId) {
           fulfilment_id, request_item_id, inventory_id, item_name,
           requested_quantity, reserved_quantity, shortage_quantity,
           picked_quantity, fulfilled_quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)
       `)
       .run(
         fulfilment.id,
@@ -389,7 +539,6 @@ function createReservationsForRequest(requestId) {
         requested,
         reserved,
         shortage,
-        reserved,
       );
     const fulfilmentItemId = Number(lineInfo.lastInsertRowid);
 
@@ -597,13 +746,23 @@ function reconcileLegacyFulfilment(requestId, { actor = {}, reason = "" } = {}) 
   const previousStatus = String(request.status);
   const created = createReservationsForRequest(requestId);
   const fulfilment = activeFulfilment(requestId);
-  if (fulfilment) {
+  const items = requestItems(requestId);
+  const insufficientData = items.some((item) => !item.inventory_id && Number(item.quantity || 0) > 0);
+
+  if (previousStatus === "ready" && fulfilment && !insufficientData && !created.hasShortage) {
     db.prepare(`
       UPDATE restock_request_fulfillment_items
       SET
         picked_quantity = reserved_quantity,
         fulfilled_quantity = reserved_quantity,
         updated_at = CURRENT_TIMESTAMP
+      WHERE fulfilment_id = ?
+        AND reserved_quantity > 0
+    `).run(fulfilment.id);
+  } else if (fulfilment) {
+    db.prepare(`
+      UPDATE restock_request_fulfillment_items
+      SET picked_quantity = 0, fulfilled_quantity = 0, updated_at = CURRENT_TIMESTAMP
       WHERE fulfilment_id = ?
     `).run(fulfilment.id);
   }
@@ -658,20 +817,38 @@ function reconcileLegacyFulfilment(requestId, { actor = {}, reason = "" } = {}) 
     }
   }
 
-  const outcome =
-    fullyAllocated && nextStatus === "ready"
+  const outcome = insufficientData
+    ? "insufficient_data"
+    : fullyAllocated && nextStatus === "ready"
       ? "full_ready"
       : reservedTotal <= 0
         ? "zero_availability"
-        : "partial_shortage";
+        : previousStatus === "accepted" && !created.hasShortage
+          ? "needs_picking"
+          : "partial_shortage";
   const explanation =
     outcome === "full_ready"
-      ? "Legacy request fully allocated from current stock and remains ready."
-      : outcome === "zero_availability"
-        ? "No unreserved stock was available. The request was returned to accepted for shortage resolution."
-        : "Only part of the requested quantity could be reserved. Explicit partial-fulfilment approval is required before it can return to ready.";
+      ? "Legacy ready request was fully allocated from current stock and remains ready after the migration shortcut."
+      : outcome === "insufficient_data"
+        ? "Legacy data is missing catalogue links. Confirm actual quantities and batches before collection."
+        : outcome === "needs_picking"
+          ? "Reservations were created from current stock. Pick and confirm actual quantities before marking ready."
+          : outcome === "zero_availability"
+            ? "No unreserved stock was available. The request was returned to accepted for shortage resolution."
+            : "Only part of the requested quantity could be reserved. Explicit partial-fulfilment approval is required before it can return to ready.";
+
+  recordInventoryRequestEvent({
+    requestId,
+    eventType: "legacy_reconciliation",
+    previousStatus,
+    newStatus: nextStatus,
+    actor,
+    reason: String(reason || "").trim() || "Legacy fulfilment linkage",
+    metadata: { outcome, legacy: true, insufficient_data: insufficientData },
+  });
 
   detail = fulfilmentDetail(requestId);
+  if (detail) detail.legacy = true;
   const updated = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
   return {
     request: updated,
@@ -693,8 +870,6 @@ function fulfilmentDetail(requestId) {
   const request = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
   if (!request) return null;
   const fulfilment = activeFulfilment(requestId) || postedFulfilment(requestId);
-  const linkageRequired =
-    ["accepted", "ready"].includes(String(request.status || "")) && !fulfilment;
   const items = db
     .prepare(`
       SELECT * FROM restock_request_fulfillment_items
@@ -726,6 +901,7 @@ function fulfilmentDetail(requestId) {
         : 0;
       return {
         ...line,
+        reservation_id: reservation?.id || null,
         available_to_promise: atp,
         allocations: batches.map((batch) => ({
           batch_id: batch.batch_id,
@@ -737,10 +913,38 @@ function fulfilmentDetail(requestId) {
       };
     });
 
+  const linkageRequired =
+    ["accepted", "ready"].includes(String(request.status || "")) &&
+    (!fulfilment ||
+      items.some((line) => !line.inventory_id && integerLineQty(line.requested_quantity) > 0));
+  const legacyEvent = db
+    .prepare(
+      `
+      SELECT metadata_json
+      FROM restock_request_events
+      WHERE request_id = ? AND event_type = 'legacy_reconciliation'
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    )
+    .get(Number(requestId));
+  let legacyMeta = {};
+  try {
+    legacyMeta = JSON.parse(legacyEvent?.metadata_json || "{}");
+  } catch {
+    legacyMeta = {};
+  }
+  const reconciliationRequired =
+    Boolean(linkageRequired) ||
+    String(legacyMeta.outcome || "") === "insufficient_data" ||
+    Boolean(legacyMeta.insufficient_data);
+
   return {
     request_id: Number(requestId),
     fulfilment,
     linkage_required: Boolean(linkageRequired),
+    reconciliation_required: Boolean(reconciliationRequired),
+    legacy: Boolean(legacyMeta.legacy || reconciliationRequired),
     has_shortage: Boolean(fulfilment?.has_shortage),
     partial_approved: Boolean(request.partial_fulfilment_approved || fulfilment?.partial_approved),
     partial_reason: request.partial_fulfilment_reason || fulfilment?.partial_reason || "",
@@ -1172,7 +1376,7 @@ function postCollectionTransfer({ request, actor }) {
   const receiptReference = `/inventory/receipts/${transactionId}`;
   const movementIds = [];
 
-  function transferMeta(consumed) {
+  function transferMeta(consumed, extras = {}) {
     return {
       request_id: request.id,
       transaction_id: transactionId,
@@ -1192,6 +1396,7 @@ function postCollectionTransfer({ request, actor }) {
       transfer_allocations: consumed,
       source_location: "Master Stock",
       destination_location: `${collectorName || "Doctor"}'s Bag`,
+      ...extras,
     };
   }
 
@@ -1219,6 +1424,20 @@ function postCollectionTransfer({ request, actor }) {
     }
     const sourceNext = sourcePrev - qty;
     updateInventoryQuantity(source.id, sourceNext);
+    const bag = upsertDoctorBagItem(source, request.doctor_id, qty);
+    const lineMeta = transferMeta(consumed, {
+      fulfilment_item_id: line.id,
+      reservation_id: line.reservation_id || null,
+      catalogue_item_id: source.id,
+      source_inventory_id: source.id,
+      destination_inventory_id: bag.id,
+      requested_quantity: integerLineQty(line.requested_quantity),
+      reserved_quantity: integerLineQty(line.reserved_quantity),
+      picked_quantity: integerLineQty(line.picked_quantity),
+      fulfilled_quantity: qty,
+      transferred_quantity: qty,
+      unit: source.unit || "unit",
+    });
     const outId = recordTransferMovement({
       itemId: source.id,
       movementType: "out",
@@ -1230,11 +1449,10 @@ function postCollectionTransfer({ request, actor }) {
       userId: actor.userId,
       doctorId: request.doctor_id,
       skipPublish: true,
-      meta: transferMeta(consumed),
+      meta: lineMeta,
     });
     movementIds.push(outId);
 
-    const bag = upsertDoctorBagItem(source, request.doctor_id, qty);
     for (const allocation of consumed) {
       db.prepare(`
         INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
@@ -1258,7 +1476,7 @@ function postCollectionTransfer({ request, actor }) {
       userId: actor.userId,
       doctorId: request.doctor_id,
       skipPublish: true,
-      meta: transferMeta(consumed),
+      meta: lineMeta,
     });
     movementIds.push(inId);
     finalizeLineReservation({
@@ -1354,9 +1572,27 @@ function workQueues() {
       FROM restock_requests r
       LEFT JOIN doctors d ON d.id = r.doctor_id
       WHERE r.status IN ('accepted', 'ready')
-        AND NOT EXISTS (
-          SELECT 1 FROM restock_request_fulfillments f
-          WHERE f.request_id = r.id AND f.status IN ('open', 'picking', 'packed', 'posted')
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM restock_request_fulfillments f
+            WHERE f.request_id = r.id AND f.status IN ('open', 'picking', 'packed', 'posted')
+          )
+          OR EXISTS (
+            SELECT 1 FROM restock_request_fulfillment_items fi
+            JOIN restock_request_fulfillments f2 ON f2.id = fi.fulfilment_id
+            WHERE f2.request_id = r.id
+              AND fi.inventory_id IS NULL
+              AND fi.requested_quantity > 0
+          )
+          OR EXISTS (
+            SELECT 1 FROM restock_request_events e
+            WHERE e.request_id = r.id
+              AND e.event_type = 'legacy_reconciliation'
+              AND (
+                json_extract(e.metadata_json, '$.outcome') = 'insufficient_data'
+                OR json_extract(e.metadata_json, '$.insufficient_data') = 1
+              )
+          )
         )
       ORDER BY datetime(r.created_at) ASC
     `)
@@ -1368,7 +1604,9 @@ function workQueues() {
     .all();
   const varianceRows = db
     .prepare(`
-      SELECT * FROM inventory_stocktake_sessions WHERE status = 'submitted' ORDER BY submitted_at ASC, id ASC
+      SELECT * FROM inventory_stocktake_sessions
+      WHERE status IN ('submitted', 'recount_required')
+      ORDER BY COALESCE(submitted_at, updated_at) ASC, id ASC
     `)
     .all();
   const incoming = incomingRows.length;
@@ -1407,6 +1645,7 @@ function workQueues() {
     pick_today: decorate(pickToday, "Pick pack"),
     awaiting_collection: decorate(awaiting, "Waiting for doctor"),
     fulfilment_linkage_required: decorate(linkage, "Reconcile fulfilment"),
+    reconciliation_required: decorate(linkage, "Confirm actual quantities"),
     incoming_shipments: incomingRows,
     count_variances: varianceRows,
     counts: {
@@ -1418,6 +1657,7 @@ function workQueues() {
       incoming_shipments: incoming,
       count_variances: variances,
       fulfilment_linkage_required: linkage.length,
+      reconciliation_required: linkage.length,
     },
   };
 }
@@ -1509,6 +1749,7 @@ module.exports = {
   postCollectionTransfer,
   productivityMetrics,
   reconcileLegacyFulfilment,
+  reduceReservationsForCorrection,
   releaseReservations,
   replaceReservationsForAmendment,
   reserveAcceptedRequest,

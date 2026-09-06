@@ -1,13 +1,20 @@
-import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
-import { NavigationRoute, registerRoute } from "workbox-routing";
+import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+import { registerRoute } from "workbox-routing";
 
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 registerRoute(
-  new NavigationRoute(createHandlerBoundToURL("/index.html"), {
-    denylist: [/^\/api/],
-  }),
+  ({ request, url }) => request.mode === "navigate" && !url.pathname.startsWith("/api"),
+  async ({ event }) => {
+    try {
+      const fresh = await fetch(event.request, { cache: "reload" });
+      if (fresh && fresh.ok) return fresh;
+    } catch {
+      /* fall through to cached shell when offline */
+    }
+    return (await caches.match("/index.html")) || Response.error();
+  },
 );
 
 const DEFAULT_ICON = "/icon-192.png";

@@ -19,7 +19,9 @@ import {
   supplyRequestStatusLabel,
   supplyRequestStatusTone,
 } from "../lib/supplyRequests.js";
+import EmergencyOverrideDialog from "./EmergencyOverrideDialog.jsx";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
+import { withOperationalOverride } from "../lib/inventoryAccess.js";
 import { cx } from "../lib/utils.js";
 
 const HISTORY_PAGE_SIZE = 50;
@@ -77,7 +79,9 @@ function actionClass(kind, extra = "") {
 function runSupplyRequestAction(action, request, handlers) {
   if (!action || action.disabled) return;
   if (action.id === "accept") handlers.onAccept(request);
+  if (action.id === "emergency_override_accept") handlers.onEmergencyAccept?.(request);
   if (action.id === "fulfil") handlers.onFulfil(request);
+  if (action.id === "emergency_override_fulfil") handlers.onEmergencyFulfil?.(request);
   if (action.id === "review_amendment") handlers.onReviewAmendment(request);
   if (action.id === "cancel") handlers.onCancel(request);
   if (action.id === "details") handlers.onDetails(request);
@@ -171,6 +175,9 @@ export default function OperatorSupplyRequestsPanel() {
     from: "",
     to: "",
     item: "",
+    request_id: "",
+    operator_id: "",
+    folder_id: "",
   });
   const [historyOffset, setHistoryOffset] = useState(0);
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -178,6 +185,7 @@ export default function OperatorSupplyRequestsPanel() {
   const [amendmentTarget, setAmendmentTarget] = useState(null);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
+  const [overrideTarget, setOverrideTarget] = useState(null);
 
   const loadActive = useCallback(async () => {
     setLoading(true);
@@ -204,6 +212,9 @@ export default function OperatorSupplyRequestsPanel() {
     if (filters.from) params.set("from", filters.from);
     if (filters.to) params.set("to", filters.to);
     if (filters.item.trim()) params.set("item", filters.item.trim());
+    if (filters.request_id.trim()) params.set("request_id", filters.request_id.trim());
+    if (filters.operator_id) params.set("operator_id", filters.operator_id);
+    if (filters.folder_id) params.set("folder_id", filters.folder_id);
     return params.toString();
   }, [filters, historyOffset]);
 
@@ -217,6 +228,8 @@ export default function OperatorSupplyRequestsPanel() {
         total: Number(payload?.total || 0),
         doctor_counts: Array.isArray(payload?.doctor_counts) ? payload.doctor_counts : [],
         item_counts: Array.isArray(payload?.item_counts) ? payload.item_counts : [],
+        completed_count: Number(payload?.completed_count || 0),
+        cancelled_count: Number(payload?.cancelled_count || 0),
       });
     } catch (err) {
       setHistoryError(err instanceof ApiError ? err.message : "Could not load supply request history.");
@@ -285,7 +298,9 @@ export default function OperatorSupplyRequestsPanel() {
   const historyPages = Math.max(1, Math.ceil(history.total / HISTORY_PAGE_SIZE));
   const requestHandlers = {
     onAccept: (request) => patchRequest(request, { status: "accepted" }, "Request accepted."),
+    onEmergencyAccept: (request) => setOverrideTarget({ request, kind: "accept" }),
     onFulfil: (request) => setFulfilmentRequest(request),
+    onEmergencyFulfil: (request) => setOverrideTarget({ request, kind: "fulfil" }),
     onReviewAmendment: (request) => setAmendmentTarget(request),
     onCancel: (request) => {
       setCancelTarget(request);
@@ -506,6 +521,47 @@ export default function OperatorSupplyRequestsPanel() {
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                 />
               </label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Request #
+                <input
+                  type="search"
+                  value={filters.request_id}
+                  onChange={(event) => {
+                    setHistoryOffset(0);
+                    setFilters((current) => ({ ...current, request_id: event.target.value }));
+                  }}
+                  placeholder="ID"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-slate-500">
+                {history.completed_count || 0} completed · {history.cancelled_count || 0} cancelled
+              </p>
+              <a
+                href={`/api/restock-requests/export?${historyQuery.replace("view=history&", "").replace("include_events=1&", "")}`}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
+                onClick={(event) => {
+                  event.preventDefault();
+                  const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                  void fetch(`/api/restock-requests/export?${new URLSearchParams({
+                    ...Object.fromEntries(new URLSearchParams(historyQuery)),
+                  })}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  }).then(async (response) => {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "supply-request-history.csv";
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  });
+                }}
+              >
+                Export CSV
+              </a>
             </div>
 
             {history.doctor_counts.length || history.item_counts.length ? (
@@ -531,7 +587,10 @@ export default function OperatorSupplyRequestsPanel() {
                     {history.item_counts.slice(0, 8).map((row) => (
                       <li key={row.item_name} className="flex justify-between gap-3">
                         <span className="truncate">{row.item_name}</span>
-                        <span className="font-bold tabular-nums">{row.request_count}</span>
+                        <span className="font-bold tabular-nums">
+                          {row.request_count} · qty {row.total_quantity || 0}
+                          {row.total_fulfilled != null ? ` / ${row.total_fulfilled} fulfilled` : ""}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -737,10 +796,33 @@ export default function OperatorSupplyRequestsPanel() {
       <OperatorFulfilmentPanel
         open={Boolean(fulfilmentRequest)}
         request={fulfilmentRequest}
+        emergencyOverride={Boolean(fulfilmentRequest?.__override)}
         onClose={() => setFulfilmentRequest(null)}
         onUpdated={() => {
           void loadActive();
           void loadHistory();
+        }}
+      />
+      <EmergencyOverrideDialog
+        open={Boolean(overrideTarget)}
+        summary={
+          overrideTarget?.kind === "accept"
+            ? `This will accept request #${overrideTarget.request.id}, reserve available warehouse stock using FEFO, and notify the doctor. Use this only if an operator cannot complete the action.`
+            : `This will open fulfilment for request #${overrideTarget?.request?.id || ""} so an administrator can pick, pack, or mark supply ready.`
+        }
+        onClose={() => setOverrideTarget(null)}
+        onConfirm={async (reason) => {
+          const target = overrideTarget;
+          if (!target?.request) return;
+          if (target.kind === "accept") {
+            await patchRequest(
+              target.request,
+              withOperationalOverride(user, { status: "accepted" }, reason),
+              "Request accepted with an emergency override.",
+            );
+            return;
+          }
+          setFulfilmentRequest({ ...target.request, __override: true, __overrideReason: reason });
         }}
       />
       <SupplyRequestDetailDrawer
@@ -749,10 +831,13 @@ export default function OperatorSupplyRequestsPanel() {
         role={role}
         busy={updatingId === detailRequestId}
         onClose={() => setDetailRequestId(null)}
-        onAccept={(request) => requestHandlers.onAccept(request)}
+        onAccept={(request) =>
+          role === "admin" ? requestHandlers.onEmergencyAccept(request) : requestHandlers.onAccept(request)
+        }
         onFulfil={(request) => {
           setDetailRequestId(null);
-          requestHandlers.onFulfil(request);
+          if (role === "admin") requestHandlers.onEmergencyFulfil(request);
+          else requestHandlers.onFulfil(request);
         }}
         onReviewAmendment={(request) => {
           setDetailRequestId(null);

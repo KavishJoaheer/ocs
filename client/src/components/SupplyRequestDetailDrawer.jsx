@@ -156,8 +156,8 @@ export default function SupplyRequestDetailDrawer({
 
   function handleAction(action) {
     if (!action || action.disabled) return;
-    if (action.id === "accept") onAccept?.(request);
-    if (action.id === "fulfil") onFulfil?.(request);
+    if (action.id === "accept" || action.id === "emergency_override_accept") onAccept?.(request);
+    if (action.id === "fulfil" || action.id === "emergency_override_fulfil") onFulfil?.(request);
     if (action.id === "review_amendment") onReviewAmendment?.(request);
     if (action.id === "cancel") onCancel?.(request);
     if (action.id === "receipt") openReceipt();

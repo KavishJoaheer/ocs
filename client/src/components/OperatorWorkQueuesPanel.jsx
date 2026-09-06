@@ -18,6 +18,7 @@ const QUEUE_DEFS = [
   { id: "shortages", label: "Shortages", key: "shortages" },
   { id: "pick_today", label: "Pick today", key: "pick_today" },
   { id: "awaiting_collection", label: "Awaiting collection", key: "awaiting_collection" },
+  { id: "reconciliation_required", label: "Reconciliation required", key: "reconciliation_required" },
   { id: "incoming_shipments", label: "Incoming shipments", key: "incoming_shipments", kind: "shipments" },
   { id: "count_variances", label: "Count variances", key: "count_variances", kind: "variances" },
   { id: "history", label: "History", key: "history", kind: "history" },
@@ -38,7 +39,10 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
   const [amendmentRequest, setAmendmentRequest] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
-  const [history, setHistory] = useState({ requests: [], total: 0 });
+  const [history, setHistory] = useState({ requests: [], total: 0, doctor_counts: [], item_counts: [] });
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [historyFilters, setHistoryFilters] = useState({ status: "", item: "", from: "", to: "" });
+  const HISTORY_PAGE_SIZE = 50;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,10 +50,22 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
       const payload = await api.get("/restock-requests/queues");
       setQueues(payload);
       if (active === "history") {
-        const archived = await api.get("/restock-requests?view=history&include_events=1&limit=50&offset=0");
+        const params = new URLSearchParams({
+          view: "history",
+          include_events: "1",
+          limit: String(HISTORY_PAGE_SIZE),
+          offset: String(historyOffset),
+        });
+        if (historyFilters.status) params.set("status", historyFilters.status);
+        if (historyFilters.item.trim()) params.set("item", historyFilters.item.trim());
+        if (historyFilters.from) params.set("from", historyFilters.from);
+        if (historyFilters.to) params.set("to", historyFilters.to);
+        const archived = await api.get(`/restock-requests?${params.toString()}`);
         setHistory({
           requests: Array.isArray(archived?.requests) ? archived.requests : [],
           total: Number(archived?.total || 0),
+          doctor_counts: Array.isArray(archived?.doctor_counts) ? archived.doctor_counts : [],
+          item_counts: Array.isArray(archived?.item_counts) ? archived.item_counts : [],
         });
       }
     } catch (error) {
@@ -57,7 +73,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
     } finally {
       setLoading(false);
     }
-  }, [active]);
+  }, [active, historyOffset, historyFilters]);
 
   useEffect(() => {
     void load();
@@ -160,10 +176,11 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
           })}
         </div>
 
-        {Number(counts.fulfilment_linkage_required || 0) > 0 ? (
+        {Number(counts.reconciliation_required || counts.fulfilment_linkage_required || 0) > 0 ? (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {counts.fulfilment_linkage_required} legacy request
-            {counts.fulfilment_linkage_required === 1 ? "" : "s"} need fulfilment linkage before collection.
+            {counts.reconciliation_required || counts.fulfilment_linkage_required} request
+            {(counts.reconciliation_required || counts.fulfilment_linkage_required) === 1 ? "" : "s"} need
+            operator confirmation of actual quantities before collection.
           </div>
         ) : null}
 
@@ -195,6 +212,74 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
           </button>
         ) : active === "history" ? (
           <div className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <input
+                type="search"
+                value={historyFilters.item}
+                placeholder="Item or request search"
+                onChange={(event) => {
+                  setHistoryOffset(0);
+                  setHistoryFilters((current) => ({ ...current, item: event.target.value }));
+                }}
+                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
+              />
+              <select
+                value={historyFilters.status}
+                onChange={(event) => {
+                  setHistoryOffset(0);
+                  setHistoryFilters((current) => ({ ...current, status: event.target.value }));
+                }}
+                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
+              >
+                <option value="">Completed & cancelled</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <input
+                type="date"
+                value={historyFilters.from}
+                onChange={(event) => {
+                  setHistoryOffset(0);
+                  setHistoryFilters((current) => ({ ...current, from: event.target.value }));
+                }}
+                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
+              />
+              <input
+                type="date"
+                value={historyFilters.to}
+                onChange={(event) => {
+                  setHistoryOffset(0);
+                  setHistoryFilters((current) => ({ ...current, to: event.target.value }));
+                }}
+                className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm"
+              />
+            </div>
+            {history.doctor_counts?.length || history.item_counts?.length ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Requests by doctor</p>
+                  <ul className="mt-2 space-y-1">
+                    {(history.doctor_counts || []).slice(0, 8).map((row) => (
+                      <li key={row.doctor_id} className="flex justify-between gap-3">
+                        <span>Dr. {row.doctor_name}</span>
+                        <span className="font-bold">{row.request_count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Item frequency</p>
+                  <ul className="mt-2 space-y-1">
+                    {(history.item_counts || []).slice(0, 8).map((row) => (
+                      <li key={row.item_name} className="flex justify-between gap-3">
+                        <span className="truncate">{row.item_name}</span>
+                        <span className="font-bold">{row.request_count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
             {rows.map((row) => (
               <div
                 key={row.id}
@@ -219,6 +304,27 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                 </button>
               </div>
             ))}
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <button
+                type="button"
+                disabled={historyOffset <= 0}
+                onClick={() => setHistoryOffset((value) => Math.max(0, value - HISTORY_PAGE_SIZE))}
+                className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-sm font-semibold disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-slate-500">
+                {history.total} records · page {Math.floor(historyOffset / HISTORY_PAGE_SIZE) + 1}
+              </span>
+              <button
+                type="button"
+                disabled={historyOffset + HISTORY_PAGE_SIZE >= Number(history.total || 0)}
+                onClick={() => setHistoryOffset((value) => value + HISTORY_PAGE_SIZE)}
+                className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-sm font-semibold disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -267,7 +373,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                   >
                     Claim
                   </button>
-                  {row.status === "pending" ? (
+                  {row.status === "pending" && user?.role === "operator" ? (
                     <button
                       type="button"
                       onClick={() => accept(row)}
@@ -275,6 +381,10 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                     >
                       Accept & reserve
                     </button>
+                  ) : row.status === "pending" && user?.role === "admin" ? (
+                    <p className="max-w-[12rem] text-right text-[11px] text-slate-500">
+                      An operator must accept and reserve this request.
+                    </p>
                   ) : (
                     <button
                       type="button"

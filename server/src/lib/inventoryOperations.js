@@ -5,7 +5,7 @@ const { getTodayLocal, toNumber } = require("./utils");
 const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast } = require("./inventoryRealtime");
 const { isEnvTrue } = require("./envFlags");
-const { availableToPromise, consumeAvailableFefo, listImpactedActiveRequests, reservedQuantityForItem } = require("./restockFulfilment");
+const { availableToPromise, consumeAvailableFefo, listImpactedActiveRequests, reduceReservationsForCorrection, reservedQuantityForItem } = require("./restockFulfilment");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 const { isValidIsoCalendarDate } = require("./calendarDate");
 
@@ -318,21 +318,28 @@ function applyExceptionalCorrection({
     return { item, previous, next, change: 0, idempotent: true, movementId: null };
   }
   const impacted = listImpactedActiveRequests(itemId);
+  const blocking = impacted.filter((row) => row.blocking);
+  if (change < 0 && blocking.length) {
+    const error = HttpError(
+      409,
+      "Cannot correct stock reserved by a picked or Supply Ready request. Resolve those requests first.",
+    );
+    error.impacted_requests = impacted;
+    throw error;
+  }
   if (change < 0) {
     const available = availableToPromise(itemId);
-    if (Math.abs(change) > available) {
-      if (!affectReservations) {
-        const error = HttpError(
-          409,
-          `Cannot correct below reserved stock. ${available} unit(s) are available to adjust; ${Math.abs(change)} requested.`,
-        );
-        error.impacted_requests = impacted;
-        throw error;
-      }
+    if (Math.abs(change) > available && !affectReservations) {
+      const error = HttpError(
+        409,
+        `Cannot correct below reserved stock. ${available} unit(s) are available to adjust; ${Math.abs(change)} requested.`,
+      );
+      error.impacted_requests = impacted;
+      throw error;
     }
   }
 
-  return db.transaction(() => {
+  const result = db.transaction(() => {
     const locked = db.prepare("SELECT * FROM inventory WHERE id = ?").get(Number(itemId));
     const lockedPrev = Number(locked.quantity || 0);
     if (lockedPrev === next) {
@@ -340,7 +347,18 @@ function applyExceptionalCorrection({
     }
     const lockedChange = next - lockedPrev;
     let allocations = [];
+    let reservationAdjustments = { reduced: 0, request_ids: [], lines: [] };
     if (lockedChange < 0) {
+      const liveImpacted = listImpactedActiveRequests(itemId);
+      const liveBlocking = liveImpacted.filter((row) => row.blocking);
+      if (liveBlocking.length) {
+        const error = HttpError(
+          409,
+          "Cannot correct stock reserved by a picked or Supply Ready request. Resolve those requests first.",
+        );
+        error.impacted_requests = liveImpacted;
+        throw error;
+      }
       const available = availableToPromise(itemId);
       if (Math.abs(lockedChange) > available) {
         if (!affectReservations) {
@@ -348,30 +366,13 @@ function applyExceptionalCorrection({
             409,
             `Cannot correct below reserved stock. ${available} unit(s) are available to adjust; ${Math.abs(lockedChange)} requested.`,
           );
-          error.impacted_requests = listImpactedActiveRequests(itemId);
+          error.impacted_requests = liveImpacted;
           throw error;
         }
-        const reservations = db
-          .prepare(
-            `
-            SELECT * FROM inventory_reservations
-            WHERE inventory_id = ? AND status = 'active'
-            ORDER BY id ASC
-          `,
-          )
-          .all(Number(itemId));
-        for (const reservation of reservations) {
-          db.prepare(`
-            UPDATE inventory_reservations
-            SET status = 'released', released_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).run(reservation.id);
-          db.prepare(`
-            UPDATE restock_request_fulfillments
-            SET has_shortage = 1, updated_at = CURRENT_TIMESTAMP
-            WHERE request_id = ? AND status IN ('open', 'picking', 'packed')
-          `).run(reservation.request_id);
-        }
+        reservationAdjustments = reduceReservationsForCorrection(itemId, Math.abs(lockedChange) - available, {
+          actor,
+          reason: trimmedReason,
+        });
       }
       const consumeQty = Math.abs(lockedChange);
       const preview = previewAllocations(itemId, consumeQty, { includeExpired: true });
@@ -412,7 +413,9 @@ function applyExceptionalCorrection({
         supporting_note: String(note || "").trim(),
         exceptional: true,
         affect_reservations: Boolean(affectReservations),
-        impacted_requests: impacted,
+        impact_reservations: Boolean(affectReservations),
+        impacted_requests: listImpactedActiveRequests(itemId),
+        reservation_adjustments: reservationAdjustments,
         allocations,
         source_location: "Master Stock",
         destination_location: "Exceptional correction",
@@ -427,9 +430,12 @@ function applyExceptionalCorrection({
       idempotent: false,
       movementId,
       allocations,
-      impacted_requests: impacted,
+      impacted_requests: listImpactedActiveRequests(itemId),
+      reservation_adjustments: reservationAdjustments,
+      notify_request_ids: reservationAdjustments.request_ids || [],
     };
   })();
+  return result;
 }
 
 function recordOpsMovement({
@@ -556,51 +562,74 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
       throw HttpError(400, `${row.item_name || "Row"}: ${errors.join("; ")}`);
     }
   }
-  const transactionId = createTransferTransactionId();
-  const movementIds = [];
+  const seen = new Set();
   for (const row of pending) {
-    const result = upsertOcsFromStaging(row);
-    db.prepare(`
-      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(
-      result.id,
-      Number(row.quantity || 0),
-      Number(row.is_non_expiring || 0) === 1 ? null : row.expiry_date || null,
-      roundCurrency(row.cost_price || 0),
-      Number(row.is_non_expiring || 0) === 1 ? 1 : 0,
-    );
-    const movementId = recordOpsMovement({
-      itemId: result.id,
-      movementType: "in",
-      quantity: Number(row.quantity || 0),
-      previousQuantity: result.previous,
-      nextQuantity: result.next,
-      actionType: "add",
-      note: shipmentId ? `Released from shipment #${shipmentId}` : "Released from staging",
-      userId,
-      skipPublish: true,
-      meta: {
-        shipment_id: shipmentId,
-        staging_id: row.id,
-        transaction_id: transactionId,
-        performed_by_user_id: userId,
-        performed_by_name: actor.displayName || "",
-        performed_by_role: actor.role || "",
-        reference_type: "shipment",
-        reference_id: shipmentId,
-        source_location: "Incoming shipment",
-        destination_location: "Master Stock",
-      },
-    });
-    movementIds.push(movementId);
-    db.prepare(`
-      UPDATE inventory_staging
-      SET status = 'released', released_by_user_id = ?, released_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'pending'
-    `).run(userId, row.id);
+    const id = Number(row.id);
+    if (seen.has(id)) {
+      throw HttpError(400, `Duplicate row_ids are not allowed: ${id}.`);
+    }
+    seen.add(id);
   }
-  return { transactionId, movementIds, released: pending.length };
+  return db.transaction(() => {
+    const transactionId = createTransferTransactionId();
+    const movementIds = [];
+    const releasedIds = [];
+    for (const row of pending) {
+      const claimed = db
+        .prepare(
+          `
+          UPDATE inventory_staging
+          SET status = 'released', released_by_user_id = ?, released_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND status = 'pending'
+        `,
+        )
+        .run(userId, row.id);
+      if (!claimed.changes) {
+        const current = db.prepare("SELECT status FROM inventory_staging WHERE id = ?").get(row.id);
+        if (String(current?.status) === "released") {
+          continue;
+        }
+        throw HttpError(409, `Shipment line #${row.id} is no longer pending and cannot be released.`);
+      }
+      const result = upsertOcsFromStaging(row);
+      db.prepare(`
+        INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        result.id,
+        Number(row.quantity || 0),
+        Number(row.is_non_expiring || 0) === 1 ? null : row.expiry_date || null,
+        roundCurrency(row.cost_price || 0),
+        Number(row.is_non_expiring || 0) === 1 ? 1 : 0,
+      );
+      const movementId = recordOpsMovement({
+        itemId: result.id,
+        movementType: "in",
+        quantity: Number(row.quantity || 0),
+        previousQuantity: result.previous,
+        nextQuantity: result.next,
+        actionType: "add",
+        note: shipmentId ? `Released from shipment #${shipmentId}` : "Released from staging",
+        userId,
+        skipPublish: true,
+        meta: {
+          shipment_id: shipmentId,
+          staging_id: row.id,
+          transaction_id: transactionId,
+          performed_by_user_id: userId,
+          performed_by_name: actor.displayName || "",
+          performed_by_role: actor.role || "",
+          reference_type: "shipment",
+          reference_id: shipmentId,
+          source_location: "Incoming shipment",
+          destination_location: "Master Stock",
+        },
+      });
+      movementIds.push(movementId);
+      releasedIds.push(Number(row.id));
+    }
+    return { transactionId, movementIds, released: releasedIds.length, released_ids: releasedIds };
+  })();
 }
 
 function serializeShipmentLine(line) {
@@ -770,17 +799,35 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
   if (shipment.status === "released") {
     return { shipment, idempotent: true, receipt: shipmentReceipt(shipment) };
   }
-  const normalizedIds = Array.isArray(rowIds) ? rowIds.map(Number).filter((id) => Number.isInteger(id) && id > 0) : [];
+  const incomingIds = Array.isArray(rowIds) ? rowIds : [];
+  const normalizedIds = incomingIds
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0);
   if (requireSelection) {
-    if (!normalizedIds.length) {
+    if (!incomingIds.length) {
       throw HttpError(400, "row_ids is required and must contain at least one shipment line.");
+    }
+    const invalid = incomingIds.filter((id) => !Number.isInteger(Number(id)) || Number(id) <= 0);
+    if (invalid.length) {
+      throw HttpError(400, "row_ids must be a non-empty array of positive integers.");
+    }
+    const selectedIds = incomingIds.map(Number);
+    const seen = new Set();
+    const duplicates = [];
+    for (const id of selectedIds) {
+      if (seen.has(id)) duplicates.push(id);
+      seen.add(id);
+    }
+    if (duplicates.length) {
+      throw HttpError(400, `Duplicate row_ids are not allowed: ${[...new Set(duplicates)].join(", ")}.`);
     }
     const byId = new Map((shipment.lines || []).map((line) => [Number(line.id), line]));
     const missing = [];
     const ineligible = [];
     const alreadyReleased = [];
+    const excluded = [];
     const selectedPending = [];
-    for (const id of normalizedIds) {
+    for (const id of selectedIds) {
       const line = byId.get(id);
       if (!line) {
         missing.push(id);
@@ -788,6 +835,10 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
       }
       if (String(line.status) === "released") {
         alreadyReleased.push(id);
+        continue;
+      }
+      if (String(line.status) === "excluded" || String(line.status) === "cancelled") {
+        excluded.push(id);
         continue;
       }
       if (String(line.status) !== "pending" || (line.validation_errors || stagingRowErrors(line)).length) {
@@ -802,8 +853,17 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
     if (ineligible.length) {
       throw HttpError(400, `Selected row(s) are not eligible for release: ${ineligible.join(", ")}.`);
     }
-    if (!selectedPending.length && alreadyReleased.length === normalizedIds.length) {
-      return { shipment, idempotent: true, receipt: shipmentReceipt(shipment), released: 0 };
+    if (!selectedPending.length && alreadyReleased.length === selectedIds.length) {
+      return {
+        shipment,
+        idempotent: true,
+        released: 0,
+        released_ids: [],
+        already_released: alreadyReleased,
+        invalid: [],
+        excluded,
+        receipt: shipmentReceipt(shipment),
+      };
     }
     if (!selectedPending.length) {
       throw HttpError(400, "No valid pending rows selected for release.");
@@ -828,6 +888,11 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
       shipment: next,
       idempotent: false,
       transactionId: released.transactionId,
+      released: released.released,
+      released_ids: released.released_ids,
+      already_released: alreadyReleased,
+      invalid: ineligible,
+      excluded,
       receipt: shipmentReceipt(next, released),
     };
   }
@@ -1024,7 +1089,7 @@ function csvShipmentTemplate() {
 function canRevealStocktakeSystem(session, { role } = {}) {
   const status = String(session?.status || "");
   if (["draft", "in_progress"].includes(status)) return false;
-  if (!["submitted", "approved", "rejected", "applied"].includes(status)) return false;
+  if (!["submitted", "approved", "rejected", "applied", "recount_required"].includes(status)) return false;
   return role === "admin" || role === "operator";
 }
 
@@ -1123,13 +1188,19 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
     progress_percent: items.length ? Math.round((counted / items.length) * 100) : 0,
     last_saved_at: session.updated_at || session.started_at || session.created_at,
     discrepancy_count: discrepancyItems.length,
-    open_variance_qty: ["submitted", "approved", "applied"].includes(session.status) ? openVarianceQty : null,
-    open_variance_value: ["submitted", "approved", "applied"].includes(session.status)
+    conflict_count: items.filter((row) => row.conflict_status === "recount_required").length,
+    open_variance_qty: ["submitted", "approved", "applied", "recount_required"].includes(session.status)
+      ? openVarianceQty
+      : null,
+    open_variance_value: ["submitted", "approved", "applied", "recount_required"].includes(session.status)
       ? openVarianceValue
       : null,
     created_by_name: resolveAuditActor({ userId: session.created_by_user_id }),
     submitted_by_name: resolveAuditActor({ userId: session.submitted_by_user_id }),
     reviewed_by_name: resolveAuditActor({ userId: session.reviewed_by_user_id }),
+    approved_by_user_id: session.reviewed_by_user_id || null,
+    approved_at: session.reviewed_at || null,
+    approved_by_name: resolveAuditActor({ userId: session.reviewed_by_user_id }),
     applied_by_name: resolveAuditActor({ userId: session.applied_by_user_id }),
   };
 }
@@ -1184,7 +1255,7 @@ function listStocktakeSessions() {
 }
 
 function stocktakeQueueStats(sessions = listStocktakeSessions()) {
-  const active = sessions.filter((row) => ["draft", "in_progress"].includes(row.status));
+  const active = sessions.filter((row) => ["draft", "in_progress", "recount_required"].includes(row.status));
   const awaitingApproval = sessions.filter((row) => row.status === "submitted");
   const awaitingApplication = sessions.filter((row) => row.status === "approved");
   const openVarianceValue = roundCurrency(
@@ -1208,7 +1279,7 @@ function parseSubmittedPhysicalCount(value) {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (trimmed === "") {
-      return { kind: "invalid", error: "Physical counts cannot be blank." };
+      return { kind: "missing" };
     }
     if (!/^\d+$/.test(trimmed)) {
       return { kind: "invalid", error: "Physical counts must be whole numbers of zero or more." };
@@ -1227,7 +1298,7 @@ function parseSubmittedPhysicalCount(value) {
 function saveStocktakeCounts(sessionId, lines, userId) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stocktake session not found.");
-  if (!["draft", "in_progress"].includes(session.status)) {
+  if (!["draft", "in_progress", "recount_required"].includes(session.status)) {
     throw HttpError(400, "This stocktake session can no longer be edited.");
   }
   db.transaction(() => {
@@ -1254,6 +1325,8 @@ function saveStocktakeCounts(sessionId, lines, userId) {
           variance = ? - ?,
           conflict_status = '',
           conflict_reason = '',
+          conflict_live_quantity = NULL,
+          conflict_detected_at = NULL,
           counted_by_user_id = ?,
           counted_at = CURRENT_TIMESTAMP,
           reason = ?,
@@ -1272,19 +1345,106 @@ function saveStocktakeCounts(sessionId, lines, userId) {
         line.id,
       );
     }
-    db.prepare(`
-      UPDATE inventory_stocktake_sessions
-      SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(sessionId);
+    if (session.status !== "recount_required") {
+      db.prepare(`
+        UPDATE inventory_stocktake_sessions
+        SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(sessionId);
+    } else {
+      db.prepare(`
+        UPDATE inventory_stocktake_sessions
+        SET updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(sessionId);
+    }
   })();
   return getStocktakeSession(sessionId, { role: "operator" });
+}
+
+function lastMovementAt(itemId) {
+  return (
+    db
+      .prepare(
+        `
+        SELECT created_at
+        FROM inventory_movements
+        WHERE item_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      )
+      .get(Number(itemId))?.created_at || null
+  );
+}
+
+function collectStocktakeConflicts(items) {
+  const conflicts = [];
+  for (const line of items) {
+    if (line.physical_quantity === null || line.physical_quantity === undefined) {
+      continue;
+    }
+    const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
+    if (!item) {
+      conflicts.push({
+        line_id: line.id,
+        reason: "A counted item is no longer available.",
+      });
+      continue;
+    }
+    const expectedVersion = Number(line.expected_row_version ?? 0);
+    const expectedQty = Number(line.expected_quantity ?? line.system_quantity ?? 0);
+    const liveVersion = Number(item.row_version || 1);
+    const liveQty = Number(item.quantity || 0);
+    if ((expectedVersion && liveVersion !== expectedVersion) || liveQty !== expectedQty) {
+      const movedAt = lastMovementAt(item.id);
+      const reason = `Stock changed after count (expected qty ${expectedQty} v${expectedVersion || "?"}, now ${liveQty} v${liveVersion}${movedAt ? ` at ${movedAt}` : ""}). Recount required.`;
+      conflicts.push({
+        line_id: line.id,
+        inventory_id: item.id,
+        item_name: item.item_name,
+        reason,
+        baseline_quantity: expectedQty,
+        live_quantity: liveQty,
+        movement_at: movedAt,
+      });
+    }
+  }
+  return conflicts;
+}
+
+function persistRecountRequired(sessionId, conflicts) {
+  db.transaction(() => {
+    for (const conflict of conflicts) {
+      db.prepare(`
+        UPDATE inventory_stocktake_session_items
+        SET
+          conflict_status = 'recount_required',
+          conflict_reason = ?,
+          conflict_live_quantity = ?,
+          conflict_detected_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(conflict.reason, conflict.live_quantity ?? null, conflict.line_id);
+    }
+    db.prepare(`
+      UPDATE inventory_stocktake_sessions
+      SET
+        status = 'recount_required',
+        review_reason = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      `Application blocked: ${conflicts.length} line(s) changed after they were counted.`,
+      sessionId,
+    );
+  })();
 }
 
 function submitStocktakeSession(sessionId, userId) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stocktake session not found.");
-  if (!["draft", "in_progress"].includes(session.status)) {
+  if (!["draft", "in_progress", "recount_required"].includes(session.status)) {
     throw HttpError(409, "This session has already been submitted.");
   }
   const missing = Number(
@@ -1302,6 +1462,17 @@ function submitStocktakeSession(sessionId, userId) {
   const items = db
     .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
     .all(sessionId);
+  const conflicts = collectStocktakeConflicts(items);
+  if (conflicts.length) {
+    persistRecountRequired(sessionId, conflicts);
+    const error = HttpError(
+      409,
+      `Stocktake cannot be submitted because ${conflicts.length} line(s) changed after they were counted.`,
+    );
+    error.conflicts = conflicts;
+    error.session = getStocktakeSession(sessionId, { role: "operator" });
+    throw error;
+  }
   const hasVariance = items.some((row) => Number(row.variance) !== 0);
   if (!hasVariance) {
     db.prepare(`
@@ -1311,10 +1482,11 @@ function submitStocktakeSession(sessionId, userId) {
         submitted_at = CURRENT_TIMESTAMP,
         submitted_by_user_id = ?,
         applied_at = CURRENT_TIMESTAMP,
+        applied_by_user_id = ?,
         applied_transaction_id = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(userId, `ST-ZERO-${sessionId}`, sessionId);
+    `).run(userId, userId, `ST-ZERO-${sessionId}`, sessionId);
     return getStocktakeSession(sessionId, { role: "operator" });
   }
   db.prepare(`
@@ -1374,7 +1546,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
   if (session.status === "applied" && session.applied_transaction_id) {
     return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
   }
-  if (session.status === "rejected" || session.status === "cancelled") {
+  if (session.status === "rejected" || session.status === "cancelled" || session.status === "recount_required") {
     throw HttpError(400, "This session cannot be applied.");
   }
   if (session.status !== "approved" && session.status !== "applied") {
@@ -1387,54 +1559,44 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
     }
   }
 
+  const items = db
+    .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
+    .all(sessionId);
+  const conflicts = collectStocktakeConflicts(items);
+  if (conflicts.length) {
+    persistRecountRequired(sessionId, conflicts);
+    const error = HttpError(
+      409,
+      `Stocktake cannot be applied because ${conflicts.length} line(s) changed after they were counted.`,
+    );
+    error.conflicts = conflicts;
+    error.session = getStocktakeSession(sessionId, reveal);
+    throw error;
+  }
+
+  try {
   return db.transaction(() => {
     const locked = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
     if (locked.status === "applied" && locked.applied_transaction_id) {
       return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
     }
-    if (locked.status === "rejected" || locked.status === "cancelled") {
+    if (["rejected", "cancelled", "recount_required"].includes(String(locked.status))) {
       throw HttpError(400, "This session cannot be applied.");
     }
-    const transactionId = `ST-${sessionId}-${Date.now().toString(36).toUpperCase()}`;
-    const items = db
-      .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
-      .all(sessionId);
-    const conflicts = [];
-    for (const line of items) {
-      const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
-      if (!item) {
-        conflicts.push({
-          line_id: line.id,
-          reason: "A counted item is no longer available.",
-        });
-        continue;
-      }
-      const expectedVersion = Number(line.expected_row_version ?? 0);
-      const expectedQty = Number(line.expected_quantity ?? line.system_quantity ?? 0);
-      const liveVersion = Number(item.row_version || 1);
-      const liveQty = Number(item.quantity || 0);
-      if (
-        (expectedVersion && liveVersion !== expectedVersion) ||
-        liveQty !== expectedQty
-      ) {
-        const reason = `Stock changed after count (expected qty ${expectedQty} v${expectedVersion || "?"}, now ${liveQty} v${liveVersion}). Recount required.`;
-        conflicts.push({ line_id: line.id, item_name: item.item_name, reason });
-        db.prepare(`
-          UPDATE inventory_stocktake_session_items
-          SET conflict_status = 'recount_required', conflict_reason = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(reason, line.id);
-      }
-    }
-    if (conflicts.length) {
-      const error = HttpError(
-        409,
-        `Stocktake cannot be applied because ${conflicts.length} line(s) changed after they were counted.`,
-      );
-      error.conflicts = conflicts;
+    const liveConflicts = collectStocktakeConflicts(
+      db.prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?").all(sessionId),
+    );
+    if (liveConflicts.length) {
+      const error = HttpError(409, "Stock changed after count. Recount required.");
+      error.conflicts = liveConflicts;
+      error.persistRecount = true;
       throw error;
     }
-    for (const line of items) {
+    const transactionId = `ST-${sessionId}-${Date.now().toString(36).toUpperCase()}`;
+    const applyItems = db
+      .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
+      .all(sessionId);
+    for (const line of applyItems) {
       const variance = Number(line.variance);
       if (!Number.isFinite(variance) || variance === 0) continue;
       const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
@@ -1503,6 +1665,13 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
     publishInventoryResyncBroadcast({ reason: "stocktake_applied" });
     return { session: getStocktakeSession(sessionId, reveal), idempotent: false, transactionId };
   })();
+  } catch (error) {
+    if (error?.persistRecount && Array.isArray(error.conflicts) && error.conflicts.length) {
+      persistRecountRequired(sessionId, error.conflicts);
+      error.session = getStocktakeSession(sessionId, reveal);
+    }
+    throw error;
+  }
 }
 
 function doctorMayViewReceipt(transactionId, doctorId) {

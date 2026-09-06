@@ -17,6 +17,18 @@ export default defineConfig({
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
       },
+      integration: {
+        configureCustomSWViteBuild(viteConfig) {
+          viteConfig.build = {
+            ...viteConfig.build,
+            codeSplitting: false,
+          };
+          const output = viteConfig.build?.rollupOptions?.output;
+          if (output && !Array.isArray(output)) {
+            delete output.inlineDynamicImports;
+          }
+        },
+      },
       devOptions: {
         enabled: true,
         type: "module",

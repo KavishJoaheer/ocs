@@ -2560,6 +2560,7 @@ export default function InventoryPage() {
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const [logisticsTab, setLogisticsTab] = useState(user.role === "operator" ? "queues" : "stock");
+  const inventoryTabListRef = useRef(null);
   const [emergencyRestockEnabled, setEmergencyRestockEnabled] = useState(false);
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
@@ -2663,9 +2664,10 @@ export default function InventoryPage() {
     () => ({
       low: items.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
       near: items.filter((item) => Boolean(item.is_near_expiry)).length,
-      missing: items.filter((item) => !item.expiry_date).length,
+      missing: items.filter((item) => Boolean(item.missing_expiry)).length,
+      reconciliation: Number(data?.tab_summaries?.stock?.reconciliation_required || 0),
     }),
-    [items],
+    [items, data?.tab_summaries?.stock?.reconciliation_required],
   );
   const bagItems = useMemo(
     () => (isDoctor ? data?.my_stock || [] : items),
@@ -2934,6 +2936,11 @@ export default function InventoryPage() {
     setSearchParams(nextParams, { replace: true });
   }, [isDoctor, data, doctorRestockCandidates, searchParams, setSearchParams]);
 
+  useEffect(() => {
+    const selected = inventoryTabListRef.current?.querySelector('[aria-selected="true"]');
+    selected?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [logisticsTab]);
+
   const unpricedProductKeys = useMemo(
     () => data?.tab_summaries?.bags?.unpriced_product_keys || [],
     [data?.tab_summaries?.bags?.unpriced_product_keys],
@@ -2949,7 +2956,7 @@ export default function InventoryPage() {
       .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
       .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
       .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry))
-      .filter((item) => !showMissingExpiryOnly || !item.expiry_date)
+      .filter((item) => !showMissingExpiryOnly || Boolean(item.missing_expiry))
       .filter((item) => {
         if (!showUnpricedOnly) return true;
         if (unpricedFromBags && unpricedKeys.size) {
@@ -4001,11 +4008,13 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs ? (
-        <div
-          role="tablist"
-          aria-label="Inventory sections"
-          className="grid grid-cols-4 gap-1 sm:gap-2 lg:flex lg:overflow-visible"
-        >
+        <div className="relative">
+          <div
+            ref={inventoryTabListRef}
+            role="tablist"
+            aria-label="Inventory sections"
+            className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:thin]"
+          >
           {[
             ...(isOperator ? [{ id: "queues", label: "Work queues", shortLabel: "Queues" }] : []),
             { id: "stock", label: isOperator ? "Warehouse stock" : "Stock", shortLabel: "Stock" },
@@ -4020,14 +4029,13 @@ export default function InventoryPage() {
               aria-selected={logisticsTab === tab.id}
               aria-current={logisticsTab === tab.id ? "page" : undefined}
               onClick={() => setLogisticsTab(tab.id)}
-              className={`inline-flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-full px-1.5 text-[11px] font-semibold transition sm:px-3 sm:text-sm lg:shrink-0 lg:px-4 ${
+              className={`inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-1 rounded-full px-3 text-sm font-semibold transition ${
                 logisticsTab === tab.id
-                  ? "bg-[#2d8f98] text-white shadow-sm"
+                  ? "bg-[#2d8f98] text-white shadow-sm ring-2 ring-[#2d8f98] ring-offset-2"
                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <span className="truncate lg:hidden">{tab.shortLabel || tab.label}</span>
-              <span className="hidden lg:inline">{tab.label}</span>
+              <span>{tab.label}</span>
               {tab.badge > 0 ? (
                 <span
                   className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
@@ -4039,6 +4047,8 @@ export default function InventoryPage() {
               ) : null}
             </button>
           ))}
+          </div>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
         </div>
       ) : null}
 
@@ -4211,6 +4221,35 @@ export default function InventoryPage() {
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showMissingExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Missing expiry ({chaseCounts.missing})
+            </button>
+            {chaseCounts.reconciliation > 0 ? (
+              <button
+                type="button"
+                onClick={() => setLogisticsTab("queues")}
+                className="min-h-11 rounded-2xl border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-900"
+              >
+                Reconciliation required ({chaseCounts.reconciliation})
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                void fetch("/api/inventory/data-quality.csv", {
+                  headers: token ? { Authorization: `Bearer ${token}` } : {},
+                }).then(async (response) => {
+                  const blob = await response.blob();
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = "inventory-data-quality.csv";
+                  link.click();
+                  URL.revokeObjectURL(url);
+                });
+              }}
+              className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+            >
+              Export data-quality CSV
             </button>
             {isAdmin ? (
               <button
