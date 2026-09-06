@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ClipboardList, Inbox, Package, TimerReset, Truck } from "lucide-react";
+import { AlertTriangle, ClipboardList, Package, TimerReset, Truck } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import SectionCard from "./SectionCard.jsx";
@@ -10,6 +10,7 @@ import { api } from "../lib/api.js";
 import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
 import { formatSupplyRequestCollectionDay } from "../lib/supplyRequests.js";
 import { cx } from "../lib/utils.js";
+import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
 
 const QUEUE_DEFS = [
   { id: "new_requests", label: "New requests", key: "new_requests" },
@@ -35,6 +36,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   const [loading, setLoading] = useState(false);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
   const [amendmentRequest, setAmendmentRequest] = useState(null);
+  const [detailRequestId, setDetailRequestId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,6 +62,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   }, [load]);
 
   const counts = queues?.counts || {};
+  const waitingTotal = QUEUE_DEFS.reduce((sum, queue) => sum + Number(counts[queue.key] || 0), 0);
   const rows = useMemo(() => {
     if (!queues) return [];
     return queues[active] || [];
@@ -110,13 +113,12 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
         title="Work queues"
         subtitle="Accept, pick and dispatch supply requests without browsing the full catalogue."
         actions={
-          <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#2d8f98]/10 px-3 py-1.5 text-xs font-bold text-[#2d8f98]">
-            <Inbox className="size-3.5" />
-            Live
+          <span className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-[#2d8f98]/10 px-3 py-1.5 text-xs font-bold text-[#2d8f98]">
+            {waitingTotal} waiting
           </span>
         }
       >
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
           {QUEUE_DEFS.map((queue) => {
             const count = Number(counts[queue.key] || 0);
             return (
@@ -125,7 +127,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                 type="button"
                 onClick={() => setActive(queue.id)}
                 className={cx(
-                  "inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition",
+                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-xs font-semibold transition",
                   active === queue.id
                     ? "bg-[#2d8f98] text-white"
                     : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
@@ -206,11 +208,18 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setDetailRequestId(row.id)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
+                  >
+                    View details
+                  </button>
                   <button
                     type="button"
                     onClick={() => claim(row)}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600"
                   >
                     Claim
                   </button>
@@ -218,7 +227,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                     <button
                       type="button"
                       onClick={() => accept(row)}
-                      className="rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white"
+                      className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
                     >
                       Accept & reserve
                     </button>
@@ -226,7 +235,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                     <button
                       type="button"
                       onClick={() => openQueueAction(row)}
-                      className="inline-flex items-center gap-1 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white"
+                      className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
                     >
                       {row.status === "ready" ? <Truck className="size-3.5" /> : <TimerReset className="size-3.5" />}
                       {active === "changes" ? "Review changes" : "Open fulfilment"}
@@ -249,6 +258,12 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
         request={amendmentRequest}
         onClose={() => setAmendmentRequest(null)}
         onReviewed={load}
+      />
+      <SupplyRequestDetailDrawer
+        open={Boolean(detailRequestId)}
+        requestId={detailRequestId}
+        role={user?.role === "admin" ? "admin" : "operator"}
+        onClose={() => setDetailRequestId(null)}
       />
     </>
   );

@@ -4,7 +4,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import RestockRequestModal from "../components/RestockRequestModal.jsx";
+import SupplyRequestDetailDrawer from "../components/SupplyRequestDetailDrawer.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
 import { api, ApiError } from "../lib/api.js";
@@ -96,6 +96,7 @@ export default function SupplyRequestsPage() {
   const [updatingId, setUpdatingId] = useState(null);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [detailRequestId, setDetailRequestId] = useState(null);
 
   const historyParams = useMemo(
     () => ({ limit: HISTORY_PAGE_SIZE, offset: historyOffset }),
@@ -435,12 +436,19 @@ export default function SupplyRequestsPage() {
                               request,
                             })
                           }
-                          className="w-full rounded-xl bg-ocs-teal py-2.5 text-xs font-bold text-white transition active:scale-[0.98] disabled:opacity-60"
+                          className="w-full min-h-11 rounded-xl bg-ocs-teal py-2.5 text-xs font-bold text-white transition active:scale-[0.98] disabled:opacity-60"
                         >
                           {busy ? "Confirming…" : "Supply Collected"}
                         </button>
                       </div>
                     ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setDetailRequestId(request.id)}
+                      className="mt-1 w-full min-h-11 rounded-xl border border-gray-200 py-2.5 text-xs font-bold text-gray-700"
+                    >
+                      View details
+                    </button>
                   </article>
                 );
               })}
@@ -489,6 +497,13 @@ export default function SupplyRequestsPage() {
                 ) : null}
                 <RequestTimeline request={request} />
                 <AmendmentHistory amendments={request.amendments} />
+                <button
+                  type="button"
+                  onClick={() => setDetailRequestId(request.id)}
+                  className="min-h-11 rounded-xl border border-gray-200 py-2.5 text-xs font-bold text-gray-700"
+                >
+                  View details
+                </button>
               </article>
             ))}
             {historyTotal > HISTORY_PAGE_SIZE ? (
@@ -563,6 +578,13 @@ export default function SupplyRequestsPage() {
               )
             : null
         }
+      />
+
+      <SupplyRequestDetailDrawer
+        open={Boolean(detailRequestId)}
+        requestId={detailRequestId}
+        role="doctor"
+        onClose={() => setDetailRequestId(null)}
       />
     </>
   );

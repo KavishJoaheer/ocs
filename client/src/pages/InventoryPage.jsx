@@ -32,6 +32,22 @@ import InventoryCsvImport from "../components/InventoryCsvImport.jsx";
 import InventoryStocktakePanel from "../components/InventoryStocktakePanel.jsx";
 import OperatorSupplyRequestsPanel from "../components/OperatorSupplyRequestsPanel.jsx";
 import OperatorWorkQueuesPanel from "../components/OperatorWorkQueuesPanel.jsx";
+import AddStockModal from "../components/inventory/AddStockModal.jsx";
+import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
+import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
+import InventoryTabSummaries from "../components/inventory/InventoryTabSummaries.jsx";
+import ItemEditorModal from "../components/inventory/ItemEditorModal.jsx";
+import WriteOffStockModal from "../components/inventory/WriteOffStockModal.jsx";
+import {
+  canApplyExceptionalCorrection,
+  canArchiveCatalogueItem,
+  canReceiveWarehouseStock,
+  canTransferToDoctorBag,
+  canWriteOffWarehouseStock,
+  isAdminUser,
+  isOperatorUser,
+  withOperationalOverride,
+} from "../lib/inventoryAccess.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api, ApiError } from "../lib/api.js";
@@ -211,7 +227,7 @@ function InventoryPeriodFilter({ preset, anchorDate, onPresetChange, onAnchorDat
           type="button"
           onClick={() => onPresetChange(opt.id)}
           className={cx(
-            "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+            "min-h-11 rounded-xl px-3 text-xs font-semibold transition",
             preset === opt.id
               ? "bg-[#2d8f98] text-white shadow-sm"
               : "border border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900",
@@ -339,184 +355,6 @@ function resolveItemFolderId(item, folders = []) {
   return item.folder_id ? String(item.folder_id) : "";
 }
 
-function itemFormState(item, folders = []) {
-  return {
-    item_name: item?.item_name ?? "",
-    folder_id: resolveItemFolderId(item, folders),
-    attributes: item?.attributes ?? "",
-    moa_notes: item?.moa_notes ?? "",
-    quantity: String(item?.quantity ?? 0),
-    minimum_quantity: String(item?.minimum_quantity ?? 0),
-    unit: item?.unit ?? "unit",
-    cost_price: String(item?.cost_price ?? 0),
-    selling_price: String(item?.selling_price ?? 0),
-    expiry_date: item?.expiry_date ?? "",
-    adjustment_note: "",
-  };
-}
-
-function ItemModal({ open, item, folders, isSaving, lockMasterFields = false, bagSettingsOnly = false, onClose, onSubmit }) {
-  const [form, setForm] = useState(() => itemFormState(item, folders));
-  const foldersRef = useRef(folders);
-  useEffect(() => {
-    foldersRef.current = folders;
-  }, [folders]);
-
-  useEffect(() => {
-    if (open) setForm(itemFormState(item, foldersRef.current));
-  }, [item, open]);
-
-  const masterReadOnly = lockMasterFields;
-  const fieldClass = (locked) =>
-    cx(
-      "w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition",
-      locked ? "cursor-not-allowed bg-slate-100 text-slate-600" : "bg-slate-50",
-    );
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={bagSettingsOnly ? "Bag settings" : item ? "Edit stock item" : "Add stock item"}
-      description={
-        bagSettingsOnly
-          ? "Update the minimum/par quantity for this bag item. Quantity changes through documented stock movements only."
-          : "Save quantity, pricing, and expiry details."
-      }
-      size="xl"
-      innerScroll={false}
-    >
-      <form
-        className="flex min-h-0 flex-1 flex-col"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const payload = bagSettingsOnly
-            ? { minimum_quantity: Number(form.minimum_quantity || 0) }
-            : {
-                ...form,
-                folder_id: Number(form.folder_id || 0),
-                quantity: Number(form.quantity || 0),
-                minimum_quantity: Number(form.minimum_quantity || 0),
-                cost_price: Number(form.cost_price || 0),
-                selling_price: Number(form.selling_price || 0),
-              };
-          if (!item) delete payload.adjustment_note;
-          onSubmit(payload);
-        }}
-      >
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-24 pr-1">
-        {bagSettingsOnly ? (
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Minimum / par quantity</span>
-            <input required min="0" type="number" name="minimum_quantity" value={form.minimum_quantity} onChange={(event) => setForm((prev) => ({ ...prev, minimum_quantity: event.target.value }))} className={fieldClass(false)} />
-          </label>
-        ) : (
-        <>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Item Name</span>
-            <input
-              required
-              name="item_name"
-              value={form.item_name}
-              readOnly={masterReadOnly}
-              onChange={(event) => setForm((prev) => ({ ...prev, item_name: event.target.value }))}
-              className={fieldClass(masterReadOnly)}
-            />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Folder</span>
-            <select
-              required
-              name="folder_id"
-              value={form.folder_id}
-              disabled={masterReadOnly}
-              onChange={(event) => setForm((prev) => ({ ...prev, folder_id: event.target.value }))}
-              className={fieldClass(masterReadOnly)}
-            >
-              <option value="">Select folder</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={String(folder.id)}>{folder.name}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Attributes</span>
-            <input name="attributes" value={form.attributes} onChange={(event) => setForm((prev) => ({ ...prev, attributes: event.target.value }))} className={fieldClass(false)} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Expiry Date</span>
-            <input type="date" name="expiry_date" value={form.expiry_date} readOnly={masterReadOnly} onChange={(event) => setForm((prev) => ({ ...prev, expiry_date: event.target.value }))} className={fieldClass(masterReadOnly)} />
-          </label>
-        </div>
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">MOA Notes</span>
-          <textarea rows="3" name="moa_notes" value={form.moa_notes} onChange={(event) => setForm((prev) => ({ ...prev, moa_notes: event.target.value }))} className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition" />
-        </label>
-        <div className="grid gap-4 md:grid-cols-3">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Current Quantity</span>
-            <input required min="0" type="number" name="quantity" value={form.quantity} readOnly={masterReadOnly} onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))} className={fieldClass(masterReadOnly)} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Minimum Quantity</span>
-            <input required min="0" type="number" name="minimum_quantity" value={form.minimum_quantity} onChange={(event) => setForm((prev) => ({ ...prev, minimum_quantity: event.target.value }))} className={fieldClass(false)} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Unit</span>
-            <input required name="unit" value={form.unit} readOnly={masterReadOnly} onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))} className={fieldClass(masterReadOnly)} />
-          </label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Cost Price (Rs)</span>
-            <input
-              required
-              min="0"
-              step="0.01"
-              type="number"
-              name="cost_price"
-              value={form.cost_price}
-              readOnly={masterReadOnly}
-              onChange={(event) => setForm((prev) => ({ ...prev, cost_price: event.target.value }))}
-              className={fieldClass(masterReadOnly)}
-            />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Selling Price (Rs)</span>
-            <input
-              required
-              min="0"
-              step="0.01"
-              type="number"
-              name="selling_price"
-              value={form.selling_price}
-              readOnly={masterReadOnly}
-              onChange={(event) => setForm((prev) => ({ ...prev, selling_price: event.target.value }))}
-              className={fieldClass(masterReadOnly)}
-            />
-          </label>
-        </div>
-        {item ? (
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Adjustment Note</span>
-            <input name="adjustment_note" value={form.adjustment_note} onChange={(event) => setForm((prev) => ({ ...prev, adjustment_note: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
-          </label>
-        ) : null}
-        </>
-        )}
-        </div>
-        <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 py-4">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : bagSettingsOnly ? "Save settings" : item ? "Update Item" : "Add Item"}</button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 function ActionModal({ open, item, type, isSaving, onClose, onSubmit }) {
   const [quantity, setQuantity] = useState("1");
   const [note, setNote] = useState("");
@@ -574,258 +412,6 @@ function ActionModal({ open, item, type, isSaving, onClose, onSubmit }) {
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
           <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSaving ? "Saving..." : title}</button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function AddStockModal({ open, item, isSaving, onClose, onSubmit }) {
-  const [quantity, setQuantity] = useState("1");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [costPrice, setCostPrice] = useState("0.00");
-  const [syncedDeps, setSyncedDeps] = useState({ open, item });
-
-  if (syncedDeps.open !== open || syncedDeps.item !== item) {
-    setSyncedDeps({ open, item });
-    if (open) {
-      setQuantity("1");
-      setExpiryDate(item?.expiry_date || "");
-      setCostPrice(String(item?.cost_price ?? 0));
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={`Receive stock${item ? ` - ${item.item_name}` : ""}`}
-      description="Add a batch to OCS. Quantity and expiry are required so FEFO can track it."
-      size="lg"
-      innerScroll={false}
-    >
-      <form
-        className="flex min-h-0 w-full flex-1 flex-col"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const qty = Number(quantity || 0);
-          const cost = Number(costPrice || 0);
-          if (!Number.isInteger(qty) || qty <= 0) return toast.error("Quantity must be a whole number greater than 0.");
-          if (!expiryDate) return toast.error("Set the batch expiry date.");
-          if (cost < 0) return toast.error("Cost price must be zero or more.");
-          onSubmit({ quantity: qty, expiry_date: expiryDate, cost_price: cost });
-        }}
-      >
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-24 pr-1">
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Quantity to Add</span>
-            <input
-              required
-              min={1}
-              step={1}
-              type="number"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-            />
-          </label>
-
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Batch expiry date</span>
-            <input
-              required
-              type="date"
-              value={expiryDate}
-              onChange={(event) => setExpiryDate(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-            />
-          </label>
-
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Current Cost Price (Rs)</span>
-            <input
-              required
-              min={0}
-              step="0.01"
-              type="number"
-              value={costPrice}
-              onChange={(event) => setCostPrice(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-            />
-          </label>
-        </div>
-
-        <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 py-4">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
-            Cancel
-          </button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Saving..." : "Receive"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function RemoveStockModal({ open, item, isSaving, isDoctorBag, onClose, onSubmit }) {
-  const [quantity, setQuantity] = useState("1");
-  const [reason, setReason] = useState("Expired");
-  const [prevOpen, setPrevOpen] = useState(open);
-
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) {
-      setQuantity("1");
-      setReason("Expired");
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Remove Stock${item ? ` - ${item.item_name}` : ""}`} description={isDoctorBag ? "Write off quantity from the doctor medical bag." : "Write off inventory using FEFO batch deduction."}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const qty = Number(quantity || 0);
-          if (!Number.isInteger(qty) || qty <= 0) return toast.error("Quantity must be a whole number greater than 0.");
-          onSubmit({ quantity: qty, reason });
-        }}
-      >
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Quantity to Remove</span>
-          <input
-            required
-            min={1}
-            step={1}
-            type="number"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-          />
-        </label>
-
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Reason</span>
-          <select value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <option value="Expired">Expired</option>
-            <option value="Discontinued">Discontinued</option>
-            <option value="Damaged">Damaged</option>
-            {isDoctorBag ? <option value="Wasted">Wasted</option> : null}
-          </select>
-        </label>
-
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
-            Cancel
-          </button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Removing..." : "Remove"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function RestockModal({ open, doctors, item, presetDoctorId = null, presetDoctorName = "", isSaving, onClose, onSubmit }) {
-  const [doctorId, setDoctorId] = useState("");
-  const [doctorQuery, setDoctorQuery] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const doctorLocked = Boolean(presetDoctorId);
-  const [syncedDeps, setSyncedDeps] = useState({ open, presetDoctorId, presetDoctorName });
-
-  if (
-    syncedDeps.open !== open ||
-    syncedDeps.presetDoctorId !== presetDoctorId ||
-    syncedDeps.presetDoctorName !== presetDoctorName
-  ) {
-    setSyncedDeps({ open, presetDoctorId, presetDoctorName });
-    if (open) {
-      setDoctorId(presetDoctorId ? String(presetDoctorId) : "");
-      setDoctorQuery(presetDoctorName || "");
-      setQuantity("1");
-    }
-  }
-
-  const doctorOptions = useMemo(() => {
-    const q = doctorQuery.trim().toLowerCase();
-    const sorted = doctors
-      .slice()
-      .sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || "")));
-    if (!q) return sorted;
-    return sorted.filter((d) => String(d.full_name || "").toLowerCase().includes(q));
-  }, [doctors, doctorQuery]);
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={`Restock doctor${item ? ` - ${item.item_name}` : ""}`}
-      description={
-        doctorLocked
-          ? `Transfer stock from OCS master into ${presetDoctorName || "this doctor"}'s medical bag.`
-          : "Transfer stock atomically from OCS Stock to selected doctor."
-      }
-    >
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!doctorId) return toast.error("Select a doctor.");
-          onSubmit({
-            ocs_item_id: item?.id,
-            doctor_id: Number(doctorId || 0),
-            quantity: Number(quantity || 0),
-          });
-        }}
-      >
-        {doctorLocked ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Doctor</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">{presetDoctorName || "Selected doctor"}</p>
-          </div>
-        ) : (
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Doctor (search)</span>
-            <input
-              required
-              value={doctorQuery}
-              onChange={(event) => setDoctorQuery(event.target.value)}
-              placeholder="Search doctor by name..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-            />
-
-            <div className="max-h-44 overflow-auto rounded-2xl border border-slate-200 bg-white">
-              {doctorOptions.length ? (
-                doctorOptions.map((doctor) => (
-                  <button
-                    key={doctor.id}
-                    type="button"
-                    onClick={() => setDoctorId(String(doctor.id))}
-                    className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
-                      String(doctor.id) === String(doctorId) ? "bg-[rgba(79,184,179,0.12)]" : ""
-                    }`}
-                  >
-                    {doctor.full_name}
-                  </button>
-                ))
-              ) : (
-                <div className="px-4 py-3 text-sm text-slate-500">No matches</div>
-              )}
-            </div>
-          </label>
-        )}
-
-        <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Quantity</span>
-          <input required min="1" type="number" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" />
-        </label>
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-          <button type="submit" disabled={isSaving} className="rounded-2xl bg-[#4FB8B3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {isSaving ? "Restocking..." : "Restock Doctor"}
-          </button>
         </div>
       </form>
     </Modal>
@@ -1236,7 +822,7 @@ function movementActivityKind(actionType, meta = {}) {
   if (at === "stock_out" && String(meta.stock_out_reason || "").trim().toLowerCase() === "sale") {
     return "consumption";
   }
-  if (["adjustment", "override", "correction", "remove", "stock_out"].includes(at)) return "correction";
+  if (["adjustment", "override", "correction", "exceptional_correction", "remove", "stock_out"].includes(at)) return "correction";
   return "generic";
 }
 
@@ -1383,11 +969,18 @@ function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, perio
   toast.success("Inventory history exported.");
 }
 
-function CompareMetricCell({ amount, qty }) {
+function CompareMetricCell({ amount, qty, onUnpriced }) {
+  const unpriced = Number(qty || 0) > 0 && Number(amount || 0) === 0;
   return (
     <div className="text-right">
       <p className="tabular-nums text-slate-900">{formatCompareQty(qty)}</p>
-      <p className="text-[11px] text-slate-400">{formatCompareMoney(amount, qty)}</p>
+      {unpriced && onUnpriced ? (
+        <button type="button" onClick={onUnpriced} className="text-[11px] font-semibold text-amber-700 underline">
+          Unpriced
+        </button>
+      ) : (
+        <p className="break-words text-[11px] text-slate-400">{formatCompareMoney(amount, qty)}</p>
+      )}
     </div>
   );
 }
@@ -1415,7 +1008,7 @@ function CompareRemainingCell({ value, variance, qty }) {
 
 function MovementActivityLine({ movement }) {
   const meta = movement.meta || {};
-  const staff = meta.performed_by_name || "System";
+  const staff = meta.performed_by_name || movement.actor_name || (movement.recorded_by_user_id || meta.performed_by_user_id ? "Staff" : "System");
   const qty = Math.abs(Number(movement.quantity ?? 0));
   const itemName = movement.item_name || "item";
   const unitLabel = qty === 1 ? "unit" : "units";
@@ -1644,9 +1237,9 @@ function LiveActivitySection({
 
 
 const INVENTORY_MOBILE_MENU_ITEM =
-  "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50";
+  "flex w-full min-h-11 items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
 
-function InventoryMobileActionTray({ quickAddTitle, quickAddDisabled, onQuickAdd, menuItems = [] }) {
+function InventoryMobileActionTray({ primary, menuItems = [] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const menuRef = useRef(null);
@@ -1686,25 +1279,28 @@ function InventoryMobileActionTray({ quickAddTitle, quickAddDisabled, onQuickAdd
   }
 
   return (
-    <div className="flex min-w-[70px] items-center justify-end gap-3">
-      <button
-        type="button"
-        title={quickAddTitle}
-        aria-label={quickAddTitle}
-        disabled={quickAddDisabled}
-        onClick={onQuickAdd}
-        className="flex h-8 w-8 items-center justify-center rounded-xl bg-teal-50 text-teal-600 transition-colors hover:bg-teal-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <Plus className="h-4 w-4" strokeWidth={2.5} />
-      </button>
+    <div className="flex min-w-[70px] items-center justify-end gap-2">
+      {primary ? (
+        <button
+          type="button"
+          title={primary.title}
+          aria-label={primary.title}
+          disabled={primary.disabled}
+          onClick={primary.onClick}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700 transition-colors hover:bg-teal-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {primary.icon || <Plus className="h-4 w-4" strokeWidth={2.5} />}
+        </button>
+      ) : null}
       <div className="relative shrink-0" ref={menuRef}>
         <button
           type="button"
           title="More actions"
           aria-label="More actions"
           aria-expanded={menuOpen}
+          aria-haspopup="menu"
           onClick={() => (menuOpen ? closeMenu() : openMenu())}
-          className="flex h-8 w-8 items-center justify-center rounded-xl text-gray-400 transition-colors hover:text-gray-600 active:scale-95"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-gray-500 transition-colors hover:text-gray-700 active:scale-95"
         >
           <MoreVertical className="h-5 w-5" strokeWidth={2.5} />
         </button>
@@ -1746,19 +1342,21 @@ function InventoryMobileActionTray({ quickAddTitle, quickAddDisabled, onQuickAdd
 
 function InventoryOcsMasterActions({
   item,
+  user,
   touchWrap = false,
-  omitRestock = false,
-  showDeleteItem = false,
   onStockIn,
   onEdit,
   onRestockDoctor,
   onRemove,
   onDeleteItem,
+  onExceptionalCorrection,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const menuRef = useRef(null);
   const menuPanelRef = useRef(null);
+  const isAdmin = isAdminUser(user);
+  const isOperator = isOperatorUser(user);
 
   useEffect(() => {
     if (!menuOpen || touchWrap) return undefined;
@@ -1784,100 +1382,104 @@ function InventoryOcsMasterActions({
     const rect = anchor.getBoundingClientRect();
     setMenuPosition({
       top: rect.bottom + 6,
-      left: Math.max(8, rect.right - 200),
+      left: Math.max(8, rect.right - 220),
     });
     setMenuOpen(true);
   }
 
-  const receiveBtn =
-    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-[#4FB8B3]/40 bg-[#4FB8B3]/10 px-2.5 text-[11px] font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/20";
-  const restockBtn =
-    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 text-[11px] font-semibold text-white transition hover:bg-[#3aa6a1]";
-  const editBtn =
-    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+  const primaryBtn =
+    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-[#4FB8B3] px-3 text-xs font-semibold text-white transition hover:bg-[#3aa6a1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
   const moreBtn =
-    "inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
 
-  if (touchWrap) {
-    const menuItems = [
-      {
-        key: "edit",
-        label: "Edit item",
-        icon: <Pencil className="size-3.5" />,
-        onClick: () => onEdit(item),
-      },
-      ...(!omitRestock
-        ? [
-            {
-              key: "restock",
-              label: "Restock / Transfer",
-              icon: <Truck className="size-3.5" />,
-              onClick: () => onRestockDoctor(item),
-            },
-          ]
-        : []),
-      {
-        key: "remove",
-        label: "Remove stock",
+  const showArchive = Boolean(onDeleteItem);
+  const menuItems = [];
+  if (isOperator) {
+    if (onRestockDoctor) {
+      menuItems.push({
+        key: "transfer",
+        label: "Transfer to doctor bag",
+        icon: <Truck className="size-3.5" />,
+        onClick: () => onRestockDoctor(item),
+      });
+    }
+    if (onRemove) {
+      menuItems.push({
+        key: "writeoff",
+        label: "Write off stock",
         icon: <Trash2 className="size-3.5" />,
         danger: true,
         onClick: () => onRemove(item),
-      },
-      ...(showDeleteItem && onDeleteItem
-        ? [
-            {
-              key: "delete",
-              label: "Delete item",
-              icon: <Trash2 className="size-3.5" />,
-              danger: true,
-              onClick: () => onDeleteItem(item),
-            },
-          ]
-        : []),
-    ];
+      });
+    }
+  }
+  if (isAdmin) {
+    if (onExceptionalCorrection) {
+      menuItems.push({
+        key: "correct",
+        label: "Exceptional inventory correction",
+        icon: <MinusCircle className="size-3.5" />,
+        onClick: () => onExceptionalCorrection(item),
+      });
+    }
+    if (showArchive) {
+      menuItems.push({
+        key: "archive",
+        label: "Archive catalogue item",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        onClick: () => onDeleteItem(item),
+      });
+    }
+    menuItems.push({ key: "sep", separator: true, label: "Operational override" });
+    if (onStockIn) {
+      menuItems.push({
+        key: "receive",
+        label: "Receive stock (override)",
+        icon: <Plus className="size-3.5" />,
+        onClick: () => onStockIn(item),
+      });
+    }
+    if (onRestockDoctor) {
+      menuItems.push({
+        key: "transfer",
+        label: "Transfer to doctor bag (override)",
+        icon: <Truck className="size-3.5" />,
+        onClick: () => onRestockDoctor(item),
+      });
+    }
+    if (onRemove) {
+      menuItems.push({
+        key: "writeoff",
+        label: "Write off stock (override)",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        onClick: () => onRemove(item),
+      });
+    }
+  }
 
-    return (
-      <InventoryMobileActionTray
-        quickAddTitle="Receive stock"
-        onQuickAdd={() => onStockIn(item)}
-        menuItems={menuItems}
-      />
-    );
+  const primary = isAdmin
+    ? {
+        title: "Edit catalogue item",
+        icon: <Pencil className="h-4 w-4" strokeWidth={2.5} />,
+        onClick: () => onEdit(item),
+      }
+    : {
+        title: "Receive stock",
+        icon: <Plus className="h-4 w-4" strokeWidth={2.5} />,
+        onClick: () => onStockIn(item),
+      };
+
+  if (touchWrap) {
+    return <InventoryMobileActionTray primary={primary} menuItems={menuItems.filter((row) => !row.separator)} />;
   }
 
   return (
-    <div className="ml-auto flex w-fit flex-wrap items-center justify-end gap-1.5">
-      <button
-        type="button"
-        title="Receive stock"
-        aria-label="Receive stock"
-        className={receiveBtn}
-        onClick={() => onStockIn(item)}
-      >
-        <Plus className="size-3.5 shrink-0" />
-        Receive
-      </button>
-      {!omitRestock ? (
-        <button
-          type="button"
-          title="Restock to a doctor bag"
-          aria-label="Restock to a doctor bag"
-          className={restockBtn}
-          onClick={() => onRestockDoctor(item)}
-        >
-          <Truck className="size-3.5 shrink-0" />
-          Restock
-        </button>
-      ) : null}
-      <button
-        type="button"
-        title="Edit item"
-        aria-label="Edit item"
-        className={editBtn}
-        onClick={() => onEdit(item)}
-      >
-        <Pencil className="size-3.5 shrink-0" />
-        Edit
+    <div className="ml-auto flex w-fit flex-wrap items-center justify-end gap-2">
+      <button type="button" title={primary.title} aria-label={primary.title} className={primaryBtn} onClick={primary.onClick}>
+        {primary.icon}
+        <span>{isAdmin ? "Edit" : "Receive"}</span>
       </button>
       <div className="relative shrink-0" ref={menuRef}>
         <button
@@ -1885,6 +1487,7 @@ function InventoryOcsMasterActions({
           title="More actions"
           aria-label="More actions"
           aria-expanded={menuOpen}
+          aria-haspopup="menu"
           className={moreBtn}
           onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
         >
@@ -1895,33 +1498,31 @@ function InventoryOcsMasterActions({
           ? createPortal(
               <div
                 ref={menuPanelRef}
-                className="fixed z-[100] min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                role="menu"
+                className="fixed z-[100] min-w-[14rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
                 style={{ top: menuPosition.top, left: menuPosition.left }}
               >
-                <button
-                  type="button"
-                  className={`${INVENTORY_MOBILE_MENU_ITEM} text-rose-700 hover:bg-rose-50`}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onRemove(item);
-                  }}
-                >
-                  <Trash2 className="size-3.5 shrink-0" />
-                  Remove stock
-                </button>
-                {showDeleteItem && onDeleteItem ? (
-                  <button
-                    type="button"
-                    className={`${INVENTORY_MOBILE_MENU_ITEM} text-rose-700 hover:bg-rose-50`}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onDeleteItem(item);
-                    }}
-                  >
-                    <Trash2 className="size-3.5 shrink-0" />
-                    Delete item
-                  </button>
-                ) : null}
+                {menuItems.map((entry) =>
+                  entry.separator ? (
+                    <p key={entry.key} className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                      {entry.label}
+                    </p>
+                  ) : (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      role="menuitem"
+                      className={`${INVENTORY_MOBILE_MENU_ITEM} ${entry.danger ? "text-rose-700 hover:bg-rose-50" : ""}`}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        entry.onClick();
+                      }}
+                    >
+                      {entry.icon}
+                      {entry.label}
+                    </button>
+                  ),
+                )}
               </div>,
               document.body,
             )
@@ -1933,6 +1534,7 @@ function InventoryOcsMasterActions({
 
 function InventoryActionButtons({
   item,
+  user,
   canManageOcs,
   contextIsOcs,
   isDoctor,
@@ -1944,9 +1546,9 @@ function InventoryActionButtons({
   onRestockDoctor,
   onRestockMyInventory,
   onStockOut,
-  onAdjustReclaim,
   onRemove,
   onDeleteItem,
+  onExceptionalCorrection,
   touchWrap = false,
   omitRestock = false,
 }) {
@@ -1954,30 +1556,28 @@ function InventoryActionButtons({
     return (
       <InventoryOcsMasterActions
         item={item}
+        user={user}
         touchWrap={touchWrap}
-        omitRestock={omitRestock}
-        showDeleteItem={showDeleteItem}
         onStockIn={onStockIn}
         onEdit={onEdit}
         onRestockDoctor={onRestockDoctor}
         onRemove={onRemove}
-        onDeleteItem={onDeleteItem}
+        onDeleteItem={showDeleteItem ? onDeleteItem : undefined}
+        onExceptionalCorrection={onExceptionalCorrection}
       />
     );
   }
 
   if (touchWrap) {
     const menuItems = [];
-
-    if (!(isDoctor && doctorViewIsOcs)) {
+    if (isDoctor && !doctorViewIsOcs) {
       menuItems.push({
         key: "edit",
-        label: isDoctor ? "Bag settings" : "Edit item",
+        label: "Bag settings",
         icon: <Pencil className="size-3.5" />,
         onClick: () => onEdit(item),
       });
     }
-
     if (isDoctor && !omitRestock) {
       menuItems.push({
         key: "restock",
@@ -1986,78 +1586,45 @@ function InventoryActionButtons({
         onClick: () => onRestockMyInventory(item),
       });
     }
-
-    if (isDoctor && doctorViewIsMy && onStockOut) {
-      menuItems.push({
-        key: "stock-out",
-        label: "Use",
-        icon: <Minus className="size-3.5" />,
-        onClick: () => onStockOut(item),
-        disabled: Number(item.quantity || 0) < 1,
-      });
-    }
-
-    if (canManageOcs && !contextIsOcs) {
-      menuItems.push({
-        key: "adjust",
-        label: "Adjust",
-        icon: <MinusCircle className="size-3.5" />,
-        onClick: () => onAdjustReclaim(item),
-      });
-    }
-
-    if (canManageOcs && !contextIsOcs && onRestockDoctor) {
-      menuItems.push({
-        key: "restock",
-        label: "Restock from OCS",
-        icon: <Truck className="size-3.5" />,
-        onClick: () => onRestockDoctor(item),
-      });
-    }
-
-    if (onRemove) {
+    if (canManageOcs && !contextIsOcs && onRemove) {
       menuItems.push({
         key: "remove",
-        label: "Remove stock",
+        label: "Write off stock",
         icon: <Trash2 className="size-3.5" />,
         danger: true,
         onClick: () => onRemove(item),
       });
     }
-
-    if (showDeleteItem && onDeleteItem) {
-      menuItems.push({
-        key: "delete",
-        label: "Delete item",
-        icon: <Trash2 className="size-3.5" />,
-        danger: true,
-        onClick: () => onDeleteItem(item),
-      });
-    }
-
-    return (
-      <InventoryMobileActionTray
-        quickAddTitle="Quick add stock"
-        onQuickAdd={() => onStockIn(item)}
-        menuItems={menuItems}
-      />
-    );
+    const primary = isDoctor && doctorViewIsMy && onStockOut
+      ? {
+          title: "Use",
+          icon: <Minus className="h-4 w-4" strokeWidth={2.5} />,
+          disabled: Number(item.quantity || 0) < 1,
+          onClick: () => onStockOut(item),
+        }
+      : canManageOcs && !contextIsOcs && onRestockDoctor
+        ? {
+            title: "Transfer to doctor bag",
+            icon: <Truck className="h-4 w-4" strokeWidth={2.5} />,
+            onClick: () => onRestockDoctor(item),
+          }
+        : null;
+    return <InventoryMobileActionTray primary={primary} menuItems={menuItems} />;
   }
 
   const btn =
-    "inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
+    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900";
   const restockBtn =
-    "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#2d8f98] px-3 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40";
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#2d8f98] px-3 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40";
   const stockOutBtn =
-    "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40";
-  const adjustBtn = "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl px-3 text-xs font-semibold";
+    "inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
-    <div className="ml-auto flex w-fit items-center justify-end gap-1.5">
-      {!(isDoctor && doctorViewIsOcs) ? (
-        <button type="button" onClick={() => onEdit(item)} className={btn} title={isDoctor ? "Bag settings" : "Edit item"} aria-label={isDoctor ? "Bag settings" : "Edit item"}>
+    <div className="ml-auto flex w-fit items-center justify-end gap-2">
+      {isDoctor && !doctorViewIsOcs ? (
+        <button type="button" onClick={() => onEdit(item)} className={btn} title="Bag settings" aria-label="Bag settings">
           <Pencil className="size-3.5 shrink-0" />
-          {isDoctor ? "Settings" : "Edit"}
+          Settings
         </button>
       ) : null}
 
@@ -2083,26 +1650,14 @@ function InventoryActionButtons({
       {canManageOcs && !contextIsOcs && onRestockDoctor ? (
         <button type="button" onClick={() => onRestockDoctor(item)} className={restockBtn}>
           <Truck className="size-3.5 shrink-0" />
-          Restock
+          Transfer
         </button>
       ) : null}
 
-      {canManageOcs && !contextIsOcs ? (
-        <button type="button" onClick={() => onAdjustReclaim(item)} className={`${adjustBtn} border border-amber-200 text-amber-700`}>
-          <MinusCircle className="size-3.5 shrink-0" />
-          Adjust
-        </button>
-      ) : null}
-
-      {showDeleteItem && onDeleteItem ? (
-        <button
-          type="button"
-          title="Delete item"
-          aria-label="Delete item"
-          onClick={() => onDeleteItem(item)}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
-        >
+      {canManageOcs && !contextIsOcs && onRemove ? (
+        <button type="button" onClick={() => onRemove(item)} className={`${btn} border-rose-200 text-rose-700`}>
           <Trash2 className="size-3.5 shrink-0" />
+          Write off
         </button>
       ) : null}
     </div>
@@ -3010,6 +2565,10 @@ export default function InventoryPage() {
   const [assignedPatientsList, setAssignedPatientsList] = useState([]);
   const [mobileRestockTarget, setMobileRestockTarget] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [correction, setCorrection] = useState(null);
+  const [stockFiltersOpen, setStockFiltersOpen] = useState(false);
+  const [showUnpricedOnly, setShowUnpricedOnly] = useState(false);
+  const [stocktakeStatusFilter, setStocktakeStatusFilter] = useState("");
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
   const [showMissingExpiryOnly, setShowMissingExpiryOnly] = useState(false);
@@ -3042,8 +2601,13 @@ export default function InventoryPage() {
   const canUseAdminInventory = isAdmin || isOperator;
   const folders = data?.folders || [];
   const pendingStagingCount = useMemo(
-    () => (Array.isArray(data?.staging) ? data.staging.filter((row) => row.status === "pending").length : 0),
-    [data?.staging],
+    () =>
+      Array.isArray(data?.incoming_shipments)
+        ? data.incoming_shipments.length
+        : Array.isArray(data?.staging)
+          ? data.staging.filter((row) => row.status === "pending").length
+          : 0,
+    [data?.incoming_shipments, data?.staging],
   );
   const openItemEditor = useCallback(
     (nextItem) => {
@@ -3066,7 +2630,7 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
-  const showDeleteStockItem = isAdmin && ((contextIsOcs) || (!contextIsOcs && !isMobile));
+  const showDeleteStockItem = isAdmin && contextIsOcs;
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
     () => getInventoryDateRange(adminPeriodPreset, adminPeriodAnchor),
@@ -3361,8 +2925,9 @@ export default function InventoryPage() {
       .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
       .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
       .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry))
-      .filter((item) => !showMissingExpiryOnly || !item.expiry_date);
-  }, [items, search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly]);
+      .filter((item) => !showMissingExpiryOnly || !item.expiry_date)
+      .filter((item) => !showUnpricedOnly || Number(item.cost_price || 0) === 0);
+  }, [items, search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showUnpricedOnly]);
 
   const sortedItems = useMemo(() => {
     const rows = [...filteredItems];
@@ -3621,11 +3186,8 @@ export default function InventoryPage() {
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
 
   async function saveItem(payload) {
-    if (!isDoctor || payload.quantity != null) {
-      if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
-        toast.error("Quantity must be zero or more.");
-        return;
-      }
+    if (payload.quantity != null && !isDoctor) {
+      delete payload.quantity;
     }
     if (!Number.isInteger(payload.minimum_quantity) || payload.minimum_quantity < 0) {
       toast.error("Minimum quantity must be zero or more.");
@@ -3640,7 +3202,7 @@ export default function InventoryPage() {
     try {
       const next = editor?.item
         ? await api.put(`/inventory/items/${editor.item.id}${inventoryListQuery}`, payload)
-        : await api.post(`/inventory/items${inventoryListQuery}`, payload);
+        : await api.post(`/inventory/items${inventoryListQuery}`, { ...payload, quantity: 0 });
       commitInventoryData(next);
       setEditor(null);
       setOperatorAddOpen(false);
@@ -3649,7 +3211,7 @@ export default function InventoryPage() {
         const folder = (next?.folders || folders).find((f) => String(f.id) === String(payload.folder_id));
         if (folder?.name) setActiveCategory(folder.name);
       }
-      toast.success(editor?.item ? "Stock item updated." : "Stock item added.");
+      toast.success(editor?.item ? "Catalogue item updated." : "Catalogue item added.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -3675,10 +3237,13 @@ export default function InventoryPage() {
   async function saveRestock(payload) {
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/restock${inventoryListQuery}`, payload);
+      const next = await api.post(
+        `/inventory/restock${inventoryListQuery}`,
+        withOperationalOverride(user, payload, payload.override_reason),
+      );
       commitInventoryData(next);
       setRestock(null);
-      toast.success("Doctor restock completed.");
+      toast.success("Transferred to doctor bag.");
       if (next?.restock_receipt) {
         setActiveReceipt(next.restock_receipt);
         setReceiptModalOpen(true);
@@ -3824,19 +3389,27 @@ export default function InventoryPage() {
     if (!addStock?.item) return;
     const quantity = Number(payload?.quantity || 0);
     if (!Number.isInteger(quantity) || quantity <= 0) return;
-    if (!String(payload?.expiry_date || "").trim()) {
-      toast.error("Set the batch expiry date.");
+    if (!payload?.is_non_expiring && !String(payload?.expiry_date || "").trim()) {
+      toast.error("Set the batch expiry date, or mark the batch as non-expiring.");
       return;
     }
 
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${addStock.item.id}/ocs-actions${inventoryListQuery}`, {
-        action_type: "stock_in",
-        quantity,
-        expiry_date: payload.expiry_date || "",
-        cost_price: Number(payload.cost_price || 0),
-      });
+      const next = await api.post(
+        `/inventory/items/${addStock.item.id}/ocs-actions${inventoryListQuery}`,
+        withOperationalOverride(
+          user,
+          {
+            action_type: "stock_in",
+            quantity,
+            expiry_date: payload.expiry_date || "",
+            is_non_expiring: Boolean(payload.is_non_expiring),
+            cost_price: Number(payload.cost_price || 0),
+          },
+          payload.override_reason,
+        ),
+      );
       commitInventoryData(next);
       setAddStock(null);
       toast.success("Stock received.");
@@ -3860,14 +3433,41 @@ export default function InventoryPage() {
 
     setIsSaving(true);
     try {
-      await api.post(`${endpoint}${inventoryListQuery}`, {
-        action_type: "remove",
-        quantity,
-        reason: payload.reason,
-      });
+      await api.post(
+        `${endpoint}${inventoryListQuery}`,
+        withOperationalOverride(
+          user,
+          {
+            action_type: "remove",
+            quantity,
+            reason: payload.reason,
+            note: payload.note || "",
+            confirm: true,
+          },
+          payload.override_reason,
+        ),
+      );
       setRemoveStock(null);
       await load(selectedContextDoctorId, doctorContext, { silent: true });
-      toast.success(isDoctorBag ? "Doctor bag stock adjusted." : "Stock removed.");
+      toast.success(isDoctorBag ? "Doctor bag stock written off." : "Stock written off.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveExceptionalCorrection(payload) {
+    if (!correction?.item) return;
+    setIsSaving(true);
+    try {
+      const next = await api.post(
+        `/inventory/items/${correction.item.id}/exceptional-correction${inventoryListQuery}`,
+        payload,
+      );
+      commitInventoryData(next);
+      setCorrection(null);
+      toast.success(next?.idempotent ? "Correction already applied." : "Exceptional correction applied.");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -4212,7 +3812,7 @@ export default function InventoryPage() {
       await api.delete(`/inventory/items/${itemToDelete.id}`);
       setItemToDelete(null);
       await load(selectedContextDoctorId, doctorContext, { silent: true });
-      toast.success("Stock item deleted.");
+      toast.success("Catalogue item archived.");
     } catch (error) {
       toast.error(error.message);
     }
@@ -4304,10 +3904,10 @@ export default function InventoryPage() {
                   <button
                     type="button"
                     onClick={() => setEditor({ item: null })}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
+                    className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3aa6a1] lg:bg-ocs-teal lg:hover:bg-ocs-teal/90"
                   >
                     <Plus className="size-4" />
-                    Add Item
+                    Add catalogue item
                   </button>
                 </>
               ) : null}
@@ -4316,33 +3916,27 @@ export default function InventoryPage() {
         }
       />
 
-      {canUseAdminInventory ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-          <SummaryCard title="Warehouse value" value={formatRupees(summary.total_amount_rs || 0)} />
-          <SummaryCard
-            title="Low stock"
-            value={chaseCounts.low}
-            tone="rose"
-            hint="Click to filter"
-            active={showLowStockOnly}
-            onClick={() => applyChaseFilter("low")}
-          />
-          <SummaryCard
-            title="Near expiry"
-            value={chaseCounts.near}
-            tone="amber"
-            hint="Within 90 days"
-            active={showNearExpiryOnly}
-            onClick={() => applyChaseFilter("near")}
-          />
-          <SummaryCard
-            title="Missing expiry"
-            value={chaseCounts.missing}
-            hint="Click to filter"
-            active={showMissingExpiryOnly}
-            onClick={() => applyChaseFilter("missing")}
-          />
-        </div>
+      {canUseAdminInventory && logisticsTab !== "queues" ? (
+        <InventoryTabSummaries
+          tab={logisticsTab}
+          summaries={data?.tab_summaries}
+          chaseCounts={chaseCounts}
+          warehouseValue={summary.total_amount_rs || 0}
+          filters={{ low: showLowStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly }}
+          onFilter={applyChaseFilter}
+          onOpenIncoming={() => setLogisticsTab("shipments")}
+          onOpenApproval={(status) => {
+            setLogisticsTab("count");
+            setStocktakeStatusFilter(status);
+          }}
+          onOpenUnpriced={() => {
+            setLogisticsTab("stock");
+            setShowUnpricedOnly(true);
+            setShowLowStockOnly(false);
+            setShowNearExpiryOnly(false);
+            setShowMissingExpiryOnly(false);
+          }}
+        />
       ) : isDoctor ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <SummaryCard
@@ -4378,7 +3972,7 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {[
             ...(isOperator ? [{ id: "queues", label: "Work queues" }] : []),
             { id: "stock", label: isOperator ? "Warehouse stock" : "Stock" },
@@ -4389,8 +3983,9 @@ export default function InventoryPage() {
             <button
               key={tab.id}
               type="button"
+              aria-current={logisticsTab === tab.id ? "page" : undefined}
               onClick={() => setLogisticsTab(tab.id)}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+              className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${
                 logisticsTab === tab.id
                   ? "bg-[#2d8f98] text-white shadow-sm"
                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -4428,6 +4023,7 @@ export default function InventoryPage() {
           <InventoryStagingQueue
             rows={data?.staging}
             shipments={data?.shipments}
+            incomingShipments={data?.incoming_shipments}
             onReleased={() => load(undefined, undefined, { silent: true })}
           />
         </>
@@ -4438,6 +4034,7 @@ export default function InventoryPage() {
           items={data?.ocs_stock || items}
           folders={folders}
           sessions={data?.stocktake_sessions || []}
+          requestedStatus={stocktakeStatusFilter}
           onApplied={() => load(undefined, undefined, { silent: true })}
         />
       ) : null}
@@ -4501,28 +4098,26 @@ export default function InventoryPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search by item name  (press / )"
-                className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
+                className="w-full min-h-11 min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
               />
             </label>
-            {isAdmin && contextIsOcs ? (
-              <button
-                type="button"
-                onClick={() => setEditor({ item: null })}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#2d8f98] px-4 py-2.5 text-xs font-semibold text-white hover:opacity-90"
-              >
-                <Plus className="size-3.5" />
-                Add item
-              </button>
-            ) : null}
+            <button
+              type="button"
+              aria-expanded={stockFiltersOpen}
+              onClick={() => setStockFiltersOpen((open) => !open)}
+              className="inline-flex min-h-11 shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 md:hidden"
+            >
+              Filters
+            </button>
           </div>
-          <div className="-mx-1 flex flex-wrap items-center gap-2">
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto pb-1">
             <button
               type="button"
               onClick={() => {
                 setSelectedView("all");
                 setActiveCategory("All");
               }}
-              className={`shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold sm:text-sm ${selectedView === "all" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              className={`min-h-11 shrink-0 rounded-2xl px-3 text-xs font-semibold sm:text-sm ${selectedView === "all" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               All ({items.length})
             </button>
@@ -4534,35 +4129,44 @@ export default function InventoryPage() {
                   setSelectedView(String(folder.id));
                   setActiveCategory(folder.name);
                 }}
-                className={`shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold sm:text-sm ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                className={`min-h-11 shrink-0 rounded-2xl px-3 text-xs font-semibold sm:text-sm ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
               >
                 {folder.name} ({folderCounts.get(String(folder.id)) || 0})
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className={cx("flex flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden md:flex")}>
             <button
               type="button"
               onClick={() => applyChaseFilter("low")}
-              className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Low stock ({chaseCounts.low})
             </button>
             <button
               type="button"
               onClick={() => applyChaseFilter("near")}
-              className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Near expiry ({chaseCounts.near})
             </button>
             <button
               type="button"
               onClick={() => applyChaseFilter("missing")}
-              className={`rounded-2xl px-3 py-1.5 text-xs font-semibold ${showMissingExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showMissingExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Missing expiry ({chaseCounts.missing})
             </button>
-            <select value={sortMode} onChange={(event) => setSortMode(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setShowUnpricedOnly((value) => !value)}
+                className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showUnpricedOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+              >
+                Unpriced
+              </button>
+            ) : null}
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700">
               <option value="name_asc">Sort: Name (A–Z)</option>
               <option value="expiry_asc">Sort: Expiry (Soonest)</option>
               <option value="qty_asc">Sort: Qty (Lowest)</option>
@@ -4609,7 +4213,9 @@ export default function InventoryPage() {
                               <div className="flex min-w-0 items-center gap-2">
                                 <button
                                   type="button"
-                                  className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-500"
+                                  aria-expanded={expanded}
+                                  aria-label={`${expanded ? "Hide" : "Show"} details for ${item.item_name}`}
+                                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md border border-slate-200 p-1 text-slate-500"
                                 >
                                   {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                                 </button>
@@ -4646,22 +4252,22 @@ export default function InventoryPage() {
                               <div className="flex justify-end">
                               <InventoryActionButtons
                                 item={item}
+                                user={user}
                                 canManageOcs={canManageOcs}
                                 contextIsOcs={contextIsOcs}
                                 isDoctor={isDoctor}
                                 doctorViewIsMy={doctorViewIsMy}
                                 doctorViewIsOcs={doctorViewIsOcs}
-                                onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                                onStockIn={canReceiveWarehouseStock(user) ? (nextItem) => setAddStock({ item: nextItem }) : undefined}
                                 onEdit={openItemEditor}
-                                onRestockDoctor={canManageOcs ? handleRestockDoctor : undefined}
+                                onRestockDoctor={canTransferToDoctorBag(user) ? handleRestockDoctor : undefined}
                                 onRestockMyInventory={openDoctorRestockForItem}
-                                omitRestock={isDoctor ? !emergencyRestockEnabled : isOperator}
-
+                                omitRestock={isDoctor ? !emergencyRestockEnabled : false}
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
-                                onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                                onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                                onRemove={canWriteOffWarehouseStock(user) ? (nextItem) => setRemoveStock({ item: nextItem }) : undefined}
                                 showDeleteItem={showDeleteStockItem}
-                                onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
+                                onDeleteItem={canArchiveCatalogueItem(user) ? (nextItem) => setItemToDelete(nextItem) : undefined}
+                                onExceptionalCorrection={canApplyExceptionalCorrection(user) ? (nextItem) => setCorrection({ item: nextItem }) : undefined}
                               />
                               </div>
                             </td>
@@ -4707,21 +4313,22 @@ export default function InventoryPage() {
                   actions={
                     <InventoryActionButtons
                       item={item}
+                      user={user}
                       canManageOcs={canManageOcs}
                       contextIsOcs={contextIsOcs}
                       isDoctor={isDoctor}
                       doctorViewIsMy={doctorViewIsMy}
                       doctorViewIsOcs={doctorViewIsOcs}
-                      onStockIn={(nextItem) => setAddStock({ item: nextItem })}
+                      onStockIn={canReceiveWarehouseStock(user) ? (nextItem) => setAddStock({ item: nextItem }) : undefined}
                       onEdit={openItemEditor}
-                      onRestockDoctor={canManageOcs ? handleRestockDoctor : undefined}
+                      onRestockDoctor={canTransferToDoctorBag(user) ? handleRestockDoctor : undefined}
                       onRestockMyInventory={openDoctorRestockForItem}
-                      omitRestock={isDoctor ? !emergencyRestockEnabled : isOperator}
+                      omitRestock={isDoctor ? !emergencyRestockEnabled : false}
                       onStockOut={(nextItem) => setStockOut({ item: nextItem })}
-                      onAdjustReclaim={(nextItem) => setRemoveStock({ item: nextItem })}
-                      onRemove={(nextItem) => setRemoveStock({ item: nextItem })}
+                      onRemove={canWriteOffWarehouseStock(user) ? (nextItem) => setRemoveStock({ item: nextItem }) : undefined}
                       showDeleteItem={showDeleteStockItem}
-                      onDeleteItem={(nextItem) => setItemToDelete(nextItem)}
+                      onDeleteItem={canArchiveCatalogueItem(user) ? (nextItem) => setItemToDelete(nextItem) : undefined}
+                      onExceptionalCorrection={canApplyExceptionalCorrection(user) ? (nextItem) => setCorrection({ item: nextItem }) : undefined}
                       touchWrap
                     />
                   }
@@ -4773,7 +4380,7 @@ export default function InventoryPage() {
               anchorDate={adminPeriodAnchor}
               onPresetChange={setAdminPeriodPreset}
               onAnchorDateChange={setAdminPeriodAnchor}
-              className="shrink-0"
+              className="w-full min-w-0 shrink-0 overflow-x-auto sm:w-auto"
             />
           </div>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -4798,17 +4405,48 @@ export default function InventoryPage() {
                 className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:border-[#4FB8B3]/50 hover:bg-slate-50"
               >
                 <Download className="size-4 shrink-0 text-[#1f7f7b]" />
-                Download compare
+                Export bag reconciliation
               </button>
             }
           >
           {compareRows.length === 0 ? (
             <EmptyState
               title="No bag movement this period"
-              description="Restocks, sales, and waste will show here. Doctors with empty bags are hidden."
+              description="There were no restocks, documented use, wastage, expiry write-offs or exceptional corrections in this period. Doctors with empty bags stay hidden."
             />
           ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+          <>
+          <div className="space-y-3 md:hidden">
+            {compareRows.map((row) => (
+              <button
+                key={`bag-card-${row.doctor_id}`}
+                type="button"
+                onClick={() => openDoctorBagFromCompare(row.doctor_id)}
+                className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left"
+              >
+                <p className="break-words font-semibold text-slate-900">{row.doctor_name}</p>
+                <dl className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <div>On hand <strong className="block tabular-nums text-slate-900">{formatCompareQty(row.bag_on_hand_qty)}</strong></div>
+                  <div>Restocked <strong className="block tabular-nums text-slate-900">{formatCompareQty(row.total_restocked_qty)}</strong></div>
+                  <div>Used/sold <strong className="block tabular-nums text-slate-900">{formatCompareQty(row.consumed_sales_qty)}</strong></div>
+                  <div>Wasted/expired <strong className="block tabular-nums text-slate-900">{formatCompareQty(Number(row.consumed_wasted_qty || 0) + Number(row.consumed_expired_qty || 0))}</strong></div>
+                </dl>
+                {Number(row.unpriced_qty || 0) > 0 ? (
+                  <p className="text-xs font-semibold text-amber-700">Unpriced items in this bag</p>
+                ) : (
+                  <p className="break-words text-xs text-slate-500">{formatCompareMoney(row.bag_on_hand, row.bag_on_hand_qty)}</p>
+                )}
+                {Number(row.exceptional_correction_qty || 0) > 0 || !row.has_period_workflow ? (
+                  <p className="text-[11px] text-slate-500">
+                    {Number(row.exceptional_correction_qty || 0) > 0
+                      ? "Includes exceptional corrections"
+                      : "No workflow movements in this period"}
+                  </p>
+                ) : null}
+              </button>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -4835,9 +4473,28 @@ export default function InventoryPage() {
                       }
                     }}
                   >
-                    <td className="px-3 py-2 font-medium text-slate-900">{row.doctor_name}</td>
+                    <td className="px-3 py-2 font-medium text-slate-900">
+                      <span className="break-words">{row.doctor_name}</span>
+                    {Number(row.exceptional_correction_qty || 0) > 0 ? (
+                      <p className="mt-1 text-[11px] font-semibold text-amber-700">Exceptional correction in period</p>
+                    ) : !row.has_period_workflow ? (
+                      <p className="mt-1 text-[11px] text-slate-400">No workflow movements this period</p>
+                    ) : null}
+                    </td>
                     <td className="px-3 py-2">
-                      <CompareMetricCell amount={row.total_restocked} qty={row.total_restocked_qty} />
+                      <CompareMetricCell
+                        amount={row.total_restocked}
+                        qty={row.total_restocked_qty}
+                        onUnpriced={
+                          isAdmin && Number(row.unpriced_qty || 0) > 0
+                            ? (event) => {
+                                event.stopPropagation();
+                                setLogisticsTab("stock");
+                                setShowUnpricedOnly(true);
+                              }
+                            : undefined
+                        }
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <CompareMetricCell amount={row.consumed_sales} qty={row.consumed_sales_qty} />
@@ -4863,6 +4520,7 @@ export default function InventoryPage() {
               </tbody>
             </table>
           </div>
+          </>
           )}
         </SectionCard>
         <LiveActivitySection
@@ -4895,7 +4553,7 @@ export default function InventoryPage() {
         onSubmit={saveItem}
       />
       ) : null}
-      <ItemModal
+      <ItemEditorModal
         open={Boolean(editor)}
         item={editor?.item}
         folders={folders}
@@ -4906,10 +4564,11 @@ export default function InventoryPage() {
         onSubmit={saveItem}
       />
       <ActionModal open={Boolean(movement)} item={movement?.item} type={movement?.type} isSaving={isSaving} onClose={() => setMovement(null)} onSubmit={saveMovement} />
-      <RestockModal
+      <DoctorTransferModal
         open={Boolean(restock)}
         doctors={doctors}
         item={restock?.item}
+        user={user}
         presetDoctorId={restock?.doctorId}
         presetDoctorName={restock?.doctorName}
         isSaving={isSaving}
@@ -4941,26 +4600,34 @@ export default function InventoryPage() {
         onClose={() => setReceiptModalOpen(false)}
         onPrint={() => printReceipt(activeReceipt)}
       />
-      <AddStockModal open={Boolean(addStock)} item={addStock?.item} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
-      <RemoveStockModal
+      <AddStockModal open={Boolean(addStock)} item={addStock?.item} user={user} isSaving={isSaving} onClose={() => setAddStock(null)} onSubmit={saveAddStock} />
+      <WriteOffStockModal
         open={Boolean(removeStock)}
         item={removeStock?.item}
+        user={user}
         isDoctorBag={removeStock?.item?.stock_scope === "doctor" || Boolean(removeStock?.item?.owner_doctor_id)}
         isSaving={isSaving}
         onClose={() => setRemoveStock(null)}
         onSubmit={saveRemoveStock}
       />
+      <ExceptionalCorrectionModal
+        open={Boolean(correction)}
+        item={correction?.item}
+        isSaving={isSaving}
+        onClose={() => setCorrection(null)}
+        onSubmit={saveExceptionalCorrection}
+      />
       <ConfirmDialog
         open={Boolean(itemToDelete)}
         onClose={() => setItemToDelete(null)}
         onConfirm={removeItem}
-        title="Delete stock item?"
+        title="Archive catalogue item?"
         description={
-          itemToDelete?.stock_scope === "doctor" || itemToDelete?.owner_doctor_id
-            ? `This will remove ${itemToDelete?.item_name || "this item"} from this doctor's medical bag and delete related movement history.`
-            : `This will remove ${itemToDelete?.item_name || "this item"} and related movement history. OCS master items will not be auto-re-added from the catalog.`
+          itemToDelete
+            ? `${itemToDelete.item_name} will no longer appear in the active catalogue. Existing requests, receipts, movements and reporting history will remain. No historical record will be permanently deleted.`
+            : ""
         }
-        confirmLabel="Delete item"
+        confirmLabel="Archive catalogue item"
       />
     </>
   );

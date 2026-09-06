@@ -2011,7 +2011,7 @@ test("emergency override never drives recorded stock negative", async () => {
   assert.equal(meta.batch_shortfall, 3, "the gap is recorded for the auditor");
 });
 
-test("deleting a stock item leaves an audit record behind", async () => {
+test("archiving a stock item leaves history and an audit record behind", async () => {
   const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
   const itemName = `Deletable Gauze ${Date.now()}`;
   const itemId = db
@@ -2030,23 +2030,21 @@ test("deleting a stock item leaves an audit record behind", async () => {
   `).run(itemId);
 
   const removed = await api("DELETE", `/api/inventory/items/${itemId}`, { token: adminToken });
-  assert.equal(removed.status, 204, JSON.stringify(removed.data));
-  assert.equal(db.prepare("SELECT id FROM inventory WHERE id = ?").get(itemId), undefined);
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+  const archived = db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(itemId);
+  assert.ok(archived?.archived_at, "expected the item to remain archived rather than deleted");
+  assert.ok(db.prepare("SELECT id FROM inventory_movements WHERE item_id = ?").get(itemId), "movements remain");
 
   const audit = db
     .prepare(`
       SELECT item_name, quantity, meta_json
       FROM inventory_audit_logs
-      WHERE action_type = 'delete_item' AND item_id = ?
+      WHERE action_type = 'archive_item' AND item_id = ?
     `)
     .get(itemId);
-  assert.ok(audit, "expected a delete_item audit row");
+  assert.ok(audit, "expected an archive_item audit row");
   assert.equal(audit.item_name, itemName);
   assert.equal(audit.quantity, 7);
-
-  const meta = JSON.parse(audit.meta_json);
-  assert.equal(meta.movements_discarded, 1, "the discarded ledger depth is recorded");
-  assert.equal(meta.quantity_at_deletion, 7);
 });
 
 test("doctors still cannot delete patients", async () => {

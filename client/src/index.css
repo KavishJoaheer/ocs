@@ -107,6 +107,18 @@ textarea {
   max-width: 100%;
 }
 
+:focus-visible {
+  outline: 2px solid #2d8f98;
+  outline-offset: 2px;
+}
+
+.sr-only:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  clip: auto;
+}
+
 /* iOS Safari auto-zooms when a focused input's computed font-size is < 16px.
    Pin the form-control font-size to 16px on coarse pointers (touch devices)
    so phones never zoom the layout on focus. Desktop visual rhythm (text-sm

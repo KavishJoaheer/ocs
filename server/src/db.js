@@ -1987,7 +1987,7 @@ function ensureInventoryColumns() {
       attributes TEXT NOT NULL DEFAULT '',
       moa_notes TEXT NOT NULL DEFAULT '',
       expiry_date TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled', 'excluded')),
       created_by_user_id INTEGER,
       released_by_user_id INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2029,6 +2029,51 @@ function ensureInventoryColumns() {
   ensureInventoryOperationsSchema();
 }
 
+function migrateStagingExcludedStatus() {
+  if (!tableExists("inventory_staging")) return;
+  const ddl =
+    db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inventory_staging'`).get()?.sql || "";
+  if (ddl.includes("'excluded'")) return;
+
+  const columns = db.prepare("PRAGMA table_info(inventory_staging)").all().map((column) => column.name);
+  const columnList = columns.map((name) => `"${name}"`).join(", ");
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec(`
+    CREATE TABLE inventory_staging_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folder_id INTEGER NOT NULL,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      minimum_quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'unit',
+      cost_price REAL NOT NULL DEFAULT 0,
+      selling_price REAL NOT NULL DEFAULT 0,
+      attributes TEXT NOT NULL DEFAULT '',
+      moa_notes TEXT NOT NULL DEFAULT '',
+      expiry_date TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled', 'excluded')),
+      created_by_user_id INTEGER,
+      released_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_at TEXT,
+      shipment_id INTEGER,
+      exclude_reason TEXT NOT NULL DEFAULT '',
+      is_non_expiring INTEGER NOT NULL DEFAULT 0,
+      excluded_by_user_id INTEGER,
+      excluded_at TEXT,
+      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE RESTRICT
+    );
+  `);
+  db.exec(
+    `INSERT INTO inventory_staging_migrated (${columnList}) SELECT ${columnList} FROM inventory_staging`,
+  );
+  db.exec("DROP TABLE inventory_staging");
+  db.exec("ALTER TABLE inventory_staging_migrated RENAME TO inventory_staging");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_status ON inventory_staging(status)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_shipment ON inventory_staging(shipment_id, status)");
+  db.exec("PRAGMA foreign_keys = ON");
+}
+
 function ensureInventoryOperationsSchema() {
   const batchCols = tableExists("inventory_batches")
     ? db.prepare("PRAGMA table_info(inventory_batches)").all().map((column) => column.name)
@@ -2055,6 +2100,13 @@ function ensureInventoryOperationsSchema() {
       "ALTER TABLE inventory_staging ADD COLUMN is_non_expiring INTEGER NOT NULL DEFAULT 0",
     );
   }
+  if (tableExists("inventory_staging") && !stagingCols.includes("excluded_by_user_id")) {
+    db.exec("ALTER TABLE inventory_staging ADD COLUMN excluded_by_user_id INTEGER");
+  }
+  if (tableExists("inventory_staging") && !stagingCols.includes("excluded_at")) {
+    db.exec("ALTER TABLE inventory_staging ADD COLUMN excluded_at TEXT");
+  }
+  migrateStagingExcludedStatus();
 
   const inventoryCols = tableExists("inventory")
     ? db.prepare("PRAGMA table_info(inventory)").all().map((column) => column.name)

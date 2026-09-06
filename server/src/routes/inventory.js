@@ -24,20 +24,39 @@ const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
   applyStocktakeSession,
   bulkReleaseShipment,
+  closeShipmentIfIdle,
+  consumeAllocatedBatches,
   createShipmentFromImport,
   createStocktakeSession,
+  csvShipmentTemplate,
   doctorMayViewReceipt,
+  excludeShipmentLines,
   getShipment,
   getStocktakeSession,
   isDoctorEmergencyRestockEnabled,
   listShipments,
   listStocktakeSessions,
+  parseCsvShipment,
   parseNonExpiringFlag,
+  previewAllocations,
   releaseStagingRows,
   reviewStocktakeSession,
   saveStocktakeCounts,
+  shipmentQueueStats,
+  stocktakeQueueStats,
   submitStocktakeSession,
+  validateReceiptExpiry,
+  applyExceptionalCorrection,
 } = require("../lib/inventoryOperations");
+const {
+  assertAdminCatalogueAction,
+  assertRoutineOperatorAction,
+  assertWriteOffInputs,
+  isAdminRole,
+  isOperatorRole,
+  isWarehouseViewer,
+} = require("../lib/inventoryAccess");
+const { availableToPromise } = require("../lib/restockFulfilment");
 
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
@@ -129,7 +148,7 @@ function ensureInfrastructure() {
       attributes TEXT NOT NULL DEFAULT '',
       moa_notes TEXT NOT NULL DEFAULT '',
       expiry_date TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled', 'excluded')),
       created_by_user_id INTEGER,
       released_by_user_id INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -560,9 +579,11 @@ function consumeBatches(itemId, quantity, { disallowExpired = false } = {}) {
     if (!take) continue;
     db.prepare("UPDATE inventory_batches SET quantity_remaining = ? WHERE id = ?").run(row.quantity_remaining - take, row.id);
     allocations.push({
+      batch_id: row.id,
       quantity: take,
       expiry_date: row.expiry_date || null,
       unit_cost: toNumber(row.unit_cost, 0),
+      is_non_expiring: Number(row.is_non_expiring || 0) === 1,
     });
     remaining -= take;
   }
@@ -1033,6 +1054,13 @@ function getCompareRows(dateFrom = "", dateTo = "") {
       `,
     ),
   );
+  const exceptionalCorrections = indexCompareMetric(
+    getCompareMetricByDoctor(
+      params,
+      periodSql,
+      `m.action_type IN ('exceptional_correction', 'correction', 'override')`,
+    ),
+  );
 
   const bagOnHandRows = db
     .prepare(
@@ -1069,8 +1097,11 @@ function getCompareRows(dateFrom = "", dateTo = "") {
       const sales = consumedSales.get(doctorId) || emptyMetric;
       const wasted = consumedWasted.get(doctorId) || emptyMetric;
       const expired = consumedExpired.get(doctorId) || emptyMetric;
+      const exceptional = exceptionalCorrections.get(doctorId) || emptyMetric;
       const onHand = bagOnHand.get(doctorId) || emptyMetric;
       const remainingInBag = roundCurrency(restock.amount - sales.amount - wasted.amount - expired.amount);
+      const periodWorkflowQty =
+        restock.qty + sales.qty + wasted.qty + expired.qty + exceptional.qty;
       return {
         doctor_id: doctorId,
         doctor_name: row.doctor_name,
@@ -1082,11 +1113,20 @@ function getCompareRows(dateFrom = "", dateTo = "") {
         consumed_wasted_qty: wasted.qty,
         consumed_expired: expired.amount,
         consumed_expired_qty: expired.qty,
+        exceptional_correction_qty: exceptional.qty,
+        exceptional_correction_value: exceptional.amount,
         remaining_in_bag: remainingInBag,
         bag_on_hand: onHand.amount,
         bag_on_hand_qty: onHand.qty,
         unpriced_qty: restock.unpriced_qty + sales.unpriced_qty + wasted.unpriced_qty + expired.unpriced_qty + onHand.unpriced_qty,
         variance_rs: roundCurrency(onHand.amount - remainingInBag),
+        has_period_workflow: periodWorkflowQty > 0,
+        period_note:
+          periodWorkflowQty > 0
+            ? ""
+            : onHand.qty > 0
+              ? "No restock, use, waste, or correction recorded in this period."
+              : "No bag workflow movements in this period.",
       };
     });
 }
@@ -1154,6 +1194,19 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   const activityDateFrom = String(req.query.dateFrom || "").trim();
   const activityDateTo = String(req.query.dateTo || "").trim();
   const rawSummary = summarize(activeItems, summaryDoctorId);
+  const warehouseManager = isWarehouseManager(role);
+  const shipments = warehouseManager ? listShipments() : [];
+  const stocktakeSessions = warehouseManager ? listStocktakeSessions() : [];
+  const compareRows = warehouseManager ? getCompareRows(activityDateFrom, activityDateTo) : [];
+  const shipmentStats = warehouseManager ? shipmentQueueStats(shipments) : null;
+  const stocktakeStats = warehouseManager ? stocktakeQueueStats(stocktakeSessions) : null;
+  const bagValue = compareRows.reduce((sum, row) => sum + Number(row.bag_on_hand || 0), 0);
+  const unpricedItems = compareRows.reduce((sum, row) => sum + Number(row.unpriced_qty || 0), 0);
+  const periodExceptions = compareRows.reduce(
+    (sum, row) => sum + Number(row.exceptional_correction_qty || 0),
+    0,
+  );
+  const periodMovements = compareRows.filter((row) => row.has_period_workflow).length;
 
   return {
     folders,
@@ -1162,6 +1215,25 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     selected_doctor_stock: selectedDoctorStock,
     doctors: role === "admin" || role === "operator" ? getDoctors() : [],
     summary: stripFinancialSummaryFields(rawSummary, role),
+    tab_summaries: warehouseManager
+      ? {
+          stock: {
+            warehouse_value: rawSummary.total_amount_rs,
+            low_stock: Number(rawSummary.low_stock_count || 0),
+            near_expiry: Number(rawSummary.near_expiry_count || 0),
+            missing_expiry: ocsStock.filter((item) => !item.expiry_date).length,
+          },
+          shipments: shipmentStats,
+          count: stocktakeStats,
+          bags: {
+            doctor_bags: compareRows.filter((row) => Number(row.bag_on_hand_qty || 0) > 0).length,
+            total_bag_value: roundCurrency(bagValue),
+            unpriced_items: unpricedItems,
+            period_movements: periodMovements,
+            period_exceptions: periodExceptions,
+          },
+        }
+      : null,
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
     near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
     movements: getMovements(role, doctorId, {
@@ -1170,19 +1242,25 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
       dateFrom: activityDateFrom,
       dateTo: activityDateTo,
     }),
-    activity_staff: isWarehouseManager(role) ? getActivityStaffList() : [],
-    staging: isWarehouseManager(role) ? db.prepare(`
+    activity_staff: warehouseManager ? getActivityStaffList() : [],
+    staging: warehouseManager
+      ? db
+          .prepare(
+            `
       SELECT s.*, f.name AS folder_name
       FROM inventory_staging s
       LEFT JOIN inventory_folders f ON f.id = s.folder_id
       ORDER BY s.created_at DESC, s.id DESC
       LIMIT 200
-    `).all() : [],
-    shipments: isWarehouseManager(role) ? listShipments() : [],
-    stocktake_sessions: isWarehouseManager(role) ? listStocktakeSessions() : [],
+    `,
+          )
+          .all()
+      : [],
+    shipments,
+    incoming_shipments: shipments.filter((row) => row.in_incoming_queue),
+    stocktake_sessions: stocktakeSessions,
     emergency_restock_enabled: role === "doctor" ? isDoctorEmergencyRestockEnabled() : false,
-    compare_rows:
-      isWarehouseManager(role) ? getCompareRows(activityDateFrom, activityDateTo) : [],
+    compare_rows: compareRows,
     my_consumption_rows: doctorId ? getDoctorConsumptionRecord(doctorId) : [],
   };
 }
@@ -1562,7 +1640,7 @@ router.post("/items", (req, res) => {
 
   const itemName = String(req.body.item_name || "").trim();
   const folderId = Number(req.body.folder_id || 0);
-  const quantity = Number(req.body.quantity || 0);
+  const quantity = Number(req.body.quantity ?? 0);
   const minimumQuantity = Number(req.body.minimum_quantity || 0);
   const unit = String(req.body.unit || "unit").trim();
   const costPrice = roundCurrency(req.body.cost_price);
@@ -1574,12 +1652,13 @@ router.post("/items", (req, res) => {
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
-  if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ error: "Quantity must be zero or more." });
+  if (quantity !== 0) {
+    return res.status(400).json({
+      error: "Catalogue items start at zero on-hand. Receive stock after the item is created.",
+    });
+  }
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });
-  if (quantity > 0 && !isNonExpiring && !expiryDate) {
-    return res.status(400).json({ error: "New stock requires an expiry date or an explicit non-expiring batch." });
-  }
 
   const folder = db.prepare("SELECT id FROM inventory_folders WHERE id = ?").get(folderId);
   if (!folder) return res.status(404).json({ error: "Folder not found." });
@@ -1601,20 +1680,6 @@ router.post("/items", (req, res) => {
     .run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate);
 
   const createdItemId = Number(result.lastInsertRowid);
-
-  if (quantity > 0) {
-    createBatch(createdItemId, quantity, expiryDate, costPrice, { isNonExpiring });
-    recordMovement({
-      itemId: createdItemId,
-      movementType: "in",
-      quantity,
-      previousQuantity: 0,
-      nextQuantity: quantity,
-      actionType: "add",
-      note: "Initial stock entry",
-      userId: req.auth.id,
-    });
-  }
 
   res.status(201).json(getPayload(req));
 });
@@ -1673,7 +1738,13 @@ router.put("/items/:id", (req, res) => {
   }
 
   const masterFieldsLocked = isDoctor || isOperator;
-  const quantityLocked = isDoctor || isOperator || !isAdmin;
+  const quantityLocked = true;
+
+  if (!isDoctor && Object.prototype.hasOwnProperty.call(req.body || {}, "quantity") && fieldChanged("quantity", existing.quantity, req.body.quantity)) {
+    return res.status(400).json({
+      error: "Catalogue editing cannot change on-hand quantity. Use Exceptional inventory correction.",
+    });
+  }
 
   const itemName = masterFieldsLocked
     ? String(existing.item_name || "").trim()
@@ -1716,17 +1787,9 @@ router.put("/items/:id", (req, res) => {
   }
 
   const previousQuantity = Number(existing.quantity || 0);
-  const delta = quantity - previousQuantity;
 
   try {
     db.transaction(() => {
-      if (delta < 0) {
-        const consumed = consumeStock(itemId, Math.abs(delta));
-        if (!consumed.ok) throw new Error("Insufficient batch stock for quantity reduction.");
-      } else if (delta > 0) {
-        createBatch(itemId, delta, expiryDate, costPrice);
-      }
-
       db.prepare(`
         UPDATE inventory
         SET
@@ -1736,41 +1799,33 @@ router.put("/items/:id", (req, res) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
-
-      if (delta !== 0) {
-        recordMovement({
-          itemId,
-          movementType: delta > 0 ? "in" : "out",
-          quantity: Math.abs(delta),
-          previousQuantity,
-          nextQuantity: quantity,
-          actionType: "correction",
-          note: adjustmentNote || `Quantity adjusted from ${previousQuantity} to ${quantity}`,
-          userId: req.auth.id,
-        });
-      }
     })();
   } catch (error) {
     return res.status(400).json({ error: error?.message || "Unable to update stock item." });
   }
 
-  if (delta === 0 && isDoctor && doctorId) {
+  if (isDoctor && doctorId) {
     void maybeNotifyLowStock(itemId, req.auth.id).catch((error) => {
       console.warn("[push] low stock notification failed:", error?.message || error);
     });
   }
 
-  if (delta === 0) {
-    publishInventoryChange({ itemId, changedByUserId: req.auth.id });
-  }
+  publishInventoryChange({ itemId, changedByUserId: req.auth.id });
 
   res.json(getPayloadFromRequest(req));
 });
 
 router.post("/items/:id/ocs-actions", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can perform OCS stock actions." });
+  let override;
+  try {
+    override = assertRoutineOperatorAction(
+      req.auth,
+      req.body,
+      req.body?.action_type === "remove" ? "Warehouse write-off" : "Receiving warehouse stock",
+    );
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
   }
 
   const itemId = Number(req.params.id);
@@ -1783,7 +1838,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     return res.status(400).json({ error: "Action must be stock_in or remove." });
   }
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    return res.status(400).json({ error: "Quantity must be greater than zero." });
+    return res.status(400).json({ error: "Quantity must be a whole number greater than zero." });
   }
 
   const previousQuantity = Number(item.quantity || 0);
@@ -1800,15 +1855,22 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     const costPrice = req.auth.role === "admin"
       ? roundCurrency(req.body.cost_price ?? item.cost_price)
       : roundCurrency(item.cost_price);
-    const isNonExpiring = parseNonExpiringFlag(req.body.is_non_expiring || req.body.non_expiring);
-    const expiryDate = isNonExpiring ? null : String(req.body.expiry_date || "").trim() || null;
-    if (!isNonExpiring && !expiryDate) {
-      return res.status(400).json({ error: "Batch expiry date is required, or mark the batch as non-expiring." });
+    if (costPrice < 0) {
+      return res.status(400).json({ error: "Cost price must be zero or more." });
+    }
+    let expiry;
+    try {
+      expiry = validateReceiptExpiry({
+        expiryDate: req.body.expiry_date,
+        isNonExpiring: parseNonExpiringFlag(req.body.is_non_expiring || req.body.non_expiring),
+      });
+    } catch (error) {
+      return res.status(error.status || 400).json({ error: error.message });
     }
     const nextQuantity = previousQuantity + quantity;
 
     db.transaction(() => {
-      createBatch(itemId, quantity, expiryDate, costPrice, { isNonExpiring });
+      createBatch(itemId, quantity, expiry.expiryDate, costPrice, { isNonExpiring: expiry.isNonExpiring });
       db.prepare(`
         UPDATE inventory
         SET quantity = ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
@@ -1821,19 +1883,26 @@ router.post("/items/:id/ocs-actions", (req, res) => {
         previousQuantity,
         nextQuantity,
         actionType: "stock_in",
-        note: "Stock In batch added",
+        note: override.override
+          ? `Operational override receive: ${override.reason}`
+          : "Stock In batch added",
         userId: req.auth.id,
         metaJson: JSON.stringify({
           performed_by_user_id: req.auth.id,
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
+          operational_override: Boolean(override.override),
+          override_reason: override.reason || "",
+          is_non_expiring: expiry.isNonExpiring,
+          expiry_date: expiry.expiryDate,
         }),
       });
       recordAudit({
-        actionType: "stock_in",
+        actionType: override.override ? "operational_override_stock_in" : "stock_in",
         itemId,
         itemName: item.item_name,
         quantity,
+        reason: override.reason || "",
         performedByUserId: req.auth.id,
         performedByRole: req.auth.role,
         performedByName: req.auth.full_name || req.auth.username || "",
@@ -1843,20 +1912,27 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     return res.status(201).json(getPayload(req));
   }
 
-  const reason = String(req.body.reason || "").trim();
-  if (!["Expired", "Discontinued", "Damaged"].includes(reason)) {
-    return res.status(400).json({ error: "Reason must be Expired, Discontinued, or Damaged." });
+  let writeOff;
+  try {
+    writeOff = assertWriteOffInputs({
+      reason: req.body.reason,
+      note: req.body.note,
+      confirm: req.body.confirm,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
   }
-  if (previousQuantity < quantity) {
-    return res.status(400).json({ error: "Cannot remove more stock than available." });
+  const preview = previewAllocations(itemId, quantity, { includeExpired: true });
+  if (!preview.can_fulfil || quantity > preview.available_to_transfer) {
+    return res.status(400).json({
+      error: "Cannot write off more than usable available stock. Active reservations are excluded.",
+      preview,
+    });
   }
 
   try {
     db.transaction(() => {
-      const consumed = consumeStock(itemId, quantity);
-      if (!consumed.ok) {
-        throw new Error("Insufficient batch stock.");
-      }
+      consumeAllocatedBatches(preview.allocations);
       const nextQuantity = previousQuantity - quantity;
       updateInventoryQuantity(itemId, nextQuantity);
       recordMovement({
@@ -1866,31 +1942,39 @@ router.post("/items/:id/ocs-actions", (req, res) => {
         previousQuantity,
         nextQuantity,
         actionType: "remove",
-        note: `Write-off (${reason})`,
+        note: `Write-off (${writeOff.reason})${writeOff.note ? `: ${writeOff.note}` : ""}${
+          override.override ? ` · override: ${override.reason}` : ""
+        }`,
         userId: req.auth.id,
         metaJson: JSON.stringify({
-          reason,
+          reason: writeOff.reason,
+          note: writeOff.note,
+          allocations: preview.allocations,
+          estimated_value: preview.estimated_value,
           performed_by_user_id: req.auth.id,
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
+          operational_override: Boolean(override.override),
+          override_reason: override.reason || "",
         }),
       });
       recordAudit({
-        actionType: "remove",
+        actionType: override.override ? "operational_override_remove" : "remove",
         itemId,
         itemName: item.item_name,
         quantity,
-        reason,
+        reason: writeOff.reason,
         performedByUserId: req.auth.id,
         performedByRole: req.auth.role,
         performedByName: req.auth.full_name || req.auth.username || "",
+        metaJson: JSON.stringify({ note: writeOff.note, allocations: preview.allocations }),
       });
     })();
   } catch (error) {
-    return res.status(400).json({ error: error?.message || "Unable to remove stock." });
+    return res.status(error.status || 400).json({ error: error?.message || "Unable to write off stock." });
   }
 
-  return res.status(201).json(getPayload(req));
+  return res.status(201).json({ ...getPayload(req), write_off: preview });
 });
 
 router.post("/items/:id/bag-actions", (req, res) => {
@@ -1974,6 +2058,93 @@ router.get("/items/:id/batches", (req, res) => {
     item_id: itemId,
     batches: getBatchesForItem(itemId),
   });
+});
+
+router.get("/items/:id/allocation-preview", (req, res) => {
+  ensureInfrastructure();
+  if (!isWarehouseViewer(req.auth.role)) {
+    return res.status(403).json({ error: "Not authorised to preview stock allocations." });
+  }
+  const itemId = Number(req.params.id);
+  const quantity = Number(req.query.quantity || 0);
+  const mode = String(req.query.mode || "transfer").trim().toLowerCase();
+  try {
+    const preview = previewAllocations(itemId, quantity, { includeExpired: mode === "write_off" });
+    const item = findItem(itemId, "ocs", null) || findItemForRequest(req, itemId);
+    let destinationOnHand = null;
+    const doctorId = Number(req.query.doctor_id || 0);
+    if (doctorId && item) {
+      const bag = db
+        .prepare(
+          `
+          SELECT quantity FROM inventory
+          WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND folder_id = ? AND item_name = ?
+          LIMIT 1
+        `,
+        )
+        .get(doctorId, item.folder_id, item.item_name);
+      destinationOnHand = bag ? Number(bag.quantity || 0) : 0;
+    }
+    return res.json({
+      preview: {
+        ...preview,
+        destination_on_hand: destinationOnHand,
+        destination_resulting:
+          destinationOnHand == null ? null : destinationOnHand + Number(preview.requested_quantity || 0),
+      },
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+router.post("/items/:id/exceptional-correction", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertAdminCatalogueAction(req.auth, "apply an exceptional inventory correction");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+  try {
+    const result = applyExceptionalCorrection({
+      itemId: Number(req.params.id),
+      nextQuantity: req.body?.next_quantity ?? req.body?.quantity,
+      delta: req.body?.delta,
+      reason: req.body?.reason,
+      note: req.body?.note,
+      confirm: req.body?.confirm,
+      userId: req.auth.id,
+      actor: {
+        userId: req.auth.id,
+        role: req.auth.role,
+        displayName: req.auth.full_name || req.auth.username || "",
+      },
+    });
+    recordAudit({
+      actionType: "exceptional_correction",
+      itemId: Number(req.params.id),
+      itemName: result.item?.item_name || "",
+      quantity: Math.abs(result.change),
+      reason: String(req.body?.reason || "").trim(),
+      performedByUserId: req.auth.id,
+      performedByRole: req.auth.role,
+      performedByName: req.auth.full_name || req.auth.username || "",
+      metaJson: JSON.stringify({
+        previous: result.previous,
+        next: result.next,
+        change: result.change,
+        note: String(req.body?.note || "").trim(),
+        movement_id: result.movementId,
+      }),
+    });
+    return res.status(result.idempotent ? 200 : 201).json({
+      ...getPayload(req),
+      correction: result,
+      idempotent: result.idempotent,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
 });
 
 router.post("/bulk/remove", (req, res) => {
@@ -2282,8 +2453,11 @@ router.post("/items/:id/actions", (req, res) => {
 
 router.post("/restock", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can restock doctors." });
+  let override;
+  try {
+    override = assertRoutineOperatorAction(req.auth, req.body, "Transfer to doctor bag");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
   }
 
   const ocsItemId = Number(req.body.ocs_item_id || 0);
@@ -2291,14 +2465,20 @@ router.post("/restock", (req, res) => {
   const quantity = Number(req.body.quantity || 0);
   const note = String(req.body.note || "").trim();
   if (!ocsItemId || !doctorId || !Number.isInteger(quantity) || quantity <= 0) {
-    return res.status(400).json({ error: "ocs_item_id, doctor_id, and positive quantity are required." });
+    return res.status(400).json({ error: "ocs_item_id, doctor_id, and a positive whole-number quantity are required." });
   }
 
   const doctor = db.prepare("SELECT id, full_name FROM doctors WHERE id = ? AND deleted_at IS NULL").get(doctorId);
   if (!doctor) return res.status(404).json({ error: "Doctor not found." });
   const source = findItem(ocsItemId, "ocs", null);
   if (!source) return res.status(404).json({ error: "OCS stock item not found." });
-  if (Number(source.quantity || 0) < quantity) return res.status(400).json({ error: "Insufficient OCS stock." });
+  const preview = previewAllocations(ocsItemId, quantity, { includeExpired: false });
+  if (!preview.can_fulfil || quantity > preview.available_to_transfer) {
+    return res.status(400).json({
+      error: "Cannot transfer more than available-to-transfer stock. Active reservations and expired batches are excluded.",
+      preview,
+    });
+  }
 
   const targetExisting = db
     .prepare(`
@@ -2316,11 +2496,7 @@ router.post("/restock", (req, res) => {
 
   try {
     db.transaction(() => {
-      // IMPORTANT: batch consumption must happen inside the transaction
-      const consumed = consumeBatches(source.id, quantity);
-      if (!consumed.ok) {
-        throw new Error("Insufficient batch stock in OCS inventory.");
-      }
+      consumeAllocatedBatches(preview.allocations);
 
       const sourcePrev = Number(source.quantity || 0);
       const sourceNext = sourcePrev - quantity;
@@ -2332,7 +2508,9 @@ router.post("/restock", (req, res) => {
         previousQuantity: sourcePrev,
         nextQuantity: sourceNext,
         actionType: "restock_out",
-        note: note || "Restocked to doctor stock",
+        note: override.override
+          ? `${note || "Restocked to doctor stock"} · override: ${override.reason}`
+          : note || "Restocked to doctor stock",
         userId: req.auth.id,
         referenceType: "doctor",
         referenceId: doctorId,
@@ -2345,7 +2523,9 @@ router.post("/restock", (req, res) => {
         receipt_reference: receiptReference,
         issued_by_name: req.auth.full_name || req.auth.username || "",
         received_by_name: doctor.full_name,
-        transfer_allocations: consumed.allocations,
+        transfer_allocations: preview.allocations,
+        operational_override: Boolean(override.override),
+        override_reason: override.reason || "",
       }),
       });
 
@@ -2382,7 +2562,7 @@ router.post("/restock", (req, res) => {
         targetItemId = Number(created.lastInsertRowid);
       }
 
-      allocateRestockBatchesToPositive(targetItemId, consumed.allocations, targetPrev);
+      allocateRestockBatchesToPositive(targetItemId, preview.allocations, targetPrev);
       recordMovement({
         itemId: targetItemId,
         movementType: "in",
@@ -2661,62 +2841,69 @@ router.post("/restock/my-inventory", (req, res) => {
   });
 });
 
+router.get("/staging/csv-template", (req, res) => {
+  ensureInfrastructure();
+  if (!isWarehouseViewer(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin/operator can download the shipment template." });
+  }
+  const csv = csvShipmentTemplate();
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="ocs-shipment-template.csv"');
+  return res.status(200).send(csv);
+});
+
+router.post("/staging/preview-csv", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Preview shipment import");
+  } catch (error) {
+    if (req.auth.role !== "admin" && req.auth.role !== "operator") {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
+  try {
+    const preview = parseCsvShipment(req.body.csv_text);
+    return res.json({
+      preview: preview.summary,
+      rows: preview.rows,
+      supplier: String(req.body.supplier || "").trim(),
+      delivery_note: String(req.body.delivery_note || req.body.invoice_reference || "").trim(),
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
 router.post("/staging/import-csv", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can import CSV shipments." });
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Import shipments");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
   }
-  const csvText = String(req.body.csv_text || "").trim();
-  if (!csvText) return res.status(400).json({ error: "csv_text is required." });
-
-  const [headerLine, ...rowLines] = csvText.split(/\r?\n/).filter(Boolean);
-  const headers = headerLine.split(",").map((value) => value.trim().toLowerCase());
-  const required = ["folder", "item_name", "quantity", "minimum_quantity", "unit", "cost_price", "selling_price", "expiry_date"];
-  const missing = required.filter((header) => !headers.includes(header));
-  if (missing.length) return res.status(400).json({ error: `CSV missing headers: ${missing.join(", ")}` });
-
-  const folderMap = new Map(getFolders().map((folder) => [folder.name.toLowerCase(), folder.id]));
-  const validRows = [];
-  const skippedRows = [];
-  rowLines.forEach((line, index) => {
-    const values = line.split(",").map((value) => value.trim());
-    const row = Object.fromEntries(headers.map((header, idx) => [header, values[idx] || ""]));
-    const folderId = folderMap.get(String(row.folder || "").toLowerCase());
-    const qty = Number(row.quantity || 0);
-    const lineNumber = index + 2;
-    if (!folderId) {
-      skippedRows.push({
-        line: lineNumber,
-        reason: row.folder ? `Unknown folder "${row.folder}"` : "Missing folder",
-      });
-      return;
-    }
-    if (!row.item_name) {
-      skippedRows.push({ line: lineNumber, reason: "Missing item name" });
-      return;
-    }
-    if (!Number.isInteger(qty) || qty < 0) {
-      skippedRows.push({ line: lineNumber, reason: "Invalid quantity" });
-      return;
-    }
-    validRows.push({
-      folder_id: folderId,
-      item_name: row.item_name,
-      quantity: qty,
-      minimum_quantity: Number(row.minimum_quantity || 0),
-      unit: row.unit || "unit",
-      cost_price: toNumber(row.cost_price, 0),
-      selling_price: toNumber(row.selling_price, 0),
-      attributes: row.attributes || "",
-      moa_notes: row.moa_notes || "",
-      expiry_date: row.expiry_date || null,
-      is_non_expiring: parseNonExpiringFlag(row.non_expiring || row.is_non_expiring) ? 1 : 0,
+  let parsed;
+  try {
+    parsed = parseCsvShipment(req.body.csv_text);
+  } catch (error) {
+    return res.status(error.status || 400).json({
+      error: error.message,
+      import_summary: { imported: 0, skipped: 0, skipped_rows: [] },
     });
-  });
+  }
+  const validRows = parsed.valid_rows;
+  const skippedRows = parsed.invalid_rows.map((row) => ({
+    line: row.line,
+    reason: row.errors.join("; "),
+  }));
   if (!validRows.length) {
     return res.status(400).json({
       error: "No valid rows found in CSV.",
-      import_summary: { imported: 0, skipped: skippedRows.length, skipped_rows: skippedRows.slice(0, 25) },
+      import_summary: {
+        imported: 0,
+        skipped: skippedRows.length,
+        skipped_rows: skippedRows.slice(0, 25),
+        preview: parsed.summary,
+      },
     });
   }
 
@@ -2730,9 +2917,10 @@ router.post("/staging/import-csv", (req, res) => {
   const insert = db.prepare(`
     INSERT INTO inventory_staging (
       folder_id, item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
-      attributes, moa_notes, expiry_date, status, created_by_user_id, shipment_id, is_non_expiring
+      attributes, moa_notes, expiry_date, status, created_by_user_id, shipment_id, is_non_expiring,
+      exclude_reason, excluded_by_user_id, excluded_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of validRows) {
     insert.run(
@@ -2746,9 +2934,41 @@ router.post("/staging/import-csv", (req, res) => {
       row.attributes,
       row.moa_notes,
       row.expiry_date,
+      "pending",
       req.auth.id,
       shipmentId,
       row.is_non_expiring,
+      "",
+      null,
+      null,
+    );
+  }
+  const excludeInsert = db.prepare(`
+    INSERT INTO inventory_staging (
+      folder_id, item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
+      attributes, moa_notes, expiry_date, status, created_by_user_id, shipment_id, is_non_expiring,
+      exclude_reason, excluded_by_user_id, excluded_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'excluded', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `);
+  for (const row of parsed.invalid_rows) {
+    if (!row.folder_id) continue;
+    excludeInsert.run(
+      row.folder_id,
+      row.item_name || `Line ${row.line}`,
+      row.quantity || 0,
+      row.minimum_quantity || 0,
+      row.unit || "unit",
+      row.cost_price || 0,
+      row.selling_price || 0,
+      row.attributes || "",
+      row.moa_notes || "",
+      row.expiry_date,
+      req.auth.id,
+      shipmentId,
+      row.is_non_expiring || 0,
+      row.errors.join("; ").slice(0, 500),
+      req.auth.id,
     );
   }
   const importSummary = {
@@ -2756,6 +2976,7 @@ router.post("/staging/import-csv", (req, res) => {
     skipped: skippedRows.length,
     skipped_rows: skippedRows.slice(0, 25),
     shipment_id: shipmentId,
+    preview: parsed.summary,
   };
   res.status(201).json({
     ...getPayload(req),
@@ -2766,8 +2987,10 @@ router.post("/staging/import-csv", (req, res) => {
 
 router.post("/staging/:id/release", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can release staging items." });
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Release shipments");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
   }
   const stagingId = Number(req.params.id);
   const row = db.prepare("SELECT * FROM inventory_staging WHERE id = ?").get(stagingId);
@@ -2816,31 +3039,83 @@ router.get("/shipments/:id", (req, res) => {
   return res.json({ shipment });
 });
 
+router.post("/shipments/:id/exclude", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Exclude shipment lines");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+  try {
+    const shipment = excludeShipmentLines({
+      shipmentId: Number(req.params.id),
+      lines: req.body?.lines || req.body?.exclude || [],
+      userId: req.auth.id,
+      actor: {
+        displayName: req.auth.full_name || req.auth.username || "",
+        role: req.auth.role,
+      },
+    });
+    return res.json({ shipment, ...getPayload(req) });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
 router.post("/shipments/:id/release", (req, res) => {
   ensureInfrastructure();
-  if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can release shipments." });
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Release shipments");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
   }
   const exclude = Array.isArray(req.body?.exclude) ? req.body.exclude : [];
-  for (const entry of exclude) {
-    const reason = String(entry?.reason || "").trim();
-    if (reason.length < 3) {
-      return res.status(400).json({ error: "Excluded shipment lines require a reason." });
-    }
-    db.prepare(`
-      UPDATE inventory_staging
-      SET exclude_reason = ?
-      WHERE id = ? AND shipment_id = ? AND status = 'pending'
-    `).run(reason, Number(entry.id), Number(req.params.id));
-  }
   const mode = String(req.body?.mode || "all_valid");
   const rowIds =
     mode === "selected" && Array.isArray(req.body?.row_ids)
       ? req.body.row_ids.map(Number)
       : [];
   try {
-    const result = db.transaction(() =>
-      bulkReleaseShipment({
+    const result = db.transaction(() => {
+      if (exclude.length) {
+        excludeShipmentLines({
+          shipmentId: Number(req.params.id),
+          lines: exclude,
+          userId: req.auth.id,
+          actor: {
+            displayName: req.auth.full_name || req.auth.username || "",
+            role: req.auth.role,
+          },
+        });
+      }
+      const current = getShipment(Number(req.params.id));
+      const validPending = (current?.lines || []).filter(
+        (line) => line.status === "pending" && !(line.validation_errors || []).length,
+      );
+      const selectedPending =
+        mode === "selected" && rowIds.length
+          ? validPending.filter((line) => rowIds.includes(Number(line.id)))
+          : validPending;
+      if (!selectedPending.length) {
+        if (["released", "cancelled"].includes(String(current?.status || ""))) {
+          return {
+            shipment: current,
+            idempotent: true,
+            receipt: current ? { shipment_id: current.id } : null,
+            released: 0,
+          };
+        }
+        return bulkReleaseShipment({
+          shipmentId: Number(req.params.id),
+          rowIds,
+          userId: req.auth.id,
+          actor: {
+            displayName: req.auth.full_name || req.auth.username || "",
+            role: req.auth.role,
+          },
+        });
+      }
+      return bulkReleaseShipment({
         shipmentId: Number(req.params.id),
         rowIds,
         userId: req.auth.id,
@@ -2848,8 +3123,8 @@ router.post("/shipments/:id/release", (req, res) => {
           displayName: req.auth.full_name || req.auth.username || "",
           role: req.auth.role,
         },
-      }),
-    )();
+      });
+    })();
     return res.status(result.idempotent ? 200 : 201).json({
       ...getPayload(req),
       shipment: result.shipment,
@@ -3027,75 +3302,28 @@ router.delete("/items/:id", (req, res) => {
   const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId);
   if (!item) return res.status(404).json({ error: "Stock item not found." });
 
-  const isOcsMaster =
-    String(item.stock_scope || "") === "ocs" &&
-    (item.owner_doctor_id == null || item.owner_doctor_id === "");
-
-  if (isOcsMaster) {
-    if (item.archived_at) {
-      return res.status(409).json({ error: "This catalogue item is already archived." });
-    }
-    db.prepare(`
-      UPDATE inventory
-      SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(itemId);
-    recordAudit({
-      actionType: "archive_item",
-      itemId,
-      itemName: item.item_name,
-      quantity: Number(item.quantity || 0),
-      reason: String(req.body?.reason || "").trim() || "Master catalogue item archived",
-      performedByUserId: req.auth?.id || null,
-      performedByRole: req.auth?.role || "",
-      performedByName: req.auth?.full_name || req.auth?.username || "",
-      metaJson: JSON.stringify({ stock_scope: item.stock_scope || null }),
-    });
-    publishInventoryResyncBroadcast({ reason: "item_archived" });
-    return res.status(200).json({ archived: true, id: itemId });
+  if (item.archived_at) {
+    return res.status(409).json({ error: "This catalogue item is already archived." });
   }
-
-  const movementHistory = db
-    .prepare(`
-      SELECT COUNT(*) AS movement_count, MAX(created_at) AS last_movement_at
-      FROM inventory_movements
-      WHERE item_id = ?
-    `)
-    .get(itemId);
-
-  db.transaction(() => {
-    recordAudit({
-      actionType: "delete_item",
-      itemId,
-      itemName: item.item_name,
-      quantity: Number(item.quantity || 0),
-      reason: String(req.body?.reason || "").trim() || "Stock item deleted",
-      targetDoctorId: item.owner_doctor_id || null,
-      performedByUserId: req.auth?.id || null,
-      performedByRole: req.auth?.role || "",
-      performedByName: req.auth?.full_name || req.auth?.username || "",
-      metaJson: JSON.stringify({
-        stock_scope: item.stock_scope || null,
-        unit: item.unit || null,
-        expiry_date: item.expiry_date || null,
-        quantity_at_deletion: Number(item.quantity || 0),
-        movements_discarded: Number(movementHistory?.movement_count || 0),
-        last_movement_at: movementHistory?.last_movement_at || null,
-      }),
-    });
-
-    db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
-    db.prepare("DELETE FROM inventory_movements WHERE item_id = ?").run(itemId);
-    db.prepare("DELETE FROM inventory WHERE id = ?").run(itemId);
-  })();
-
-  try {
-    publishInventoryResyncBroadcast({ reason: "item_deleted" });
-  } catch (error) {
-    console.warn("[inventory][DELETE /items/:id] resync broadcast failed:", error?.message || error);
-  }
-
-  res.status(204).send();
+  db.prepare(`
+    UPDATE inventory
+    SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(itemId);
+  recordAudit({
+    actionType: "archive_item",
+    itemId,
+    itemName: item.item_name,
+    quantity: Number(item.quantity || 0),
+    reason: String(req.body?.reason || "").trim() || "Inventory item archived",
+    targetDoctorId: item.owner_doctor_id || null,
+    performedByUserId: req.auth?.id || null,
+    performedByRole: req.auth?.role || "",
+    performedByName: req.auth?.full_name || req.auth?.username || "",
+    metaJson: JSON.stringify({ stock_scope: item.stock_scope || null }),
+  });
+  publishInventoryResyncBroadcast({ reason: "item_archived" });
+  return res.status(200).json({ archived: true, id: itemId });
 });
 
 module.exports = router;

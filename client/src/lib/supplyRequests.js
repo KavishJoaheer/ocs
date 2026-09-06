@@ -165,3 +165,38 @@ export function canDoctorRequestChanges(request) {
 export function canDoctorConfirmCollection(request) {
   return normaliseSupplyRequestStatus(request?.status) === "ready";
 }
+
+export function summarizeActiveSupplyRequests(requests = [], role = "operator") {
+  const rows = Array.isArray(requests) ? requests : [];
+  const pending = rows.filter((row) => normaliseSupplyRequestStatus(row.status) === "pending").length;
+  const accepted = rows.filter((row) => normaliseSupplyRequestStatus(row.status) === "accepted").length;
+  const ready = rows.filter((row) => normaliseSupplyRequestStatus(row.status) === "ready").length;
+  const changes = rows.filter((row) => row.pending_amendment).length;
+  if (!rows.length) return "No active supply requests";
+  const parts = [];
+  if (pending) {
+    parts.push(`${pending} awaiting acceptance`);
+  }
+  if (accepted) {
+    parts.push(`${accepted} being prepared`);
+  }
+  if (ready) {
+    parts.push(`${ready} awaiting collection`);
+  }
+  if (changes) {
+    parts.push(`${changes} change request${changes === 1 ? "" : "s"}`);
+  }
+  const prefix =
+    rows.length > 1 && (accepted || ready || pending > 1)
+      ? `${rows.length} active requests · `
+      : "";
+  if (!parts.length) {
+    return role === "doctor" ? "Active supply requests" : `${rows.length} active request${rows.length === 1 ? "" : "s"}`;
+  }
+  return `${prefix}${parts.join(" · ")}`;
+}
+
+export async function fetchSupplyRequestDetail(id) {
+  const payload = await api.get(`/restock-requests/${id}`);
+  return payload?.request || null;
+}

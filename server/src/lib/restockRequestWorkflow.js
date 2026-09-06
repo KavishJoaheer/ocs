@@ -93,6 +93,30 @@ function snapshotItems(items = []) {
   }));
 }
 
+const EVENT_LABELS = {
+  request_created: "Request submitted",
+  pending_request_edited: "Request edited",
+  request_accepted: "Request accepted",
+  amendment_submitted: "Change request submitted",
+  amendment_accepted: "Change request accepted",
+  amendment_rejected: "Change request declined",
+  request_assigned: "Assigned to operator",
+  picking_updated: "Picking updated",
+  shortage_detected: "Shortage recorded",
+  shortage_resolved: "Shortage resolved",
+  partial_fulfilment_approved: "Partial fulfilment approved",
+  supply_marked_ready: "Supply marked ready",
+  request_cancelled: "Request cancelled",
+  supply_collected: "Collection confirmed",
+  inventory_transfer_posted: "Warehouse transfer posted",
+  fulfilment_reconciled: "Fulfilment reconciled",
+};
+
+function supplyRequestEventLabel(eventType) {
+  const key = String(eventType || "").trim();
+  return EVENT_LABELS[key] || key.replace(/_/g, " ") || "Update";
+}
+
 function actorFromAuth(auth) {
   return {
     userId: auth?.id ? Number(auth.id) : null,
@@ -106,6 +130,7 @@ module.exports = {
   ALL_STATUSES,
   DOCTOR_TRANSITIONS,
   EVENT_TYPES,
+  EVENT_LABELS,
   HISTORY_STATUSES,
   OPERATOR_TRANSITIONS,
   actorFromAuth,
@@ -115,5 +140,6 @@ module.exports = {
   normaliseStatus,
   parseMetadata,
   snapshotItems,
+  supplyRequestEventLabel,
   supplyRequestStatusLabel,
 };

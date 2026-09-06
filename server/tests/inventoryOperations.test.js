@@ -918,3 +918,277 @@ test("operator can inspect, accept and reject amendments from the changes workfl
       nextQueues.data.shortages.some((row) => row.id === request.id),
   );
 });
+
+function todayLocalIso() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+function offsetIso(days) {
+  const now = new Date();
+  now.setDate(now.getDate() + days);
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+test("past expiry receipt is rejected and future or non-expiring receipts are accepted", async () => {
+  const itemId = insertOcsItem({ name: `Recv ${Date.now()}`, qty: 2 });
+  const past = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetIso(-1) },
+  });
+  assert.equal(past.status, 400, JSON.stringify(past.data));
+  const future = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 2, expiry_date: offsetIso(14) },
+  });
+  assert.equal(future.status, 201, JSON.stringify(future.data));
+  const today = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: todayLocalIso() },
+  });
+  assert.equal(today.status, 201, JSON.stringify(today.data));
+  const nonExpiring = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 3, is_non_expiring: true },
+  });
+  assert.equal(nonExpiring.status, 201, JSON.stringify(nonExpiring.data));
+  const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  assert.equal(qty, 8);
+});
+
+test("admin cannot receive stock without an operational override and operators cannot edit catalogue prices", async () => {
+  const itemId = insertOcsItem({ name: `Perm ${Date.now()}`, qty: 2 });
+  const adminReceive = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: adminToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetIso(30) },
+  });
+  assert.equal(adminReceive.status, 403, JSON.stringify(adminReceive.data));
+  const adminOverride = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: adminToken,
+    body: {
+      action_type: "stock_in",
+      quantity: 1,
+      expiry_date: offsetIso(30),
+      operational_override: true,
+      override_reason: "Emergency weekend receiving while no operator is on duty",
+    },
+  });
+  assert.equal(adminOverride.status, 201, JSON.stringify(adminOverride.data));
+  const doctorReceive = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: doctorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetIso(30) },
+  });
+  assert.equal(doctorReceive.status, 403);
+});
+
+test("exceptional correction is admin-only, audited, and keeps batch totals aligned", async () => {
+  const itemId = insertOcsItem({ name: `Corr ${Date.now()}`, qty: 5 });
+  const operatorDenied = await api("POST", `/api/inventory/items/${itemId}/exceptional-correction`, {
+    token: operatorToken,
+    body: { next_quantity: 8, reason: "Found extra boxes in the locked cupboard", confirm: true },
+  });
+  assert.equal(operatorDenied.status, 403);
+  const missingConfirm = await api("POST", `/api/inventory/items/${itemId}/exceptional-correction`, {
+    token: adminToken,
+    body: { next_quantity: 8, reason: "Found extra boxes in the locked cupboard" },
+  });
+  assert.equal(missingConfirm.status, 400);
+  const ok = await api("POST", `/api/inventory/items/${itemId}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 8,
+      reason: "Found extra boxes in the locked cupboard",
+      note: "Weekend count",
+      confirm: true,
+    },
+  });
+  assert.equal(ok.status, 201, JSON.stringify(ok.data));
+  const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  const batches = db
+    .prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS total FROM inventory_batches WHERE item_id = ?")
+    .get(itemId).total;
+  assert.equal(qty, 8);
+  assert.equal(batches, 8);
+  const movement = db
+    .prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'exceptional_correction'")
+    .get(itemId);
+  assert.ok(movement);
+  assert.match(String(movement.note || ""), /Found extra boxes/);
+  const audit = db
+    .prepare("SELECT * FROM inventory_audit_logs WHERE item_id = ? AND action_type = 'exceptional_correction'")
+    .get(itemId);
+  assert.ok(audit);
+  const cataloguePut = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+    body: { quantity: 99, minimum_quantity: 0, item_name: `Corr ${Date.now()}`, folder_id: folderId, unit: "unit", cost_price: 5, selling_price: 10 },
+  });
+  assert.equal(cataloguePut.status, 400, JSON.stringify(cataloguePut.data));
+});
+
+test("write-off preview is atomic and cannot exceed available-to-transfer stock", async () => {
+  const itemId = insertOcsItem({ name: `WO ${Date.now()}`, qty: 6 });
+  await createAcceptedRequest({ itemId, itemName: "WO", quantity: 2, note: "hold" });
+  const preview = await api("GET", `/api/inventory/items/${itemId}/allocation-preview?quantity=5&mode=write_off`, {
+    token: operatorToken,
+  });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.preview.available_to_transfer, 4);
+  const over = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "remove", quantity: 5, reason: "Expired", confirm: true },
+  });
+  assert.equal(over.status, 400);
+  const damagedNoNote = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "remove", quantity: 1, reason: "Damaged", confirm: true },
+  });
+  assert.equal(damagedNoNote.status, 400);
+  const ok = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: {
+      action_type: "remove",
+      quantity: 1,
+      reason: "Damaged",
+      note: "Carton crushed in transit",
+      confirm: true,
+    },
+  });
+  assert.equal(ok.status, 201, JSON.stringify(ok.data));
+  const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  const batches = db
+    .prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS total FROM inventory_batches WHERE item_id = ?")
+    .get(itemId).total;
+  assert.equal(qty, 5);
+  assert.equal(batches, 5);
+});
+
+test("accepted and ready cancellation releases reservations without deleting history", async () => {
+  const itemId = insertOcsItem({ name: `Can ${Date.now()}`, qty: 8 });
+  const request = await createAcceptedRequest({ itemId, itemName: "Can", quantity: 3, note: "cancel me" });
+  const active = db
+    .prepare("SELECT COUNT(*) AS count FROM inventory_reservations WHERE request_id = ? AND status = 'active'")
+    .get(request.id).count;
+  assert.equal(Number(active), 1);
+  const cancelled = await api("PATCH", `/api/restock-requests/${request.id}`, {
+    token: operatorToken,
+    body: { status: "cancelled", reason: "Doctor postponed the visit" },
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  assert.equal(cancelled.data.request.status, "cancelled");
+  assert.ok(cancelled.data.request.archived_at);
+  const remaining = db
+    .prepare("SELECT COUNT(*) AS count FROM inventory_reservations WHERE request_id = ? AND status = 'active'")
+    .get(request.id).count;
+  assert.equal(Number(remaining), 0);
+  const history = await api("GET", `/api/restock-requests/${request.id}`, { token: operatorToken });
+  assert.equal(history.status, 200);
+  assert.ok(history.data.request.events.length >= 2);
+  assert.ok(history.data.request.timeline.some((row) => /cancel/i.test(row.label)));
+  const deleted = await api("DELETE", `/api/restock-requests/${request.id}`, { token: operatorToken });
+  assert.equal(deleted.status, 405);
+});
+
+test("request detail is role-scoped and includes events, fulfilment, and receipt references", async () => {
+  const itemId = insertOcsItem({ name: `Det ${Date.now()}`, qty: 4 });
+  const request = await createAcceptedRequest({ itemId, itemName: "Det", quantity: 1 });
+  await pickAndReady(request.id);
+  const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(completed.status, 200, JSON.stringify(completed.data));
+  const own = await api("GET", `/api/restock-requests/${request.id}`, { token: doctorToken });
+  assert.equal(own.status, 200);
+  assert.ok(own.data.request.events.length);
+  assert.ok(own.data.request.fulfilment);
+  assert.ok(own.data.request.transfer_transaction_id);
+  assert.equal(own.data.request.receipt_available, true);
+  assert.ok(Array.isArray(own.data.request.movement_ids));
+  const other = await api("GET", `/api/restock-requests/${request.id}`, { token: doctorTwoToken });
+  assert.equal(other.status, 403);
+});
+
+test("excluded shipment rows become terminal and idle shipments leave the incoming queue", async () => {
+  const csv = [
+    "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+    `Consumable,Keep ${Date.now()},2,0,unit,1,2,2029-01-01`,
+    `Consumable,Drop ${Date.now()},4,0,unit,1,2,2029-01-01`,
+  ].join("\n");
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: { csv_text: csv, supplier: "Exclude Co" },
+  });
+  assert.equal(imported.status, 201, JSON.stringify(imported.data));
+  const shipmentId = imported.data.import_summary.shipment_id;
+  const drop = imported.data.shipment.lines.find((line) => String(line.item_name).startsWith("Drop"));
+  const keep = imported.data.shipment.lines.find((line) => String(line.item_name).startsWith("Keep"));
+  const excluded = await api("POST", `/api/inventory/shipments/${shipmentId}/exclude`, {
+    token: operatorToken,
+    body: { lines: [{ id: drop.id, reason: "Wrong product on delivery note" }] },
+  });
+  assert.equal(excluded.status, 200, JSON.stringify(excluded.data));
+  const excludedLine = excluded.data.shipment.lines.find((line) => Number(line.id) === Number(drop.id));
+  assert.equal(excludedLine.status, "excluded");
+  assert.match(String(excludedLine.exclude_reason || ""), /Wrong product/);
+  const released = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [keep.id] },
+  });
+  assert.ok([200, 201].includes(released.status), JSON.stringify(released.data));
+  const after = await api("GET", `/api/inventory/shipments/${shipmentId}`, { token: operatorToken });
+  assert.equal(after.data.shipment.in_incoming_queue, false);
+  assert.equal(
+    after.data.shipment.lines.find((line) => Number(line.id) === Number(drop.id)).status,
+    "excluded",
+  );
+  const accidental = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "selected", row_ids: [drop.id] },
+  });
+  assert.ok([200, 201, 400].includes(accidental.status));
+  if (accidental.status === 201) {
+    assert.equal(accidental.data.shipment.lines.find((line) => Number(line.id) === Number(drop.id)).status, "excluded");
+  }
+});
+
+test("explicit zero stocktake can be submitted and blank stocktake cannot", async () => {
+  const itemId = insertOcsItem({ name: `ZeroSub ${Date.now()}`, qty: 4 });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [itemId] },
+  });
+  const lineId = created.data.session.items[0].id;
+  const blank = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(blank.status, 400);
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 0 }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  assert.ok(["submitted", "applied"].includes(submitted.data.session.status));
+});
+
+test("human-triggered bag movements retain the acting user rather than System", async () => {
+  const itemId = insertOcsItem({ name: `BagAct ${Date.now()}`, qty: 5 });
+  const restock = await api("POST", "/api/inventory/restock", {
+    token: operatorToken,
+    body: { ocs_item_id: itemId, doctor_id: doctorId, quantity: 2 },
+  });
+  assert.equal(restock.status, 201, JSON.stringify(restock.data));
+  const operatorName = db.prepare("SELECT full_name FROM users WHERE username = 'operator01'").get().full_name;
+  const out = db
+    .prepare("SELECT meta_json FROM inventory_movements WHERE action_type = 'restock_out' ORDER BY id DESC LIMIT 1")
+    .get();
+  const meta = JSON.parse(out.meta_json || "{}");
+  assert.equal(meta.performed_by_name, operatorName);
+  assert.notEqual(meta.performed_by_name, "System");
+});
+

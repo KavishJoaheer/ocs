@@ -267,6 +267,21 @@ function Sidebar() {
     };
   }, [drawerOpen]);
 
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const previouslyFocused = document.activeElement;
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setDrawerOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
+    };
+  }, [drawerOpen]);
+
   return (
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
@@ -277,8 +292,10 @@ function Sidebar() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="rounded-xl p-2 text-ocs-slate transition hover:bg-slate-50 active:bg-slate-50"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-ocs-slate transition hover:bg-slate-50 active:bg-slate-50"
           aria-label="Open menu"
+          aria-expanded={drawerOpen}
+          aria-controls="mobile-nav-drawer"
         >
           <Menu className="h-6 w-6" strokeWidth={2.25} />
         </button>
@@ -290,7 +307,7 @@ function Sidebar() {
         {location.pathname !== "/" ? (
           <Link
             to="/"
-            className="rounded-xl p-2 text-ocs-yellow transition hover:bg-slate-50 active:bg-slate-50"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-ocs-yellow transition hover:bg-slate-50 active:bg-slate-50"
             aria-label="Home"
           >
             <Home className="h-7 w-7" strokeWidth={2.25} />
@@ -308,6 +325,10 @@ function Sidebar() {
           aria-hidden="true"
         />
         <div
+          id="mobile-nav-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
           className={cx(
             "fixed inset-y-0 left-0 z-50 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-gray-100 bg-white p-5 shadow-[8px_0_30px_rgba(0,0,0,0.08)] transition-transform duration-300 ease-in-out",
             drawerOpen ? "translate-x-0" : "-translate-x-full",

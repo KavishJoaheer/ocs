@@ -18,8 +18,10 @@ const {
   normaliseStatus,
   parseMetadata,
   snapshotItems,
+  supplyRequestEventLabel,
   supplyRequestStatusLabel,
 } = require("../lib/restockRequestWorkflow");
+const { movementIdsForTransaction } = require("../lib/inventoryOperations");
 const {
   HttpError,
   applyPicking,
@@ -142,6 +144,7 @@ function listEventsForRequestIds(requestIds) {
     byRequest.get(row.request_id).push({
       id: row.id,
       event_type: row.event_type,
+      event_label: supplyRequestEventLabel(row.event_type),
       previous_status: row.previous_status,
       new_status: row.new_status,
       actor_user_id: row.actor_user_id,
@@ -157,7 +160,7 @@ function listEventsForRequestIds(requestIds) {
 
 function listAmendmentsForRequestIds(requestIds) {
   if (!requestIds.length) {
-    return { pendingByRequest: new Map(), latestByRequest: new Map() };
+    return { pendingByRequest: new Map(), latestByRequest: new Map(), historyByRequest: new Map() };
   }
 
   const rows = db
@@ -247,6 +250,11 @@ function listAmendmentsForRequestIds(requestIds) {
 
 function serializeRequest(row, extras = {}) {
   const status = normaliseStatus(row.status);
+  const transferTransactionId = row.transfer_transaction_id || extras.transferTransactionId || extras.fulfilment?.transfer_transaction_id || null;
+  const events = extras.events || [];
+  const createdEvent = events.find((event) => event.event_type === EVENT_TYPES.created);
+  const originalItems = createdEvent?.metadata?.items || extras.items || [];
+  const movements = transferTransactionId ? movementIdsForTransaction(transferTransactionId) : [];
   return {
     id: row.id,
     doctor_id: row.doctor_id,
@@ -277,7 +285,11 @@ function serializeRequest(row, extras = {}) {
     requested_by_name: row.requested_by_name || null,
     assigned_to_user_id: row.assigned_to_user_id || null,
     assigned_to_name: row.assigned_to_name || null,
-    transfer_transaction_id: row.transfer_transaction_id || extras.transferTransactionId || null,
+    transfer_transaction_id: transferTransactionId,
+    receipt_available: Boolean(transferTransactionId),
+    movement_ids: movements.map((row) => row.id),
+    movements,
+    original_items: originalItems,
     partial_fulfilment_approved: Boolean(row.partial_fulfilment_approved),
     partial_fulfilment_reason: row.partial_fulfilment_reason || "",
     fulfilment: extras.fulfilment || null,
@@ -285,7 +297,17 @@ function serializeRequest(row, extras = {}) {
     pending_amendment: extras.pendingAmendment || null,
     latest_amendment: extras.latestAmendment || null,
     amendments: extras.amendments || [],
-    events: extras.events || [],
+    events,
+    timeline: events.map((event) => ({
+      id: event.id,
+      label: event.event_label || supplyRequestEventLabel(event.event_type),
+      event_type: event.event_type,
+      at: event.created_at,
+      actor: event.actor_display_name,
+      role: event.actor_role,
+      reason: event.reason || "",
+      status: event.new_status,
+    })),
     status_labels: {
       doctor: supplyRequestStatusLabel(status, "doctor"),
       operator: supplyRequestStatusLabel(status, "operator"),
