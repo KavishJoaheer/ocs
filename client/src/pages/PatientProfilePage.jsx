@@ -663,7 +663,10 @@ function LabReportModal({
   const selectedFilesRef = useRef([]);
   const isEditing = Boolean(report?.id);
   const [syncedDeps, setSyncedDeps] = useState({ open, report, isEditing });
-  selectedFilesRef.current = selectedFiles;
+
+  useEffect(() => {
+    selectedFilesRef.current = selectedFiles;
+  }, [selectedFiles]);
 
   if (
     syncedDeps.open !== open ||

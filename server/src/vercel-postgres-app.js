@@ -15,6 +15,7 @@ const {
   query,
   withTransaction,
 } = require("./pg");
+const { getBuildInfo } = require("./lib/buildInfo");
 
 function getAllowedOrigins() {
   return (process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || "")
@@ -105,7 +106,7 @@ function createPostgresApp() {
   }
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, mode: "postgres" });
+    res.json({ ok: true, mode: "postgres", ...getBuildInfo() });
   });
 
   app.get("/api/dashboard", async (_req, res) => {

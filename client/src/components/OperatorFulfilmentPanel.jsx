@@ -101,11 +101,24 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
   async function reconcile() {
     setSaving(true);
     try {
-      await api.post(`/restock-requests/${request.id}/reconcile`, {
+      const payload = await api.post(`/restock-requests/${request.id}/reconcile`, {
         reason: "Operator reconciled legacy fulfilment quantities and batches.",
       });
-      toast.success("Fulfilment linked.");
-      await onUpdated?.();
+      const fulfilment = payload.fulfilment || payload.request?.fulfilment;
+      if (fulfilment) {
+        setDetail(fulfilment);
+        setLines(
+          (fulfilment.items || []).map((line) => ({
+            id: line.id,
+            picked_quantity: qty(line.picked_quantity ?? line.reserved_quantity),
+            fulfilled_quantity: qty(line.fulfilled_quantity ?? line.reserved_quantity),
+          })),
+        );
+        setPartialApproved(Boolean(fulfilment.partial_approved));
+        setPartialReason(fulfilment.partial_reason || "");
+      }
+      toast.success(payload.explanation || "Fulfilment linked.");
+      await onUpdated?.(payload);
     } catch (error) {
       toast.error(error.message || "Could not reconcile this request.");
     } finally {

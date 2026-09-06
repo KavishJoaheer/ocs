@@ -23,11 +23,13 @@ const {
 } = require("../lib/restockRequestWorkflow");
 const { movementIdsForTransaction } = require("../lib/inventoryOperations");
 const { LEGACY_STAFF_LABEL, resolveAuditActor } = require("../lib/auditActor");
+const { assertRoutineOperatorAction } = require("../lib/inventoryAccess");
 const {
   HttpError,
   applyPicking,
   assertCanMarkReady,
   assignRequest,
+  canonicaliseRequestItem,
   fulfilmentDetail,
   lockPackedFulfilment,
   postCollectionTransfer,
@@ -653,28 +655,31 @@ function normaliseItemsPayload(rawItems) {
 
   const merged = new Map();
   for (const raw of rawItems) {
-    const inventoryId = Number(raw?.inventory_id || 0) || null;
-    const itemName = String(raw?.item_name || "").trim();
+    const inventoryId = Number(raw?.inventory_id || 0);
     const quantity = Math.floor(Number(raw?.quantity || 0));
+    const canonical = canonicaliseRequestItem({
+      inventory_id: inventoryId,
+      item_name: raw?.item_name,
+      quantity,
+    });
+    if (canonical.error) {
+      return { error: canonical.error };
+    }
+    if (!Number.isFinite(canonical.quantity) || canonical.quantity < 1) {
+      return { error: `Quantity for ${canonical.item_name} must be at least 1.` };
+    }
+    if (canonical.quantity > MAX_QUANTITY_PER_LINE) {
+      return { error: `Quantity for ${canonical.item_name} cannot exceed ${MAX_QUANTITY_PER_LINE}.` };
+    }
 
-    if (!itemName) {
-      return { error: "Each requested item must have a name." };
-    }
-    if (!Number.isFinite(quantity) || quantity < 1) {
-      return { error: `Quantity for ${itemName} must be at least 1.` };
-    }
-    if (quantity > MAX_QUANTITY_PER_LINE) {
-      return { error: `Quantity for ${itemName} cannot exceed ${MAX_QUANTITY_PER_LINE}.` };
-    }
-
-    const key = inventoryId ? `inv:${inventoryId}` : `name:${itemName.toLowerCase()}`;
+    const key = `inv:${canonical.inventory_id}`;
     if (merged.has(key)) {
-      merged.get(key).quantity += quantity;
+      merged.get(key).quantity += canonical.quantity;
     } else {
       merged.set(key, {
-        inventory_id: inventoryId,
-        item_name: itemName,
-        quantity,
+        inventory_id: canonical.inventory_id,
+        item_name: canonical.item_name,
+        quantity: canonical.quantity,
       });
     }
   }
@@ -1386,6 +1391,14 @@ router.patch("/:id", (req, res) => {
     return res.status(403).json({ error: "Only operators, admins, or the requesting doctor can update restock requests." });
   }
 
+  if (role === "admin" && ["accepted", "ready"].includes(nextStatus)) {
+    try {
+      assertRoutineOperatorAction(req.auth, req.body, nextStatus === "accepted" ? "Accept supply requests" : "Mark supply ready");
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
+
   if (existing.status === nextStatus) {
     return res.json({ request: getRequestById(requestId) });
   }
@@ -1633,6 +1646,11 @@ router.patch("/:id/fulfilment", (req, res) => {
   if (role !== "operator" && role !== "admin") {
     return res.status(403).json({ error: "Only operators or admins can update fulfilment." });
   }
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Update fulfilment");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
   const requestId = Number(req.params.id);
   if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
   const existing = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(requestId);
@@ -1732,28 +1750,68 @@ router.post("/:id/reconcile", (req, res) => {
   if (role !== "operator" && role !== "admin") {
     return res.status(403).json({ error: "Only operators or admins can reconcile fulfilment." });
   }
+  try {
+    assertRoutineOperatorAction(req.auth, req.body, "Reconcile fulfilment");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
   const requestId = Number(req.params.id);
   if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
+  let result;
   try {
-    db.transaction(() => {
-      reconcileLegacyFulfilment(requestId);
+    result = db.transaction(() => {
+      const recon = reconcileLegacyFulfilment(requestId, {
+        actor: actorFromAuth(req.auth),
+        reason: String(req.body?.reason || "").trim() || "Legacy fulfilment linkage",
+      });
       recordEvent({
         requestId,
         eventType: EVENT_TYPES.reconciled,
-        previousStatus: db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(requestId)?.status,
-        newStatus: db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(requestId)?.status,
+        previousStatus: recon.previous_status,
+        newStatus: recon.status,
         actor: actorFromAuth(req.auth),
-        reason: String(req.body?.reason || "").trim() || "Legacy fulfilment linkage",
-        metadata: fulfilmentDetail(requestId),
+        reason: recon.explanation,
+        metadata: {
+          outcome: recon.outcome,
+          requested_quantity: recon.requested_quantity,
+          reserved_quantity: recon.reserved_quantity,
+          demoted: recon.demoted,
+          fulfilment: recon.fulfilment,
+        },
       });
+      return recon;
     })();
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
     throw error;
   }
   const updated = getRequestById(requestId);
+  if (result.notify_doctor) {
+    const doctorUserId = getDoctorUserId(updated.doctor_id);
+    if (doctorUserId) {
+      notifyBestEffort(
+        () =>
+          sendPushToUser(doctorUserId, {
+            title: "Supply request needs attention",
+            body: `Your previously ready request could not be fully reserved and was returned for shortage resolution.`,
+            url: "/supply-requests",
+            icon: "/icon-192.png",
+            tag: `restock-request-${requestId}-reconcile-shortage`,
+          }),
+        "legacy reconcile doctor notify failed",
+      );
+    }
+  }
   broadcastSupplyRequestChange(updated.doctor_id);
-  return res.json({ request: updated, fulfilment: fulfilmentDetail(requestId) });
+  return res.json({
+    request: updated,
+    fulfilment: result.fulfilment || fulfilmentDetail(requestId),
+    previous_status: result.previous_status,
+    status: result.status,
+    demoted: result.demoted,
+    outcome: result.outcome,
+    explanation: result.explanation,
+  });
 });
 
 router.delete("/:id", (_req, res) => {

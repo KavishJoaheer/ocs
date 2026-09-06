@@ -56,7 +56,7 @@ const {
   isOperatorRole,
   isWarehouseViewer,
 } = require("../lib/inventoryAccess");
-const { availableToPromise } = require("../lib/restockFulfilment");
+const { availableToPromise, consumeAvailableFefo } = require("../lib/restockFulfilment");
 const {
   isAutomatedMovementMeta,
   resolveAuditActor,
@@ -280,48 +280,72 @@ function recordAudit({
 
 function buildReceiptByTransaction(transactionId) {
   const rows = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         m.id,
         m.created_at,
         m.quantity,
         m.action_type,
         m.meta_json,
+        m.item_id,
         i.item_name,
-        i.unit
+        i.unit,
+        i.stock_scope,
+        i.owner_doctor_id
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
-      WHERE m.action_type IN ('restock_out', 'restock_in')
-      ORDER BY m.created_at DESC, m.id DESC
-      LIMIT 500
-    `)
-    .all()
-    .filter((row) => safeParseJson(row.meta_json, {}).transaction_id === transactionId);
+      WHERE json_extract(m.meta_json, '$.transaction_id') = ?
+         OR json_extract(m.meta_json, '$.receipt_reference') LIKE ?
+      ORDER BY m.created_at ASC, m.id ASC
+    `,
+    )
+    .all(String(transactionId), `%/inventory/receipts/${transactionId}`);
 
   if (!rows.length) return null;
   const sourceRows = rows.filter((row) => row.action_type === "restock_out");
-  const primaryMeta = safeParseJson((sourceRows[0] || rows[0]).meta_json, {});
-  const items = sourceRows.map((row) => {
+  const inboundRows = rows.filter((row) => row.action_type === "restock_in");
+  const primaryMeta = safeParseJson((sourceRows[0] || inboundRows[0] || rows[0]).meta_json, {});
+  const itemRows = sourceRows.length ? sourceRows : inboundRows;
+  const items = itemRows.map((row) => {
     const meta = safeParseJson(row.meta_json, {});
     const allocations = Array.isArray(meta.transfer_allocations) ? meta.transfer_allocations : [];
     if (!allocations.length) {
       return [
         {
           item_name: row.item_name,
+          inventory_id: row.item_id,
+          batch_id: null,
           batch_number: "N/A",
           expiry: null,
+          is_non_expiring: false,
           quantity: Number(row.quantity ?? 0),
           unit: row.unit || "unit",
+          source_inventory_id: sourceRows[0]?.item_id || row.item_id,
+          destination_inventory_id: inboundRows.find((inRow) => {
+            const inMeta = safeParseJson(inRow.meta_json, {});
+            return String(inMeta.transaction_id || "") === String(transactionId);
+          })?.item_id || null,
         },
       ];
     }
-    return allocations.map((allocation, index) => ({
-      item_name: row.item_name,
-      batch_number: `B${row.id}-${index + 1}`,
-      expiry: allocation.expiry_date || null,
-      quantity: Number(allocation.quantity ?? 0),
-      unit: row.unit || "unit",
-    }));
+    return allocations.map((allocation) => {
+      const batch = allocation.batch_id
+        ? db.prepare("SELECT id, expiry_date, is_non_expiring FROM inventory_batches WHERE id = ?").get(allocation.batch_id)
+        : null;
+      return {
+        item_name: row.item_name,
+        inventory_id: row.item_id,
+        batch_id: allocation.batch_id || batch?.id || null,
+        batch_number: allocation.batch_id ? String(allocation.batch_id) : "N/A",
+        expiry: allocation.expiry_date || batch?.expiry_date || null,
+        is_non_expiring: Boolean(allocation.is_non_expiring || batch?.is_non_expiring),
+        quantity: Number(allocation.quantity ?? 0),
+        unit: row.unit || "unit",
+        source_inventory_id: row.item_id,
+        destination_inventory_id: inboundRows[0]?.item_id || null,
+      };
+    });
   }).flat();
 
   return {
@@ -526,16 +550,21 @@ function getPayloadFromRequest(req) {
   return getPayload(req, selectedDoctorId, doctorContext);
 }
 
-function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = false } = {}) {
+function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = false, allowBlank = false } = {}) {
+  const expiry = validateReceiptExpiry({
+    expiryDate,
+    isNonExpiring,
+    allowBlank: allowBlank || isNonExpiring,
+  });
   db.prepare(`
     INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
     VALUES (?, ?, ?, ?, ?)
   `).run(
     itemId,
     quantity,
-    isNonExpiring ? null : expiryDate || null,
+    expiry.isNonExpiring ? null : expiry.expiryDate,
     roundCurrency(unitCost),
-    isNonExpiring ? 1 : 0,
+    expiry.isNonExpiring ? 1 : 0,
   );
 }
 
@@ -556,44 +585,24 @@ function allocateRestockBatchesToPositive(itemId, allocations, previousQuantity)
   });
 }
 
-function consumeBatches(itemId, quantity, { disallowExpired = false } = {}) {
-  const rows = db
-    .prepare(`
-      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring
-      FROM inventory_batches
-      WHERE item_id = ?
-        AND quantity_remaining > 0
-      ORDER BY
-        CASE
-          WHEN expiry_date IS NOT NULL AND COALESCE(is_non_expiring, 0) = 0 THEN 0
-          WHEN COALESCE(is_non_expiring, 0) = 1 THEN 1
-          ELSE 2
-        END,
-        expiry_date ASC,
-        id ASC
-    `)
-    .all(itemId);
-  const today = getTodayLocal();
-  const usable = disallowExpired ? rows.filter((row) => !row.expiry_date || row.expiry_date >= today) : rows;
-
-  let remaining = quantity;
-  const allocations = [];
-  for (const row of usable) {
-    if (remaining <= 0) break;
-    const take = Math.min(remaining, Number(row.quantity_remaining || 0));
-    if (!take) continue;
-    db.prepare("UPDATE inventory_batches SET quantity_remaining = ? WHERE id = ?").run(row.quantity_remaining - take, row.id);
-    allocations.push({
-      batch_id: row.id,
-      quantity: take,
-      expiry_date: row.expiry_date || null,
-      unit_cost: toNumber(row.unit_cost, 0),
-      is_non_expiring: Number(row.is_non_expiring || 0) === 1,
-    });
-    remaining -= take;
+function consumeBatches(itemId, quantity, { includeExpired = false, exceptRequestId = null } = {}) {
+  try {
+    if (includeExpired) {
+      const preview = previewAllocations(itemId, quantity, { includeExpired: true });
+      if (!preview.can_fulfil) {
+        return { ok: false, allocations: preview.allocations || [], error: "Insufficient unreserved stock." };
+      }
+      consumeAllocatedBatches(preview.allocations);
+      return { ok: true, allocations: preview.allocations };
+    }
+    const consumed = consumeAvailableFefo(itemId, quantity, { exceptRequestId });
+    return { ok: true, allocations: consumed.allocations };
+  } catch (error) {
+    if (error.status === 409) {
+      return { ok: false, allocations: [], error: error.message };
+    }
+    throw error;
   }
-
-  return { ok: remaining <= 0, allocations };
 }
 
 function getBatchQuantityTotal(itemId) {
@@ -627,6 +636,7 @@ function consumeStock(itemId, quantity, options = {}) {
         shortfall,
         item?.expiry_date || null,
         toNumber(item?.cost_price, 0),
+        { isNonExpiring: !item?.expiry_date, allowBlank: true },
       );
     }
   }
@@ -1435,6 +1445,10 @@ function buildConsolidatedActivity(rows) {
     if (actionType === "restock_out") {
       existing.quantity += Math.abs(Number(row.quantity || 0));
       existing.value_rs += calculateEventValue(row);
+      existing._hasWarehouseOut = true;
+    }
+    if (actionType === "restock_in") {
+      existing._inboundQty = (existing._inboundQty || 0) + Math.abs(Number(row.quantity || 0));
     }
     if (row.item_name) existing._itemNames.add(row.item_name);
     String(row.batch_id || "")
@@ -1450,8 +1464,23 @@ function buildConsolidatedActivity(rows) {
     ...passthrough,
     ...Array.from(grouped.values()).map((entry) => {
       const itemNames = Array.from(entry._itemNames);
+      const quantity = entry._hasWarehouseOut
+        ? Number(entry.quantity || 0)
+        : Number(entry._inboundQty || entry.quantity || 0);
+      const {
+        _itemNames,
+        _batchParts,
+        _inboundQty,
+        _hasWarehouseOut,
+        ...rest
+      } = entry;
+      void _itemNames;
+      void _batchParts;
+      void _inboundQty;
+      void _hasWarehouseOut;
       return {
-        ...entry,
+        ...rest,
+        quantity,
         item_name: itemNames.length <= 1 ? (itemNames[0] || "-") : `${itemNames.length} items`,
         batch_id: Array.from(entry._batchParts).join(", "),
         value_rs: roundCurrency(entry.value_rs || 0),
@@ -1788,7 +1817,15 @@ router.put("/items/:id", (req, res) => {
     if (fieldChanged("selling_price", existing.selling_price, req.body.selling_price)) protectedAttempts.push("selling_price");
     if (isOcsMasterRow && fieldChanged("item_name", existing.item_name, req.body.item_name)) protectedAttempts.push("item_name");
     if (isOcsMasterRow && fieldChanged("folder_id", existing.folder_id, req.body.folder_id)) protectedAttempts.push("folder_id");
-    if (isOcsMasterRow && fieldChanged("unit", existing.unit, req.body.unit)) protectedAttempts.push("unit");
+    if (isOcsMasterRow && fieldChanged("minimum_quantity", existing.minimum_quantity, req.body.minimum_quantity)) {
+      protectedAttempts.push("minimum_quantity");
+    }
+    if (isOcsMasterRow && fieldChanged("attributes", existing.attributes, req.body.attributes)) {
+      protectedAttempts.push("attributes");
+    }
+    if (isOcsMasterRow && fieldChanged("moa_notes", existing.moa_notes, req.body.moa_notes)) {
+      protectedAttempts.push("moa_notes");
+    }
     if (req.body.batches || req.body.batch_quantity) protectedAttempts.push("batches");
     if (protectedAttempts.length) {
       return res.status(403).json({
@@ -1815,7 +1852,10 @@ router.put("/items/:id", (req, res) => {
   const quantity = quantityLocked
     ? Number(existing.quantity)
     : Number(req.body.quantity ?? existing.quantity);
-  const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity);
+  const cataloguePolicyLocked = isOperator && isOcsMasterRow;
+  const minimumQuantity = cataloguePolicyLocked
+    ? Number(existing.minimum_quantity)
+    : Number(req.body.minimum_quantity ?? existing.minimum_quantity);
   const unit = masterFieldsLocked
     ? String(existing.unit ?? "unit").trim()
     : String(req.body.unit ?? existing.unit ?? "unit").trim();
@@ -1825,8 +1865,12 @@ router.put("/items/:id", (req, res) => {
   const sellingPrice = masterFieldsLocked
     ? roundCurrency(existing.selling_price)
     : roundCurrency(req.body.selling_price ?? existing.selling_price);
-  const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
-  const moaNotes = String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
+  const attributes = cataloguePolicyLocked
+    ? String(existing.attributes ?? "").trim()
+    : String(req.body.attributes ?? existing.attributes ?? "").trim();
+  const moaNotes = cataloguePolicyLocked
+    ? String(existing.moa_notes ?? "").trim()
+    : String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
   // Deprecated catalogue expiry_date: preserve the historical column, never treat it as operational.
   // Incoming expiry_date is ignored so catalogue editing cannot change batch expiry or nearest-expiry.
   const expiryDate = String(existing.expiry_date || "").trim() || null;
@@ -2173,6 +2217,7 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
       reason: req.body?.reason,
       note: req.body?.note,
       confirm: req.body?.confirm,
+      affectReservations: req.body?.affect_reservations === true || req.body?.impact_reservations === true,
       userId: req.auth.id,
       actor: {
         userId: req.auth.id,
@@ -2195,6 +2240,7 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
         change: result.change,
         note: String(req.body?.note || "").trim(),
         movement_id: result.movementId,
+        allocations: result.allocations,
       }),
     });
     return res.status(result.idempotent ? 200 : 201).json({
@@ -2203,7 +2249,10 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
       idempotent: result.idempotent,
     });
   } catch (error) {
-    return res.status(error.status || 400).json({ error: error.message });
+    return res.status(error.status || 400).json({
+      error: error.message,
+      impacted_requests: error.impacted_requests || undefined,
+    });
   }
 });
 
@@ -2229,17 +2278,30 @@ router.post("/bulk/remove", (req, res) => {
         if (!item) throw new Error(`OCS stock item not found: ${itemId}`);
         const previousQuantity = Number(item.quantity || 0);
         if (previousQuantity <= 0) return;
-
-        const consumed = consumeStock(itemId, previousQuantity);
-        if (!consumed.ok) throw new Error(`Insufficient batch stock for item ${itemId}`);
-
-        updateInventoryQuantity(itemId, 0);
+        const atp = availableToPromise(itemId);
+        if (atp <= 0) {
+          throw Object.assign(
+            new Error(`Cannot write off ${item.item_name}: all remaining units are reserved by active requests.`),
+            { status: 409 },
+          );
+        }
+        const writeOffQty = Math.min(previousQuantity, atp);
+        const preview = previewAllocations(itemId, writeOffQty, { includeExpired: true });
+        if (!preview.can_fulfil) {
+          throw Object.assign(
+            new Error(`Cannot write off ${item.item_name}: unreserved stock is insufficient.`),
+            { status: 409 },
+          );
+        }
+        consumeAllocatedBatches(preview.allocations);
+        const nextQuantity = previousQuantity - writeOffQty;
+        updateInventoryQuantity(itemId, nextQuantity);
         recordMovement({
           itemId,
           movementType: "out",
-          quantity: previousQuantity,
+          quantity: writeOffQty,
           previousQuantity,
-          nextQuantity: 0,
+          nextQuantity,
           actionType: "remove",
           note: `Bulk write-off (${reason})`,
           userId: req.auth.id,
@@ -2255,7 +2317,7 @@ router.post("/bulk/remove", (req, res) => {
           actionType: "bulk_remove",
           itemId,
           itemName: item.item_name,
-          quantity: previousQuantity,
+          quantity: writeOffQty,
           reason,
           performedByUserId: req.auth.id,
           performedByRole: req.auth.role,
@@ -2265,7 +2327,7 @@ router.post("/bulk/remove", (req, res) => {
       });
     })();
   } catch (error) {
-    return res.status(400).json({ error: error?.message || "Bulk remove failed." });
+    return res.status(error.status || 400).json({ error: error?.message || "Bulk remove failed." });
   }
 
   return res.status(201).json(getPayload(req));
@@ -2410,7 +2472,10 @@ router.post("/items/:id/actions", (req, res) => {
         const previousDeficit = Math.max(0, 0 - previousQuantity);
         const batchQty = Math.max(0, quantity - previousDeficit);
         if (batchQty > 0) {
-          createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price);
+          createBatch(itemId, batchQty, item.expiry_date || null, item.cost_price, {
+            isNonExpiring: !item.expiry_date,
+            allowBlank: true,
+          });
         }
       } else {
         const consumed = consumeStock(itemId, quantity);
@@ -2732,13 +2797,20 @@ router.post("/restock/my-inventory", (req, res) => {
         }
 
         const sourceQty = Number(source.quantity || 0);
-        if (sourceQty < request.quantity) {
-          throw new Error(`Insufficient OCS stock for ${source.item_name}.`);
+        const atp = availableToPromise(source.id);
+        if (atp < request.quantity) {
+          throw Object.assign(
+            new Error(`Insufficient unreserved OCS stock for ${source.item_name}. ${atp} available.`),
+            { status: 409 },
+          );
         }
 
-        const consumed = consumeBatches(source.id, request.quantity);
+        const consumed = consumeBatches(source.id, request.quantity, { includeExpired: false });
         if (!consumed.ok) {
-          throw new Error(`Insufficient FEFO batch stock for ${source.item_name}.`);
+          throw Object.assign(
+            new Error(consumed.error || `Insufficient unexpired unreserved FEFO stock for ${source.item_name}.`),
+            { status: 409 },
+          );
         }
 
         const sourceNext = sourceQty - request.quantity;
@@ -2872,7 +2944,7 @@ router.post("/restock/my-inventory", (req, res) => {
       }
     })();
   } catch (error) {
-    return res.status(400).json({ error: error?.message || "Doctor restock failed." });
+    return res.status(error.status || 400).json({ error: error?.message || "Doctor restock failed." });
   }
 
   void sendPushToRole("operator", {
@@ -3131,10 +3203,12 @@ router.post("/shipments/:id/release", (req, res) => {
   }
   const exclude = Array.isArray(req.body?.exclude) ? req.body.exclude : [];
   const mode = String(req.body?.mode || "all_valid");
-  const rowIds =
-    mode === "selected" && Array.isArray(req.body?.row_ids)
-      ? req.body.row_ids.map(Number)
-      : [];
+  if (mode === "selected") {
+    if (!Array.isArray(req.body?.row_ids) || !req.body.row_ids.length) {
+      return res.status(400).json({ error: "row_ids is required and must contain at least one shipment line." });
+    }
+  }
+  const rowIds = mode === "selected" ? req.body.row_ids.map(Number) : [];
   try {
     const result = db.transaction(() => {
       if (exclude.length) {
@@ -3148,36 +3222,10 @@ router.post("/shipments/:id/release", (req, res) => {
           },
         });
       }
-      const current = getShipment(Number(req.params.id));
-      const validPending = (current?.lines || []).filter(
-        (line) => line.status === "pending" && !(line.validation_errors || []).length,
-      );
-      const selectedPending =
-        mode === "selected" && rowIds.length
-          ? validPending.filter((line) => rowIds.includes(Number(line.id)))
-          : validPending;
-      if (!selectedPending.length) {
-        if (["released", "cancelled"].includes(String(current?.status || ""))) {
-          return {
-            shipment: current,
-            idempotent: true,
-            receipt: current ? { shipment_id: current.id } : null,
-            released: 0,
-          };
-        }
-        return bulkReleaseShipment({
-          shipmentId: Number(req.params.id),
-          rowIds,
-          userId: req.auth.id,
-          actor: {
-            displayName: req.auth.full_name || req.auth.username || "",
-            role: req.auth.role,
-          },
-        });
-      }
       return bulkReleaseShipment({
         shipmentId: Number(req.params.id),
-        rowIds,
+        rowIds: mode === "selected" ? rowIds : undefined,
+        requireSelection: mode === "selected",
         userId: req.auth.id,
         actor: {
           displayName: req.auth.full_name || req.auth.username || "",
@@ -3229,8 +3277,7 @@ router.get("/stocktake/sessions/:id", (req, res) => {
   if (!["admin", "operator"].includes(req.auth.role)) {
     return res.status(403).json({ error: "Only admin/operator can view stocktake sessions." });
   }
-  const reveal = req.auth.role === "admin" && String(req.query.reveal || "") === "1";
-  const session = getStocktakeSession(req.params.id, { revealSystem: reveal });
+  const session = getStocktakeSession(req.params.id, { role: req.auth.role });
   if (!session) return res.status(404).json({ error: "Stocktake session not found." });
   return res.json({ session });
 });
@@ -3297,7 +3344,12 @@ router.post("/stocktake/sessions/:id/apply", (req, res) => {
       transaction_id: result.transactionId || result.session?.applied_transaction_id || null,
     });
   } catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.message,
+        conflicts: error.conflicts || undefined,
+      });
+    }
     throw error;
   }
 });
@@ -3307,14 +3359,22 @@ router.get("/stocktake/sessions/:id/export.csv", (req, res) => {
   if (!["admin", "operator"].includes(req.auth.role)) {
     return res.status(403).json({ error: "Only admin/operator can export stocktake sessions." });
   }
-  const session = getStocktakeSession(req.params.id, { revealSystem: true });
+  const session = getStocktakeSession(req.params.id, { role: req.auth.role });
   if (!session) return res.status(404).json({ error: "Stocktake session not found." });
-  const lines = [
-    ["Item", "System qty", "Physical qty", "Variance", "Reason"].join(","),
-    ...(session.items || []).map((row) =>
-      [row.item_name, row.system_quantity, row.physical_quantity, row.variance, JSON.stringify(row.reason || "")].join(","),
-    ),
-  ];
+  const showSystem = session.items?.some((row) => row.system_quantity != null);
+  const lines = showSystem
+    ? [
+        ["Item", "System qty", "Physical qty", "Variance", "Reason"].join(","),
+        ...(session.items || []).map((row) =>
+          [row.item_name, row.system_quantity, row.physical_quantity, row.variance, JSON.stringify(row.reason || "")].join(","),
+        ),
+      ]
+    : [
+        ["Item", "Physical qty", "Reason"].join(","),
+        ...(session.items || []).map((row) =>
+          [row.item_name, row.physical_quantity, JSON.stringify(row.reason || "")].join(","),
+        ),
+      ];
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="stocktake-${session.id}.csv"`);
   return res.status(200).send(lines.join("\n"));

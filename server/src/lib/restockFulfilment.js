@@ -31,35 +31,78 @@ function requiredIntegerQty(value, label) {
   return n;
 }
 
-function resolveOcsItem(requestItem) {
-  const inventoryId = Number(requestItem.inventory_id || 0);
-  if (inventoryId) {
-    const byId = db
-      .prepare(`
-        SELECT * FROM inventory
+function findRequestableOcsItem(inventoryId) {
+  const id = Number(inventoryId || 0);
+  if (!id) return null;
+  return (
+    db
+      .prepare(
+        `
+        SELECT *
+        FROM inventory
         WHERE id = ?
           AND stock_scope = 'ocs'
           AND owner_doctor_id IS NULL
           AND archived_at IS NULL
         LIMIT 1
-      `)
-      .get(inventoryId);
-    if (byId) return byId;
+      `,
+      )
+      .get(id) || null
+  );
+}
+
+function namesMateriallyMatch(supplied, canonical) {
+  const left = String(supplied || "").trim().toLowerCase();
+  const right = String(canonical || "").trim().toLowerCase();
+  if (!left) return true;
+  return left === right;
+}
+
+function resolveOcsItem(requestItem, { allowNameFallback = false } = {}) {
+  const inventoryId = Number(requestItem.inventory_id || 0);
+  if (inventoryId) {
+    return findRequestableOcsItem(inventoryId);
   }
+  if (!allowNameFallback) return null;
   const name = String(requestItem.item_name || "").trim();
   if (!name) return null;
   return (
     db
-      .prepare(`
-        SELECT * FROM inventory
+      .prepare(
+        `
+        SELECT *
+        FROM inventory
         WHERE stock_scope = 'ocs'
           AND owner_doctor_id IS NULL
           AND archived_at IS NULL
-          AND LOWER(item_name) = LOWER(?)
+          AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
         LIMIT 1
-      `)
+      `,
+      )
       .get(name) || null
   );
+}
+
+function canonicaliseRequestItem(raw) {
+  const inventoryId = Number(raw?.inventory_id || 0);
+  const suppliedName = String(raw?.item_name || "").trim();
+  const quantity = Math.floor(Number(raw?.quantity || 0));
+  if (!inventoryId) {
+    return { error: "Each requested item must include a valid inventory_id." };
+  }
+  const item = findRequestableOcsItem(inventoryId);
+  if (!item) {
+    return { error: `Requested item ${inventoryId} was not found or is not requestable.` };
+  }
+  if (suppliedName && !namesMateriallyMatch(suppliedName, item.item_name)) {
+    // Ignore client-supplied names. Catalogue identity is authoritative.
+  }
+  return {
+    inventory_id: Number(item.id),
+    item_name: item.item_name,
+    quantity,
+    unit: item.unit || "unit",
+  };
 }
 
 function reservedQuantityForItem(inventoryId, { exceptRequestId = null } = {}) {
@@ -158,6 +201,80 @@ function allocateFefo(inventoryId, quantity) {
   return allocations;
 }
 
+function lockInventoryRow(inventoryId) {
+  return db.prepare("SELECT id, quantity, row_version FROM inventory WHERE id = ?").get(Number(inventoryId));
+}
+
+function consumeAvailableFefo(inventoryId, quantity, { exceptRequestId = null } = {}) {
+  const qty = requiredIntegerQty(quantity, "Quantity");
+  lockInventoryRow(inventoryId);
+  const atp = availableToPromise(inventoryId, { exceptRequestId });
+  if (qty > atp) {
+    throw HttpError(
+      409,
+      `Insufficient unreserved stock. ${atp} unit(s) available; ${qty} requested.`,
+    );
+  }
+  const plan = allocateFefo(inventoryId, qty);
+  const allocated = plan.reduce((sum, row) => sum + (integerQty(row.quantity) ?? 0), 0);
+  if (allocated < qty) {
+    throw HttpError(409, "Insufficient unexpired, unreserved batch stock.");
+  }
+  const consumed = [];
+  for (const allocation of plan) {
+    const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(allocation.batch_id);
+    if (!batch || Number(batch.item_id) !== Number(inventoryId)) {
+      throw HttpError(409, "A selected batch is no longer valid.");
+    }
+    if (isExpiredBatch(batch)) {
+      throw HttpError(409, "Expired batches cannot be consumed for fulfilment or restock.");
+    }
+    const reserved = reservedQuantityForBatch(allocation.batch_id);
+    const available = Math.max(0, (integerQty(batch.quantity_remaining) ?? 0) - reserved);
+    if (available < allocation.quantity) {
+      throw HttpError(409, "A batch no longer has enough unreserved quantity.");
+    }
+    const updated = db
+      .prepare(
+        `
+        UPDATE inventory_batches
+        SET quantity_remaining = quantity_remaining - ?
+        WHERE id = ? AND quantity_remaining >= ?
+      `,
+      )
+      .run(allocation.quantity, allocation.batch_id, allocation.quantity);
+    if (!updated.changes) {
+      throw HttpError(409, "A batch was updated concurrently. Retry the operation.");
+    }
+    consumed.push({
+      ...allocation,
+      expiry_date: allocation.expiry_date || batch.expiry_date || null,
+      unit_cost: toNumber(batch.unit_cost, 0),
+    });
+  }
+  return { ok: true, allocations: consumed };
+}
+
+function listImpactedActiveRequests(inventoryId) {
+  return db
+    .prepare(
+      `
+      SELECT
+        r.id AS request_id,
+        r.status,
+        d.full_name AS doctor_name,
+        res.quantity AS reserved_quantity
+      FROM inventory_reservations res
+      JOIN restock_requests r ON r.id = res.request_id
+      LEFT JOIN doctors d ON d.id = r.doctor_id
+      WHERE res.inventory_id = ?
+        AND res.status = 'active'
+      ORDER BY r.id ASC
+    `,
+    )
+    .all(Number(inventoryId));
+}
+
 function releaseReservations(requestId) {
   const active = db
     .prepare(`
@@ -229,7 +346,19 @@ function createReservationsForRequest(requestId) {
   let hasShortage = 0;
   const lines = [];
   for (const item of items) {
-    const ocsItem = resolveOcsItem(item);
+    const ocsItem = resolveOcsItem(item, { allowNameFallback: !item.inventory_id });
+    if (ocsItem && Number(item.inventory_id || 0) !== Number(ocsItem.id)) {
+      db.prepare("UPDATE restock_request_items SET inventory_id = ?, item_name = ? WHERE id = ?").run(
+        ocsItem.id,
+        ocsItem.item_name,
+        item.id,
+      );
+      item.inventory_id = ocsItem.id;
+      item.item_name = ocsItem.item_name;
+    } else if (ocsItem && ocsItem.item_name && ocsItem.item_name !== item.item_name) {
+      db.prepare("UPDATE restock_request_items SET item_name = ? WHERE id = ?").run(ocsItem.item_name, item.id);
+      item.item_name = ocsItem.item_name;
+    }
     const requested = requiredIntegerQty(item.quantity, "Requested quantity");
     let reserved = 0;
     let allocations = [];
@@ -256,7 +385,7 @@ function createReservationsForRequest(requestId) {
         fulfilment.id,
         item.id,
         ocsItem?.id || null,
-        item.item_name,
+        ocsItem?.item_name || item.item_name,
         requested,
         reserved,
         shortage,
@@ -433,7 +562,7 @@ function assignRequest(requestId, userId) {
   `).run(userId || null, Number(requestId));
 }
 
-function reconcileLegacyFulfilment(requestId) {
+function reconcileLegacyFulfilment(requestId, { actor = {}, reason = "" } = {}) {
   const request = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
   if (!request) throw HttpError(404, "Supply request not found.");
   if (!["accepted", "ready"].includes(String(request.status))) {
@@ -441,9 +570,123 @@ function reconcileLegacyFulfilment(requestId) {
   }
   const existing = activeFulfilment(requestId) || postedFulfilment(requestId);
   if (existing) {
-    throw HttpError(409, "Fulfilment already exists for this request.");
+    const detail = fulfilmentDetail(requestId);
+    return {
+      request,
+      fulfilment: detail,
+      previous_status: String(request.status),
+      status: String(request.status),
+      demoted: false,
+      notify_doctor: false,
+      outcome: "already_linked",
+      reason: String(reason || "").trim() || "Legacy fulfilment linkage",
+      explanation: "Fulfilment records already exist for this request.",
+      requested_quantity: (detail?.items || []).reduce(
+        (sum, line) => sum + integerLineQty(line.requested_quantity),
+        0,
+      ),
+      reserved_quantity: (detail?.items || []).reduce(
+        (sum, line) => sum + integerLineQty(line.reserved_quantity),
+        0,
+      ),
+      actor,
+      idempotent: true,
+    };
   }
-  return createReservationsForRequest(requestId);
+
+  const previousStatus = String(request.status);
+  const created = createReservationsForRequest(requestId);
+  const fulfilment = activeFulfilment(requestId);
+  if (fulfilment) {
+    db.prepare(`
+      UPDATE restock_request_fulfillment_items
+      SET
+        picked_quantity = reserved_quantity,
+        fulfilled_quantity = reserved_quantity,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE fulfilment_id = ?
+    `).run(fulfilment.id);
+  }
+
+  let detail = fulfilmentDetail(requestId);
+  const requestedTotal = (detail.items || []).reduce(
+    (sum, line) => sum + integerLineQty(line.requested_quantity),
+    0,
+  );
+  const reservedTotal = (detail.items || []).reduce(
+    (sum, line) => sum + integerLineQty(line.reserved_quantity),
+    0,
+  );
+  const fullyAllocated = requestedTotal > 0 && reservedTotal >= requestedTotal && !created.hasShortage;
+  let nextStatus = previousStatus;
+  let demoted = false;
+  let readyInvariantOk = false;
+
+  if (fullyAllocated) {
+    try {
+      assertCanMarkReady(requestId);
+      readyInvariantOk = true;
+    } catch {
+      readyInvariantOk = false;
+    }
+  }
+
+  if (previousStatus === "ready" && readyInvariantOk) {
+    lockPackedFulfilment(requestId, actor.userId || request.ready_by_user_id || null);
+    nextStatus = "ready";
+  } else {
+    nextStatus = "accepted";
+    if (previousStatus === "ready") {
+      demoted = true;
+      db.prepare(`
+        UPDATE restock_requests
+        SET
+          status = 'accepted',
+          ready_at = NULL,
+          ready_by_user_id = NULL,
+          fulfilment_locked_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(Number(requestId));
+    }
+    if (fulfilment) {
+      db.prepare(`
+        UPDATE restock_request_fulfillments
+        SET status = 'open', packed_at = NULL, packed_by_user_id = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(fulfilment.id);
+    }
+  }
+
+  const outcome =
+    fullyAllocated && nextStatus === "ready"
+      ? "full_ready"
+      : reservedTotal <= 0
+        ? "zero_availability"
+        : "partial_shortage";
+  const explanation =
+    outcome === "full_ready"
+      ? "Legacy request fully allocated from current stock and remains ready."
+      : outcome === "zero_availability"
+        ? "No unreserved stock was available. The request was returned to accepted for shortage resolution."
+        : "Only part of the requested quantity could be reserved. Explicit partial-fulfilment approval is required before it can return to ready.";
+
+  detail = fulfilmentDetail(requestId);
+  const updated = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
+  return {
+    request: updated,
+    fulfilment: detail,
+    previous_status: previousStatus,
+    status: nextStatus,
+    demoted,
+    notify_doctor: demoted,
+    outcome,
+    reason: String(reason || "").trim() || "Legacy fulfilment linkage",
+    explanation,
+    requested_quantity: requestedTotal,
+    reserved_quantity: reservedTotal,
+    actor,
+  };
 }
 
 function fulfilmentDetail(requestId) {
@@ -506,6 +749,57 @@ function fulfilmentDetail(requestId) {
   };
 }
 
+function integerLineQty(value) {
+  return integerQty(value) ?? 0;
+}
+
+function assertLineQuantityInvariant(line, { partialApproved = false } = {}) {
+  const name = line.item_name || "item";
+  const reserved = integerLineQty(line.reserved_quantity);
+  const picked = integerLineQty(line.picked_quantity);
+  const fulfilled = integerLineQty(line.fulfilled_quantity);
+  const requested = integerLineQty(line.requested_quantity);
+  if (reserved < 0) {
+    throw HttpError(400, `Reserved quantity for ${name} cannot be negative.`);
+  }
+  if (picked < 0) {
+    throw HttpError(400, `Picked quantity for ${name} cannot be negative.`);
+  }
+  if (fulfilled < 0) {
+    throw HttpError(400, `Fulfilled quantity for ${name} cannot be negative.`);
+  }
+  if (picked < fulfilled) {
+    throw HttpError(400, `Picked quantity for ${name} cannot be lower than the fulfilled quantity.`);
+  }
+  if (fulfilled > requested) {
+    throw HttpError(400, `Fulfilled quantity for ${name} cannot exceed the requested quantity.`);
+  }
+  if (!partialApproved && fulfilled > reserved) {
+    throw HttpError(400, `Fulfilled quantity for ${name} cannot exceed the reserved quantity.`);
+  }
+  if (picked > reserved) {
+    throw HttpError(400, `Picked quantity for ${name} cannot exceed the reserved quantity.`);
+  }
+  return { reserved, picked, fulfilled, requested };
+}
+
+function assertFulfilmentQuantityInvariants(detail, { requirePickedForReady = false } = {}) {
+  const items = detail?.items || [];
+  let totalPicked = 0;
+  let totalFulfilled = 0;
+  let totalRequested = 0;
+  for (const line of items) {
+    const qty = assertLineQuantityInvariant(line, { partialApproved: Boolean(detail.partial_approved) });
+    totalPicked += qty.picked;
+    totalFulfilled += qty.fulfilled;
+    totalRequested += qty.requested;
+  }
+  if (requirePickedForReady && totalPicked <= 0) {
+    throw HttpError(400, "A request cannot be marked ready until at least one unit has been picked.");
+  }
+  return { totalPicked, totalFulfilled, totalRequested };
+}
+
 function assertCanMarkReady(requestId) {
   const detail = fulfilmentDetail(requestId);
   if (!detail || detail.linkage_required) {
@@ -515,24 +809,32 @@ function assertCanMarkReady(requestId) {
     );
   }
   const hasShortage = (detail.items || []).some((line) => {
-    const shortage = integerQty(line.shortage_quantity) ?? 0;
-    const reserved = integerQty(line.reserved_quantity) ?? 0;
-    const requested = integerQty(line.requested_quantity) ?? 0;
+    const shortage = integerLineQty(line.shortage_quantity);
+    const reserved = integerLineQty(line.reserved_quantity);
+    const requested = integerLineQty(line.requested_quantity);
     return shortage > 0 || reserved < requested;
-  });
-  const fullyPicked = (detail.items || []).every((line) => {
-    const reserved = integerQty(line.reserved_quantity) ?? 0;
-    const fulfilled = integerQty(line.fulfilled_quantity);
-    const picked = integerQty(line.picked_quantity) ?? 0;
-    const target = detail.partial_approved ? (fulfilled ?? 0) : reserved;
-    if (detail.partial_approved && target === 0) return true;
-    return picked >= target && (detail.partial_approved || target > 0);
   });
   if (hasShortage && !detail.partial_approved) {
     throw HttpError(400, "Resolve shortages or approve partial fulfilment before marking supply ready.");
   }
-  if (!fullyPicked && !detail.partial_approved) {
-    throw HttpError(400, "Pick every reserved line, or approve partial fulfilment, before marking supply ready.");
+  assertFulfilmentQuantityInvariants(detail, { requirePickedForReady: true });
+  const fullyPicked = (detail.items || []).every((line) => {
+    const reserved = integerLineQty(line.reserved_quantity);
+    const fulfilled = integerLineQty(line.fulfilled_quantity);
+    const picked = integerLineQty(line.picked_quantity);
+    const target = detail.partial_approved ? fulfilled : reserved;
+    if (detail.partial_approved) {
+      return picked >= fulfilled && fulfilled >= 0;
+    }
+    return picked >= target && target > 0;
+  });
+  if (!fullyPicked) {
+    throw HttpError(
+      400,
+      detail.partial_approved
+        ? "Pick every unit that will be fulfilled before marking supply ready."
+        : "Pick every reserved line, or approve partial fulfilment, before marking supply ready.",
+    );
   }
   return detail;
 }
@@ -553,22 +855,29 @@ function applyPicking(requestId, { lines = [], partialApproved, partialReason = 
   const existingLines = db
     .prepare("SELECT * FROM restock_request_fulfillment_items WHERE fulfilment_id = ?")
     .all(fulfilment.id);
+  const request = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
+  const willApprovePartial =
+    partialApproved === true ||
+    (partialApproved !== false && Boolean(request?.partial_fulfilment_approved || fulfilment.partial_approved));
 
   for (const line of existingLines) {
     const patch = byId.get(line.id);
     if (!patch) continue;
-    const reserved = integerQty(line.reserved_quantity) ?? 0;
+    const reserved = integerLineQty(line.reserved_quantity);
     const picked = Math.max(0, Math.floor(integerQty(patch.picked_quantity) ?? integerQty(line.picked_quantity) ?? 0));
     const fulfilled = Math.max(
       0,
       Math.floor(integerQty(patch.fulfilled_quantity) ?? integerQty(line.fulfilled_quantity) ?? picked),
     );
-    if (fulfilled > reserved) {
-      throw HttpError(400, `Fulfilled quantity for ${line.item_name} cannot exceed the reserved quantity.`);
-    }
-    if (picked > reserved) {
-      throw HttpError(400, `Picked quantity for ${line.item_name} cannot exceed the reserved quantity.`);
-    }
+    assertLineQuantityInvariant(
+      {
+        ...line,
+        reserved_quantity: reserved,
+        picked_quantity: picked,
+        fulfilled_quantity: fulfilled,
+      },
+      { partialApproved: willApprovePartial },
+    );
     if (Array.isArray(patch.allocations)) {
       const allocationReason = String(patch.allocation_reason || patch.reason || partialReason || "").trim();
       if (allocationReason.length < 10) {
@@ -836,8 +1145,21 @@ function postCollectionTransfer({ request, actor }) {
       "This request cannot be collected until an operator reconciles fulfilment quantities and batches.",
     );
   }
-  if (String(detail.fulfilment?.status) !== "packed" && String(request.status) === "ready") {
-    // ready without packed lock still allowed for legacy-linked rows that were packed via ready
+  assertFulfilmentQuantityInvariants(detail, { requirePickedForReady: true });
+  const totals = (detail.items || []).reduce(
+    (acc, line) => {
+      acc.requested += integerLineQty(line.requested_quantity);
+      acc.fulfilled += integerLineQty(line.fulfilled_quantity);
+      acc.picked += integerLineQty(line.picked_quantity);
+      return acc;
+    },
+    { requested: 0, fulfilled: 0, picked: 0 },
+  );
+  if (totals.requested > 0 && totals.fulfilled <= 0) {
+    throw HttpError(409, "A non-zero supply request cannot be completed with a zero-quantity transfer.");
+  }
+  if (String(detail.fulfilment?.status) !== "packed") {
+    throw HttpError(409, "This request must be packed before collection can be confirmed.");
   }
 
   const doctor = db.prepare("SELECT id, full_name FROM doctors WHERE id = ?").get(request.doctor_id);
@@ -1177,14 +1499,21 @@ module.exports = {
   assignRequest,
   availableToPromise,
   applyPicking,
+  canonicaliseRequestItem,
+  consumeAvailableFefo,
+  findRequestableOcsItem,
   fulfilmentDetail,
+  listImpactedActiveRequests,
   lockPackedFulfilment,
+  namesMateriallyMatch,
   postCollectionTransfer,
   productivityMetrics,
   reconcileLegacyFulfilment,
   releaseReservations,
   replaceReservationsForAmendment,
   reserveAcceptedRequest,
+  reservedQuantityForBatch,
+  reservedQuantityForItem,
   resolveOcsItem,
   resolveShortages,
   workQueues,

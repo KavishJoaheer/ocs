@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { env } from "node:process";
 
 export default defineConfig({
   plugins: [
@@ -56,7 +57,7 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 4174,
     proxy: {
-      "/api": "http://127.0.0.1:3001",
+      "/api": env.VITE_PREVIEW_API || "http://127.0.0.1:3001",
     },
   },
 });

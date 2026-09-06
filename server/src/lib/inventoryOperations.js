@@ -5,8 +5,9 @@ const { getTodayLocal, toNumber } = require("./utils");
 const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast } = require("./inventoryRealtime");
 const { isEnvTrue } = require("./envFlags");
-const { availableToPromise } = require("./restockFulfilment");
+const { availableToPromise, consumeAvailableFefo, listImpactedActiveRequests, reservedQuantityForItem } = require("./restockFulfilment");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
+const { isValidIsoCalendarDate } = require("./calendarDate");
 
 const CSV_REQUIRED_HEADERS = [
   "folder",
@@ -42,7 +43,7 @@ function parseNonExpiringFlag(value) {
 }
 
 function isIsoDate(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+  return isValidIsoCalendarDate(value);
 }
 
 function validateReceiptExpiry({ expiryDate, isNonExpiring = false, allowBlank = false } = {}) {
@@ -68,7 +69,7 @@ function stagingRowErrors(row) {
   const errors = [];
   if (!String(row.item_name || "").trim()) errors.push("Missing item name");
   const qty = Number(row.quantity);
-  if (!Number.isInteger(qty) || qty < 0) errors.push("Invalid quantity");
+  if (!Number.isInteger(qty) || !Number.isFinite(qty) || qty <= 0) errors.push("Quantity must be a positive whole number greater than zero");
   const nonExpiring = Number(row.is_non_expiring || 0) === 1 || parseNonExpiringFlag(row.is_non_expiring);
   const expiry = String(row.expiry_date || "").trim();
   if (!nonExpiring && !expiry) {
@@ -76,7 +77,7 @@ function stagingRowErrors(row) {
   }
   if (!nonExpiring && expiry) {
     if (!isIsoDate(expiry)) {
-      errors.push("Expiry date must be YYYY-MM-DD");
+      errors.push("Expiry date must be a valid calendar date (YYYY-MM-DD)");
     } else if (expiry < getTodayLocal()) {
       errors.push("Expiry date is in the past");
     }
@@ -217,18 +218,57 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
   };
 }
 
+function findOcsCatalogueItemByName(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return null;
+  return (
+    db
+      .prepare(
+        `
+        SELECT *
+        FROM inventory
+        WHERE stock_scope = 'ocs'
+          AND owner_doctor_id IS NULL
+          AND archived_at IS NULL
+          AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+        ORDER BY id ASC
+        LIMIT 1
+      `,
+      )
+      .get(trimmed) || null
+  );
+}
+
 function consumeAllocatedBatches(allocations) {
   for (const allocation of allocations || []) {
     const take = Number(allocation.quantity || 0);
     if (take <= 0) continue;
     const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(allocation.batch_id);
-    if (!batch || Number(batch.quantity_remaining || 0) < take) {
-      throw HttpError(409, "A selected batch no longer has enough quantity.");
-    }
-    db.prepare("UPDATE inventory_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ?").run(
-      take,
-      allocation.batch_id,
+    if (!batch) throw HttpError(409, "A selected batch no longer has enough quantity.");
+    const reserved = Number(
+      db
+        .prepare(
+          `
+          SELECT COALESCE(SUM(rb.quantity), 0) AS total
+          FROM inventory_reservation_batches rb
+          JOIN inventory_reservations r ON r.id = rb.reservation_id
+          WHERE rb.batch_id = ? AND r.status = 'active'
+        `,
+        )
+        .get(allocation.batch_id)?.total || 0,
     );
+    const available = Math.max(0, Number(batch.quantity_remaining || 0) - reserved);
+    if (available < take) {
+      throw HttpError(409, "A selected batch no longer has enough unreserved quantity.");
+    }
+    const updated = db
+      .prepare(
+        `UPDATE inventory_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ? AND quantity_remaining >= ?`,
+      )
+      .run(take, allocation.batch_id, take);
+    if (!updated.changes) {
+      throw HttpError(409, "A selected batch was updated concurrently. Retry the operation.");
+    }
   }
 }
 
@@ -250,6 +290,7 @@ function applyExceptionalCorrection({
   confirm,
   userId,
   actor = {},
+  affectReservations = false,
 }) {
   if (confirm !== true && confirm !== "true") {
     throw HttpError(400, "Confirm the exceptional inventory correction before applying it.");
@@ -276,13 +317,18 @@ function applyExceptionalCorrection({
   if (change === 0) {
     return { item, previous, next, change: 0, idempotent: true, movementId: null };
   }
+  const impacted = listImpactedActiveRequests(itemId);
   if (change < 0) {
     const available = availableToPromise(itemId);
     if (Math.abs(change) > available) {
-      throw HttpError(
-        409,
-        `Cannot correct below reserved stock. ${available} unit(s) are available to adjust; ${Math.abs(change)} requested.`,
-      );
+      if (!affectReservations) {
+        const error = HttpError(
+          409,
+          `Cannot correct below reserved stock. ${available} unit(s) are available to adjust; ${Math.abs(change)} requested.`,
+        );
+        error.impacted_requests = impacted;
+        throw error;
+      }
     }
   }
 
@@ -295,7 +341,40 @@ function applyExceptionalCorrection({
     const lockedChange = next - lockedPrev;
     let allocations = [];
     if (lockedChange < 0) {
-      const preview = previewAllocations(itemId, Math.abs(lockedChange), { includeExpired: true });
+      const available = availableToPromise(itemId);
+      if (Math.abs(lockedChange) > available) {
+        if (!affectReservations) {
+          const error = HttpError(
+            409,
+            `Cannot correct below reserved stock. ${available} unit(s) are available to adjust; ${Math.abs(lockedChange)} requested.`,
+          );
+          error.impacted_requests = listImpactedActiveRequests(itemId);
+          throw error;
+        }
+        const reservations = db
+          .prepare(
+            `
+            SELECT * FROM inventory_reservations
+            WHERE inventory_id = ? AND status = 'active'
+            ORDER BY id ASC
+          `,
+          )
+          .all(Number(itemId));
+        for (const reservation of reservations) {
+          db.prepare(`
+            UPDATE inventory_reservations
+            SET status = 'released', released_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(reservation.id);
+          db.prepare(`
+            UPDATE restock_request_fulfillments
+            SET has_shortage = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE request_id = ? AND status IN ('open', 'picking', 'packed')
+          `).run(reservation.request_id);
+        }
+      }
+      const consumeQty = Math.abs(lockedChange);
+      const preview = previewAllocations(itemId, consumeQty, { includeExpired: true });
       if (!preview.can_fulfil) {
         throw HttpError(409, "Insufficient unreserved batch quantity for this correction.");
       }
@@ -332,6 +411,8 @@ function applyExceptionalCorrection({
         reason: trimmedReason,
         supporting_note: String(note || "").trim(),
         exceptional: true,
+        affect_reservations: Boolean(affectReservations),
+        impacted_requests: impacted,
         allocations,
         source_location: "Master Stock",
         destination_location: "Exceptional correction",
@@ -346,6 +427,7 @@ function applyExceptionalCorrection({
       idempotent: false,
       movementId,
       allocations,
+      impacted_requests: impacted,
     };
   })();
 }
@@ -416,93 +498,54 @@ function recordOpsMovement({
 }
 
 function consumeFefo(itemId, quantity) {
-  const today = getTodayLocal();
-  const rows = db
-    .prepare(`
-      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring
-      FROM inventory_batches
-      WHERE item_id = ? AND quantity_remaining > 0
-      ORDER BY
-        CASE
-          WHEN expiry_date IS NOT NULL AND COALESCE(is_non_expiring, 0) = 0 THEN 0
-          WHEN COALESCE(is_non_expiring, 0) = 1 THEN 1
-          ELSE 2
-        END,
-        expiry_date ASC,
-        id ASC
-    `)
-    .all(Number(itemId));
-  let remaining = Number(quantity || 0);
-  const allocations = [];
-  for (const row of rows) {
-    if (remaining <= 0) break;
-    const expired =
-      row.expiry_date && Number(row.is_non_expiring || 0) !== 1 && String(row.expiry_date) < today;
-    if (expired) continue;
-    const take = Math.min(remaining, Number(row.quantity_remaining || 0));
-    if (take <= 0) continue;
-    db.prepare("UPDATE inventory_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ?").run(
-      take,
-      row.id,
-    );
-    allocations.push({
-      batch_id: row.id,
-      quantity: take,
-      expiry_date: row.expiry_date || null,
-      is_non_expiring: Number(row.is_non_expiring || 0) === 1,
-      unit_cost: toNumber(row.unit_cost, 0),
-    });
-    remaining -= take;
+  const qty = Number(quantity || 0);
+  if (!Number.isInteger(qty) || qty <= 0) {
+    return { ok: true, remaining: 0, allocations: [] };
   }
-  return { ok: remaining === 0, remaining, allocations };
+  try {
+    const result = consumeAvailableFefo(itemId, qty);
+    return { ok: true, remaining: 0, allocations: result.allocations };
+  } catch (error) {
+    if (error.status === 409) {
+      return { ok: false, remaining: qty, allocations: [], error: error.message };
+    }
+    throw error;
+  }
+}
+
+function matchCatalogueForStagingRow(row) {
+  const catalogue = findOcsCatalogueItemByName(row.item_name);
+  if (!catalogue) {
+    return {
+      error: `Catalogue action required: "${row.item_name}" is not an approved catalogue item.`,
+      catalogue_action_required: true,
+    };
+  }
+  if (row.folder_id && Number(catalogue.folder_id) !== Number(row.folder_id)) {
+    const folderName =
+      db.prepare("SELECT name FROM inventory_folders WHERE id = ?").get(catalogue.folder_id)?.name ||
+      "another folder";
+    return {
+      error: `Folder mismatch: "${catalogue.item_name}" belongs to ${folderName}, not the imported folder.`,
+      catalogue_action_required: false,
+      folder_mismatch: true,
+      catalogue,
+    };
+  }
+  return { catalogue };
 }
 
 function upsertOcsFromStaging(row) {
-  const existing = db
-    .prepare(`
-      SELECT *
-      FROM inventory
-      WHERE stock_scope = 'ocs'
-        AND owner_doctor_id IS NULL
-        AND folder_id = ?
-        AND item_name = ?
-        AND archived_at IS NULL
-      LIMIT 1
-    `)
-    .get(row.folder_id, row.item_name);
-  const qty = Number(row.quantity || 0);
-  if (existing) {
-    const prev = Number(existing.quantity || 0);
-    const next = prev + qty;
-    updateInventoryQuantity(existing.id, next);
-    return { id: Number(existing.id), previous: prev, next, created: false, item: existing };
+  const match = matchCatalogueForStagingRow(row);
+  if (match.error) {
+    throw HttpError(409, match.error);
   }
-  const inserted = db
-    .prepare(`
-      INSERT INTO inventory (
-        item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-        cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-      ) VALUES (?, ?, 'ocs', NULL, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
-    `)
-    .run(
-      row.item_name,
-      row.folder_id,
-      qty,
-      row.minimum_quantity,
-      row.unit,
-      row.cost_price,
-      row.selling_price,
-      row.attributes || "",
-      row.moa_notes || "",
-      row.expiry_date || null,
-    );
-  return {
-    id: Number(inserted.lastInsertRowid),
-    previous: 0,
-    next: qty,
-    created: true,
-    item: db.prepare("SELECT * FROM inventory WHERE id = ?").get(Number(inserted.lastInsertRowid)),
-  };
+  const existing = match.catalogue;
+  const qty = Number(row.quantity || 0);
+  const prev = Number(existing.quantity || 0);
+  const next = prev + qty;
+  updateInventoryQuantity(existing.id, next);
+  return { id: Number(existing.id), previous: prev, next, created: false, item: existing };
 }
 
 function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
@@ -721,16 +764,77 @@ function getShipment(id) {
   return decorateShipment(shipment);
 }
 
-function bulkReleaseShipment({ shipmentId, rowIds, userId, actor }) {
+function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelection = false }) {
   const shipment = getShipment(shipmentId);
   if (!shipment) throw HttpError(404, "Shipment not found.");
   if (shipment.status === "released") {
     return { shipment, idempotent: true, receipt: shipmentReceipt(shipment) };
   }
+  const normalizedIds = Array.isArray(rowIds) ? rowIds.map(Number).filter((id) => Number.isInteger(id) && id > 0) : [];
+  if (requireSelection) {
+    if (!normalizedIds.length) {
+      throw HttpError(400, "row_ids is required and must contain at least one shipment line.");
+    }
+    const byId = new Map((shipment.lines || []).map((line) => [Number(line.id), line]));
+    const missing = [];
+    const ineligible = [];
+    const alreadyReleased = [];
+    const selectedPending = [];
+    for (const id of normalizedIds) {
+      const line = byId.get(id);
+      if (!line) {
+        missing.push(id);
+        continue;
+      }
+      if (String(line.status) === "released") {
+        alreadyReleased.push(id);
+        continue;
+      }
+      if (String(line.status) !== "pending" || (line.validation_errors || stagingRowErrors(line)).length) {
+        ineligible.push(id);
+        continue;
+      }
+      selectedPending.push(line);
+    }
+    if (missing.length) {
+      throw HttpError(400, `Selected row(s) do not belong to shipment #${shipmentId}: ${missing.join(", ")}.`);
+    }
+    if (ineligible.length) {
+      throw HttpError(400, `Selected row(s) are not eligible for release: ${ineligible.join(", ")}.`);
+    }
+    if (!selectedPending.length && alreadyReleased.length === normalizedIds.length) {
+      return { shipment, idempotent: true, receipt: shipmentReceipt(shipment), released: 0 };
+    }
+    if (!selectedPending.length) {
+      throw HttpError(400, "No valid pending rows selected for release.");
+    }
+    const released = releaseStagingRows({
+      rows: selectedPending,
+      userId,
+      shipmentId: shipment.id,
+      actor,
+    });
+    const remaining = Number(
+      db
+        .prepare(`SELECT COUNT(*) AS count FROM inventory_staging WHERE shipment_id = ? AND status = 'pending'`)
+        .get(shipment.id)?.count || 0,
+    );
+    if (remaining === 0) {
+      closeShipmentIfIdle(shipment.id, userId);
+    }
+    publishInventoryResyncBroadcast({ reason: "shipment_released" });
+    const next = getShipment(shipment.id);
+    return {
+      shipment: next,
+      idempotent: false,
+      transactionId: released.transactionId,
+      receipt: shipmentReceipt(next, released),
+    };
+  }
   const selected = (shipment.lines || []).filter((line) => {
     if (line.status !== "pending") return false;
     if ((line.validation_errors || stagingRowErrors(line)).length) return false;
-    if (Array.isArray(rowIds) && rowIds.length) return rowIds.includes(Number(line.id));
+    if (normalizedIds.length) return normalizedIds.includes(Number(line.id));
     return true;
   });
   if (!selected.length) throw HttpError(400, "No valid pending rows selected for release.");
@@ -846,7 +950,7 @@ function parseCsvShipment(csvText) {
     const errors = [];
     if (!folder) errors.push(row.folder ? `Unknown folder "${row.folder}"` : "Missing folder");
     if (!String(row.item_name || "").trim()) errors.push("Missing item name");
-    if (!Number.isInteger(qty) || qty < 0) errors.push("Invalid quantity");
+    if (!Number.isInteger(qty) || !Number.isFinite(qty) || qty <= 0) errors.push("Quantity must be a positive whole number greater than zero");
     if (!nonExpiring && !expiryRaw) errors.push("Missing expiry. Set a date or mark the row as non-expiring.");
     if (!nonExpiring && expiryRaw) {
       try {
@@ -859,13 +963,22 @@ function parseCsvShipment(csvText) {
     const duplicateOf = seen.get(key) || null;
     if (!duplicateOf) seen.set(key, lineNumber);
     else errors.push(`Duplicate of line ${duplicateOf}`);
+    const catalogueMatch = matchCatalogueForStagingRow({
+      item_name: String(row.item_name || "").trim(),
+      folder_id: folder?.id || null,
+    });
+    if (catalogueMatch.error) {
+      errors.push(catalogueMatch.error);
+    }
     const cost = toNumber(row.cost_price, 0);
     parsed.push({
       line: lineNumber,
       folder_id: folder?.id || null,
       folder_name: folder?.name || row.folder || "",
-      item_name: String(row.item_name || "").trim(),
-      quantity: Number.isInteger(qty) ? qty : 0,
+      item_name: catalogueMatch.catalogue?.item_name || String(row.item_name || "").trim(),
+      catalogue_item_id: catalogueMatch.catalogue?.id || null,
+      catalogue_action_required: Boolean(catalogueMatch.catalogue_action_required),
+      quantity: Number.isInteger(qty) && qty > 0 ? qty : Number(row.quantity || 0),
       minimum_quantity: Number(row.minimum_quantity || 0) || 0,
       unit: row.unit || "unit",
       cost_price: cost,
@@ -874,7 +987,7 @@ function parseCsvShipment(csvText) {
       moa_notes: row.moa_notes || "",
       expiry_date: nonExpiring ? null : expiryRaw || null,
       is_non_expiring: nonExpiring ? 1 : 0,
-      line_value: roundCurrency((Number.isInteger(qty) ? qty : 0) * cost),
+      line_value: roundCurrency((Number.isInteger(qty) && qty > 0 ? qty : 0) * cost),
       errors,
       duplicate: Boolean(duplicateOf),
       missing_expiry: !nonExpiring && !expiryRaw,
@@ -906,6 +1019,20 @@ function csvShipmentTemplate() {
     "Consumable,Gauze 10x10,20,5,pack,12,20,2027-01-01,",
     "Consumable,Reusable tray,4,1,unit,0,0,,yes",
   ].join("\n");
+}
+
+function canRevealStocktakeSystem(session, { role } = {}) {
+  const status = String(session?.status || "");
+  if (["draft", "in_progress"].includes(status)) return false;
+  if (!["submitted", "approved", "rejected", "applied"].includes(status)) return false;
+  return role === "admin" || role === "operator";
+}
+
+function snapshotInventoryForStocktake(item) {
+  return {
+    expected_row_version: Number(item.row_version || 1),
+    expected_quantity: Number(item.quantity || 0),
+  };
 }
 
 function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], userId, notes = "" }) {
@@ -944,19 +1071,23 @@ function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], 
   }
   const insert = db.prepare(`
     INSERT INTO inventory_stocktake_session_items (
-      session_id, inventory_id, system_quantity
-    ) VALUES (?, ?, ?)
+      session_id, inventory_id, system_quantity, expected_row_version, expected_quantity
+    ) VALUES (?, ?, ?, ?, ?)
   `);
   for (const item of items) {
-    insert.run(sessionId, item.id, Number(item.quantity || 0));
+    const snapshot = snapshotInventoryForStocktake(item);
+    insert.run(sessionId, item.id, snapshot.expected_quantity, snapshot.expected_row_version, snapshot.expected_quantity);
   }
-  return getStocktakeSession(sessionId, { revealSystem: false });
+  return getStocktakeSession(sessionId, { role: "operator" });
 }
 
-function serializeStocktakeSession(session, { revealSystem = false } = {}) {
+function serializeStocktakeSession(session, { role = "", revealSystem = false } = {}) {
+  const allowedReveal = canRevealStocktakeSystem(session, { role });
+  const showSystem = allowedReveal;
+  void revealSystem;
   const items = db
     .prepare(`
-      SELECT si.*, i.item_name, i.unit, i.folder_id, i.cost_price
+      SELECT si.*, i.item_name, i.unit, i.folder_id, i.cost_price, i.row_version AS live_row_version, i.quantity AS live_quantity
       FROM inventory_stocktake_session_items si
       JOIN inventory i ON i.id = si.inventory_id
       WHERE si.session_id = ?
@@ -964,17 +1095,18 @@ function serializeStocktakeSession(session, { revealSystem = false } = {}) {
     `)
     .all(session.id)
     .map((row) => {
-      const submitted = ["submitted", "approved", "rejected", "applied"].includes(session.status);
       const counted = row.physical_quantity !== null && row.physical_quantity !== undefined;
       return {
         ...row,
         counted,
-        system_quantity: revealSystem || submitted ? Number(row.system_quantity || 0) : null,
-        variance: revealSystem || submitted ? row.variance : null,
+        system_quantity: showSystem ? Number(row.system_quantity || 0) : null,
+        expected_row_version: showSystem ? Number(row.expected_row_version || 0) : null,
+        expected_quantity: showSystem ? Number(row.expected_quantity ?? row.system_quantity ?? 0) : null,
+        variance: showSystem ? row.variance : null,
         variance_value:
-          revealSystem || submitted
-            ? roundCurrency(Number(row.variance || 0) * Number(row.cost_price || 0))
-            : null,
+          showSystem ? roundCurrency(Number(row.variance || 0) * Number(row.cost_price || 0)) : null,
+        live_row_version: showSystem ? Number(row.live_row_version || 0) : null,
+        live_quantity: showSystem ? Number(row.live_quantity || 0) : null,
       };
     });
   const counted = items.filter((row) => row.counted).length;
@@ -1108,17 +1240,37 @@ function saveStocktakeCounts(sessionId, lines, userId) {
         continue;
       }
       const physical = parsed.value;
+      const current = db
+        .prepare("SELECT si.*, i.quantity, i.row_version FROM inventory_stocktake_session_items si JOIN inventory i ON i.id = si.inventory_id WHERE si.session_id = ? AND si.id = ?")
+        .get(sessionId, line.id);
+      if (!current) continue;
       db.prepare(`
         UPDATE inventory_stocktake_session_items
         SET
           physical_quantity = ?,
-          variance = ? - system_quantity,
+          system_quantity = ?,
+          expected_quantity = ?,
+          expected_row_version = ?,
+          variance = ? - ?,
+          conflict_status = '',
+          conflict_reason = '',
           counted_by_user_id = ?,
           counted_at = CURRENT_TIMESTAMP,
           reason = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE session_id = ? AND id = ?
-      `).run(physical, physical, userId, String(line.reason || "").slice(0, 500), sessionId, line.id);
+      `).run(
+        physical,
+        Number(current.quantity || 0),
+        Number(current.quantity || 0),
+        Number(current.row_version || 1),
+        physical,
+        Number(current.quantity || 0),
+        userId,
+        String(line.reason || "").slice(0, 500),
+        sessionId,
+        line.id,
+      );
     }
     db.prepare(`
       UPDATE inventory_stocktake_sessions
@@ -1126,7 +1278,7 @@ function saveStocktakeCounts(sessionId, lines, userId) {
       WHERE id = ?
     `).run(sessionId);
   })();
-  return getStocktakeSession(sessionId, { revealSystem: false });
+  return getStocktakeSession(sessionId, { role: "operator" });
 }
 
 function submitStocktakeSession(sessionId, userId) {
@@ -1163,7 +1315,7 @@ function submitStocktakeSession(sessionId, userId) {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(userId, `ST-ZERO-${sessionId}`, sessionId);
-    return getStocktakeSession(sessionId, { revealSystem: true });
+    return getStocktakeSession(sessionId, { role: "operator" });
   }
   db.prepare(`
     UPDATE inventory_stocktake_sessions
@@ -1174,7 +1326,7 @@ function submitStocktakeSession(sessionId, userId) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(userId, sessionId);
-  return getStocktakeSession(sessionId, { revealSystem: true });
+  return getStocktakeSession(sessionId, { role: "operator" });
 }
 
 function otherActiveAdminExists(userId) {
@@ -1212,14 +1364,15 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(decision === "approved" ? "approved" : "rejected", userId, String(reason || "").slice(0, 500), sessionId);
-  return getStocktakeSession(sessionId, { revealSystem: true });
+  return getStocktakeSession(sessionId, { role: "admin" });
 }
 
 function applyStocktakeSession(sessionId, userId, actor = {}) {
+  const reveal = { role: actor.role || "admin" };
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stocktake session not found.");
   if (session.status === "applied" && session.applied_transaction_id) {
-    return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
+    return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
   }
   if (session.status === "rejected" || session.status === "cancelled") {
     throw HttpError(400, "This session cannot be applied.");
@@ -1237,7 +1390,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
   return db.transaction(() => {
     const locked = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
     if (locked.status === "applied" && locked.applied_transaction_id) {
-      return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
+      return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
     }
     if (locked.status === "rejected" || locked.status === "cancelled") {
       throw HttpError(400, "This session cannot be applied.");
@@ -1246,6 +1399,41 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
     const items = db
       .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
       .all(sessionId);
+    const conflicts = [];
+    for (const line of items) {
+      const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
+      if (!item) {
+        conflicts.push({
+          line_id: line.id,
+          reason: "A counted item is no longer available.",
+        });
+        continue;
+      }
+      const expectedVersion = Number(line.expected_row_version ?? 0);
+      const expectedQty = Number(line.expected_quantity ?? line.system_quantity ?? 0);
+      const liveVersion = Number(item.row_version || 1);
+      const liveQty = Number(item.quantity || 0);
+      if (
+        (expectedVersion && liveVersion !== expectedVersion) ||
+        liveQty !== expectedQty
+      ) {
+        const reason = `Stock changed after count (expected qty ${expectedQty} v${expectedVersion || "?"}, now ${liveQty} v${liveVersion}). Recount required.`;
+        conflicts.push({ line_id: line.id, item_name: item.item_name, reason });
+        db.prepare(`
+          UPDATE inventory_stocktake_session_items
+          SET conflict_status = 'recount_required', conflict_reason = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(reason, line.id);
+      }
+    }
+    if (conflicts.length) {
+      const error = HttpError(
+        409,
+        `Stocktake cannot be applied because ${conflicts.length} line(s) changed after they were counted.`,
+      );
+      error.conflicts = conflicts;
+      throw error;
+    }
     for (const line of items) {
       const variance = Number(line.variance);
       if (!Number.isFinite(variance) || variance === 0) continue;
@@ -1256,9 +1444,16 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       if (!Number.isInteger(next) || next < 0) {
         throw HttpError(409, `Counted quantity is missing for ${item.item_name}.`);
       }
+      const reserved = reservedQuantityForItem(item.id);
+      if (next < reserved) {
+        throw HttpError(
+          409,
+          `Cannot apply counted quantity ${next} for ${item.item_name} because ${reserved} unit(s) are reserved.`,
+        );
+      }
       if (variance < 0) {
         const consumed = consumeFefo(item.id, Math.abs(variance));
-        if (!consumed.ok) throw HttpError(409, `Insufficient batch quantity to apply the count for ${item.item_name}.`);
+        if (!consumed.ok) throw HttpError(409, `Insufficient unreserved batch quantity to apply the count for ${item.item_name}.`);
       } else {
         db.prepare(`
           INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
@@ -1266,6 +1461,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         `).run(item.id, variance, roundCurrency(item.cost_price || 0));
       }
       updateInventoryQuantity(item.id, next);
+      assertBatchBalance(item.id);
       recordOpsMovement({
         itemId: item.id,
         movementType: variance > 0 ? "in" : "out",
@@ -1281,6 +1477,8 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           transaction_id: transactionId,
           previous_quantity: previous,
           counted_quantity: next,
+          expected_row_version: line.expected_row_version,
+          expected_quantity: line.expected_quantity,
           performed_by_user_id: userId,
           performed_by_name: actor.displayName || "",
           performed_by_role: actor.role || "",
@@ -1300,22 +1498,25 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       WHERE id = ? AND applied_transaction_id IS NULL
     `).run(userId, transactionId, sessionId);
     if (!applied.changes) {
-      return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
+      return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
     }
     publishInventoryResyncBroadcast({ reason: "stocktake_applied" });
-    return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: false, transactionId };
+    return { session: getStocktakeSession(sessionId, reveal), idempotent: false, transactionId };
   })();
 }
 
 function doctorMayViewReceipt(transactionId, doctorId) {
   const rows = db
-    .prepare(`
+    .prepare(
+      `
       SELECT m.doctor_id, m.meta_json, i.owner_doctor_id, i.stock_scope
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
-      WHERE m.action_type IN ('restock_out', 'restock_in')
-    `)
-    .all();
+      WHERE json_extract(m.meta_json, '$.transaction_id') = ?
+         OR json_extract(m.meta_json, '$.receipt_reference') LIKE ?
+    `,
+    )
+    .all(String(transactionId), `%/inventory/receipts/${transactionId}`);
   return rows.some((row) => {
     let meta = {};
     try {
@@ -1357,7 +1558,9 @@ module.exports = {
   batchQuantityTotal,
   bulkReleaseShipment,
   closeShipmentIfIdle,
+  canRevealStocktakeSystem,
   consumeAllocatedBatches,
+  consumeFefo,
   createShipmentFromImport,
   createStocktakeSession,
   csvShipmentTemplate,

@@ -234,7 +234,7 @@ export default function SupplyRequestDetailDrawer({
                       <p className="text-xs text-slate-500">
                         Original {original?.quantity ?? item.quantity} · Current {item.quantity}
                         {fulfilmentLine
-                          ? ` · Reserved ${fulfilmentLine.reserved_quantity ?? 0} · Fulfilled ${fulfilmentLine.fulfilled_quantity ?? 0}`
+                          ? ` · Reserved ${fulfilmentLine.reserved_quantity ?? 0} · Picked ${fulfilmentLine.picked_quantity ?? 0} · Fulfilled ${fulfilmentLine.fulfilled_quantity ?? 0}`
                           : ""}
                         {Number(fulfilmentLine?.shortage_quantity || 0) > 0
                           ? ` · Shortage ${fulfilmentLine.shortage_quantity}${fulfilmentLine.shortage_reason ? ` (${fulfilmentLine.shortage_reason})` : ""}`

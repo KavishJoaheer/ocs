@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-const STAFF_BASE = "http://127.0.0.1:4173";
-const PATIENT_BASE = "http://127.0.0.1:4174";
-const API_BASE = "http://127.0.0.1:3001/api";
+const STAFF_BASE = `http://127.0.0.1:${process.env.E2E_STAFF_PORT || "4173"}`;
+const PATIENT_BASE = `http://127.0.0.1:${process.env.E2E_PATIENT_PORT || "4174"}`;
+const API_BASE = `http://127.0.0.1:${process.env.E2E_API_PORT || "3001"}/api`;
 
 async function staffLogin(request) {
   const response = await request.post(`${API_BASE}/auth/login`, {

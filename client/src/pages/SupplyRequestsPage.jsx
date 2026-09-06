@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import RestockRequestModal from "../components/RestockRequestModal.jsx";
 import SupplyRequestDetailDrawer from "../components/SupplyRequestDetailDrawer.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";

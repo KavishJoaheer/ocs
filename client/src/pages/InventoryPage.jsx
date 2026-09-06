@@ -2370,14 +2370,25 @@ function MobileDoctorBagLayout({
           ))}
         </div>
         {!doctorViewIsOcs ? (
-          <button
-            type="button"
-            onClick={onOpenRestockInventory}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
-          >
-            <Truck className="size-4 shrink-0" />
-            Fill{doctorRestockCandidates.length ? ` ${doctorRestockCandidates.length}` : ""}
-          </button>
+          onOpenRestockInventory ? (
+            <button
+              type="button"
+              onClick={onOpenRestockInventory}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
+            >
+              <Truck className="size-4 shrink-0" />
+              Fill{doctorRestockCandidates.length ? ` ${doctorRestockCandidates.length}` : ""}
+            </button>
+          ) : (
+            <Link
+              to="/supply-requests"
+              aria-label="Request supply"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
+            >
+              <Truck className="size-4 shrink-0" />
+              Request
+            </Link>
+          )
         ) : null}
       </header>
 
@@ -2568,7 +2579,7 @@ export default function InventoryPage() {
   const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
   const canUseAdminInventory = isAdmin || isOperator;
-  const folders = data?.folders || [];
+  const folders = useMemo(() => data?.folders || [], [data?.folders]);
   const pendingStagingCount = useMemo(
     () =>
       Array.isArray(data?.incoming_shipments)
@@ -2590,7 +2601,7 @@ export default function InventoryPage() {
     },
     [folders],
   );
-  const doctors = data?.doctors || [];
+  const doctors = useMemo(() => data?.doctors || [], [data?.doctors]);
   const doctorOptions = useMemo(
     () => [...doctors].sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || ""))),
     [doctors],
@@ -2605,13 +2616,19 @@ export default function InventoryPage() {
     () => getInventoryDateRange(adminPeriodPreset, adminPeriodAnchor),
     [adminPeriodPreset, adminPeriodAnchor],
   );
-  const items = isDoctor
-    ? doctorViewIsOcs
-      ? data?.ocs_stock || []
-      : data?.my_stock || []
-    : selectedContextDoctorId
-      ? data?.selected_doctor_stock || []
-      : data?.ocs_stock || [];
+  const items = useMemo(() => {
+    if (isDoctor) {
+      return doctorViewIsOcs ? data?.ocs_stock || [] : data?.my_stock || [];
+    }
+    return selectedContextDoctorId ? data?.selected_doctor_stock || [] : data?.ocs_stock || [];
+  }, [
+    isDoctor,
+    doctorViewIsOcs,
+    data?.ocs_stock,
+    data?.my_stock,
+    selectedContextDoctorId,
+    data?.selected_doctor_stock,
+  ]);
   /** Always show all seven category pills; empty categories display an empty list. */
   const categoryFolders = folders;
   const inventoryListQuery = useMemo(
@@ -2650,7 +2667,10 @@ export default function InventoryPage() {
     }),
     [items],
   );
-  const bagItems = isDoctor ? data?.my_stock || [] : items;
+  const bagItems = useMemo(
+    () => (isDoctor ? data?.my_stock || [] : items),
+    [isDoctor, data?.my_stock, items],
+  );
   const bagChaseCounts = useMemo(
     () => ({
       low: bagItems.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
@@ -2680,7 +2700,7 @@ export default function InventoryPage() {
   const staffDoctorBagTable = canManageOcs && !contextIsOcs;
   const inventoryActionsColWidth = doctorDesktopBagTable || staffDoctorBagTable ? "30%" : "32%";
   const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : "48rem";
-  const movements = data?.movements || [];
+  const movements = useMemo(() => data?.movements || [], [data?.movements]);
 
   const doctorRestockCandidates = useMemo(() => {
     if (!isDoctor || !Array.isArray(data?.my_stock) || !Array.isArray(data?.ocs_stock)) return [];
@@ -2719,34 +2739,45 @@ export default function InventoryPage() {
     [movements],
   );
 
-  async function load(
-    contextDoctorId = selectedContextDoctorId,
-    nextDoctorContext = doctorContext,
-    { silent = false } = {},
-  ) {
-    if (!silent) setLoading(true);
-    try {
-      const payload = await api.get(
-        `/inventory${buildInventoryListQuery({
-          contextDoctorId,
-          doctorContext: nextDoctorContext,
-          includeDoctorContext: isDoctor,
-          includeAdminFilters: canUseAdminInventory,
-          adminPeriodRange,
-          activityStaffUserId,
-        })}`,
-      );
-      commitInventoryData(payload, { silent: true });
-      if (isDoctor) {
-        setEmergencyRestockEnabled(Boolean(payload.emergency_restock_enabled));
+  const load = useCallback(
+    async (
+      contextDoctorId = selectedContextDoctorId,
+      nextDoctorContext = doctorContext,
+      { silent = false } = {},
+    ) => {
+      if (!silent) setLoading(true);
+      try {
+        const payload = await api.get(
+          `/inventory${buildInventoryListQuery({
+            contextDoctorId,
+            doctorContext: nextDoctorContext,
+            includeDoctorContext: isDoctor,
+            includeAdminFilters: canUseAdminInventory,
+            adminPeriodRange,
+            activityStaffUserId,
+          })}`,
+        );
+        commitInventoryData(payload, { silent: true });
+        if (isDoctor) {
+          setEmergencyRestockEnabled(Boolean(payload.emergency_restock_enabled));
+        }
+      } catch (error) {
+        toast.error(error.message);
+        if (!silent) setData(null);
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (error) {
-      toast.error(error.message);
-      if (!silent) setData(null);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }
+    },
+    [
+      selectedContextDoctorId,
+      doctorContext,
+      isDoctor,
+      canUseAdminInventory,
+      adminPeriodRange,
+      activityStaffUserId,
+      commitInventoryData,
+    ],
+  );
 
   const liveActivityStaffFilterProps = canUseAdminInventory
     ? {
@@ -2766,8 +2797,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContextDoctorId, doctorContext]);
+  }, [load]);
 
   useEffect(() => {
     const handleInventoryRefresh = () => {
@@ -2779,8 +2809,7 @@ export default function InventoryPage() {
       window.removeEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
       window.removeEventListener(DOCTOR_BAG_INVENTORY_EVENT, handleInventoryRefresh);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContextDoctorId, doctorContext]);
+  }, [load, selectedContextDoctorId, doctorContext]);
 
   useEffect(() => {
     setHeaderActionsOpen(false);
@@ -2832,12 +2861,6 @@ export default function InventoryPage() {
       cancelled = true;
     };
   }, [mobileDeductItem, stockOut, user?.id, user?.doctor_id, user?.role]);
-
-  useEffect(() => {
-    if (!canUseAdminInventory) return;
-    load(selectedContextDoctorId, doctorContext, { silent: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminPeriodPreset, adminPeriodAnchor, activityStaffUserId]);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -2911,7 +2934,10 @@ export default function InventoryPage() {
     setSearchParams(nextParams, { replace: true });
   }, [isDoctor, data, doctorRestockCandidates, searchParams, setSearchParams]);
 
-  const unpricedProductKeys = data?.tab_summaries?.bags?.unpriced_product_keys || [];
+  const unpricedProductKeys = useMemo(
+    () => data?.tab_summaries?.bags?.unpriced_product_keys || [],
+    [data?.tab_summaries?.bags?.unpriced_product_keys],
+  );
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const folderId = selectedView && selectedView !== "all" ? selectedView : "";
@@ -3042,7 +3068,7 @@ export default function InventoryPage() {
       window.removeEventListener(OFFLINE_QUEUE_ITEM_SYNCED, handleItemSynced);
       window.removeEventListener(OFFLINE_QUEUE_FLUSH_COMPLETE, handleFlushComplete);
     };
-  }, [showMobileDoctorBag, commitInventoryData, selectedContextDoctorId, doctorContext]);
+  }, [showMobileDoctorBag, commitInventoryData, selectedContextDoctorId, doctorContext, load]);
 
   async function loadBatches(itemId) {
     const key = Number(itemId);

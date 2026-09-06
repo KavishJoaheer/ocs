@@ -30,11 +30,16 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
+ARG GIT_SHA=unknown
+ARG APP_VERSION=unknown
+
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3001 \
     DB_PATH=/data/clinic.db \
-    CLIENT_DIST_PATH=/app/client/dist
+    CLIENT_DIST_PATH=/app/client/dist \
+    GIT_SHA=${GIT_SHA} \
+    APP_VERSION=${APP_VERSION}
 
 RUN mkdir -p /data /app/client/dist
 

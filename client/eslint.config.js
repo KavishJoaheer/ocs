@@ -32,7 +32,13 @@ export default defineConfig([
     },
   },
   {
-    files: ['public/sw.js'],
+    files: ['vite.config.js', 'eslint.config.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    files: ['public/sw.js', 'src/sw.js'],
     languageOptions: {
       globals: { ...globals.serviceworker, ...globals.browser },
     },

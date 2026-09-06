@@ -31,6 +31,7 @@ const {
   requirePatientAuthFlexible,
 } = require("./lib/patientAuth");
 const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
+const { getBuildInfo } = require("./lib/buildInfo");
 
 let initialized = false;
 
@@ -155,6 +156,7 @@ function createApp() {
       ok: true,
       mode: "sqlite",
       database: process.env.DB_PATH || "server/data/clinic.db",
+      ...getBuildInfo(),
       features: {
         billing: true,
         inventory: true,
@@ -306,7 +308,7 @@ function createApp() {
     requireAuth,
     authorizeByMethod({
       GET: ["admin", "doctor", "operator"],
-      POST: ["doctor"],
+      POST: ["admin", "doctor", "operator"],
       PUT: ["doctor"],
       PATCH: ["admin", "operator", "doctor"],
       DELETE: ["admin", "doctor", "operator"],

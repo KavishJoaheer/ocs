@@ -8,7 +8,7 @@ import OperatorAmendmentReviewPanel from "./OperatorAmendmentReviewPanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
-import { formatSupplyRequestCollectionDay } from "../lib/supplyRequests.js";
+import { formatSupplyRequestCollectionDay, supplyRequestStatusLabel } from "../lib/supplyRequests.js";
 import { cx } from "../lib/utils.js";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
 
@@ -20,6 +20,7 @@ const QUEUE_DEFS = [
   { id: "awaiting_collection", label: "Awaiting collection", key: "awaiting_collection" },
   { id: "incoming_shipments", label: "Incoming shipments", key: "incoming_shipments", kind: "shipments" },
   { id: "count_variances", label: "Count variances", key: "count_variances", kind: "variances" },
+  { id: "history", label: "History", key: "history", kind: "history" },
 ];
 
 function waitingLabel(value) {
@@ -37,18 +38,26 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
   const [amendmentRequest, setAmendmentRequest] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
+  const [history, setHistory] = useState({ requests: [], total: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const payload = await api.get("/restock-requests/queues");
       setQueues(payload);
+      if (active === "history") {
+        const archived = await api.get("/restock-requests?view=history&include_events=1&limit=50&offset=0");
+        setHistory({
+          requests: Array.isArray(archived?.requests) ? archived.requests : [],
+          total: Number(archived?.total || 0),
+        });
+      }
     } catch (error) {
       toast.error(error.message || "Could not load work queues.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     void load();
@@ -62,11 +71,15 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   }, [load]);
 
   const counts = queues?.counts || {};
-  const waitingTotal = QUEUE_DEFS.reduce((sum, queue) => sum + Number(counts[queue.key] || 0), 0);
+  const waitingTotal = QUEUE_DEFS.filter((queue) => queue.kind !== "history").reduce(
+    (sum, queue) => sum + Number(counts[queue.key] || 0),
+    0,
+  );
   const rows = useMemo(() => {
+    if (active === "history") return history.requests;
     if (!queues) return [];
     return queues[active] || [];
-  }, [queues, active]);
+  }, [queues, active, history.requests]);
 
   async function accept(request) {
     try {
@@ -118,16 +131,16 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
           </span>
         }
       >
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        <div className="mb-4 flex flex-wrap gap-2 pb-1">
           {QUEUE_DEFS.map((queue) => {
-            const count = Number(counts[queue.key] || 0);
+            const count = queue.kind === "history" ? Number(history.total || 0) : Number(counts[queue.key] || 0);
             return (
               <button
                 key={queue.id}
                 type="button"
                 onClick={() => setActive(queue.id)}
                 className={cx(
-                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-xs font-semibold transition",
+                  "inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-xs font-semibold transition",
                   active === queue.id
                     ? "bg-[#2d8f98] text-white"
                     : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
@@ -156,8 +169,12 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
 
         {loading && !queues ? (
           <p className="text-sm text-slate-500">Loading queues…</p>
+        ) : active === "history" && loading && !history.requests.length ? (
+          <p className="text-sm text-slate-500">Loading history…</p>
         ) : !rows.length ? (
-          <p className="text-sm text-slate-500">Nothing waiting in this queue.</p>
+          <p className="text-sm text-slate-500">
+            {active === "history" ? "No archived supply requests yet." : "Nothing waiting in this queue."}
+          </p>
         ) : active === "incoming_shipments" ? (
           <button
             type="button"
@@ -176,6 +193,33 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
             <ClipboardList className="mr-2 inline size-4 text-amber-700" />
             Review {rows.length} count variance{rows.length === 1 ? "" : "s"}
           </button>
+        ) : active === "history" ? (
+          <div className="space-y-3">
+            {rows.map((row) => (
+              <div
+                key={row.id}
+                className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">Dr. {row.doctor_name}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Collect {formatSupplyRequestCollectionDay(row.collection_date)}
+                    {row.transfer_transaction_id ? ` · Transfer ${row.transfer_transaction_id}` : ""}
+                  </p>
+                  <span className="mt-2 inline-flex rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold uppercase text-teal-800">
+                    {supplyRequestStatusLabel(row.status, user?.role === "admin" ? "admin" : "operator")}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailRequestId(row.id)}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
+                >
+                  View details
+                </button>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="space-y-3">
             {rows.map((row) => (

@@ -26,6 +26,7 @@ let operatorToken;
 let doctorToken;
 let doctorTwoToken;
 let inventoryId;
+let inventoryName;
 let collectionDate;
 let collectionDateTwo;
 let createdId;
@@ -78,7 +79,7 @@ function requestPayload(overrides = {}) {
     items: [
       {
         inventory_id: inventoryId,
-        item_name: "Test Gauze Pad",
+        item_name: inventoryName,
         quantity: 2,
       },
     ],
@@ -166,6 +167,7 @@ before(async () => {
   collectionDate = nextCollectionIso(0);
   collectionDateTwo = nextCollectionIso(1);
 
+  inventoryName = `Restock Test Gauze ${Date.now()}`;
   inventoryId = Number(
     db
       .prepare(`
@@ -174,7 +176,7 @@ before(async () => {
         )
         VALUES (?, 40, 2, 'unit', 1, 2, 'ocs')
       `)
-      .run(`Restock Test Gauze ${Date.now()}`).lastInsertRowid,
+      .run(inventoryName).lastInsertRowid,
   );
   db.prepare(`
     INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
@@ -257,6 +259,7 @@ test("legacy prepared data migrates to ready", () => {
        VALUES (${insertCols.map(() => "?").join(", ")})`,
     ).run(...insertCols.map((col) => extra[col]));
     db.exec("DROP TABLE restock_requests_migrated_row");
+    migrateRestockRequestsSchemaIfNeeded();
   } finally {
     db.pragma("foreign_keys = ON");
   }
@@ -541,14 +544,14 @@ test("historical filters and request/item frequency counts are correct", async (
     .get();
   const history = await api(
     "GET",
-    `/api/restock-requests?view=history&item=${encodeURIComponent("Test Gauze Pad")}&doctor_id=${doctor.doctor_id}`,
+    `/api/restock-requests?view=history&item=${encodeURIComponent(inventoryName)}&doctor_id=${doctor.doctor_id}`,
     { token: adminToken },
   );
   assert.equal(history.status, 200, JSON.stringify(history.data));
   assert.ok(history.data.requests.length >= 1);
   assert.ok(
     history.data.requests.every((row) =>
-      (row.items || []).some((item) => String(item.item_name).includes("Test Gauze Pad")),
+      (row.items || []).some((item) => String(item.item_name).includes(inventoryName)),
     ),
   );
   const doctorCount = (history.data.doctor_counts || []).find(
@@ -557,7 +560,7 @@ test("historical filters and request/item frequency counts are correct", async (
   assert.ok(doctorCount);
   assert.ok(Number(doctorCount.request_count) >= 1);
   const itemCount = (history.data.item_counts || []).find((row) =>
-    String(row.item_name).includes("Test Gauze Pad"),
+    String(row.item_name).includes(inventoryName),
   );
   assert.ok(itemCount);
   assert.ok(Number(itemCount.request_count) >= 1);
@@ -691,5 +694,81 @@ test("legacy request detail identifies unavailable fulfilment and timeline hones
   assert.equal(detail.data.request.timeline_available, false);
   assert.equal(detail.data.request.cancelled_by_name, "Legacy staff record");
   assert.notEqual(String(detail.data.request.cancelled_by_name || "").toLowerCase(), "staff");
+});
+
+test("crafted item names are replaced with the canonical catalogue name", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({
+      note: "crafted-name",
+      items: [{ inventory_id: inventoryId, item_name: "Definitely Not The Real Name", quantity: 1 }],
+    }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.request.items[0].item_name, inventoryName);
+  const missing = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({
+      items: [{ item_name: "Test Gauze Pad", quantity: 1 }],
+    }),
+  });
+  assert.equal(missing.status, 400);
+  const unknown = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({
+      items: [{ inventory_id: 999999, item_name: "Ghost", quantity: 1 }],
+    }),
+  });
+  assert.equal(unknown.status, 400);
+});
+
+test("admins cannot mark a request ready without an operational override", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({ note: "admin-override" }),
+  });
+  const accepted = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const blocked = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: adminToken,
+    body: { status: "ready" },
+  });
+  assert.equal(blocked.status, 403);
+});
+
+test("legacy reconciliation demotes a ready request when stock is unavailable", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const emptyItem = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES ('Empty recon', (SELECT id FROM inventory_folders LIMIT 1), 0, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run().lastInsertRowid,
+  );
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note, ready_at)
+         VALUES (?, ?, ?, 1, 'ready', 'legacy-ready-empty', CURRENT_TIMESTAMP)`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Empty recon', 4)`,
+  ).run(requestId, emptyItem);
+  const recon = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
+  });
+  assert.equal(recon.status, 200, JSON.stringify(recon.data));
+  assert.equal(recon.data.status, "accepted");
+  assert.equal(recon.data.demoted, true);
+  assert.equal(recon.data.request.status, "accepted");
+  assert.ok(recon.data.fulfilment);
+  assert.equal(Number(recon.data.fulfilment.items[0].reserved_quantity), 0);
 });
 

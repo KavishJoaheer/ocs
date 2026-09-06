@@ -613,13 +613,7 @@ const RESTOCK_REQUESTS_CREATE_SQL = `
     );
 `;
 
-function createRestockRequestsTable() {
-  // Collection day is restricted at the schema level so any future writer
-  // (script, migration, manual edit) is forced to honour the logistics
-  // calendar (Mon / Wed / Fri / Sat = 1 / 3 / 5 / 6).
-  db.exec(RESTOCK_REQUESTS_CREATE_SQL);
-
-  db.exec(`
+const RESTOCK_REQUEST_ITEMS_CREATE_SQL = `
     CREATE TABLE IF NOT EXISTS restock_request_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       request_id INTEGER NOT NULL,
@@ -630,8 +624,54 @@ function createRestockRequestsTable() {
       FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
       FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
     );
-  `);
+`;
 
+const RESTOCK_REQUEST_EVENTS_CREATE_SQL = `
+    CREATE TABLE IF NOT EXISTS restock_request_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      previous_status TEXT,
+      new_status TEXT,
+      actor_user_id INTEGER,
+      actor_role TEXT,
+      actor_display_name TEXT,
+      reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+      FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+`;
+
+const RESTOCK_REQUEST_AMENDMENTS_CREATE_SQL = `
+    CREATE TABLE IF NOT EXISTS restock_request_amendments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'rejected')),
+      proposed_collection_date TEXT NOT NULL,
+      proposed_collection_day INTEGER NOT NULL CHECK (proposed_collection_day IN (1, 3, 5, 6)),
+      proposed_note TEXT NOT NULL DEFAULT '',
+      submitted_by_user_id INTEGER NOT NULL,
+      submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      reviewed_by_user_id INTEGER,
+      reviewed_at TEXT,
+      review_reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
+      FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+`;
+
+function createRestockRequestsTable() {
+  // Collection day is restricted at the schema level so any future writer
+  // (script, migration, manual edit) is forced to honour the logistics
+  // calendar (Mon / Wed / Fri / Sat = 1 / 3 / 5 / 6).
+  db.exec(RESTOCK_REQUESTS_CREATE_SQL);
+  db.exec(RESTOCK_REQUEST_ITEMS_CREATE_SQL);
   migrateRestockRequestsSchemaIfNeeded();
 }
 
@@ -708,16 +748,327 @@ function ensureRestockRequestAuxiliaryTables() {
   `);
 }
 
+function restockRequestChildCreateSql(tableName) {
+  if (tableName === "restock_request_items") {
+    return RESTOCK_REQUEST_ITEMS_CREATE_SQL.replace("IF NOT EXISTS ", "");
+  }
+  if (tableName === "restock_request_events") {
+    return RESTOCK_REQUEST_EVENTS_CREATE_SQL.replace("IF NOT EXISTS ", "");
+  }
+  if (tableName === "restock_request_amendments") {
+    return RESTOCK_REQUEST_AMENDMENTS_CREATE_SQL.replace("IF NOT EXISTS ", "");
+  }
+  return "";
+}
+
+function inspectRestockRequestItemForeignKeys(tableName = "restock_request_items") {
+  if (!tableExists(tableName)) {
+    return { exists: false, requestFk: null, sql: "", stale: false };
+  }
+  const sql =
+    db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName)?.sql ||
+    "";
+  const foreignKeys = db.prepare(`PRAGMA foreign_key_list(${tableName})`).all();
+  const requestFk = foreignKeys.find((row) => String(row.from) === "request_id") || null;
+  const referencedTable = requestFk?.table ? String(requestFk.table) : "";
+  const stale =
+    !requestFk ||
+    referencedTable === "restock_requests_legacy" ||
+    referencedTable === "" ||
+    !tableExists(referencedTable) ||
+    referencedTable !== "restock_requests" ||
+    /restock_requests_legacy/.test(sql);
+  return {
+    exists: true,
+    requestFk,
+    referencedTable: referencedTable || null,
+    sql,
+    stale,
+    foreignKeys,
+  };
+}
+
+function listUserTables() {
+  return db
+    .prepare(
+      `
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `,
+    )
+    .all()
+    .map((row) => row.name);
+}
+
+function isStaleForeignKeyParent(parentTable) {
+  const name = String(parentTable || "");
+  if (!name) return true;
+  if (/_legacy_rebuild$/.test(name) || /_fk_retarget$/.test(name) || name === "restock_requests_legacy") {
+    return true;
+  }
+  return !tableExists(name);
+}
+
+function canonicalForeignKeySql(sql) {
+  return String(sql || "")
+    .replace(/IF NOT EXISTS\s+/i, "")
+    .replace(/restock_requests_legacy/g, "restock_requests")
+    .replace(/_legacy_rebuild/g, "")
+    .replace(/_fk_retarget/g, "");
+}
+
+function rebuildTablePreservingRows(tableName) {
+  const sourceSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName)
+    ?.sql;
+  const createSql = canonicalForeignKeySql(sourceSql);
+  if (!createSql || !tableExists(tableName)) {
+    return false;
+  }
+  const sourceCount = Number(db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get()?.count || 0);
+  const indexSql = db
+    .prepare(
+      `
+      SELECT name, sql
+      FROM sqlite_master
+      WHERE type = 'index'
+        AND tbl_name = ?
+        AND sql IS NOT NULL
+    `,
+    )
+    .all(tableName);
+  const triggerSql = db
+    .prepare(
+      `
+      SELECT name, sql
+      FROM sqlite_master
+      WHERE type = 'trigger'
+        AND tbl_name = ?
+        AND sql IS NOT NULL
+    `,
+    )
+    .all(tableName);
+  const legacyName = `${tableName}_fk_retarget`;
+  if (tableExists(legacyName)) {
+    db.exec(`DROP TABLE ${legacyName}`);
+  }
+  db.exec(`ALTER TABLE ${tableName} RENAME TO ${legacyName}`);
+  db.exec(createSql);
+  const sourceColumns = db.prepare(`PRAGMA table_info(${legacyName})`).all();
+  const destColumns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const destNames = new Set(destColumns.map((column) => column.name));
+  for (const column of sourceColumns) {
+    if (destNames.has(column.name)) continue;
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${sqliteColumnTypeSql(column)}`);
+    destNames.add(column.name);
+  }
+  const shared = db
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all()
+    .map((column) => column.name)
+    .filter((name) => sourceColumns.some((column) => column.name === name));
+  db.exec(
+    `INSERT INTO ${tableName} (${shared.join(", ")}) SELECT ${shared.join(", ")} FROM ${legacyName}`,
+  );
+  const copiedCount = Number(db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get()?.count || 0);
+  if (copiedCount !== sourceCount) {
+    throw new Error(
+      `Foreign-key retarget for ${tableName} would discard rows (${sourceCount} -> ${copiedCount}).`,
+    );
+  }
+  db.exec(`DROP TABLE ${legacyName}`);
+  for (const row of indexSql) {
+    if (!row?.sql) continue;
+    db.exec(canonicalForeignKeySql(row.sql));
+  }
+  for (const row of triggerSql) {
+    if (!row?.sql) continue;
+    db.exec(`DROP TRIGGER IF EXISTS ${row.name}`);
+    db.exec(canonicalForeignKeySql(row.sql));
+  }
+  return true;
+}
+
+function retargetRewrittenForeignKeys() {
+  for (let pass = 0; pass < 8; pass += 1) {
+    const staleTables = listUserTables().filter((name) => {
+      if (/_legacy_rebuild$/.test(name) || /_fk_retarget$/.test(name)) return false;
+      return tableForeignKeys(name).some((fk) => isStaleForeignKeyParent(fk.table));
+    });
+    if (!staleTables.length) return;
+    for (const name of staleTables) {
+      rebuildTablePreservingRows(name);
+    }
+  }
+  const leftover = listUserTables().filter((name) =>
+    tableForeignKeys(name).some((fk) => isStaleForeignKeyParent(fk.table)),
+  );
+  if (leftover.length) {
+    throw new Error(`Could not retarget rewritten foreign keys for: ${leftover.join(", ")}`);
+  }
+}
+
+function tableForeignKeys(tableName) {
+  if (!tableExists(tableName)) return [];
+  return db.prepare(`PRAGMA foreign_key_list(${tableName})`).all();
+}
+
+function sqliteColumnTypeSql(column) {
+  const type = String(column.type || "TEXT").trim() || "TEXT";
+  const notNull = Number(column.notnull || 0) === 1 ? " NOT NULL" : "";
+  const defaultValue =
+    column.dflt_value != null && column.dflt_value !== undefined ? ` DEFAULT ${column.dflt_value}` : "";
+  return `${type}${notNull}${defaultValue}`;
+}
+
+function recreateRestockRequestChildIndexes(tableName) {
+  if (tableName === "restock_request_items") {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_restock_request_items_request ON restock_request_items(request_id);
+      CREATE INDEX IF NOT EXISTS idx_restock_request_items_inventory ON restock_request_items(inventory_id);
+      CREATE INDEX IF NOT EXISTS idx_restock_request_items_name ON restock_request_items(item_name);
+    `);
+    return;
+  }
+  if (tableName === "restock_request_events") {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_restock_request_events_request
+        ON restock_request_events(request_id, created_at);
+    `);
+    return;
+  }
+  if (tableName === "restock_request_amendments") {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_restock_request_amendments_request
+        ON restock_request_amendments(request_id, status);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_amendments_one_pending
+        ON restock_request_amendments(request_id)
+        WHERE status = 'pending';
+    `);
+  }
+}
+
+function rebuildRestockRequestChildTable(tableName) {
+  const createSql = restockRequestChildCreateSql(tableName);
+  if (!createSql || !tableExists(tableName)) {
+    return false;
+  }
+  const sourceCount = Number(
+    db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get()?.count || 0,
+  );
+  const triggerSql = db
+    .prepare(
+      `
+      SELECT name, sql
+      FROM sqlite_master
+      WHERE type = 'trigger'
+        AND tbl_name = ?
+        AND sql IS NOT NULL
+    `,
+    )
+    .all(tableName);
+  const legacyName = `${tableName}_legacy_rebuild`;
+  if (tableExists(legacyName)) {
+    db.exec(`DROP TABLE ${legacyName}`);
+  }
+  db.exec(`ALTER TABLE ${tableName} RENAME TO ${legacyName}`);
+  db.exec(createSql);
+
+  const sourceColumns = db.prepare(`PRAGMA table_info(${legacyName})`).all();
+  const destColumns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const destNames = new Set(destColumns.map((column) => column.name));
+  for (const column of sourceColumns) {
+    if (destNames.has(column.name)) continue;
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${sqliteColumnTypeSql(column)}`);
+    destNames.add(column.name);
+  }
+  const shared = db
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all()
+    .map((column) => column.name)
+    .filter((name) => sourceColumns.some((column) => column.name === name));
+  db.exec(
+    `INSERT INTO ${tableName} (${shared.join(", ")}) SELECT ${shared.join(", ")} FROM ${legacyName}`,
+  );
+  const copiedCount = Number(
+    db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get()?.count || 0,
+  );
+  if (copiedCount !== sourceCount) {
+    throw new Error(
+      `Restock child rebuild for ${tableName} would discard rows (${sourceCount} -> ${copiedCount}).`,
+    );
+  }
+  db.exec(`DROP TABLE ${legacyName}`);
+  recreateRestockRequestChildIndexes(tableName);
+  for (const row of triggerSql) {
+    if (!row?.sql) continue;
+    db.exec(`DROP TRIGGER IF EXISTS ${row.name}`);
+    db.exec(row.sql);
+  }
+  return true;
+}
+
+function assertRestockRequestForeignKeys() {
+  const tables = [
+    "restock_requests",
+    "restock_request_items",
+    "restock_request_events",
+    "restock_request_amendments",
+  ];
+  const violations = [];
+  for (const tableName of tables) {
+    if (!tableExists(tableName)) continue;
+    violations.push(...db.prepare(`PRAGMA foreign_key_check(${tableName})`).all());
+  }
+  if (violations.length) {
+    const summary = violations
+      .slice(0, 8)
+      .map((row) => `${row.table}:${row.rowid}->${row.parent}`)
+      .join("; ");
+    throw new Error(`Restock foreign-key check failed after migration (${summary}).`);
+  }
+  return true;
+}
+
+function repairRestockRequestChildForeignKeysIfNeeded() {
+  const children = [
+    "restock_request_items",
+    "restock_request_events",
+    "restock_request_amendments",
+  ];
+  const staleChildren = children.filter((name) => inspectRestockRequestItemForeignKeys(name).stale);
+
+  // SQLite cannot change PRAGMA foreign_keys inside a transaction, and it
+  // cannot rebuild a child table whose request_id still points at a missing
+  // or legacy parent while enforcement is on. Rebuild with enforcement off,
+  // then turn it back on and fail the migration if any rows are invalid.
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      for (const name of staleChildren) {
+        rebuildRestockRequestChildTable(name);
+      }
+      retargetRewrittenForeignKeys();
+    })();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+  assertRestockRequestForeignKeys();
+  return { repaired: staleChildren.length > 0, tables: staleChildren };
+}
+
 function rebuildRestockRequestsTableIfNeeded() {
   const tableSql = restockRequestsTableSql();
   if (!tableSql) {
-    return;
+    return false;
   }
 
   const hasLegacyPreparedStatus = /'prepared'/.test(tableSql);
   const hasNewStatuses = /'accepted'/.test(tableSql) && /'ready'/.test(tableSql) && /'completed'/.test(tableSql);
   if (!hasLegacyPreparedStatus && hasNewStatuses) {
-    return;
+    return false;
   }
 
   db.pragma("foreign_keys = OFF");
@@ -796,92 +1147,17 @@ function rebuildRestockRequestsTableIfNeeded() {
       `);
 
       db.exec("DROP TABLE restock_requests_legacy");
-      rebuildRestockRequestChildTablesIfNeeded();
+      retargetRewrittenForeignKeys();
     });
     migrate();
   } finally {
     db.pragma("foreign_keys = ON");
   }
+  return true;
 }
 
 function rebuildRestockRequestChildTablesIfNeeded() {
-  const children = [
-    "restock_request_items",
-    "restock_request_events",
-    "restock_request_amendments",
-  ];
-  for (const name of children) {
-    if (!tableExists(name)) continue;
-    const sql =
-      db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)?.sql ||
-      "";
-    if (!/restock_requests_legacy/.test(sql)) continue;
-    db.exec(`ALTER TABLE ${name} RENAME TO ${name}_legacy_rebuild`);
-    if (name === "restock_request_items") {
-      db.exec(`
-        CREATE TABLE restock_request_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          request_id INTEGER NOT NULL,
-          inventory_id INTEGER,
-          item_name TEXT NOT NULL,
-          quantity INTEGER NOT NULL CHECK (quantity > 0),
-          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
-          FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL
-        );
-      `);
-    } else if (name === "restock_request_events") {
-      db.exec(`
-        CREATE TABLE restock_request_events (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          request_id INTEGER NOT NULL,
-          event_type TEXT NOT NULL,
-          previous_status TEXT,
-          new_status TEXT,
-          actor_user_id INTEGER,
-          actor_role TEXT,
-          actor_display_name TEXT,
-          reason TEXT,
-          metadata_json TEXT NOT NULL DEFAULT '{}',
-          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
-          FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
-        );
-      `);
-    } else {
-      db.exec(`
-        CREATE TABLE restock_request_amendments (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          request_id INTEGER NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending'
-            CHECK (status IN ('pending', 'accepted', 'rejected')),
-          proposed_collection_date TEXT NOT NULL,
-          proposed_collection_day INTEGER NOT NULL CHECK (proposed_collection_day IN (1, 3, 5, 6)),
-          proposed_note TEXT NOT NULL DEFAULT '',
-          submitted_by_user_id INTEGER NOT NULL,
-          submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          reviewed_by_user_id INTEGER,
-          reviewed_at TEXT,
-          review_reason TEXT NOT NULL DEFAULT '',
-          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (request_id) REFERENCES restock_requests(id) ON DELETE RESTRICT,
-          FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
-          FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-        );
-      `);
-    }
-    const cols = db
-      .prepare(`PRAGMA table_info(${name}_legacy_rebuild)`)
-      .all()
-      .map((col) => col.name);
-    const destCols = db.prepare(`PRAGMA table_info(${name})`).all().map((col) => col.name);
-    const shared = destCols.filter((col) => cols.includes(col));
-    db.exec(
-      `INSERT INTO ${name} (${shared.join(", ")}) SELECT ${shared.join(", ")} FROM ${name}_legacy_rebuild`,
-    );
-    db.exec(`DROP TABLE ${name}_legacy_rebuild`);
-  }
+  return repairRestockRequestChildForeignKeysIfNeeded();
 }
 
 function ensureRestockRequestColumns() {
@@ -976,12 +1252,13 @@ function ensureRestockRequestColumns() {
 
 function migrateRestockRequestsSchemaIfNeeded() {
   if (!tableExists("restock_requests")) {
-    return;
+    return { parentRebuilt: false, childRepair: { repaired: false, tables: [] } };
   }
 
-  rebuildRestockRequestsTableIfNeeded();
+  const parentRebuilt = rebuildRestockRequestsTableIfNeeded();
   ensureRestockRequestColumns();
   ensureRestockRequestAuxiliaryTables();
+  const childRepair = repairRestockRequestChildForeignKeysIfNeeded();
   if (typeof ensureInventoryOperationsSchema === "function") {
     try {
       ensureInventoryOperationsSchema();
@@ -989,6 +1266,9 @@ function migrateRestockRequestsSchemaIfNeeded() {
       // Fulfilment tables depend on restock_requests existing first.
     }
   }
+  db.pragma("foreign_keys = ON");
+  assertRestockRequestForeignKeys();
+  return { parentRebuilt, childRepair };
 }
 
 function migrateUsersSchemaIfNeeded() {
@@ -1379,6 +1659,14 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(item_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_doctor ON inventory_movements(doctor_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_movements_created_at ON inventory_movements(created_at);
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_action_created
+      ON inventory_movements(action_type, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_meta_transaction
+      ON inventory_movements(json_extract(meta_json, '$.transaction_id'));
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_meta_request
+      ON inventory_movements(json_extract(meta_json, '$.request_id'));
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_meta_receipt
+      ON inventory_movements(json_extract(meta_json, '$.receipt_reference'));
     CREATE INDEX IF NOT EXISTS idx_restock_requests_doctor ON restock_requests(doctor_id);
     CREATE INDEX IF NOT EXISTS idx_restock_requests_status ON restock_requests(status);
     CREATE INDEX IF NOT EXISTS idx_restock_requests_collection_date ON restock_requests(collection_date);
@@ -2122,6 +2410,26 @@ function ensureInventoryOperationsSchema() {
     db.exec("ALTER TABLE inventory_stocktake_sessions ADD COLUMN applied_by_user_id INTEGER");
   }
 
+  const stocktakeItemCols = tableExists("inventory_stocktake_session_items")
+    ? db.prepare("PRAGMA table_info(inventory_stocktake_session_items)").all().map((column) => column.name)
+    : [];
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("expected_row_version")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN expected_row_version INTEGER");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("expected_quantity")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN expected_quantity INTEGER");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("conflict_status")) {
+    db.exec(
+      "ALTER TABLE inventory_stocktake_session_items ADD COLUMN conflict_status TEXT NOT NULL DEFAULT ''",
+    );
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("conflict_reason")) {
+    db.exec(
+      "ALTER TABLE inventory_stocktake_session_items ADD COLUMN conflict_reason TEXT NOT NULL DEFAULT ''",
+    );
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS restock_request_fulfillments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2236,6 +2544,10 @@ function ensureInventoryOperationsSchema() {
       system_quantity INTEGER NOT NULL DEFAULT 0,
       physical_quantity INTEGER,
       variance INTEGER,
+      expected_row_version INTEGER,
+      expected_quantity INTEGER,
+      conflict_status TEXT NOT NULL DEFAULT '',
+      conflict_reason TEXT NOT NULL DEFAULT '',
       counted_by_user_id INTEGER,
       counted_at TEXT,
       reason TEXT NOT NULL DEFAULT '',
@@ -3069,5 +3381,7 @@ module.exports = {
   labReportAttachmentsDir,
   rosterDir,
   initializeDatabase,
+  inspectRestockRequestItemForeignKeys,
   migrateRestockRequestsSchemaIfNeeded,
+  repairRestockRequestChildForeignKeysIfNeeded,
 };
