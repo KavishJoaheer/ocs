@@ -6,7 +6,9 @@ import { api } from "../lib/api.js";
 import { formatSupplyRequestCollectionDay } from "../lib/supplyRequests.js";
 
 function qty(value) {
-  return Number(value || 0);
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export default function OperatorFulfilmentPanel({ request, open, onClose, onUpdated }) {
@@ -28,8 +30,8 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         setLines(
           (fulfilment?.items || []).map((line) => ({
             id: line.id,
-            picked_quantity: qty(line.picked_quantity || line.reserved_quantity),
-            fulfilled_quantity: qty(line.fulfilled_quantity || line.reserved_quantity),
+            picked_quantity: qty(line.picked_quantity ?? line.reserved_quantity),
+            fulfilled_quantity: qty(line.fulfilled_quantity ?? line.reserved_quantity),
           })),
         );
         setPartialApproved(Boolean(fulfilment?.partial_approved));
@@ -192,7 +194,11 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                           setLines((current) =>
                             current.map((row) =>
                               Number(row.id) === Number(line.id)
-                                ? { ...row, picked_quantity: Number(event.target.value || 0) }
+                                ? {
+                                    ...row,
+                                    picked_quantity:
+                                      event.target.value === "" ? 0 : Number(event.target.value),
+                                  }
                                 : row,
                             ),
                           )
@@ -209,7 +215,11 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                           setLines((current) =>
                             current.map((row) =>
                               Number(row.id) === Number(line.id)
-                                ? { ...row, fulfilled_quantity: Number(event.target.value || 0) }
+                                ? {
+                                    ...row,
+                                    fulfilled_quantity:
+                                      event.target.value === "" ? 0 : Number(event.target.value),
+                                  }
                                 : row,
                             ),
                           )

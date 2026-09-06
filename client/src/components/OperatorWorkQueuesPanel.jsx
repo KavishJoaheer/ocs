@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import SectionCard from "./SectionCard.jsx";
 import OperatorFulfilmentPanel from "./OperatorFulfilmentPanel.jsx";
+import OperatorAmendmentReviewPanel from "./OperatorAmendmentReviewPanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
@@ -33,6 +34,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   const [active, setActive] = useState("new_requests");
   const [loading, setLoading] = useState(false);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
+  const [amendmentRequest, setAmendmentRequest] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +83,25 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
     } catch (error) {
       toast.error(error.message || "Could not assign this request.");
     }
+  }
+
+  async function openQueueAction(row) {
+    if (active === "changes") {
+      try {
+        const payload = await api.get(`/restock-requests/${row.id}`);
+        const request = payload.request || payload;
+        if (!request?.pending_amendment) {
+          toast.error("This change has already been reviewed.");
+          await load();
+          return;
+        }
+        setAmendmentRequest(request);
+      } catch (error) {
+        toast.error(error.message || "Could not load the change request.");
+      }
+      return;
+    }
+    setFulfilmentRequest(row);
   }
 
   return (
@@ -204,11 +225,11 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setFulfilmentRequest(row)}
+                      onClick={() => openQueueAction(row)}
                       className="inline-flex items-center gap-1 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white"
                     >
                       {row.status === "ready" ? <Truck className="size-3.5" /> : <TimerReset className="size-3.5" />}
-                      Open fulfilment
+                      {active === "changes" ? "Review changes" : "Open fulfilment"}
                     </button>
                   )}
                 </div>
@@ -222,6 +243,12 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
         request={fulfilmentRequest}
         onClose={() => setFulfilmentRequest(null)}
         onUpdated={load}
+      />
+      <OperatorAmendmentReviewPanel
+        open={Boolean(amendmentRequest)}
+        request={amendmentRequest}
+        onClose={() => setAmendmentRequest(null)}
+        onReviewed={load}
       />
     </>
   );

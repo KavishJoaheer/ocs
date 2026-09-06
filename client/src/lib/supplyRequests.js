@@ -67,6 +67,39 @@ export function describeSupplyRequestItems(items = []) {
     .join(", ");
 }
 
+function amendmentItemKey(item) {
+  const inventoryId = Number(item?.inventory_id || 0);
+  const name = String(item?.item_name || "").trim().toLowerCase();
+  return inventoryId ? `id:${inventoryId}` : `name:${name}`;
+}
+
+export function compareSupplyRequestAmendment(currentItems = [], proposedItems = []) {
+  const currentMap = new Map(
+    (Array.isArray(currentItems) ? currentItems : []).map((item) => [amendmentItemKey(item), item]),
+  );
+  const proposedMap = new Map(
+    (Array.isArray(proposedItems) ? proposedItems : []).map((item) => [amendmentItemKey(item), item]),
+  );
+  const keys = [...new Set([...currentMap.keys(), ...proposedMap.keys()])];
+  return keys.map((key) => {
+    const current = currentMap.get(key) || null;
+    const proposed = proposedMap.get(key) || null;
+    const currentQty = current == null ? null : Number(current.quantity);
+    const proposedQty = proposed == null ? null : Number(proposed.quantity);
+    let change = "unchanged";
+    if (!current && proposed) change = "added";
+    else if (current && !proposed) change = "removed";
+    else if (currentQty !== proposedQty) change = "quantity";
+    return {
+      key,
+      item_name: proposed?.item_name || current?.item_name || "Item",
+      current_quantity: currentQty,
+      proposed_quantity: proposedQty,
+      change,
+    };
+  });
+}
+
 /** Active lists exclude completed/cancelled rows; history screens show those instead. */
 export function isDisplayableSupplyRequest(request) {
   return isActiveSupplyRequestStatus(request?.status);

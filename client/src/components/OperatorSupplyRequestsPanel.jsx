@@ -3,6 +3,7 @@ import { CheckCircle2, ClipboardList, Inbox } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
+import OperatorAmendmentReviewPanel from "./OperatorAmendmentReviewPanel.jsx";
 import OperatorFulfilmentPanel from "./OperatorFulfilmentPanel.jsx";
 import SectionCard from "./SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -38,13 +39,6 @@ function statusBadge(request, role) {
   );
 }
 
-function itemDiff(currentItems = [], proposedItems = []) {
-  return {
-    current: describeSupplyRequestItems(currentItems),
-    proposed: describeSupplyRequestItems(proposedItems),
-  };
-}
-
 export default function OperatorSupplyRequestsPanel() {
   const { user } = useAuth();
   const role = user?.role === "admin" ? "admin" : "operator";
@@ -73,8 +67,6 @@ export default function OperatorSupplyRequestsPanel() {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [amendmentTarget, setAmendmentTarget] = useState(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [rejectOpen, setRejectOpen] = useState(false);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
 
   const loadActive = useCallback(async () => {
@@ -174,26 +166,6 @@ export default function OperatorSupplyRequestsPanel() {
       if (tab === "history") await loadHistory();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not update request.");
-    } finally {
-      setUpdatingId(null);
-    }
-  }
-
-  async function reviewAmendment(request, amendment, decision, reason = "") {
-    if (updatingId) return;
-    setUpdatingId(request.id);
-    try {
-      await api.patch(`/restock-requests/${request.id}/amendments/${amendment.id}`, {
-        decision,
-        reason,
-      });
-      toast.success(decision === "accepted" ? "Change request accepted." : "Change request declined.");
-      setAmendmentTarget(null);
-      setRejectOpen(false);
-      setRejectReason("");
-      await loadActive();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Could not review the change request.");
     } finally {
       setUpdatingId(null);
     }
@@ -571,96 +543,12 @@ export default function OperatorSupplyRequestsPanel() {
         )}
       </SectionCard>
 
-      <Modal
+      <OperatorAmendmentReviewPanel
         open={Boolean(amendmentTarget)}
-        onClose={() => {
-          setAmendmentTarget(null);
-          setRejectOpen(false);
-          setRejectReason("");
-        }}
-        title="Change requested"
-        description="Compare the currently accepted request with the doctor's proposed changes."
-        size="md"
-      >
-        {amendmentTarget?.pending_amendment ? (
-          <div className="flex flex-col gap-4">
-            {(() => {
-              const proposed = amendmentTarget.pending_amendment;
-              const items = itemDiff(amendmentTarget.items, proposed.items);
-              return (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      Currently accepted
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-slate-800">
-                      {formatSupplyRequestCollectionDay(amendmentTarget.collection_date)}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-700">{items.current || "—"}</p>
-                    {amendmentTarget.note ? (
-                      <p className="mt-2 text-[11px] italic text-slate-500">“{amendmentTarget.note}”</p>
-                    ) : null}
-                  </div>
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
-                      Proposed
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-slate-800">
-                      {formatSupplyRequestCollectionDay(proposed.proposed_collection_date)}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-700">{items.proposed || "—"}</p>
-                    {proposed.proposed_note ? (
-                      <p className="mt-2 text-[11px] italic text-slate-600">“{proposed.proposed_note}”</p>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {rejectOpen ? (
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Decline reason (optional)
-                <textarea
-                  value={rejectReason}
-                  onChange={(event) => setRejectReason(event.target.value.slice(0, 500))}
-                  rows={2}
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                />
-              </label>
-            ) : null}
-
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!rejectOpen) {
-                    setRejectOpen(true);
-                    return;
-                  }
-                  reviewAmendment(
-                    amendmentTarget,
-                    amendmentTarget.pending_amendment,
-                    "rejected",
-                    rejectReason,
-                  );
-                }}
-                className="min-h-11 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700"
-              >
-                {rejectOpen ? "Confirm decline" : "Decline changes"}
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  reviewAmendment(amendmentTarget, amendmentTarget.pending_amendment, "accepted")
-                }
-                className="min-h-11 rounded-2xl bg-[#2d8f98] px-5 py-2.5 text-sm font-bold text-white"
-              >
-                Accept changes
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
+        request={amendmentTarget}
+        onClose={() => setAmendmentTarget(null)}
+        onReviewed={loadActive}
+      />
 
       <Modal
         open={Boolean(cancelTarget)}

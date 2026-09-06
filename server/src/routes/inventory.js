@@ -277,7 +277,7 @@ function buildReceiptByTransaction(transactionId) {
 
   if (!rows.length) return null;
   const sourceRows = rows.filter((row) => row.action_type === "restock_out");
-  const primaryMeta = safeParseJson(rows[0].meta_json, {});
+  const primaryMeta = safeParseJson((sourceRows[0] || rows[0]).meta_json, {});
   const items = sourceRows.map((row) => {
     const meta = safeParseJson(row.meta_json, {});
     const allocations = Array.isArray(meta.transfer_allocations) ? meta.transfer_allocations : [];
@@ -287,7 +287,7 @@ function buildReceiptByTransaction(transactionId) {
           item_name: row.item_name,
           batch_number: "N/A",
           expiry: null,
-          quantity: Number(row.quantity || 0),
+          quantity: Number(row.quantity ?? 0),
           unit: row.unit || "unit",
         },
       ];
@@ -296,7 +296,7 @@ function buildReceiptByTransaction(transactionId) {
       item_name: row.item_name,
       batch_number: `B${row.id}-${index + 1}`,
       expiry: allocation.expiry_date || null,
-      quantity: Number(allocation.quantity || 0),
+      quantity: Number(allocation.quantity ?? 0),
       unit: row.unit || "unit",
     }));
   }).flat();
@@ -307,6 +307,7 @@ function buildReceiptByTransaction(transactionId) {
     date_time: rows[rows.length - 1]?.created_at || rows[0].created_at,
     issued_by_name: primaryMeta.issued_by_name || "",
     received_by_name: primaryMeta.received_by_name || "",
+    confirmed_by_name: primaryMeta.confirmed_by_name || "",
     receipt_reference: `/inventory/receipts/${transactionId}`,
     items,
     printed_at: new Date().toISOString(),

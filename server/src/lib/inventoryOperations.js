@@ -447,48 +447,88 @@ function listStocktakeSessions() {
     .all();
 }
 
+function parseSubmittedPhysicalCount(value) {
+  if (value === null || value === undefined) {
+    return { kind: "missing" };
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return { kind: "invalid", error: "Physical counts cannot be blank." };
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      return { kind: "invalid", error: "Physical counts must be whole numbers of zero or more." };
+    }
+    return { kind: "value", value: Number(trimmed) };
+  }
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0 || !Number.isFinite(value)) {
+      return { kind: "invalid", error: "Physical counts must be whole numbers of zero or more." };
+    }
+    return { kind: "value", value };
+  }
+  return { kind: "invalid", error: "Physical counts must be whole numbers of zero or more." };
+}
+
 function saveStocktakeCounts(sessionId, lines, userId) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stocktake session not found.");
   if (!["draft", "in_progress"].includes(session.status)) {
     throw HttpError(400, "This stocktake session can no longer be edited.");
   }
-  for (const line of lines || []) {
-    const physical = Math.floor(Number(line.physical_quantity));
-    if (!Number.isInteger(physical) || physical < 0) {
-      throw HttpError(400, "Physical counts must be whole numbers of zero or more.");
+  db.transaction(() => {
+    for (const line of lines || []) {
+      const parsed = parseSubmittedPhysicalCount(line.physical_quantity);
+      if (parsed.kind === "invalid") {
+        throw HttpError(400, parsed.error);
+      }
+      if (parsed.kind === "missing") {
+        continue;
+      }
+      const physical = parsed.value;
+      db.prepare(`
+        UPDATE inventory_stocktake_session_items
+        SET
+          physical_quantity = ?,
+          variance = ? - system_quantity,
+          counted_by_user_id = ?,
+          counted_at = CURRENT_TIMESTAMP,
+          reason = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = ? AND id = ?
+      `).run(physical, physical, userId, String(line.reason || "").slice(0, 500), sessionId, line.id);
     }
     db.prepare(`
-      UPDATE inventory_stocktake_session_items
-      SET
-        physical_quantity = ?,
-        variance = ? - system_quantity,
-        counted_by_user_id = ?,
-        counted_at = CURRENT_TIMESTAMP,
-        reason = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE session_id = ? AND id = ?
-    `).run(physical, physical, userId, String(line.reason || "").slice(0, 500), sessionId, line.id);
-  }
-  db.prepare(`
-    UPDATE inventory_stocktake_sessions
-    SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(sessionId);
+      UPDATE inventory_stocktake_sessions
+      SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(sessionId);
+  })();
   return getStocktakeSession(sessionId, { revealSystem: false });
 }
 
 function submitStocktakeSession(sessionId, userId) {
-  const session = getStocktakeSession(sessionId, { revealSystem: true });
+  const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stocktake session not found.");
   if (!["draft", "in_progress"].includes(session.status)) {
     throw HttpError(409, "This session has already been submitted.");
   }
-  const missing = (session.items || []).filter((row) => row.physical_quantity == null);
-  if (missing.length) {
+  const missing = Number(
+    db
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM inventory_stocktake_session_items
+        WHERE session_id = ? AND physical_quantity IS NULL
+      `)
+      .get(sessionId)?.count || 0,
+  );
+  if (missing > 0) {
     throw HttpError(400, "Count every line before submitting the session.");
   }
-  const hasVariance = (session.items || []).some((row) => Number(row.variance || 0) !== 0);
+  const items = db
+    .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
+    .all(sessionId);
+  const hasVariance = items.some((row) => Number(row.variance) !== 0);
   if (!hasVariance) {
     db.prepare(`
       UPDATE inventory_stocktake_sessions
@@ -559,72 +599,88 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
   if (session.status === "applied" && session.applied_transaction_id) {
     return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
   }
+  if (session.status === "rejected" || session.status === "cancelled") {
+    throw HttpError(400, "This session cannot be applied.");
+  }
   if (session.status !== "approved" && session.status !== "applied") {
     const items = db
       .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
       .all(sessionId);
-    const hasVariance = items.some((row) => Number(row.variance || 0) !== 0);
+    const hasVariance = items.some((row) => Number(row.variance) !== 0);
     if (hasVariance && session.status !== "approved") {
       throw HttpError(400, "Non-zero variances must be approved before they can be applied.");
     }
   }
-  if (session.status === "rejected" || session.status === "cancelled") {
-    throw HttpError(400, "This session cannot be applied.");
-  }
-  const transactionId = `ST-${sessionId}-${Date.now().toString(36).toUpperCase()}`;
-  const items = db
-    .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
-    .all(sessionId);
-  for (const line of items) {
-    const variance = Number(line.variance || 0);
-    if (variance === 0) continue;
-    const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
-    if (!item) throw HttpError(409, "A counted item is no longer available.");
-    const previous = Number(item.quantity || 0);
-    const next = Number(line.physical_quantity || 0);
-    if (variance < 0) {
-      const consumed = consumeFefo(item.id, Math.abs(variance));
-      if (!consumed.ok) throw HttpError(409, `Insufficient batch quantity to apply the count for ${item.item_name}.`);
-    } else {
-      db.prepare(`
-        INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-        VALUES (?, ?, NULL, ?, 1)
-      `).run(item.id, variance, roundCurrency(item.cost_price || 0));
+
+  return db.transaction(() => {
+    const locked = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
+    if (locked.status === "applied" && locked.applied_transaction_id) {
+      return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
     }
-    updateInventoryQuantity(item.id, next);
-    recordOpsMovement({
-      itemId: item.id,
-      movementType: variance > 0 ? "in" : "out",
-      quantity: Math.abs(variance),
-      previousQuantity: previous,
-      nextQuantity: next,
-      actionType: "adjustment",
-      note: line.reason || `Stocktake session #${sessionId}`,
-      userId,
-      skipPublish: true,
-      meta: {
-        stocktake_session_id: sessionId,
-        transaction_id: transactionId,
-        previous_quantity: previous,
-        counted_quantity: next,
-        performed_by_name: actor.displayName || "",
-        performed_by_role: actor.role || "",
-        reference_type: "stocktake_session",
-        reference_id: sessionId,
-      },
-    });
-  }
-  db.prepare(`
-    UPDATE inventory_stocktake_sessions
-    SET
-      status = 'applied',
-      applied_at = CURRENT_TIMESTAMP,
-      applied_transaction_id = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND applied_transaction_id IS NULL
-  `).run(transactionId, sessionId);
-  publishInventoryResyncBroadcast({ reason: "stocktake_applied" });
-  return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: false, transactionId };
+    if (locked.status === "rejected" || locked.status === "cancelled") {
+      throw HttpError(400, "This session cannot be applied.");
+    }
+    const transactionId = `ST-${sessionId}-${Date.now().toString(36).toUpperCase()}`;
+    const items = db
+      .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
+      .all(sessionId);
+    for (const line of items) {
+      const variance = Number(line.variance);
+      if (!Number.isFinite(variance) || variance === 0) continue;
+      const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
+      if (!item) throw HttpError(409, "A counted item is no longer available.");
+      const previous = Number(item.quantity);
+      const next = Number(line.physical_quantity);
+      if (!Number.isInteger(next) || next < 0) {
+        throw HttpError(409, `Counted quantity is missing for ${item.item_name}.`);
+      }
+      if (variance < 0) {
+        const consumed = consumeFefo(item.id, Math.abs(variance));
+        if (!consumed.ok) throw HttpError(409, `Insufficient batch quantity to apply the count for ${item.item_name}.`);
+      } else {
+        db.prepare(`
+          INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+          VALUES (?, ?, NULL, ?, 1)
+        `).run(item.id, variance, roundCurrency(item.cost_price || 0));
+      }
+      updateInventoryQuantity(item.id, next);
+      recordOpsMovement({
+        itemId: item.id,
+        movementType: variance > 0 ? "in" : "out",
+        quantity: Math.abs(variance),
+        previousQuantity: previous,
+        nextQuantity: next,
+        actionType: "adjustment",
+        note: line.reason || `Stocktake session #${sessionId}`,
+        userId,
+        skipPublish: true,
+        meta: {
+          stocktake_session_id: sessionId,
+          transaction_id: transactionId,
+          previous_quantity: previous,
+          counted_quantity: next,
+          performed_by_name: actor.displayName || "",
+          performed_by_role: actor.role || "",
+          reference_type: "stocktake_session",
+          reference_id: sessionId,
+        },
+      });
+    }
+    const applied = db.prepare(`
+      UPDATE inventory_stocktake_sessions
+      SET
+        status = 'applied',
+        applied_at = CURRENT_TIMESTAMP,
+        applied_transaction_id = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND applied_transaction_id IS NULL
+    `).run(transactionId, sessionId);
+    if (!applied.changes) {
+      return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: true };
+    }
+    publishInventoryResyncBroadcast({ reason: "stocktake_applied" });
+    return { session: getStocktakeSession(sessionId, { revealSystem: true }), idempotent: false, transactionId };
+  })();
 }
 
 function doctorMayViewReceipt(transactionId, doctorId) {

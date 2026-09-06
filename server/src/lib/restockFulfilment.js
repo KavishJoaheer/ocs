@@ -15,6 +15,21 @@ function HttpError(status, message) {
   return Object.assign(new Error(message), { status });
 }
 
+function integerQty(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+function requiredIntegerQty(value, label) {
+  const n = integerQty(value);
+  if (n === null || !Number.isInteger(n) || n < 0) {
+    throw HttpError(400, `${label} must be a whole number of zero or more.`);
+  }
+  return n;
+}
+
 function resolveOcsItem(requestItem) {
   const inventoryId = Number(requestItem.inventory_id || 0);
   if (inventoryId) {
@@ -56,7 +71,7 @@ function reservedQuantityForItem(inventoryId, { exceptRequestId = null } = {}) {
         AND (? IS NULL OR request_id != ?)
     `)
     .get(Number(inventoryId), exceptRequestId, exceptRequestId);
-  return Number(row?.total || 0);
+  return integerQty(row?.total) ?? 0;
 }
 
 function reservedQuantityForBatch(batchId, { exceptReservationId = null } = {}) {
@@ -70,12 +85,12 @@ function reservedQuantityForBatch(batchId, { exceptReservationId = null } = {}) 
         AND (? IS NULL OR r.id != ?)
     `)
     .get(Number(batchId), exceptReservationId, exceptReservationId);
-  return Number(row?.total || 0);
+  return integerQty(row?.total) ?? 0;
 }
 
 function availableToPromise(inventoryId, { exceptRequestId = null } = {}) {
   const item = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(Number(inventoryId));
-  const physical = Number(item?.quantity || 0);
+  const physical = integerQty(item?.quantity) ?? 0;
   const reserved = reservedQuantityForItem(inventoryId, { exceptRequestId });
   return Math.max(0, physical - reserved);
 }
@@ -108,7 +123,7 @@ function listAllocatableBatches(inventoryId) {
   return rows
     .map((row) => {
       const reserved = reservedQuantityForBatch(row.id);
-      const remaining = Math.max(0, Number(row.quantity_remaining || 0) - reserved);
+      const remaining = Math.max(0, (integerQty(row.quantity_remaining) ?? 0) - reserved);
       return {
         ...row,
         reserved,
@@ -122,7 +137,7 @@ function listAllocatableBatches(inventoryId) {
 }
 
 function allocateFefo(inventoryId, quantity) {
-  let remaining = Number(quantity || 0);
+  let remaining = integerQty(quantity) ?? 0;
   const allocations = [];
   if (remaining <= 0) return allocations;
   for (const batch of listAllocatableBatches(inventoryId)) {
@@ -214,7 +229,7 @@ function createReservationsForRequest(requestId) {
   const lines = [];
   for (const item of items) {
     const ocsItem = resolveOcsItem(item);
-    const requested = Number(item.quantity || 0);
+    const requested = requiredIntegerQty(item.quantity, "Requested quantity");
     let reserved = 0;
     let allocations = [];
     if (ocsItem) {
@@ -222,7 +237,7 @@ function createReservationsForRequest(requestId) {
       reserved = Math.min(requested, atp);
       if (reserved > 0) {
         allocations = allocateFefo(ocsItem.id, reserved);
-        reserved = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+        reserved = allocations.reduce((sum, row) => sum + (integerQty(row.quantity) ?? 0), 0);
       }
     }
     const shortage = Math.max(0, requested - reserved);
@@ -328,7 +343,7 @@ function replaceLineAllocations(requestId, line, allocations) {
   }
   let total = 0;
   for (const allocation of allocations) {
-    const qty = Math.max(0, Math.floor(Number(allocation.quantity || 0)));
+    const qty = Math.max(0, Math.floor(integerQty(allocation.quantity) ?? 0));
     if (qty <= 0) continue;
     const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(allocation.batch_id);
     if (!batch || Number(batch.item_id) !== Number(line.inventory_id)) {
@@ -338,14 +353,14 @@ function replaceLineAllocations(requestId, line, allocations) {
       throw HttpError(400, "Expired batches cannot be allocated.");
     }
     const available =
-      Number(batch.quantity_remaining || 0) -
+      (integerQty(batch.quantity_remaining) ?? 0) -
       reservedQuantityForBatch(batch.id, { exceptReservationId: reservation.id });
     if (available < qty) {
       throw HttpError(409, `Batch ${batch.id} does not have enough unreserved quantity.`);
     }
     total += qty;
   }
-  if (total !== Number(line.reserved_quantity || 0)) {
+  if (total !== (integerQty(line.reserved_quantity) ?? 0)) {
     throw HttpError(400, "Replacement allocations must equal the reserved quantity.");
   }
   db.prepare("DELETE FROM inventory_reservation_batches WHERE reservation_id = ?").run(reservation.id);
@@ -355,7 +370,7 @@ function replaceLineAllocations(requestId, line, allocations) {
     ) VALUES (?, ?, ?, ?, ?)
   `);
   for (const allocation of allocations) {
-    const qty = Math.max(0, Math.floor(Number(allocation.quantity || 0)));
+    const qty = Math.max(0, Math.floor(integerQty(allocation.quantity) ?? 0));
     if (qty <= 0) continue;
     const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(allocation.batch_id);
     insertBatch.run(
@@ -391,11 +406,9 @@ function resolveShortages(requestId) {
     for (const line of lines) {
       const prev = pickedByItem.get(Number(line.request_item_id));
       if (!prev) continue;
-      const picked = Math.min(Number(prev.picked_quantity || 0), Number(line.reserved_quantity || 0));
-      const fulfilled = Math.min(
-        Number(prev.fulfilled_quantity || line.reserved_quantity || 0),
-        Number(line.reserved_quantity || 0),
-      );
+      const reserved = integerQty(line.reserved_quantity) ?? 0;
+      const picked = Math.min(integerQty(prev.picked_quantity) ?? 0, reserved);
+      const fulfilled = Math.min(integerQty(prev.fulfilled_quantity) ?? 0, reserved);
       db.prepare(`
         UPDATE restock_request_fulfillment_items
         SET picked_quantity = ?, fulfilled_quantity = ?, updated_at = CURRENT_TIMESTAMP
@@ -472,10 +485,10 @@ function fulfilmentDetail(requestId) {
         available_to_promise: atp,
         allocations: batches.map((batch) => ({
           batch_id: batch.batch_id,
-          quantity: Number(batch.quantity || 0),
+          quantity: integerQty(batch.quantity) ?? 0,
           expiry_date: batch.expiry_date || batch.batch_expiry || null,
           is_non_expiring: Number(batch.is_non_expiring || 0) === 1,
-          remaining: Number(batch.quantity_remaining || 0),
+          remaining: integerQty(batch.quantity_remaining) ?? 0,
         })),
       };
     });
@@ -500,15 +513,19 @@ function assertCanMarkReady(requestId) {
       "This request needs fulfilment linkage before it can be marked ready. Reconcile quantities and batches first.",
     );
   }
-  const hasShortage = (detail.items || []).some(
-    (line) => Number(line.shortage_quantity || 0) > 0 || Number(line.reserved_quantity || 0) < Number(line.requested_quantity || 0),
-  );
+  const hasShortage = (detail.items || []).some((line) => {
+    const shortage = integerQty(line.shortage_quantity) ?? 0;
+    const reserved = integerQty(line.reserved_quantity) ?? 0;
+    const requested = integerQty(line.requested_quantity) ?? 0;
+    return shortage > 0 || reserved < requested;
+  });
   const fullyPicked = (detail.items || []).every((line) => {
-    const target = detail.partial_approved
-      ? Number(line.fulfilled_quantity || 0)
-      : Number(line.reserved_quantity || 0);
+    const reserved = integerQty(line.reserved_quantity) ?? 0;
+    const fulfilled = integerQty(line.fulfilled_quantity);
+    const picked = integerQty(line.picked_quantity) ?? 0;
+    const target = detail.partial_approved ? (fulfilled ?? 0) : reserved;
     if (detail.partial_approved && target === 0) return true;
-    return Number(line.picked_quantity || 0) >= target && (detail.partial_approved || target > 0);
+    return picked >= target && (detail.partial_approved || target > 0);
   });
   if (hasShortage && !detail.partial_approved) {
     throw HttpError(400, "Resolve shortages or approve partial fulfilment before marking supply ready.");
@@ -539,15 +556,16 @@ function applyPicking(requestId, { lines = [], partialApproved, partialReason = 
   for (const line of existingLines) {
     const patch = byId.get(line.id);
     if (!patch) continue;
-    const picked = Math.max(0, Math.floor(Number(patch.picked_quantity ?? line.picked_quantity ?? 0)));
+    const reserved = integerQty(line.reserved_quantity) ?? 0;
+    const picked = Math.max(0, Math.floor(integerQty(patch.picked_quantity) ?? integerQty(line.picked_quantity) ?? 0));
     const fulfilled = Math.max(
       0,
-      Math.floor(Number(patch.fulfilled_quantity ?? picked ?? line.fulfilled_quantity ?? 0)),
+      Math.floor(integerQty(patch.fulfilled_quantity) ?? integerQty(line.fulfilled_quantity) ?? picked),
     );
-    if (fulfilled > Number(line.reserved_quantity || 0)) {
+    if (fulfilled > reserved) {
       throw HttpError(400, `Fulfilled quantity for ${line.item_name} cannot exceed the reserved quantity.`);
     }
-    if (picked > Number(line.reserved_quantity || 0)) {
+    if (picked > reserved) {
       throw HttpError(400, `Picked quantity for ${line.item_name} cannot exceed the reserved quantity.`);
     }
     if (Array.isArray(patch.allocations)) {
@@ -677,7 +695,7 @@ function upsertDoctorBagItem(source, doctorId, inboundQty) {
     `)
     .get(doctorId, source.folder_id, source.item_name);
   if (existing) {
-    const prev = Number(existing.quantity || 0);
+    const prev = integerQty(existing.quantity) ?? 0;
     const next = prev + inboundQty;
     updateInventoryQuantity(existing.id, next);
     return { id: Number(existing.id), previous: prev, next };
@@ -705,28 +723,93 @@ function upsertDoctorBagItem(source, doctorId, inboundQty) {
   return { id: Number(created.lastInsertRowid), previous: 0, next: inboundQty };
 }
 
-function consumeLockedAllocations(inventoryId, allocations) {
+function consumeLockedAllocations(inventoryId, allocations, fulfilledQty) {
+  const target = requiredIntegerQty(fulfilledQty, "Fulfilled quantity");
+  if (target === 0) return [];
+
+  let remaining = target;
   const consumed = [];
-  for (const allocation of allocations) {
+  for (const allocation of allocations || []) {
+    if (remaining <= 0) break;
+    const allocated = integerQty(allocation.quantity) ?? 0;
+    if (allocated <= 0) continue;
+    const take = Math.min(remaining, allocated);
     const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(allocation.batch_id);
     if (!batch || Number(batch.item_id) !== Number(inventoryId)) {
       throw HttpError(409, "A locked batch is no longer valid. Reconcile fulfilment before collection.");
     }
-    if (Number(batch.quantity_remaining || 0) < Number(allocation.quantity || 0)) {
+    if ((integerQty(batch.quantity_remaining) ?? 0) < take) {
       throw HttpError(409, "A locked batch no longer has enough remaining quantity.");
     }
     db.prepare("UPDATE inventory_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ?").run(
-      allocation.quantity,
+      take,
       allocation.batch_id,
     );
     consumed.push({
-      quantity: Number(allocation.quantity || 0),
+      batch_id: allocation.batch_id,
+      quantity: take,
       expiry_date: allocation.expiry_date || batch.expiry_date || null,
       unit_cost: toNumber(batch.unit_cost, 0),
-      is_non_expiring: Number(allocation.is_non_expiring || batch.is_non_expiring || 0),
+      is_non_expiring: Number(allocation.is_non_expiring || batch.is_non_expiring || 0) === 1 ? 1 : 0,
     });
+    remaining -= take;
+  }
+  if (remaining > 0) {
+    throw HttpError(409, "Locked allocations cannot supply the fulfilled quantity.");
   }
   return consumed;
+}
+
+function finalizeLineReservation({ fulfilmentItemId, fulfilledQty, consumedBatches }) {
+  const reservation = db
+    .prepare(`
+      SELECT * FROM inventory_reservations
+      WHERE fulfilment_item_id = ? AND status = 'active'
+      ORDER BY id DESC LIMIT 1
+    `)
+    .get(fulfilmentItemId);
+  if (!reservation) {
+    if (fulfilledQty > 0) {
+      throw HttpError(409, "No active reservation remains for a fulfilled line.");
+    }
+    return;
+  }
+  if (fulfilledQty === 0) {
+    db.prepare(`
+      UPDATE inventory_reservations
+      SET status = 'released', released_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(reservation.id);
+    return;
+  }
+
+  db.prepare(`
+    UPDATE inventory_reservations
+    SET status = 'consumed', quantity = ?, consumed_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(fulfilledQty, reservation.id);
+  db.prepare("DELETE FROM inventory_reservation_batches WHERE reservation_id = ?").run(reservation.id);
+  const insertBatch = db.prepare(`
+    INSERT INTO inventory_reservation_batches (
+      reservation_id, batch_id, quantity, expiry_date, is_non_expiring
+    ) VALUES (?, ?, ?, ?, ?)
+  `);
+  for (const row of consumedBatches) {
+    insertBatch.run(
+      reservation.id,
+      row.batch_id,
+      row.quantity,
+      row.expiry_date || null,
+      Number(row.is_non_expiring || 0) === 1 ? 1 : 0,
+    );
+  }
+}
+
+function lookupUserName(userId) {
+  if (!userId) return null;
+  return (
+    db.prepare("SELECT id, full_name, username, role FROM users WHERE id = ?").get(Number(userId)) || null
+  );
 }
 
 function postCollectionTransfer({ request, actor }) {
@@ -751,21 +834,57 @@ function postCollectionTransfer({ request, actor }) {
   }
 
   const doctor = db.prepare("SELECT id, full_name FROM doctors WHERE id = ?").get(request.doctor_id);
+  const packedUser =
+    lookupUserName(detail.fulfilment?.packed_by_user_id) || lookupUserName(request.ready_by_user_id);
+  const issuerName = packedUser?.full_name || packedUser?.username || "";
+  const collectorName = doctor?.full_name || "";
+  const confirmerName = actor.displayName || "";
   const transactionId = createTransferTransactionId();
   const receiptReference = `/inventory/receipts/${transactionId}`;
   const movementIds = [];
 
+  function transferMeta(consumed) {
+    return {
+      request_id: request.id,
+      transaction_id: transactionId,
+      receipt_reference: receiptReference,
+      performed_by_user_id: actor.userId,
+      performed_by_role: actor.role,
+      performed_by_name: confirmerName,
+      issued_by_name: issuerName,
+      issued_by_user_id: packedUser?.id || null,
+      issued_by_role: packedUser?.role || null,
+      received_by_name: collectorName,
+      collector_name: collectorName,
+      confirmed_by_name: confirmerName,
+      confirmed_by_user_id: actor.userId,
+      confirmed_by_role: actor.role,
+      doctor_name: collectorName,
+      transfer_allocations: consumed,
+      source_location: "Master Stock",
+      destination_location: `${collectorName || "Doctor"}'s Bag`,
+    };
+  }
+
   for (const line of detail.items) {
-    const qty = Number(line.fulfilled_quantity || line.picked_quantity || line.reserved_quantity || 0);
-    if (qty <= 0 || !line.inventory_id) continue;
+    const qty = requiredIntegerQty(line.fulfilled_quantity, `Fulfilled quantity for ${line.item_name}`);
+    if (!line.inventory_id) {
+      if (qty > 0) throw HttpError(409, `No OCS item is linked for ${line.item_name}.`);
+      finalizeLineReservation({ fulfilmentItemId: line.id, fulfilledQty: 0, consumedBatches: [] });
+      continue;
+    }
     const source = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
     if (!source) throw HttpError(409, `OCS item missing for ${line.item_name}.`);
     const allocations = line.allocations || [];
-    if (!allocations.length) {
+    if (qty > 0 && !allocations.length) {
       throw HttpError(409, `No locked batch allocation for ${line.item_name}.`);
     }
-    const consumed = consumeLockedAllocations(source.id, allocations);
-    const sourcePrev = Number(source.quantity || 0);
+    const consumed = consumeLockedAllocations(source.id, allocations, qty);
+    if (qty === 0) {
+      finalizeLineReservation({ fulfilmentItemId: line.id, fulfilledQty: 0, consumedBatches: [] });
+      continue;
+    }
+    const sourcePrev = integerQty(source.quantity) ?? 0;
     if (sourcePrev < qty) {
       throw HttpError(409, `OCS quantity for ${line.item_name} is no longer sufficient.`);
     }
@@ -782,20 +901,7 @@ function postCollectionTransfer({ request, actor }) {
       userId: actor.userId,
       doctorId: request.doctor_id,
       skipPublish: true,
-      meta: {
-        request_id: request.id,
-        transaction_id: transactionId,
-        receipt_reference: receiptReference,
-        performed_by_user_id: actor.userId,
-        performed_by_role: actor.role,
-        performed_by_name: actor.displayName,
-        issued_by_name: actor.displayName,
-        received_by_name: doctor?.full_name || "",
-        doctor_name: doctor?.full_name || "",
-        transfer_allocations: consumed,
-        source_location: "Master Stock",
-        destination_location: `${doctor?.full_name || "Doctor"}'s Bag`,
-      },
+      meta: transferMeta(consumed),
     });
     movementIds.push(outId);
 
@@ -823,26 +929,19 @@ function postCollectionTransfer({ request, actor }) {
       userId: actor.userId,
       doctorId: request.doctor_id,
       skipPublish: true,
-      meta: {
-        request_id: request.id,
-        transaction_id: transactionId,
-        receipt_reference: receiptReference,
-        performed_by_user_id: actor.userId,
-        performed_by_role: actor.role,
-        performed_by_name: actor.displayName,
-        issued_by_name: actor.displayName,
-        received_by_name: doctor?.full_name || "",
-        transfer_allocations: consumed,
-        source_location: "Master Stock",
-        destination_location: `${doctor?.full_name || "Doctor"}'s Bag`,
-      },
+      meta: transferMeta(consumed),
     });
     movementIds.push(inId);
+    finalizeLineReservation({
+      fulfilmentItemId: line.id,
+      fulfilledQty: qty,
+      consumedBatches: consumed,
+    });
   }
 
   db.prepare(`
     UPDATE inventory_reservations
-    SET status = 'consumed', consumed_at = CURRENT_TIMESTAMP
+    SET status = 'released', released_at = CURRENT_TIMESTAMP
     WHERE request_id = ? AND status = 'active'
   `).run(request.id);
 

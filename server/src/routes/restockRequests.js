@@ -1146,6 +1146,11 @@ router.patch("/:id/amendments/:amendmentId", (req, res) => {
   }
   const reason = String(req.body?.reason || req.body?.review_reason || "").trim().slice(0, 500);
   const actor = actorFromAuth(req.auth);
+  if (decision === "rejected" && reason.length < 10) {
+    return res.status(400).json({
+      error: "A reason of at least 10 characters is required to decline a change request.",
+    });
+  }
 
   try {
     db.transaction(() => {
@@ -1193,7 +1198,7 @@ router.patch("/:id/amendments/:amendmentId", (req, res) => {
         `)
         .all(requestId);
 
-      db.prepare(`
+      const updatedAmendment = db.prepare(`
         UPDATE restock_request_amendments
         SET
           status = ?,
@@ -1203,6 +1208,9 @@ router.patch("/:id/amendments/:amendmentId", (req, res) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = 'pending'
       `).run(decision, req.auth.id, reason, amendmentId);
+      if (!updatedAmendment.changes) {
+        throw Object.assign(new Error("This change request has already been reviewed."), { status: 409 });
+      }
 
       if (decision === "accepted") {
         db.prepare(`
