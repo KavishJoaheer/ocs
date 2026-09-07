@@ -47,6 +47,7 @@ export default defineConfig({
         HOST: "127.0.0.1",
         PORT: API_PORT,
         NODE_ENV: "test",
+        API_RATE_LIMIT_PER_MINUTE: "10000",
         GIT_SHA,
         APP_VERSION: GIT_SHA,
         DB_PATH: E2E_DB_PATH,

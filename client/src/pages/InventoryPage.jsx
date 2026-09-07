@@ -21,7 +21,7 @@ import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -73,6 +73,13 @@ import {
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
 import { doctorBagHeading, formatStockExpiryLabel, itemHasExpiredStock } from "../lib/inventoryStockDisplay.js";
+import {
+  isAtOrBelowPar,
+  isExpiredItem,
+  isMissingExpiryItem,
+  isNearExpiryItem,
+  readDoctorMetrics,
+} from "../lib/doctorInventoryMetrics.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 import { printTransferReceipt } from "../lib/transferReceipt.js";
 
@@ -135,7 +142,7 @@ function formatInventoryExpiry(itemOrValue) {
   return parsed.isValid() ? parsed.format("D MMM YYYY") : "Expiry missing";
 }
 
-function InventoryQuantityLines({ item, compact = false }) {
+function InventoryQuantityLines({ item, compact = false, showMinimum = compact }) {
   const onHand = Number(item.on_hand_quantity ?? item.quantity ?? 0);
   const reserved = Number(item.reserved_quantity || 0);
   const expired = Number(item.expired_quantity || 0);
@@ -146,9 +153,11 @@ function InventoryQuantityLines({ item, compact = false }) {
     <div className={cx("flex flex-col gap-0.5", lineClass)}>
       <span>On hand: <strong className="tabular-nums text-slate-900">{onHand}</strong></span>
       {reserved > 0 ? <span>Reserved: <strong className="tabular-nums text-slate-900">{reserved}</strong></span> : null}
-      {expired > 0 ? <span className="text-rose-700">Expired: <strong className="tabular-nums">{expired}</strong></span> : null}
+      <span className={expired > 0 ? "text-rose-700" : ""}>
+        Expired: <strong className="tabular-nums">{expired}</strong>
+      </span>
       <span>Available to use: <strong className="tabular-nums text-slate-900">{available}</strong></span>
-      {compact ? <span>Minimum: <strong className="tabular-nums text-slate-900">{minimum}</strong></span> : null}
+      {showMinimum ? <span>Minimum: <strong className="tabular-nums text-slate-900">{minimum}</strong></span> : null}
     </div>
   );
 }
@@ -162,7 +171,7 @@ function buildDoctorFillCandidate(myItem, source) {
   if (!source?.id) return null;
   const current = Number(myItem.quantity || 0);
   const min = Number(myItem.minimum_quantity || 0);
-  const ocsAvailable = Number(source.quantity || 0);
+  const ocsAvailable = Number(source.available_to_use ?? source.quantity ?? 0);
   const required = suggestedBagFillQty(current, min, ocsAvailable);
   if (required <= 0) return null;
   return {
@@ -172,7 +181,7 @@ function buildDoctorFillCandidate(myItem, source) {
     par_level: min,
     required_quantity: required,
     ocs_available: ocsAvailable,
-    ocs_expiry: source.expiry_date || null,
+    ocs_expiry: source.nearest_usable_expiry || source.expiry_date || null,
   };
 }
 
@@ -189,10 +198,11 @@ function formatCompareQty(qty) {
 function InventoryStatusChips({ item }) {
   const quantity = Number(item.quantity || 0);
   const parLevel = Number(item.minimum_quantity || 0);
-  const isLow = quantity <= parLevel;
+  const isLow = parLevel > 0 && quantity <= parLevel;
   const missingExpiry = Boolean(item.missing_expiry);
   const nearExpiry = Boolean(item.is_near_expiry);
   const expired = itemHasExpiredStock(item);
+  const available = Number(item.available_to_use ?? 0);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired;
 
   if (!isLow && !missingExpiry && !nearExpiry && !expired && !nonExpiring) return null;
@@ -200,27 +210,48 @@ function InventoryStatusChips({ item }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {expired ? (
-        <span className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-          Expired
+        <span
+          role="status"
+          aria-label={`Stock status: ${available > 0 ? "Contains expired units" : "Expired"}`}
+          className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
+        >
+          <span className="sr-only">Stock status: </span>
+          {available > 0 ? "Contains expired" : "Expired"}
         </span>
       ) : null}
       {isLow ? (
-        <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+        <span
+          role="status"
+          aria-label="Stock status: At or below par"
+          className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700"
+        >
           Low
         </span>
       ) : null}
       {nearExpiry ? (
-        <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+        <span
+          role="status"
+          aria-label="Stock status: Near expiry"
+          className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+        >
           Near expiry
         </span>
       ) : null}
       {missingExpiry ? (
-        <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+        <span
+          role="status"
+          aria-label="Stock status: Expiry missing"
+          className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600"
+        >
           Expiry missing
         </span>
       ) : null}
       {nonExpiring ? (
-        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+        <span
+          role="status"
+          aria-label="Stock status: Non-expiring"
+          className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600"
+        >
           Non-expiring
         </span>
       ) : null}
@@ -624,6 +655,9 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
   const [reason, setReason] = useState("Sale");
   const [note, setNote] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedLotId, setSelectedLotId] = useState("");
+  const [legacyUnknownLot, setLegacyUnknownLot] = useState(false);
+  const [legacyExplanation, setLegacyExplanation] = useState("");
   const [syncedDeps, setSyncedDeps] = useState({ open, item });
 
   if (syncedDeps.open !== open || syncedDeps.item !== item) {
@@ -633,15 +667,36 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
       setReason("Sale");
       setNote("");
       setSelectedPatientId("");
+      setSelectedLotId("");
+      setLegacyUnknownLot(false);
+      setLegacyExplanation("");
     }
   }
 
-  const available = Number(item?.quantity || 0);
+  const lots = Array.isArray(item?.lots) ? item.lots.filter((lot) => Number(lot.quantity_remaining || 0) > 0) : [];
+  const unbatched = Number(item?.unbatched_quantity || 0);
   const isSale = reason === "Sale";
+  const isLoss = reason === "Wasted" || reason === "Expired";
+  const selectedLot = lots.find((lot) => String(lot.id) === String(selectedLotId)) || null;
+  const lotBalance = legacyUnknownLot
+    ? unbatched
+    : selectedLot
+      ? Number(selectedLot.quantity_remaining || 0)
+      : isSale
+        ? Number(item?.available_to_use ?? item?.quantity ?? 0)
+        : 0;
+  const available = isSale ? Number(item?.available_to_use ?? item?.quantity ?? 0) : lotBalance;
   const selectedPatient = isSale
     ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
     : null;
   const saleRequiresPatient = isSale && !selectedPatient;
+  const qty = Number(quantity || 0);
+  const sellingPrice = Number(item?.selling_price || 0);
+  const billAmount = isSale && Number.isInteger(qty) && qty > 0 ? sellingPrice * qty : 0;
+  const resultingBalance = Math.max(0, Number(item?.quantity || 0) - (Number.isInteger(qty) ? qty : 0));
+  const noteReady = !isLoss || String(note || "").trim().length >= 8;
+  const lotReady = !isLoss || legacyUnknownLot || selectedLot;
+  const legacyReady = !legacyUnknownLot || String(legacyExplanation || "").trim().length >= 8;
 
   return (
     <Modal
@@ -659,10 +714,17 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
-          const qty = Number(quantity || 0);
           if (!Number.isInteger(qty) || qty <= 0) return;
           if (saleRequiresPatient) {
             toast.error("Select a patient before recording a Sale.");
+            return;
+          }
+          if (isLoss && !noteReady) {
+            toast.error("Enter a meaningful reason before confirming.");
+            return;
+          }
+          if (isLoss && !lotReady) {
+            toast.error("Select the affected bag lot or confirm this is a legacy/unknown lot.");
             return;
           }
           onSubmit({
@@ -673,6 +735,9 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
             patient_label: selectedPatient
               ? `${selectedPatient.full_name}${selectedPatient.patient_identifier ? ` (${selectedPatient.patient_identifier})` : ""}`
               : "",
+            batch_id: legacyUnknownLot ? null : selectedLot ? Number(selectedLot.id) : null,
+            legacy_unknown_lot: Boolean(isLoss && legacyUnknownLot),
+            legacy_explanation: legacyExplanation.trim(),
           });
         }}
       >
@@ -687,7 +752,10 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
         )}
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
-          <p className="mt-1 text-xs text-slate-600">Available in your bag: {available}</p>
+          <InventoryQuantityLines item={item || {}} />
+          <p className="mt-1 text-xs text-slate-600">
+            {isSale ? `Available to use: ${available}` : `Selected lot balance: ${available}`}
+          </p>
 
           <label className="mt-4 block space-y-2">
             <span className="text-sm font-semibold text-slate-700">Quantity</span>
@@ -715,6 +783,53 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               ))}
             </select>
           </label>
+
+          {isLoss ? (
+            <div className="mt-4 space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Affected lot</span>
+              {lots.length ? (
+                <select
+                  value={legacyUnknownLot ? "legacy" : selectedLotId}
+                  onChange={(event) => {
+                    if (event.target.value === "legacy") {
+                      setLegacyUnknownLot(true);
+                      setSelectedLotId("");
+                    } else {
+                      setLegacyUnknownLot(false);
+                      setSelectedLotId(event.target.value);
+                    }
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                >
+                  <option value="">Select lot…</option>
+                  {lots.map((lot) => (
+                    <option key={lot.id} value={lot.id}>
+                      {lot.expiry_label || formatStockExpiryLabel(lot)} · on hand {lot.quantity_remaining}
+                      {lot.id ? ` · lot #${lot.id}` : ""}
+                    </option>
+                  ))}
+                  {unbatched > 0 ? <option value="legacy">Legacy/unknown lot · {unbatched}</option> : null}
+                </select>
+              ) : (
+                <p className="text-xs font-semibold text-amber-800">Legacy/unknown lot — no batch identity is recorded.</p>
+              )}
+              {(legacyUnknownLot || !lots.length) ? (
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">Why is the lot identity unavailable?</span>
+                  <textarea
+                    rows={2}
+                    value={legacyExplanation}
+                    onChange={(event) => {
+                      setLegacyUnknownLot(true);
+                      setLegacyExplanation(event.target.value);
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                    placeholder="e.g. bag stock predates lot tracking"
+                  />
+                </label>
+              ) : null}
+            </div>
+          ) : null}
 
           {isSale ? (
             <label className="mt-4 block space-y-2">
@@ -747,17 +862,29 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
           ) : null}
 
           <label className="mt-4 block space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Notes (optional)</span>
+            <span className="text-sm font-semibold text-slate-700">
+              {isLoss ? "Reason / note" : "Notes (optional)"} {isLoss ? <span className="text-rose-600">*</span> : null}
+            </span>
             <textarea
               rows={3}
               value={note}
               onChange={(event) => setNote(event.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
               placeholder={
-                isSale ? "e.g. payment reference, billing note" : "e.g. batch reference, disposal details"
+                isSale ? "e.g. payment reference, billing note" : "Describe why this stock is wasted or expired"
               }
             />
           </label>
+
+          {isSale ? (
+            <p className="mt-3 text-sm text-slate-700">
+              Selling price {formatRupees(sellingPrice)} × {Number.isInteger(qty) ? qty : 0} ={" "}
+              <strong>{formatRupees(billAmount)}</strong> will be added to the patient bill.
+            </p>
+          ) : null}
+          <p className="mt-2 text-sm text-slate-700">
+            Resulting bag on hand: <strong className="tabular-nums">{resultingBalance}</strong>
+          </p>
 
           {Number(quantity || 0) > available ? (
             <p className="mt-2 text-xs font-semibold text-rose-700">Quantity exceeds available stock.</p>
@@ -777,9 +904,12 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               !Number.isInteger(Number(quantity || 0)) ||
               Number(quantity || 0) <= 0 ||
               Number(quantity || 0) > available ||
-              saleRequiresPatient
+              saleRequiresPatient ||
+              !noteReady ||
+              !lotReady ||
+              !legacyReady
             }
-            className="rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            className="min-h-11 rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
           >
             {isSaving
               ? "Saving..."
@@ -1592,6 +1722,7 @@ function InventoryActionButtons({
   onEdit,
   onRestockDoctor,
   onRestockMyInventory,
+  onRequestItem,
   onStockOut,
   onRemove,
   onDeleteItem,
@@ -1625,10 +1756,18 @@ function InventoryActionButtons({
         onClick: () => onEdit(item),
       });
     }
+    if (isDoctor && onRequestItem) {
+      menuItems.push({
+        key: "request",
+        label: doctorViewIsOcs ? "Add to request" : "Request this item",
+        icon: <Truck className="size-3.5" />,
+        onClick: () => onRequestItem(item),
+      });
+    }
     if (isDoctor && !omitRestock) {
       menuItems.push({
         key: "restock",
-        label: "Emergency stock transfer",
+        label: "Emergency stock override",
         icon: <Truck className="size-3.5" />,
         onClick: () => onRestockMyInventory(item),
       });
@@ -1681,10 +1820,17 @@ function InventoryActionButtons({
         </button>
       ) : null}
 
+      {isDoctor && onRequestItem ? (
+        <button type="button" onClick={() => onRequestItem(item)} className={restockBtn}>
+          <Truck className="size-3.5 shrink-0" />
+          {doctorViewIsOcs ? "Add to request" : "Request this item"}
+        </button>
+      ) : null}
+
       {isDoctor && !omitRestock ? (
         <button type="button" onClick={() => onRestockMyInventory(item)} className={restockBtn}>
           <Truck className="size-3.5 shrink-0" />
-          Restock
+          Emergency stock override
         </button>
       ) : null}
 
@@ -2141,6 +2287,10 @@ function MobileDoctorDeductSheet({
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Sale");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [note, setNote] = useState("");
+  const [selectedLotId, setSelectedLotId] = useState("");
+  const [legacyUnknownLot, setLegacyUnknownLot] = useState(false);
+  const [legacyExplanation, setLegacyExplanation] = useState("");
   const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
   if (syncedDeps.open !== open || syncedDeps.itemId !== item?.id) {
@@ -2149,19 +2299,30 @@ function MobileDoctorDeductSheet({
       setQuantity("1");
       setReason("Sale");
       setSelectedPatientId("");
+      setNote("");
+      setSelectedLotId("");
+      setLegacyUnknownLot(false);
+      setLegacyExplanation("");
     }
   }
 
   if (!open || !item) return null;
 
-  const max = Math.max(0, Number(item.quantity || 0));
-  const qty = Number(quantity || 0);
+  const lots = Array.isArray(item.lots) ? item.lots.filter((lot) => Number(lot.quantity_remaining || 0) > 0) : [];
   const isSale = reason === "Sale";
+  const isLoss = reason === "Expired" || reason === "Damage";
+  const selectedLot = lots.find((lot) => String(lot.id) === String(selectedLotId)) || null;
+  const max = isSale
+    ? Math.max(0, Number(item.available_to_use ?? item.quantity ?? 0))
+    : Math.max(0, Number((legacyUnknownLot || !lots.length ? item.unbatched_quantity : selectedLot?.quantity_remaining) || item.quantity || 0));
+  const qty = Number(quantity || 0);
   const selectedPatient = isSale
     ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
     : null;
   const saleRequiresPatient = isSale && !selectedPatient;
-  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient;
+  const noteReady = !isLoss || String(note || "").trim().length >= 8;
+  const lotReady = !isLoss || legacyUnknownLot || !lots.length || selectedLot;
+  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient || !noteReady || !lotReady;
 
   return (
     <MobileBottomSheet
@@ -2186,6 +2347,10 @@ function MobileDoctorDeductSheet({
           onSubmit({
             quantity: qty,
             reason,
+            note: note.trim(),
+            batch_id: isLoss && selectedLot ? Number(selectedLot.id) : null,
+            legacy_unknown_lot: Boolean(isLoss && (legacyUnknownLot || !lots.length)),
+            legacy_explanation: legacyExplanation.trim(),
             patient_id: selectedPatient ? Number(selectedPatient.id) : null,
             patient_label: selectedPatient
               ? `${selectedPatient.full_name}${selectedPatient.patient_identifier ? ` (${selectedPatient.patient_identifier})` : ""}`
@@ -2274,6 +2439,55 @@ function MobileDoctorDeductSheet({
           </div>
         ) : null}
 
+        {isLoss ? (
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Affected lot</span>
+            {lots.length ? (
+              <select
+                value={legacyUnknownLot ? "legacy" : selectedLotId}
+                onChange={(event) => {
+                  if (event.target.value === "legacy") {
+                    setLegacyUnknownLot(true);
+                    setSelectedLotId("");
+                  } else {
+                    setLegacyUnknownLot(false);
+                    setSelectedLotId(event.target.value);
+                  }
+                }}
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm"
+              >
+                <option value="">Select lot…</option>
+                {lots.map((lot) => (
+                  <option key={lot.id} value={lot.id}>
+                    {lot.expiry_label || formatStockExpiryLabel(lot)} · {lot.quantity_remaining}
+                  </option>
+                ))}
+                {Number(item.unbatched_quantity || 0) > 0 ? <option value="legacy">Legacy/unknown lot</option> : null}
+              </select>
+            ) : (
+              <p className="text-xs font-semibold text-amber-800">Legacy/unknown lot</p>
+            )}
+          </label>
+        ) : null}
+
+        {!isSale ? (
+          <label className="block space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Reason / note *</span>
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              rows={2}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+              placeholder="Describe the wastage or expiry"
+            />
+          </label>
+        ) : (
+          <p className="text-sm text-slate-700">
+            Selling price {formatRupees(Number(item.selling_price || 0))} × {Number.isInteger(qty) ? qty : 0} ={" "}
+            <strong>{formatRupees(Number(item.selling_price || 0) * (Number.isInteger(qty) ? qty : 0))}</strong>
+          </p>
+        )}
+
         <div className="grid gap-2 pt-1">
           <button
             type="submit"
@@ -2301,20 +2515,20 @@ function MobileDoctorDeductSheet({
 
 function MobileDoctorBagActions({
   onUse,
-  onRestock,
+  onRequest,
+  onEmergencyOverride,
   useDisabled = false,
-  restockDisabled = false,
-  restockOnly = false,
+  requestOnly = false,
 }) {
-  const restockBtn =
-    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400";
+  const requestBtn =
+    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white";
   const useBtn =
     "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm font-bold text-slate-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400";
 
-  if (restockOnly) {
+  if (requestOnly) {
     return (
-      <button type="button" disabled={restockDisabled} onClick={onRestock} className={`${restockBtn} w-full`}>
-        Restock
+      <button type="button" onClick={onRequest} className={`${requestBtn} w-full`}>
+        Add to request
       </button>
     );
   }
@@ -2324,9 +2538,14 @@ function MobileDoctorBagActions({
       <button type="button" disabled={useDisabled} onClick={onUse} className={useBtn}>
         Use
       </button>
-      <button type="button" disabled={restockDisabled} onClick={onRestock} className={restockBtn}>
-        Restock
+      <button type="button" onClick={onRequest} className={requestBtn}>
+        Request this item
       </button>
+      {onEmergencyOverride ? (
+        <button type="button" onClick={onEmergencyOverride} className={`${useBtn} col-span-2 text-xs`}>
+          Emergency stock override
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2387,14 +2606,16 @@ function MobileDoctorBagLayout({
   mobileBagTotalPages,
   currentPage,
   setCurrentPage,
-  doctorRestockCandidates = [],
-  onOpenRestockInventory,
   onOpenDeduct,
+  onOpenRequest,
   onOpenRestock,
   showLowStockOnly = false,
   showMissingExpiryOnly = false,
+  showExpiredOnly = false,
   onToggleLowStock,
   onToggleMissingExpiry,
+  onToggleExpired,
+  listRefreshing = false,
   folderCounts,
   bagItemCount = 0,
 }) {
@@ -2416,27 +2637,14 @@ function MobileDoctorBagLayout({
             </button>
           ))}
         </div>
-        {!doctorViewIsOcs ? (
-          onOpenRestockInventory ? (
-            <button
-              type="button"
-              onClick={onOpenRestockInventory}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
-            >
-              <Truck className="size-4 shrink-0" />
-              Fill{doctorRestockCandidates.length ? ` ${doctorRestockCandidates.length}` : ""}
-            </button>
-          ) : (
-            <Link
-              to="/supply-requests"
-              aria-label="Request supply"
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
-            >
-              <Truck className="size-4 shrink-0" />
-              Request
-            </Link>
-          )
-        ) : null}
+        <Link
+          to="/supply-requests"
+          aria-label="Request supply"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-2xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
+        >
+          <Truck className="size-4 shrink-0" />
+          Request
+        </Link>
       </header>
 
       <label className="relative block w-full min-w-0">
@@ -2482,13 +2690,20 @@ function MobileDoctorBagLayout({
             >
               Missing expiry
             </button>
+            <button type="button" onClick={onToggleExpired} className={mobileBagChipClass(showExpiredOnly)}>
+              Expired
+            </button>
           </>
         ) : null}
         <span className="w-1 shrink-0" aria-hidden />
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {mobileBagPagedItems.length ? (
+        {listRefreshing ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500" aria-live="polite">
+            Updating items…
+          </div>
+        ) : mobileBagPagedItems.length ? (
           <>
             <div className="flex w-full min-w-0 flex-col gap-2.5">
               {mobileBagPagedItems.map((item) => {
@@ -2501,16 +2716,15 @@ function MobileDoctorBagLayout({
                     actions={
                       doctorViewIsOcs ? (
                         <MobileDoctorBagActions
-                          restockOnly
-                          restockDisabled={!onOpenRestock}
-                          onRestock={() => onOpenRestock?.(item)}
+                          requestOnly
+                          onRequest={() => onOpenRequest?.(item)}
                         />
                       ) : (
                         <MobileDoctorBagActions
                           useDisabled={!onOpenDeduct || currentQuantity < 1}
-                          restockDisabled={!onOpenRestock}
                           onUse={() => onOpenDeduct?.(item)}
-                          onRestock={() => onOpenRestock?.(item)}
+                          onRequest={() => onOpenRequest?.(item)}
+                          onEmergencyOverride={onOpenRestock ? () => onOpenRestock(item) : undefined}
                         />
                       )
                     }
@@ -2551,7 +2765,7 @@ function MobileDoctorBagLayout({
             description={
               doctorViewIsOcs
                 ? "Try another category or search term."
-                : "Search or restock from the OCS depot to fill your bag."
+                : "Search or request supply from the OCS depot to fill your bag."
             }
           />
         )}
@@ -2562,9 +2776,12 @@ function MobileDoctorBagLayout({
 
 export default function InventoryPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [listRefreshing, setListRefreshing] = useState(false);
+  const hasInventoryDataRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
   const searchInputRef = useRef(null);
@@ -2573,6 +2790,8 @@ export default function InventoryPage() {
   const [operatorAddOpen, setOperatorAddOpen] = useState(false);
   const [selectedContextDoctorId, setSelectedContextDoctorId] = useState("");
   const [doctorContext, setDoctorContext] = useState("my");
+  const doctorContextRef = useRef(doctorContext);
+  doctorContextRef.current = doctorContext;
   const [contextSearch, setContextSearch] = useState("OCS Stock");
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
@@ -2613,6 +2832,7 @@ export default function InventoryPage() {
   const commitInventoryData = useCallback(
     (next, { silent = false } = {}) => {
       setData(next);
+      hasInventoryDataRef.current = Boolean(next);
       if (silent) return;
       if (isDoctor) {
         notifyDoctorBagInventoryUpdated();
@@ -2713,27 +2933,15 @@ export default function InventoryPage() {
   }, [items]);
   const chaseCounts = useMemo(
     () => ({
-      low: items.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
-      near: items.filter((item) => Boolean(item.is_near_expiry)).length,
-      missing: items.filter((item) => Boolean(item.missing_expiry)).length,
-      expired: items.filter((item) => itemHasExpiredStock(item)).length,
+      low: items.filter((item) => isAtOrBelowPar(item)).length,
+      near: items.filter((item) => isNearExpiryItem(item)).length,
+      missing: items.filter((item) => isMissingExpiryItem(item)).length,
+      expired: items.filter((item) => isExpiredItem(item)).length,
       reconciliation: Number(data?.tab_summaries?.stock?.reconciliation_required || 0),
     }),
     [items, data?.tab_summaries?.stock?.reconciliation_required],
   );
-  const bagItems = useMemo(
-    () => (isDoctor ? data?.my_stock || [] : items),
-    [isDoctor, data?.my_stock, items],
-  );
-  const bagChaseCounts = useMemo(
-    () => ({
-      low: bagItems.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
-      near: bagItems.filter((item) => Boolean(item.is_near_expiry)).length,
-      missing: bagItems.filter((item) => Boolean(item.missing_expiry)).length,
-      expired: bagItems.filter((item) => itemHasExpiredStock(item)).length,
-    }),
-    [bagItems],
-  );
+  const doctorMetrics = useMemo(() => readDoctorMetrics(data), [data]);
   const compareRows = useMemo(() => {
     const rows = data?.compare_rows || [];
     return rows.filter(
@@ -2797,10 +3005,12 @@ export default function InventoryPage() {
   const load = useCallback(
     async (
       contextDoctorId = selectedContextDoctorId,
-      nextDoctorContext = doctorContext,
+      nextDoctorContext = doctorContextRef.current,
       { silent = false } = {},
     ) => {
-      if (!silent) setLoading(true);
+      const keepShell = silent || hasInventoryDataRef.current;
+      if (!keepShell) setLoading(true);
+      else setListRefreshing(true);
       try {
         const payload = await api.get(
           `/inventory${buildInventoryListQuery({
@@ -2818,14 +3028,14 @@ export default function InventoryPage() {
         }
       } catch (error) {
         toast.error(error.message);
-        if (!silent) setData(null);
+        if (!keepShell) setData(null);
       } finally {
-        if (!silent) setLoading(false);
+        setLoading(false);
+        setListRefreshing(false);
       }
     },
     [
       selectedContextDoctorId,
-      doctorContext,
       isDoctor,
       canUseAdminInventory,
       adminPeriodRange,
@@ -3007,10 +3217,10 @@ export default function InventoryPage() {
     );
     return source
       .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
-      .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
-      .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry))
-      .filter((item) => !showMissingExpiryOnly || Boolean(item.missing_expiry))
-      .filter((item) => !showExpiredOnly || itemHasExpiredStock(item))
+      .filter((item) => !showLowStockOnly || isAtOrBelowPar(item))
+      .filter((item) => !showNearExpiryOnly || isNearExpiryItem(item))
+      .filter((item) => !showMissingExpiryOnly || isMissingExpiryItem(item))
+      .filter((item) => !showExpiredOnly || isExpiredItem(item))
       .filter((item) => {
         if (!showUnpricedOnly) return true;
         if (unpricedFromBags && unpricedKeys.size) {
@@ -3068,14 +3278,20 @@ export default function InventoryPage() {
       (item) => !needle || String(item.item_name || "").toLowerCase().includes(needle),
     );
     if (!doctorViewIsOcs && showLowStockOnly) {
-      rows = rows.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0));
+      rows = rows.filter((item) => isAtOrBelowPar(item));
     }
     if (!doctorViewIsOcs && showMissingExpiryOnly) {
-      rows = rows.filter((item) => !item.expiry_date);
+      rows = rows.filter((item) => isMissingExpiryItem(item));
+    }
+    if (!doctorViewIsOcs && showNearExpiryOnly) {
+      rows = rows.filter((item) => isNearExpiryItem(item));
+    }
+    if (!doctorViewIsOcs && showExpiredOnly) {
+      rows = rows.filter((item) => isExpiredItem(item));
     }
     const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
     return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
-  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView, showLowStockOnly, showMissingExpiryOnly]);
+  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView, showLowStockOnly, showMissingExpiryOnly, showNearExpiryOnly, showExpiredOnly]);
 
   const mobileBagPagedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -3168,6 +3384,31 @@ export default function InventoryPage() {
     setDoctorContext("my");
     setDoctorRestockItem(null);
     setDoctorRestockOpen(true);
+  }
+
+  function handleDoctorContextChange(next) {
+    if (next === doctorContext) return;
+    setShowLowStockOnly(false);
+    setShowNearExpiryOnly(false);
+    setShowMissingExpiryOnly(false);
+    setShowExpiredOnly(false);
+    setDoctorContext(next);
+  }
+
+  function openDoctorRequestForItem(nextItem) {
+    const source = doctorViewIsOcs
+      ? nextItem
+      : ocsByFolderAndName.get(`${nextItem.folder_id}::${String(nextItem.item_name || "").toLowerCase()}`);
+    if (!source?.id) {
+      toast.error("Item not available in the OCS depot.");
+      return;
+    }
+    const params = new URLSearchParams({
+      compose: "1",
+      itemId: String(source.id),
+      return: "/inventory",
+    });
+    navigate(`/supply-requests?${params.toString()}`);
   }
 
   function applyDoctorBagFilter(kind) {
@@ -3295,7 +3536,7 @@ export default function InventoryPage() {
     toast.success("Excel file downloaded.");
   }
 
-  if (loading) return <LoadingState label="Loading inventory workspace" />;
+  if (loading && !data) return <LoadingState label="Loading inventory workspace" />;
   if (!data) return <EmptyState title="Inventory unavailable" description="Unable to load stock data right now." />;
 
   async function saveItem(payload) {
@@ -3541,6 +3782,9 @@ export default function InventoryPage() {
       reason: payload.reason,
       note: payload.note || "",
       expected_version: Number(item.row_version || 0),
+      batch_id: payload.batch_id || null,
+      legacy_unknown_lot: Boolean(payload.legacy_unknown_lot),
+      legacy_explanation: payload.legacy_explanation || "",
       ...(isSale
         ? {
             patient_id: Number(payload.patient_id),
@@ -3720,20 +3964,35 @@ export default function InventoryPage() {
     }
   }
 
-  async function saveMobileDoctorDeduct({ quantity, reason, patient_id = null, patient_label = "" }) {
+  async function saveMobileDoctorDeduct({
+    quantity,
+    reason,
+    patient_id = null,
+    patient_label = "",
+    note = "",
+    batch_id = null,
+    legacy_unknown_lot = false,
+    legacy_explanation = "",
+  }) {
     const item = mobileDeductItem;
     if (!item?.id) return;
     const qty = Number(quantity || 0);
     if (!Number.isInteger(qty) || qty <= 0) return;
-    const available = Number(item.quantity || 0);
+    const stockOutReason =
+      reason === "Sale" ? "Sale" : reason === "Expired" ? "Expired" : "Wasted";
+    const available = stockOutReason === "Sale"
+      ? Number(item.available_to_use ?? item.quantity ?? 0)
+      : Number(item.quantity || 0);
     if (qty > available) {
       toast.error("Quantity exceeds available stock.");
       return;
     }
 
-    const stockOutReason =
-      reason === "Sale" ? "Sale" : reason === "Expired" ? "Expired" : "Wasted";
-    const note = reason === "Damage" ? "Damage" : "";
+    const resolvedNote = String(note || (reason === "Damage" ? "Damaged in bag" : "")).trim();
+    if (stockOutReason !== "Sale" && resolvedNote.length < 8) {
+      toast.error("Enter a meaningful reason before confirming wastage or expiry.");
+      return;
+    }
 
     if (stockOutReason === "Sale" && !patient_id) {
       toast.error("Select a patient before logging this Sale.");
@@ -3745,8 +4004,11 @@ export default function InventoryPage() {
       action_type: "stock_out",
       quantity: qty,
       reason: stockOutReason,
-      note,
+      note: resolvedNote,
       expected_version: Number(item.row_version || 0),
+      batch_id,
+      legacy_unknown_lot: Boolean(legacy_unknown_lot),
+      legacy_explanation,
       ...(stockOutReason === "Sale"
         ? {
             patient_id: Number(patient_id),
@@ -3874,7 +4136,7 @@ export default function InventoryPage() {
             search={search}
             setSearch={setSearch}
             doctorContext={doctorContext}
-            onDoctorContextChange={setDoctorContext}
+            onDoctorContextChange={handleDoctorContextChange}
             folders={categoryFolders}
             selectedView={selectedView}
             onSelectedViewChange={setSelectedView}
@@ -3883,14 +4145,16 @@ export default function InventoryPage() {
             mobileBagTotalPages={mobileBagTotalPages}
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
-            doctorRestockCandidates={doctorRestockCandidates}
-            onOpenRestockInventory={emergencyRestockEnabled ? openDoctorFillBag : undefined}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
+            onOpenRequest={openDoctorRequestForItem}
             onOpenRestock={emergencyRestockEnabled ? openMobileDoctorRestock : undefined}
             showLowStockOnly={showLowStockOnly}
             showMissingExpiryOnly={showMissingExpiryOnly}
+            showExpiredOnly={showExpiredOnly}
             onToggleLowStock={() => applyDoctorBagFilter("low")}
             onToggleMissingExpiry={() => applyDoctorBagFilter("missing")}
+            onToggleExpired={() => applyDoctorBagFilter("expired")}
+            listRefreshing={listRefreshing}
             folderCounts={folderCounts}
             bagItemCount={items.length}
           />
@@ -4042,41 +4306,41 @@ export default function InventoryPage() {
       ) : isDoctor ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <SummaryCard
-            title="Below min"
-            value={bagChaseCounts.low}
+            title="My bag at or below par"
+            value={doctorMetrics.at_or_below_par}
             tone="rose"
-            hint="Click to filter"
+            hint="Click to filter my bag"
             active={doctorViewIsMy && showLowStockOnly}
             onClick={() => applyDoctorBagFilter("low")}
           />
           <SummaryCard
-            title="Missing expiry"
-            value={bagChaseCounts.missing}
-            hint="Click to filter"
+            title="My bag missing expiry"
+            value={doctorMetrics.missing_expiry}
+            hint="Click to filter my bag"
             active={doctorViewIsMy && showMissingExpiryOnly}
             onClick={() => applyDoctorBagFilter("missing")}
           />
           <SummaryCard
-            title="Near expiry"
-            value={bagChaseCounts.near}
+            title="My bag near expiry"
+            value={doctorMetrics.near_expiry}
             tone="amber"
             hint="Within 90 days"
             active={doctorViewIsMy && showNearExpiryOnly}
             onClick={() => applyDoctorBagFilter("near")}
           />
           <SummaryCard
-            title="Expired"
-            value={bagChaseCounts.expired}
+            title="My bag expired"
+            value={doctorMetrics.expired}
             tone="rose"
             hint="Unusable until written off"
             active={doctorViewIsMy && showExpiredOnly}
             onClick={() => applyDoctorBagFilter("expired")}
           />
           <SummaryCard
-            title="OCS can fill"
-            value={doctorRestockCandidates.length}
-            hint="Request through Supply Requests"
-            onClick={() => (window.location.href = "/supply-requests")}
+            title="Depot can fill"
+            value={doctorMetrics.ocs_can_fill}
+            hint="At or below par with usable depot stock"
+            onClick={() => navigate("/supply-requests")}
           />
         </div>
       ) : null}
@@ -4197,14 +4461,14 @@ export default function InventoryPage() {
               <div className="flex shrink-0 flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => setDoctorContext("my")}
+                  onClick={() => handleDoctorContextChange("my")}
                   className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsMy ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
                 >
                   My bag
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDoctorContext("ocs")}
+                  onClick={() => handleDoctorContextChange("ocs")}
                   className={`rounded-2xl px-4 py-2 text-sm font-semibold ${doctorViewIsOcs ? "bg-[#2d8f98] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
                 >
                   OCS depot
@@ -4353,7 +4617,11 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {pagedItems.length ? (
+        {listRefreshing ? (
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500" aria-live="polite">
+            Updating items…
+          </div>
+        ) : pagedItems.length ? (
           <>
             <div className="hidden rounded-3xl border border-slate-200/80 bg-white lg:block">
               <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
@@ -4378,7 +4646,7 @@ export default function InventoryPage() {
                   </thead>
                   <tbody>
                     {pagedItems.map((item) => {
-                      const isLow = Number(item.quantity || 0) <= Number(item.minimum_quantity || 0);
+                      const isLow = isAtOrBelowPar(item);
                       const expanded = Boolean(expandedRows[item.id]);
                       const batches = batchMap[item.id] || [];
                       return (
@@ -4407,16 +4675,8 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <div className="flex flex-col items-center gap-0.5" title="On-hand is physical stock. Available to use excludes reserved and expired units.">
-                                <span className="tabular-nums font-semibold text-slate-900">{item.quantity}</span>
-                                <span className="text-[10px] font-medium text-slate-500">
-                                  Avail {Number(item.available_to_use ?? item.quantity)}
-                                </span>
-                                {Number(item.expired_quantity || 0) > 0 ? (
-                                  <span className="text-[10px] font-bold uppercase text-rose-700">
-                                    Expired {item.expired_quantity}
-                                  </span>
-                                ) : null}
+                              <div className="flex flex-col items-center gap-0.5 text-left" title="On-hand is physical stock. Available to use excludes reserved and expired units.">
+                                <InventoryQuantityLines item={item} showMinimum={false} />
                               </div>
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>
@@ -4448,6 +4708,7 @@ export default function InventoryPage() {
                                 onEdit={openItemEditor}
                                 onRestockDoctor={canTransferToDoctorBag(user) ? handleRestockDoctor : undefined}
                                 onRestockMyInventory={openDoctorRestockForItem}
+                                onRequestItem={openDoctorRequestForItem}
                                 omitRestock={isDoctor ? !emergencyRestockEnabled : false}
                                 onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                                 onRemove={canWriteOffWarehouseStock(user) ? (nextItem) => setRemoveStock({ item: nextItem }) : undefined}
@@ -4508,6 +4769,7 @@ export default function InventoryPage() {
                       onEdit={openItemEditor}
                       onRestockDoctor={canTransferToDoctorBag(user) ? handleRestockDoctor : undefined}
                       onRestockMyInventory={openDoctorRestockForItem}
+                      onRequestItem={openDoctorRequestForItem}
                       omitRestock={isDoctor ? !emergencyRestockEnabled : false}
                       onStockOut={(nextItem) => setStockOut({ item: nextItem })}
                       onRemove={canWriteOffWarehouseStock(user) ? (nextItem) => setRemoveStock({ item: nextItem }) : undefined}

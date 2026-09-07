@@ -182,9 +182,9 @@ test.describe("Inventory workflow", () => {
     await expect(page).toHaveURL(/\/supply-requests/);
     await expect(page.getByRole("button", { name: "New supply request" })).toBeVisible({ timeout: 25_000 });
     await expect(page.getByText("Supply Ready").first()).toBeVisible();
-    await page.getByRole("button", { name: "Supply Collected" }).click();
-    await expect(page.getByText("Confirm supply collected?")).toBeVisible();
-    await page.getByRole("button", { name: "Supply Collected" }).last().click();
+    await page.getByRole("button", { name: "Confirm collection" }).click();
+    await expect(page.getByRole("heading", { name: "Confirm supplies collected" })).toBeVisible();
+    await page.getByRole("button", { name: "Confirm collection" }).last().click();
     await page.getByRole("button", { name: "History" }).click();
     await expect(page.getByText("Supply Collected").first()).toBeVisible();
 
@@ -915,9 +915,10 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     await openStockTab(page);
     await page.getByPlaceholder(/Search by item name/).fill(name);
-    await expect(page.getByText(name).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/^Expired$/).first()).toBeVisible();
-    await expect(page.getByText("Avail 0").first()).toBeVisible();
+    const itemRow = page.getByRole("row").filter({ hasText: name }).first();
+    await expect(itemRow).toBeVisible({ timeout: 20_000 });
+    await expect(itemRow.getByLabel("Stock status: Expired")).toBeVisible();
+    await expect(itemRow).toContainText(/Available to use:\s*0/);
   });
 
   test("missing expiry and non-expiring stock use different labels", async ({ request, page }) => {
@@ -1017,7 +1018,7 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/supply-requests`);
     await expect(page.getByText("Legacy – reconciliation required").first()).toBeVisible({ timeout: 20_000 });
     const legacyCard = page.locator("article").filter({ hasText: "Legacy – reconciliation required" }).first();
-    await expect(legacyCard.getByRole("button", { name: "Supply Collected" })).toHaveCount(0);
+    await expect(legacyCard.getByRole("button", { name: /Confirm collection|Supply Collected/i })).toHaveCount(0);
     const blocked = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
       headers: { Authorization: `Bearer ${doctor.token}` },
       data: { status: "completed" },
@@ -1122,5 +1123,59 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByRole("dialog", { name: "Navigation menu" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Navigation menu" })).toHaveCount(0);
+  });
+
+  test("doctors can open stock history instead of being redirected", async ({ request, page }) => {
+    const doctor = await login(request, "arun.dharee");
+    await injectStaffSession(page, doctor.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/stock-history`);
+    await expect(page).toHaveURL(/\/stock-history/);
+    await expect(page.getByRole("heading", { name: "Stock history" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Download CSV" })).toBeVisible();
+  });
+
+  test("doctor restock controls are request actions and dirty drafts confirm before close", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const doctor = await login(request, "arun.dharee");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E RequestPrefill ${Date.now()}`,
+      quantity: 6,
+    });
+    await injectStaffSession(page, doctor.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect(page.getByRole("button", { name: "OCS depot" })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "OCS depot" }).click();
+    await page.getByPlaceholder("Search items").fill(item.item_name);
+    await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Restock", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Add to request" }).first().click();
+    await expect(page).toHaveURL(/compose=1/);
+    await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/available now/i).first()).toBeVisible();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /Discard this request draft/i })).toBeVisible();
+    await page.getByRole("button", { name: "Continue editing" }).click();
+    await expect(page.getByText(item.item_name).first()).toBeVisible();
+  });
+
+  test("doctor bag and depot switching keeps bag-scoped metric labels", async ({ request, page }) => {
+    const doctor = await login(request, "arun.dharee");
+    await injectStaffSession(page, doctor.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect(page.getByRole("button", { name: /My bag at or below par/i })).toBeVisible({ timeout: 20_000 });
+    const bagMetric = (await page.getByRole("button", { name: /My bag at or below par/i }).innerText()).replace(/\s+/g, " ");
+    await page.getByRole("button", { name: "OCS depot", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "OCS depot" }).first()).toBeVisible();
+    await expect(page.getByText("Loading inventory workspace")).toHaveCount(0);
+    await expect(page.getByText("My bag at or below par")).toBeVisible();
+    await expect(page.getByText("Depot can fill")).toBeVisible();
+    const depotMetric = (await page.getByRole("button", { name: /My bag at or below par/i }).innerText()).replace(/\s+/g, " ");
+    expect(depotMetric).toBe(bagMetric);
   });
 });

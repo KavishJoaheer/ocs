@@ -132,6 +132,7 @@ const navItems = [
     label: "Stock history",
     icon: RotateCw,
     roles: ["admin", "operator", "doctor"],
+    isActiveWhen: (location) => location.pathname === "/stock-history",
   },
   {
     to: "/supply-requests",
@@ -333,14 +334,10 @@ function Sidebar() {
       </div>
 
       {/* ─── Phone: slide-out drawer ─── */}
-      <div
-        className={cx("fixed inset-0 z-50 md:hidden", drawerOpen ? "" : "pointer-events-none")}
-        hidden={!drawerOpen}
-        inert={!drawerOpen}
-        aria-hidden={!drawerOpen}
-      >
+      {drawerOpen ? (
+      <div className="fixed inset-0 z-50 md:hidden">
         <div
-          className={cx("absolute inset-0 bg-black/40 transition-opacity duration-300", drawerOpen ? "opacity-100" : "opacity-0")}
+          className="absolute inset-0 bg-black/40 transition-opacity duration-300 opacity-100"
           onClick={() => setDrawerOpen(false)}
           aria-hidden="true"
         />
@@ -350,10 +347,7 @@ function Sidebar() {
           role="dialog"
           aria-modal="true"
           aria-label="Navigation menu"
-          className={cx(
-            "fixed inset-y-0 left-0 z-50 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-gray-100 bg-white p-5 shadow-[8px_0_30px_rgba(0,0,0,0.08)] transition-transform duration-300 ease-in-out",
-            drawerOpen ? "translate-x-0" : "-translate-x-full",
-          )}
+          className="fixed inset-y-0 left-0 z-50 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-gray-100 bg-white p-5 shadow-[8px_0_30px_rgba(0,0,0,0.08)]"
           style={{ paddingTop: `max(1.25rem, var(--sat))`, paddingBottom: `max(1.25rem, var(--sab))` }}
         >
           <div className="flex min-h-0 flex-1 flex-col">
@@ -412,6 +406,7 @@ function Sidebar() {
           </button>
         </div>
       </div>
+      ) : null}
 
       {/* ─── Tablet: horizontal scroll nav (existing mobile layout) ─── */}
       <div

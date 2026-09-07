@@ -184,7 +184,10 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       .map((batch) => expiryDateValue(batch))
       .sort()[0] || null;
     const hasExpired = expiredQuantity > 0;
-    const missingExpiry = batches.some((batch) => batch.missing_expiry);
+    const batchOnHand = batches.reduce((sum, batch) => sum + Number(batch.quantity_remaining || 0), 0);
+    const unbatchedQuantity = Math.max(0, onHand - batchOnHand);
+    const missingExpiry =
+      onHand > 0 && (batches.some((batch) => batch.missing_expiry) || unbatchedQuantity > 0);
     const hasNonExpiring = batches.some((batch) => batch.is_non_expiring);
     const isNearExpiry = batches.some((batch) => batch.is_near_expiry);
     return {
@@ -204,8 +207,67 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       has_non_expiring: hasNonExpiring,
       is_near_expiry: isNearExpiry,
       is_non_expiring_only: hasNonExpiring && !missingExpiry && !hasExpired && !nearestUsableExpiry,
+      unbatched_quantity: unbatchedQuantity,
+      lots: String(item.stock_scope || "") === "doctor" ? batches : undefined,
     };
   });
+}
+
+function itemOnHand(item) {
+  return Number(item?.on_hand_quantity ?? item?.quantity ?? 0);
+}
+
+function catalogueKey(item) {
+  return `${Number(item?.folder_id || 0)}::${String(item?.item_name || "").trim().toLowerCase()}`;
+}
+
+function isAtOrBelowPar(item) {
+  const par = Number(item?.minimum_quantity || 0);
+  return par > 0 && itemOnHand(item) <= par;
+}
+
+function isMissingExpiryItem(item) {
+  return itemOnHand(item) > 0 && Boolean(item?.missing_expiry);
+}
+
+function isNearExpiryItem(item) {
+  return itemOnHand(item) > 0 && Boolean(item?.is_near_expiry);
+}
+
+function isExpiredItem(item) {
+  return Number(item?.expired_quantity || 0) > 0 || Boolean(item?.has_expired);
+}
+
+function computeDoctorInventoryMetrics(bagItems, ocsItems = []) {
+  const bag = Array.isArray(bagItems) ? bagItems : [];
+  const ocsMap = new Map();
+  for (const item of ocsItems || []) {
+    ocsMap.set(catalogueKey(item), item);
+  }
+  const atOrBelowPar = bag.filter(isAtOrBelowPar);
+  const missingExpiry = bag.filter(isMissingExpiryItem);
+  const nearExpiry = bag.filter(isNearExpiryItem);
+  const expired = bag.filter(isExpiredItem);
+  const ocsCanFill = atOrBelowPar.filter((item) => {
+    const ocs = ocsMap.get(catalogueKey(item));
+    const need = Math.max(0, Number(item.minimum_quantity || 0) - itemOnHand(item));
+    const atp = Number(ocs?.available_to_use || 0);
+    return need > 0 && atp >= need;
+  });
+  return {
+    at_or_below_par: atOrBelowPar.length,
+    missing_expiry: missingExpiry.length,
+    near_expiry: nearExpiry.length,
+    expired: expired.length,
+    ocs_can_fill: ocsCanFill.length,
+    item_ids: {
+      at_or_below_par: atOrBelowPar.map((row) => Number(row.id)),
+      missing_expiry: missingExpiry.map((row) => Number(row.id)),
+      near_expiry: nearExpiry.map((row) => Number(row.id)),
+      expired: expired.map((row) => Number(row.id)),
+      ocs_can_fill: ocsCanFill.map((row) => Number(row.id)),
+    },
+  };
 }
 
 function summarizeLocationValuation(items) {
@@ -329,13 +391,19 @@ module.exports = {
   NEAR_EXPIRY_DAYS,
   batchExpiryLabel,
   batchStockState,
+  catalogueKey,
+  computeDoctorInventoryMetrics,
   countReconciliationRequired,
   decorateBatches,
   decorateInventoryItems,
   doctorBagLabel,
+  isAtOrBelowPar,
   isExpiredBatch,
+  isExpiredItem,
   isMissingExpiryBatch,
+  isMissingExpiryItem,
   isNearExpiryDate,
+  isNearExpiryItem,
   locationDisplayMeta,
   normalizeHistoryFolderOptions,
   summarizeLocationValuation,

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ClipboardList, Plus } from "lucide-react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -87,14 +87,17 @@ function AmendmentHistory({ amendments = [] }) {
 
 export default function SupplyRequestsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [tab, setTab] = useState("active");
   const [refreshKey, setRefreshKey] = useState(0);
   const [catalogItems, setCatalogItems] = useState([]);
+  const [bagItems, setBagItems] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [editingRequest, setEditingRequest] = useState(null);
+  const [composeItems, setComposeItems] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [historyOffset, setHistoryOffset] = useState(0);
@@ -103,6 +106,7 @@ export default function SupplyRequestsPage() {
   const [historyFiltersOpen, setHistoryFiltersOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
+  const newRequestButtonRef = useRef(null);
 
   const historyParams = useMemo(
     () => ({
@@ -147,6 +151,7 @@ export default function SupplyRequestsPage() {
         );
         if (!ignore) {
           setCatalogItems(Array.isArray(payload?.ocs_stock) ? payload.ocs_stock : []);
+          setBagItems(Array.isArray(payload?.my_stock) ? payload.my_stock : []);
         }
       } catch (err) {
         if (!ignore) {
@@ -165,6 +170,28 @@ export default function SupplyRequestsPage() {
     };
   }, []);
 
+  const composeConsumedRef = useRef(false);
+
+  useEffect(() => {
+    if (searchParams.get("compose") !== "1" || catalogLoading || composeConsumedRef.current) return;
+    const itemId = Number(searchParams.get("itemId") || 0);
+    const catalogItem = catalogItems.find((item) => Number(item.id) === itemId);
+    composeConsumedRef.current = true;
+    if (itemId && catalogItem) {
+      openCreateModal([
+        {
+          id: catalogItem.id,
+          inventory_id: catalogItem.id,
+          item_name: catalogItem.item_name,
+          quantity: 1,
+          available_to_use: catalogItem.available_to_use,
+        },
+      ]);
+    } else {
+      openCreateModal([]);
+    }
+  }, [searchParams, catalogLoading, catalogItems]);
+
   const bumpRefresh = useCallback(() => {
     setRefreshKey((value) => value + 1);
   }, []);
@@ -173,11 +200,22 @@ export default function SupplyRequestsPage() {
     setModalOpen(false);
     setEditingRequest(null);
     setModalMode("create");
+    setComposeItems([]);
+    composeConsumedRef.current = false;
+    if (searchParams.get("compose") === "1") {
+      const next = new URLSearchParams(searchParams);
+      next.delete("compose");
+      next.delete("itemId");
+      next.delete("return");
+      setSearchParams(next, { replace: true });
+    }
+    window.requestAnimationFrame(() => newRequestButtonRef.current?.focus());
   }
 
-  function openCreateModal() {
+  function openCreateModal(seedItems = []) {
     setEditingRequest(null);
     setModalMode("create");
+    setComposeItems(Array.isArray(seedItems) ? seedItems : []);
     setModalOpen(true);
   }
 
@@ -257,8 +295,9 @@ export default function SupplyRequestsPage() {
 
         <div className="px-1">
           <button
+            ref={newRequestButtonRef}
             type="button"
-            onClick={openCreateModal}
+            onClick={() => openCreateModal()}
             disabled={catalogLoading}
             className="flex w-full min-h-11 items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.98] active:bg-ocs-teal/90 disabled:opacity-60"
           >
@@ -459,7 +498,7 @@ export default function SupplyRequestsPage() {
                           }
                           className="w-full min-h-11 rounded-xl bg-ocs-teal py-2.5 text-xs font-bold text-white transition active:scale-[0.98] disabled:opacity-60"
                         >
-                          {busy ? "Confirming…" : "Supply Collected"}
+                          {busy ? "Confirming…" : "Confirm collection"}
                         </button>
                       </div>
                     ) : null}
@@ -722,6 +761,8 @@ export default function SupplyRequestsPage() {
         catalogItems={catalogItems}
         editingRequest={editingRequest}
         mode={modalMode}
+        initialItems={composeItems}
+        activeRequests={displayableRequests}
         onClose={closeModal}
         onSubmit={handleSubmit}
       />
@@ -748,9 +789,10 @@ export default function SupplyRequestsPage() {
         open={confirmAction?.type === "collect"}
         onClose={() => setConfirmAction(null)}
         tone="default"
-        title="Confirm supply collected?"
+        title="Confirm supplies collected"
         description="This records collection, posts the inventory transfer into your bag, and moves the request into History."
-        confirmLabel="Supply Collected"
+        confirmLabel="Confirm collection"
+        busy={Boolean(confirmAction?.request && updatingId === confirmAction.request.id)}
         onConfirm={() =>
           confirmAction?.request
             ? runRequestAction(
@@ -761,7 +803,47 @@ export default function SupplyRequestsPage() {
               )
             : null
         }
-      />
+      >
+        {confirmAction?.request ? (
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <p><span className="font-semibold">Request</span> #{confirmAction.request.id}</p>
+            <p>
+              <span className="font-semibold">Collection date:</span>{" "}
+              {formatSupplyRequestCollectionDay(confirmAction.request.collection_date)}
+            </p>
+            <p>
+              <span className="font-semibold">Prepared by:</span>{" "}
+              {confirmAction.request.prepared_by_name || confirmAction.request.ready_by_name || "Operator"}
+            </p>
+            {confirmAction.request.transfer_transaction_id ? (
+              <p>
+                <span className="font-semibold">Receipt:</span> {confirmAction.request.transfer_transaction_id}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">A transfer receipt will be created when collection is confirmed.</p>
+            )}
+            {confirmAction.request.partial_fulfilment_approved ? (
+              <p className="font-semibold text-amber-800">Partial fulfilment — some requested quantities were not packed.</p>
+            ) : null}
+            <ul className="space-y-1">
+              {(confirmAction.request.fulfilment?.items || confirmAction.request.items || []).map((item) => {
+                const fulfilled = Number(item.fulfilled_quantity ?? item.quantity ?? 0);
+                const bag = bagItems.find(
+                  (row) =>
+                    String(row.item_name || "").toLowerCase() === String(item.item_name || "").toLowerCase(),
+                );
+                const current = Number(bag?.on_hand_quantity ?? bag?.quantity ?? 0);
+                return (
+                  <li key={item.id || item.item_name} className="break-words">
+                    {item.item_name}: fulfilled {fulfilled}
+                    {bag ? ` · resulting bag on hand ${current + fulfilled}` : ""}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <SupplyRequestDetailDrawer
         open={Boolean(detailRequestId)}

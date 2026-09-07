@@ -31,6 +31,7 @@ const {
   assertCanMarkReady,
   assignRequest,
   canonicaliseRequestItem,
+  describeFulfilmentCollectionGaps,
   fulfilmentDetail,
   lockPackedFulfilment,
   postCollectionTransfer,
@@ -297,27 +298,7 @@ function integerLineQty(value) {
 
 function describeReconciliationGaps({ status, fulfilment, events, eventsLoaded = false }) {
   if (!["accepted", "ready"].includes(status)) return [];
-  const gaps = [];
-  const items = fulfilment?.items || [];
-  if (!fulfilment || fulfilment.linkage_required || !items.length) {
-    gaps.push("Fulfilment record");
-  }
-  if (!items.length || items.some((line) => !line.inventory_id && integerLineQty(line.requested_quantity) > 0)) {
-    gaps.push("Catalogue item linkage");
-  }
-  if (!items.length || items.some((line) => !line.reservation_id && integerLineQty(line.requested_quantity) > 0)) {
-    gaps.push("Reservation records");
-  }
-  if (status === "ready") {
-    const missingPicked = !items.length
-      || items.some((line) => {
-        const requested = integerLineQty(line.requested_quantity);
-        const picked = integerLineQty(line.picked_quantity);
-        const allocations = line.allocations || line.picked_batches || [];
-        return requested > 0 && (picked <= 0 || !allocations.length);
-      });
-    if (missingPicked) gaps.push("Picked-batch allocations");
-  }
+  const gaps = describeFulfilmentCollectionGaps(fulfilment, status);
   if (eventsLoaded && (!Array.isArray(events) || !events.length)) {
     gaps.push("Request timeline");
   }
@@ -1865,7 +1846,10 @@ router.patch("/:id", (req, res) => {
     })();
   } catch (error) {
     if (error.status) {
-      return res.status(error.status).json({ error: error.message });
+      return res.status(error.status).json({
+        error: error.message,
+        ...(error.extra || {}),
+      });
     }
     throw error;
   }

@@ -1,8 +1,26 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 import Modal from "./Modal.jsx";
 import { getValidCollectionDays } from "../lib/collectionDays.js";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
+
+function catalogAvailable(item) {
+  return Number(item?.available_to_use ?? item?.available_to_promise ?? item?.quantity ?? 0);
+}
+
+function snapshotDraft({ items, note, collectionDate }) {
+  return JSON.stringify({
+    items: (items || []).map((row) => ({
+      inventory_id: row.inventory_id || null,
+      item_name: row.item_name,
+      quantity: Number(row.quantity || 0),
+    })),
+    note: String(note || ""),
+    collectionDate: String(collectionDate || ""),
+  });
+}
 
 export default function RestockRequestModal({
   open,
@@ -12,6 +30,8 @@ export default function RestockRequestModal({
   isSaving,
   editingRequest = null,
   mode = null,
+  initialItems = [],
+  activeRequests = [],
 }) {
   const resolvedMode =
     mode || (editingRequest?.id ? "edit" : "create");
@@ -22,6 +42,8 @@ export default function RestockRequestModal({
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [collectionDate, setCollectionDate] = useState("");
   const [note, setNote] = useState("");
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [baseline, setBaseline] = useState("");
 
   const collectionOptions = useMemo(() => {
     const days = getValidCollectionDays(4);
@@ -42,35 +64,47 @@ export default function RestockRequestModal({
     return days;
   }, [open, editingRequest]);
 
-  const [syncedDeps, setSyncedDeps] = useState({ open, editingRequest, collectionOptions });
+  const [syncedDeps, setSyncedDeps] = useState({ open, editingRequest, collectionOptions, initialItems });
 
   if (
     syncedDeps.open !== open ||
     syncedDeps.editingRequest !== editingRequest ||
-    syncedDeps.collectionOptions !== collectionOptions
+    syncedDeps.collectionOptions !== collectionOptions ||
+    syncedDeps.initialItems !== initialItems
   ) {
-    setSyncedDeps({ open, editingRequest, collectionOptions });
+    setSyncedDeps({ open, editingRequest, collectionOptions, initialItems });
 
     if (open) {
       setSearchQuery("");
       setSuggestionsOpen(false);
+      setDiscardOpen(false);
 
       if (editingRequest) {
-        setItems(
-          (editingRequest.items || []).map((row) => ({
-            inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
-            item_name: row.item_name,
-            quantity: Number(row.quantity || 1),
-            ocs_available: row.inventory_quantity ?? null,
-          })),
-        );
-        setNote(String(editingRequest.note || ""));
+        const nextItems = (editingRequest.items || []).map((row) => ({
+          inventory_id: row.inventory_id ? Number(row.inventory_id) : null,
+          item_name: row.item_name,
+          quantity: Number(row.quantity || 1),
+          ocs_available: Number(row.available_to_use ?? row.inventory_quantity ?? row.ocs_available ?? 0),
+        }));
+        const nextNote = String(editingRequest.note || "");
         const existingDate = String(editingRequest.collection_date || "");
-        setCollectionDate(existingDate || collectionOptions[0]?.iso || "");
+        const nextDate = existingDate || collectionOptions[0]?.iso || "";
+        setItems(nextItems);
+        setNote(nextNote);
+        setCollectionDate(nextDate);
+        setBaseline(snapshotDraft({ items: nextItems, note: nextNote, collectionDate: nextDate }));
       } else {
-        setItems([]);
+        const seeded = (Array.isArray(initialItems) ? initialItems : []).map((row) => ({
+          inventory_id: Number(row.inventory_id || row.id) || null,
+          item_name: row.item_name,
+          quantity: Number(row.quantity || 1),
+          ocs_available: catalogAvailable(row),
+        }));
+        const nextDate = collectionOptions[0]?.iso || "";
+        setItems(seeded);
         setNote("");
-        setCollectionDate(collectionOptions[0]?.iso || "");
+        setCollectionDate(nextDate);
+        setBaseline(snapshotDraft({ items: [], note: "", collectionDate: nextDate }));
       }
     }
   }
@@ -98,6 +132,23 @@ export default function RestockRequestModal({
       .slice(0, 8);
   }, [catalogItems, searchQuery, selectedKeys]);
 
+  const isDirty = open && snapshotDraft({ items, note, collectionDate }) !== baseline;
+  const draftHasContent =
+    items.length > 0 || String(note || "").trim().length > 0 || Boolean(collectionDate && collectionDate !== (collectionOptions[0]?.iso || ""));
+
+  useEffect(() => {
+    setUnsavedWork("supply-request-draft", Boolean(open && isDirty && draftHasContent));
+    return () => setUnsavedWork("supply-request-draft", false);
+  }, [open, isDirty, draftHasContent]);
+
+  function requestClose() {
+    if (isDirty && draftHasContent) {
+      setDiscardOpen(true);
+      return;
+    }
+    onClose();
+  }
+
   function addItem(catalogItem) {
     setItems((prev) => [
       ...prev,
@@ -105,7 +156,7 @@ export default function RestockRequestModal({
         inventory_id: Number(catalogItem.id) || null,
         item_name: catalogItem.item_name,
         quantity: 1,
-        ocs_available: Number(catalogItem.quantity || 0),
+        ocs_available: catalogAvailable(catalogItem),
       },
     ]);
     setSearchQuery("");
@@ -124,6 +175,18 @@ export default function RestockRequestModal({
 
   function removeItem(idx) {
     setItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function matchingActiveRequests(row) {
+    return (activeRequests || []).filter((request) => {
+      const status = String(request.status || "").toLowerCase();
+      if (!["pending", "accepted", "ready"].includes(status)) return false;
+      return (request.items || []).some(
+        (item) =>
+          (row.inventory_id && Number(item.inventory_id) === Number(row.inventory_id)) ||
+          String(item.item_name || "").toLowerCase() === String(row.item_name || "").toLowerCase(),
+      );
+    });
   }
 
   function handleSubmit() {
@@ -147,9 +210,10 @@ export default function RestockRequestModal({
   }
 
   return (
+    <>
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       title={
         isAmending
           ? "Request Changes"
@@ -188,7 +252,9 @@ export default function RestockRequestModal({
           </div>
           {suggestionsOpen && filteredCatalog.length ? (
             <div className="absolute z-20 mt-1 max-h-[220px] w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg">
-              {filteredCatalog.map((catalogItem) => (
+              {filteredCatalog.map((catalogItem) => {
+                const available = catalogAvailable(catalogItem);
+                return (
                 <button
                   key={catalogItem.id}
                   type="button"
@@ -198,12 +264,13 @@ export default function RestockRequestModal({
                   }}
                   className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left text-sm transition last:border-b-0 hover:bg-slate-50"
                 >
-                  <span className="font-semibold text-slate-800">{catalogItem.item_name}</span>
-                  <span className="text-xs text-slate-500">
-                    {Number(catalogItem.quantity || 0)} in OCS
+                  <span className="min-w-0 break-words font-semibold text-slate-800">{catalogItem.item_name}</span>
+                  <span className="shrink-0 text-xs text-slate-500">
+                    {available} available now
                   </span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           ) : null}
         </div>
@@ -214,16 +281,30 @@ export default function RestockRequestModal({
               No items added yet. Search above to start your request.
             </div>
           ) : (
-            items.map((row, idx) => (
+            items.map((row, idx) => {
+              const available = Number.isFinite(Number(row.ocs_available)) ? Number(row.ocs_available) : null;
+              const shortage = available != null && Number(row.quantity || 0) > available;
+              const duplicates = matchingActiveRequests(row);
+              return (
               <div
                 key={`${row.inventory_id || row.item_name}-${idx}`}
                 className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-900">{row.item_name}</p>
-                  {Number.isFinite(row.ocs_available) ? (
+                  <p className="break-words text-sm font-semibold text-slate-900">{row.item_name}</p>
+                  {available != null ? (
                     <p className="text-[11px] text-slate-500">
-                      {row.ocs_available} available in OCS
+                      {available} available now
+                    </p>
+                  ) : null}
+                  {shortage ? (
+                    <p className="text-[11px] font-semibold text-amber-800">
+                      Full fulfilment is not currently available.
+                    </p>
+                  ) : null}
+                  {duplicates.length ? (
+                    <p className="text-[11px] font-semibold text-amber-800">
+                      Already on request #{duplicates.map((request) => request.id).join(", #")} ({duplicates[0].status}).
                     </p>
                   ) : null}
                 </div>
@@ -233,7 +314,7 @@ export default function RestockRequestModal({
                     aria-label={`Decrease ${row.item_name}`}
                     onClick={() => changeQuantity(idx, -1)}
                     disabled={row.quantity <= 1}
-                    className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:opacity-40"
+                    className="inline-flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:opacity-40"
                   >
                     <Minus className="size-4" />
                   </button>
@@ -244,7 +325,7 @@ export default function RestockRequestModal({
                     type="button"
                     aria-label={`Increase ${row.item_name}`}
                     onClick={() => changeQuantity(idx, +1)}
-                    className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700"
+                    className="inline-flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700"
                   >
                     <Plus className="size-4" />
                   </button>
@@ -252,13 +333,14 @@ export default function RestockRequestModal({
                     type="button"
                     aria-label={`Remove ${row.item_name}`}
                     onClick={() => removeItem(idx)}
-                    className="inline-flex size-9 items-center justify-center rounded-xl text-rose-500 transition hover:bg-rose-50"
+                    className="inline-flex size-11 items-center justify-center rounded-xl text-rose-500 transition hover:bg-rose-50"
                   >
                     <X className="size-4" />
                   </button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -298,10 +380,10 @@ export default function RestockRequestModal({
           <strong>Mondays, Wednesdays, Fridays, and Saturdays</strong>.
         </div>
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 bg-white pt-2 sm:flex-row sm:justify-end">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
           >
             Close
@@ -323,5 +405,18 @@ export default function RestockRequestModal({
         </div>
       </div>
     </Modal>
+    <ConfirmDialog
+      open={discardOpen}
+      onClose={() => setDiscardOpen(false)}
+      title="Discard this request draft?"
+      description="You have selected items or changed details. Closing now will discard this draft."
+      cancelLabel="Continue editing"
+      confirmLabel="Discard draft"
+      onConfirm={() => {
+        setDiscardOpen(false);
+        onClose();
+      }}
+    />
+    </>
   );
 }

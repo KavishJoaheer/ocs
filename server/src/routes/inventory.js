@@ -60,9 +60,11 @@ const {
 } = require("../lib/inventoryAccess");
 const { availableToPromise, consumeAvailableFefo } = require("../lib/restockFulfilment");
 const {
+  computeDoctorInventoryMetrics,
   countReconciliationRequired,
   decorateBatches,
   decorateInventoryItems,
+  isAtOrBelowPar,
   locationDisplayMeta,
   summarizeLocationValuation,
 } = require("../lib/inventoryStockState");
@@ -104,7 +106,7 @@ router.get("/data-quality.csv", (req, res) => {
     : getItems({ stockScope: "ocs" });
   const rows = [];
   if (kind === "all" || kind === "low_stock") {
-    for (const item of items.filter((row) => Number(row.quantity || 0) <= Number(row.minimum_quantity || 0))) {
+    for (const item of items.filter((row) => isAtOrBelowPar(row))) {
       rows.push(["low_stock", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, item.nearest_usable_expiry || ""]);
     }
   }
@@ -720,15 +722,16 @@ function getBatchQuantityTotal(itemId) {
   return Number(row?.total || 0);
 }
 
-/** Deduct stock using FEFO batches; heals missing batch rows when ledger quantity allows. */
+/** Deduct stock using FEFO batches; optionally heals missing batch rows when ledger quantity allows. */
 function consumeStock(itemId, quantity, options = {}) {
   const amount = Number(quantity || 0);
   if (!Number.isInteger(amount) || amount <= 0) {
     return { ok: false, allocations: [] };
   }
 
+  const healMissingBatches = options.healMissingBatches !== false;
   let batchTotal = getBatchQuantityTotal(itemId);
-  if (batchTotal < amount) {
+  if (healMissingBatches && batchTotal < amount) {
     const item = db
       .prepare("SELECT quantity, cost_price, expiry_date FROM inventory WHERE id = ?")
       .get(itemId);
@@ -745,6 +748,39 @@ function consumeStock(itemId, quantity, options = {}) {
   }
 
   return consumeBatches(itemId, amount, options);
+}
+
+function consumeSpecificBatch(itemId, batchId, quantity, { allowExpired = false, requireExpired = false } = {}) {
+  const amount = Number(quantity || 0);
+  const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ? AND item_id = ?").get(batchId, itemId);
+  if (!batch) {
+    return { ok: false, allocations: [], error: "The selected bag lot was not found." };
+  }
+  const remaining = Number(batch.quantity_remaining || 0);
+  if (amount > remaining) {
+    return { ok: false, allocations: [], error: `Quantity exceeds the selected lot balance of ${remaining}.` };
+  }
+  const expired = Boolean(decorateBatches([batch])[0]?.expired);
+  if (expired && !allowExpired) {
+    return { ok: false, allocations: [], error: "Expired stock cannot be used for sale or ordinary consumption." };
+  }
+  if (requireExpired && !expired) {
+    return { ok: false, allocations: [], error: "Select an expired lot to record expiry." };
+  }
+  try {
+    consumeAllocatedBatches([{ batch_id: Number(batch.id), quantity: amount }]);
+    return {
+      ok: true,
+      allocations: [{
+        batch_id: Number(batch.id),
+        quantity: amount,
+        expiry_date: batch.expiry_date || null,
+        is_non_expiring: Number(batch.is_non_expiring || 0) === 1,
+      }],
+    };
+  } catch (error) {
+    return { ok: false, allocations: [], error: error.message || "Unable to consume the selected lot." };
+  }
 }
 
 function doctorBagLabel(name) {
@@ -906,7 +942,7 @@ function recordMovement({
 function summarize(items, doctorId = null) {
   const valuation = summarizeLocationValuation(items);
   const totalAmount = valuation.known_value;
-  const lowStock = items.filter((item) => item.quantity <= item.minimum_quantity);
+  const lowStock = items.filter((item) => isAtOrBelowPar(item));
   const nearExpiry = items.filter((item) => item.is_near_expiry);
   const missingExpiry = items.filter((item) => item.missing_expiry);
   const expired = items.filter((item) => item.has_expired);
@@ -1432,7 +1468,8 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
           },
         }
       : null,
-    low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
+    doctor_metrics: doctorId ? computeDoctorInventoryMetrics(myStock, ocsStock) : null,
+    low_stock_items: activeItems.filter((item) => isAtOrBelowPar(item)),
     near_expiry_items: activeItems.filter((item) => item.is_near_expiry),
     missing_expiry_items: activeItems.filter((item) => item.missing_expiry),
     expired_items: activeItems.filter((item) => item.has_expired),
@@ -1626,6 +1663,30 @@ function buildConsolidatedActivity(rows) {
   return consolidated;
 }
 
+function enrichActivityRow(row) {
+  const meta = typeof row.meta_json === "string" ? safeParseJson(row.meta_json, {}) : (row.meta_json || {});
+  const requestId = meta.request_id || meta.restock_request_id || null;
+  const transactionId = row.transaction_id || meta.transaction_id || null;
+  const resultingBalance =
+    row.next_quantity == null || row.next_quantity === ""
+      ? (meta.next_quantity == null ? null : Number(meta.next_quantity))
+      : Number(row.next_quantity);
+  const expiry = meta.expiry_date || meta.batch_expiry || null;
+  const reason = String(meta.stock_out_note || meta.note || row.movement_note || "").trim();
+  const legacy =
+    Boolean(meta.legacy_unknown_lot || meta.source_identity_unavailable || meta.legacy_data_unavailable) ||
+    (!String(row.batch_id || "").trim() && String(row.action_type || "").includes("stock_out"));
+  return {
+    ...row,
+    request_id: requestId ? Number(requestId) || requestId : null,
+    receipt_number: transactionId || null,
+    resulting_balance: Number.isFinite(resultingBalance) ? resultingBalance : null,
+    expiry_date: expiry || null,
+    reason_note: reason,
+    legacy_data_unavailable: Boolean(legacy && !String(row.batch_id || "").trim()),
+  };
+}
+
 function paginateConsolidated(consolidated, { page = 1, limit = 50 } = {}) {
   const total = consolidated.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -1735,20 +1796,27 @@ router.get("/receipts/:transactionId", (req, res) => {
 
 router.get("/activity-history", (req, res) => {
   ensureInfrastructure();
+  const role = String(req.auth?.role || "").toLowerCase();
+  const isDoctorViewer = role === "doctor";
+  if (isDoctorViewer && !req.auth.doctor_id) {
+    return res.status(403).json({ error: "Doctor bag is not linked to this account." });
+  }
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
-  const { whereSql, params } = buildActivityHistoryFilter(req.query);
+  const query = isDoctorViewer ? { ...req.query, userId: undefined } : req.query;
+  const { whereSql, params } = buildActivityHistoryFilter(query);
   const doctorScopeSql =
-    req.auth.role === "doctor" && req.auth.doctor_id
+    isDoctorViewer
       ? " AND EXISTS (SELECT 1 FROM inventory inv WHERE inv.id = m.item_id AND inv.stock_scope = 'doctor' AND inv.owner_doctor_id = @doctorBagId)"
       : "";
   const scopedParams = {
     ...params,
-    doctorBagId: req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) : null,
+    doctorBagId: isDoctorViewer ? Number(req.auth.doctor_id) : null,
   };
   const rawRows = db
     .prepare(`
-      SELECT h.*, m.item_id AS movement_item_id, i.cost_price, i.selling_price
+      SELECT h.*, m.item_id AS movement_item_id, m.previous_quantity, m.next_quantity, m.note AS movement_note,
+        i.cost_price, i.selling_price
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
@@ -1756,12 +1824,11 @@ router.get("/activity-history", (req, res) => {
       ORDER BY h.timestamp DESC, h.id DESC
     `)
     .all(scopedParams);
-  const consolidated = buildConsolidatedActivity(rawRows);
+  const consolidated = buildConsolidatedActivity(rawRows).map(enrichActivityRow);
   const paginated = paginateConsolidated(consolidated, { page, limit });
   const analytics = computeActivityAnalytics(consolidated, rawRows);
   const netValueRs = roundCurrency(consolidated.reduce((sum, row) => sum + Number(row.value_rs || 0), 0));
 
-  const isDoctorViewer = req.auth.role === "doctor";
   const actors = isDoctorViewer
     ? []
     : db
@@ -1797,40 +1864,91 @@ router.get("/activity-history", (req, res) => {
 
 router.get("/activity-history/export.csv", (req, res) => {
   ensureInfrastructure();
-  if (!isWarehouseManager(String(req.auth?.role || "").toLowerCase())) {
-    return res.status(403).json({ error: "Only admin can export stock activity." });
+  const role = String(req.auth?.role || "").toLowerCase();
+  const isDoctorViewer = role === "doctor";
+  if (!isDoctorViewer && !isWarehouseManager(role)) {
+    return res.status(403).json({ error: "Not authorised to export stock activity." });
+  }
+  if (isDoctorViewer && !req.auth.doctor_id) {
+    return res.status(403).json({ error: "Doctor bag is not linked to this account." });
   }
 
-  const { whereSql, params } = buildActivityHistoryFilter(req.query);
+  const query = isDoctorViewer ? { ...req.query, userId: undefined } : req.query;
+  const { whereSql, params } = buildActivityHistoryFilter(query);
+  const doctorScopeSql = isDoctorViewer
+    ? " AND EXISTS (SELECT 1 FROM inventory inv WHERE inv.id = m.item_id AND inv.stock_scope = 'doctor' AND inv.owner_doctor_id = @doctorBagId)"
+    : "";
+  const scopedParams = {
+    ...params,
+    doctorBagId: isDoctorViewer ? Number(req.auth.doctor_id || 0) : null,
+  };
   const rows = db
     .prepare(`
-      SELECT h.*, m.item_id AS movement_item_id, i.cost_price, i.selling_price
+      SELECT h.*, m.item_id AS movement_item_id, m.previous_quantity, m.next_quantity, m.note AS movement_note,
+        i.cost_price, i.selling_price
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
-      WHERE ${whereSql}
+      WHERE ${whereSql}${doctorScopeSql}
       ORDER BY h.timestamp DESC, h.id DESC
     `)
-    .all(params);
-  const consolidated = buildConsolidatedActivity(rows);
+    .all(scopedParams);
+  const consolidated = buildConsolidatedActivity(rows).map(enrichActivityRow);
 
-  const csvLines = [
-    ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)"].join(","),
-    ...consolidated.map((row) =>
-      [
-        escapeCsvValue(row.timestamp),
-        escapeCsvValue(row.actor_name),
-        escapeCsvValue(row.actor_role),
-        escapeCsvValue(row.action_type),
-        escapeCsvValue(row.item_name),
-        Number(row.quantity || 0),
-        escapeCsvValue(row.source_text),
-        escapeCsvValue(row.destination_text),
-        escapeCsvValue(row.batch_id),
-        Number(row.value_rs || 0).toFixed(2),
-      ].join(","),
-    ),
-  ];
+  const csvLines = isDoctorViewer
+    ? [
+        [
+          "Date and time",
+          "Item",
+          "Movement type",
+          "Quantity change",
+          "Resulting balance",
+          "Acting user",
+          "Source",
+          "Destination",
+          "Request number",
+          "Transfer receipt",
+          "Batch or lot",
+          "Expiry",
+          "Reason or note",
+          "Legacy warning",
+        ].join(","),
+        ...consolidated.map((row) =>
+          [
+            escapeCsvValue(row.timestamp),
+            escapeCsvValue(row.item_name),
+            escapeCsvValue(row.action_type),
+            Number(row.quantity || 0),
+            row.resulting_balance == null ? "" : Number(row.resulting_balance),
+            escapeCsvValue(row.actor_name),
+            escapeCsvValue(row.source_text),
+            escapeCsvValue(row.destination_text),
+            row.request_id == null ? "" : String(row.request_id),
+            escapeCsvValue(row.receipt_number || ""),
+            escapeCsvValue(row.batch_id),
+            escapeCsvValue(row.expiry_date || ""),
+            escapeCsvValue(row.reason_note || ""),
+            row.legacy_data_unavailable ? "Legacy/unavailable data" : "",
+          ].join(","),
+        ),
+      ]
+    : [
+        ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)"].join(","),
+        ...consolidated.map((row) =>
+          [
+            escapeCsvValue(row.timestamp),
+            escapeCsvValue(row.actor_name),
+            escapeCsvValue(row.actor_role),
+            escapeCsvValue(row.action_type),
+            escapeCsvValue(row.item_name),
+            Number(row.quantity || 0),
+            escapeCsvValue(row.source_text),
+            escapeCsvValue(row.destination_text),
+            escapeCsvValue(row.batch_id),
+            Number(row.value_rs || 0).toFixed(2),
+          ].join(","),
+        ),
+      ];
 
   const fileName = `stock-activity-${new Date().toISOString().slice(0, 10)}.csv`;
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -2615,6 +2733,42 @@ router.post("/items/:id/actions", (req, res) => {
     }
   }
 
+  const decoratedItem = decorateInventoryItems([item])[0] || item;
+  const availableToUse = Number(decoratedItem.available_to_use ?? item.quantity ?? 0);
+  const unbatchedQuantity = Number(decoratedItem.unbatched_quantity || 0);
+  const selectedBatchId = Number(req.body.batch_id || req.body.lot_id || 0) || null;
+  const legacyUnknownLot = Boolean(req.body.legacy_unknown_lot || req.body.legacy_lot);
+  const legacyExplanation = String(req.body.legacy_explanation || req.body.source_explanation || "").trim();
+
+  if (actionType === "stock_out" && (stockOutReason === "Wasted" || stockOutReason === "Expired")) {
+    if (note.length < 8) {
+      return res.status(400).json({
+        error: "Record a meaningful reason (at least 8 characters) before confirming wastage or expiry.",
+      });
+    }
+    if (!selectedBatchId && !legacyUnknownLot) {
+      return res.status(400).json({
+        error: "Select the affected bag lot, or confirm this is legacy/unknown lot stock.",
+      });
+    }
+    if (legacyUnknownLot && legacyExplanation.length < 8) {
+      return res.status(400).json({
+        error: "Explain why the lot, batch or transfer receipt identity is unavailable.",
+      });
+    }
+    if (legacyUnknownLot && quantity > unbatchedQuantity) {
+      return res.status(409).json({
+        error: `Legacy/unknown lot only covers ${unbatchedQuantity} unit(s) without a batch identity.`,
+      });
+    }
+  }
+
+  if (actionType === "stock_out" && stockOutReason === "Sale" && quantity > availableToUse) {
+    return res.status(409).json({
+      error: "Sale quantity cannot include expired or reserved stock. Reduce the quantity or write off expired units first.",
+    });
+  }
+
   let salePatient = null;
   if (actionType === "stock_out" && stockOutReason === "Sale") {
     const requestedPatientId = Number(req.body.patient_id || 0);
@@ -2665,10 +2819,26 @@ router.post("/items/:id/actions", (req, res) => {
           });
         }
       } else {
-        const consumed = consumeStock(itemId, quantity);
-        if (!consumed.ok) {
-          throw new Error("Insufficient stock.");
+        let consumed;
+        if (actionType === "stock_out" && (stockOutReason === "Wasted" || stockOutReason === "Expired") && legacyUnknownLot) {
+          consumed = { ok: true, allocations: [], legacy_unknown_lot: true };
+        } else if (actionType === "stock_out" && selectedBatchId) {
+          consumed = consumeSpecificBatch(itemId, selectedBatchId, quantity, {
+            allowExpired: stockOutReason === "Expired" || stockOutReason === "Wasted",
+            requireExpired: stockOutReason === "Expired",
+          });
+        } else {
+          consumed = consumeStock(itemId, quantity, {
+            healMissingBatches: false,
+            includeExpired: stockOutReason === "Expired",
+          });
         }
+        if (!consumed.ok) {
+          const err = new Error(consumed.error || "Insufficient stock.");
+          err.status = 409;
+          throw err;
+        }
+        req._stockOutConsumed = consumed;
       }
 
       const movementActionType = actionType === "stock_out" ? "stock_out" : actionType;
@@ -2708,6 +2878,11 @@ router.post("/items/:id/actions", (req, res) => {
                 stock_out_note: note || "",
                 item_name: item.item_name,
                 doctor_id: doctorId,
+                batch_id: selectedBatchId || (req._stockOutConsumed?.allocations || []).map((row) => row.batch_id).filter(Boolean)[0] || null,
+                legacy_unknown_lot: Boolean(legacyUnknownLot),
+                source_identity_unavailable: Boolean(legacyUnknownLot),
+                legacy_explanation: legacyUnknownLot ? legacyExplanation : "",
+                resulting_balance: nextQuantity,
                 admin_audit_action:
                   stockOutReason === "Sale"
                     ? "Sale"
@@ -2746,7 +2921,7 @@ router.post("/items/:id/actions", (req, res) => {
         inventory: getPayload(req),
       });
     }
-    return res.status(400).json({ error: error?.message || "Unable to process My Stock action." });
+    return res.status(error.status || 400).json({ error: error?.message || "Unable to process My Stock action." });
   }
 
   if (saleBilling?.attached && salePatient?.id) {

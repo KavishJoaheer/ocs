@@ -19,6 +19,11 @@ const {
   toNumber,
 } = require("../lib/utils");
 const {
+  decorateInventoryItems,
+  computeDoctorInventoryMetrics,
+  catalogueKey,
+} = require("../lib/inventoryStockState");
+const {
   CLINIC_UTC_OFFSET_HOURS,
   DOCTOR_COMMISSION_RATE,
   OCS_COMMISSION_RATE,
@@ -559,53 +564,63 @@ function getOcsLowStockAlert() {
 
 function getDoctorLowStockAlert(doctorId) {
   try {
-    const rows = db
-      .prepare(`
-        SELECT
-          i.id AS my_item_id,
-          i.folder_id,
-          i.item_name,
-          i.quantity AS my_quantity,
-          i.minimum_quantity AS par_level,
-          o.id AS ocs_item_id,
-          o.quantity AS ocs_quantity
+    const bagRows = db
+      .prepare(
+        `
+        SELECT i.*, f.name AS folder_name
         FROM inventory i
-        LEFT JOIN inventory o
-          ON o.stock_scope = 'ocs'
-         AND o.owner_doctor_id IS NULL
-         AND o.folder_id = i.folder_id
-         AND o.item_name = i.item_name
+        LEFT JOIN inventory_folders f ON f.id = i.folder_id
         WHERE i.stock_scope = 'doctor'
           AND i.owner_doctor_id = ?
-          AND i.minimum_quantity > 0
-      `)
-      .all(doctorId)
-      .map((row) => {
-        const parLevel = Number(row.par_level || 0);
-        const quantity = Number(row.my_quantity || 0);
-        const ratio = parLevel > 0 ? quantity / parLevel : 1;
-        const needed = Math.max(parLevel - quantity, 0);
-        return {
-          my_item_id: Number(row.my_item_id),
-          ocs_item_id: Number(row.ocs_item_id || 0),
-          item_name: row.item_name,
-          folder_id: Number(row.folder_id || 0),
-          par_level: parLevel,
-          current_quantity: quantity,
-          required_quantity: needed,
-          ocs_available: Number(row.ocs_quantity || 0),
-          ratio,
-        };
-      })
-      .filter((row) => row.par_level > 0 && row.current_quantity <= row.par_level);
+          AND i.archived_at IS NULL
+      `,
+      )
+      .all(doctorId);
+    const ocsRows = db
+      .prepare(
+        `
+        SELECT i.*, f.name AS folder_name
+        FROM inventory i
+        LEFT JOIN inventory_folders f ON f.id = i.folder_id
+        WHERE i.stock_scope = 'ocs'
+          AND i.owner_doctor_id IS NULL
+          AND i.archived_at IS NULL
+      `,
+      )
+      .all();
+    const bag = decorateInventoryItems(bagRows);
+    const ocs = decorateInventoryItems(ocsRows);
+    const metrics = computeDoctorInventoryMetrics(bag, ocs);
+    const ocsMap = new Map(ocs.map((item) => [catalogueKey(item), item]));
+    const bagById = new Map(bag.map((item) => [Number(item.id), item]));
+    const items = (metrics.item_ids?.at_or_below_par || []).map((id) => {
+      const row = bagById.get(Number(id));
+      if (!row) return null;
+      const parLevel = Number(row.minimum_quantity || 0);
+      const quantity = Number(row.on_hand_quantity ?? row.quantity ?? 0);
+      const ocsItem = ocsMap.get(catalogueKey(row));
+      const needed = Math.max(parLevel - quantity, 0);
+      return {
+        my_item_id: Number(row.id),
+        ocs_item_id: Number(ocsItem?.id || 0),
+        item_name: row.item_name,
+        folder_id: Number(row.folder_id || 0),
+        par_level: parLevel,
+        current_quantity: quantity,
+        required_quantity: needed,
+        ocs_available: Number(ocsItem?.available_to_use || 0),
+        ratio: parLevel > 0 ? quantity / parLevel : 1,
+      };
+    }).filter(Boolean);
 
     return {
-      triggered: rows.length > 0,
-      total_items: rows.length,
-      items: rows,
+      triggered: items.length > 0,
+      total_items: metrics.at_or_below_par,
+      metrics,
+      items,
     };
   } catch (_error) {
-    return { triggered: false, total_items: 0, items: [] };
+    return { triggered: false, total_items: 0, items: [], metrics: null };
   }
 }
 

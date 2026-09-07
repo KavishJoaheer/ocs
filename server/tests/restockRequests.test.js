@@ -1063,8 +1063,15 @@ test("unreconciled legacy ready requests cannot be collected", async () => {
     body: { status: "completed" },
   });
   assert.equal(collect.status, 409, JSON.stringify(collect.data));
+  assert.equal(collect.data.reconciliation_required, true);
+  const after = db.prepare("SELECT status, transfer_transaction_id FROM restock_requests WHERE id = ?").get(requestId);
+  assert.equal(after.status, "ready");
+  assert.equal(after.transfer_transaction_id, null);
+  const movements = db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE note LIKE ?").get(`%#${requestId}%`);
+  assert.equal(Number(movements.count || 0), 0);
   const detail = await api("GET", `/api/restock-requests/${requestId}`, { token: operatorToken });
   assert.equal(detail.data.request.reconciliation_required, true);
+  assert.equal(detail.data.request.status, "ready");
 });
 
 test("admin exceptional cancellation of accepted requests requires a 10-character reason", async () => {

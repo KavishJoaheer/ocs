@@ -670,6 +670,57 @@ test("fulfilled quantity of zero cannot mark a non-zero request ready", async ()
   assert.equal(ready.status, 400, JSON.stringify(ready.data));
 });
 
+test("approved partial fulfilment can collect when one line is intentionally zero", async () => {
+  const firstName = `PartialKeep ${Date.now()}`;
+  const secondName = `PartialZero ${Date.now()}`;
+  const firstId = insertOcsItem({ name: firstName, qty: 5 });
+  const secondId = insertOcsItem({ name: secondName, qty: 5 });
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: {
+      collection_date: collectionDate,
+      note: "partial line test",
+      items: [
+        { inventory_id: firstId, item_name: firstName, quantity: 2 },
+        { inventory_id: secondId, item_name: secondName, quantity: 2 },
+      ],
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const requestId = created.data.request.id;
+  const accepted = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const lines = accepted.data.request.fulfilment.items;
+  const picked = await api("PATCH", `/api/restock-requests/${requestId}/fulfilment`, {
+    token: operatorToken,
+    body: {
+      lines: lines.map((line, index) => ({
+        id: line.id,
+        picked_quantity: index === 0 ? 2 : 0,
+        fulfilled_quantity: index === 0 ? 2 : 0,
+      })),
+      partial_approved: true,
+      partial_reason: "Second requested line unavailable after final warehouse check",
+    },
+  });
+  assert.equal(picked.status, 200, JSON.stringify(picked.data));
+  const ready = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: operatorToken,
+    body: { status: "ready" },
+  });
+  assert.equal(ready.status, 200, JSON.stringify(ready.data));
+  const completed = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(completed.status, 200, JSON.stringify(completed.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(firstId).quantity, 3);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(secondId).quantity, 5);
+});
+
 test("partial fulfilment across batches consumes fulfilled quantity in locked FEFO order", async () => {
   const itemName = `Split ${Date.now()}`;
   const itemId = insertOcsItem({ name: itemName, qty: 0, expiry: "2028-01-01" });
@@ -2355,3 +2406,94 @@ test("derived stock fields exclude expired units from available-to-use and disti
   assert.doesNotMatch(String(bag.data.tab_summaries.stock.location_heading), /My Stock/i);
 });
 
+test("doctor inventory metrics match dashboard and exclude zero-quantity missing expiry", async () => {
+  const parName = `ParZero ${Date.now()}`;
+  const missingName = `MissZero ${Date.now()}`;
+  const lowName = `LowBag ${Date.now()}`;
+  db.prepare(
+    `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+     VALUES (?, ?, 0, 0, 'unit', 5, 10, 'doctor', ?)`,
+  ).run(parName, folderId, doctorId);
+  db.prepare(
+    `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+     VALUES (?, ?, 0, 2, 'unit', 5, 10, 'doctor', ?)`,
+  ).run(missingName, folderId, doctorId);
+  const lowId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+         VALUES (?, ?, 1, 4, 'unit', 5, 10, 'doctor', ?)`,
+      )
+      .run(lowName, folderId, doctorId).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 1, '2029-01-01', 5, 0)`,
+  ).run(lowId);
+
+  const inventory = await api("GET", "/api/inventory?context=my", { token: doctorToken });
+  assert.equal(inventory.status, 200, JSON.stringify(inventory.data));
+  const metrics = inventory.data.doctor_metrics;
+  assert.ok(metrics);
+  const bag = inventory.data.my_stock || [];
+  const atOrBelow = bag.filter((row) => Number(row.minimum_quantity || 0) > 0 && Number(row.quantity || 0) <= Number(row.minimum_quantity || 0));
+  assert.equal(metrics.at_or_below_par, atOrBelow.length);
+  const zeroMissing = bag.find((row) => row.item_name === missingName);
+  assert.ok(zeroMissing);
+  assert.equal(zeroMissing.missing_expiry, false);
+  assert.ok(!metrics.item_ids.missing_expiry.includes(Number(zeroMissing.id)));
+
+  const dash = await api("GET", "/api/dashboard", { token: doctorToken });
+  assert.equal(dash.status, 200, JSON.stringify(dash.data));
+  assert.equal(Number(dash.data.doctor_low_stock_alert.total_items), metrics.at_or_below_par);
+
+  const depot = await api("GET", "/api/inventory?context=ocs", { token: doctorToken });
+  assert.equal(depot.status, 200, JSON.stringify(depot.data));
+  assert.equal(depot.data.doctor_metrics.at_or_below_par, metrics.at_or_below_par);
+  assert.equal(depot.data.doctor_metrics.missing_expiry, metrics.missing_expiry);
+  assert.equal(depot.data.doctor_metrics.expired, metrics.expired);
+  assert.equal(depot.data.doctor_metrics.ocs_can_fill, metrics.ocs_can_fill);
+});
+
+test("doctor activity CSV is scoped and wastage requires a reason and lot", async () => {
+  const csv = await api("GET", "/api/inventory/activity-history/export.csv", { token: doctorToken });
+  assert.equal(csv.status, 200, JSON.stringify(csv.data).slice(0, 200));
+  const otherHistory = await api("GET", "/api/inventory/activity-history", { token: doctorTwoToken });
+  assert.equal(otherHistory.status, 200);
+  const names = (otherHistory.data.rows || []).map((row) => String(row.item_name || ""));
+  assert.equal(names.some((name) => name.includes("Hist ")), false);
+
+  const bagName = `WasteLot ${Date.now()}`;
+  const bagId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+         VALUES (?, ?, 3, 0, 'unit', 5, 10, 'doctor', ?)`,
+      )
+      .run(bagName, folderId, doctorId).lastInsertRowid,
+  );
+  const lotId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+         VALUES (?, 3, '2029-01-01', 5, 0)`,
+      )
+      .run(bagId).lastInsertRowid,
+  );
+  const missingNote = await api("POST", `/api/inventory/items/${bagId}/actions`, {
+    token: doctorToken,
+    body: { action_type: "stock_out", quantity: 1, reason: "Wasted" },
+  });
+  assert.equal(missingNote.status, 400, JSON.stringify(missingNote.data));
+  const ok = await api("POST", `/api/inventory/items/${bagId}/actions`, {
+    token: doctorToken,
+    body: {
+      action_type: "stock_out",
+      quantity: 1,
+      reason: "Wasted",
+      note: "Dropped during home visit",
+      batch_id: lotId,
+    },
+  });
+  assert.equal(ok.status, 201, JSON.stringify(ok.data));
+});

@@ -12,8 +12,8 @@ function roundCurrency(value) {
   return Number(toNumber(value, 0).toFixed(2));
 }
 
-function HttpError(status, message) {
-  return Object.assign(new Error(message), { status });
+function HttpError(status, message, extra = {}) {
+  return Object.assign(new Error(message), { status, extra });
 }
 
 function integerQty(value) {
@@ -957,6 +957,62 @@ function integerLineQty(value) {
   return integerQty(value) ?? 0;
 }
 
+function describeFulfilmentCollectionGaps(fulfilment, status) {
+  if (!["accepted", "ready"].includes(status)) return [];
+  const gaps = [];
+  const items = fulfilment?.items || [];
+  if (!fulfilment || fulfilment.linkage_required || !items.length) {
+    gaps.push("Fulfilment record");
+  }
+  if (!items.length || items.some((line) => !line.inventory_id && integerLineQty(line.requested_quantity) > 0)) {
+    gaps.push("Catalogue item linkage");
+  }
+  if (!items.length || items.some((line) => !line.reservation_id && integerLineQty(line.requested_quantity) > 0)) {
+    gaps.push("Reservation records");
+  }
+  const requestedTotal = items.reduce((sum, line) => sum + integerLineQty(line.requested_quantity), 0);
+  if (status === "ready") {
+    const missingPicked = !items.length
+      || items.some((line) => {
+        const requested = integerLineQty(line.requested_quantity);
+        const picked = integerLineQty(line.picked_quantity);
+        const fulfilled = integerLineQty(line.fulfilled_quantity);
+        const allocations = line.allocations || line.picked_batches || [];
+        // An explicitly approved partial fulfilment may legitimately fulfil
+        // none of one line while fulfilling another. Only positive fulfilled
+        // quantities require picked units and locked batch allocations.
+        return requested > 0 && fulfilled > 0 && (picked < fulfilled || !allocations.length);
+      });
+    const fulfilledTotal = items.reduce((sum, line) => sum + integerLineQty(line.fulfilled_quantity), 0);
+    if (missingPicked && !fulfilment?.legacy) gaps.push("Picked-batch allocations");
+    if (requestedTotal > 0 && fulfilledTotal <= 0) gaps.push("Fulfilled quantities");
+    if (fulfilment?.fulfilment?.status && !["packed", "posted"].includes(String(fulfilment.fulfilment.status))) {
+      gaps.push("Packed fulfilment");
+    }
+  }
+  if (fulfilment?.reconciliation_required || fulfilment?.linkage_required) {
+    gaps.push("Legacy reconciliation");
+  }
+  return [...new Set(gaps)];
+}
+
+function assertRequestCollectable(request) {
+  const detail = fulfilmentDetail(request.id);
+  const gaps = describeFulfilmentCollectionGaps(detail, "ready");
+  if (!detail || gaps.length) {
+    throw HttpError(
+      409,
+      "This request cannot be collected until an operator reconciles fulfilment quantities and batches.",
+      {
+        code: "LEGACY_RECONCILIATION_REQUIRED",
+        reconciliation_required: true,
+        reconciliation_gaps: gaps.length ? gaps : ["Fulfilment record"],
+      },
+    );
+  }
+  return detail;
+}
+
 function assertLineQuantityInvariant(line, { partialApproved = false } = {}) {
   const name = line.item_name || "item";
   const reserved = integerLineQty(line.reserved_quantity);
@@ -1342,13 +1398,7 @@ function postCollectionTransfer({ request, actor }) {
     };
   }
 
-  const detail = fulfilmentDetail(request.id);
-  if (!detail || detail.linkage_required) {
-    throw HttpError(
-      409,
-      "This request cannot be collected until an operator reconciles fulfilment quantities and batches.",
-    );
-  }
+  const detail = assertRequestCollectable(request);
   assertFulfilmentQuantityInvariants(detail, { requirePickedForReady: true });
   const totals = (detail.items || []).reduce(
     (acc, line) => {
@@ -1736,11 +1786,13 @@ module.exports = {
   activeFulfilment,
   allocateFefo,
   assertCanMarkReady,
+  assertRequestCollectable,
   assignRequest,
   availableToPromise,
   applyPicking,
   canonicaliseRequestItem,
   consumeAvailableFefo,
+  describeFulfilmentCollectionGaps,
   findRequestableOcsItem,
   fulfilmentDetail,
   listImpactedActiveRequests,

@@ -119,6 +119,8 @@ function StockActivityPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [requestHistory, setRequestHistory] = useState([]);
+  const [receiptIds, setReceiptIds] = useState([]);
   const actionMenuRef = useRef(null);
   const lastFetchQueryRef = useRef(null);
 
@@ -182,6 +184,31 @@ function StockActivityPage() {
       ignore = true;
     };
   }, [query, page, refreshKey, inventoryTick]);
+
+  useEffect(() => {
+    if (user?.role !== "doctor") return undefined;
+    let ignore = false;
+    async function loadDoctorHistory() {
+      try {
+        const payload = await api.get("/restock-requests?view=history&limit=50&offset=0");
+        if (ignore) return;
+        const requests = payload?.requests || [];
+        setRequestHistory(requests);
+        setReceiptIds(
+          [...new Set(requests.map((row) => row.transfer_transaction_id).filter(Boolean))],
+        );
+      } catch {
+        if (!ignore) {
+          setRequestHistory([]);
+          setReceiptIds([]);
+        }
+      }
+    }
+    loadDoctorHistory();
+    return () => {
+      ignore = true;
+    };
+  }, [user?.role, refreshKey, inventoryTick]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -265,16 +292,14 @@ function StockActivityPage() {
         eyebrow="Inventory"
         title="Stock history"
         actions={
-          user?.role === "admin" || user?.role === "operator" ? (
-            <button
-              type="button"
-              onClick={handleExportCsv}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95"
-            >
-              <Download className="size-4" />
-              Download CSV
-            </button>
-          ) : null
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95"
+          >
+            <Download className="size-4" />
+            Download CSV
+          </button>
         }
       />
 
@@ -338,6 +363,7 @@ function StockActivityPage() {
 
       <SectionCard title={`Activity (${total})`}>
         <div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
+          {user?.role === "doctor" ? null : (
           <label className="min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[14rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
             <select className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" value={userId} onChange={(event) => { setUserId(event.target.value); setPage(1); }}>
@@ -347,6 +373,7 @@ function StockActivityPage() {
               ))}
             </select>
           </label>
+          )}
           <div className="relative min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[12rem]" ref={actionMenuRef}>
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Action Types</span>
             <button
@@ -457,6 +484,10 @@ function StockActivityPage() {
                   <th className="px-3 py-3 text-left">Item & Qty</th>
                   <th className="px-3 py-3 text-left">Source / Destination</th>
                   <th className="px-3 py-3 text-left">Batch ID</th>
+                  <th className="px-3 py-3 text-left">Resulting balance</th>
+                  <th className="px-3 py-3 text-left">Request / receipt</th>
+                  <th className="px-3 py-3 text-left">Expiry</th>
+                  <th className="px-3 py-3 text-left">Reason</th>
                   <th className="sticky right-0 z-20 bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                     Tools
                   </th>
@@ -497,7 +528,22 @@ function StockActivityPage() {
                         {row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}
                       </td>
                       <td className="truncate px-3 py-3 text-xs text-slate-400" title={row.batch_id || "-"}>
-                        {row.batch_id || "-"}
+                        {row.batch_id || (row.legacy_data_unavailable ? "Legacy/unknown lot" : "-")}
+                      </td>
+                      <td className="px-3 py-3 text-slate-700 tabular-nums">
+                        {row.resulting_balance == null ? "—" : row.resulting_balance}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">
+                        {row.request_id ? <div>Request #{row.request_id}</div> : null}
+                        {row.receipt_number ? <div>Receipt {row.receipt_number}</div> : null}
+                        {!row.request_id && !row.receipt_number ? "—" : null}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">{row.expiry_date || "—"}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600">
+                        {row.reason_note || "—"}
+                        {row.legacy_data_unavailable ? (
+                          <span className="mt-1 block font-semibold text-amber-800">Legacy/unavailable data</span>
+                        ) : null}
                       </td>
                       <td className="sticky right-0 z-10 bg-white px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]">
                         {transactionId && isRestockTransfer ? (
@@ -555,6 +601,42 @@ function StockActivityPage() {
           </div>
         </div>
       </SectionCard>
+
+      {user?.role === "doctor" ? (
+        <SectionCard title="Supply requests and receipts">
+          <p className="text-sm text-slate-600">
+            Completed {requestHistory.filter((row) => row.status === "completed").length} · Cancelled{" "}
+            {requestHistory.filter((row) => row.status === "cancelled").length} · Transfer receipts{" "}
+            {receiptIds.length}
+          </p>
+          <ul className="mt-3 space-y-2">
+            {requestHistory.slice(0, 12).map((request) => (
+              <li key={request.id} className="rounded-2xl border border-slate-200 px-3 py-2 text-sm">
+                <p className="font-semibold text-slate-800">Request #{request.id} · {request.status}</p>
+                <p className="text-xs text-slate-500">
+                  {request.completed_at || request.cancelled_at || request.created_at}
+                  {request.transfer_transaction_id ? ` · Receipt ${request.transfer_transaction_id}` : ""}
+                </p>
+                {request.transfer_transaction_id ? (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs font-semibold text-teal-700"
+                    onClick={() => reprintReceipt(request.transfer_transaction_id)}
+                  >
+                    Open receipt
+                  </button>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {request.status === "cancelled"
+                      ? "Cancelled before transfer — no receipt was created."
+                      : "Legacy record — receipt details unavailable."}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }

@@ -74,7 +74,7 @@ function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/visit-requests" element={<VisitRequestsPage />} />
           </Route>
-          <Route element={<ProtectedRoute roles={["admin", "operator"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "operator", "doctor"]} />}>
             <Route path="/stock-history" element={<StockActivityPage />} />
           </Route>
 
