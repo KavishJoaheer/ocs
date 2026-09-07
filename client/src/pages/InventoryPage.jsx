@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   Calendar,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Download,
   Ellipsis,
@@ -71,6 +72,7 @@ import {
 } from "../lib/inventoryOfflineSync.js";
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
+import { doctorBagHeading, formatStockExpiryLabel, itemHasExpiredStock } from "../lib/inventoryStockDisplay.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
 import { printTransferReceipt } from "../lib/transferReceipt.js";
 
@@ -124,10 +126,31 @@ function getInventoryDateRange(preset, anchorDateStr) {
   }
 }
 
-function formatInventoryExpiry(value) {
-  if (!value) return "Not set";
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format("D MMM YYYY") : "Not set";
+function formatInventoryExpiry(itemOrValue) {
+  if (itemOrValue && typeof itemOrValue === "object") {
+    return formatStockExpiryLabel(itemOrValue);
+  }
+  if (!itemOrValue) return "Expiry missing";
+  const parsed = dayjs(itemOrValue);
+  return parsed.isValid() ? parsed.format("D MMM YYYY") : "Expiry missing";
+}
+
+function InventoryQuantityLines({ item, compact = false }) {
+  const onHand = Number(item.on_hand_quantity ?? item.quantity ?? 0);
+  const reserved = Number(item.reserved_quantity || 0);
+  const expired = Number(item.expired_quantity || 0);
+  const available = Number(item.available_to_use ?? Math.max(0, onHand - reserved - expired));
+  const minimum = Number(item.minimum_quantity || 0);
+  const lineClass = compact ? "text-[11px] leading-snug text-slate-500" : "text-xs text-slate-600";
+  return (
+    <div className={cx("flex flex-col gap-0.5", lineClass)}>
+      <span>On hand: <strong className="tabular-nums text-slate-900">{onHand}</strong></span>
+      {reserved > 0 ? <span>Reserved: <strong className="tabular-nums text-slate-900">{reserved}</strong></span> : null}
+      {expired > 0 ? <span className="text-rose-700">Expired: <strong className="tabular-nums">{expired}</strong></span> : null}
+      <span>Available to use: <strong className="tabular-nums text-slate-900">{available}</strong></span>
+      {compact ? <span>Minimum: <strong className="tabular-nums text-slate-900">{minimum}</strong></span> : null}
+    </div>
+  );
 }
 
 function suggestedBagFillQty(currentQty, minQty, ocsAvailable) {
@@ -167,13 +190,20 @@ function InventoryStatusChips({ item }) {
   const quantity = Number(item.quantity || 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const isLow = quantity <= parLevel;
-  const missingExpiry = !item.expiry_date;
+  const missingExpiry = Boolean(item.missing_expiry);
   const nearExpiry = Boolean(item.is_near_expiry);
+  const expired = itemHasExpiredStock(item);
+  const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired;
 
-  if (!isLow && !missingExpiry && !nearExpiry) return null;
+  if (!isLow && !missingExpiry && !nearExpiry && !expired && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
+      {expired ? (
+        <span className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+          Expired
+        </span>
+      ) : null}
       {isLow ? (
         <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
           Low
@@ -186,7 +216,12 @@ function InventoryStatusChips({ item }) {
       ) : null}
       {missingExpiry ? (
         <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-          Missing expiry
+          Expiry missing
+        </span>
+      ) : null}
+      {nonExpiring ? (
+        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+          Non-expiring
         </span>
       ) : null}
     </div>
@@ -1238,10 +1273,21 @@ function LiveActivitySection({
 }
 
 
+function inventoryActionMenuPosition(anchor, { width = 224, estimatedHeight = 360 } = {}) {
+  const rect = anchor.getBoundingClientRect();
+  const left = Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8));
+  const below = rect.bottom + 6;
+  const maxHeight = Math.min(estimatedHeight, window.innerHeight - 16);
+  const top = below + maxHeight > window.innerHeight - 8
+    ? Math.max(8, rect.top - maxHeight - 6)
+    : below;
+  return { top, left, maxHeight };
+}
+
 const INVENTORY_MOBILE_MENU_ITEM =
   "flex w-full min-h-11 items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
 
-function InventoryMobileActionTray({ primary, menuItems = [] }) {
+function InventoryMobileActionTray({ primary, menuItems = [], moreLabel = "More actions" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const menuRef = useRef(null);
@@ -1268,11 +1314,7 @@ function InventoryMobileActionTray({ primary, menuItems = [] }) {
   function openMenu() {
     const anchor = menuRef.current;
     if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    setMenuPosition({
-      top: rect.bottom + 6,
-      left: Math.max(8, rect.right - 200),
-    });
+    setMenuPosition(inventoryActionMenuPosition(anchor, { width: 200, estimatedHeight: 280 }));
     setMenuOpen(true);
   }
 
@@ -1297,8 +1339,8 @@ function InventoryMobileActionTray({ primary, menuItems = [] }) {
       <div className="relative shrink-0" ref={menuRef}>
         <button
           type="button"
-          title="More actions"
-          aria-label="More actions"
+          title={moreLabel}
+          aria-label={moreLabel}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           onClick={() => (menuOpen ? closeMenu() : openMenu())}
@@ -1310,8 +1352,9 @@ function InventoryMobileActionTray({ primary, menuItems = [] }) {
           ? createPortal(
               <div
                 ref={menuPanelRef}
-                className="fixed z-[100] min-w-[12.5rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-                style={{ top: menuPosition.top, left: menuPosition.left }}
+                role="menu"
+                className="fixed z-[100] min-w-[12.5rem] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left, maxHeight: menuPosition.maxHeight }}
               >
                 {menuItems.map((entry) => (
                   <button
@@ -1381,11 +1424,7 @@ function InventoryOcsMasterActions({
   function openMenu() {
     const anchor = menuRef.current;
     if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    setMenuPosition({
-      top: rect.bottom + 6,
-      left: Math.max(8, rect.right - 220),
-    });
+    setMenuPosition(inventoryActionMenuPosition(anchor, { width: 224, estimatedHeight: 420 }));
     setMenuOpen(true);
   }
 
@@ -1433,11 +1472,11 @@ function InventoryOcsMasterActions({
         onClick: () => onDeleteItem(item),
       });
     }
-    menuItems.push({ key: "sep", separator: true, label: "Operational override" });
+    menuItems.push({ key: "sep", separator: true, label: "Exceptional actions" });
     if (onStockIn) {
       menuItems.push({
         key: "receive",
-        label: "Receive stock (override)",
+        label: "Receive stock (admin override)",
         icon: <Plus className="size-3.5" />,
         onClick: () => onStockIn(item),
       });
@@ -1445,7 +1484,7 @@ function InventoryOcsMasterActions({
     if (onRestockDoctor) {
       menuItems.push({
         key: "transfer",
-        label: "Transfer to doctor bag (override)",
+        label: "Admin override transfer",
         icon: <Truck className="size-3.5" />,
         onClick: () => onRestockDoctor(item),
       });
@@ -1453,7 +1492,7 @@ function InventoryOcsMasterActions({
     if (onRemove) {
       menuItems.push({
         key: "writeoff",
-        label: "Write off stock (override)",
+        label: "Exceptional write-off",
         icon: <Trash2 className="size-3.5" />,
         danger: true,
         onClick: () => onRemove(item),
@@ -1474,7 +1513,13 @@ function InventoryOcsMasterActions({
       };
 
   if (touchWrap) {
-    return <InventoryMobileActionTray primary={primary} menuItems={menuItems.filter((row) => !row.separator)} />;
+    return (
+      <InventoryMobileActionTray
+        primary={primary}
+        menuItems={menuItems.filter((row) => !row.separator)}
+        moreLabel={isAdmin ? "Exceptional actions" : "More actions"}
+      />
+    );
   }
 
   return (
@@ -1486,8 +1531,8 @@ function InventoryOcsMasterActions({
       <div className="relative shrink-0" ref={menuRef}>
         <button
           type="button"
-          title="More actions"
-          aria-label="More actions"
+          title={isAdmin ? "Exceptional actions" : "More actions"}
+          aria-label={isAdmin ? "Exceptional actions" : "More actions"}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           className={moreBtn}
@@ -1501,8 +1546,8 @@ function InventoryOcsMasterActions({
               <div
                 ref={menuPanelRef}
                 role="menu"
-                className="fixed z-[100] min-w-[14rem] rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-                style={{ top: menuPosition.top, left: menuPosition.left }}
+                className="fixed z-[100] min-w-[14rem] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left, maxHeight: menuPosition.maxHeight }}
               >
                 {menuItems.map((entry) =>
                   entry.separator ? (
@@ -1611,7 +1656,13 @@ function InventoryActionButtons({
             onClick: () => onRestockDoctor(item),
           }
         : null;
-    return <InventoryMobileActionTray primary={primary} menuItems={menuItems} />;
+    return (
+      <InventoryMobileActionTray
+        primary={primary}
+        menuItems={menuItems}
+        moreLabel={isAdminUser(user) ? "Exceptional actions" : "More actions"}
+      />
+    );
   }
 
   const btn =
@@ -2280,8 +2331,8 @@ function MobileDoctorBagActions({
   );
 }
 
-function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock, actions }) {
-  const currentQuantity = Number(item.quantity || 0);
+function MobileInventoryStockCard({ item, isLowStock, actions }) {
+  const currentQuantity = Number(item.on_hand_quantity ?? item.quantity ?? 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
   const qtyTone = low ? "text-rose-700" : "text-slate-900";
@@ -2300,18 +2351,13 @@ function MobileInventoryStockCard({ item, quantityLabel = "In Bag:", isLowStock,
           <p className="break-words text-[15px] font-bold leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
             {item.item_name}
           </p>
+          <InventoryStatusChips item={item} />
+          <div className={cx("mt-1", qtyTone)}>
+            <InventoryQuantityLines item={item} compact />
+          </div>
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
-            <span>
-              {quantityLabel}{" "}
-              <span className={cx("font-bold tabular-nums", qtyTone)}>
-                {currentQuantity} / {parLevel}
-              </span>
-            </span>
-            <span className="px-1.5 text-slate-300" aria-hidden>
-              ·
-            </span>
-            <span className={!item.expiry_date ? "text-slate-400" : ""}>
-              {formatInventoryExpiry(item.expiry_date)}
+            <span className={!item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
+              {formatInventoryExpiry(item)}
             </span>
           </p>
         </div>
@@ -2452,7 +2498,6 @@ function MobileDoctorBagLayout({
                   <MobileInventoryStockCard
                     key={`mobile-bag-${item.id}`}
                     item={item}
-                    quantityLabel={doctorViewIsOcs ? "Depot:" : "In bag:"}
                     actions={
                       doctorViewIsOcs ? (
                         <MobileDoctorBagActions
@@ -2553,6 +2598,7 @@ export default function InventoryPage() {
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
   const [showMissingExpiryOnly, setShowMissingExpiryOnly] = useState(false);
+  const [showExpiredOnly, setShowExpiredOnly] = useState(false);
   const [sortMode, setSortMode] = useState("expiry_asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRows, setExpandedRows] = useState({});
@@ -2609,6 +2655,10 @@ export default function InventoryPage() {
     [doctors],
   );
   const contextIsOcs = !selectedContextDoctorId;
+  const selectedDoctorName =
+    doctorOptions.find((doctor) => String(doctor.id) === String(selectedContextDoctorId))?.full_name
+    || contextSearch;
+  const staffLocationHeading = contextIsOcs ? "OCS warehouse" : doctorBagHeading(selectedDoctorName);
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
@@ -2666,6 +2716,7 @@ export default function InventoryPage() {
       low: items.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
       near: items.filter((item) => Boolean(item.is_near_expiry)).length,
       missing: items.filter((item) => Boolean(item.missing_expiry)).length,
+      expired: items.filter((item) => itemHasExpiredStock(item)).length,
       reconciliation: Number(data?.tab_summaries?.stock?.reconciliation_required || 0),
     }),
     [items, data?.tab_summaries?.stock?.reconciliation_required],
@@ -2678,7 +2729,8 @@ export default function InventoryPage() {
     () => ({
       low: bagItems.filter((item) => Number(item.quantity || 0) <= Number(item.minimum_quantity || 0)).length,
       near: bagItems.filter((item) => Boolean(item.is_near_expiry)).length,
-      missing: bagItems.filter((item) => !item.expiry_date).length,
+      missing: bagItems.filter((item) => Boolean(item.missing_expiry)).length,
+      expired: bagItems.filter((item) => itemHasExpiredStock(item)).length,
     }),
     [bagItems],
   );
@@ -2958,6 +3010,7 @@ export default function InventoryPage() {
       .filter((item) => !showLowStockOnly || Number(item.quantity || 0) <= Number(item.minimum_quantity || 0))
       .filter((item) => !showNearExpiryOnly || Boolean(item.is_near_expiry))
       .filter((item) => !showMissingExpiryOnly || Boolean(item.missing_expiry))
+      .filter((item) => !showExpiredOnly || itemHasExpiredStock(item))
       .filter((item) => {
         if (!showUnpricedOnly) return true;
         if (unpricedFromBags && unpricedKeys.size) {
@@ -2972,6 +3025,7 @@ export default function InventoryPage() {
     showLowStockOnly,
     showNearExpiryOnly,
     showMissingExpiryOnly,
+    showExpiredOnly,
     showUnpricedOnly,
     unpricedFromBags,
     unpricedProductKeys,
@@ -3151,7 +3205,8 @@ export default function InventoryPage() {
     const next =
       (kind === "low" && showLowStockOnly) ||
       (kind === "near" && showNearExpiryOnly) ||
-      (kind === "missing" && showMissingExpiryOnly)
+      (kind === "missing" && showMissingExpiryOnly) ||
+      (kind === "expired" && showExpiredOnly)
         ? ""
         : kind;
     setLogisticsTab("stock");
@@ -3159,8 +3214,12 @@ export default function InventoryPage() {
     setShowLowStockOnly(next === "low");
     setShowNearExpiryOnly(next === "near");
     setShowMissingExpiryOnly(next === "missing");
+    setShowExpiredOnly(next === "expired");
     setShowUnpricedOnly(false);
     setUnpricedFromBags(false);
+    if (kind === "reconciliation") {
+      setLogisticsTab("queues");
+    }
   }
 
   function openDoctorBagFromCompare(doctorId) {
@@ -3200,9 +3259,13 @@ export default function InventoryPage() {
       Category: item.folder_name || "",
       "Item name": item.item_name || "",
       Quantity: Number(item.quantity ?? 0),
+      "On hand": Number(item.on_hand_quantity ?? item.quantity ?? 0),
+      Reserved: Number(item.reserved_quantity ?? 0),
+      Expired: Number(item.expired_quantity ?? 0),
+      "Available to use": Number(item.available_to_use ?? item.quantity ?? 0),
       "Min qty": Number(item.minimum_quantity ?? 0),
       Unit: item.unit ?? "",
-      "Nearest expiry": item.expiry_date || "Not set",
+      "Nearest usable expiry": item.nearest_usable_expiry || formatInventoryExpiry(item),
       "Cost (Rs)": Number(item.cost_price ?? 0),
       "Selling price (Rs)": Number(item.selling_price ?? 0),
       Attributes: item.attributes || "",
@@ -3853,7 +3916,7 @@ export default function InventoryPage() {
       <PageHeader
         className={isOperator ? "mb-0" : undefined}
         eyebrow="Logistics"
-        title={isDoctor ? (doctorViewIsOcs ? "OCS depot" : "My bag") : "OCS Stock"}
+        title={isDoctor ? (doctorViewIsOcs ? "OCS depot" : "My bag") : staffLocationHeading}
         actions={
           isDoctor ? (
             emergencyRestockEnabled ? (
@@ -3956,7 +4019,7 @@ export default function InventoryPage() {
           summaries={data?.tab_summaries}
           chaseCounts={chaseCounts}
           warehouseValue={summary.total_amount_rs || 0}
-          filters={{ low: showLowStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly }}
+          filters={{ low: showLowStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly, expired: showExpiredOnly }}
           onFilter={applyChaseFilter}
           onOpenIncoming={() => setLogisticsTab("shipments")}
           onOpenApproval={(status) => {
@@ -3973,6 +4036,7 @@ export default function InventoryPage() {
             setShowLowStockOnly(false);
             setShowNearExpiryOnly(false);
             setShowMissingExpiryOnly(false);
+            setShowExpiredOnly(false);
           }}
         />
       ) : isDoctor ? (
@@ -3999,6 +4063,14 @@ export default function InventoryPage() {
             hint="Within 90 days"
             active={doctorViewIsMy && showNearExpiryOnly}
             onClick={() => applyDoctorBagFilter("near")}
+          />
+          <SummaryCard
+            title="Expired"
+            value={bagChaseCounts.expired}
+            tone="rose"
+            hint="Unusable until written off"
+            active={doctorViewIsMy && showExpiredOnly}
+            onClick={() => applyDoctorBagFilter("expired")}
           />
           <SummaryCard
             title="OCS can fill"
@@ -4115,8 +4187,8 @@ export default function InventoryPage() {
               ? "OCS depot"
               : "Bag items"
             : contextIsOcs
-              ? "OCS Stock Items"
-              : `${contextSearch || "Doctor"} - My Stock`
+              ? "OCS warehouse items"
+              : staffLocationHeading
         }
       >
         <div className="sticky top-0 z-20 mb-4 space-y-3 border-b border-slate-100 bg-white pb-4">
@@ -4224,6 +4296,13 @@ export default function InventoryPage() {
             >
               Missing expiry ({chaseCounts.missing})
             </button>
+            <button
+              type="button"
+              onClick={() => applyChaseFilter("expired")}
+              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showExpiredOnly ? "bg-rose-600 text-white" : "border border-rose-200 bg-white text-rose-700"}`}
+            >
+              Expired stock ({chaseCounts.expired})
+            </button>
             {chaseCounts.reconciliation > 0 ? (
               <button
                 type="button"
@@ -4237,7 +4316,7 @@ export default function InventoryPage() {
               type="button"
               onClick={() => {
                 const token = window.localStorage.getItem("ocs_medecins_auth_token");
-                void fetch("/api/inventory/data-quality.csv", {
+                void fetch(`/api/inventory/data-quality.csv${selectedContextDoctorId ? `?doctorId=${encodeURIComponent(selectedContextDoctorId)}` : ""}`, {
                   headers: token ? { Authorization: `Bearer ${token}` } : {},
                 }).then(async (response) => {
                   const blob = await response.blob();
@@ -4289,9 +4368,9 @@ export default function InventoryPage() {
                   <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500 lg:text-ocs-slate">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
-                      <th className="px-3 py-2 text-center align-middle">Qty</th>
-                      <th className="px-3 py-2 text-center align-middle">Min Qty</th>
-                      <th className="px-3 py-2 text-center align-middle">Nearest Expiry</th>
+                      <th className="px-3 py-2 text-center align-middle">On hand</th>
+                      <th className="px-3 py-2 text-center align-middle">Minimum</th>
+                      <th className="px-3 py-2 text-center align-middle">Nearest usable expiry</th>
                       <th className="sticky right-0 z-30 bg-slate-50 px-3 py-2 text-right align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                         Actions
                       </th>
@@ -4328,21 +4407,29 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <span className="tabular-nums font-semibold text-slate-900">
-                                {item.quantity}
-                                <span className="font-medium text-slate-400"> / {item.minimum_quantity}</span>
-                              </span>
+                              <div className="flex flex-col items-center gap-0.5" title="On-hand is physical stock. Available to use excludes reserved and expired units.">
+                                <span className="tabular-nums font-semibold text-slate-900">{item.quantity}</span>
+                                <span className="text-[10px] font-medium text-slate-500">
+                                  Avail {Number(item.available_to_use ?? item.quantity)}
+                                </span>
+                                {Number(item.expired_quantity || 0) > 0 ? (
+                                  <span className="text-[10px] font-bold uppercase text-rose-700">
+                                    Expired {item.expired_quantity}
+                                  </span>
+                                ) : null}
+                              </div>
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>
                             <td
                               className={cx(
                                 "truncate px-3 py-1.5 align-middle text-center",
-                                !item.expiry_date && "text-slate-400",
+                                !item.nearest_usable_expiry && "text-slate-400",
                                 item.is_near_expiry && "font-semibold text-amber-800",
+                                itemHasExpiredStock(item) && "font-semibold text-rose-700",
                               )}
-                              title={item.expiry_date || "Not set"}
+                              title={formatInventoryExpiry(item)}
                             >
-                              {formatInventoryExpiry(item.expiry_date)}
+                              {formatInventoryExpiry(item)}
                             </td>
                             <td
                               className="sticky right-0 z-10 bg-white px-3 py-2 align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]"
@@ -4386,7 +4473,7 @@ export default function InventoryPage() {
                                     <div className="mt-2 space-y-1">
                                       {batches.length ? batches.map((batch) => (
                                         <p key={batch.id} className="text-sm text-slate-700">
-                                          Batch #{batch.id} - Qty {batch.quantity_remaining} - Exp {batch.expiry_date || "N/A"} - Cost {formatRupees(batch.unit_cost)}
+                                          Batch #{batch.id} - Qty {batch.quantity_remaining} - {batch.expiry_label || formatStockExpiryLabel(batch)} - Cost {formatRupees(batch.unit_cost)}
                                         </p>
                                       )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
                                     </div>
@@ -4408,7 +4495,6 @@ export default function InventoryPage() {
                 <MobileInventoryStockCard
                   key={`m-${item.id}`}
                   item={item}
-                  quantityLabel={contextIsOcs ? "Available:" : "In Bag:"}
                   actions={
                     <InventoryActionButtons
                       item={item}
@@ -4448,15 +4534,15 @@ export default function InventoryPage() {
           />
         )}
 
-        <div className={cx("flex items-center justify-between", isOperator ? "mt-2" : "mt-3")}>
+        <div className={cx("flex items-center justify-between", isOperator ? "mt-2" : "mt-3")} data-testid="inventory-pagination">
           <p className="text-xs text-slate-500">
             Page {currentPage} of {totalPages} - {sortedItems.length} filtered item(s)
           </p>
           <div className="flex gap-2">
-            <button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+            <button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} className="min-h-11 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
               Previous
             </button>
-            <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))} className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+            <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))} className="min-h-11 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
               Next
             </button>
           </div>
@@ -4521,9 +4607,16 @@ export default function InventoryPage() {
                 key={`bag-card-${row.doctor_id}`}
                 type="button"
                 onClick={() => openDoctorBagFromCompare(row.doctor_id)}
-                className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left"
+                aria-label={`View ${doctorBagHeading(row.doctor_name)}`}
+                className="flex min-h-11 w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#2d8f98] hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98] active:scale-[0.99]"
               >
-                <p className="break-words font-semibold text-slate-900">{row.doctor_name}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="break-words font-semibold text-slate-900">{row.doctor_name}</p>
+                  <span className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-[#2d8f98]">
+                    View bag
+                    <ChevronRight className="size-4" aria-hidden="true" />
+                  </span>
+                </div>
                 <dl className="grid grid-cols-2 gap-2 text-xs text-slate-600">
                   <div>On hand <strong className="block tabular-nums text-slate-900">{formatCompareQty(row.bag_on_hand_qty)}</strong></div>
                   <div>Restocked <strong className="block tabular-nums text-slate-900">{formatCompareQty(row.total_restocked_qty)}</strong></div>

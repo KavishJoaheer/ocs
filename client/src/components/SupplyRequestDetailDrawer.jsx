@@ -14,6 +14,7 @@ import {
   supplyRequestStatusTone,
 } from "../lib/supplyRequests.js";
 import { printTransferReceipt } from "../lib/transferReceipt.js";
+import LegacyReconciliationNotice from "./LegacyReconciliationNotice.jsx";
 import { cx } from "../lib/utils.js";
 
 const LEGACY_ACTOR = "Actor unavailable for this legacy record.";
@@ -212,7 +213,9 @@ export default function SupplyRequestDetailDrawer({
               </span>
             </div>
 
-            {status === "ready" ? (
+            <LegacyReconciliationNotice request={request} />
+
+            {status === "ready" && !request.reconciliation_required && !request.linkage_required ? (
               <p className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                 The doctor must confirm collection. Staff cannot mark this request collected.
               </p>
@@ -266,7 +269,11 @@ export default function SupplyRequestDetailDrawer({
                       : ""}
                   </p>
                 ) : (
-                  <p className="text-sm text-slate-600">Fulfilment details were not recorded for this legacy request.</p>
+                  <p className="text-sm text-slate-600">
+                    {request.reconciliation_required || request.linkage_required
+                      ? "Fulfilment, reservation, picked-batch or movement records are unavailable until this legacy request is reconciled."
+                      : "Fulfilment details were not recorded for this legacy request."}
+                  </p>
                 )}
               </DetailSection>
             ) : null}

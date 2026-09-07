@@ -252,40 +252,38 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
               operators={operators}
               folders={folders}
               role={user?.role === "admin" ? "admin" : "operator"}
+              resultCount={history.total}
+              exportControl={
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
+                  onClick={() => {
+                    const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                    const params = new URLSearchParams({ view: "history" });
+                    Object.entries(historyFilters).forEach(([key, value]) => {
+                      if (String(value || "").trim()) params.set(key, String(value).trim());
+                    });
+                    void fetch(`/api/restock-requests/export?${params.toString()}`, {
+                      headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    }).then(async (response) => {
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = "supply-request-history.csv";
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    });
+                  }}
+                >
+                  Export CSV
+                </button>
+              }
               onChange={(next) => {
                 setHistoryOffset(0);
                 setHistoryFilters(next);
               }}
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs text-slate-500">
-                {history.completed_count || 0} completed · {history.cancelled_count || 0} cancelled · {history.total} matching
-              </p>
-              <button
-                type="button"
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
-                onClick={() => {
-                  const token = window.localStorage.getItem("ocs_medecins_auth_token");
-                  const params = new URLSearchParams({ view: "history" });
-                  Object.entries(historyFilters).forEach(([key, value]) => {
-                    if (String(value || "").trim()) params.set(key, String(value).trim());
-                  });
-                  void fetch(`/api/restock-requests/export?${params.toString()}`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                  }).then(async (response) => {
-                    const blob = await response.blob();
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement("a");
-                    link.href = url;
-                    link.download = "supply-request-history.csv";
-                    link.click();
-                    URL.revokeObjectURL(url);
-                  });
-                }}
-              >
-                Export CSV
-              </button>
-            </div>
             {history.doctor_counts?.length || history.item_counts?.length ? (
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
@@ -388,6 +386,11 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
                       {row.next_action}
                     </span>
+                    {row.reconciliation_required || row.linkage_required ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                        Legacy – reconciliation required
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">

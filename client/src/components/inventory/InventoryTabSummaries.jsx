@@ -27,6 +27,19 @@ function Card({ title, value, tone = "teal", hint, onClick, active = false }) {
   return <div className={className}>{body}</div>;
 }
 
+function stockValueDisplay(stock, warehouseValue) {
+  const known = Number(stock.stock_value ?? stock.warehouse_value ?? warehouseValue ?? 0);
+  const unpriced = Number(stock.unpriced_count || 0);
+  const complete = stock.valuation_complete !== false && unpriced === 0;
+  if (!complete) {
+    return {
+      value: "Incomplete",
+      hint: `${unpriced.toLocaleString()} unpriced product${unpriced === 1 ? "" : "s"}${known > 0 ? ` · known ${formatRupees(known)}` : ""}`,
+    };
+  }
+  return { value: formatRupees(known), hint: undefined };
+}
+
 export default function InventoryTabSummaries({
   tab,
   summaries,
@@ -100,32 +113,57 @@ export default function InventoryTabSummaries({
   }
 
   const stock = summaries?.stock || {};
+  const valueDisplay = stockValueDisplay(stock, warehouseValue);
+  const low = stock.low_stock ?? chaseCounts?.low ?? 0;
+  const near = stock.near_expiry ?? chaseCounts?.near ?? 0;
+  const missing = stock.missing_expiry ?? chaseCounts?.missing ?? 0;
+  const expired = stock.expired ?? chaseCounts?.expired ?? 0;
+  const reconciliation = stock.reconciliation_required ?? chaseCounts?.reconciliation ?? 0;
+  const isBag = stock.location_kind === "bag";
+
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-      <Card title="Warehouse value" value={formatRupees(stock.warehouse_value ?? warehouseValue ?? 0)} />
+      <Card title={stock.value_title || (isBag ? "Bag value" : "Warehouse value")} value={valueDisplay.value} hint={valueDisplay.hint} />
       <Card
-        title="Low stock"
-        value={stock.low_stock ?? chaseCounts?.low ?? 0}
+        title={stock.low_stock_title || (isBag ? "Bag low stock" : "Warehouse low stock")}
+        value={low}
         tone="rose"
         hint="Click to filter"
         active={filters?.low}
         onClick={() => onFilter?.("low")}
       />
       <Card
-        title="Near expiry"
-        value={stock.near_expiry ?? chaseCounts?.near ?? 0}
+        title={stock.near_expiry_title || (isBag ? "Bag near expiry" : "Warehouse near expiry")}
+        value={near}
         tone="amber"
         hint="Within 90 days"
         active={filters?.near}
         onClick={() => onFilter?.("near")}
       />
       <Card
-        title="Missing expiry"
-        value={stock.missing_expiry ?? chaseCounts?.missing ?? 0}
+        title={stock.missing_expiry_title || (isBag ? "Bag missing expiry" : "Warehouse missing expiry")}
+        value={missing}
         hint="Click to filter"
         active={filters?.missing}
         onClick={() => onFilter?.("missing")}
       />
+      <Card
+        title={stock.expired_title || (isBag ? "Bag expired stock" : "Expired stock")}
+        value={expired}
+        tone="rose"
+        hint="Unusable until written off"
+        active={filters?.expired}
+        onClick={() => onFilter?.("expired")}
+      />
+      {isBag ? (
+        <Card
+          title={stock.reconciliation_title || "Bag reconciliation warnings"}
+          value={reconciliation}
+          tone="amber"
+          hint={reconciliation ? "Click to open queues" : "No unlinked requests"}
+          onClick={() => onFilter?.("reconciliation")}
+        />
+      ) : null}
     </div>
   );
 }

@@ -153,6 +153,23 @@ textarea {
   margin-right: auto;
 }
 
+@media (max-width: 767px) {
+  :root {
+    --ocs-mobile-nav-clearance: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="dialog"],
+  [tabindex="0"] {
+    scroll-margin-bottom: var(--ocs-mobile-nav-clearance);
+  }
+}
+
 /* Horizontal chip/filter rows. Android and Huawei WebViews clip nested
    overflow-x unless the scroller has a definite width and nowrap children. */
 .ocs-h-scroll {

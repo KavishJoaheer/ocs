@@ -16,6 +16,9 @@ function resolveGitSha() {
 
 const GIT_SHA = resolveGitSha();
 
+const E2E_DB_PATH = process.env.E2E_DB_PATH || `/tmp/ocs-e2e-${process.pid}.db`;
+process.env.E2E_DB_PATH = E2E_DB_PATH;
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 90_000,
@@ -46,7 +49,7 @@ export default defineConfig({
         NODE_ENV: "test",
         GIT_SHA,
         APP_VERSION: GIT_SHA,
-        DB_PATH: process.env.E2E_DB_PATH || `/tmp/ocs-e2e-${process.pid}.db`,
+        DB_PATH: E2E_DB_PATH,
         CLIENT_ORIGINS: `http://127.0.0.1:${STAFF_PORT},http://127.0.0.1:${PATIENT_PORT},http://localhost:${STAFF_PORT},http://localhost:${PATIENT_PORT}`,
       },
     },

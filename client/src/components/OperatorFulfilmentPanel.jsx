@@ -221,7 +221,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                           .map((batch) =>
                             batch.is_non_expiring
                               ? `B${batch.batch_id} non-expiring ×${batch.quantity}`
-                              : `B${batch.batch_id} exp ${batch.expiry_date || "missing"} ×${batch.quantity}`,
+                              : `B${batch.batch_id} ${batch.is_non_expiring ? "Non-expiring" : batch.expiry_date ? (batch.expired ? "Expired" : batch.expiry_date) : "Expiry missing"} ×${batch.quantity}`,
                           )
                           .join(" · ") || "No batches"}
                       </div>

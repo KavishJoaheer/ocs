@@ -2292,3 +2292,66 @@ test("inventory operations schema adds release and recount columns on clean and 
   );
 });
 
+test("derived stock fields exclude expired units from available-to-use and distinguish missing vs non-expiring", async () => {
+  const mixedName = `ExpMix ${Date.now()}`;
+  const mixedId = insertOcsItem({ name: mixedName, qty: 4, expiry: "2020-01-01" });
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 6, '2029-06-01', 5, 0)`,
+  ).run(mixedId);
+  db.prepare("UPDATE inventory SET quantity = 10 WHERE id = ?").run(mixedId);
+  const missingId = insertOcsItem({ name: `MissExp ${Date.now()}`, qty: 3, expiry: null, nonExpiring: 0 });
+  const nonExpId = insertOcsItem({ name: `NonExp ${Date.now()}`, qty: 2, nonExpiring: 1 });
+  const unpricedId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES (?, ?, 5, 0, 'unit', 0, 0, 'ocs')`,
+      )
+      .run(`Unpriced ${Date.now()}`, folderId).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 5, '2029-06-01', 0, 0)`,
+  ).run(unpricedId);
+
+  const payload = await api("GET", "/api/inventory", { token: operatorToken });
+  assert.equal(payload.status, 200, JSON.stringify(payload.data));
+  const mixed = payload.data.ocs_stock.find((row) => Number(row.id) === mixedId);
+  assert.ok(mixed);
+  assert.equal(Number(mixed.on_hand_quantity), 10);
+  assert.equal(Number(mixed.expired_quantity), 4);
+  assert.equal(Number(mixed.available_to_use), 6);
+  assert.equal(mixed.has_expired, true);
+  assert.equal(mixed.nearest_usable_expiry, "2029-06-01");
+  assert.ok(payload.data.expired_items.some((row) => Number(row.id) === mixedId));
+
+  const missing = payload.data.ocs_stock.find((row) => Number(row.id) === missingId);
+  assert.equal(missing.missing_expiry, true);
+  assert.equal(missing.has_non_expiring, false);
+  assert.equal(missing.is_non_expiring_only, false);
+
+  const nonExp = payload.data.ocs_stock.find((row) => Number(row.id) === nonExpId);
+  assert.equal(nonExp.has_non_expiring, true);
+  assert.equal(nonExp.missing_expiry, false);
+  assert.equal(nonExp.is_non_expiring_only, true);
+
+  const batches = await api("GET", `/api/inventory/items/${mixedId}/batches`, { token: operatorToken });
+  if (batches.status === 200) {
+    const labels = (batches.data.batches || []).map((row) => row.expiry_label);
+    assert.ok(labels.includes("Expired"));
+  }
+
+  assert.equal(payload.data.tab_summaries.stock.valuation_complete, false);
+  assert.ok(Number(payload.data.tab_summaries.stock.unpriced_count) >= 1);
+
+  const bag = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: operatorToken });
+  assert.equal(bag.status, 200, JSON.stringify(bag.data));
+  const bagItems = bag.data.selected_doctor_stock || [];
+  assert.equal(Number(bag.data.tab_summaries.stock.missing_expiry), bagItems.filter((row) => row.missing_expiry).length);
+  assert.equal(Number(bag.data.tab_summaries.stock.expired), bagItems.filter((row) => row.has_expired).length);
+  assert.equal(bag.data.tab_summaries.stock.location_kind, "bag");
+  assert.match(String(bag.data.tab_summaries.stock.location_heading), /bag/i);
+  assert.doesNotMatch(String(bag.data.tab_summaries.stock.location_heading), /My Stock/i);
+});
+

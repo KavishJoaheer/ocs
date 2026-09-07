@@ -187,7 +187,7 @@ function InventoryCsvImport({ onImported }) {
       <button
         type="button"
         onClick={() => setPasteOpen((open) => !open)}
-        className="mt-2 text-xs font-semibold text-slate-500 underline"
+        className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 sm:w-auto sm:justify-start sm:border-0 sm:bg-transparent sm:px-0 sm:text-xs sm:underline"
         aria-expanded={pasteOpen}
       >
         {pasteOpen ? "Hide CSV paste" : "Paste CSV text instead"}
@@ -200,20 +200,25 @@ function InventoryCsvImport({ onImported }) {
             setPreview(null);
           }}
           rows={5}
-          className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
+          aria-label="CSV text"
+          className="mt-2 mb-4 w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
         />
       ) : csvText ? (
-        <p className="mt-2 text-xs text-slate-500">{csvText.split(/\r?\n/).filter(Boolean).length} line(s) loaded.</p>
-      ) : null}
+        <p className="mt-2 mb-4 text-xs text-slate-500">{csvText.split(/\r?\n/).filter(Boolean).length} line(s) loaded.</p>
+      ) : (
+        <div className="mb-4" />
+      )}
 
-      <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
+      <div className="space-y-3">
+        <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
+      </div>
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
           disabled={previewing || !csvText.trim()}
           onClick={handlePreview}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-50"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-50 sm:w-auto"
         >
           {previewing ? "Validating…" : "Validate preview"}
         </button>
@@ -221,7 +226,7 @@ function InventoryCsvImport({ onImported }) {
           type="button"
           disabled={importing || !csvText.trim() || !preview}
           onClick={handleImport}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-4 text-sm font-semibold text-white disabled:opacity-50"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#2d8f98] px-4 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
         >
           {importing ? "Importing…" : "Import to staging"}
         </button>

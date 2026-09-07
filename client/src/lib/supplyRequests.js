@@ -165,8 +165,28 @@ export function canDoctorRequestChanges(request) {
   );
 }
 
+export function isLegacyReconciliationRequired(request) {
+  return Boolean(
+    request?.reconciliation_required || request?.linkage_required || request?.legacy_reconciliation_required,
+  );
+}
+
+export function legacyReconciliationGaps(request) {
+  const gaps = Array.isArray(request?.reconciliation_gaps) ? request.reconciliation_gaps.filter(Boolean) : [];
+  if (gaps.length) return gaps;
+  const fallback = [];
+  if (request?.fulfilment_expected && !request?.fulfilment_recorded) fallback.push("Fulfilment record");
+  if (request?.timeline_available === false) fallback.push("Request timeline");
+  if (request?.linkage_required) fallback.push("Catalogue item linkage");
+  return fallback;
+}
+
 export function canDoctorConfirmCollection(request) {
-  return normaliseSupplyRequestStatus(request?.status) === "ready";
+  if (normaliseSupplyRequestStatus(request?.status) !== "ready") return false;
+  if (request?.reconciliation_required || request?.linkage_required || request?.legacy_reconciliation_required) {
+    return false;
+  }
+  return true;
 }
 
 export function isStaffSupplyRole(role) {
@@ -230,7 +250,14 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
     });
   }
 
-  if (isOperator && status === "accepted" && !pendingAmendment) {
+  if (isOperator && (status === "accepted" || status === "ready") && (request?.reconciliation_required || request?.linkage_required)) {
+    actions.push({
+      id: "fulfil",
+      label: "Open reconciliation",
+      kind: "primary",
+      disabled,
+    });
+  } else if (isOperator && status === "accepted" && !pendingAmendment) {
     actions.push({
       id: "fulfil",
       label: "Open fulfilment",
@@ -248,7 +275,7 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
     });
   }
 
-  if (staff && status === "ready") {
+  if (staff && status === "ready" && !(request?.reconciliation_required || request?.linkage_required)) {
     actions.push({
       id: "awaiting_collection",
       label: "Waiting for the doctor to confirm collection",
@@ -258,10 +285,11 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
   }
 
   if (canStaffCancelSupplyRequest(request, role)) {
+    const afterAcceptance = status === "accepted" || status === "ready";
     actions.push({
       id: "cancel",
-      label: "Cancel & archive",
-      kind: "danger",
+      label: isAdmin && afterAcceptance ? "Exceptional cancellation" : "Cancel & archive",
+      kind: status === "pending" ? "danger" : "ghost",
       disabled,
     });
   }

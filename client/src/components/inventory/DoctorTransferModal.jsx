@@ -122,8 +122,12 @@ export default function DoctorTransferModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Transfer to doctor bag${item ? ` — ${item.item_name}` : ""}`}
-      description="Transfer reserved-aware warehouse stock into a doctor bag. Confirmation stays disabled until a doctor is selected."
+      title={requiresOperationalOverride(user) ? `Admin override transfer${item ? ` — ${item.item_name}` : ""}` : `Transfer to doctor bag${item ? ` — ${item.item_name}` : ""}`}
+      description={
+        requiresOperationalOverride(user)
+          ? "This is an exceptional administrator transfer. Operators normally perform warehouse transfers. Review the location, batch, quantity, reservations and resulting balance before confirming."
+          : "Transfer reserved-aware warehouse stock into a doctor bag. Confirmation stays disabled until a doctor is selected."
+      }
       size="md"
       innerScroll={false}
     >
@@ -163,6 +167,7 @@ export default function DoctorTransferModal({
                     .join("; ") || "—"
                 }
               />
+              <Row label="Reservations affected" value={String(preview?.reserved_quantity ?? 0)} />
               <Row label="Resulting warehouse quantity" value={String(preview?.resulting_quantity ?? "—")} />
               <Row
                 label="Resulting doctor-bag quantity"
@@ -265,7 +270,7 @@ export default function DoctorTransferModal({
             disabled={isSaving || !formValid}
             className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[#4FB8B3] px-4 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {isSaving ? "Transferring…" : step === "confirm" ? "Transfer to doctor bag" : "Review transfer"}
+            {isSaving ? "Transferring…" : step === "confirm" ? (requiresOperationalOverride(user) ? "Confirm admin override transfer" : "Transfer to doctor bag") : "Review transfer"}
           </button>
         </div>
       </form>

@@ -14,6 +14,7 @@ export default function OperationalOverrideFields({ user, reason, onChange }) {
         rows={3}
         value={reason}
         onChange={(event) => onChange(event.target.value)}
+        aria-label="Operational override reason"
         className="w-full min-h-11 rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-800"
       />
     </label>

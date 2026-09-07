@@ -95,6 +95,9 @@ export function isPastLocalDate(value) {
 
 export function formatAllocationExpiry(row) {
   if (row?.is_non_expiring) return "Non-expiring";
-  if (row?.expired) return `${row.expiry_date || "No date"} · expired`;
-  return row?.expiry_date || "No expiry";
+  if (row?.expired || row?.stock_state === "expired") return "Expired";
+  if (row?.missing_expiry || row?.stock_state === "missing_expiry" || (!row?.expiry_date && !row?.is_non_expiring)) {
+    return "Expiry missing";
+  }
+  return row?.expiry_date || "Expiry missing";
 }

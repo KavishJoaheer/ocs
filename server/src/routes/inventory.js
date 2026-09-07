@@ -19,7 +19,7 @@ const {
   publishPatientDataChange,
 } = require("../lib/inventoryRealtime");
 const { db } = require("../db");
-const { getTodayLocal, toNumber } = require("../lib/utils");
+const { toNumber } = require("../lib/utils");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
   applyStocktakeSession,
@@ -60,6 +60,13 @@ const {
 } = require("../lib/inventoryAccess");
 const { availableToPromise, consumeAvailableFefo } = require("../lib/restockFulfilment");
 const {
+  countReconciliationRequired,
+  decorateBatches,
+  decorateInventoryItems,
+  locationDisplayMeta,
+  summarizeLocationValuation,
+} = require("../lib/inventoryStockState");
+const {
   isAutomatedMovementMeta,
   resolveAuditActor,
 } = require("../lib/auditActor");
@@ -68,7 +75,6 @@ const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../conf
 
 const router = express.Router();
 const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
-const NEAR_EXPIRY_DAYS = 90;
 
 function isWarehouseManager(role) {
   return role === "admin" || role === "operator";
@@ -92,26 +98,34 @@ router.get("/data-quality.csv", (req, res) => {
     return res.status(403).json({ error: "Only operators or administrators can export data-quality queues." });
   }
   const kind = String(req.query.kind || "all").trim().toLowerCase();
-  const items = getItems({ stockScope: "ocs" });
+  const selectedDoctorId = Number(req.query.doctorId || 0) || null;
+  const items = selectedDoctorId
+    ? getItems({ stockScope: "doctor", doctorId: selectedDoctorId })
+    : getItems({ stockScope: "ocs" });
   const rows = [];
   if (kind === "all" || kind === "low_stock") {
     for (const item of items.filter((row) => Number(row.quantity || 0) <= Number(row.minimum_quantity || 0))) {
-      rows.push(["low_stock", item.id, item.item_name, item.quantity, item.minimum_quantity, item.expiry_date || ""]);
+      rows.push(["low_stock", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, item.nearest_usable_expiry || ""]);
     }
   }
   if (kind === "all" || kind === "missing_expiry") {
     for (const item of items.filter((row) => row.missing_expiry)) {
-      rows.push(["missing_expiry", item.id, item.item_name, item.quantity, item.minimum_quantity, ""]);
+      rows.push(["missing_expiry", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, "Expiry missing"]);
     }
   }
   if (kind === "all" || kind === "near_expiry") {
     for (const item of items.filter((row) => row.is_near_expiry)) {
-      rows.push(["near_expiry", item.id, item.item_name, item.quantity, item.minimum_quantity, item.expiry_date || ""]);
+      rows.push(["near_expiry", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, item.nearest_usable_expiry || ""]);
+    }
+  }
+  if (kind === "all" || kind === "expired") {
+    for (const item of items.filter((row) => row.has_expired)) {
+      rows.push(["expired", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, "Expired"]);
     }
   }
   const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const body = [
-    ["queue", "item_id", "item_name", "quantity", "minimum_quantity", "expiry_date"].join(","),
+    ["queue", "item_id", "item_name", "on_hand", "minimum_quantity", "available_to_use", "expired_quantity", "nearest_usable_expiry"].join(","),
     ...rows.map((row) => row.map(escapeCsv).join(",")),
   ].join("\n");
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -135,12 +149,6 @@ function safeParseJson(value, fallback = {}) {
   } catch {
     return fallback;
   }
-}
-
-function isNearExpiry(expiryDate) {
-  if (!expiryDate) return false;
-  const diff = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  return diff >= 0 && diff <= NEAR_EXPIRY_DAYS;
 }
 
 function ensureColumn(table, column, sql) {
@@ -496,7 +504,7 @@ function getFolders() {
 }
 
 function getItems({ stockScope, doctorId = null }) {
-  return db
+  const rows = db
     .prepare(`
       SELECT i.*, f.name AS folder_name
       ,
@@ -525,23 +533,22 @@ function getItems({ stockScope, doctorId = null }) {
         )
       ORDER BY f.name ASC, i.item_name ASC
     `)
-    .all({ stockScope, doctorId })
-    .map((row) => ({
+    .all({ stockScope, doctorId });
+  return decorateInventoryItems(
+    rows.map((row) => ({
       ...row,
       quantity: Number(row.quantity || 0),
       minimum_quantity: Number(row.minimum_quantity || 0),
       cost_price: toNumber(row.cost_price, 0),
       selling_price: toNumber(row.selling_price, 0),
-      expiry_date: row.nearest_expiry_date || null,
       catalogue_expiry_date: row.expiry_date || null,
       current_cost_value: roundCurrency(Number(row.quantity || 0) * toNumber(row.cost_price, 0)),
-      is_near_expiry: isNearExpiry(row.nearest_expiry_date),
-      missing_expiry: Number(row.missing_expiry_batches || 0) > 0,
-    }));
+    })),
+  );
 }
 
 function getBatchesForItem(itemId) {
-  return db
+  const rows = db
     .prepare(`
       SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, created_at
       FROM inventory_batches
@@ -555,12 +562,33 @@ function getBatchesForItem(itemId) {
         expiry_date ASC,
         id ASC
     `)
-    .all(itemId)
-    .map((row) => ({
+    .all(itemId);
+  const reservedByBatch = new Map();
+  for (const row of rows) {
+    reservedByBatch.set(
+      Number(row.id),
+      Number(
+        db
+          .prepare(
+            `
+            SELECT COALESCE(SUM(rb.quantity), 0) AS total
+            FROM inventory_reservation_batches rb
+            JOIN inventory_reservations r ON r.id = rb.reservation_id
+            WHERE rb.batch_id = ? AND r.status = 'active'
+          `,
+          )
+          .get(row.id)?.total || 0,
+      ),
+    );
+  }
+  return decorateBatches(
+    rows.map((row) => ({
       ...row,
       quantity_remaining: Number(row.quantity_remaining || 0),
       unit_cost: roundCurrency(row.unit_cost),
-    }));
+    })),
+    { reservedByBatch },
+  );
 }
 
 function getDoctors() {
@@ -876,9 +904,12 @@ function recordMovement({
 }
 
 function summarize(items, doctorId = null) {
-  const totalAmount = items.reduce((sum, item) => sum + item.current_cost_value, 0);
+  const valuation = summarizeLocationValuation(items);
+  const totalAmount = valuation.known_value;
   const lowStock = items.filter((item) => item.quantity <= item.minimum_quantity);
-  const nearExpiry = items.filter((item) => isNearExpiry(item.expiry_date));
+  const nearExpiry = items.filter((item) => item.is_near_expiry);
+  const missingExpiry = items.filter((item) => item.missing_expiry);
+  const expired = items.filter((item) => item.has_expired);
 
   const monthlyConsumed = doctorId
     ? db
@@ -925,9 +956,14 @@ function summarize(items, doctorId = null) {
 
   return {
     total_amount_rs: roundCurrency(totalAmount),
+    known_value_rs: valuation.known_value,
+    valuation_complete: valuation.valuation_complete,
+    unpriced_count: valuation.unpriced_count,
     total_amount_consumed_rs: roundCurrency(monthlyConsumed?.amount),
     low_stock_count: lowStock.length,
     near_expiry_count: nearExpiry.length,
+    missing_expiry_count: missingExpiry.length,
+    expired_count: expired.length,
     total_monthly_sales_rs: roundCurrency(monthlySales?.amount),
     total_monthly_replenishments_rs: roundCurrency(monthlyReplenishments?.amount),
   };
@@ -1333,6 +1369,16 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   const activityDateFrom = String(req.query.dateFrom || "").trim();
   const activityDateTo = String(req.query.dateTo || "").trim();
   const rawSummary = summarize(activeItems, summaryDoctorId);
+  const selectedDoctorName = contextDoctorId
+    ? db.prepare("SELECT full_name FROM doctors WHERE id = ?").get(contextDoctorId)?.full_name || ""
+    : "";
+  const locationMeta = locationDisplayMeta({
+    isBag: Boolean(contextDoctorId || (doctorId && !doctorViewIsOcs)),
+    doctorName: selectedDoctorName || (doctorId ? req.auth?.full_name : ""),
+  });
+  if (doctorId && !doctorViewIsOcs) {
+    locationMeta.location_heading = "My bag";
+  }
   const warehouseManager = isWarehouseManager(role);
   const shipments = warehouseManager ? listShipments() : [];
   const stocktakeSessions = warehouseManager ? listStocktakeSessions() : [];
@@ -1357,34 +1403,16 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     tab_summaries: warehouseManager
       ? {
           stock: {
-            warehouse_value: rawSummary.total_amount_rs,
+            ...locationMeta,
+            warehouse_value: rawSummary.known_value_rs,
+            stock_value: rawSummary.known_value_rs,
+            valuation_complete: Boolean(rawSummary.valuation_complete),
+            unpriced_count: Number(rawSummary.unpriced_count || 0),
             low_stock: Number(rawSummary.low_stock_count || 0),
             near_expiry: Number(rawSummary.near_expiry_count || 0),
-            missing_expiry: ocsStock.filter((item) => item.missing_expiry).length,
-            reconciliation_required: Number(
-              db
-                .prepare(
-                  `
-                  SELECT COUNT(*) AS count
-                  FROM restock_requests r
-                  WHERE r.status IN ('accepted', 'ready')
-                    AND (
-                      NOT EXISTS (
-                        SELECT 1 FROM restock_request_fulfillments f
-                        WHERE f.request_id = r.id AND f.status IN ('open', 'picking', 'packed', 'posted')
-                      )
-                      OR EXISTS (
-                        SELECT 1 FROM restock_request_fulfillment_items fi
-                        JOIN restock_request_fulfillments f2 ON f2.id = fi.fulfilment_id
-                        WHERE f2.request_id = r.id
-                          AND fi.inventory_id IS NULL
-                          AND fi.requested_quantity > 0
-                      )
-                    )
-                `,
-                )
-                .get()?.count || 0,
-            ),
+            missing_expiry: Number(rawSummary.missing_expiry_count || 0),
+            expired: Number(rawSummary.expired_count || 0),
+            reconciliation_required: countReconciliationRequired(contextDoctorId),
           },
           shipments: shipmentStats,
           count: stocktakeStats,
@@ -1405,8 +1433,9 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
         }
       : null,
     low_stock_items: activeItems.filter((item) => item.quantity <= item.minimum_quantity),
-    near_expiry_items: activeItems.filter((item) => isNearExpiry(item.expiry_date)),
+    near_expiry_items: activeItems.filter((item) => item.is_near_expiry),
     missing_expiry_items: activeItems.filter((item) => item.missing_expiry),
+    expired_items: activeItems.filter((item) => item.has_expired),
     movements: getMovements(role, doctorId, {
       userId: req.query.activityUserId,
       actorRole: req.query.activityRole,

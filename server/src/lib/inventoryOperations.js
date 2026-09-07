@@ -6,6 +6,7 @@ const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast } = require("./inventoryRealtime");
 const { isEnvTrue } = require("./envFlags");
 const { availableToPromise, consumeAvailableFefo, listImpactedActiveRequests, reduceReservationsForCorrection, reservedQuantityForItem } = require("./restockFulfilment");
+const { decorateInventoryItems } = require("./inventoryStockState");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 const { isValidIsoCalendarDate } = require("./calendarDate");
 
@@ -152,6 +153,9 @@ function listWriteOffBatches(itemId) {
         expiry_date: row.expiry_date || null,
         is_non_expiring: Number(row.is_non_expiring || 0) === 1,
         unit_cost: toNumber(row.unit_cost, 0),
+        missing_expiry:
+          Number(row.is_non_expiring || 0) !== 1 &&
+          !(row.expiry_date && String(row.expiry_date).trim()),
         expired:
           Boolean(row.expiry_date) &&
           Number(row.is_non_expiring || 0) !== 1 &&
@@ -178,7 +182,15 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
       )
       .get(itemId)?.total || 0,
   );
-  const available = availableToPromise(itemId);
+  const availableAtp = availableToPromise(itemId);
+  const stockState = decorateInventoryItems([
+    {
+      id: itemId,
+      quantity: onHand,
+    },
+  ])[0];
+  const availableToUse = Number(stockState?.available_to_use || 0);
+  const available = includeExpired ? availableAtp : availableToUse;
   const batches = includeExpired
     ? listWriteOffBatches(itemId)
     : listWriteOffBatches(itemId).filter((row) => !row.expired);
@@ -208,6 +220,8 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
     unit: item.unit || "unit",
     current_quantity: onHand,
     reserved_quantity: reserved,
+    expired_quantity: Number(stockState?.expired_quantity || 0),
+    available_to_use: availableToUse,
     available_to_transfer: available,
     requested_quantity: qty,
     resulting_quantity: onHand - allocated,

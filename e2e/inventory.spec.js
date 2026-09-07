@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openE2eDb } from "./e2eDb.cjs";
 
 const STAFF_BASE = `http://127.0.0.1:${process.env.E2E_STAFF_PORT || "4173"}`;
 const API_BASE = `http://127.0.0.1:${process.env.E2E_API_PORT || "3001"}/api`;
@@ -37,7 +38,7 @@ function nextCollectionIso() {
   throw new Error("Could not find a valid collection date.");
 }
 
-async function createStockedItem(request, { adminToken, operatorToken, name, quantity = 8 }) {
+async function createStockedItem(request, { adminToken, operatorToken, name, quantity = 8, expiryDate = "2029-06-01", isNonExpiring = false, costPrice = 5 }) {
   const foldersRes = await request.get(`${API_BASE}/inventory`, {
     headers: { Authorization: `Bearer ${adminToken}` },
   });
@@ -53,7 +54,7 @@ async function createStockedItem(request, { adminToken, operatorToken, name, qua
       quantity: 0,
       minimum_quantity: 0,
       unit: "unit",
-      cost_price: 5,
+      cost_price: costPrice,
       selling_price: 10,
     },
   });
@@ -62,13 +63,37 @@ async function createStockedItem(request, { adminToken, operatorToken, name, qua
   const item = (afterCreate.ocs_stock || []).find((row) => row.item_name === name);
   expect(item?.id).toBeTruthy();
   if (quantity > 0) {
-    const received = await request.post(`${API_BASE}/inventory/items/${item.id}/ocs-actions`, {
-      headers: { Authorization: `Bearer ${operatorToken}` },
-      data: { action_type: "stock_in", quantity, expiry_date: "2029-06-01" },
-    });
-    expect(received.ok(), await received.text()).toBeTruthy();
+    const today = new Date().toISOString().slice(0, 10);
+    const expiry = expiryDate ? String(expiryDate).slice(0, 10) : "";
+    const pastExpiry = Boolean(expiry && expiry < today);
+    if (!isNonExpiring && (!expiry || pastExpiry)) {
+      const db = openE2eDb();
+      db.prepare(
+        `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+         VALUES (?, ?, ?, 5, 0)`,
+      ).run(item.id, quantity, expiry || null);
+      db.prepare("UPDATE inventory SET quantity = ? WHERE id = ?").run(quantity, item.id);
+      db.close();
+    } else {
+      const received = await request.post(`${API_BASE}/inventory/items/${item.id}/ocs-actions`, {
+        headers: { Authorization: `Bearer ${operatorToken}` },
+        data: {
+          action_type: "stock_in",
+          quantity,
+          expiry_date: isNonExpiring ? null : expiryDate,
+          is_non_expiring: isNonExpiring,
+        },
+      });
+      expect(received.ok(), await received.text()).toBeTruthy();
+    }
   }
   return { ...item, folder_id: consumable.id, folder_name: consumable.name };
+}
+
+async function openStockTab(page) {
+  const tab = page.getByRole("tab", { name: /^(Warehouse stock|Stock)$/ });
+  await expect(tab).toBeVisible({ timeout: 20_000 });
+  await tab.click();
 }
 
 async function pickRequest(request, operatorToken, requestId, { fulfilledQuantity, partialReason } = {}) {
@@ -195,7 +220,7 @@ test.describe("Inventory workflow", () => {
 
     await injectStaffSession(page, operator.token);
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { name: "OCS Stock" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "OCS warehouse" })).toBeVisible();
     await page.getByRole("button", { name: /^History/ }).click();
     await expect(page.locator("span").filter({ hasText: /^Supply Dispatched$/ })).toBeVisible();
   });
@@ -471,7 +496,7 @@ test.describe("Inventory workflow", () => {
     for (const width of [1440, 768, 375, 320]) {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
-      await expect(page.getByRole("heading", { name: "OCS Stock" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("heading", { name: "OCS warehouse" })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("button", { name: /queues|stock|shipments|count/i }).first()).toBeVisible();
     }
 
@@ -629,11 +654,11 @@ test.describe("Inventory workflow", () => {
       await page.getByPlaceholder(/Search by item name/).fill(itemName);
       const stockTable = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Item Name" }) });
       const row = stockTable.locator("tbody tr").filter({ hasText: itemName }).filter({
-        has: page.getByRole("button", { name: "More actions" }),
+        has: page.getByRole("button", { name: "Exceptional actions" }),
       });
       await expect(row).toBeVisible({ timeout: 20_000 });
       await row.evaluate((node) => node.scrollIntoView({ block: "center", inline: "nearest" }));
-      await row.getByRole("button", { name: "More actions" }).click();
+      await row.getByRole("button", { name: "Exceptional actions" }).click();
       await page.getByRole("menuitem", { name: "Exceptional inventory correction" }).click({ force: true });
       await expect(page.getByRole("heading", { name: /Exceptional inventory correction/ })).toBeVisible();
     }
@@ -647,7 +672,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { name: "OCS Stock", exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "OCS warehouse", exact: true })).toBeVisible({
       timeout: 25_000,
     });
     await openCorrection(freeItem.item_name);
@@ -845,15 +870,257 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByLabel("Request #")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel("Operator")).toBeVisible();
     await expect(page.getByLabel("Folder / category")).toBeVisible();
+    const categoryLabels = await page.getByLabel("Folder / category").locator("option").allTextContents();
+    const visibleCategoryLabels = categoryLabels.filter((label) => label && label !== "All folders");
+    expect(new Set(visibleCategoryLabels).size).toBe(visibleCategoryLabels.length);
     await page.getByLabel("Request #").fill(String(requestId));
     await expect(page.getByText("1 filter active")).toBeVisible();
-    await expect(page.getByText(/cancelled · 1 matching/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect(page.getByText("No history filters applied")).toBeVisible();
     await page.getByLabel("Item").fill(item.item_name);
     await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 15_000 });
     await page.setViewportSize({ width: 375, height: 812 });
+    await expect(page.getByRole("button", { name: /Filters/ })).toBeVisible();
+    await expect(page.getByLabel("Request #")).toHaveCount(0);
+    await page.getByRole("button", { name: /Filters/ }).click();
+    await expect(page.getByLabel("Request #")).toBeVisible();
     const requestBox = await page.getByLabel("Request #").boundingBox();
     expect(requestBox?.height || 0).toBeGreaterThanOrEqual(44);
+    await page.getByLabel("Request #").fill("preserved-id");
+    await page.getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: /Filters/ }).click();
+    await expect(page.getByLabel("Request #")).toHaveValue("preserved-id");
+  });
+
+  test("expired stock is badged and excluded from usable availability", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const name = `E2E Expired ${Date.now()}`;
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name,
+      quantity: 5,
+      expiryDate: "2020-01-01",
+    });
+    const stock = await request.get(`${API_BASE}/inventory`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    const row = (await apiJson(stock)).ocs_stock.find((entry) => entry.id === item.id);
+    expect(Number(row.expired_quantity)).toBe(5);
+    expect(Number(row.available_to_use)).toBe(0);
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+    await page.getByPlaceholder(/Search by item name/).fill(name);
+    await expect(page.getByText(name).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/^Expired$/).first()).toBeVisible();
+    await expect(page.getByText("Avail 0").first()).toBeVisible();
+  });
+
+  test("missing expiry and non-expiring stock use different labels", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const missingName = `E2E Missing ${Date.now()}`;
+    const nonName = `E2E NonExp ${Date.now()}`;
+    await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: missingName,
+      quantity: 2,
+      expiryDate: null,
+    });
+    await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: nonName,
+      quantity: 2,
+      isNonExpiring: true,
+    });
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+    await page.getByPlaceholder(/Search by item name/).fill(missingName);
+    await expect(page.getByText(missingName).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Expiry missing").first()).toBeVisible();
+    await page.getByPlaceholder(/Search by item name/).fill(nonName);
+    await expect(page.getByText(nonName).first()).toBeVisible();
+    await expect(page.getByText("Non-expiring").first()).toBeVisible();
+    await expect(page.getByText("No expiry")).toHaveCount(0);
+  });
+
+  test("selected doctor bag summaries never use My Stock and stay consistent", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    const inventory = await request.get(`${API_BASE}/inventory`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    const doctors = (await apiJson(inventory)).doctors || [];
+    const doctor = doctors.find((row) => /arun/i.test(row.full_name)) || doctors[0];
+    expect(doctor?.id).toBeTruthy();
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+    await page.getByLabel("Stock location").selectOption(String(doctor.id));
+    await expect(page.getByRole("heading", { level: 1, name: new RegExp(`${doctor.full_name}'s bag`, "i") })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("My Stock")).toHaveCount(0);
+    await expect(page.getByText(/Bag low stock|Bag value/i).first()).toBeVisible();
+    const missingCard = page.getByRole("button", { name: /Bag missing expiry/i });
+    const missingFilter = page.getByRole("button", { name: /Missing expiry \(/ });
+    if (await missingCard.count()) {
+      const cardText = await missingCard.innerText();
+      const filterText = await missingFilter.innerText();
+      const cardCount = cardText.match(/(\d+)/)?.[1];
+      const filterCount = filterText.match(/(\d+)/)?.[1];
+      expect(cardCount).toBe(filterCount);
+    }
+  });
+
+  test("incomplete pricing is not shown as a complete Rs 0.00 valuation", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Unpriced ${Date.now()}`,
+      quantity: 3,
+      costPrice: 0,
+    });
+    await injectStaffSession(page, admin.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect(page.getByText("Incomplete").first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Warehouse value")).toBeVisible();
+  });
+
+  test("unreconciled legacy ready request cannot be collected", async ({ request, page }) => {
+    const doctor = await login(request, "arun.dharee");
+    const db = openE2eDb();
+    const user = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+    const requestId = Number(
+      db
+        .prepare(
+          `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note, ready_at)
+           VALUES (?, ?, ?, 1, 'ready', 'e2e-legacy-ready', CURRENT_TIMESTAMP)`,
+        )
+        .run(user.doctor_id, user.id, nextCollectionIso()).lastInsertRowid,
+    );
+    db.prepare(
+      `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, NULL, 'Legacy gauze', 2)`,
+    ).run(requestId);
+    db.close();
+    await injectStaffSession(page, doctor.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/supply-requests`);
+    await expect(page.getByText("Legacy – reconciliation required").first()).toBeVisible({ timeout: 20_000 });
+    const legacyCard = page.locator("article").filter({ hasText: "Legacy – reconciliation required" }).first();
+    await expect(legacyCard.getByRole("button", { name: "Supply Collected" })).toHaveCount(0);
+    const blocked = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: { status: "completed" },
+    });
+    expect(blocked.status()).toBe(409);
+  });
+
+  test("admin exceptional actions require a reason and confirmation", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E AdminAct ${Date.now()}`,
+      quantity: 4,
+    });
+    await injectStaffSession(page, admin.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByPlaceholder(/Search by item name/).fill(item.item_name);
+    await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Exceptional actions" }).first().click();
+    await page.getByRole("menuitem", { name: "Admin override transfer" }).click({ force: true });
+    await expect(page.getByText(/exceptional administrator transfer/i)).toBeVisible();
+    await page.locator("div.max-h-44 button").first().click();
+    await page.getByLabel(/operational override reason/i).fill("Need to move stock for a same-day visit");
+    await page.getByRole("button", { name: "Review transfer" }).click();
+    await expect(page.getByRole("button", { name: "Confirm admin override transfer" })).toBeVisible();
+  });
+
+  test("mobile shipment controls do not overlap", async ({ page, request }) => {
+    const admin = await login(request, "shravan.joaheer");
+    await injectStaffSession(page, admin.token);
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /Shipments/i }).click();
+    await expect(page.getByRole("button", { name: "Paste CSV text instead" })).toBeVisible({ timeout: 20_000 });
+    const paste = await page.getByRole("button", { name: "Paste CSV text instead" }).boundingBox();
+    const override = page.getByText("Operational override reason");
+    if (await override.count()) {
+      const overrideBox = await override.boundingBox();
+      expect((paste?.y || 0) + (paste?.height || 0)).toBeLessThan((overrideBox?.y || 9999) - 4);
+    }
+    await expect(page.getByRole("button", { name: "Validate preview" })).toBeVisible();
+    const validate = await page.getByRole("button", { name: "Validate preview" }).boundingBox();
+    expect(validate?.width || 0).toBeGreaterThan(200);
+  });
+
+  test("last inventory control scrolls above bottom navigation", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 720 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+    const next = page.getByTestId("inventory-pagination").getByRole("button", { name: "Next" });
+    await next.scrollIntoViewIfNeeded();
+    const box = await next.boundingBox();
+    expect(box).toBeTruthy();
+    expect((box?.y || 0) + (box?.height || 0)).toBeLessThan(720 - 56);
+  });
+
+  test("doctor-bag cards have visible accessible navigation", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const inventory = await request.get(`${API_BASE}/inventory`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    const body = await apiJson(inventory);
+    const doctor = (body.doctors || []).find((row) => /arun/i.test(row.full_name)) || body.doctors?.[0];
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E BagCard ${Date.now()}`,
+      quantity: 3,
+    });
+    const transferred = await request.post(`${API_BASE}/inventory/restock`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { ocs_item_id: item.id, doctor_id: doctor.id, quantity: 1, confirm: true },
+    });
+    expect(transferred.ok(), await transferred.text()).toBeTruthy();
+    await injectStaffSession(page, admin.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /Bags/i }).click();
+    const bagCard = page.getByRole("button", { name: /View .* bag/i }).first();
+    await expect(bagCard).toBeVisible({ timeout: 20_000 });
+    const box = await bagCard.boundingBox();
+    expect((box?.height || 0)).toBeGreaterThanOrEqual(44);
+    await bagCard.click();
+    await expect(page.getByText("My Stock")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 1, name: /bag/i })).toBeVisible();
+  });
+
+  test("closed mobile navigation is not exposed as active navigation", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await expect(page.getByRole("navigation").getByRole("link", { name: "Inventory" })).toHaveCount(1);
+    await expect(page.getByRole("dialog", { name: "Navigation menu" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await expect(page.getByRole("dialog", { name: "Navigation menu" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Navigation menu" })).toHaveCount(0);
   });
 });

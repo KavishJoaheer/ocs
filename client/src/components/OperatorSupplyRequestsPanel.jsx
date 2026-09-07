@@ -22,6 +22,7 @@ import {
 } from "../lib/supplyRequests.js";
 import EmergencyOverrideDialog from "./EmergencyOverrideDialog.jsx";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
+import LegacyReconciliationNotice from "./LegacyReconciliationNotice.jsx";
 import { withOperationalOverride } from "../lib/inventoryAccess.js";
 import { cx } from "../lib/utils.js";
 
@@ -73,6 +74,9 @@ function actionClass(kind, extra = "") {
   }
   if (kind === "danger") {
     return cx("inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 disabled:opacity-60", extra);
+  }
+  if (kind === "ghost") {
+    return cx("inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-60", extra);
   }
   return cx("inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-60", extra);
 }
@@ -379,6 +383,7 @@ export default function OperatorSupplyRequestsPanel() {
                       </div>
                       {statusBadge(request, role)}
                     </div>
+                    <LegacyReconciliationNotice request={request} compact />
                     <p className="mt-2 break-words text-sm text-slate-700">{describeSupplyRequestItems(request.items)}</p>
                     <p className="mt-1 text-xs text-slate-500">{dayjs(request.collection_date).format("ddd, DD MMM")}</p>
                     <CompactRequestActions
@@ -437,7 +442,10 @@ export default function OperatorSupplyRequestsPanel() {
                         <td className="px-3 py-3 text-slate-700">
                           {dayjs(request.collection_date).format("ddd, DD MMM")}
                         </td>
-                        <td className="px-3 py-3">{statusBadge(request, role)}</td>
+                        <td className="px-3 py-3">
+                          {statusBadge(request, role)}
+                          <LegacyReconciliationNotice request={request} compact />
+                        </td>
                         <td className="px-3 py-3 text-right">
                           <CompactRequestActions
                             request={request}
@@ -463,39 +471,37 @@ export default function OperatorSupplyRequestsPanel() {
               operators={operators}
               folders={folders}
               role={role}
+              resultCount={history.total}
+              exportControl={
+                <a
+                  href={`/api/restock-requests/export?${historyQuery.replace("view=history&", "").replace("include_events=1&", "")}`}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                    void fetch(`/api/restock-requests/export?${new URLSearchParams({
+                      ...Object.fromEntries(new URLSearchParams(historyQuery)),
+                    })}`, {
+                      headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    }).then(async (response) => {
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = "supply-request-history.csv";
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    });
+                  }}
+                >
+                  Export CSV
+                </a>
+              }
               onChange={(next) => {
                 setHistoryOffset(0);
                 setFilters(next);
               }}
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs text-slate-500">
-                {history.completed_count || 0} completed · {history.cancelled_count || 0} cancelled
-              </p>
-              <a
-                href={`/api/restock-requests/export?${historyQuery.replace("view=history&", "").replace("include_events=1&", "")}`}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
-                onClick={(event) => {
-                  event.preventDefault();
-                  const token = window.localStorage.getItem("ocs_medecins_auth_token");
-                  void fetch(`/api/restock-requests/export?${new URLSearchParams({
-                    ...Object.fromEntries(new URLSearchParams(historyQuery)),
-                  })}`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                  }).then(async (response) => {
-                    const blob = await response.blob();
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement("a");
-                    link.href = url;
-                    link.download = "supply-request-history.csv";
-                    link.click();
-                    URL.revokeObjectURL(url);
-                  });
-                }}
-              >
-                Export CSV
-              </a>
-            </div>
 
             {history.doctor_counts.length || history.item_counts.length ? (
               <div className="grid gap-3 md:grid-cols-2">
@@ -672,13 +678,25 @@ export default function OperatorSupplyRequestsPanel() {
           setCancelTarget(null);
           setCancelReason("");
         }}
-        title="Cancel and archive this request?"
-        description="The request will be moved to History. It will not be permanently deleted."
+        title={role === "admin" && ["accepted", "ready"].includes(cancelTarget?.status)
+          ? "Exceptional cancellation"
+          : "Cancel and archive this request?"}
+        description={role === "admin" && ["accepted", "ready"].includes(cancelTarget?.status)
+          ? "This is an administrative exception. Confirm the consequences and record a reason of at least 10 characters."
+          : "The request will be moved to History. It will not be permanently deleted."}
         size="md"
       >
         <div className="flex flex-col gap-4">
           {cancelTarget && ["accepted", "ready"].includes(cancelTarget.status) ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-semibold">
+                {role === "admin" ? "Exceptional cancellation" : "Cancellation after acceptance"}
+              </p>
+              {role === "admin" ? (
+                <p className="mt-1">
+                  Administrators do not cancel accepted or ready requests as a routine action. This override releases reservations and archives the request.
+                </p>
+              ) : null}
               <p>Reserved quantities will be released.</p>
               <p>Packed or picked quantities will no longer be associated with the request.</p>
               <p>The request will remain in History.</p>
@@ -691,7 +709,10 @@ export default function OperatorSupplyRequestsPanel() {
               value={cancelReason}
               onChange={(event) => setCancelReason(event.target.value.slice(0, 500))}
               rows={3}
-              placeholder="Why is this request being archived?"
+              minLength={role === "admin" && ["accepted", "ready"].includes(cancelTarget?.status) ? 10 : undefined}
+              placeholder={role === "admin" && ["accepted", "ready"].includes(cancelTarget?.status)
+                ? "Explain why this exceptional cancellation is required (at least 10 characters)"
+                : "Why is this request being archived?"}
               className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700"
             />
           </label>
@@ -708,7 +729,11 @@ export default function OperatorSupplyRequestsPanel() {
             </button>
             <button
               type="button"
-              disabled={!cancelReason.trim() || updatingId === cancelTarget?.id}
+              disabled={
+                !cancelReason.trim()
+                || updatingId === cancelTarget?.id
+                || (role === "admin" && ["accepted", "ready"].includes(cancelTarget?.status) && cancelReason.trim().length < 10)
+              }
               onClick={() => {
                 const request = cancelTarget;
                 setCancelTarget(null);

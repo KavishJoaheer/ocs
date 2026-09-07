@@ -1027,3 +1027,66 @@ test("history operator and folder filters change both records and aggregate stat
   assert.doesNotMatch(csv, /bhobun/i);
 });
 
+test("history category lookups qualify duplicate leaf names and keep stable ids", async () => {
+  const lookups = await api("GET", "/api/restock-requests/history-lookups", { token: operatorToken });
+  assert.equal(lookups.status, 200, JSON.stringify(lookups.data));
+  const folders = lookups.data.folders || [];
+  const labels = folders.map((row) => row.label || row.name);
+  assert.equal(labels.length, new Set(labels).size);
+  const consumables = folders.filter((row) => String(row.name).toLowerCase() === "consumable");
+  if (consumables.length > 1) {
+    assert.ok(consumables.every((row) => String(row.label || "").includes("/")));
+    assert.ok(consumables.every((row) => Number(row.id) > 0));
+  }
+});
+
+test("unreconciled legacy ready requests cannot be collected", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note, ready_at)
+         VALUES (?, ?, ?, 1, 'ready', 'legacy-ui-block', CURRENT_TIMESTAMP)`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, NULL, 'Legacy gauze', 2)`,
+  ).run(requestId);
+  const listed = await api("GET", "/api/restock-requests", { token: operatorToken });
+  const row = (listed.data.requests || []).find((item) => Number(item.id) === requestId);
+  assert.ok(row);
+  assert.equal(row.reconciliation_required, true);
+  assert.ok((row.reconciliation_gaps || []).length > 0);
+  const collect = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(collect.status, 409, JSON.stringify(collect.data));
+  const detail = await api("GET", `/api/restock-requests/${requestId}`, { token: operatorToken });
+  assert.equal(detail.data.request.reconciliation_required, true);
+});
+
+test("admin exceptional cancellation of accepted requests requires a 10-character reason", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({ note: "admin-cancel" }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const accepted = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const short = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: adminToken,
+    body: { status: "cancelled", reason: "too short" },
+  });
+  assert.equal(short.status, 400, JSON.stringify(short.data));
+  const ok = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: adminToken,
+    body: { status: "cancelled", reason: "Doctor postponed after packing started" },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+});
+

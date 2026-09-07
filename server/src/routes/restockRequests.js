@@ -24,6 +24,7 @@ const {
 const { movementIdsForTransaction } = require("../lib/inventoryOperations");
 const { LEGACY_STAFF_LABEL, resolveAuditActor } = require("../lib/auditActor");
 const { assertRoutineOperatorAction } = require("../lib/inventoryAccess");
+const { normalizeHistoryFolderOptions } = require("../lib/inventoryStockState");
 const {
   HttpError,
   applyPicking,
@@ -289,6 +290,40 @@ function normalizeFulfilmentForDetail(fulfilment) {
   };
 }
 
+function integerLineQty(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function describeReconciliationGaps({ status, fulfilment, events, eventsLoaded = false }) {
+  if (!["accepted", "ready"].includes(status)) return [];
+  const gaps = [];
+  const items = fulfilment?.items || [];
+  if (!fulfilment || fulfilment.linkage_required || !items.length) {
+    gaps.push("Fulfilment record");
+  }
+  if (!items.length || items.some((line) => !line.inventory_id && integerLineQty(line.requested_quantity) > 0)) {
+    gaps.push("Catalogue item linkage");
+  }
+  if (!items.length || items.some((line) => !line.reservation_id && integerLineQty(line.requested_quantity) > 0)) {
+    gaps.push("Reservation records");
+  }
+  if (status === "ready") {
+    const missingPicked = !items.length
+      || items.some((line) => {
+        const requested = integerLineQty(line.requested_quantity);
+        const picked = integerLineQty(line.picked_quantity);
+        const allocations = line.allocations || line.picked_batches || [];
+        return requested > 0 && (picked <= 0 || !allocations.length);
+      });
+    if (missingPicked) gaps.push("Picked-batch allocations");
+  }
+  if (eventsLoaded && (!Array.isArray(events) || !events.length)) {
+    gaps.push("Request timeline");
+  }
+  return [...new Set(gaps)];
+}
+
 function serializeRequest(row, extras = {}) {
   const status = normaliseStatus(row.status);
   const transferTransactionId = row.transfer_transaction_id || extras.transferTransactionId || extras.fulfilment?.transfer_transaction_id || null;
@@ -303,6 +338,14 @@ function serializeRequest(row, extras = {}) {
   const fulfilment = normalizeFulfilmentForDetail(extras.fulfilment || null);
   const hasFulfilmentLines = Boolean(fulfilment?.items?.length);
   const lifecycleHasFulfilment = ["accepted", "ready", "completed"].includes(status);
+  const reconciliationGaps = describeReconciliationGaps({
+    status,
+    fulfilment,
+    events,
+    eventsLoaded: Boolean(extras.eventsLoaded),
+  });
+  const linkageRequired = Boolean(fulfilment?.linkage_required);
+  const reconciliationRequired = Boolean(fulfilment?.reconciliation_required) || reconciliationGaps.length > 0;
   return {
     id: row.id,
     doctor_id: row.doctor_id,
@@ -345,6 +388,10 @@ function serializeRequest(row, extras = {}) {
     fulfilment_recorded: hasFulfilmentLines,
     fulfilment_expected: lifecycleHasFulfilment,
     timeline_available: events.length > 0,
+    linkage_required: linkageRequired,
+    reconciliation_required: reconciliationRequired,
+    reconciliation_gaps: reconciliationGaps,
+    legacy_reconciliation_required: reconciliationRequired,
     can_cancel: canTransition("operator", status, "cancelled") || canTransition("admin", status, "cancelled"),
     items: extras.items || [],
     pending_amendment: extras.pendingAmendment || null,
@@ -563,6 +610,7 @@ function listRequests({
         latestAmendment: amendmentMaps.latestByRequest.get(row.id) || null,
         amendments: amendmentMaps.historyByRequest.get(row.id) || [],
         events: eventsByRequest.get(row.id) || [],
+        eventsLoaded: includeEvents,
         fulfilment: fulfilmentDetail(row.id),
       }),
     ),
@@ -741,15 +789,18 @@ function historyLookups() {
     `,
     )
     .all();
-  const folders = db
-    .prepare(
-      `
-      SELECT id, name
-      FROM inventory_folders
-      ORDER BY name COLLATE NOCASE ASC
-    `,
-    )
-    .all();
+  const folders = normalizeHistoryFolderOptions(
+    db
+      .prepare(
+        `
+        SELECT f.id, f.name, f.parent_id, p.name AS parent_name
+        FROM inventory_folders f
+        LEFT JOIN inventory_folders p ON p.id = f.parent_id
+        ORDER BY f.name COLLATE NOCASE ASC, f.id ASC
+      `,
+      )
+      .all(),
+  );
   return { operators, folders };
 }
 
@@ -1651,6 +1702,16 @@ router.patch("/:id", (req, res) => {
     if (nextStatus === "cancelled" && !reason) {
       return res.status(400).json({
         error: "A cancellation reason is required. The request will be archived, not deleted.",
+      });
+    }
+    if (
+      role === "admin"
+      && nextStatus === "cancelled"
+      && ["accepted", "ready"].includes(existing.status)
+      && reason.length < 10
+    ) {
+      return res.status(400).json({
+        error: "Exceptional cancellation requires a reason of at least 10 characters.",
       });
     }
     if (nextStatus === "ready" && pendingAmendmentFor(requestId)) {

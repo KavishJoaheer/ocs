@@ -93,9 +93,11 @@ export default function WriteOffStockModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Write off stock${item ? ` — ${item.item_name}` : ""}`}
+      title={requiresOperationalOverride(user) ? `Exceptional write-off${item ? ` — ${item.item_name}` : ""}` : `Write off stock${item ? ` — ${item.item_name}` : ""}`}
       description={
-        isDoctorBag
+        requiresOperationalOverride(user)
+          ? "This is an exceptional administrator write-off. Review location, item, batches, quantity, reservations and the resulting balance before confirming."
+          : isDoctorBag
           ? "Write off quantity from the doctor medical bag."
           : "Write off usable warehouse stock using FEFO. Active reservations cannot be written off."
       }
@@ -137,6 +139,10 @@ export default function WriteOffStockModal({
               <div className="flex justify-between gap-3">
                 <dt className="text-rose-700">Resulting quantity</dt>
                 <dd className="font-semibold text-rose-950">{resulting}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-rose-700">Reservations affected</dt>
+                <dd className="font-semibold text-rose-950">{preview?.reserved_quantity ?? 0}</dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-rose-700">Estimated value</dt>
@@ -230,7 +236,7 @@ export default function WriteOffStockModal({
             disabled={isSaving || !formValid}
             className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-rose-600 px-4 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {isSaving ? "Writing off…" : step === "confirm" ? "Write off stock" : "Review write-off"}
+            {isSaving ? "Writing off…" : step === "confirm" ? (requiresOperationalOverride(user) ? "Confirm exceptional write-off" : "Write off stock") : "Review write-off"}
           </button>
         </div>
       </form>

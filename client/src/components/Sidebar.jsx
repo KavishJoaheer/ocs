@@ -5,7 +5,6 @@ import {
   CalendarDays,
   ClipboardList,
   CreditCard,
-  Home,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -18,8 +17,8 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { Link, NavLink, useLocation } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
 import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js";
@@ -213,6 +212,8 @@ function Sidebar() {
   const appointmentChangeCount = useAppointmentChangeCount();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  const drawerRef = useRef(null);
   const locationKey = `${location.pathname}${location.search}`;
   const [lastLocationKey, setLastLocationKey] = useState(locationKey);
 
@@ -269,15 +270,38 @@ function Sidebar() {
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
+    const root = drawerRef.current;
     const previouslyFocused = document.activeElement;
+    const focusable = () =>
+      [...(root?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || [])].filter(
+        (node) => !node.hasAttribute("disabled"),
+      );
+    focusable()[0]?.focus();
     function handleKeyDown(event) {
-      if (event.key === "Escape") setDrawerOpen(false);
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const nodes = focusable();
+      if (!nodes.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
+    const menuButton = menuButtonRef.current;
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
-        previouslyFocused.focus();
+      const restoreTarget = menuButton || previouslyFocused;
+      if (restoreTarget && typeof restoreTarget.focus === "function") {
+        restoreTarget.focus();
       }
     };
   }, [drawerOpen]);
@@ -290,6 +314,7 @@ function Sidebar() {
         style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={() => setDrawerOpen(true)}
           className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-ocs-slate transition hover:bg-slate-50 active:bg-slate-50"
@@ -304,27 +329,23 @@ function Sidebar() {
           size={36}
           logoClassName="max-h-9 w-auto object-contain"
         />
-        {location.pathname !== "/" ? (
-          <Link
-            to="/"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-ocs-yellow transition hover:bg-slate-50 active:bg-slate-50"
-            aria-label="Home"
-          >
-            <Home className="h-7 w-7" strokeWidth={2.25} />
-          </Link>
-        ) : (
-          <div className="h-11 w-11 shrink-0" aria-hidden="true" />
-        )}
+        <div className="h-11 w-11 shrink-0" aria-hidden="true" />
       </div>
 
       {/* ─── Phone: slide-out drawer ─── */}
-      <div className={cx("fixed inset-0 z-50 md:hidden", drawerOpen ? "" : "pointer-events-none")}>
+      <div
+        className={cx("fixed inset-0 z-50 md:hidden", drawerOpen ? "" : "pointer-events-none")}
+        hidden={!drawerOpen}
+        inert={!drawerOpen}
+        aria-hidden={!drawerOpen}
+      >
         <div
           className={cx("absolute inset-0 bg-black/40 transition-opacity duration-300", drawerOpen ? "opacity-100" : "opacity-0")}
           onClick={() => setDrawerOpen(false)}
           aria-hidden="true"
         />
         <div
+          ref={drawerRef}
           id="mobile-nav-drawer"
           role="dialog"
           aria-modal="true"

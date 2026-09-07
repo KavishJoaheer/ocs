@@ -6,6 +6,7 @@ import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import RestockRequestModal from "../components/RestockRequestModal.jsx";
 import SupplyRequestDetailDrawer from "../components/SupplyRequestDetailDrawer.jsx";
+import LegacyReconciliationNotice from "../components/LegacyReconciliationNotice.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
 import { api, ApiError } from "../lib/api.js";
@@ -15,6 +16,7 @@ import {
   canDoctorConfirmCollection,
   canDoctorEditRequest,
   canDoctorRequestChanges,
+  isLegacyReconciliationRequired,
   describeSupplyRequestItems,
   formatSupplyRequestCollectionDay,
   formatSupplyRequestTimestamp,
@@ -98,6 +100,7 @@ export default function SupplyRequestsPage() {
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
+  const [historyFiltersOpen, setHistoryFiltersOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
 
@@ -437,6 +440,12 @@ export default function SupplyRequestsPage() {
                       </div>
                     ) : null}
 
+                    {isLegacyReconciliationRequired(request) ? (
+                      <div className="border-t border-gray-50 pt-3">
+                        <LegacyReconciliationNotice request={request} compact />
+                      </div>
+                    ) : null}
+
                     {canDoctorConfirmCollection(request) ? (
                       <div className="border-t border-gray-50 pt-3">
                         <button
@@ -468,7 +477,46 @@ export default function SupplyRequestsPage() {
           )
         ) : (
           <div className="flex flex-col gap-3.5 px-1">
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="flex flex-wrap items-center gap-2 md:hidden">
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800"
+                aria-expanded={historyFiltersOpen}
+                onClick={() => setHistoryFiltersOpen((open) => !open)}
+              >
+                Filters · {historyRequestCount} result{historyRequestCount === 1 ? "" : "s"}
+              </button>
+              {(historyFrom || historyTo) ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
+                  onClick={() => {
+                    setHistoryFrom("");
+                    setHistoryTo("");
+                    setHistoryOffset(0);
+                  }}
+                >
+                  Clear all
+                </button>
+              ) : null}
+            </div>
+            {historyFrom || historyTo ? (
+              <div className="flex flex-wrap gap-2 md:hidden">
+                {historyFrom ? (
+                  <span className="inline-flex min-h-11 items-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold">
+                    Date from: {historyFrom}
+                    <button type="button" aria-label="Remove date from filter" className="min-h-11 min-w-11" onClick={() => { setHistoryFrom(""); setHistoryOffset(0); }}>×</button>
+                  </span>
+                ) : null}
+                {historyTo ? (
+                  <span className="inline-flex min-h-11 items-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold">
+                    Date to: {historyTo}
+                    <button type="button" aria-label="Remove date to filter" className="min-h-11 min-w-11" onClick={() => { setHistoryTo(""); setHistoryOffset(0); }}>×</button>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <div className={historyFiltersOpen ? "grid gap-2 sm:grid-cols-2" : "hidden gap-2 sm:grid-cols-2 md:grid"}>
               <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Date from
                 <input
@@ -493,8 +541,18 @@ export default function SupplyRequestsPage() {
                   className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                 />
               </label>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-4 text-sm font-semibold text-white md:hidden"
+                onClick={() => {
+                  setHistoryFiltersOpen(false);
+                  document.getElementById("doctor-history-summary")?.focus();
+                }}
+              >
+                Apply filters
+              </button>
             </div>
-            <div className="grid grid-cols-3 gap-2 md:hidden">
+            <div className="grid grid-cols-3 gap-2 md:hidden" id="doctor-history-summary" tabIndex={-1}>
               <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total</p>
                 <p className="text-lg font-extrabold tabular-nums text-slate-900">{historyRequestCount}</p>
