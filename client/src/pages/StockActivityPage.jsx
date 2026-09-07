@@ -10,6 +10,7 @@ import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
+import { formatSignedQuantity, signedMovementQuantity } from "../lib/inventoryStockDisplay.js";
 import { OCS_INVENTORY_EVENT } from "../lib/inventorySync.js";
 
 const BADGE_STYLES = {
@@ -23,7 +24,7 @@ const BADGE_STYLES = {
   override: "bg-rose-100 text-rose-700",
   adjustment: "bg-rose-100 text-rose-700",
   correction: "bg-rose-100 text-rose-700",
-  exceptional_correction: "bg-rose-100 text-rose-700",
+  reversal: "bg-slate-100 text-slate-700",
 };
 
 const ACTION_LABELS = {
@@ -37,6 +38,7 @@ const ACTION_LABELS = {
   adjustment: "Adjustment",
   correction: "Correction",
   exceptional_correction: "Correction",
+  reversal: "Reversal",
   add: "Add",
   edit: "Edit",
   remove: "Remove",
@@ -483,7 +485,9 @@ function StockActivityPage() {
             {rows.map((row) => {
               const label = actionLabel(row.action_type, row.meta_json);
               const badgeClass = BADGE_STYLES[label] || BADGE_STYLES.correction || "bg-slate-100 text-slate-700";
-              const signedQty = Number(row.quantity || 0);
+              const signedQty = signedMovementQuantity(row);
+              const qtyLabel = formatSignedQuantity(signedQty);
+              const qtyDirection = signedQty < 0 ? "removed" : signedQty > 0 ? "added" : "unchanged";
               let meta = {};
               try {
                 meta = row.meta_json ? JSON.parse(row.meta_json) : {};
@@ -502,7 +506,13 @@ function StockActivityPage() {
                   </div>
                   <p className="mt-2 break-words font-semibold text-slate-900">{row.item_name || "Unknown item"}</p>
                   <dl className="mt-2 grid grid-cols-1 gap-1 text-xs">
-                    <div>Quantity change: <strong className="tabular-nums">{signedQty > 0 ? `+${signedQty}` : signedQty}</strong></div>
+                    <div>
+                      Quantity change:{" "}
+                      <strong className={`tabular-nums ${signedQty < 0 ? "text-rose-700" : "text-emerald-800"}`}>
+                        {qtyLabel}
+                      </strong>
+                      <span className="sr-only"> ({qtyDirection})</span>
+                    </div>
                     <div>Resulting balance: <strong className="tabular-nums">{row.resulting_balance == null ? "—" : row.resulting_balance}</strong></div>
                     <div>Actor: {actorDisplayName(row)} ({row.actor_role || "staff"})</div>
                     <div className="break-words">Source: {row.source_text || "—"}</div>
@@ -562,7 +572,9 @@ function StockActivityPage() {
                 {rows.map((row) => {
                   const label = actionLabel(row.action_type, row.meta_json);
                   const badgeClass = BADGE_STYLES[label] || "bg-slate-100 text-slate-700";
-                  const absoluteQty = Math.abs(Number(row.quantity || 0));
+                  const signedQty = signedMovementQuantity(row);
+                  const qtyLabel = formatSignedQuantity(signedQty);
+                  const qtyDirection = signedQty < 0 ? "removed" : signedQty > 0 ? "added" : "unchanged";
                   let meta = {};
                   try {
                     meta = row.meta_json ? JSON.parse(row.meta_json) : {};
@@ -586,8 +598,10 @@ function StockActivityPage() {
                       <td className="px-3 py-3">
                         <span className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`} title={actionCellText}>{actionCellText}</span>
                       </td>
-                      <td className="truncate px-3 py-3 text-slate-700" title={`${absoluteQty} units · ${row.item_name || "-"}`}>
-                        {absoluteQty} units · {row.item_name || "-"}
+                      <td className="truncate px-3 py-3 text-slate-700" title={`${qtyLabel} units · ${row.item_name || "-"}`}>
+                        <span className={signedQty < 0 ? "text-rose-700" : "text-emerald-800"}>{qtyLabel}</span>
+                        <span className="sr-only"> {qtyDirection}</span>
+                        {" "}units · {row.item_name || "-"}
                       </td>
                       <td className="truncate px-3 py-3 text-slate-700" title={`${row.source_text || "-"} → ${row.destination_text || "-"}`}>
                         {row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}

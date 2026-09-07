@@ -1212,6 +1212,14 @@ function ensureRestockRequestColumns() {
       name: "fulfilment_locked_at",
       sql: "ALTER TABLE restock_requests ADD COLUMN fulfilment_locked_at TEXT",
     },
+    {
+      name: "reconcile_applied_token",
+      sql: "ALTER TABLE restock_requests ADD COLUMN reconcile_applied_token TEXT",
+    },
+    {
+      name: "reconcile_applied_at",
+      sql: "ALTER TABLE restock_requests ADD COLUMN reconcile_applied_at TEXT",
+    },
   ];
 
   requiredColumns.forEach((column) => {
@@ -1924,6 +1932,18 @@ function ensureConsultationColumns() {
       name: "vital_pulse",
       sql: "ALTER TABLE consultations ADD COLUMN vital_pulse TEXT NOT NULL DEFAULT ''",
     },
+    {
+      name: "voided_at",
+      sql: "ALTER TABLE consultations ADD COLUMN voided_at TEXT",
+    },
+    {
+      name: "voided_by_user_id",
+      sql: "ALTER TABLE consultations ADD COLUMN voided_by_user_id INTEGER",
+    },
+    {
+      name: "void_reason",
+      sql: "ALTER TABLE consultations ADD COLUMN void_reason TEXT NOT NULL DEFAULT ''",
+    },
   ];
 
   requiredColumns.forEach((column) => {
@@ -2101,6 +2121,16 @@ function ensureBillingColumns() {
 
   if (!auditColumns.includes("updated_by_user_id")) {
     db.exec("ALTER TABLE billing ADD COLUMN updated_by_user_id INTEGER REFERENCES users(id)");
+  }
+
+  if (!auditColumns.includes("voided_at")) {
+    db.exec("ALTER TABLE billing ADD COLUMN voided_at TEXT");
+  }
+  if (!auditColumns.includes("voided_by_user_id")) {
+    db.exec("ALTER TABLE billing ADD COLUMN voided_by_user_id INTEGER REFERENCES users(id)");
+  }
+  if (!auditColumns.includes("void_reason")) {
+    db.exec("ALTER TABLE billing ADD COLUMN void_reason TEXT NOT NULL DEFAULT ''");
   }
 }
 
@@ -2665,6 +2695,142 @@ function ensureInventoryOperationsSchema() {
       ON inventory_stocktake_sessions(applied_transaction_id)
       WHERE applied_transaction_id IS NOT NULL;
   `);
+
+  ensureInventoryIntegritySchema();
+}
+
+function addColumnIfMissing(tableName, columnName, sql) {
+  if (!tableExists(tableName)) return;
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+  if (!columns.includes(columnName)) {
+    db.exec(sql);
+  }
+}
+
+function ensureInventoryIntegritySchema() {
+  addColumnIfMissing(
+    "inventory_batches",
+    "status",
+    "ALTER TABLE inventory_batches ADD COLUMN status TEXT NOT NULL DEFAULT 'usable'",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "quarantined_reason",
+    "ALTER TABLE inventory_batches ADD COLUMN quarantined_reason TEXT NOT NULL DEFAULT ''",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "quarantined_at",
+    "ALTER TABLE inventory_batches ADD COLUMN quarantined_at TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "quarantined_by_user_id",
+    "ALTER TABLE inventory_batches ADD COLUMN quarantined_by_user_id INTEGER",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "released_reason",
+    "ALTER TABLE inventory_batches ADD COLUMN released_reason TEXT NOT NULL DEFAULT ''",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "released_at",
+    "ALTER TABLE inventory_batches ADD COLUMN released_at TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "released_by_user_id",
+    "ALTER TABLE inventory_batches ADD COLUMN released_by_user_id INTEGER",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "row_version",
+    "ALTER TABLE inventory_batches ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_sessions",
+    "scope_token",
+    "ALTER TABLE inventory_stocktake_sessions ADD COLUMN scope_token TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_sessions",
+    "scope_snapshot_json",
+    "ALTER TABLE inventory_stocktake_sessions ADD COLUMN scope_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+  );
+  addColumnIfMissing(
+    "restock_requests",
+    "reconcile_applied_token",
+    "ALTER TABLE restock_requests ADD COLUMN reconcile_applied_token TEXT",
+  );
+  addColumnIfMissing(
+    "restock_requests",
+    "reconcile_applied_at",
+    "ALTER TABLE restock_requests ADD COLUMN reconcile_applied_at TEXT",
+  );
+
+  if (tableExists("inventory_batches")) {
+    db.exec(`
+      UPDATE inventory_batches
+      SET status = 'usable'
+      WHERE status IS NULL OR TRIM(status) = ''
+    `);
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inventory_movement_allocations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      movement_id INTEGER NOT NULL,
+      batch_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      expiry_date TEXT,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (movement_id) REFERENCES inventory_movements(id) ON DELETE RESTRICT,
+      FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_movement_allocations_movement
+      ON inventory_movement_allocations(movement_id);
+    CREATE INDEX IF NOT EXISTS idx_movement_allocations_batch
+      ON inventory_movement_allocations(batch_id);
+
+    CREATE TABLE IF NOT EXISTS inventory_batch_quarantine_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id INTEGER NOT NULL,
+      item_id INTEGER,
+      action_type TEXT NOT NULL CHECK (action_type IN ('quarantine', 'release')),
+      reason TEXT NOT NULL DEFAULT '',
+      actor_user_id INTEGER,
+      actor_role TEXT NOT NULL DEFAULT '',
+      actor_name TEXT NOT NULL DEFAULT '',
+      previous_status TEXT NOT NULL DEFAULT '',
+      new_status TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_batch_quarantine_events_batch
+      ON inventory_batch_quarantine_events(batch_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_inventory_batches_item_status
+      ON inventory_batches(item_id, status);
+    CREATE INDEX IF NOT EXISTS idx_inventory_batches_expiry
+      ON inventory_batches(item_id, expiry_date);
+    CREATE INDEX IF NOT EXISTS idx_consultations_voided
+      ON consultations(voided_at);
+    CREATE INDEX IF NOT EXISTS idx_billing_voided
+      ON billing(voided_at);
+  `);
+
+  try {
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_movements_reversal_once
+        ON inventory_movements(CAST(json_extract(meta_json, '$.reversed_movement_id') AS INTEGER))
+        WHERE action_type = 'reversal'
+          AND json_extract(meta_json, '$.reversed_movement_id') IS NOT NULL;
+    `);
+  } catch {
+    // Older SQLite builds may reject expression indexes; idempotency is still enforced in application code.
+  }
 }
 
 function ensureInventorySeedData() {

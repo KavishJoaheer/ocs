@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("./utils");
 const { updateInventoryQuantity } = require("./inventoryQuantity");
@@ -22,8 +23,8 @@ const CSV_REQUIRED_HEADERS = [
 ];
 const WRITE_OFF_REASONS = ["Expired", "Discontinued", "Damaged"];
 
-function HttpError(status, message) {
-  return Object.assign(new Error(message), { status });
+function HttpError(status, message, extra = {}) {
+  return Object.assign(new Error(message), { status, extra });
 }
 
 function roundCurrency(value) {
@@ -116,7 +117,8 @@ function listWriteOffBatches(itemId) {
   return db
     .prepare(
       `
-      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring
+      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring,
+        COALESCE(status, 'usable') AS status
       FROM inventory_batches
       WHERE item_id = ? AND quantity_remaining > 0
       ORDER BY
@@ -160,6 +162,7 @@ function listWriteOffBatches(itemId) {
           Boolean(row.expiry_date) &&
           Number(row.is_non_expiring || 0) !== 1 &&
           String(row.expiry_date) < today,
+        quarantined: String(row.status || "usable") === "quarantined",
       };
     })
     .filter((row) => row.available > 0);
@@ -193,7 +196,7 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
   const available = includeExpired ? availableAtp : availableToUse;
   const batches = includeExpired
     ? listWriteOffBatches(itemId)
-    : listWriteOffBatches(itemId).filter((row) => !row.expired);
+    : listWriteOffBatches(itemId).filter((row) => !row.expired && !row.quarantined);
   let remaining = qty;
   const allocations = [];
   for (const batch of batches) {
@@ -1295,15 +1298,10 @@ function snapshotInventoryForStocktake(item) {
   };
 }
 
-function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], userId, notes = "", confirmAll = false, expectedItemCount = null }) {
+function loadStocktakeScopeItems({ folderId = null, itemIds = [] } = {}) {
   const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
-  const fullCatalogue = !folderId && !scopedIds.length;
-  if (fullCatalogue && !confirmAll) {
-    throw HttpError(400, "Starting a full-catalogue stocktake requires explicit confirmation.");
-  }
-  let items = [];
   if (scopedIds.length) {
-    items = scopedIds
+    return scopedIds
       .map((id) =>
         db
           .prepare(
@@ -1312,33 +1310,107 @@ function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], 
           .get(Number(id)),
       )
       .filter(Boolean);
-  } else {
-    items = db
-      .prepare(
-        `
-        SELECT * FROM inventory
-        WHERE stock_scope = 'ocs'
-          AND owner_doctor_id IS NULL
-          AND archived_at IS NULL
-          AND (? IS NULL OR folder_id = ?)
-        ORDER BY item_name ASC
-      `,
-      )
-      .all(folderId || null, folderId || null);
   }
-  if (expectedItemCount != null && expectedItemCount !== "" && Number(expectedItemCount) !== items.length) {
+  return db
+    .prepare(
+      `
+      SELECT * FROM inventory
+      WHERE stock_scope = 'ocs'
+        AND owner_doctor_id IS NULL
+        AND archived_at IS NULL
+        AND (? IS NULL OR folder_id = ?)
+      ORDER BY item_name ASC
+    `,
+    )
+    .all(folderId || null, folderId || null);
+}
+
+function stocktakeScopeFingerprint(items, { folderId = null, itemIds = [] } = {}) {
+  const payload = {
+    folder_id: folderId ? Number(folderId) : null,
+    requested_item_ids: (Array.isArray(itemIds) ? itemIds : [])
+      .map((id) => Number(id))
+      .filter(Boolean)
+      .sort((a, b) => a - b),
+    items: (items || [])
+      .map((item) => ({
+        id: Number(item.id),
+        folder_id: Number(item.folder_id || 0),
+        row_version: Number(item.row_version || 1),
+        archived_at: item.archived_at || null,
+      }))
+      .sort((a, b) => a.id - b.id),
+  };
+  return {
+    item_count: payload.items.length,
+    scope_token: crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+    snapshot: payload,
+  };
+}
+
+function previewStocktakeScope({ folderId = null, itemIds = [] } = {}) {
+  const items = loadStocktakeScopeItems({ folderId, itemIds });
+  const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds });
+  return {
+    folder_id: folderId ? Number(folderId) : null,
+    item_count: fingerprint.item_count,
+    scope_token: fingerprint.scope_token,
+  };
+}
+
+function createStocktakeSession({
+  scope = "ocs",
+  folderId = null,
+  itemIds = [],
+  userId,
+  notes = "",
+  confirmAll = false,
+  expectedItemCount = null,
+  scopeToken = "",
+}) {
+  const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
+  const fullCatalogue = !folderId && !scopedIds.length;
+  if (fullCatalogue && !confirmAll) {
+    throw HttpError(400, "Starting a full-catalogue stocktake requires explicit confirmation.");
+  }
+  const items = loadStocktakeScopeItems({ folderId, itemIds: scopedIds });
+  const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds: scopedIds });
+  const providedToken = String(scopeToken || "").trim();
+  if (!providedToken) {
+    throw HttpError(400, "A stocktake scope token is required.", {
+      code: "STOCKTAKE_SCOPE_TOKEN_REQUIRED",
+      item_count: fingerprint.item_count,
+      scope_token: fingerprint.scope_token,
+    });
+  }
+  if (providedToken !== fingerprint.scope_token) {
     throw HttpError(
       409,
-      `Catalogue membership changed. Expected ${Number(expectedItemCount)} item(s); found ${items.length}. Reload and confirm again.`,
+      "Catalogue membership changed. Reload the scope and confirm again.",
+      {
+        code: "STOCKTAKE_SCOPE_STALE",
+        item_count: fingerprint.item_count,
+        scope_token: fingerprint.scope_token,
+      },
     );
   }
+  void expectedItemCount;
   const info = db
     .prepare(`
       INSERT INTO inventory_stocktake_sessions (
-        scope, folder_id, status, notes, created_by_user_id, assigned_counter_user_id, started_at
-      ) VALUES (?, ?, 'in_progress', ?, ?, ?, CURRENT_TIMESTAMP)
+        scope, folder_id, status, notes, created_by_user_id, assigned_counter_user_id, started_at,
+        scope_token, scope_snapshot_json
+      ) VALUES (?, ?, 'in_progress', ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
     `)
-    .run(scope, folderId || null, notes, userId, userId);
+    .run(
+      scope,
+      folderId || null,
+      notes,
+      userId,
+      userId,
+      fingerprint.scope_token,
+      JSON.stringify(fingerprint.snapshot),
+    );
   const sessionId = Number(info.lastInsertRowid);
   const insert = db.prepare(`
     INSERT INTO inventory_stocktake_session_items (
@@ -2039,6 +2111,7 @@ module.exports = {
   consumeFefo,
   createShipmentFromImport,
   createStocktakeSession,
+  previewStocktakeScope,
   csvShipmentTemplate,
   doctorMayViewReceipt,
   excludeShipmentLines,

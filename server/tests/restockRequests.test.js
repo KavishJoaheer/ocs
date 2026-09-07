@@ -1158,6 +1158,11 @@ test("reconciliation preview is read-only and confirm applies the reviewed plan"
   });
   assert.equal(again.status, 200, JSON.stringify(again.data));
   assert.equal(again.data.outcome, "already_linked");
+  const missing = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: { reason: "Operator confirmed the reviewed reconciliation plan." },
+  });
+  assert.equal(missing.status, 400, JSON.stringify(missing.data));
 });
 
 test("stale reconciliation preview returns 409 without mutation", async () => {
@@ -1195,6 +1200,7 @@ test("stale reconciliation preview returns 409 without mutation", async () => {
     },
   });
   assert.equal(apply.status, 409, JSON.stringify(apply.data));
+  assert.equal(apply.data.code, "RECONCILIATION_PREVIEW_STALE");
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillments WHERE request_id = ?").get(requestId).count, 0);
 });
 
@@ -1288,5 +1294,164 @@ test("queue totals count unique request ids across overlapping queues", async ()
     ...queues.data.reconciliation_required,
   ].map((row) => Number(row.id));
   assert.equal(queues.data.counts.unique_requests, new Set(requestIds).size);
+});
+
+test("reconciliation preview token covers batch quantity expiry quarantine and already-linked retries", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  function seedRequest(name, qty, expiry = "2029-01-01") {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+           VALUES (?, (SELECT id FROM inventory_folders LIMIT 1), ?, 0, 'unit', 1, 2, 'ocs')`,
+        )
+        .run(name, qty).lastInsertRowid,
+    );
+    const batchId = Number(
+      db
+        .prepare(
+          `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+           VALUES (?, ?, ?, 1, 0, 'usable')`,
+        )
+        .run(itemId, qty, expiry).lastInsertRowid,
+    );
+    const requestId = Number(
+      db
+        .prepare(
+          `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+           VALUES (?, ?, ?, 1, 'accepted', ?)`,
+        )
+        .run(doctor.doctor_id, doctor.id, collectionDate, name).lastInsertRowid,
+    );
+    db.prepare(
+      `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, ?, 2)`,
+    ).run(requestId, itemId, name);
+    return { itemId, batchId, requestId };
+  }
+
+  const qtyCase = seedRequest(`Recon qty ${Date.now()}`, 6);
+  const qtyPreview = await api("GET", `/api/restock-requests/${qtyCase.requestId}/reconcile/preview`, {
+    token: operatorToken,
+  });
+  db.prepare("UPDATE inventory_batches SET quantity_remaining = 1, row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(qtyCase.batchId);
+  db.prepare("UPDATE inventory SET quantity = 1, row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(qtyCase.itemId);
+  const qtyApply = await api("POST", `/api/restock-requests/${qtyCase.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed a stale quantity reconciliation plan.",
+      preview_token: qtyPreview.data.preview_token,
+    },
+  });
+  assert.equal(qtyApply.status, 409, JSON.stringify(qtyApply.data));
+  assert.equal(qtyApply.data.code, "RECONCILIATION_PREVIEW_STALE");
+
+  const expiryCase = seedRequest(`Recon expiry ${Date.now()}`, 6);
+  const expiryPreview = await api("GET", `/api/restock-requests/${expiryCase.requestId}/reconcile/preview`, {
+    token: operatorToken,
+  });
+  db.prepare("UPDATE inventory_batches SET expiry_date = '2028-01-01', row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(expiryCase.batchId);
+  const expiryApply = await api("POST", `/api/restock-requests/${expiryCase.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed a stale expiry reconciliation plan.",
+      preview_token: expiryPreview.data.preview_token,
+    },
+  });
+  assert.equal(expiryApply.status, 409, JSON.stringify(expiryApply.data));
+  assert.equal(expiryApply.data.code, "RECONCILIATION_PREVIEW_STALE");
+
+  const newlyExpired = seedRequest(`Recon newly expired ${Date.now()}`, 6, "2029-12-01");
+  const expiredPreview = await api("GET", `/api/restock-requests/${newlyExpired.requestId}/reconcile/preview`, {
+    token: operatorToken,
+  });
+  db.prepare("UPDATE inventory_batches SET expiry_date = '2020-01-01', row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(newlyExpired.batchId);
+  const expiredApply = await api("POST", `/api/restock-requests/${newlyExpired.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed a newly expired reconciliation plan.",
+      preview_token: expiredPreview.data.preview_token,
+    },
+  });
+  assert.equal(expiredApply.status, 409, JSON.stringify(expiredApply.data));
+  assert.equal(expiredApply.data.code, "RECONCILIATION_PREVIEW_STALE");
+
+  const quarantineCase = seedRequest(`Recon quarantine ${Date.now()}`, 6);
+  const quarantinePreview = await api("GET", `/api/restock-requests/${quarantineCase.requestId}/reconcile/preview`, {
+    token: operatorToken,
+  });
+  db.prepare("UPDATE inventory_batches SET status = 'quarantined', row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(quarantineCase.batchId);
+  const quarantineApply = await api("POST", `/api/restock-requests/${quarantineCase.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed a quarantined reconciliation plan.",
+      preview_token: quarantinePreview.data.preview_token,
+    },
+  });
+  assert.equal(quarantineApply.status, 409, JSON.stringify(quarantineApply.data));
+  assert.equal(quarantineApply.data.code, "RECONCILIATION_PREVIEW_STALE");
+
+  const linked = seedRequest(`Recon linked token ${Date.now()}`, 8);
+  const linkedPreview = await api("GET", `/api/restock-requests/${linked.requestId}/reconcile/preview`, {
+    token: operatorToken,
+  });
+  const firstApply = await api("POST", `/api/restock-requests/${linked.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed the reviewed reconciliation plan.",
+      preview_token: linkedPreview.data.preview_token,
+    },
+  });
+  assert.equal(firstApply.status, 200, JSON.stringify(firstApply.data));
+  const eventsAfterFirst = db.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(linked.requestId).count;
+  const reservationsAfterFirst = db.prepare("SELECT COUNT(*) AS count FROM inventory_reservations WHERE request_id = ?").get(linked.requestId).count;
+  const wrongToken = await api("POST", `/api/restock-requests/${linked.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed the reviewed reconciliation plan.",
+      preview_token: "unrelated-token",
+    },
+  });
+  assert.equal(wrongToken.status, 409, JSON.stringify(wrongToken.data));
+  assert.equal(wrongToken.data.code, "RECONCILIATION_PREVIEW_STALE");
+  const repeat = await api("POST", `/api/restock-requests/${linked.requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed the reviewed reconciliation plan.",
+      preview_token: linkedPreview.data.preview_token,
+    },
+  });
+  assert.equal(repeat.status, 200, JSON.stringify(repeat.data));
+  assert.equal(repeat.data.idempotent || repeat.data.outcome === "already_linked", true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(linked.requestId).count, eventsAfterFirst);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_reservations WHERE request_id = ?").get(linked.requestId).count, reservationsAfterFirst);
+
+  const concurrent = seedRequest(`Recon concurrent ${Date.now()}`, 8);
+  const concurrentPreview = await api("GET", `/api/restock-requests/${concurrent.requestId}/reconcile/preview`, {
+    token: operatorToken,
+  });
+  const [one, two] = await Promise.all([
+    api("POST", `/api/restock-requests/${concurrent.requestId}/reconcile`, {
+      token: operatorToken,
+      body: {
+        reason: "Operator confirmed the reviewed reconciliation plan.",
+        preview_token: concurrentPreview.data.preview_token,
+      },
+    }),
+    api("POST", `/api/restock-requests/${concurrent.requestId}/reconcile`, {
+      token: operatorToken,
+      body: {
+        reason: "Operator confirmed the reviewed reconciliation plan.",
+        preview_token: concurrentPreview.data.preview_token,
+      },
+    }),
+  ]);
+  assert.equal(one.status, 200, JSON.stringify(one.data));
+  assert.equal(two.status, 200, JSON.stringify(two.data));
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillments WHERE request_id = ?").get(concurrent.requestId).count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_reservations WHERE request_id = ?").get(concurrent.requestId).count, 1);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ? AND event_type = 'fulfilment_reconciled'").get(concurrent.requestId).count,
+    1,
+  );
 });
 

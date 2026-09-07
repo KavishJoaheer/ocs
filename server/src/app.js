@@ -244,7 +244,7 @@ function createApp() {
       GET: ["admin", "doctor", "lab_tech"],
       POST: ["admin", "doctor"],
       PUT: ["admin", "doctor"],
-      DELETE: ["admin"],
+      DELETE: ["admin", "doctor"],
     }),
     consultationsRouter,
   );

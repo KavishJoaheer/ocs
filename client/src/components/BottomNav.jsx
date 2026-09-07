@@ -13,6 +13,7 @@ function BottomNav() {
 
   return (
     <nav
+      id="ocs-bottom-nav"
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-100 bg-white md:hidden"
       style={{ paddingBottom: `max(0.5rem, var(--sab))`, paddingLeft: "var(--sal)", paddingRight: "var(--sar)" }}
     >

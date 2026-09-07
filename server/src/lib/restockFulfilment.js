@@ -4,7 +4,7 @@ const { getTodayLocal, toNumber } = require("./utils");
 const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast, publishSupplyRequestChange } = require("./inventoryRealtime");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
-const { decorateInventoryItems } = require("./inventoryStockState");
+const { decorateInventoryItems, isExpiredBatch: stockStateExpired, isQuarantinedBatch } = require("./inventoryStockState");
 
 function createTransferTransactionId() {
   return `TX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -168,12 +168,11 @@ function availableToPromise(inventoryId, { exceptRequestId = null } = {}) {
 }
 
 function isExpiredBatch(batch, today = getTodayLocal()) {
-  if (!batch?.expiry_date) return false;
-  if (Number(batch.is_non_expiring || 0) === 1) return false;
-  return String(batch.expiry_date) < today;
+  return stockStateExpired(batch, today);
 }
 
 function batchUsability(batch, today = getTodayLocal()) {
+  if (isQuarantinedBatch(batch)) return "quarantined";
   if (isExpiredBatch(batch, today)) return "expired";
   if (Number(batch?.is_non_expiring || 0) === 1) return "non_expiring";
   if (!batch?.expiry_date) return "missing_expiry";
@@ -184,7 +183,8 @@ function listAllocatableBatches(inventoryId, { exceptRequestId = null } = {}) {
   const today = getTodayLocal();
   const rows = db
     .prepare(`
-      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring
+      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring,
+        COALESCE(status, 'usable') AS status, COALESCE(row_version, 1) AS row_version
       FROM inventory_batches
       WHERE item_id = ?
         AND quantity_remaining > 0
@@ -208,12 +208,13 @@ function listAllocatableBatches(inventoryId, { exceptRequestId = null } = {}) {
         reserved,
         available: remaining,
         expired: isExpiredBatch(row, today),
+        quarantined: isQuarantinedBatch(row),
         missing_expiry:
           !row.expiry_date && Number(row.is_non_expiring || 0) !== 1,
         usability: batchUsability(row, today),
       };
     })
-    .filter((row) => !row.expired && row.available > 0);
+    .filter((row) => !row.expired && !row.quarantined && row.available > 0);
 }
 
 function allocateFefo(inventoryId, quantity, { exceptRequestId = null } = {}) {
@@ -251,7 +252,7 @@ function consumeAvailableFefo(inventoryId, quantity, { exceptRequestId = null } 
       `Insufficient unreserved stock. ${atp} unit(s) available; ${qty} requested.`,
     );
   }
-  const plan = allocateFefo(inventoryId, qty);
+  const plan = allocateFefo(inventoryId, qty, { exceptRequestId });
   const allocated = plan.reduce((sum, row) => sum + (integerQty(row.quantity) ?? 0), 0);
   if (allocated < qty) {
     throw HttpError(409, "Insufficient unexpired, unreserved batch stock.");
@@ -262,10 +263,10 @@ function consumeAvailableFefo(inventoryId, quantity, { exceptRequestId = null } 
     if (!batch || Number(batch.item_id) !== Number(inventoryId)) {
       throw HttpError(409, "A selected batch is no longer valid.");
     }
-    if (isExpiredBatch(batch)) {
-      throw HttpError(409, "Expired batches cannot be consumed for fulfilment or restock.");
+    if (isExpiredBatch(batch) || isQuarantinedBatch(batch)) {
+      throw HttpError(409, "Expired or quarantined batches cannot be consumed for fulfilment or restock.");
     }
-    const reserved = reservedQuantityForBatch(allocation.batch_id);
+    const reserved = reservedQuantityForBatch(allocation.batch_id, { exceptRequestId });
     const available = Math.max(0, (integerQty(batch.quantity_remaining) ?? 0) - reserved);
     if (available < allocation.quantity) {
       throw HttpError(409, "A batch no longer has enough unreserved quantity.");
@@ -274,8 +275,11 @@ function consumeAvailableFefo(inventoryId, quantity, { exceptRequestId = null } 
       .prepare(
         `
         UPDATE inventory_batches
-        SET quantity_remaining = quantity_remaining - ?
-        WHERE id = ? AND quantity_remaining >= ?
+        SET quantity_remaining = quantity_remaining - ?,
+            row_version = COALESCE(row_version, 1) + 1
+        WHERE id = ?
+          AND quantity_remaining >= ?
+          AND COALESCE(status, 'usable') = 'usable'
       `,
       )
       .run(allocation.quantity, allocation.batch_id, allocation.quantity);
@@ -763,16 +767,72 @@ function currentlyReservedForItem(requestId, inventoryId) {
   return integerQty(row?.total) ?? 0;
 }
 
+function inventoryStateSnapshot(inventoryIds = []) {
+  const versions = [];
+  const batches = [];
+  const seen = new Set();
+  for (const rawId of inventoryIds) {
+    const inventoryId = Number(rawId || 0);
+    if (!inventoryId || seen.has(inventoryId)) continue;
+    seen.add(inventoryId);
+    const inv = db.prepare("SELECT id, quantity, row_version FROM inventory WHERE id = ?").get(inventoryId);
+    if (inv) {
+      versions.push({
+        inventory_id: Number(inv.id),
+        row_version: Number(inv.row_version || 1),
+        on_hand: Number(inv.quantity || 0),
+      });
+    }
+    const batchRows = db
+      .prepare(
+        `
+        SELECT id, quantity_remaining, expiry_date, COALESCE(status, 'usable') AS status,
+          COALESCE(row_version, 1) AS row_version
+        FROM inventory_batches
+        WHERE item_id = ?
+        ORDER BY id ASC
+      `,
+      )
+      .all(inventoryId);
+    for (const batch of batchRows) {
+      batches.push({
+        batch_id: Number(batch.id),
+        inventory_id: inventoryId,
+        quantity_remaining: Number(batch.quantity_remaining || 0),
+        expiry_date: batch.expiry_date || null,
+        status: String(batch.status || "usable"),
+        row_version: Number(batch.row_version || 1),
+      });
+    }
+  }
+  versions.sort((a, b) => a.inventory_id - b.inventory_id);
+  batches.sort((a, b) => a.batch_id - b.batch_id);
+  return { versions, batches };
+}
+
 function canonicalReconciliationPlan(plan) {
   return {
     request_id: Number(plan.request_id),
     request_updated_at: String(plan.request_updated_at || ""),
+    request_row_version: Number(plan.request_row_version || 0),
+    current_status: String(plan.current_status || ""),
+    reason: String(plan.reason || ""),
     inventory_versions: (plan.inventory_versions || [])
       .map((row) => ({
         inventory_id: Number(row.inventory_id),
         row_version: Number(row.row_version || 1),
+        on_hand: Number(row.on_hand || 0),
       }))
       .sort((a, b) => a.inventory_id - b.inventory_id),
+    batches: (plan.batches || [])
+      .map((row) => ({
+        batch_id: Number(row.batch_id),
+        quantity_remaining: Number(row.quantity_remaining || 0),
+        expiry_date: row.expiry_date || null,
+        status: String(row.status || "usable"),
+        row_version: Number(row.row_version || 1),
+      }))
+      .sort((a, b) => a.batch_id - b.batch_id),
     lines: (plan.lines || []).map((line) => ({
       request_item_id: Number(line.request_item_id),
       inventory_id: line.inventory_id ? Number(line.inventory_id) : null,
@@ -784,6 +844,8 @@ function canonicalReconciliationPlan(plan) {
       allocations: (line.allocations || []).map((allocation) => ({
         batch_id: Number(allocation.batch_id),
         quantity: Number(allocation.quantity || 0),
+        expiry_date: allocation.expiry_date || null,
+        usability: allocation.usability || null,
       })),
     })),
     resulting_status: plan.resulting_status,
@@ -824,6 +886,7 @@ function previewLegacyReconciliation(requestId) {
         available_to_promise: integerLineQty(line.available_to_promise),
         allocations: line.allocations || [],
       }));
+      const snapshot = inventoryStateSnapshot(lines.map((line) => line.inventory_id).filter(Boolean));
       const plan = {
         request_id: Number(requestId),
         request_number: Number(requestId),
@@ -832,7 +895,9 @@ function previewLegacyReconciliation(requestId) {
         doctor_name: doctor?.full_name || "",
         collection_date: request.collection_date,
         request_updated_at: request.updated_at || request.created_at || "",
-        inventory_versions: [],
+        request_row_version: Number(request.row_version || 0),
+        inventory_versions: snapshot.versions,
+        batches: snapshot.batches,
         lines,
         has_shortage: Boolean(existingDetail.has_shortage),
         partial_fulfilment: Boolean(existingDetail.partial_approved),
@@ -850,12 +915,12 @@ function previewLegacyReconciliation(requestId) {
   }
 
   const items = requestItems(requestId);
-  const inventoryVersions = [];
   const lines = [];
   let insufficientData = false;
   let hasShortage = false;
   let requestedTotal = 0;
   let proposedReservedTotal = 0;
+  const inventoryIds = [];
 
   for (const item of items) {
     const ocsItem = resolveOcsItem(item, { allowNameFallback: !item.inventory_id });
@@ -866,17 +931,12 @@ function previewLegacyReconciliation(requestId) {
     let allocations = [];
     let proposedReserved = 0;
     if (ocsItem) {
-      const inv = db.prepare("SELECT id, quantity, row_version FROM inventory WHERE id = ?").get(ocsItem.id);
-      inventoryVersions.push({
-        inventory_id: Number(ocsItem.id),
-        row_version: Number(inv?.row_version || 1),
-        on_hand: Number(inv?.quantity || 0),
-      });
+      inventoryIds.push(Number(ocsItem.id));
       atp = availableToPromise(ocsItem.id, { exceptRequestId: requestId });
       proposedReserved = Math.min(requested, atp);
       if (proposedReserved > 0) {
         allocations = allocateFefo(ocsItem.id, proposedReserved, { exceptRequestId: requestId }).filter(
-          (row) => batchUsability(row) !== "expired",
+          (row) => !["expired", "quarantined"].includes(batchUsability(row)),
         );
         proposedReserved = allocations.reduce((sum, row) => sum + (integerQty(row.quantity) ?? 0), 0);
       }
@@ -934,9 +994,10 @@ function previewLegacyReconciliation(requestId) {
         : outcome === "needs_picking"
           ? "Confirmation will create reservations from current usable stock. You must still pick and confirm actual quantities before marking ready."
           : outcome === "zero_availability"
-            ? "No unexpired, unreserved stock is available. Confirmation will not allocate batches. The request returns to accepted for shortage resolution."
+            ? "No unexpired, unquarantined, unreserved stock is available. Confirmation will not allocate batches. The request returns to accepted for shortage resolution."
             : "Only part of the requested quantity can be reserved from usable stock. Confirmation will not auto-approve partial fulfilment.";
 
+  const snapshot = inventoryStateSnapshot(inventoryIds);
   const plan = {
     request_id: Number(requestId),
     request_number: Number(requestId),
@@ -945,7 +1006,9 @@ function previewLegacyReconciliation(requestId) {
     doctor_name: doctor?.full_name || "",
     collection_date: request.collection_date,
     request_updated_at: request.updated_at || request.created_at || "",
-    inventory_versions: inventoryVersions,
+    request_row_version: Number(request.row_version || 0),
+    inventory_versions: snapshot.versions,
+    batches: snapshot.batches,
     lines,
     has_shortage: hasShortage,
     partial_fulfilment: hasShortage,
@@ -973,26 +1036,67 @@ function applyLegacyReconciliation(requestId, { actor = {}, reason = "", preview
   if (reasonText.length < 10) {
     throw HttpError(400, "A reconciliation reason of at least 10 characters is required.");
   }
-  const preview = previewLegacyReconciliation(requestId);
-  if (preview.outcome === "already_linked") {
-    return reconcileLegacyFulfilment(requestId, { actor, reason: reasonText });
-  }
   const expectedToken = String(previewToken || "").trim();
-  if (!expectedToken || expectedToken !== preview.preview_token) {
+  if (!expectedToken) {
+    throw HttpError(400, "A reconciliation preview token is required.", {
+      code: "RECONCILIATION_PREVIEW_REQUIRED",
+    });
+  }
+  const lockWrite = db
+    .prepare("UPDATE restock_requests SET collection_day = collection_day WHERE id = ?")
+    .run(Number(requestId));
+  if (!lockWrite.changes) throw HttpError(404, "Supply request not found.");
+  const locked = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
+  if (!locked) throw HttpError(404, "Supply request not found.");
+  if (String(locked.reconcile_applied_token || "") === expectedToken) {
+    const existing = activeFulfilment(requestId) || postedFulfilment(requestId);
+    const preview = previewLegacyReconciliation(requestId);
+    return {
+      request: locked,
+      fulfilment: existing ? fulfilmentDetail(requestId) : null,
+      previous_status: String(locked.status),
+      status: String(locked.status),
+      demoted: false,
+      outcome: preview.outcome,
+      reason: reasonText,
+      idempotent: true,
+      preview,
+    };
+  }
+  const preview = previewLegacyReconciliation(requestId);
+  if (expectedToken !== preview.preview_token) {
     throw HttpError(
       409,
       "This reconciliation preview is stale. Reload and review the current plan before confirming.",
-      { code: "STALE_RECONCILIATION_PREVIEW", preview_token: preview.preview_token },
+      { code: "RECONCILIATION_PREVIEW_STALE", preview_token: preview.preview_token },
     );
+  }
+  if (preview.outcome === "already_linked") {
+    const result = reconcileLegacyFulfilment(requestId, { actor, reason: reasonText });
+    db.prepare(
+      `
+      UPDATE restock_requests
+      SET reconcile_applied_token = ?, reconcile_applied_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+    ).run(expectedToken, Number(requestId));
+    return { ...result, preview, idempotent: true };
   }
   const result = reconcileLegacyFulfilment(requestId, { actor, reason: reasonText });
   if (!appliedReconciliationMatchesPreview(preview, result)) {
     throw HttpError(
       409,
       "The reconciliation plan changed before it could be applied. Reload and review the current plan.",
-      { code: "STALE_RECONCILIATION_PREVIEW", preview_token: preview.preview_token },
+      { code: "RECONCILIATION_PREVIEW_STALE", preview_token: preview.preview_token },
     );
   }
+  db.prepare(
+    `
+    UPDATE restock_requests
+    SET reconcile_applied_token = ?, reconcile_applied_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `,
+  ).run(expectedToken, Number(requestId));
   return { ...result, preview };
 }
 

@@ -80,6 +80,21 @@ function insertOcsItem({ name, qty, expiry = "2028-06-01", nonExpiring = 0, fold
   return id;
 }
 
+async function startStocktakeSession(body = {}, token = operatorToken) {
+  const itemIds = Array.isArray(body.item_ids) ? body.item_ids : [];
+  const folderIdValue = body.folder_id || null;
+  const qs = new URLSearchParams();
+  if (folderIdValue) qs.set("folder_id", String(folderIdValue));
+  if (itemIds.length) qs.set("item_ids", itemIds.join(","));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  const preview = await api("GET", `/api/inventory/stocktake/scope${suffix}`, { token: operatorToken });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  return api("POST", "/api/inventory/stocktake/sessions", {
+    token,
+    body: { ...body, scope_token: body.scope_token || preview.data.scope_token },
+  });
+}
+
 async function createAcceptedRequest({ token = doctorToken, itemId, itemName, quantity, note = "ops" }) {
   const created = await api("POST", "/api/restock-requests", {
     token,
@@ -467,10 +482,7 @@ test("doctor history and receipts are scoped to their own bag", async () => {
 
 test("stocktake sessions save, require approval, and apply atomically", async () => {
   const itemId = insertOcsItem({ name: `Count ${Date.now()}`, qty: 5 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   assert.equal(created.data.session.items[0].system_quantity, null);
   const lineId = created.data.session.items[0].id;
@@ -804,10 +816,7 @@ test("repeated collection after partial fulfilment stays idempotent", async () =
 test("stocktake blank counts stay null and explicit zero is stored", async () => {
   const first = insertOcsItem({ name: `CountA ${Date.now()}`, qty: 4 });
   const second = insertOcsItem({ name: `CountB ${Date.now()}`, qty: 6 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [first, second] },
-  });
+  const created = await startStocktakeSession({ item_ids: [first, second] });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   const [lineA, lineB] = created.data.session.items;
   const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
@@ -827,10 +836,7 @@ test("stocktake blank counts stay null and explicit zero is stored", async () =>
   assert.equal(zero.data.session.items.find((row) => row.id === lineB.id).physical_quantity, 0);
 
   const third = insertOcsItem({ name: `CountC ${Date.now()}`, qty: 2 });
-  const blankSession = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [third] },
-  });
+  const blankSession = await startStocktakeSession({ item_ids: [third] });
   const blankLine = blankSession.data.session.items[0].id;
   for (const value of ["", "  ", null, 1.5, -1]) {
     const bad = await api("PATCH", `/api/inventory/stocktake/sessions/${blankSession.data.session.id}`, {
@@ -854,10 +860,7 @@ test("stocktake blank counts stay null and explicit zero is stored", async () =>
   assert.equal(submitBlank.status, 400);
 
   const equal = insertOcsItem({ name: `CountZeroVar ${Date.now()}`, qty: 3 });
-  const zeroVar = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [equal] },
-  });
+  const zeroVar = await startStocktakeSession({ item_ids: [equal] });
   const counted = await api("PATCH", `/api/inventory/stocktake/sessions/${zeroVar.data.session.id}`, {
     token: operatorToken,
     body: { lines: [{ id: zeroVar.data.session.items[0].id, physical_quantity: 3 }] },
@@ -1214,10 +1217,7 @@ test("excluded shipment rows become terminal and idle shipments leave the incomi
 
 test("explicit zero stocktake can be submitted and blank stocktake cannot", async () => {
   const itemId = insertOcsItem({ name: `ZeroSub ${Date.now()}`, qty: 4 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   const lineId = created.data.session.items[0].id;
   const blank = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
     token: operatorToken,
@@ -1306,10 +1306,7 @@ test("legacy movements with no actor data display Legacy staff record", async ()
 
 test("stocktake approval and application record the responsible admin", async () => {
   const itemId = insertOcsItem({ name: `CountActor ${Date.now()}`, qty: 4 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   const lineId = created.data.session.items[0].id;
   await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
@@ -1477,10 +1474,7 @@ test("csv catalogue matching is case-insensitive and unknown items need admin ac
 
 test("blind stocktake hides expected quantities from operators until submission", async () => {
   const itemId = insertOcsItem({ name: `Blind ${Date.now()}`, qty: 6 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   const counting = await api("GET", `/api/inventory/stocktake/sessions/${created.data.session.id}?reveal=1`, {
     token: operatorToken,
   });
@@ -1505,10 +1499,7 @@ test("blind stocktake hides expected quantities from operators until submission"
 
 test("stocktake apply rejects a line after an intervening receipt", async () => {
   const itemId = insertOcsItem({ name: `Conflict ${Date.now()}`, qty: 4 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   const lineId = created.data.session.items[0].id;
   await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
     token: operatorToken,
@@ -1534,10 +1525,7 @@ test("stocktake apply rejects a line after an intervening receipt", async () => 
 
 test("stocktake apply rejects intervening write-off, collection and batch adjustment", async () => {
   async function approvedCount(itemId, physical) {
-    const created = await api("POST", "/api/inventory/stocktake/sessions", {
-      token: operatorToken,
-      body: { item_ids: [itemId] },
-    });
+    const created = await startStocktakeSession({ item_ids: [itemId] });
     await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
       token: operatorToken,
       body: { lines: [{ id: created.data.session.items[0].id, physical_quantity: physical }] },
@@ -1772,10 +1760,7 @@ test("selected shipment release rejects duplicates and is concurrent-safe", asyn
 
 test("zero-variance stocktake after an intervening receipt requires recount", async () => {
   const itemId = insertOcsItem({ name: `ZeroMove ${Date.now()}`, qty: 5 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   const lineId = created.data.session.items[0].id;
   await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
     token: operatorToken,
@@ -1892,10 +1877,7 @@ test("history pagination returns frequency totals beyond the first page", async 
 
 test("stocktake keeps the session baseline until an explicit recount", async () => {
   const itemId = insertOcsItem({ name: `BaseKeep ${Date.now()}`, qty: 4 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   const sessionId = created.data.session.id;
   const lineId = created.data.session.items[0].id;
   const baselineVersion = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version;
@@ -1921,10 +1903,7 @@ test("stocktake keeps the session baseline until an explicit recount", async () 
   assert.equal(submitAfterCountMove.status, 409, JSON.stringify(submitAfterCountMove.data));
 
   const itemB = insertOcsItem({ name: `SaveThenMove ${Date.now()}`, qty: 3 });
-  const createdB = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemB] },
-  });
+  const createdB = await startStocktakeSession({ item_ids: [itemB] });
   const lineB = createdB.data.session.items[0].id;
   await api("PATCH", `/api/inventory/stocktake/sessions/${createdB.data.session.id}`, {
     token: operatorToken,
@@ -1940,10 +1919,7 @@ test("stocktake keeps the session baseline until an explicit recount", async () 
   assert.equal(submitAfterSave.status, 409);
 
   const itemC = insertOcsItem({ name: `ApplyMove ${Date.now()}`, qty: 5 });
-  const createdC = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemC] },
-  });
+  const createdC = await startStocktakeSession({ item_ids: [itemC] });
   const lineC = createdC.data.session.items[0].id;
   await api("PATCH", `/api/inventory/stocktake/sessions/${createdC.data.session.id}`, {
     token: operatorToken,
@@ -1968,10 +1944,7 @@ test("stocktake keeps the session baseline until an explicit recount", async () 
 test("stocktake recount is required, scoped, and rejects stale tokens", async () => {
   const keep = insertOcsItem({ name: `KeepCount ${Date.now()}`, qty: 4 });
   const conflict = insertOcsItem({ name: `NeedRecount ${Date.now()}`, qty: 4 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [keep, conflict] },
-  });
+  const created = await startStocktakeSession({ item_ids: [keep, conflict] });
   const sessionId = created.data.session.id;
   const keepLine = created.data.session.items.find((row) => Number(row.inventory_id) === keep);
   const conflictLine = created.data.session.items.find((row) => Number(row.inventory_id) === conflict);
@@ -2056,10 +2029,7 @@ test("stocktake recount is required, scoped, and rejects stale tokens", async ()
 
 test("zero-variance stocktake without movement still closes and apply rolls back unsafe lines", async () => {
   const itemId = insertOcsItem({ name: `ZeroClean ${Date.now()}`, qty: 2 });
-  const created = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [itemId] },
-  });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
   await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
     token: operatorToken,
     body: { lines: [{ id: created.data.session.items[0].id, physical_quantity: 2 }] },
@@ -2072,10 +2042,7 @@ test("zero-variance stocktake without movement still closes and apply rolls back
 
   const reservedItem = insertOcsItem({ name: `UnsafeApply ${Date.now()}`, qty: 2 });
   await createAcceptedRequest({ itemId: reservedItem, itemName: "UnsafeApply", quantity: 2 });
-  const unsafe = await api("POST", "/api/inventory/stocktake/sessions", {
-    token: operatorToken,
-    body: { item_ids: [reservedItem] },
-  });
+  const unsafe = await startStocktakeSession({ item_ids: [reservedItem] });
   await api("PATCH", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}`, {
     token: operatorToken,
     body: { lines: [{ id: unsafe.data.session.items[0].id, physical_quantity: 0 }] },
@@ -2498,24 +2465,26 @@ test("doctor activity CSV is scoped and wastage requires a reason and lot", asyn
   assert.equal(ok.status, 201, JSON.stringify(ok.data));
 });
 
-test("full-catalogue stocktake requires explicit confirmation and versioned item count", async () => {
+test("full-catalogue stocktake requires explicit confirmation and a scope fingerprint", async () => {
   const denied = await api("POST", "/api/inventory/stocktake/sessions", {
     token: operatorToken,
     body: {},
   });
   assert.equal(denied.status, 400, JSON.stringify(denied.data));
-  const count = db.prepare("SELECT COUNT(*) AS count FROM inventory WHERE stock_scope = 'ocs' AND owner_doctor_id IS NULL AND archived_at IS NULL").get().count;
+  const preview = await api("GET", "/api/inventory/stocktake/scope", { token: operatorToken });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
   const stale = await api("POST", "/api/inventory/stocktake/sessions", {
     token: operatorToken,
-    body: { confirm_all: true, expected_item_count: Number(count) + 5 },
+    body: { confirm_all: true, scope_token: "not-the-current-scope" },
   });
   assert.equal(stale.status, 409, JSON.stringify(stale.data));
+  assert.equal(stale.data.code, "STOCKTAKE_SCOPE_STALE");
   const created = await api("POST", "/api/inventory/stocktake/sessions", {
     token: operatorToken,
-    body: { confirm_all: true, expected_item_count: count },
+    body: { confirm_all: true, scope_token: preview.data.scope_token },
   });
   assert.equal(created.status, 201, JSON.stringify(created.data));
-  assert.equal(created.data.session.items.length, count);
+  assert.equal(created.data.session.items.length, preview.data.item_count);
 });
 
 test("activity history correction filter and blank actors are excluded from the user filter", async () => {
@@ -2554,4 +2523,440 @@ test("top performer excludes System and automated movements", async () => {
   } else {
     assert.equal(history.data.analytics.no_human_activity, true);
   }
+});
+
+function seedDoctorBillableItem({ name, batches }) {
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (
+           item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id
+         ) VALUES (?, ?, ?, 0, 'unit', 8, 20, 'doctor', ?)`,
+      )
+      .run(
+        name,
+        folderId,
+        batches.reduce((sum, batch) => sum + Number(batch.qty), 0),
+        doctorId,
+      ).lastInsertRowid,
+  );
+  const batchIds = [];
+  for (const batch of batches) {
+    batchIds.push(
+      Number(
+        db
+          .prepare(
+            `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+             VALUES (?, ?, ?, 8, 0, ?)`,
+          )
+          .run(itemId, batch.qty, batch.expiry || null, batch.status || "usable").lastInsertRowid,
+      ),
+    );
+  }
+  return { itemId, batchIds };
+}
+
+function seedConsultationForBilling() {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const patientId = Number(
+    db
+      .prepare(
+        `INSERT INTO patients (
+           full_name, first_name, last_name, patient_identifier, age, date_of_birth, gender,
+           contact_number, patient_contact_number, address, link_status
+         ) VALUES (?, ?, 'Patient', ?, 40, '1985-01-01', 'F', '57001111', '57001111', '1 Test Road', 'staff_created')`,
+      )
+      .run(`Bill ${stamp}`, `Bill${stamp}`, `BILL-${stamp}`).lastInsertRowid,
+  );
+  const appointmentId = Number(
+    db
+      .prepare(
+        `INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+         VALUES (?, ?, date('now'), '09:00', 'completed')`,
+      )
+      .run(patientId, doctorId).lastInsertRowid,
+  );
+  const consultationId = Number(
+    db
+      .prepare(
+        `INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+         VALUES (?, ?, ?, date('now'), 'Billing integrity')`,
+      )
+      .run(appointmentId, patientId, doctorId).lastInsertRowid,
+  );
+  return { patientId, appointmentId, consultationId };
+}
+
+test("billing rejects expired quarantined and insufficient ATP stock without mutation", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const expired = seedDoctorBillableItem({
+    name: `Bill Expired ${Date.now()}`,
+    batches: [{ qty: 4, expiry: "2020-01-01" }],
+  });
+  const mixed = seedDoctorBillableItem({
+    name: `Bill Mixed ${Date.now()}`,
+    batches: [
+      { qty: 2, expiry: "2020-01-01" },
+      { qty: 3, expiry: "2029-01-01" },
+    ],
+  });
+  const quarantined = seedDoctorBillableItem({
+    name: `Bill Quarantine ${Date.now()}`,
+    batches: [{ qty: 5, expiry: "2029-01-01" }],
+  });
+  db.prepare("UPDATE inventory_batches SET status = 'quarantined' WHERE id = ?").run(quarantined.batchIds[0]);
+  const onHandOnly = seedDoctorBillableItem({
+    name: `Bill Reserved ${Date.now()}`,
+    batches: [{ qty: 4, expiry: "2029-01-01" }],
+  });
+  db.prepare("UPDATE inventory SET quantity = 4 WHERE id = ?").run(onHandOnly.itemId);
+  db.prepare(
+    `UPDATE inventory_batches SET quantity_remaining = 2, expiry_date = '2020-01-01' WHERE id = ?`,
+  ).run(onHandOnly.batchIds[0]);
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 2, '2029-01-01', 8, 0)`,
+  ).run(onHandOnly.itemId);
+
+  const expiredBill = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "expired", amount: 20, type: "Sale", quantity: 1, inventory_item_id: expired.itemId }],
+    },
+  });
+  assert.equal(expiredBill.status, 409, JSON.stringify(expiredBill.data));
+
+  const mixedBill = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "mixed", amount: 80, type: "Sale", quantity: 4, inventory_item_id: mixed.itemId }],
+    },
+  });
+  assert.equal(mixedBill.status, 409, JSON.stringify(mixedBill.data));
+  const mixedOk = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "mixed-ok", amount: 60, type: "Sale", quantity: 3, inventory_item_id: mixed.itemId }],
+    },
+  });
+  assert.equal(mixedOk.status, 201, JSON.stringify(mixedOk.data));
+  const mixedItem = db.prepare("SELECT quantity, row_version FROM inventory WHERE id = ?").get(mixed.itemId);
+  assert.equal(Number(mixedItem.quantity), 2);
+  assert.ok(Number(mixedItem.row_version) >= 2);
+  const mixedBatches = db.prepare("SELECT expiry_date, quantity_remaining FROM inventory_batches WHERE item_id = ? ORDER BY expiry_date").all(mixed.itemId);
+  assert.equal(Number(mixedBatches.find((row) => row.expiry_date === "2020-01-01").quantity_remaining), 2);
+  assert.equal(Number(mixedBatches.find((row) => row.expiry_date === "2029-01-01").quantity_remaining), 0);
+  const billedQty = Number(
+    db.prepare("SELECT quantity FROM inventory_movements WHERE item_id = ? ORDER BY id DESC LIMIT 1").get(mixed.itemId).quantity,
+  );
+  assert.equal(billedQty, 3);
+  const allocSum = Number(
+    db
+      .prepare(
+        `SELECT COALESCE(SUM(a.quantity), 0) AS total
+         FROM inventory_movement_allocations a
+         JOIN inventory_movements m ON m.id = a.movement_id
+         WHERE m.item_id = ?`,
+      )
+      .get(mixed.itemId).total,
+  );
+  assert.equal(allocSum, 3);
+
+  const quarantinedBill = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "q", amount: 20, type: "Sale", quantity: 1, inventory_item_id: quarantined.itemId }],
+    },
+  });
+  assert.equal(quarantinedBill.status, 409, JSON.stringify(quarantinedBill.data));
+
+  const reservedBill = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "expired-share", amount: 60, type: "Sale", quantity: 3, inventory_item_id: onHandOnly.itemId }],
+    },
+  });
+  assert.equal(reservedBill.status, 409, JSON.stringify(reservedBill.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(onHandOnly.itemId).quantity, 4);
+});
+
+test("consultation reversal keeps original movements and restores original batches", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const stock = seedDoctorBillableItem({
+    name: `Reverse Mix ${Date.now()}`,
+    batches: [
+      { qty: 2, expiry: "2028-01-01" },
+      { qty: 2, expiry: "2030-01-01" },
+    ],
+  });
+  const billed = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "mix", amount: 40, type: "Sale", quantity: 2, inventory_item_id: stock.itemId }],
+    },
+  });
+  assert.equal(billed.status, 201, JSON.stringify(billed.data));
+  const originalMovements = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ?").all(stock.itemId);
+  assert.equal(originalMovements.length, 1);
+  const originalHistory = db.prepare("SELECT COUNT(*) AS count FROM inventory_activity_history WHERE movement_id = ?").get(originalMovements[0].id).count;
+  assert.ok(originalHistory >= 1);
+  const voided = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  assert.equal(voided.status, 204, JSON.stringify(voided.data));
+  const stillThere = db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(originalMovements[0].id).count;
+  assert.equal(stillThere, 1);
+  const reversal = db.prepare("SELECT * FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(stock.itemId);
+  assert.ok(reversal);
+  const restored = db.prepare("SELECT id, quantity_remaining, expiry_date FROM inventory_batches WHERE item_id = ? ORDER BY expiry_date").all(stock.itemId);
+  assert.equal(Number(restored[0].quantity_remaining), 2);
+  assert.equal(Number(restored[1].quantity_remaining), 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 4);
+  const again = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  assert.equal(again.status, 204, JSON.stringify(again.data));
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(stock.itemId).count, 1);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 4);
+});
+
+test("legacy consultation reversal without allocations does not invent a usable batch", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const stock = seedDoctorBillableItem({
+    name: `Legacy Reverse ${Date.now()}`,
+    batches: [{ qty: 3, expiry: "2029-08-01" }],
+  });
+  db.prepare("UPDATE inventory SET quantity = 1, row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(stock.itemId);
+  db.prepare("UPDATE inventory_batches SET quantity_remaining = 1 WHERE id = ?").run(stock.batchIds[0]);
+  const movementId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory_movements (
+           item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+           recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json
+         ) VALUES (?, 'out', 2, 3, 1, ?, NULL, 'legacy sale', 'sell', 'appointment', ?, ?)`,
+      )
+      .run(
+        stock.itemId,
+        doctorId,
+        db.prepare("SELECT appointment_id FROM consultations WHERE id = ?").get(consultationId).appointment_id,
+        JSON.stringify({ consultation_id: consultationId }),
+      ).lastInsertRowid,
+  );
+  const blocked = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code, "LEGACY_REVERSAL_REQUIRES_CORRECTION");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(movementId).count, 1);
+  const allowed = await api("DELETE", `/api/consultations/${consultationId}`, {
+    token: adminToken,
+    body: { confirm_legacy_exception: true, reason: "Authorised legacy reversal without original lots" },
+  });
+  assert.equal(allowed.status, 204, JSON.stringify(allowed.data));
+  const exceptionBatch = db
+    .prepare("SELECT * FROM inventory_batches WHERE item_id = ? AND COALESCE(status, 'usable') = 'quarantined'")
+    .get(stock.itemId);
+  assert.ok(exceptionBatch);
+  const listed = decorateLookup(stock.itemId);
+  assert.equal(Number(listed.available_to_promise), Number(listed.available_to_use));
+  assert.ok(Number(listed.quarantined_quantity) >= 2);
+});
+
+function decorateLookup(itemId) {
+  const { decorateInventoryItems } = require("../src/lib/inventoryStockState");
+  return decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+}
+
+test("quarantine excludes ATP and cannot be billed reserved or allocated", async () => {
+  const itemId = insertOcsItem({ name: `Quarantine ATP ${Date.now()}`, qty: 6, expiry: "2029-04-01" });
+  const batchId = db.prepare("SELECT id FROM inventory_batches WHERE item_id = ?").get(itemId).id;
+  const before = decorateLookup(itemId);
+  void before;
+  const quarantined = await api("POST", `/api/inventory/batches/${batchId}/quarantine`, {
+    token: adminToken,
+    body: { reason: "Manufacturer recall pending investigation", confirm: true },
+  });
+  assert.ok(quarantined.status === 201 || quarantined.status === 200, JSON.stringify(quarantined.data));
+  const decorated = decorateLookup(itemId);
+  assert.equal(Number(decorated.quarantined_quantity), 6);
+  assert.equal(Number(decorated.available_to_promise), 0);
+  assert.equal(Number(decorated.on_hand_quantity), 6);
+  const { availableToPromise, allocateFefo } = require("../src/lib/restockFulfilment");
+  assert.equal(availableToPromise(itemId), 0);
+  assert.equal(allocateFefo(itemId, 1).length, 0);
+  const again = await api("POST", `/api/inventory/batches/${batchId}/quarantine`, {
+    token: adminToken,
+    body: { reason: "Manufacturer recall pending investigation", confirm: true },
+  });
+  assert.equal(again.status, 200);
+  const released = await api("POST", `/api/inventory/batches/${batchId}/release-quarantine`, {
+    token: adminToken,
+    body: { reason: "Recall cleared by quality review", confirm: true },
+  });
+  assert.ok(released.status === 201 || released.status === 200, JSON.stringify(released.data));
+  const after = decorateLookup(itemId);
+  assert.equal(Number(after.quarantined_quantity), 0);
+  assert.equal(Number(after.available_to_promise), 6);
+});
+
+test("stocktake scope token detects membership swaps with the same count", async () => {
+  const preview = await api("GET", "/api/inventory/stocktake/scope", { token: operatorToken });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  const first = db.prepare("SELECT id FROM inventory WHERE stock_scope = 'ocs' AND owner_doctor_id IS NULL AND archived_at IS NULL ORDER BY id LIMIT 1").get();
+  db.prepare("UPDATE inventory SET archived_at = CURRENT_TIMESTAMP WHERE id = ?").run(first.id);
+  const added = insertOcsItem({ name: `Scope Swap ${Date.now()}`, qty: 1 });
+  const stale = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { confirm_all: true, scope_token: preview.data.scope_token },
+  });
+  assert.equal(stale.status, 409, JSON.stringify(stale.data));
+  assert.equal(stale.data.code, "STOCKTAKE_SCOPE_STALE");
+  const fresh = await api("GET", "/api/inventory/stocktake/scope", { token: operatorToken });
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { confirm_all: true, scope_token: fresh.data.scope_token },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.ok(created.data.session.items.some((row) => Number(row.inventory_id) === added));
+  assert.ok(!created.data.session.items.some((row) => Number(row.inventory_id) === first.id));
+});
+
+test("billing rolls back the first line when a later line cannot be allocated", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const good = seedDoctorBillableItem({
+    name: `Bill Rollback Good ${Date.now()}`,
+    batches: [{ qty: 4, expiry: "2029-01-01" }],
+  });
+  const bad = seedDoctorBillableItem({
+    name: `Bill Rollback Bad ${Date.now()}`,
+    batches: [{ qty: 4, expiry: "2020-01-01" }],
+  });
+  const billed = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [
+        { description: "good", amount: 40, type: "Sale", quantity: 2, inventory_item_id: good.itemId },
+        { description: "bad", amount: 40, type: "Sale", quantity: 2, inventory_item_id: bad.itemId },
+      ],
+    },
+  });
+  assert.equal(billed.status, 409, JSON.stringify(billed.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(good.itemId).quantity, 4);
+  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(good.batchIds[0]).quantity_remaining, 4);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ?").get(consultationId).count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(good.itemId).count, 0);
+});
+
+test("concurrent billing cannot oversell the same doctor batch", async () => {
+  const first = seedConsultationForBilling();
+  const second = seedConsultationForBilling();
+  const stock = seedDoctorBillableItem({
+    name: `Bill Concurrent ${Date.now()}`,
+    batches: [{ qty: 4, expiry: "2029-03-01" }],
+  });
+  const payload = (consultationId, patientId) => ({
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "concurrent", amount: 60, type: "Sale", quantity: 3, inventory_item_id: stock.itemId }],
+    },
+  });
+  const [a, b] = await Promise.all([
+    api("POST", "/api/billing", payload(first.consultationId, first.patientId)),
+    api("POST", "/api/billing", payload(second.consultationId, second.patientId)),
+  ]);
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+  const item = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId);
+  const batchQty = Number(
+    db.prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS total FROM inventory_batches WHERE item_id = ?").get(stock.itemId).total,
+  );
+  assert.equal(Number(item.quantity), 1);
+  assert.equal(batchQty, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(stock.itemId).count, 1);
+});
+
+test("consultation reversal rolls back when a later movement cannot be restored", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const stock = seedDoctorBillableItem({
+    name: `Reverse Rollback ${Date.now()}`,
+    batches: [{ qty: 3, expiry: "2029-05-01" }],
+  });
+  const billed = await api("POST", "/api/billing", {
+    token: doctorToken,
+    body: {
+      consultation_id: consultationId,
+      patient_id: patientId,
+      items: [{ description: "ok", amount: 20, type: "Sale", quantity: 1, inventory_item_id: stock.itemId }],
+    },
+  });
+  assert.equal(billed.status, 201, JSON.stringify(billed.data));
+  db.prepare(
+    `INSERT INTO inventory_movements (
+       item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+       recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json
+     ) VALUES (?, 'out', 1, 2, 1, ?, NULL, 'legacy extra', 'sell', 'appointment', ?, ?)`,
+  ).run(
+    stock.itemId,
+    doctorId,
+    db.prepare("SELECT appointment_id FROM consultations WHERE id = ?").get(consultationId).appointment_id,
+    JSON.stringify({ consultation_id: consultationId }),
+  );
+  const blocked = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code, "LEGACY_REVERSAL_REQUIRES_CORRECTION");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 2);
+  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(stock.batchIds[0]).quantity_remaining, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(stock.itemId).count, 0);
+  assert.equal(db.prepare("SELECT voided_at FROM consultations WHERE id = ?").get(consultationId).voided_at, null);
+});
+
+test("stocktake scope token detects folder membership and row-version changes", async () => {
+  const otherFolder = Number(
+    db.prepare("INSERT INTO inventory_folders (name, parent_id) VALUES (?, ?)").run(`Scope Folder ${Date.now()}`, folderId).lastInsertRowid,
+  );
+  const itemId = insertOcsItem({ name: `Folder Scope ${Date.now()}`, qty: 2, folder: folderId });
+  const preview = await api("GET", `/api/inventory/stocktake/scope?folder_id=${folderId}`, { token: operatorToken });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  db.prepare("UPDATE inventory SET folder_id = ? WHERE id = ?").run(otherFolder, itemId);
+  const staleFolder = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { folder_id: folderId, scope_token: preview.data.scope_token },
+  });
+  assert.equal(staleFolder.status, 409, JSON.stringify(staleFolder.data));
+  assert.equal(staleFolder.data.code, "STOCKTAKE_SCOPE_STALE");
+
+  const scoped = insertOcsItem({ name: `Version Scope ${Date.now()}`, qty: 2 });
+  const versionPreview = await api("GET", `/api/inventory/stocktake/scope?item_ids=${scoped}`, { token: operatorToken });
+  db.prepare("UPDATE inventory SET row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(scoped);
+  const staleVersion = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [scoped], scope_token: versionPreview.data.scope_token },
+  });
+  assert.equal(staleVersion.status, 409, JSON.stringify(staleVersion.data));
+  assert.equal(staleVersion.data.code, "STOCKTAKE_SCOPE_STALE");
+
+  const fresh = await api("GET", `/api/inventory/stocktake/scope?item_ids=${scoped}`, { token: operatorToken });
+  const first = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [scoped], scope_token: fresh.data.scope_token },
+  });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const repeated = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [scoped], scope_token: fresh.data.scope_token },
+  });
+  assert.equal(repeated.status, 201, JSON.stringify(repeated.data));
+  assert.notEqual(Number(repeated.data.session.id), Number(first.data.session.id));
 });

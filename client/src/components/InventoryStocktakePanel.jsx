@@ -30,6 +30,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const [overrideOpen, setOverrideOpen] = useState(false);
   const isMobile = useIsMobile(DENSE_TABLE_BREAKPOINT);
   const [scope, setScope] = useState("");
+  const [scopePreview, setScopePreview] = useState(null);
   const [active, setActive] = useState(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,6 +61,26 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const scopeChosen = Boolean(scope);
 
   useEffect(() => {
+    if (!scopeChosen) {
+      setScopePreview(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const params = fullCatalogue ? "" : `?folder_id=${encodeURIComponent(scope)}`;
+    api
+      .get(`/inventory/stocktake/scope${params}`)
+      .then((payload) => {
+        if (!cancelled) setScopePreview(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setScopePreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, fullCatalogue, scopeChosen]);
+
+  useEffect(() => {
     if (!requestedStatus) return;
     const match = (sessions || []).find((session) => session.status === requestedStatus);
     if (match) void openSession(match.id);
@@ -78,7 +99,8 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       const payload = await api.post("/inventory/stocktake/sessions", {
         folder_id: fullCatalogue ? null : Number(scope),
         confirm_all: fullCatalogue,
-        expected_item_count: scopedItems.length,
+        expected_item_count: scopePreview?.item_count ?? scopedItems.length,
+        scope_token: scopePreview?.scope_token,
       });
       setActive(payload.session);
       setLastSavedAt(payload.session?.last_saved_at || "");
@@ -331,7 +353,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         {canCount ? (
           <button
             type="button"
-            disabled={creating || !scopeChosen}
+            disabled={creating || !scopeChosen || !scopePreview?.scope_token}
             onClick={createSession}
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
           >
@@ -618,7 +640,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       onClose={() => setConfirmFullOpen(false)}
       onConfirm={() => startStocktakeSession({ confirmAll: true })}
       title="Start full-catalogue stocktake?"
-      description={`This will create a blind stocktake session for ${scopedItems.length} items across all OCS folders.`}
+      description={`This will create a blind stocktake session for ${scopePreview?.item_count ?? scopedItems.length} items across all OCS folders.`}
       confirmLabel="Start full-catalogue count"
       tone="primary"
       busy={creating}
@@ -635,7 +657,8 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
             {
               folder_id: fullCatalogue || !scope ? null : Number(scope),
               confirm_all: fullCatalogue,
-              expected_item_count: scopedItems.length,
+              expected_item_count: scopePreview?.item_count ?? scopedItems.length,
+              scope_token: scopePreview?.scope_token,
             },
             reason,
           ));

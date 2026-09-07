@@ -29,6 +29,7 @@ const {
   createShipmentFromImport,
   createStocktakeSession,
   csvShipmentTemplate,
+  previewStocktakeScope,
   doctorMayViewReceipt,
   excludeShipmentLines,
   getShipment,
@@ -75,6 +76,8 @@ const {
   resolveAuditActor,
 } = require("../lib/auditActor");
 
+const { quarantineBatch, releaseBatchQuarantine } = require("../lib/inventoryQuarantine");
+const { signedMovementQuantity } = require("../lib/inventoryMovementAllocations");
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
 const router = express.Router();
@@ -1686,6 +1689,11 @@ function enrichActivityRow(row) {
     request_id: requestId ? Number(requestId) || requestId : null,
     receipt_number: transactionId || null,
     resulting_balance: Number.isFinite(resultingBalance) ? resultingBalance : null,
+    signed_quantity: signedMovementQuantity({
+      ...row,
+      previous_quantity: row.previous_quantity,
+      next_quantity: Number.isFinite(resultingBalance) ? resultingBalance : row.next_quantity,
+    }),
     expiry_date: expiry || null,
     reason_note: reason,
     legacy_data_unavailable: Boolean(legacy && !String(row.batch_id || "").trim()),
@@ -2480,6 +2488,62 @@ router.get("/items/:id/allocation-preview", (req, res) => {
     });
   } catch (error) {
     return res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+router.post("/batches/:id/quarantine", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertAdminCatalogueAction(req.auth, "quarantine a stock batch");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+  try {
+    const result = db.transaction(() =>
+      quarantineBatch({
+        batchId: Number(req.params.id),
+        reason: req.body?.reason,
+        confirm: req.body?.confirm,
+        expectedRowVersion: req.body?.expected_row_version ?? req.body?.row_version,
+        userId: req.auth.id,
+        actor: {
+          userId: req.auth.id,
+          role: req.auth.role,
+          displayName: req.auth.full_name || req.auth.username || "",
+        },
+      }),
+    )();
+    return res.status(result.idempotent ? 200 : 201).json({ batch: result.batch, idempotent: result.idempotent });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
+});
+
+router.post("/batches/:id/release-quarantine", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertAdminCatalogueAction(req.auth, "release a stock batch from quarantine");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+  try {
+    const result = db.transaction(() =>
+      releaseBatchQuarantine({
+        batchId: Number(req.params.id),
+        reason: req.body?.reason,
+        confirm: req.body?.confirm,
+        expectedRowVersion: req.body?.expected_row_version ?? req.body?.row_version,
+        userId: req.auth.id,
+        actor: {
+          userId: req.auth.id,
+          role: req.auth.role,
+          displayName: req.auth.full_name || req.auth.username || "",
+        },
+      }),
+    )();
+    return res.status(result.idempotent ? 200 : 201).json({ batch: result.batch, idempotent: result.idempotent });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
   }
 });
 
@@ -3643,21 +3707,46 @@ router.post("/shipments/:id/release", (req, res) => {
   }
 });
 
+router.get("/stocktake/scope", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only admin/operator can preview a stocktake scope." });
+  }
+  try {
+    const preview = previewStocktakeScope({
+      folderId: req.query?.folder_id ? Number(req.query.folder_id) : null,
+      itemIds: Array.isArray(req.query?.item_ids)
+        ? req.query.item_ids
+        : String(req.query?.item_ids || "")
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+    });
+    return res.json(preview);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message, ...(error.extra || {}) });
+    throw error;
+  }
+});
+
 router.post("/stocktake/sessions", (req, res) => {
   ensureInfrastructure();
   try {
     assertRoutineOperatorAction(req.auth, req.body, "Start a stocktake session");
-    const session = createStocktakeSession({
-      folderId: req.body?.folder_id ? Number(req.body.folder_id) : null,
-      itemIds: Array.isArray(req.body?.item_ids) ? req.body.item_ids : [],
-      userId: req.auth.id,
-      notes: String(req.body?.notes || "").trim(),
-      confirmAll: Boolean(req.body?.confirm_all || req.body?.confirm_full_catalogue),
-      expectedItemCount: req.body?.expected_item_count ?? req.body?.expectedItemCount,
-    });
+    const session = db.transaction(() =>
+      createStocktakeSession({
+        folderId: req.body?.folder_id ? Number(req.body.folder_id) : null,
+        itemIds: Array.isArray(req.body?.item_ids) ? req.body.item_ids : [],
+        userId: req.auth.id,
+        notes: String(req.body?.notes || "").trim(),
+        confirmAll: Boolean(req.body?.confirm_all || req.body?.confirm_full_catalogue),
+        expectedItemCount: req.body?.expected_item_count ?? req.body?.expectedItemCount,
+        scopeToken: req.body?.scope_token || req.body?.scopeToken || "",
+      }),
+    ).immediate();
     return res.status(201).json({ session });
   } catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (error.status) return res.status(error.status).json({ error: error.message, ...(error.extra || {}) });
     throw error;
   }
 });

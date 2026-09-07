@@ -17,6 +17,10 @@ const {
   markSaleMovementsBilled,
 } = require("../lib/saleBillingLinkage");
 const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
+const { decorateInventoryItems } = require("../lib/inventoryStockState");
+const { consumeAvailableFefo } = require("../lib/restockFulfilment");
+const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require("../lib/inventoryQuantity");
+const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 
 const router = express.Router();
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
@@ -107,6 +111,7 @@ function getConsultationContext(consultationId) {
         c.patient_id,
         c.doctor_id,
         c.consultation_date,
+        c.voided_at,
         p.full_name AS patient_name,
         d.full_name AS doctor_name
       FROM consultations c
@@ -147,30 +152,7 @@ function calculateAppointmentLossRevenue(items) {
 }
 
 function consumeDoctorBatches(itemId, quantity) {
-  const today = getTodayLocal();
-  const rows = db
-    .prepare(`
-      SELECT id, quantity_remaining, expiry_date
-      FROM inventory_batches
-      WHERE item_id = ?
-        AND quantity_remaining > 0
-      ORDER BY CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date ASC, id ASC
-    `)
-    .all(itemId)
-    .filter((row) => !row.expiry_date || String(row.expiry_date) >= today);
-
-  let remaining = quantity;
-  for (const row of rows) {
-    if (remaining <= 0) break;
-    const take = Math.min(remaining, Number(row.quantity_remaining || 0));
-    if (!take) continue;
-    db.prepare("UPDATE inventory_batches SET quantity_remaining = ? WHERE id = ?").run(
-      Number(row.quantity_remaining || 0) - take,
-      row.id,
-    );
-    remaining -= take;
-  }
-  return { consumed: quantity - remaining, remaining };
+  return consumeAvailableFefo(itemId, quantity);
 }
 
 function insertInventoryMovement({
@@ -236,9 +218,10 @@ function insertInventoryMovement({
     "out",
     String(fullMeta.source_text || "Doctor Stock"),
     String(fullMeta.destination_text || "Patient Bill"),
-    String(fullMeta.batch_id || ""),
+    String(fullMeta.batch_id || (fullMeta.allocations || []).map((row) => row.batch_id).join(",") || ""),
     JSON.stringify(fullMeta),
   );
+  return movementId;
 }
 
 function applyInventoryTransactions({
@@ -297,25 +280,52 @@ function applyInventoryTransactions({
       }
     }
 
-    const available = Number(stockItem.quantity || 0);
-    const allowOverride = Boolean(line.emergency_override);
-    if (qtyToDecrement > 0 && available < qtyToDecrement && !allowOverride) {
-      throw new Error(`Insufficient stock for ${stockItem.item_name}. Enable emergency override if clinically required.`);
+    const decorated = decorateInventoryItems([stockItem])[0] || stockItem;
+    const atp = Number(decorated.available_to_promise ?? decorated.available_to_use ?? 0);
+    if (qtyToDecrement > atp) {
+      const error = new Error(
+        `Insufficient usable stock for ${stockItem.item_name}. ${atp} unit(s) available to promise; ${qtyToDecrement} requested.`,
+      );
+      error.status = 409;
+      error.extra = {
+        code: "INSUFFICIENT_ATP",
+        available_to_promise: atp,
+        requested: qtyToDecrement,
+      };
+      throw error;
     }
 
-    const previousQuantity = available;
-    // Recorded stock must never go negative. An emergency override dispenses
-    // more than the system knows about, so deduct what is on record and carry
-    // the gap on the movement as batch_shortfall instead.
-    const deductedFromStock = Math.max(0, Math.min(qtyToDecrement, previousQuantity));
-    const nextQuantity = previousQuantity - deductedFromStock;
-    const batchShortfall = qtyToDecrement - deductedFromStock;
-    if (deductedFromStock > 0) {
-      consumeDoctorBatches(stockItem.id, deductedFromStock);
-      db.prepare("UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
-        nextQuantity,
-        stockItem.id,
-      );
+    const locked = db.prepare("SELECT * FROM inventory WHERE id = ?").get(stockItem.id);
+    const previousQuantity = Number(locked?.quantity || 0);
+    const expectedVersion = Number(locked?.row_version || 1);
+    let allocations = [];
+    let nextQuantity = previousQuantity;
+    if (qtyToDecrement > 0) {
+      const consumed = consumeDoctorBatches(stockItem.id, qtyToDecrement);
+      allocations = consumed.allocations || [];
+      const allocated = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+      if (allocated !== qtyToDecrement) {
+        const error = new Error(
+          `Eligible batches could not cover the billed quantity for ${stockItem.item_name}.`,
+        );
+        error.status = 409;
+        error.extra = { code: "INSUFFICIENT_ELIGIBLE_BATCHES" };
+        throw error;
+      }
+      nextQuantity = previousQuantity - allocated;
+      if (nextQuantity < 0) {
+        const error = new Error("Inventory quantity cannot become negative.");
+        error.status = 409;
+        throw error;
+      }
+      try {
+        assertInventoryQuantityUpdate(stockItem.id, nextQuantity, expectedVersion);
+      } catch (error) {
+        if (error instanceof InventoryVersionConflictError || error.code === "INVENTORY_VERSION_CONFLICT") {
+          error.status = 409;
+        }
+        throw error;
+      }
     }
 
     const actionType =
@@ -326,11 +336,9 @@ function applyInventoryTransactions({
           : "sell";
 
     if (qtyToDecrement > 0) {
-      insertInventoryMovement({
+      const movementId = insertInventoryMovement({
         itemId: stockItem.id,
-        // The ledger records what left recorded stock, so a reversal restores
-        // the true prior quantity rather than inventing stock.
-        quantity: deductedFromStock,
+        quantity: qtyToDecrement,
         previousQuantity,
         nextQuantity,
         actionType,
@@ -347,17 +355,21 @@ function applyInventoryTransactions({
           item_name: stockItem.item_name,
           emergency_override: Boolean(line.emergency_override),
           dispensed_quantity: qtyToDecrement,
-          batch_shortfall: batchShortfall,
+          billed_quantity: qty,
+          batch_shortfall: 0,
+          allocations,
           performed_by_user_id: actor?.id || userId || null,
           performed_by_role: actor?.role || "",
           performed_by_name: actor?.full_name || actor?.username || "",
           source_text: actor?.full_name ? `${actor.full_name} (${actor.role || ""})` : "Doctor Stock",
           destination_text: "Patient Bill",
           billing_id: billingId,
+          billing_line_description: line.description || stockItem.item_name,
           linked_sale_movement_ids: linkedSaleMovementIds,
           linked_sale_credit_qty: qty - qtyToDecrement,
         },
       });
+      recordMovementAllocations(movementId, allocations);
     }
 
     touchedItemIds.add(Number(stockItem.id));
@@ -576,16 +588,19 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
           AND i.owner_doctor_id = ?
         ORDER BY i.item_name ASC
       `)
-      .all(Number(consultation.doctor_id))
-      .map((row) => ({
-        ...row,
-        quantity: Number(row.quantity || 0),
-        minimum_quantity: Number(row.minimum_quantity || 0),
-        selling_price: roundCurrency(row.selling_price),
-        cost_price: roundCurrency(row.cost_price),
-      }));
+      .all(Number(consultation.doctor_id));
+    const decorated = decorateInventoryItems(rows).map((row) => ({
+      ...row,
+      quantity: Number(row.on_hand_quantity ?? row.quantity ?? 0),
+      available_to_promise: Number(row.available_to_promise ?? row.available_to_use ?? 0),
+      expired_quantity: Number(row.expired_quantity || 0),
+      quarantined_quantity: Number(row.quarantined_quantity || 0),
+      minimum_quantity: Number(row.minimum_quantity || 0),
+      selling_price: roundCurrency(row.selling_price),
+      cost_price: roundCurrency(row.cost_price),
+    }));
 
-    res.json(rows);
+    res.json(decorated);
   } catch (error) {
     console.error("[billing][GET /inventory-options]", error);
     return res.status(500).json({
@@ -600,8 +615,11 @@ router.post("/", (req, res) => {
   const patientId = Number(req.body.patient_id);
   const consultation = getConsultationContext(consultationId);
 
-  if (!Number.isInteger(consultationId) || consultationId <= 0 || !consultation) {
+  if (!consultation) {
     return res.status(400).json({ error: "Select a valid consultation." });
+  }
+  if (consultation.voided_at) {
+    return res.status(409).json({ error: "This consultation has been voided and cannot be billed." });
   }
 
   if (!Number.isInteger(patientId) || patientId <= 0) {
@@ -696,9 +714,13 @@ router.post("/", (req, res) => {
         calculateBillingTotal(computedItems),
         createdId,
       );
-    })();
+    }).immediate();
   } catch (error) {
-    return res.status(400).json({ error: error?.message || "Failed to create billing entry." });
+    const status = Number(error?.status || 400);
+    return res.status(status).json({
+      error: error?.message || "Failed to create billing entry.",
+      ...(error?.extra || {}),
+    });
   }
 
   // Fan stock-level changes out to every other connected tab/device so the

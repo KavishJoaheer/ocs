@@ -38,6 +38,26 @@ function nextCollectionIso() {
   throw new Error("Could not find a valid collection date.");
 }
 
+async function startStocktakeSession(request, operatorToken, { itemIds = [], folderId = null, confirmAll = false } = {}) {
+  const qs = new URLSearchParams();
+  if (folderId) qs.set("folder_id", String(folderId));
+  if (itemIds.length) qs.set("item_ids", itemIds.join(","));
+  const preview = await request.get(`${API_BASE}/inventory/stocktake/scope${qs.toString() ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${operatorToken}` },
+  });
+  expect(preview.ok(), await preview.text()).toBeTruthy();
+  const previewBody = await apiJson(preview);
+  return request.post(`${API_BASE}/inventory/stocktake/sessions`, {
+    headers: { Authorization: `Bearer ${operatorToken}` },
+    data: {
+      item_ids: itemIds,
+      folder_id: folderId,
+      confirm_all: confirmAll,
+      scope_token: previewBody.scope_token,
+    },
+  });
+}
+
 async function createStockedItem(request, { adminToken, operatorToken, name, quantity = 8, expiryDate = "2029-06-01", isNonExpiring = false, costPrice = 5 }) {
   const foldersRes = await request.get(`${API_BASE}/inventory`, {
     headers: { Authorization: `Bearer ${adminToken}` },
@@ -375,9 +395,17 @@ test.describe("Inventory workflow", () => {
       headers: { Authorization: `Bearer ${operator.token}` },
       data: { status: "ready" },
     });
+    const preview = await request.get(`${API_BASE}/restock-requests/${requestId}/reconcile/preview`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    expect(preview.ok(), await preview.text()).toBeTruthy();
+    const previewBody = await apiJson(preview);
     const recon = await request.post(`${API_BASE}/restock-requests/${requestId}/reconcile`, {
       headers: { Authorization: `Bearer ${operator.token}` },
-      data: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
+      data: {
+        reason: "Operator reconciled legacy fulfilment quantities and batches.",
+        preview_token: previewBody.preview_token,
+      },
     });
     expect(recon.ok(), await recon.text()).toBeTruthy();
     const reconBody = await apiJson(recon);
@@ -394,10 +422,7 @@ test.describe("Inventory workflow", () => {
       name: `E2E Count ${Date.now()}`,
       quantity: 4,
     });
-    const created = await request.post(`${API_BASE}/inventory/stocktake/sessions`, {
-      headers: { Authorization: `Bearer ${operator.token}` },
-      data: { item_ids: [item.id] },
-    });
+    const created = await startStocktakeSession(request, operator.token, { itemIds: [item.id] });
     expect(created.ok(), await created.text()).toBeTruthy();
     const session = (await apiJson(created)).session;
     expect(session.items[0].system_quantity).toBeNull();
@@ -535,10 +560,7 @@ test.describe("Inventory workflow", () => {
       name: `E2E UI Count ${Date.now()}`,
       quantity: 3,
     });
-    const created = await request.post(`${API_BASE}/inventory/stocktake/sessions`, {
-      headers: { Authorization: `Bearer ${operator.token}` },
-      data: { item_ids: [item.id] },
-    });
+    const created = await startStocktakeSession(request, operator.token, { itemIds: [item.id] });
     expect(created.ok(), await created.text()).toBeTruthy();
     const session = (await apiJson(created)).session;
 
@@ -1272,6 +1294,8 @@ test.describe("Inventory workflow", () => {
     const card = page.locator("article").filter({ hasText: "Quantity change" }).first();
     await expect(card).toBeVisible();
     await expect(card.getByText(/Quantity change/i)).toBeVisible();
+    await expect(card.locator("strong.tabular-nums").filter({ hasText: /^[+\u2212]\d+$/ })).toHaveCount(1);
+    await expect(card.locator("span.sr-only")).toHaveText(/\((added|removed|unchanged)\)/);
     await expect(card.getByText(/Actor/i)).toBeVisible();
   });
 
@@ -1371,10 +1395,28 @@ test.describe("Inventory workflow", () => {
     const dialog = page.getByRole("dialog", { name: "Navigation menu" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Close menu" })).toBeFocused();
+    await expect(page.locator("#ocs-app-main")).toHaveAttribute("inert", "");
+    await expect(page.locator("#ocs-mobile-topbar")).toHaveAttribute("inert", "");
+    await expect(page.locator("#ocs-app-main")).toHaveAttribute("aria-hidden", "true");
     await page.keyboard.press("Shift+Tab");
+    await expect(dialog.locator(":focus")).toHaveCount(1);
+    await page.keyboard.press("Tab");
     await expect(dialog.locator(":focus")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+    await expect(menu).toBeFocused();
+    await expect(page.locator("#ocs-app-main")).not.toHaveAttribute("inert");
+    await expect(page.locator("#ocs-mobile-topbar")).not.toHaveAttribute("inert");
+    await menu.click();
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("#ocs-app-main")).toHaveAttribute("inert", "");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#ocs-app-main")).not.toHaveAttribute("inert");
+    await expect(page.locator("#ocs-app-main")).not.toHaveAttribute("aria-hidden");
+    await menu.click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#ocs-app-main")).not.toHaveAttribute("inert");
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
     await expect(menu).toBeFocused();
   });
 

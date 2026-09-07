@@ -1970,6 +1970,10 @@ test("emergency override never drives recorded stock negative", async () => {
       VALUES (?, 2, 0, 'unit', 10, 25, 'doctor', ?)
     `)
     .run(`Override Amoxicillin ${Date.now()}`, doctorId).lastInsertRowid;
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 2, '2029-06-01', 10, 0)`,
+  ).run(itemId);
 
   const created = await api("POST", "/api/billing", {
     token: adminToken,
@@ -1988,27 +1992,14 @@ test("emergency override never drives recorded stock negative", async () => {
       ],
     },
   });
-  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.status, 409, JSON.stringify(created.data));
 
   const stock = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId);
-  assert.equal(stock.quantity, 0, "recorded stock must stop at zero, not go negative");
-
-  const movement = db
-    .prepare(`
-      SELECT quantity, previous_quantity, next_quantity, meta_json
-      FROM inventory_movements
-      WHERE item_id = ?
-      ORDER BY id DESC
-      LIMIT 1
-    `)
-    .get(itemId);
-  assert.equal(movement.previous_quantity, 2);
-  assert.equal(movement.next_quantity, 0);
-  assert.equal(movement.quantity, 2, "the ledger records what actually left stock");
-
-  const meta = JSON.parse(movement.meta_json);
-  assert.equal(meta.dispensed_quantity, 5);
-  assert.equal(meta.batch_shortfall, 3, "the gap is recorded for the auditor");
+  assert.equal(stock.quantity, 2, "recorded stock must remain unchanged when ATP is insufficient");
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(itemId).count,
+    0,
+  );
 });
 
 test("archiving a stock item leaves history and an audit record behind", async () => {

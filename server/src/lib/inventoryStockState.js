@@ -48,6 +48,18 @@ function isExpiredBatch(batch, today = getTodayLocal()) {
   return expiry < today;
 }
 
+function isQuarantinedBatch(batch) {
+  return String(batch?.status || "usable").trim().toLowerCase() === "quarantined";
+}
+
+function isUsableBatch(batch, today = getTodayLocal()) {
+  const remaining = Number(batch?.quantity_remaining || 0);
+  if (remaining <= 0) return false;
+  if (isQuarantinedBatch(batch)) return false;
+  if (isExpiredBatch(batch, today)) return false;
+  return true;
+}
+
 function isMissingExpiryBatch(batch) {
   if (isNonExpiringBatch(batch)) return false;
   return !expiryDateValue(batch);
@@ -91,7 +103,10 @@ function loadLiveBatches(itemIds) {
     const rows = db
       .prepare(
         `
-        SELECT id, item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, created_at
+        SELECT id, item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, created_at,
+          COALESCE(status, 'usable') AS status,
+          quarantined_reason, quarantined_at, quarantined_by_user_id,
+          COALESCE(row_version, 1) AS row_version
         FROM inventory_batches
         WHERE item_id IN (${placeholders})
           AND quantity_remaining > 0
@@ -108,21 +123,23 @@ function decorateBatches(batches, { today = getTodayLocal(), reservedByBatch = n
     const remaining = Number(batch.quantity_remaining || 0);
     const reserved = Math.max(0, Number(reservedByBatch.get(Number(batch.id)) || 0));
     const expired = remaining > 0 && isExpiredBatch(batch, today);
+    const quarantined = remaining > 0 && isQuarantinedBatch(batch);
     const missingExpiry = remaining > 0 && isMissingExpiryBatch(batch);
     const nonExpiring = isNonExpiringBatch(batch);
-    const nearExpiry = remaining > 0 && !expired && !missingExpiry && !nonExpiring && isNearExpiryDate(expiryDateValue(batch), today);
-    const available = expired ? 0 : Math.max(0, remaining - reserved);
+    const nearExpiry = remaining > 0 && !expired && !quarantined && !missingExpiry && !nonExpiring && isNearExpiryDate(expiryDateValue(batch), today);
+    const available = expired || quarantined ? 0 : Math.max(0, remaining - reserved);
     return {
       ...batch,
       quantity_remaining: remaining,
       reserved_quantity: reserved,
       available_quantity: available,
       expired,
+      quarantined,
       missing_expiry: missingExpiry,
       is_near_expiry: nearExpiry,
       is_non_expiring: nonExpiring,
-      stock_state: batchStockState(batch, today),
-      expiry_label: batchExpiryLabel(batch, today),
+      stock_state: quarantined ? "quarantined" : batchStockState(batch, today),
+      expiry_label: quarantined ? "Quarantined" : batchExpiryLabel(batch, today),
     };
   });
 }
@@ -169,11 +186,24 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
     const batches = batchesByItem.get(itemId) || [];
     const reservedQuantity = Number(reservedByItem.get(itemId) || 0);
     const expiredQuantity = batches.reduce((sum, batch) => sum + (batch.expired ? batch.quantity_remaining : 0), 0);
-    const reservedOnUsable = batches.reduce((sum, batch) => sum + (batch.expired ? 0 : batch.reserved_quantity), 0);
+    const quarantinedQuantity = batches.reduce(
+      (sum, batch) => sum + (batch.quarantined ? batch.quantity_remaining : 0),
+      0,
+    );
+    const reservedOnUsable = batches.reduce(
+      (sum, batch) => sum + (batch.expired || batch.quarantined ? 0 : batch.reserved_quantity),
+      0,
+    );
     const reservedOnExpired = batches.reduce((sum, batch) => sum + (batch.expired ? batch.reserved_quantity : 0), 0);
-    const batchReservedTotal = reservedOnUsable + reservedOnExpired;
+    const reservedOnQuarantined = batches.reduce(
+      (sum, batch) => sum + (batch.quarantined ? batch.reserved_quantity : 0),
+      0,
+    );
+    const batchReservedTotal = reservedOnUsable + reservedOnExpired + reservedOnQuarantined;
     const unallocatedReserved = Math.max(0, reservedQuantity - batchReservedTotal);
-    const usableOnHand = Math.max(0, onHand - expiredQuantity);
+    const batchOnHand = batches.reduce((sum, batch) => sum + Number(batch.quantity_remaining || 0), 0);
+    const unbatchedQuantity = Math.max(0, onHand - batchOnHand);
+    const usableOnHand = Math.max(0, onHand - expiredQuantity - quarantinedQuantity - unbatchedQuantity);
     const availableToUse = Math.max(0, usableOnHand - reservedOnUsable - unallocatedReserved);
     const nearestUsableExpiry = batches
       .filter((batch) => !batch.expired && !batch.missing_expiry && !batch.is_non_expiring && expiryDateValue(batch))
@@ -184,8 +214,6 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       .map((batch) => expiryDateValue(batch))
       .sort()[0] || null;
     const hasExpired = expiredQuantity > 0;
-    const batchOnHand = batches.reduce((sum, batch) => sum + Number(batch.quantity_remaining || 0), 0);
-    const unbatchedQuantity = Math.max(0, onHand - batchOnHand);
     const missingExpiry =
       onHand > 0 && (batches.some((batch) => batch.missing_expiry) || unbatchedQuantity > 0);
     const hasNonExpiring = batches.some((batch) => batch.is_non_expiring);
@@ -196,6 +224,8 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       on_hand_quantity: onHand,
       reserved_quantity: reservedQuantity,
       expired_quantity: expiredQuantity,
+      quarantined_quantity: quarantinedQuantity,
+      has_quarantined: quarantinedQuantity > 0,
       available_to_use: availableToUse,
       available_to_promise: availableToUse,
       available_to_transfer: availableToUse,
@@ -209,7 +239,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       is_near_expiry: isNearExpiry,
       is_non_expiring_only: hasNonExpiring && !missingExpiry && !hasExpired && !nearestUsableExpiry,
       unbatched_quantity: unbatchedQuantity,
-      lots: String(item.stock_scope || "") === "doctor" ? batches : undefined,
+      lots: batches,
     };
   });
 }
@@ -397,6 +427,8 @@ module.exports = {
   countReconciliationRequired,
   decorateBatches,
   decorateInventoryItems,
+  isQuarantinedBatch,
+  isUsableBatch,
   doctorBagLabel,
   isAtOrBelowPar,
   isExpiredBatch,

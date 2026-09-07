@@ -259,12 +259,28 @@ function Sidebar() {
   );
 
   useEffect(() => {
+    const main = document.getElementById("ocs-app-main");
+    const bottom = document.getElementById("ocs-bottom-nav");
+    const topbar = document.getElementById("ocs-mobile-topbar");
+    const nodes = [main, bottom, topbar].filter(Boolean);
     if (drawerOpen) {
+      nodes.forEach((node) => {
+        node.setAttribute("inert", "");
+        node.setAttribute("aria-hidden", "true");
+      });
       document.body.style.overflow = "hidden";
     } else {
+      nodes.forEach((node) => {
+        node.removeAttribute("inert");
+        node.removeAttribute("aria-hidden");
+      });
       document.body.style.overflow = "";
     }
     return () => {
+      nodes.forEach((node) => {
+        node.removeAttribute("inert");
+        node.removeAttribute("aria-hidden");
+      });
       document.body.style.overflow = "";
     };
   }, [drawerOpen]);
@@ -311,6 +327,7 @@ function Sidebar() {
     <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
+        id="ocs-mobile-topbar"
         className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-slate-100 bg-white px-4 md:hidden"
         style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >

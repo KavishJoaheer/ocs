@@ -2110,6 +2110,7 @@ router.post("/:id/reconcile", (req, res) => {
         reason: String(req.body?.reason || "").trim(),
         previewToken: String(req.body?.preview_token || req.body?.previewToken || "").trim(),
       });
+      if (!recon.idempotent) {
       recordEvent({
         requestId,
         eventType: EVENT_TYPES.reconciled,
@@ -2131,8 +2132,9 @@ router.post("/:id/reconcile", (req, res) => {
           fulfilment: recon.fulfilment,
         },
       });
+      }
       return recon;
-    })();
+    }).immediate();
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ error: error.message, ...(error.extra || {}) });

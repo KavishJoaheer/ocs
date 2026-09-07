@@ -74,7 +74,7 @@ import {
 } from "../lib/inventoryOfflineSync.js";
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
-import { doctorBagHeading, formatStockExpiryLabel, itemHasExpiredStock } from "../lib/inventoryStockDisplay.js";
+import { doctorBagHeading, formatStockExpiryLabel, itemHasExpiredStock, itemHasQuarantinedStock } from "../lib/inventoryStockDisplay.js";
 import {
   isAtOrBelowPar,
   isExpiredItem,
@@ -188,10 +188,11 @@ function InventoryStatusChips({ item }) {
   const missingExpiry = Boolean(item.missing_expiry);
   const nearExpiry = Boolean(item.is_near_expiry);
   const expired = itemHasExpiredStock(item);
+  const quarantined = itemHasQuarantinedStock(item);
   const available = Number(item.available_to_use ?? 0);
-  const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired;
+  const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
-  if (!isLow && !missingExpiry && !nearExpiry && !expired && !nonExpiring) return null;
+  if (!isLow && !missingExpiry && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -203,6 +204,16 @@ function InventoryStatusChips({ item }) {
         >
           <span className="sr-only">Stock status: </span>
           {available > 0 ? "Contains expired" : "Expired"}
+        </span>
+      ) : null}
+      {quarantined ? (
+        <span
+          role="status"
+          aria-label="Stock status: Contains quarantined units"
+          className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
+        >
+          <span className="sr-only">Stock status: </span>
+          Contains quarantined
         </span>
       ) : null}
       {isLow ? (
@@ -2541,9 +2552,10 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
   const parLevel = Number(item.minimum_quantity || 0);
   const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
   const expired = itemHasExpiredStock(item);
+  const quarantined = itemHasQuarantinedStock(item);
   const atp = Number(item.available_to_promise ?? item.available_to_use ?? 0);
-  const availableLook = atp > 0 && !expired && !low;
-  const qtyTone = low || expired || atp <= 0 ? "text-rose-700" : "text-slate-900";
+  const availableLook = atp > 0 && !expired && !quarantined && !low;
+  const qtyTone = low || expired || quarantined || atp <= 0 ? "text-rose-700" : "text-slate-900";
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -3513,6 +3525,7 @@ export default function InventoryPage() {
       "On hand": Number(item.on_hand_quantity ?? item.quantity ?? 0),
       Reserved: Number(item.reserved_quantity ?? 0),
       Expired: Number(item.expired_quantity ?? 0),
+      Quarantined: Number(item.quarantined_quantity ?? 0),
       ATP: Number(item.available_to_promise ?? item.available_to_use ?? 0),
       "Min qty": Number(item.minimum_quantity ?? 0),
       Unit: item.unit ?? "",

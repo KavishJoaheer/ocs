@@ -267,7 +267,7 @@ function AppShell() {
       <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
         <Sidebar />
 
-        <main className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
+        <main id="ocs-app-main" className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
           {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hideDesktopTopHeader ? (
             <div
               className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"

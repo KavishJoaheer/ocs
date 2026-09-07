@@ -1,4 +1,4 @@
-import { ATP_HELP_TEXT, inventoryQuantityBreakdown, itemHasExpiredStock } from "../../lib/inventoryStockDisplay.js";
+import { ATP_HELP_TEXT, inventoryQuantityBreakdown, itemHasExpiredStock, itemHasQuarantinedStock } from "../../lib/inventoryStockDisplay.js";
 import { cx } from "../../lib/utils.js";
 
 export default function InventoryQuantitySummary({
@@ -8,9 +8,10 @@ export default function InventoryQuantitySummary({
   showReserved = !compact,
   firstAtp = false,
 }) {
-  const { onHand, reserved, expired, atp, minimum } = inventoryQuantityBreakdown(item);
+  const { onHand, reserved, expired, quarantined, atp, minimum } = inventoryQuantityBreakdown(item);
   const expiredStock = itemHasExpiredStock(item) || expired > 0;
-  const unavailable = atp <= 0 || expiredStock;
+  const quarantinedStock = itemHasQuarantinedStock(item) || quarantined > 0;
+  const unavailable = atp <= 0 || expiredStock || quarantinedStock;
 
   if (compact) {
     return (
@@ -30,6 +31,11 @@ export default function InventoryQuantitySummary({
         {expired > 0 ? (
           <span className="text-rose-700">
             Expired <strong className="tabular-nums">{expired}</strong>
+          </span>
+        ) : null}
+        {quarantined > 0 ? (
+          <span className="text-rose-700">
+            Quarantined <strong className="tabular-nums">{quarantined}</strong>
           </span>
         ) : null}
         {showReserved && reserved > 0 ? (
@@ -56,6 +62,10 @@ export default function InventoryQuantitySummary({
       <span aria-hidden="true"> · </span>
       <span className={expired > 0 ? "text-rose-700" : undefined}>
         Expired: <strong className="tabular-nums">{expired}</strong>
+      </span>
+      <span aria-hidden="true"> · </span>
+      <span className={quarantined > 0 ? "text-rose-700" : undefined}>
+        Quarantined: <strong className="tabular-nums">{quarantined}</strong>
       </span>
       <span aria-hidden="true"> · </span>
       <span title={ATP_HELP_TEXT}>

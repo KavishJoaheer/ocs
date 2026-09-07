@@ -200,6 +200,7 @@ router.get("/", (req, res) => {
       JOIN doctors d ON d.id = c.doctor_id
       JOIN appointments a ON a.id = c.appointment_id
       WHERE p.deleted_at IS NULL
+        AND c.voided_at IS NULL
         AND (@doctorScoped IS NULL OR c.doctor_id = @doctorScoped)
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
@@ -294,6 +295,10 @@ router.put("/:id", (req, res) => {
 
   if (!existing) return res.status(404).json({ error: "Consultation not found." });
 
+  if (existing.voided_at) {
+    return res.status(409).json({ error: "This consultation has been voided and cannot be edited." });
+  }
+
   if (req.auth?.role === "doctor" && !doctorMayModifyConsultation(req.auth, existing.doctor_id)) {
     return res.status(403).json({ error: UNAUTHORIZED_EDIT_MESSAGE });
   }
@@ -363,11 +368,43 @@ router.delete("/:id", (req, res) => {
     return res.status(403).json({ error: UNAUTHORIZED_DELETE_MESSAGE });
   }
 
-  db.transaction(() => {
-    reverseInventoryForConsultation(consultationId, req.auth || {});
-    db.prepare("DELETE FROM billing WHERE consultation_id = ?").run(consultationId);
-    db.prepare("DELETE FROM consultations WHERE id = ?").run(consultationId);
-  })();
+  try {
+    db.transaction(() => {
+    reverseInventoryForConsultation(consultationId, req.auth || {}, {
+      reason: String(req.body?.reason || req.query?.reason || "Consultation voided").trim(),
+      confirmLegacyException: req.body?.confirm_legacy_exception === true,
+    });
+    db.prepare(`
+      UPDATE billing
+      SET
+        voided_at = COALESCE(voided_at, CURRENT_TIMESTAMP),
+        voided_by_user_id = COALESCE(voided_by_user_id, ?),
+        void_reason = CASE WHEN COALESCE(void_reason, '') = '' THEN ? ELSE void_reason END
+      WHERE consultation_id = ?
+    `).run(
+      req.auth?.id || null,
+      String(req.body?.reason || "Consultation voided").trim(),
+      consultationId,
+    );
+    db.prepare(`
+      UPDATE consultations
+      SET
+        voided_at = COALESCE(voided_at, CURRENT_TIMESTAMP),
+        voided_by_user_id = COALESCE(voided_by_user_id, ?),
+        void_reason = CASE WHEN COALESCE(void_reason, '') = '' THEN ? ELSE void_reason END
+      WHERE id = ?
+    `).run(
+      req.auth?.id || null,
+      String(req.body?.reason || "Consultation voided").trim(),
+      consultationId,
+    );
+  }).immediate();
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message, ...(error.extra || {}) });
+    }
+    throw error;
+  }
 
   publishPatientDataChange(existing.patient_id, { reason: "consultation" });
 
