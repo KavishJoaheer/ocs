@@ -28,6 +28,7 @@ const { normalizeHistoryFolderOptions } = require("../lib/inventoryStockState");
 const {
   HttpError,
   applyPicking,
+  applyLegacyReconciliation,
   assertCanMarkReady,
   assignRequest,
   canonicaliseRequestItem,
@@ -35,6 +36,7 @@ const {
   fulfilmentDetail,
   lockPackedFulfilment,
   postCollectionTransfer,
+  previewLegacyReconciliation,
   productivityMetrics,
   reconcileLegacyFulfilment,
   releaseReservations,
@@ -373,7 +375,8 @@ function serializeRequest(row, extras = {}) {
     reconciliation_required: reconciliationRequired,
     reconciliation_gaps: reconciliationGaps,
     legacy_reconciliation_required: reconciliationRequired,
-    can_cancel: canTransition("operator", status, "cancelled") || canTransition("admin", status, "cancelled"),
+    can_cancel: status === "pending" || status === "accepted",
+    can_exceptional_cancel: status === "ready",
     items: extras.items || [],
     pending_amendment: extras.pendingAmendment || null,
     latest_amendment: extras.latestAmendment || null,
@@ -1095,6 +1098,22 @@ router.get("/export", (req, res) => {
   return res.send(lines.join("\n"));
 });
 
+router.get("/:id/reconcile/preview", (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "operator" && role !== "admin") {
+    return res.status(403).json({ error: "Only operators or admins can review reconciliation." });
+  }
+  const requestId = Number(req.params.id);
+  if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
+  try {
+    const preview = previewLegacyReconciliation(requestId);
+    return res.json({ preview, ...preview });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message, ...(error.extra || {}) });
+    throw error;
+  }
+});
+
 router.get("/:id/fulfilment", (req, res) => {
   const requestId = Number(req.params.id);
   if (!requestId) {
@@ -1675,6 +1694,15 @@ router.patch("/:id", (req, res) => {
       });
     }
   } else if (role === "operator" || role === "admin") {
+    if (
+      nextStatus === "cancelled"
+      && existing.status === "ready"
+      && role !== "admin"
+    ) {
+      return res.status(403).json({
+        error: "Ready requests can only be cancelled as an exceptional administrator action.",
+      });
+    }
     if (!canTransition(role, existing.status, nextStatus)) {
       return res.status(400).json({
         error: "That status change is not allowed for this supply request.",
@@ -1937,6 +1965,14 @@ router.patch("/:id/fulfilment", (req, res) => {
   if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
   const existing = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(requestId);
   if (!existing) return res.status(404).json({ error: "Supply request not found." });
+  if (existing.status === "ready") {
+    const detail = fulfilmentDetail(requestId);
+    if (!detail?.reconciliation_required && !detail?.linkage_required) {
+      return res.status(400).json({
+        error: "Fulfilment is locked after the supply is marked ready. Only the owning doctor can confirm collection.",
+      });
+    }
+  }
   if (existing.status !== "accepted" && existing.status !== "ready") {
     return res.status(400).json({ error: "Fulfilment can only be updated while the request is accepted or ready." });
   }
@@ -2018,6 +2054,15 @@ router.post("/:id/assign", (req, res) => {
   const existing = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(requestId);
   if (!existing) return res.status(404).json({ error: "Supply request not found." });
   const assigneeId = req.body?.user_id === null ? null : Number(req.body?.user_id || req.auth.id);
+  if (existing.status === "ready") {
+    const detail = fulfilmentDetail(requestId);
+    if (!detail?.reconciliation_required && !detail?.linkage_required) {
+      return res.status(400).json({ error: "Ready requests awaiting collection cannot be claimed." });
+    }
+  }
+  if (assigneeId && Number(existing.assigned_to_user_id || 0) === Number(assigneeId)) {
+    return res.json({ request: getRequestById(requestId), idempotent: true });
+  }
   assignRequest(requestId, assigneeId);
   recordEvent({
     requestId,
@@ -2060,9 +2105,10 @@ router.post("/:id/reconcile", (req, res) => {
   let result;
   try {
     result = db.transaction(() => {
-      const recon = reconcileLegacyFulfilment(requestId, {
+      const recon = applyLegacyReconciliation(requestId, {
         actor: actorFromAuth(req.auth),
-        reason: String(req.body?.reason || "").trim() || "Legacy fulfilment linkage",
+        reason: String(req.body?.reason || "").trim(),
+        previewToken: String(req.body?.preview_token || req.body?.previewToken || "").trim(),
       });
       recordEvent({
         requestId,
@@ -2070,7 +2116,7 @@ router.post("/:id/reconcile", (req, res) => {
         previousStatus: recon.previous_status,
         newStatus: recon.status,
         actor: actorFromAuth(req.auth),
-        reason: recon.explanation,
+        reason: String(req.body?.reason || recon.reason || "").trim(),
         metadata: {
           outcome: recon.outcome,
           requested_quantity: recon.requested_quantity,
@@ -2079,13 +2125,18 @@ router.post("/:id/reconcile", (req, res) => {
           override_reason: reconcileOverride.reason || req.body?.override_reason || "",
           legacy: true,
           demoted: recon.demoted,
+          before: recon.preview || null,
+          plan: recon.preview || null,
+          applied: recon.fulfilment,
           fulfilment: recon.fulfilment,
         },
       });
       return recon;
     })();
   } catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message, ...(error.extra || {}) });
+    }
     throw error;
   }
   const updated = getRequestById(requestId);

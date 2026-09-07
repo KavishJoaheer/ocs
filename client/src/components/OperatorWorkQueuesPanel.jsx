@@ -1,29 +1,53 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ClipboardList, Package, TimerReset, Truck } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import SectionCard from "./SectionCard.jsx";
 import OperatorFulfilmentPanel from "./OperatorFulfilmentPanel.jsx";
 import OperatorAmendmentReviewPanel from "./OperatorAmendmentReviewPanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
-import { formatSupplyRequestCollectionDay, supplyRequestStatusLabel } from "../lib/supplyRequests.js";
+import {
+  formatSupplyRequestCollectionDay,
+  getSupplyRequestActions,
+  supplyRequestStatusLabel,
+} from "../lib/supplyRequests.js";
 import { cx } from "../lib/utils.js";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
 import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequestHistoryFilters.jsx";
 
 const QUEUE_DEFS = [
-  { id: "new_requests", label: "New requests", key: "new_requests" },
   { id: "changes", label: "Changes", key: "changes" },
+  { id: "reconciliation_required", label: "Reconciliation required", key: "reconciliation_required" },
   { id: "shortages", label: "Shortages", key: "shortages" },
+  { id: "new_requests", label: "New requests", key: "new_requests" },
   { id: "pick_today", label: "Pick today", key: "pick_today" },
   { id: "awaiting_collection", label: "Awaiting collection", key: "awaiting_collection" },
-  { id: "reconciliation_required", label: "Reconciliation required", key: "reconciliation_required" },
   { id: "incoming_shipments", label: "Incoming shipments", key: "incoming_shipments", kind: "shipments" },
   { id: "count_variances", label: "Count variances", key: "count_variances", kind: "variances" },
   { id: "history", label: "History", key: "history", kind: "history" },
 ];
+
+const QUEUE_PRIORITY = [
+  "changes",
+  "reconciliation_required",
+  "shortages",
+  "new_requests",
+  "pick_today",
+  "awaiting_collection",
+  "incoming_shipments",
+  "count_variances",
+];
+
+function validQueueId(value) {
+  return QUEUE_DEFS.some((queue) => queue.id === value) ? value : null;
+}
+
+function highestPriorityNonEmpty(counts = {}) {
+  return QUEUE_PRIORITY.find((id) => Number(counts[id] || 0) > 0) || "new_requests";
+}
 
 function waitingLabel(value) {
   if (!value) return "—";
@@ -34,8 +58,11 @@ function waitingLabel(value) {
 
 export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }) {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQueue = validQueueId(searchParams.get("queue"));
   const [queues, setQueues] = useState(null);
-  const [active, setActive] = useState("new_requests");
+  const [active, setActive] = useState(urlQueue || "new_requests");
+  const queueTouchedRef = useRef(Boolean(urlQueue));
   const [loading, setLoading] = useState(false);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
   const [amendmentRequest, setAmendmentRequest] = useState(null);
@@ -53,6 +80,10 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
     try {
       const payload = await api.get("/restock-requests/queues");
       setQueues(payload);
+      if (!queueTouchedRef.current) {
+        setActive(highestPriorityNonEmpty(payload?.counts || {}));
+        queueTouchedRef.current = true;
+      }
       if (active === "history") {
         const params = new URLSearchParams({
           view: "history",
@@ -121,10 +152,8 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
   }, []);
 
   const counts = queues?.counts || {};
-  const waitingTotal = QUEUE_DEFS.filter((queue) => queue.kind !== "history").reduce(
-    (sum, queue) => sum + Number(counts[queue.key] || 0),
-    0,
-  );
+  const waitingTotal = Number(counts.unique_requests ?? 0);
+  const queueEntries = Number(counts.queue_entries ?? 0);
   const rows = useMemo(() => {
     if (active === "history") return history.requests;
     if (!queues) return [];
@@ -149,6 +178,14 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
     } catch (error) {
       toast.error(error.message || "Could not assign this request.");
     }
+  }
+
+  function selectQueue(id) {
+    queueTouchedRef.current = true;
+    setActive(id);
+    const next = new URLSearchParams(searchParams);
+    next.set("queue", id);
+    setSearchParams(next, { replace: true });
   }
 
   async function openQueueAction(row) {
@@ -178,6 +215,9 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
         actions={
           <span className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-[#2d8f98]/10 px-3 py-1.5 text-xs font-bold text-[#2d8f98]">
             {waitingTotal} waiting
+            {queueEntries > waitingTotal ? (
+              <span className="font-semibold text-[#2d8f98]/80">· {queueEntries} queue entries</span>
+            ) : null}
           </span>
         }
       >
@@ -188,7 +228,8 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
               <button
                 key={queue.id}
                 type="button"
-                onClick={() => setActive(queue.id)}
+                onClick={() => selectQueue(queue.id)}
+                aria-pressed={active === queue.id}
                 className={cx(
                   "inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-xs font-semibold transition",
                   active === queue.id
@@ -394,42 +435,57 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setDetailRequestId(row.id)}
-                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
-                  >
-                    View details
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => claim(row)}
-                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600"
-                  >
-                    Claim
-                  </button>
-                  {row.status === "pending" && user?.role === "operator" ? (
-                    <button
-                      type="button"
-                      onClick={() => accept(row)}
-                      className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
-                    >
-                      Accept & reserve
-                    </button>
-                  ) : row.status === "pending" && user?.role === "admin" ? (
-                    <p className="max-w-[12rem] text-right text-[11px] text-slate-500">
-                      An operator must accept and reserve this request.
-                    </p>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => openQueueAction(row)}
-                      className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
-                    >
-                      {row.status === "ready" ? <Truck className="size-3.5" /> : <TimerReset className="size-3.5" />}
-                      {active === "changes" ? "Review changes" : "Open fulfilment"}
-                    </button>
-                  )}
+                  {(() => {
+                    const actions = getSupplyRequestActions({ request: row, role: user?.role });
+                    const assignedToMe = Number(row.assigned_to_user_id || 0) === Number(user?.id || 0);
+                    const claimable =
+                      user?.role === "operator"
+                      && !assignedToMe
+                      && (row.status === "accepted" || (row.status === "ready" && (row.reconciliation_required || row.linkage_required)));
+                    const fulfilAction = actions.find((action) => action.id === "fulfil" || action.id === "review_amendment");
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setDetailRequestId(row.id)}
+                          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
+                        >
+                          View details
+                        </button>
+                        {claimable ? (
+                          <button
+                            type="button"
+                            onClick={() => claim(row)}
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600"
+                          >
+                            Claim
+                          </button>
+                        ) : null}
+                        {row.status === "pending" && user?.role === "operator" ? (
+                          <button
+                            type="button"
+                            onClick={() => accept(row)}
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
+                          >
+                            Accept & reserve
+                          </button>
+                        ) : row.status === "pending" && user?.role === "admin" ? (
+                          <p className="max-w-[12rem] text-right text-[11px] text-slate-500">
+                            An operator must accept and reserve this request.
+                          </p>
+                        ) : fulfilAction ? (
+                          <button
+                            type="button"
+                            onClick={() => openQueueAction(row)}
+                            className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
+                          >
+                            {row.status === "ready" ? <Truck className="size-3.5" /> : <TimerReset className="size-3.5" />}
+                            {active === "changes" ? "Review changes" : fulfilAction.label}
+                          </button>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ))}

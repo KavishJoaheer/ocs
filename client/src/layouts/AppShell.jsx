@@ -321,7 +321,7 @@ function AppShell() {
             {!hideBottomNav && (
               <div
                 className="md:hidden"
-                style={{ height: "calc(5rem + env(safe-area-inset-bottom, 0px))" }}
+                style={{ height: "var(--ocs-mobile-nav-clearance, 5.5rem)" }}
                 aria-hidden="true"
               />
             )}

@@ -34,5 +34,7 @@ test("only valid role transitions are accepted", () => {
   assert.equal(canTransition("operator", "accepted", "ready"), true);
   assert.equal(canTransition("operator", "pending", "ready"), false);
   assert.equal(canTransition("operator", "ready", "completed"), false);
+  assert.equal(canTransition("operator", "ready", "cancelled"), false);
   assert.equal(canTransition("admin", "accepted", "cancelled"), true);
+  assert.equal(canTransition("admin", "ready", "cancelled"), true);
 });

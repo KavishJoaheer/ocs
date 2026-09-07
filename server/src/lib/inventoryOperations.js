@@ -1295,18 +1295,15 @@ function snapshotInventoryForStocktake(item) {
   };
 }
 
-function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], userId, notes = "" }) {
-  const info = db
-    .prepare(`
-      INSERT INTO inventory_stocktake_sessions (
-        scope, folder_id, status, notes, created_by_user_id, assigned_counter_user_id, started_at
-      ) VALUES (?, ?, 'in_progress', ?, ?, ?, CURRENT_TIMESTAMP)
-    `)
-    .run(scope, folderId || null, notes, userId, userId);
-  const sessionId = Number(info.lastInsertRowid);
+function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], userId, notes = "", confirmAll = false, expectedItemCount = null }) {
+  const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
+  const fullCatalogue = !folderId && !scopedIds.length;
+  if (fullCatalogue && !confirmAll) {
+    throw HttpError(400, "Starting a full-catalogue stocktake requires explicit confirmation.");
+  }
   let items = [];
-  if (Array.isArray(itemIds) && itemIds.length) {
-    items = itemIds
+  if (scopedIds.length) {
+    items = scopedIds
       .map((id) =>
         db
           .prepare(
@@ -1329,6 +1326,20 @@ function createStocktakeSession({ scope = "ocs", folderId = null, itemIds = [], 
       )
       .all(folderId || null, folderId || null);
   }
+  if (expectedItemCount != null && expectedItemCount !== "" && Number(expectedItemCount) !== items.length) {
+    throw HttpError(
+      409,
+      `Catalogue membership changed. Expected ${Number(expectedItemCount)} item(s); found ${items.length}. Reload and confirm again.`,
+    );
+  }
+  const info = db
+    .prepare(`
+      INSERT INTO inventory_stocktake_sessions (
+        scope, folder_id, status, notes, created_by_user_id, assigned_counter_user_id, started_at
+      ) VALUES (?, ?, 'in_progress', ?, ?, ?, CURRENT_TIMESTAMP)
+    `)
+    .run(scope, folderId || null, notes, userId, userId);
+  const sessionId = Number(info.lastInsertRowid);
   const insert = db.prepare(`
     INSERT INTO inventory_stocktake_session_items (
       session_id, inventory_id, system_quantity, expected_row_version, expected_quantity

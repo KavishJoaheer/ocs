@@ -45,3 +45,18 @@ export function formatStockExpiryLabel(itemOrBatch = {}) {
 export function itemHasExpiredStock(item) {
   return Boolean(item?.has_expired) || Number(item?.expired_quantity || 0) > 0;
 }
+
+export const ATP_HELP_TEXT =
+  "Available to promise (ATP) is usable on-hand stock minus active reservations, expired units and quarantined units. It is never negative.";
+
+export function inventoryQuantityBreakdown(item = {}) {
+  const onHand = Number(item.on_hand_quantity ?? item.quantity ?? 0);
+  const reserved = Number(item.reserved_quantity || 0);
+  const expired = Number(item.expired_quantity || 0);
+  const atp = Math.max(
+    0,
+    Number(item.available_to_promise ?? item.available_to_use ?? Math.max(0, onHand - reserved - expired)),
+  );
+  const minimum = Number(item.minimum_quantity || 0);
+  return { onHand, reserved, expired, atp, minimum };
+}

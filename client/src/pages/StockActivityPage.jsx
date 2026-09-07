@@ -7,6 +7,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { OCS_INVENTORY_EVENT } from "../lib/inventorySync.js";
@@ -21,6 +22,8 @@ const BADGE_STYLES = {
   stock_out: "bg-orange-100 text-orange-800",
   override: "bg-rose-100 text-rose-700",
   adjustment: "bg-rose-100 text-rose-700",
+  correction: "bg-rose-100 text-rose-700",
+  exceptional_correction: "bg-rose-100 text-rose-700",
 };
 
 const ACTION_LABELS = {
@@ -32,10 +35,18 @@ const ACTION_LABELS = {
   stock_out: "Stock Out",
   override: "Override",
   adjustment: "Adjustment",
+  correction: "Correction",
+  exceptional_correction: "Correction",
   add: "Add",
   edit: "Edit",
   remove: "Remove",
 };
+
+function actorDisplayName(row) {
+  const name = String(row?.actor_name || "").trim();
+  if (name) return name;
+  return "Legacy staff record";
+}
 
 function formatTimestamp(value) {
   if (!value) return "-";
@@ -94,6 +105,7 @@ function buildReceiptPrintHtml(receipt) {
 
 function StockActivityPage() {
   const { user } = useAuth();
+  const isCompact = useIsMobile(DENSE_TABLE_BREAKPOINT);
   const refreshKey = useLiveRefreshKey();
   const [inventoryTick, setInventoryTick] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -355,7 +367,7 @@ function StockActivityPage() {
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{analytics.top_performer.role}</p>
             </>
           ) : (
-            <p className="mt-3 text-2xl font-bold text-slate-400">—</p>
+            <p className="mt-3 text-base font-semibold text-slate-600">No human activity in this period</p>
           )}
         </article>
       </div>
@@ -368,8 +380,10 @@ function StockActivityPage() {
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
             <select className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" value={userId} onChange={(event) => { setUserId(event.target.value); setPage(1); }}>
               <option value="">All users</option>
-              {actors.map((actor) => (
-                <option key={actor.actor_user_id} value={actor.actor_user_id}>{actor.actor_name} ({actor.actor_role})</option>
+                {actors.map((actor) => (
+                <option key={actor.actor_user_id} value={actor.actor_user_id}>
+                  {String(actor.actor_name || "").trim() || "Legacy staff record"} ({actor.actor_role || "staff"})
+                </option>
               ))}
             </select>
           </label>
@@ -464,6 +478,57 @@ function StockActivityPage() {
           <LoadingState message="Loading stock activity..." />
         ) : rows.length === 0 ? (
           <EmptyState title="No activity recorded" description="Try changing the filters or date range to find stock events." />
+        ) : isCompact ? (
+          <div className="space-y-3">
+            {rows.map((row) => {
+              const label = actionLabel(row.action_type, row.meta_json);
+              const badgeClass = BADGE_STYLES[label] || BADGE_STYLES.correction || "bg-slate-100 text-slate-700";
+              const signedQty = Number(row.quantity || 0);
+              let meta = {};
+              try {
+                meta = row.meta_json ? JSON.parse(row.meta_json) : {};
+              } catch {
+                meta = {};
+              }
+              const transactionId = row.transaction_id || meta.transaction_id || "";
+              const isRestockTransfer = ["restock", "restock_in", "restock_out"].includes(label);
+              return (
+                <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="font-semibold text-slate-900">{formatTimestamp(row.timestamp)}</p>
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${badgeClass}`}>
+                      {actionDisplayLabel(label)}
+                    </span>
+                  </div>
+                  <p className="mt-2 break-words font-semibold text-slate-900">{row.item_name || "Unknown item"}</p>
+                  <dl className="mt-2 grid grid-cols-1 gap-1 text-xs">
+                    <div>Quantity change: <strong className="tabular-nums">{signedQty > 0 ? `+${signedQty}` : signedQty}</strong></div>
+                    <div>Resulting balance: <strong className="tabular-nums">{row.resulting_balance == null ? "—" : row.resulting_balance}</strong></div>
+                    <div>Actor: {actorDisplayName(row)} ({row.actor_role || "staff"})</div>
+                    <div className="break-words">Source: {row.source_text || "—"}</div>
+                    <div className="break-words">Destination: {row.destination_text || "—"}</div>
+                    <div>Request: {row.request_id ? `#${row.request_id}` : "—"}</div>
+                    <div className="break-words">Transfer receipt: {row.receipt_number || transactionId || "—"}</div>
+                    <div>Batch/lot: {row.batch_id || (row.legacy_data_unavailable ? "Legacy/unknown lot" : "—")}</div>
+                    <div>Expiry: {row.expiry_date || "—"}</div>
+                    <div className="break-words">Reason: {row.reason_note || "—"}</div>
+                  </dl>
+                  {row.legacy_data_unavailable ? (
+                    <p className="mt-2 text-xs font-semibold text-amber-800">Legacy/unavailable data</p>
+                  ) : null}
+                  {transactionId && isRestockTransfer ? (
+                    <button
+                      type="button"
+                      onClick={() => reprintReceipt(transactionId)}
+                      className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-teal-800"
+                    >
+                      Print receipt
+                    </button>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
             <table className="min-w-full table-fixed text-sm">
@@ -515,8 +580,8 @@ function StockActivityPage() {
                       <td className="truncate px-3 py-3 text-slate-700" title={formatTimestamp(row.timestamp)}>
                         {formatTimestamp(row.timestamp)}
                       </td>
-                      <td className="truncate px-3 py-3 text-slate-700" title={`${row.actor_name || "System"} (${row.actor_role || "N/A"})`}>
-                        {row.actor_name || "System"} <span className="text-slate-400">({row.actor_role || "N/A"})</span>
+                      <td className="truncate px-3 py-3 text-slate-700" title={`${actorDisplayName(row)} (${row.actor_role || "staff"})`}>
+                        {actorDisplayName(row)} <span className="text-slate-400">({row.actor_role || "staff"})</span>
                       </td>
                       <td className="px-3 py-3">
                         <span className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`} title={actionCellText}>{actionCellText}</span>
@@ -586,7 +651,7 @@ function StockActivityPage() {
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
             </button>
@@ -594,7 +659,7 @@ function StockActivityPage() {
               type="button"
               disabled={page >= totalPages}
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
             </button>

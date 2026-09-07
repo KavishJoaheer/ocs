@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   Calendar,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   Download,
@@ -36,6 +37,7 @@ import OperatorWorkQueuesPanel from "../components/OperatorWorkQueuesPanel.jsx";
 import AddStockModal from "../components/inventory/AddStockModal.jsx";
 import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
 import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
+import InventoryQuantitySummary from "../components/inventory/InventoryQuantitySummary.jsx";
 import InventoryTabSummaries from "../components/inventory/InventoryTabSummaries.jsx";
 import ItemEditorModal from "../components/inventory/ItemEditorModal.jsx";
 import TransferReceiptModal from "../components/inventory/TransferReceiptModal.jsx";
@@ -142,24 +144,8 @@ function formatInventoryExpiry(itemOrValue) {
   return parsed.isValid() ? parsed.format("D MMM YYYY") : "Expiry missing";
 }
 
-function InventoryQuantityLines({ item, compact = false, showMinimum = compact }) {
-  const onHand = Number(item.on_hand_quantity ?? item.quantity ?? 0);
-  const reserved = Number(item.reserved_quantity || 0);
-  const expired = Number(item.expired_quantity || 0);
-  const available = Number(item.available_to_use ?? Math.max(0, onHand - reserved - expired));
-  const minimum = Number(item.minimum_quantity || 0);
-  const lineClass = compact ? "text-[11px] leading-snug text-slate-500" : "text-xs text-slate-600";
-  return (
-    <div className={cx("flex flex-col gap-0.5", lineClass)}>
-      <span>On hand: <strong className="tabular-nums text-slate-900">{onHand}</strong></span>
-      {reserved > 0 ? <span>Reserved: <strong className="tabular-nums text-slate-900">{reserved}</strong></span> : null}
-      <span className={expired > 0 ? "text-rose-700" : ""}>
-        Expired: <strong className="tabular-nums">{expired}</strong>
-      </span>
-      <span>Available to use: <strong className="tabular-nums text-slate-900">{available}</strong></span>
-      {showMinimum ? <span>Minimum: <strong className="tabular-nums text-slate-900">{minimum}</strong></span> : null}
-    </div>
-  );
+function InventoryQuantityLines(props) {
+  return <InventoryQuantitySummary {...props} />;
 }
 
 function suggestedBagFillQty(currentQty, minQty, ocsAvailable) {
@@ -752,9 +738,9 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
         )}
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
-          <InventoryQuantityLines item={item || {}} />
+          <InventoryQuantityLines item={item || {}} firstAtp />
           <p className="mt-1 text-xs text-slate-600">
-            {isSale ? `Available to use: ${available}` : `Selected lot balance: ${available}`}
+            {isSale ? `ATP ${available}` : `Selected lot balance: ${available}`}
           </p>
 
           <label className="mt-4 block space-y-2">
@@ -2554,7 +2540,10 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
   const currentQuantity = Number(item.on_hand_quantity ?? item.quantity ?? 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
-  const qtyTone = low ? "text-rose-700" : "text-slate-900";
+  const expired = itemHasExpiredStock(item);
+  const atp = Number(item.available_to_promise ?? item.available_to_use ?? 0);
+  const availableLook = atp > 0 && !expired && !low;
+  const qtyTone = low || expired || atp <= 0 ? "text-rose-700" : "text-slate-900";
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -2562,7 +2551,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
         <span
           className={cx(
             "mt-1.5 inline-block size-2.5 shrink-0 rounded-full",
-            low ? "bg-rose-500" : "bg-teal-500",
+            availableLook ? "bg-teal-500" : "bg-rose-500",
           )}
           aria-hidden
         />
@@ -2572,7 +2561,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
           </p>
           <InventoryStatusChips item={item} />
           <div className={cx("mt-1", qtyTone)}>
-            <InventoryQuantityLines item={item} compact />
+            <InventoryQuantityLines item={item} compact firstAtp />
           </div>
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
             <span className={!item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
@@ -2827,6 +2816,8 @@ export default function InventoryPage() {
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const [logisticsTab, setLogisticsTab] = useState(user.role === "operator" ? "queues" : "stock");
   const inventoryTabListRef = useRef(null);
+  const [tabOverflowHint, setTabOverflowHint] = useState(true);
+  const [tabsCanScroll, setTabsCanScroll] = useState({ left: false, right: false });
   const [emergencyRestockEnabled, setEmergencyRestockEnabled] = useState(false);
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
@@ -3204,6 +3195,25 @@ export default function InventoryPage() {
     selected?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
   }, [logisticsTab]);
 
+  useEffect(() => {
+    const scroller = inventoryTabListRef.current;
+    if (!scroller) return undefined;
+    function updateOverflow() {
+      const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      setTabsCanScroll({
+        left: scroller.scrollLeft > 4,
+        right: scroller.scrollLeft < max - 4,
+      });
+    }
+    updateOverflow();
+    scroller.addEventListener("scroll", updateOverflow, { passive: true });
+    window.addEventListener("resize", updateOverflow);
+    return () => {
+      scroller.removeEventListener("scroll", updateOverflow);
+      window.removeEventListener("resize", updateOverflow);
+    };
+  }, [logisticsTab, canManageOcs]);
+
   const unpricedProductKeys = useMemo(
     () => data?.tab_summaries?.bags?.unpriced_product_keys || [],
     [data?.tab_summaries?.bags?.unpriced_product_keys],
@@ -3503,7 +3513,7 @@ export default function InventoryPage() {
       "On hand": Number(item.on_hand_quantity ?? item.quantity ?? 0),
       Reserved: Number(item.reserved_quantity ?? 0),
       Expired: Number(item.expired_quantity ?? 0),
-      "Available to use": Number(item.available_to_use ?? item.quantity ?? 0),
+      ATP: Number(item.available_to_promise ?? item.available_to_use ?? 0),
       "Min qty": Number(item.minimum_quantity ?? 0),
       Unit: item.unit ?? "",
       "Nearest usable expiry": item.nearest_usable_expiry || formatInventoryExpiry(item),
@@ -4346,12 +4356,13 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs ? (
-        <div className="relative">
+        <div className="relative min-w-0 overflow-hidden">
           <div
             ref={inventoryTabListRef}
             role="tablist"
             aria-label="Inventory sections"
-            className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:thin]"
+            onScroll={() => setTabOverflowHint(false)}
+            className="flex gap-2 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory [scrollbar-width:thin]"
           >
           {[
             ...(isOperator ? [{ id: "queues", label: "Work queues", shortLabel: "Queues" }] : []),
@@ -4386,7 +4397,45 @@ export default function InventoryPage() {
             </button>
           ))}
           </div>
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
+          {tabsCanScroll.left ? (
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
+          ) : null}
+          {tabsCanScroll.right ? (
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
+          ) : null}
+          <div className="mt-1 flex items-center justify-between gap-2 sm:hidden">
+            {tabOverflowHint && tabsCanScroll.right ? (
+              <p className="text-[11px] font-semibold text-slate-500">Scroll for more</p>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-1">
+              <button
+                type="button"
+                aria-label="Previous inventory tabs"
+                disabled={!tabsCanScroll.left}
+                onClick={() => {
+                  inventoryTabListRef.current?.scrollBy({ left: -160, behavior: "smooth" });
+                  setTabOverflowHint(false);
+                }}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next inventory tabs"
+                disabled={!tabsCanScroll.right}
+                onClick={() => {
+                  inventoryTabListRef.current?.scrollBy({ left: 160, behavior: "smooth" });
+                  setTabOverflowHint(false);
+                }}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -4675,8 +4724,8 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <div className="flex flex-col items-center gap-0.5 text-left" title="On-hand is physical stock. Available to use excludes reserved and expired units.">
-                                <InventoryQuantityLines item={item} showMinimum={false} />
+                              <div className="flex flex-col items-center gap-0.5 text-left" title="On hand is physical stock. ATP excludes reserved, expired and quarantined units.">
+                                <InventoryQuantityLines item={item} showMinimum={false} firstAtp />
                               </div>
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>

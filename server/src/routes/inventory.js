@@ -70,6 +70,8 @@ const {
 } = require("../lib/inventoryStockState");
 const {
   isAutomatedMovementMeta,
+  LEGACY_STAFF_LABEL,
+  SYSTEM_ACTOR_LABEL,
   resolveAuditActor,
 } = require("../lib/auditActor");
 
@@ -1521,24 +1523,27 @@ function buildActivityHistoryFilter(query = {}) {
   };
 
   if (userId) {
-    where.push("actor_user_id = @userId");
+    where.push("h.actor_user_id = @userId");
   }
   if (search) {
-    where.push("(item_name LIKE @search OR actor_name LIKE @search OR source_text LIKE @search OR destination_text LIKE @search)");
+    where.push("(h.item_name LIKE @search OR h.actor_name LIKE @search OR h.source_text LIKE @search OR h.destination_text LIKE @search)");
   }
   if (dateFrom) {
-    where.push("date(timestamp) >= date(@dateFrom)");
+    where.push("date(h.timestamp) >= date(@dateFrom)");
   }
   if (dateTo) {
-    where.push("date(timestamp) <= date(@dateTo)");
+    where.push("date(h.timestamp) <= date(@dateTo)");
   }
   if (actionValues.length) {
     const expandedActions = [...new Set(actionValues.flatMap((action) => {
       if (action === "restock") return ["restock_in", "restock_out", "restock"];
       if (action === "adjustment") return ["adjustment", "override"];
+      if (action === "correction") {
+        return ["exceptional_correction", "correction", "adjustment", "override"];
+      }
       return [action];
     }))];
-    where.push(`action_type IN (${expandedActions.map((_, index) => `@action${index}`).join(", ")})`);
+    where.push(`h.action_type IN (${expandedActions.map((_, index) => `@action${index}`).join(", ")})`);
     expandedActions.forEach((action, index) => {
       params[`action${index}`] = action;
     });
@@ -1720,11 +1725,21 @@ function computeActivityAnalytics(consolidated, rawRows) {
       // Sell value is selling price; cost contribution computed below
     }
 
-    const actorKey = `${row.actor_user_id || "0"}|${row.actor_name || "System"}|${row.actor_role || "N/A"}`;
+    const actorName = String(row.actor_name || "").trim();
+    const meta = safeParseJson(row.meta_json, {});
+    const isSystem =
+      !row.actor_user_id
+      || actorName === SYSTEM_ACTOR_LABEL
+      || actorName.toLowerCase() === "system"
+      || isAutomatedMovementMeta(meta)
+      || actorName === LEGACY_STAFF_LABEL
+      || !actorName;
+    if (isSystem) return;
+    const actorKey = `${row.actor_user_id}|${actorName}|${row.actor_role || "staff"}`;
     const previous = actorCounts.get(actorKey) || {
       actor_user_id: row.actor_user_id || null,
-      name: row.actor_name || "System",
-      role: row.actor_role || "N/A",
+      name: actorName,
+      role: row.actor_role || "staff",
       count: 0,
     };
     previous.count += 1;
@@ -1753,7 +1768,8 @@ function computeActivityAnalytics(consolidated, rawRows) {
 
   const grossMarginPct = sellRevenue > 0 ? ((sellRevenue - sellCost) / sellRevenue) * 100 : null;
   const wastagePct = totalUnitsMoved > 0 ? (wastageUnits / totalUnitsMoved) * 100 : 0;
-  const topPerformer = Array.from(actorCounts.values()).sort((a, b) => b.count - a.count)[0] || null;
+  const ranked = Array.from(actorCounts.values()).sort((a, b) => b.count - a.count);
+  const topPerformer = ranked[0] || null;
 
   return {
     total_transactions: totalTransactions,
@@ -1763,6 +1779,7 @@ function computeActivityAnalytics(consolidated, rawRows) {
     wastage_value_rs: roundCurrency(wastageValue),
     wastage_pct: Number(wastagePct.toFixed(2)),
     top_performer: topPerformer,
+    no_human_activity: !topPerformer,
   };
 }
 
@@ -1833,13 +1850,30 @@ router.get("/activity-history", (req, res) => {
     ? []
     : db
         .prepare(`
-      SELECT DISTINCT actor_user_id, actor_name, actor_role
+      SELECT actor_user_id,
+        MAX(NULLIF(TRIM(actor_name), '')) AS actor_name,
+        MAX(NULLIF(TRIM(actor_role), '')) AS actor_role
       FROM inventory_activity_history
       WHERE actor_user_id IS NOT NULL
+      GROUP BY actor_user_id
       ORDER BY actor_name ASC
     `)
-        .all();
-  const actions = ["stock_in", "restock", "sell", "wastage", "adjustment", "stock_out"];
+        .all()
+        .map((row) => {
+          const name = resolveAuditActor({
+            displayName: row.actor_name,
+            userId: row.actor_user_id,
+            required: true,
+          });
+          if (!name || name === SYSTEM_ACTOR_LABEL) return null;
+          return {
+            actor_user_id: row.actor_user_id,
+            actor_name: name,
+            actor_role: String(row.actor_role || "staff").trim() || "staff",
+          };
+        })
+        .filter(Boolean);
+  const actions = ["stock_in", "restock", "sell", "wastage", "adjustment", "correction", "stock_out"];
   const rows = isDoctorViewer
     ? paginated.rows.map((row) => {
         const { cost_price, selling_price, value_rs, ...rest } = row;
@@ -3618,6 +3652,8 @@ router.post("/stocktake/sessions", (req, res) => {
       itemIds: Array.isArray(req.body?.item_ids) ? req.body.item_ids : [],
       userId: req.auth.id,
       notes: String(req.body?.notes || "").trim(),
+      confirmAll: Boolean(req.body?.confirm_all || req.body?.confirm_full_catalogue),
+      expectedItemCount: req.body?.expected_item_count ?? req.body?.expectedItemCount,
     });
     return res.status(201).json({ session });
   } catch (error) {

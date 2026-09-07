@@ -5,6 +5,7 @@ import Modal from "./Modal.jsx";
 import { api } from "../lib/api.js";
 import { formatSupplyRequestCollectionDay } from "../lib/supplyRequests.js";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { ATP_HELP_TEXT } from "../lib/inventoryStockDisplay.js";
 import { withOperationalOverride } from "../lib/inventoryAccess.js";
 import { setUnsavedWork } from "../lib/unsavedWork.js";
 
@@ -23,6 +24,10 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
   const [partialReason, setPartialReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [overrideReason, setOverrideReason] = useState(request?.__overrideReason || "");
+  const [preview, setPreview] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [reconReason, setReconReason] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !request?.id) return undefined;
@@ -62,6 +67,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
 
   const hasShortage = Boolean(detail?.has_shortage);
   const linkageRequired = Boolean(detail?.linkage_required) || Boolean(detail?.reconciliation_required);
+  const fulfilmentLocked = String(request?.status) === "ready" && !linkageRequired;
   const overrideBlocked = requireOverride && String(overrideReason || "").trim().length < 10;
 
   const summary = useMemo(
@@ -116,11 +122,32 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
     }
   }
 
-  async function reconcile() {
+  async function openReconciliationPreview() {
+    if (!request?.id || previewLoading || saving) return;
+    setPreviewLoading(true);
+    try {
+      const payload = await api.get(`/restock-requests/${request.id}/reconcile/preview`);
+      setPreview(payload.preview || payload);
+      setReconReason("");
+      setPreviewOpen(true);
+    } catch (error) {
+      toast.error(error.message || "Could not load the reconciliation preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function confirmReconciliation() {
+    if (!request?.id || saving) return;
+    if (String(reconReason || "").trim().length < 10) {
+      toast.error("Enter a reconciliation reason of at least 10 characters.");
+      return;
+    }
     setSaving(true);
     try {
       const payload = await api.post(`/restock-requests/${request.id}/reconcile`, withOverride({
-        reason: "Operator reconciled legacy fulfilment quantities and batches.",
+        reason: String(reconReason).trim(),
+        preview_token: preview?.preview_token,
       }));
       const fulfilment = payload.fulfilment || payload.request?.fulfilment;
       if (fulfilment) {
@@ -135,6 +162,8 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         setPartialApproved(Boolean(fulfilment.partial_approved));
         setPartialReason(fulfilment.partial_reason || "");
       }
+      setPreviewOpen(false);
+      setPreview(null);
       toast.success(payload.explanation || "Fulfilment linked.");
       await onUpdated?.(payload);
     } catch (error) {
@@ -144,7 +173,12 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
     }
   }
 
+  async function reconcile() {
+    await openReconciliationPreview();
+  }
+
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -175,19 +209,24 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p className="font-semibold">Fulfilment linkage required</p>
           <p className="mt-1 text-xs">
-            This accepted request has no reservation record. Reconcile actual quantities before collection.
+            Review the proposed reservations and batches before confirming. The first click does not change inventory.
           </p>
           <button
             type="button"
-            disabled={saving || overrideBlocked}
+            disabled={saving || previewLoading || overrideBlocked}
             onClick={reconcile}
-            className="mt-3 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+            className="mt-3 min-h-11 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
           >
-            Reconcile fulfilment
+            {previewLoading ? "Loading preview…" : "Review reconciliation"}
           </button>
         </div>
       ) : (
         <div className="space-y-4">
+          {fulfilmentLocked ? (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              Fulfilment quantities and batch allocations are locked. Only the owning doctor can confirm collection.
+            </p>
+          ) : null}
           {hasShortage ? (
             <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -205,7 +244,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                   <th className="px-3 py-2 text-left">Item</th>
                   <th className="px-3 py-2 text-right">Req</th>
                   <th className="px-3 py-2 text-right">Reserved</th>
-                  <th className="px-3 py-2 text-right">ATP</th>
+                  <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>ATP</th>
                   <th className="px-3 py-2 text-right">Short</th>
                   <th className="px-3 py-2 text-right">Picked</th>
                   <th className="px-3 py-2 text-right">Fulfilled</th>
@@ -234,7 +273,8 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                       <input
                         type="number"
                         min="0"
-                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right"
+                        disabled={fulfilmentLocked}
+                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right disabled:bg-slate-100"
                         value={qty(line.picked_quantity)}
                         onChange={(event) =>
                           setLines((current) =>
@@ -255,7 +295,8 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                       <input
                         type="number"
                         min="0"
-                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right"
+                        disabled={fulfilmentLocked}
+                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right disabled:bg-slate-100"
                         value={qty(line.fulfilled_quantity)}
                         onChange={(event) =>
                           setLines((current) =>
@@ -278,6 +319,8 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
             </table>
           </div>
 
+          {fulfilmentLocked ? null : (
+            <>
           <label className="flex items-start gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -324,8 +367,109 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
               Mark supply ready
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
     </Modal>
+    <Modal
+      open={previewOpen}
+      onClose={() => {
+        if (saving) return;
+        setPreviewOpen(false);
+      }}
+      title={`Review reconciliation #${preview?.request_number || request?.id || ""}`}
+      description="This preview does not change inventory until you confirm."
+      size="xl"
+    >
+      {preview ? (
+        <div className="space-y-4 text-sm text-slate-700">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p><strong>Request #{preview.request_number}</strong> · {preview.current_status} → {preview.resulting_status}</p>
+            <p>Dr. {preview.doctor_name} · collect {formatSupplyRequestCollectionDay(preview.collection_date)}</p>
+            <p className="mt-2 text-xs">{preview.explanation}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+            {preview.warning}
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="min-w-full text-xs">
+              <thead className="bg-slate-50 uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Item</th>
+                  <th className="px-3 py-2 text-right">Requested</th>
+                  <th className="px-3 py-2 text-right">Currently reserved</th>
+                  <th className="px-3 py-2 text-right">Proposed reserved</th>
+                  <th className="px-3 py-2 text-right">Proposed picked</th>
+                  <th className="px-3 py-2 text-right">Proposed fulfilled</th>
+                  <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>ATP</th>
+                  <th className="px-3 py-2 text-right">Shortage</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(preview.lines || []).map((line) => (
+                  <tr key={line.request_item_id}>
+                    <td className="px-3 py-2">
+                      <div className="font-semibold text-slate-800">{line.item_name}</div>
+                      <ul className="mt-1 space-y-0.5 text-[11px] text-slate-500">
+                        {(line.allocations || []).length ? (line.allocations || []).map((batch) => (
+                          <li key={`${batch.batch_id}-${batch.quantity}`}>
+                            Batch {batch.batch_id} · {batch.expiry_date || (batch.is_non_expiring ? "Non-expiring" : "Expiry missing")} · qty {batch.quantity} · {batch.usability}
+                          </li>
+                        )) : <li>No eligible batches</li>}
+                      </ul>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{qty(line.requested_quantity)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{qty(line.currently_reserved)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{qty(line.proposed_reserved)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{qty(line.proposed_picked)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{qty(line.proposed_fulfilled)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{qty(line.available_to_promise)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-rose-700">{qty(line.shortage_quantity)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {preview.partial_fulfilment ? (
+            <p className="text-xs font-semibold text-amber-800">
+              Partial fulfilment is proposed. Confirmation will not auto-approve it.
+            </p>
+          ) : null}
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Reconciliation reason
+            <textarea
+              value={reconReason}
+              onChange={(event) => setReconReason(event.target.value.slice(0, 500))}
+              rows={3}
+              minLength={10}
+              placeholder="Why this reconciliation is being applied (at least 10 characters)"
+              className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm font-normal normal-case text-slate-800"
+            />
+          </label>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setPreviewOpen(false)}
+              className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving || String(reconReason || "").trim().length < 10}
+              onClick={confirmReconciliation}
+              className="min-h-11 rounded-xl bg-[#2d8f98] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
+            >
+              {saving ? "Applying…" : "Confirm reconciliation"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">Loading preview…</p>
+      )}
+    </Modal>
+    </>
   );
 }

@@ -15,7 +15,6 @@ function InventoryCsvImport({ onImported }) {
   const [supplier, setSupplier] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
-  const [pasteOpen, setPasteOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [importing, setImporting] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -184,30 +183,24 @@ function InventoryCsvImport({ onImported }) {
         Supported columns include folder, item name, quantity, minimum quantity, unit, cost, selling price, expiry and an optional non-expiring flag.
       </p>
 
-      <button
-        type="button"
-        onClick={() => setPasteOpen((open) => !open)}
-        className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 sm:w-auto sm:justify-start sm:border-0 sm:bg-transparent sm:px-0 sm:text-xs sm:underline"
-        aria-expanded={pasteOpen}
-      >
-        {pasteOpen ? "Hide CSV paste" : "Paste CSV text instead"}
-      </button>
-      {pasteOpen ? (
-        <textarea
-          value={csvText}
-          onChange={(event) => {
-            setCsvText(event.target.value);
-            setPreview(null);
-          }}
-          rows={5}
-          aria-label="CSV text"
-          className="mt-2 mb-4 w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
-        />
-      ) : csvText ? (
-        <p className="mt-2 mb-4 text-xs text-slate-500">{csvText.split(/\r?\n/).filter(Boolean).length} line(s) loaded.</p>
-      ) : (
-        <div className="mb-4" />
-      )}
+      <label htmlFor="shipment-csv-text" className="mt-4 block text-sm font-semibold text-slate-800">
+        CSV shipment data
+      </label>
+      <p id="shipment-csv-help" className="mt-1 text-xs text-slate-500">
+        Required columns: folder, item_name, quantity, minimum_quantity, unit, cost_price, selling_price, expiry_date.
+        Example: Consumable,Lidocaine gel,10,2,unit,25,40,2027-06-30
+      </p>
+      <textarea
+        id="shipment-csv-text"
+        value={csvText}
+        onChange={(event) => {
+          setCsvText(event.target.value);
+          setPreview(null);
+        }}
+        rows={6}
+        aria-describedby={`shipment-csv-help${preview?.rows?.some((row) => row.errors?.length) || lastResult?.skipped_rows?.length ? " shipment-csv-errors" : ""}`}
+        className="mt-2 mb-4 w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
+      />
 
       <div className="space-y-3">
         <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
@@ -225,8 +218,13 @@ function InventoryCsvImport({ onImported }) {
         <button
           type="button"
           disabled={importing || !csvText.trim() || !preview}
+          aria-disabled={importing || !csvText.trim() || !preview}
           onClick={handleImport}
-          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#2d8f98] px-4 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
+          className={`inline-flex min-h-11 w-full items-center justify-center rounded-xl px-4 text-sm font-semibold sm:w-auto ${
+            importing || !csvText.trim() || !preview
+              ? "cursor-not-allowed bg-slate-200 text-slate-600"
+              : "bg-[#2d8f98] text-white hover:brightness-95"
+          }`}
         >
           {importing ? "Importing…" : "Import to staging"}
         </button>
@@ -245,7 +243,7 @@ function InventoryCsvImport({ onImported }) {
       ) : null}
 
       {(preview?.rows || []).some((row) => row.errors?.length) ? (
-        <ul className="mt-3 space-y-1 text-xs text-rose-700">
+        <ul id="shipment-csv-errors" role="alert" className="mt-3 space-y-1 text-xs text-rose-700">
           {preview.rows
             .filter((row) => row.errors?.length)
             .map((row) => (

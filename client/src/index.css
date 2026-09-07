@@ -15,6 +15,7 @@
 }
 
 :root {
+  --ocs-mobile-nav-clearance: 0px;
   --ocs-teal-strong: #2d8f98;
   --ocs-teal: #41c8c6;
   --ocs-teal-soft: #70ddd2;

@@ -265,8 +265,8 @@ export default function RestockRequestModal({
                   className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left text-sm transition last:border-b-0 hover:bg-slate-50"
                 >
                   <span className="min-w-0 break-words font-semibold text-slate-800">{catalogItem.item_name}</span>
-                  <span className="shrink-0 text-xs text-slate-500">
-                    {available} available now
+                  <span className="shrink-0 text-xs text-slate-500" title="Available to promise">
+                    ATP {available}
                   </span>
                 </button>
                 );
@@ -293,8 +293,8 @@ export default function RestockRequestModal({
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-semibold text-slate-900">{row.item_name}</p>
                   {available != null ? (
-                    <p className="text-[11px] text-slate-500">
-                      {available} available now
+                    <p className="text-[11px] text-slate-500" title="Available to promise">
+                      ATP {available}
                     </p>
                   ) : null}
                   {shortage ? (

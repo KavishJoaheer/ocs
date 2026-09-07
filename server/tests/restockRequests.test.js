@@ -87,6 +87,18 @@ function requestPayload(overrides = {}) {
   };
 }
 
+async function previewAndReconcile(requestId, { token = operatorToken, reason = "Operator reconciled legacy fulfilment quantities and batches." } = {}) {
+  const preview = await api("GET", `/api/restock-requests/${requestId}/reconcile/preview`, { token });
+  const apply = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token,
+    body: {
+      reason,
+      preview_token: preview.data.preview_token || preview.data.preview?.preview_token,
+    },
+  });
+  return { preview, apply };
+}
+
 async function pickReservedThenReady(requestId, token) {
   const detail = await api("GET", `/api/restock-requests/${requestId}/fulfilment`, { token });
   assert.equal(detail.status, 200, JSON.stringify(detail.data));
@@ -640,7 +652,8 @@ test("request detail returns fulfilment, batches, movements, amendments and time
   assert.equal(detail.status, 200, JSON.stringify(detail.data));
   const request = detail.data.request;
   assert.equal(request.status, "ready");
-  assert.equal(request.can_cancel, true);
+  assert.equal(request.can_cancel, false);
+  assert.equal(request.can_exceptional_cancel, true);
   assert.equal(request.fulfilment_recorded, true);
   assert.equal(request.timeline_available, true);
   assert.ok((request.timeline || []).length >= 2);
@@ -760,10 +773,7 @@ test("legacy reconciliation demotes a ready request when stock is unavailable", 
   db.prepare(
     `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Empty recon', 4)`,
   ).run(requestId, emptyItem);
-  const recon = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
-    token: operatorToken,
-    body: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
-  });
+  const { apply: recon } = await previewAndReconcile(requestId);
   assert.equal(recon.status, 200, JSON.stringify(recon.data));
   assert.equal(recon.data.status, "accepted");
   assert.equal(recon.data.demoted, true);
@@ -797,10 +807,7 @@ test("accepted legacy requests are reserved not auto-picked", async () => {
   db.prepare(
     `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Accepted recon', 2)`,
   ).run(requestId, itemId);
-  const recon = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
-    token: operatorToken,
-    body: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
-  });
+  const { apply: recon } = await previewAndReconcile(requestId);
   assert.equal(recon.status, 200, JSON.stringify(recon.data));
   assert.equal(recon.data.status, "accepted");
   assert.equal(recon.data.outcome, "needs_picking");
@@ -821,10 +828,7 @@ test("insufficient legacy data is flagged for reconciliation rather than invente
   db.prepare(
     `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, NULL, 'Unknown legacy item', 3)`,
   ).run(requestId);
-  const recon = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
-    token: operatorToken,
-    body: { reason: "Operator reconciled legacy fulfilment quantities and batches." },
-  });
+  const { apply: recon } = await previewAndReconcile(requestId);
   assert.equal(recon.status, 200, JSON.stringify(recon.data));
   assert.equal(recon.data.outcome, "insufficient_data");
   const queues = await api("GET", "/api/restock-requests/queues", { token: operatorToken });
@@ -1095,5 +1099,194 @@ test("admin exceptional cancellation of accepted requests requires a 10-characte
     body: { status: "cancelled", reason: "Doctor postponed after packing started" },
   });
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
+});
+
+test("reconciliation preview is read-only and confirm applies the reviewed plan", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES ('Preview recon', (SELECT id FROM inventory_folders LIMIT 1), 8, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run().lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 8, '2029-01-01', 1, 0)`,
+  ).run(itemId);
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+         VALUES (?, ?, ?, 1, 'accepted', 'preview-recon')`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Preview recon', 2)`,
+  ).run(requestId, itemId);
+  const beforeEvents = db.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(requestId).count;
+  const beforeReservations = db.prepare("SELECT COUNT(*) AS count FROM inventory_reservations").get().count;
+  const preview = await api("GET", `/api/restock-requests/${requestId}/reconcile/preview`, { token: operatorToken });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.mutates, true);
+  assert.ok(preview.data.preview_token);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(requestId).count,
+    beforeEvents,
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_reservations").get().count, beforeReservations);
+  const cancelledStillUnchanged = db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(requestId).status;
+  assert.equal(cancelledStillUnchanged, "accepted");
+  const apply = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed the reviewed reconciliation plan.",
+      preview_token: preview.data.preview_token,
+    },
+  });
+  assert.equal(apply.status, 200, JSON.stringify(apply.data));
+  assert.equal(Number(apply.data.fulfilment.items[0].reserved_quantity), Number(preview.data.lines[0].proposed_reserved));
+  assert.equal(Number(apply.data.fulfilment.items[0].picked_quantity), Number(preview.data.lines[0].proposed_picked));
+  const again = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed the reviewed reconciliation plan.",
+      preview_token: preview.data.preview_token,
+    },
+  });
+  assert.equal(again.status, 200, JSON.stringify(again.data));
+  assert.equal(again.data.outcome, "already_linked");
+});
+
+test("stale reconciliation preview returns 409 without mutation", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES ('Stale recon', (SELECT id FROM inventory_folders LIMIT 1), 5, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run().lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 5, '2029-01-01', 1, 0)`,
+  ).run(itemId);
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+         VALUES (?, ?, ?, 1, 'accepted', 'stale-recon')`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Stale recon', 2)`,
+  ).run(requestId, itemId);
+  const preview = await api("GET", `/api/restock-requests/${requestId}/reconcile/preview`, { token: operatorToken });
+  db.prepare("UPDATE inventory SET quantity = 1, row_version = COALESCE(row_version, 1) + 1 WHERE id = ?").run(itemId);
+  const apply = await api("POST", `/api/restock-requests/${requestId}/reconcile`, {
+    token: operatorToken,
+    body: {
+      reason: "Operator confirmed a stale reconciliation plan.",
+      preview_token: preview.data.preview_token,
+    },
+  });
+  assert.equal(apply.status, 409, JSON.stringify(apply.data));
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillments WHERE request_id = ?").get(requestId).count, 0);
+});
+
+test("reconciliation never allocates expired stock", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+         VALUES ('Expired recon', (SELECT id FROM inventory_folders LIMIT 1), 4, 0, 'unit', 1, 2, 'ocs')`,
+      )
+      .run().lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 4, '2020-01-01', 1, 0)`,
+  ).run(itemId);
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+         VALUES (?, ?, ?, 1, 'accepted', 'expired-recon')`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, 'Expired recon', 2)`,
+  ).run(requestId, itemId);
+  const { preview, apply } = await previewAndReconcile(requestId);
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(Number(preview.data.lines[0].proposed_reserved), 0);
+  assert.equal((preview.data.lines[0].allocations || []).length, 0);
+  assert.equal(apply.status, 200, JSON.stringify(apply.data));
+  assert.equal(Number(apply.data.fulfilment.items[0].reserved_quantity), 0);
+});
+
+test("ready requests lock fulfilment and cannot be claimed or cancelled by operators", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({ note: "ready-lock" }),
+  });
+  const accepted = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const ready = await pickReservedThenReady(created.data.request.id, operatorToken);
+  assert.equal(ready.status, 200, JSON.stringify(ready.data));
+  const claim = await api("POST", `/api/restock-requests/${created.data.request.id}/assign`, {
+    token: operatorToken,
+    body: { user_id: db.prepare("SELECT id FROM users WHERE username = 'operator01'").get().id },
+  });
+  assert.equal(claim.status, 400, JSON.stringify(claim.data));
+  const fulfil = await api("PATCH", `/api/restock-requests/${created.data.request.id}/fulfilment`, {
+    token: operatorToken,
+    body: { lines: [] },
+  });
+  assert.equal(fulfil.status, 400, JSON.stringify(fulfil.data));
+  const cancel = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
+    token: operatorToken,
+    body: { status: "cancelled", reason: "Operator trying to cancel a ready request" },
+  });
+  assert.equal(cancel.status, 403, JSON.stringify(cancel.data));
+});
+
+test("queue totals count unique request ids across overlapping queues", async () => {
+  const doctor = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+  const requestId = Number(
+    db
+      .prepare(
+        `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note, ready_at)
+         VALUES (?, ?, ?, 1, 'ready', 'overlap-queue', CURRENT_TIMESTAMP)`,
+      )
+      .run(doctor.doctor_id, doctor.id, collectionDate).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, NULL, 'Unlinked ready', 1)`,
+  ).run(requestId);
+  const queues = await api("GET", "/api/restock-requests/queues", { token: operatorToken });
+  assert.equal(queues.status, 200, JSON.stringify(queues.data));
+  const inAwaiting = queues.data.awaiting_collection.some((row) => Number(row.id) === requestId);
+  const inRecon = queues.data.reconciliation_required.some((row) => Number(row.id) === requestId);
+  assert.equal(inAwaiting, false);
+  assert.equal(inRecon, true);
+  const requestIds = [
+    ...queues.data.new_requests,
+    ...queues.data.changes,
+    ...queues.data.shortages,
+    ...queues.data.pick_today,
+    ...queues.data.awaiting_collection,
+    ...queues.data.reconciliation_required,
+  ].map((row) => Number(row.id));
+  assert.equal(queues.data.counts.unique_requests, new Set(requestIds).size);
 });
 

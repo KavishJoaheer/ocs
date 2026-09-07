@@ -195,10 +195,11 @@ export function isStaffSupplyRole(role) {
 
 export function canStaffCancelSupplyRequest(request, role) {
   if (!isStaffSupplyRole(role)) return false;
+  const status = normaliseSupplyRequestStatus(request?.status);
+  if (status === "ready") return role === "admin";
   if (request?.can_cancel === false) return false;
   if (request?.can_cancel === true) return true;
-  const status = normaliseSupplyRequestStatus(request?.status);
-  return status === "pending" || status === "accepted" || status === "ready";
+  return status === "pending" || status === "accepted";
 }
 
 /**
@@ -285,10 +286,10 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
   }
 
   if (canStaffCancelSupplyRequest(request, role)) {
-    const afterAcceptance = status === "accepted" || status === "ready";
+    const exceptional = isAdmin && (status === "accepted" || status === "ready");
     actions.push({
       id: "cancel",
-      label: isAdmin && afterAcceptance ? "Exceptional cancellation" : "Cancel & archive",
+      label: exceptional ? "Exceptional cancellation" : "Cancel & archive",
       kind: status === "pending" ? "danger" : "ghost",
       disabled,
     });

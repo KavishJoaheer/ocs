@@ -2497,3 +2497,61 @@ test("doctor activity CSV is scoped and wastage requires a reason and lot", asyn
   });
   assert.equal(ok.status, 201, JSON.stringify(ok.data));
 });
+
+test("full-catalogue stocktake requires explicit confirmation and versioned item count", async () => {
+  const denied = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: {},
+  });
+  assert.equal(denied.status, 400, JSON.stringify(denied.data));
+  const count = db.prepare("SELECT COUNT(*) AS count FROM inventory WHERE stock_scope = 'ocs' AND owner_doctor_id IS NULL AND archived_at IS NULL").get().count;
+  const stale = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { confirm_all: true, expected_item_count: Number(count) + 5 },
+  });
+  assert.equal(stale.status, 409, JSON.stringify(stale.data));
+  const created = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { confirm_all: true, expected_item_count: count },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.session.items.length, count);
+});
+
+test("activity history correction filter and blank actors are excluded from the user filter", async () => {
+  db.prepare(`
+    INSERT INTO inventory_activity_history (
+      movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
+      quantity, direction, source_text, destination_text, batch_id, meta_json
+    ) VALUES
+      (NULL, CURRENT_TIMESTAMP, ?, 'Operator One', 'operator', 'exceptional_correction', 'HistCorr', 1, 'adjustment', 'OCS', 'OCS', '', '{}'),
+      (NULL, CURRENT_TIMESTAMP, NULL, '', 'staff', 'stock_in', 'HistBlank', 1, 'in', 'OCS', 'OCS', '', '{}'),
+      (NULL, CURRENT_TIMESTAMP, NULL, 'System', 'system', 'stock_in', 'HistSys', 2, 'in', 'OCS', 'OCS', '', '{"automated":true}')
+  `).run(db.prepare("SELECT id FROM users WHERE username = 'operator01'").get().id);
+  const history = await api("GET", "/api/inventory/activity-history?actions=correction", { token: operatorToken });
+  assert.equal(history.status, 200, JSON.stringify(history.data));
+  assert.ok(history.data.actions.includes("correction"));
+  assert.ok(history.data.rows.some((row) => String(row.action_type).includes("correction")));
+  assert.ok(history.data.actors.every((actor) => String(actor.actor_name || "").trim()));
+  const doctorHistory = await api("GET", "/api/inventory/activity-history?userId=1", { token: doctorToken });
+  assert.equal(doctorHistory.status, 200, JSON.stringify(doctorHistory.data));
+  assert.deepEqual(doctorHistory.data.actors, []);
+});
+
+test("top performer excludes System and automated movements", async () => {
+  db.prepare(`
+    INSERT INTO inventory_activity_history (
+      movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
+      quantity, direction, source_text, destination_text, batch_id, meta_json
+    ) VALUES
+      (NULL, CURRENT_TIMESTAMP, NULL, 'System', 'system', 'stock_in', 'AutoOnly', 9, 'in', 'OCS', 'OCS', '', '{"automated":true}')
+  `).run();
+  const history = await api("GET", "/api/inventory/activity-history?search=AutoOnly", { token: operatorToken });
+  assert.equal(history.status, 200, JSON.stringify(history.data));
+  const performer = history.data.analytics?.top_performer;
+  if (performer) {
+    assert.notEqual(String(performer.name).toLowerCase(), "system");
+  } else {
+    assert.equal(history.data.analytics.no_human_activity, true);
+  }
+});

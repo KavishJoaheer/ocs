@@ -1,8 +1,10 @@
+const crypto = require("crypto");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("./utils");
 const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast, publishSupplyRequestChange } = require("./inventoryRealtime");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
+const { decorateInventoryItems } = require("./inventoryStockState");
 
 function createTransferTransactionId() {
   return `TX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -118,7 +120,7 @@ function reservedQuantityForItem(inventoryId, { exceptRequestId = null } = {}) {
   return integerQty(row?.total) ?? 0;
 }
 
-function reservedQuantityForBatch(batchId, { exceptReservationId = null } = {}) {
+function reservedQuantityForBatch(batchId, { exceptReservationId = null, exceptRequestId = null } = {}) {
   const row = db
     .prepare(`
       SELECT COALESCE(SUM(rb.quantity), 0) AS total
@@ -127,16 +129,42 @@ function reservedQuantityForBatch(batchId, { exceptReservationId = null } = {}) 
       WHERE rb.batch_id = ?
         AND r.status = 'active'
         AND (? IS NULL OR r.id != ?)
+        AND (? IS NULL OR r.request_id != ?)
     `)
-    .get(Number(batchId), exceptReservationId, exceptReservationId);
+    .get(
+      Number(batchId),
+      exceptReservationId,
+      exceptReservationId,
+      exceptRequestId,
+      exceptRequestId,
+    );
   return integerQty(row?.total) ?? 0;
 }
 
 function availableToPromise(inventoryId, { exceptRequestId = null } = {}) {
-  const item = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(Number(inventoryId));
-  const physical = integerQty(item?.quantity) ?? 0;
-  const reserved = reservedQuantityForItem(inventoryId, { exceptRequestId });
-  return Math.max(0, physical - reserved);
+  const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(Number(inventoryId));
+  if (!item) return 0;
+  const [decorated] = decorateInventoryItems([item]);
+  let atp = Math.max(0, Number(decorated?.available_to_use || 0));
+  if (exceptRequestId) {
+    const own = db
+      .prepare(
+        `
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM inventory_reservations
+        WHERE inventory_id = ?
+          AND status = 'active'
+          AND request_id = ?
+      `,
+      )
+      .get(Number(inventoryId), Number(exceptRequestId));
+    const usable = Math.max(
+      0,
+      Number(decorated?.on_hand_quantity || 0) - Number(decorated?.expired_quantity || 0),
+    );
+    atp = Math.min(usable, atp + (integerQty(own?.total) ?? 0));
+  }
+  return Math.max(0, atp);
 }
 
 function isExpiredBatch(batch, today = getTodayLocal()) {
@@ -145,7 +173,14 @@ function isExpiredBatch(batch, today = getTodayLocal()) {
   return String(batch.expiry_date) < today;
 }
 
-function listAllocatableBatches(inventoryId) {
+function batchUsability(batch, today = getTodayLocal()) {
+  if (isExpiredBatch(batch, today)) return "expired";
+  if (Number(batch?.is_non_expiring || 0) === 1) return "non_expiring";
+  if (!batch?.expiry_date) return "missing_expiry";
+  return "usable";
+}
+
+function listAllocatableBatches(inventoryId, { exceptRequestId = null } = {}) {
   const today = getTodayLocal();
   const rows = db
     .prepare(`
@@ -166,7 +201,7 @@ function listAllocatableBatches(inventoryId) {
 
   return rows
     .map((row) => {
-      const reserved = reservedQuantityForBatch(row.id);
+      const reserved = reservedQuantityForBatch(row.id, { exceptRequestId });
       const remaining = Math.max(0, (integerQty(row.quantity_remaining) ?? 0) - reserved);
       return {
         ...row,
@@ -175,16 +210,17 @@ function listAllocatableBatches(inventoryId) {
         expired: isExpiredBatch(row, today),
         missing_expiry:
           !row.expiry_date && Number(row.is_non_expiring || 0) !== 1,
+        usability: batchUsability(row, today),
       };
     })
     .filter((row) => !row.expired && row.available > 0);
 }
 
-function allocateFefo(inventoryId, quantity) {
+function allocateFefo(inventoryId, quantity, { exceptRequestId = null } = {}) {
   let remaining = integerQty(quantity) ?? 0;
   const allocations = [];
   if (remaining <= 0) return allocations;
-  for (const batch of listAllocatableBatches(inventoryId)) {
+  for (const batch of listAllocatableBatches(inventoryId, { exceptRequestId })) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, batch.available);
     if (take <= 0) continue;
@@ -516,7 +552,7 @@ function createReservationsForRequest(requestId) {
       const atp = availableToPromise(ocsItem.id, { exceptRequestId: requestId });
       reserved = Math.min(requested, atp);
       if (reserved > 0) {
-        allocations = allocateFefo(ocsItem.id, reserved);
+        allocations = allocateFefo(ocsItem.id, reserved, { exceptRequestId: requestId });
         reserved = allocations.reduce((sum, row) => sum + (integerQty(row.quantity) ?? 0), 0);
       }
     }
@@ -709,6 +745,281 @@ function assignRequest(requestId, userId) {
     SET assigned_to_user_id = ?, updated_at = CURRENT_TIMESTAMP
     WHERE request_id = ? AND status IN ('open', 'picking', 'packed')
   `).run(userId || null, Number(requestId));
+}
+
+function currentlyReservedForItem(requestId, inventoryId) {
+  if (!inventoryId) return 0;
+  const row = db
+    .prepare(
+      `
+      SELECT COALESCE(SUM(quantity), 0) AS total
+      FROM inventory_reservations
+      WHERE request_id = ?
+        AND inventory_id = ?
+        AND status = 'active'
+    `,
+    )
+    .get(Number(requestId), Number(inventoryId));
+  return integerQty(row?.total) ?? 0;
+}
+
+function canonicalReconciliationPlan(plan) {
+  return {
+    request_id: Number(plan.request_id),
+    request_updated_at: String(plan.request_updated_at || ""),
+    inventory_versions: (plan.inventory_versions || [])
+      .map((row) => ({
+        inventory_id: Number(row.inventory_id),
+        row_version: Number(row.row_version || 1),
+      }))
+      .sort((a, b) => a.inventory_id - b.inventory_id),
+    lines: (plan.lines || []).map((line) => ({
+      request_item_id: Number(line.request_item_id),
+      inventory_id: line.inventory_id ? Number(line.inventory_id) : null,
+      requested_quantity: Number(line.requested_quantity || 0),
+      currently_reserved: Number(line.currently_reserved || 0),
+      proposed_reserved: Number(line.proposed_reserved || 0),
+      proposed_picked: Number(line.proposed_picked || 0),
+      proposed_fulfilled: Number(line.proposed_fulfilled || 0),
+      allocations: (line.allocations || []).map((allocation) => ({
+        batch_id: Number(allocation.batch_id),
+        quantity: Number(allocation.quantity || 0),
+      })),
+    })),
+    resulting_status: plan.resulting_status,
+    outcome: plan.outcome,
+  };
+}
+
+function reconciliationPreviewToken(plan) {
+  return crypto.createHash("sha256").update(JSON.stringify(canonicalReconciliationPlan(plan))).digest("hex");
+}
+
+function previewLegacyReconciliation(requestId) {
+  const request = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
+  if (!request) throw HttpError(404, "Supply request not found.");
+  if (!["accepted", "ready"].includes(String(request.status))) {
+    throw HttpError(400, "Only accepted or ready requests can be reconciled.");
+  }
+  const doctor = db.prepare("SELECT full_name FROM doctors WHERE id = ?").get(request.doctor_id);
+  const existing = activeFulfilment(requestId) || postedFulfilment(requestId);
+  const existingDetail = existing ? fulfilmentDetail(requestId) : null;
+
+  if (existing && !existingDetail?.linkage_required && existingDetail?.items?.length) {
+    const linkedItems = existingDetail.items || [];
+    const hasUnlinked = linkedItems.some(
+      (line) => !line.inventory_id && integerLineQty(line.requested_quantity) > 0,
+    );
+    if (!hasUnlinked) {
+      const lines = linkedItems.map((line) => ({
+        request_item_id: Number(line.request_item_id || line.id),
+        item_name: line.item_name,
+        inventory_id: line.inventory_id ? Number(line.inventory_id) : null,
+        requested_quantity: integerLineQty(line.requested_quantity),
+        currently_reserved: integerLineQty(line.reserved_quantity),
+        proposed_reserved: integerLineQty(line.reserved_quantity),
+        proposed_picked: integerLineQty(line.picked_quantity),
+        proposed_fulfilled: integerLineQty(line.fulfilled_quantity),
+        shortage_quantity: integerLineQty(line.shortage_quantity),
+        available_to_promise: integerLineQty(line.available_to_promise),
+        allocations: line.allocations || [],
+      }));
+      const plan = {
+        request_id: Number(requestId),
+        request_number: Number(requestId),
+        current_status: String(request.status),
+        resulting_status: String(request.status),
+        doctor_name: doctor?.full_name || "",
+        collection_date: request.collection_date,
+        request_updated_at: request.updated_at || request.created_at || "",
+        inventory_versions: [],
+        lines,
+        has_shortage: Boolean(existingDetail.has_shortage),
+        partial_fulfilment: Boolean(existingDetail.partial_approved),
+        insufficient_data: false,
+        outcome: "already_linked",
+        explanation: "Fulfilment records already exist for this request. Confirming will not change quantities or batches.",
+        warning: "This confirmation is idempotent. No inventory records will be rewritten.",
+        mutates: false,
+      };
+      return {
+        ...plan,
+        preview_token: reconciliationPreviewToken(plan),
+      };
+    }
+  }
+
+  const items = requestItems(requestId);
+  const inventoryVersions = [];
+  const lines = [];
+  let insufficientData = false;
+  let hasShortage = false;
+  let requestedTotal = 0;
+  let proposedReservedTotal = 0;
+
+  for (const item of items) {
+    const ocsItem = resolveOcsItem(item, { allowNameFallback: !item.inventory_id });
+    const requested = requiredIntegerQty(item.quantity, "Requested quantity");
+    requestedTotal += requested;
+    if (!ocsItem && requested > 0) insufficientData = true;
+    let atp = 0;
+    let allocations = [];
+    let proposedReserved = 0;
+    if (ocsItem) {
+      const inv = db.prepare("SELECT id, quantity, row_version FROM inventory WHERE id = ?").get(ocsItem.id);
+      inventoryVersions.push({
+        inventory_id: Number(ocsItem.id),
+        row_version: Number(inv?.row_version || 1),
+        on_hand: Number(inv?.quantity || 0),
+      });
+      atp = availableToPromise(ocsItem.id, { exceptRequestId: requestId });
+      proposedReserved = Math.min(requested, atp);
+      if (proposedReserved > 0) {
+        allocations = allocateFefo(ocsItem.id, proposedReserved, { exceptRequestId: requestId }).filter(
+          (row) => batchUsability(row) !== "expired",
+        );
+        proposedReserved = allocations.reduce((sum, row) => sum + (integerQty(row.quantity) ?? 0), 0);
+      }
+    }
+    const shortage = Math.max(0, requested - proposedReserved);
+    if (shortage > 0) hasShortage = true;
+    proposedReservedTotal += proposedReserved;
+    lines.push({
+      request_item_id: Number(item.id),
+      item_name: ocsItem?.item_name || item.item_name,
+      inventory_id: ocsItem?.id ? Number(ocsItem.id) : null,
+      requested_quantity: requested,
+      currently_reserved: currentlyReservedForItem(requestId, ocsItem?.id),
+      proposed_reserved: proposedReserved,
+      proposed_picked: 0,
+      proposed_fulfilled: 0,
+      shortage_quantity: shortage,
+      available_to_promise: atp,
+      allocations: allocations.map((allocation) => ({
+        batch_id: allocation.batch_id,
+        quantity: allocation.quantity,
+        expiry_date: allocation.expiry_date || null,
+        is_non_expiring: Number(allocation.is_non_expiring || 0) === 1,
+        missing_expiry: Boolean(allocation.missing_expiry),
+        usability: batchUsability(allocation),
+      })),
+    });
+  }
+
+  const fullyAllocated =
+    requestedTotal > 0 && proposedReservedTotal >= requestedTotal && !hasShortage && !insufficientData;
+  const keepReady = String(request.status) === "ready" && fullyAllocated;
+  if (keepReady && fullyAllocated) {
+    for (const line of lines) {
+      line.proposed_picked = line.proposed_reserved;
+      line.proposed_fulfilled = line.proposed_reserved;
+    }
+  }
+
+  const resultingStatus = keepReady ? "ready" : "accepted";
+  const outcome = insufficientData
+    ? "insufficient_data"
+    : fullyAllocated && resultingStatus === "ready"
+      ? "full_ready"
+      : proposedReservedTotal <= 0
+        ? "zero_availability"
+        : String(request.status) === "accepted" && !hasShortage
+          ? "needs_picking"
+          : "partial_shortage";
+  const explanation =
+    outcome === "full_ready"
+      ? "Current usable stock can cover this request. Confirmation will create reservations, pick the reserved batches, and keep the request ready if ready-state checks still pass."
+      : outcome === "insufficient_data"
+        ? "Legacy data is missing catalogue links. Confirmation will not invent batches. The request stays in the reconciliation queue."
+        : outcome === "needs_picking"
+          ? "Confirmation will create reservations from current usable stock. You must still pick and confirm actual quantities before marking ready."
+          : outcome === "zero_availability"
+            ? "No unexpired, unreserved stock is available. Confirmation will not allocate batches. The request returns to accepted for shortage resolution."
+            : "Only part of the requested quantity can be reserved from usable stock. Confirmation will not auto-approve partial fulfilment.";
+
+  const plan = {
+    request_id: Number(requestId),
+    request_number: Number(requestId),
+    current_status: String(request.status),
+    resulting_status: resultingStatus,
+    doctor_name: doctor?.full_name || "",
+    collection_date: request.collection_date,
+    request_updated_at: request.updated_at || request.created_at || "",
+    inventory_versions: inventoryVersions,
+    lines,
+    has_shortage: hasShortage,
+    partial_fulfilment: hasShortage,
+    insufficient_data: insufficientData,
+    outcome,
+    explanation,
+    warning:
+      "Confirming will create or replace fulfilment records and reservations. Cancel closes this preview without changing inventory.",
+    mutates: true,
+    atp_impact: lines.map((line) => ({
+      inventory_id: line.inventory_id,
+      item_name: line.item_name,
+      current_atp: line.available_to_promise,
+      reserved_after: line.proposed_reserved,
+    })),
+  };
+  return {
+    ...plan,
+    preview_token: reconciliationPreviewToken(plan),
+  };
+}
+
+function applyLegacyReconciliation(requestId, { actor = {}, reason = "", previewToken = "" } = {}) {
+  const reasonText = String(reason || "").trim();
+  if (reasonText.length < 10) {
+    throw HttpError(400, "A reconciliation reason of at least 10 characters is required.");
+  }
+  const preview = previewLegacyReconciliation(requestId);
+  if (preview.outcome === "already_linked") {
+    return reconcileLegacyFulfilment(requestId, { actor, reason: reasonText });
+  }
+  const expectedToken = String(previewToken || "").trim();
+  if (!expectedToken || expectedToken !== preview.preview_token) {
+    throw HttpError(
+      409,
+      "This reconciliation preview is stale. Reload and review the current plan before confirming.",
+      { code: "STALE_RECONCILIATION_PREVIEW", preview_token: preview.preview_token },
+    );
+  }
+  const result = reconcileLegacyFulfilment(requestId, { actor, reason: reasonText });
+  if (!appliedReconciliationMatchesPreview(preview, result)) {
+    throw HttpError(
+      409,
+      "The reconciliation plan changed before it could be applied. Reload and review the current plan.",
+      { code: "STALE_RECONCILIATION_PREVIEW", preview_token: preview.preview_token },
+    );
+  }
+  return { ...result, preview };
+}
+
+function appliedReconciliationMatchesPreview(preview, result) {
+  if (!preview || !result) return false;
+  if (String(result.status) !== String(preview.resulting_status)) return false;
+  if (String(result.outcome) !== String(preview.outcome)) return false;
+  const appliedItems = result.fulfilment?.items || [];
+  for (const line of preview.lines || []) {
+    const applied = appliedItems.find(
+      (row) => Number(row.request_item_id || row.id) === Number(line.request_item_id),
+    );
+    if (!applied) return false;
+    if (integerLineQty(applied.reserved_quantity) !== integerLineQty(line.proposed_reserved)) return false;
+    if (integerLineQty(applied.picked_quantity) !== integerLineQty(line.proposed_picked)) return false;
+    if (integerLineQty(applied.fulfilled_quantity) !== integerLineQty(line.proposed_fulfilled)) return false;
+    const appliedAlloc = (applied.allocations || [])
+      .map((row) => `${row.batch_id}:${integerLineQty(row.quantity)}`)
+      .sort()
+      .join("|");
+    const previewAlloc = (line.allocations || [])
+      .map((row) => `${row.batch_id}:${integerLineQty(row.quantity)}`)
+      .sort()
+      .join("|");
+    if (appliedAlloc !== previewAlloc) return false;
+  }
+  return true;
 }
 
 function reconcileLegacyFulfilment(requestId, { actor = {}, reason = "" } = {}) {
@@ -909,6 +1220,10 @@ function fulfilmentDetail(requestId) {
           expiry_date: batch.expiry_date || batch.batch_expiry || null,
           is_non_expiring: Number(batch.is_non_expiring || 0) === 1,
           remaining: integerQty(batch.quantity_remaining) ?? 0,
+          usability: batchUsability({
+            expiry_date: batch.expiry_date || batch.batch_expiry,
+            is_non_expiring: batch.is_non_expiring,
+          }),
         })),
       };
     });
@@ -1662,7 +1977,11 @@ function workQueues() {
   const incoming = incomingRows.length;
   const variances = varianceRows.length;
 
-  function decorate(rows, nextAction) {
+  const linkageIds = new Set(linkage.map((row) => Number(row.id)));
+  const awaitingOpen = awaiting.filter((row) => !linkageIds.has(Number(row.id)));
+  const pickTodayOpen = pickToday.filter((row) => !linkageIds.has(Number(row.id)));
+
+  function decorate(rows, nextAction, extra = {}) {
     return rows.map((row) => ({
       id: row.id,
       doctor_id: row.doctor_id,
@@ -1685,29 +2004,45 @@ function workQueues() {
       ),
       overdue: row.collection_date && String(row.collection_date) < getTodayLocal(),
       next_action: nextAction,
+      reconciliation_required: Boolean(extra.reconciliation_required),
+      linkage_required: Boolean(extra.reconciliation_required),
     }));
   }
+
+  const uniqueRequestIds = new Set(
+    [...pending, ...changes, ...shortages, ...pickTodayOpen, ...awaitingOpen, ...linkage].map((row) => Number(row.id)),
+  );
 
   return {
     new_requests: decorate(pending, "Accept and reserve"),
     changes: decorate(changes, "Review change request"),
     shortages: decorate(shortages, "Resolve shortage"),
-    pick_today: decorate(pickToday, "Pick pack"),
-    awaiting_collection: decorate(awaiting, "Waiting for doctor"),
-    fulfilment_linkage_required: decorate(linkage, "Reconcile fulfilment"),
-    reconciliation_required: decorate(linkage, "Confirm actual quantities"),
+    pick_today: decorate(pickTodayOpen, "Pick pack"),
+    awaiting_collection: decorate(awaitingOpen, "Waiting for doctor"),
+    fulfilment_linkage_required: decorate(linkage, "Review reconciliation", { reconciliation_required: true }),
+    reconciliation_required: decorate(linkage, "Review reconciliation", { reconciliation_required: true }),
     incoming_shipments: incomingRows,
     count_variances: varianceRows,
     counts: {
       new_requests: pending.length,
       changes: changes.length,
       shortages: shortages.length,
-      pick_today: pickToday.length,
-      awaiting_collection: awaiting.length,
+      pick_today: pickTodayOpen.length,
+      awaiting_collection: awaitingOpen.length,
       incoming_shipments: incoming,
       count_variances: variances,
       fulfilment_linkage_required: linkage.length,
       reconciliation_required: linkage.length,
+      unique_requests: uniqueRequestIds.size,
+      queue_entries:
+        pending.length +
+        changes.length +
+        shortages.length +
+        pickTodayOpen.length +
+        awaitingOpen.length +
+        linkage.length +
+        incoming +
+        variances,
     },
   };
 }
@@ -1790,6 +2125,7 @@ module.exports = {
   assignRequest,
   availableToPromise,
   applyPicking,
+  applyLegacyReconciliation,
   canonicaliseRequestItem,
   consumeAvailableFefo,
   describeFulfilmentCollectionGaps,
@@ -1799,6 +2135,7 @@ module.exports = {
   lockPackedFulfilment,
   namesMateriallyMatch,
   postCollectionTransfer,
+  previewLegacyReconciliation,
   productivityMetrics,
   reconcileLegacyFulfilment,
   reduceReservationsForCorrection,

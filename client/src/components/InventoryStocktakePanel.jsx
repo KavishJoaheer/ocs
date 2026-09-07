@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ClipboardCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import SectionCard from "./SectionCard.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
@@ -28,11 +29,11 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const canReview = canReviewStocktake(user);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const isMobile = useIsMobile(DENSE_TABLE_BREAKPOINT);
-  const [folderId, setFolderId] = useState("");
+  const [scope, setScope] = useState("");
   const [active, setActive] = useState(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [confirmFull, setConfirmFull] = useState(false);
+  const [confirmFullOpen, setConfirmFullOpen] = useState(false);
   const [mobileIndex, setMobileIndex] = useState(0);
   const [reviewUncounted, setReviewUncounted] = useState(false);
   const [finalReview, setFinalReview] = useState(false);
@@ -47,12 +48,16 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   }, [editedIds]);
 
   const scopedItems = useMemo(
-    () => (folderId ? items.filter((item) => String(item.folder_id) === String(folderId)) : items),
-    [items, folderId],
+    () => (scope && scope !== "all" ? items.filter((item) => String(item.folder_id) === String(scope)) : items),
+    [items, scope],
   );
-  const selectedFolderName = folderId
-    ? folders.find((folder) => String(folder.id) === String(folderId))?.name || "Selected folder"
-    : "All OCS folders";
+  const selectedFolderName = !scope
+    ? "No folder selected"
+    : scope === "all"
+      ? "All OCS folders"
+      : folders.find((folder) => String(folder.id) === String(scope))?.name || "Selected folder";
+  const fullCatalogue = scope === "all";
+  const scopeChosen = Boolean(scope);
 
   useEffect(() => {
     if (!requestedStatus) return;
@@ -62,19 +67,22 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedStatus]);
 
-  async function createSession() {
-    if (!folderId && !confirmFull) {
-      setConfirmFull(true);
+  async function startStocktakeSession({ confirmAll = false } = {}) {
+    if (!scopeChosen) return;
+    if (fullCatalogue && !confirmAll) {
+      setConfirmFullOpen(true);
       return;
     }
     setCreating(true);
     try {
       const payload = await api.post("/inventory/stocktake/sessions", {
-        folder_id: folderId ? Number(folderId) : null,
+        folder_id: fullCatalogue ? null : Number(scope),
+        confirm_all: fullCatalogue,
+        expected_item_count: scopedItems.length,
       });
       setActive(payload.session);
       setLastSavedAt(payload.session?.last_saved_at || "");
-      setConfirmFull(false);
+      setConfirmFullOpen(false);
       setMobileIndex(0);
       setFinalReview(false);
       setEditedIds({});
@@ -84,6 +92,10 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     } finally {
       setCreating(false);
     }
+  }
+
+  async function createSession() {
+    await startStocktakeSession();
   }
 
   async function openSession(id) {
@@ -300,14 +312,15 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Folder / category
           <select
-            value={folderId}
+            value={scope}
             onChange={(event) => {
-              setFolderId(event.target.value);
-              setConfirmFull(false);
+              setScope(event.target.value);
+              setConfirmFullOpen(false);
             }}
             className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal normal-case text-slate-800"
           >
-            <option value="">All OCS folders</option>
+            <option value="">Select a folder…</option>
+            <option value="all">All OCS folders</option>
             {folders.map((folder) => (
               <option key={folder.id} value={folder.id}>
                 {folder.name}
@@ -318,11 +331,11 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         {canCount ? (
           <button
             type="button"
-            disabled={creating}
+            disabled={creating || !scopeChosen}
             onClick={createSession}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
           >
-            {confirmFull && !folderId ? "Confirm full-catalogue count" : "Start session"}
+            Start stocktake
           </button>
         ) : (
           <button
@@ -338,10 +351,12 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         <p>Scope: <strong>{selectedFolderName}</strong></p>
         <p>Items in scope: <strong>{scopedItems.length}</strong></p>
         <p>Counter / assignee: <strong>{user?.full_name || user?.username || "You"}</strong></p>
-        {!folderId ? (
+        {fullCatalogue ? (
           <p className="mt-2 font-semibold text-amber-800">
-            All OCS folders will be counted. Confirm before starting a full-catalogue session.
+            All OCS folders will be counted ({scopedItems.length} items). Confirm before starting a full-catalogue session.
           </p>
+        ) : !scopeChosen ? (
+          <p className="mt-2 text-slate-500">Choose a folder or all folders before starting.</p>
         ) : null}
       </div>
       {recountRequired ? (
@@ -598,6 +613,16 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         <p className="text-sm text-slate-500">Start a session or open a submitted variance from the list.</p>
       )}
     </SectionCard>
+    <ConfirmDialog
+      open={confirmFullOpen}
+      onClose={() => setConfirmFullOpen(false)}
+      onConfirm={() => startStocktakeSession({ confirmAll: true })}
+      title="Start full-catalogue stocktake?"
+      description={`This will create a blind stocktake session for ${scopedItems.length} items across all OCS folders.`}
+      confirmLabel="Start full-catalogue count"
+      tone="primary"
+      busy={creating}
+    />
     <EmergencyOverrideDialog
       open={overrideOpen}
       summary="This will start a stocktake session as an administrator. Operators should perform routine counting. The session still requires blind counts, concurrency checks, and approval."
@@ -607,7 +632,11 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
         try {
           const payload = await api.post("/inventory/stocktake/sessions", withOperationalOverride(
             user,
-            { folder_id: folderId ? Number(folderId) : null },
+            {
+              folder_id: fullCatalogue || !scope ? null : Number(scope),
+              confirm_all: fullCatalogue,
+              expected_item_count: scopedItems.length,
+            },
             reason,
           ));
           setActive(payload.session);

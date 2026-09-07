@@ -24,6 +24,11 @@ const EVENT_TYPES = {
 const OPERATOR_TRANSITIONS = {
   pending: ["accepted", "cancelled"],
   accepted: ["ready", "cancelled"],
+};
+
+const ADMIN_TRANSITIONS = {
+  pending: ["accepted", "cancelled"],
+  accepted: ["ready", "cancelled"],
   ready: ["cancelled"],
 };
 
@@ -48,7 +53,8 @@ function isHistoryStatus(status) {
 
 function allowedTransitionsForRole(role) {
   if (role === "doctor") return DOCTOR_TRANSITIONS;
-  if (role === "operator" || role === "admin") return OPERATOR_TRANSITIONS;
+  if (role === "admin") return ADMIN_TRANSITIONS;
+  if (role === "operator") return OPERATOR_TRANSITIONS;
   return {};
 }
 
@@ -132,6 +138,7 @@ module.exports = {
   EVENT_TYPES,
   EVENT_LABELS,
   HISTORY_STATUSES,
+  ADMIN_TRANSITIONS,
   OPERATOR_TRANSITIONS,
   actorFromAuth,
   canTransition,

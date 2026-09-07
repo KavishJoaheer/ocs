@@ -679,7 +679,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("spinbutton", { name: "Corrected quantity" }).fill("7");
     await page.getByRole("textbox", { name: /Reason/ }).fill("Warehouse recount found extra units");
     await page.getByRole("button", { name: "Review correction" }).click();
-    await expect(page.getByText("Available to promise")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Available to promise", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Apply correction" }).click();
     await expect(page.getByText("Exceptional correction applied.")).toBeVisible({ timeout: 15_000 });
 
@@ -918,7 +918,7 @@ test.describe("Inventory workflow", () => {
     const itemRow = page.getByRole("row").filter({ hasText: name }).first();
     await expect(itemRow).toBeVisible({ timeout: 20_000 });
     await expect(itemRow.getByLabel("Stock status: Expired")).toBeVisible();
-    await expect(itemRow).toContainText(/Available to use:\s*0/);
+    await expect(itemRow).toContainText(/ATP:\s*0/);
   });
 
   test("missing expiry and non-expiring stock use different labels", async ({ request, page }) => {
@@ -1055,8 +1055,8 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: /Shipments/i }).click();
-    await expect(page.getByRole("button", { name: "Paste CSV text instead" })).toBeVisible({ timeout: 20_000 });
-    const paste = await page.getByRole("button", { name: "Paste CSV text instead" }).boundingBox();
+    await expect(page.getByLabel(/CSV shipment data/i)).toBeVisible({ timeout: 20_000 });
+    const paste = await page.getByLabel(/CSV shipment data/i).boundingBox();
     const override = page.getByText("Operational override reason");
     if (await override.count()) {
       const overrideBox = await override.boundingBox();
@@ -1156,7 +1156,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("button", { name: "Add to request" }).first().click();
     await expect(page).toHaveURL(/compose=1/);
     await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/available now/i).first()).toBeVisible();
+    await expect(page.getByText(/ATP/i).first()).toBeVisible();
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Discard this request draft/i })).toBeVisible();
     await page.getByRole("button", { name: "Continue editing" }).click();
@@ -1177,5 +1177,222 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByText("Depot can fill")).toBeVisible();
     const depotMetric = (await page.getByRole("button", { name: /My bag at or below par/i }).innerText()).replace(/\s+/g, " ");
     expect(depotMetric).toBe(bagMetric);
+  });
+
+  test("reconciliation review opens a preview without mutating stock", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    const admin = await login(request, "shravan.joaheer");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E PreviewRecon ${Date.now()}`,
+      quantity: 6,
+    });
+    const db = openE2eDb();
+    const doctorRow = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
+    const requestId = Number(
+      db
+        .prepare(
+          `INSERT INTO restock_requests (doctor_id, requested_by_user_id, collection_date, collection_day, status, note)
+           VALUES (?, ?, ?, 1, 'accepted', 'e2e-preview')`,
+        )
+        .run(doctorRow.doctor_id, doctorRow.id, nextCollectionIso()).lastInsertRowid,
+    );
+    db.prepare(
+      `INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity) VALUES (?, ?, ?, 2)`,
+    ).run(requestId, item.id, item.item_name);
+    const beforeEvents = db.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(requestId).count;
+    db.close();
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+    await page.getByRole("button", { name: /Reconciliation required/i }).click();
+    await expect(page.getByRole("button", { name: /Open reconciliation|Review reconciliation/i }).first()).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: /Open reconciliation|Review reconciliation/i }).first().click();
+    await expect(page.getByRole("button", { name: "Review reconciliation" })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Review reconciliation" }).click();
+    await expect(page.getByRole("heading", { name: /Review reconciliation/i })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Confirm reconciliation" })).toBeVisible();
+    const dbAfter = openE2eDb();
+    const afterEvents = dbAfter.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(requestId).count;
+    const fulfilments = dbAfter.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillments WHERE request_id = ?").get(requestId).count;
+    dbAfter.close();
+    expect(afterEvents).toBe(beforeEvents);
+    expect(fulfilments).toBe(0);
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("heading", { name: /Review reconciliation/i })).toHaveCount(0);
+  });
+
+  test("ready requests hide Claim and editable fulfilment", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const doctor = await login(request, "arun.dharee");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E ReadyLock ${Date.now()}`,
+      quantity: 4,
+    });
+    const created = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "ready lock",
+        items: [{ inventory_id: item.id, item_name: item.item_name, quantity: 1 }],
+      },
+    });
+    const requestId = (await apiJson(created)).request.id;
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    await pickRequest(request, operator.token, requestId);
+    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "ready" },
+    });
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+    await page.getByRole("button", { name: /Awaiting collection/i }).click();
+    await expect(page.getByRole("button", { name: "View details" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Claim" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open fulfilment" })).toHaveCount(0);
+  });
+
+  test("mobile stock history renders movement cards", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/stock-history`);
+    await expect(page.getByRole("heading", { name: "Stock history" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator("table")).toHaveCount(0);
+    const card = page.locator("article").filter({ hasText: "Quantity change" }).first();
+    await expect(card).toBeVisible();
+    await expect(card.getByText(/Quantity change/i)).toBeVisible();
+    await expect(card.getByText(/Actor/i)).toBeVisible();
+  });
+
+  test("work queues count unique requests and select the first non-empty queue", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    const queues = await request.get(`${API_BASE}/restock-requests/queues`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    const body = await apiJson(queues);
+    expect(body.counts.unique_requests).toBeDefined();
+    const requestIds = [
+      ...(body.new_requests || []),
+      ...(body.changes || []),
+      ...(body.shortages || []),
+      ...(body.pick_today || []),
+      ...(body.awaiting_collection || []),
+      ...(body.reconciliation_required || []),
+    ].map((row) => Number(row.id));
+    expect(body.counts.unique_requests).toBe(new Set(requestIds).size);
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+    const priority = [
+      "Changes",
+      "Reconciliation required",
+      "Shortages",
+      "New requests",
+      "Pick today",
+      "Awaiting collection",
+      "Incoming shipments",
+      "Count variances",
+    ];
+    const counts = body.counts;
+    const keys = [
+      "changes",
+      "reconciliation_required",
+      "shortages",
+      "new_requests",
+      "pick_today",
+      "awaiting_collection",
+      "incoming_shipments",
+      "count_variances",
+    ];
+    const expected = priority[keys.findIndex((key) => Number(counts[key] || 0) > 0)] || "New requests";
+    await expect(page.getByRole("button", { name: new RegExp(expected, "i") }).first()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("shipment import has an accessible label and disabled import control", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /Shipments/i }).click();
+    await expect(page.getByLabel(/CSV shipment data/i)).toBeVisible({ timeout: 20_000 });
+    const importButton = page.getByRole("button", { name: "Import to staging" });
+    await expect(importButton).toBeDisabled();
+  });
+
+  test("stocktake requires a chosen scope and confirms full-catalogue sessions", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: /^Count$/i }).click();
+    const start = page.getByRole("button", { name: "Start stocktake" });
+    await expect(start).toBeDisabled();
+    await page.getByLabel(/Folder \/ category/i).selectOption({ label: "All OCS folders" });
+    await expect(start).toBeEnabled();
+    await start.click();
+    await expect(page.getByRole("dialog").getByText(/blind stocktake session/i)).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  });
+
+  test("inventory tabs reveal overflow and keep the page from scrolling sideways", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    const tablist = page.getByRole("tablist", { name: "Inventory sections" });
+    await expect(tablist).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Next inventory tabs" })).toBeVisible();
+    await page.getByRole("tab", { name: /Count/i }).click();
+    const selected = tablist.getByRole("tab", { selected: true });
+    await expect(selected).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+    expect(overflow).toBeFalsy();
+  });
+
+  test("mobile drawer traps focus and restores it to the menu button", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    const menu = page.getByRole("button", { name: "Open menu" });
+    await menu.click();
+    const dialog = page.getByRole("dialog", { name: "Navigation menu" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Close menu" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(dialog.locator(":focus")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(menu).toBeFocused();
+  });
+
+  test("fixed bottom navigation does not cover the last queue control", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    await injectStaffSession(page, operator.token);
+    for (const width of [320, 390, 500]) {
+      await page.setViewportSize({ width, height: 720 });
+      await page.goto(`${STAFF_BASE}/inventory`);
+      await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+      const last = page.getByRole("button", { name: /History/i });
+      await last.scrollIntoViewIfNeeded();
+      const box = await last.boundingBox();
+      const nav = page.getByRole("navigation").last();
+      const navBox = await nav.boundingBox();
+      expect(box).toBeTruthy();
+      expect(navBox).toBeTruthy();
+      expect((box.y || 0) + (box.height || 0)).toBeLessThanOrEqual((navBox.y || 0) + 1);
+    }
   });
 });

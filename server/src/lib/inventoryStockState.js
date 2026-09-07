@@ -197,6 +197,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       reserved_quantity: reservedQuantity,
       expired_quantity: expiredQuantity,
       available_to_use: availableToUse,
+      available_to_promise: availableToUse,
       available_to_transfer: availableToUse,
       available_to_fulfil: availableToUse,
       nearest_usable_expiry: nearestUsableExpiry,
