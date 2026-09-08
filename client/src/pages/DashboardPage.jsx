@@ -859,6 +859,21 @@ function countDoctorScheduledVisitsToday(dashboard) {
   return getDoctorVisitsToday(dashboard).length;
 }
 
+function getDoctorNextScheduledVisit(dashboard) {
+  const today = dashboard?.doctorWorkspace?.periods?.today || dashboard?.periods?.today || "";
+  const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
+
+  return (
+    visits
+      .filter((visit) => visit.status === "scheduled" && visit.appointment_date > today)
+      .sort((left, right) => {
+        const leftValue = `${left.appointment_date || ""}T${left.appointment_time || ""}`;
+        const rightValue = `${right.appointment_date || ""}T${right.appointment_time || ""}`;
+        return leftValue.localeCompare(rightValue);
+      })[0] || null
+  );
+}
+
 const doctorMetricVariants = {
   scheduled: {
     card: "border-gray-100 bg-white shadow-sm hover:shadow-md",
@@ -1038,29 +1053,47 @@ function DoctorDashboardTwinPanels({
   onOpenRosterPdf,
   lowStockAlert,
   visitsToday = [],
+  nextScheduledVisit = null,
 }) {
   const lowStockCount = Number(lowStockAlert?.total_items || 0);
+  const hasTodayVisits = visitsToday.length > 0;
+  const hasSchedulePanel = hasTodayVisits || Boolean(nextScheduledVisit);
+  const displayedVisits = hasTodayVisits ? visitsToday : nextScheduledVisit ? [nextScheduledVisit] : [];
 
   return (
     <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
-      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
-        <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
-          <span className="text-sm font-semibold text-slate-800">Today’s visits</span>
-          <button
-            type="button"
-            onClick={onOpenRosterPdf}
-            className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
-          >
-            {monthLabel} roster
-          </button>
-        </div>
-        {visitsToday.length ? (
+      {hasSchedulePanel ? (
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
+          <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
+            <span className="text-sm font-semibold text-slate-800">
+              {hasTodayVisits ? "Today’s visits" : "Next scheduled visit"}
+            </span>
+            {hasTodayVisits ? (
+              <button
+                type="button"
+                onClick={onOpenRosterPdf}
+                className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
+              >
+                {monthLabel} roster
+              </button>
+            ) : (
+              <Link
+                to="/appointments"
+                className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
+              >
+                View calendar
+              </Link>
+            )}
+          </div>
           <ul className="mt-3 divide-y divide-slate-100">
-            {visitsToday.map((visit) => {
+            {displayedVisits.map((visit) => {
               const timeLabel =
                 formatReviewAppointmentTime(visit.appointment_time) ||
                 String(visit.appointment_time || "").slice(0, 5);
               const place = String(visit.location || "").trim();
+              const dateLabel = dayjs(visit.appointment_date).isValid()
+                ? dayjs(visit.appointment_date).format("dddd, D MMMM")
+                : visit.appointment_date;
 
               return (
                 <li key={visit.id}>
@@ -1069,7 +1102,9 @@ function DoctorDashboardTwinPanels({
                     className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold tabular-nums text-slate-900">{timeLabel}</p>
+                      <p className="text-sm font-semibold tabular-nums text-slate-900">
+                        {hasTodayVisits ? timeLabel : `${dateLabel}${timeLabel ? ` · ${timeLabel}` : ""}`}
+                      </p>
                       <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
                         {visit.patient_name}
                       </p>
@@ -1083,20 +1118,16 @@ function DoctorDashboardTwinPanels({
               );
             })}
           </ul>
-        ) : (
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-sm text-slate-500">No visits booked today.</p>
-            <Link to="/appointments" className="text-xs font-semibold text-ocs-teal">
-              View upcoming
-            </Link>
-          </div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       {lowStockAlert?.triggered ? (
         <Link
           to="/inventory?context=my&restock=alert"
-          className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-amber-200/70 border-l-4 border-l-ocs-yellow bg-amber-50/45 p-6 shadow-sm transition-colors hover:shadow-md lg:col-span-2"
+          className={cx(
+            "flex min-h-[160px] flex-col justify-between rounded-2xl border border-amber-200/70 border-l-4 border-l-ocs-yellow bg-amber-50/45 p-6 shadow-sm transition-colors hover:shadow-md",
+            hasSchedulePanel ? "lg:col-span-2" : "lg:col-span-5",
+          )}
         >
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600">
@@ -1120,7 +1151,12 @@ function DoctorDashboardTwinPanels({
           </div>
         </Link>
       ) : (
-        <div className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-2">
+        <div
+          className={cx(
+            "flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm",
+            hasSchedulePanel ? "lg:col-span-2" : "lg:col-span-5",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-gray-50 pb-3">
             <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500">
               <Package className="size-4 text-slate-400" />
@@ -1190,6 +1226,7 @@ function DoctorDashboardView({
       <DoctorDashboardTwinPanels
         lowStockAlert={lowStockAlert}
         monthLabel={monthLabel}
+        nextScheduledVisit={getDoctorNextScheduledVisit(dashboard)}
         onOpenRosterPdf={onOpenRosterPdf}
         visitsToday={getDoctorVisitsToday(dashboard)}
       />
