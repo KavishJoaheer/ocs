@@ -1,6 +1,15 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { ArrowRight, FileText, Pill, FlaskConical, Calendar } from "lucide-react";
+import {
+  ArrowRight,
+  Calendar,
+  CalendarClock,
+  FileText,
+  FlaskConical,
+  HeartPulse,
+  Pill,
+  ReceiptText,
+} from "lucide-react";
 import { useRequestVisit } from "../../hooks/useRequestVisit.jsx";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
@@ -15,26 +24,22 @@ function getGreeting() {
   return "Good evening";
 }
 
-function buildCareTimeline({ lastConsultation, nextAppointment, careTeamDoctorName }) {
+function buildCareTimeline({ lastConsultation, nextAppointment, overdueReview, careTeamDoctorName }) {
   const cards = [];
 
-  if (lastConsultation) {
-    const dateLabel = dayjs(lastConsultation.date).isValid()
-      ? dayjs(lastConsultation.date).format("D MMMM YYYY")
-      : lastConsultation.date;
+  if (overdueReview) {
+    const dateLabel = dayjs(overdueReview.date).isValid()
+      ? dayjs(overdueReview.date).format("D MMMM YYYY")
+      : overdueReview.date;
     cards.push({
-      id: "visit",
-      type: "visit",
-      title: "Recent Visit Summary",
-      subtitle: formatDoctorName(lastConsultation.doctor_name),
-      detail: `${lastConsultation.diagnosis || lastConsultation.visit_type || "Home Visit"} · ${dateLabel}`,
-      action: {
-        label: "View Notes",
-        to: lastConsultation.id
-          ? `/health-records/visits/${lastConsultation.id}`
-          : "/health-records",
-      },
+      id: "overdue-review",
+      type: "review",
+      title: "Follow-up overdue",
+      subtitle: `Due ${dateLabel}`,
+      detail: overdueReview.reason || "Contact your care team to arrange a new review time.",
+      action: { label: "View Follow-up", to: "/appointments" },
       muted: false,
+      urgent: true,
     });
   }
 
@@ -54,11 +59,31 @@ function buildCareTimeline({ lastConsultation, nextAppointment, careTeamDoctorNa
     });
   }
 
+  if (lastConsultation) {
+    const dateLabel = dayjs(lastConsultation.date).isValid()
+      ? dayjs(lastConsultation.date).format("D MMMM YYYY")
+      : lastConsultation.date;
+    cards.push({
+      id: "visit",
+      type: "visit",
+      title: "Recent visit summary",
+      subtitle: formatDoctorName(lastConsultation.doctor_name),
+      detail: `${lastConsultation.diagnosis || lastConsultation.visit_type || "Home visit"} · ${dateLabel}`,
+      action: {
+        label: "View Notes",
+        to: lastConsultation.id
+          ? `/health-records/visits/${lastConsultation.id}`
+          : "/health-records",
+      },
+      muted: false,
+    });
+  }
+
   if (careTeamDoctorName) {
     cards.push({
       id: "care-team",
       type: "care-team",
-      title: "Your Care Team",
+      title: "Your care team",
       subtitle: formatDoctorName(careTeamDoctorName),
       detail: "Primary care physician assigned to you",
       action: { label: "View Profile", to: "/profile" },
@@ -95,6 +120,7 @@ function TimelineCard({ card }) {
     prescription: Pill,
     labs: FlaskConical,
     appointment: Calendar,
+    review: CalendarClock,
     "care-team": FileText,
   };
   const Icon = icons[card.type] || FileText;
@@ -111,7 +137,9 @@ function TimelineCard({ card }) {
         <div
           className={[
             "squircle-inner flex size-11 shrink-0 items-center justify-center",
-            card.muted
+            card.urgent
+              ? "bg-amber-100 text-amber-700"
+              : card.muted
               ? "bg-[rgba(138,158,154,0.12)] text-[#8a9e9a]"
               : "bg-[rgba(26,160,140,0.1)] text-[#2d8f98]",
           ].join(" ")}
@@ -157,12 +185,40 @@ function TimelineCard({ card }) {
   );
 }
 
+const mobileSummaryItems = [
+  { key: "upcoming_appointments", label: "Upcoming", to: "/appointments", icon: CalendarClock },
+  { key: "pending_bills", label: "Bills", to: "/billing", icon: ReceiptText },
+  { key: "total_visits", label: "Visits", to: "/health-records", icon: HeartPulse },
+];
+
+function MobileCareSummary({ stats = {} }) {
+  return (
+    <section className="mb-9 grid grid-cols-3 gap-3 animate-fade-in-up stagger-2" aria-label="Care summary">
+      {mobileSummaryItems.map(({ key, label, to, icon: Icon }) => (
+        <Link
+          key={key}
+          to={to}
+          className="squircle-inner flex min-w-0 flex-col bg-white px-3 py-4 shadow-[var(--native-shadow-ambient)] transition active:scale-[0.98]"
+        >
+          <Icon className="size-4.5 text-[#2d8f98]" strokeWidth={1.9} />
+          <span className="mt-3 text-xl font-black tabular-nums text-[#22485b]">
+            {Number(stats[key] || 0)}
+          </span>
+          <span className="mt-0.5 truncate text-[11px] font-semibold text-[#6b858b]">{label}</span>
+        </Link>
+      ))}
+    </section>
+  );
+}
+
 // ─── Main dashboard view ──────────────────────────────────────────────────────
 
 function MobileDashboardHome({
   firstName,
   lastConsultation = null,
   nextAppointment = null,
+  overdueReview = null,
+  stats = {},
   careTeamDoctorName = null,
   activeVisitSlot = null,
   managing = false,
@@ -175,6 +231,7 @@ function MobileDashboardHome({
   const timelineCards = buildCareTimeline({
     lastConsultation,
     nextAppointment,
+    overdueReview,
     careTeamDoctorName,
   });
 
@@ -195,7 +252,7 @@ function MobileDashboardHome({
           )}
         </h1>
         <p className="mt-1 text-left text-[15px] leading-relaxed text-gray-500">
-          Your health. Unwavering care. Accessed effortlessly, managed securely.
+          Your care overview and anything that needs attention today.
         </p>
       </header>
 
@@ -205,25 +262,29 @@ function MobileDashboardHome({
         </section>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => openRequestSheet()}
-        className="dashboard-hero-press squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 flex w-full items-center justify-between bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] text-left text-white"
-      >
-        <div className="pr-4">
-          <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-white/80">
-            24/7 Home Visits
-          </p>
-          <p className="native-display mt-2.5 text-[22px] leading-tight text-white">
-            {visitLabel}
-          </p>
-        </div>
-        <div className="dashboard-hero-arrow-btn">
-          <ArrowRight className="size-6 text-brand-gold" strokeWidth={2.5} />
-        </div>
-      </button>
+      {!activeVisitSlot ? (
+        <button
+          type="button"
+          onClick={() => openRequestSheet()}
+          className="dashboard-hero-press squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 flex w-full items-center justify-between bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] text-left text-white"
+        >
+          <div className="pr-4">
+            <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-white/80">
+              24/7 Home Visits
+            </p>
+            <p className="native-display mt-2.5 text-[22px] leading-tight text-white">
+              {visitLabel}
+            </p>
+          </div>
+          <div className="dashboard-hero-arrow-btn">
+            <ArrowRight className="size-6 text-brand-gold" strokeWidth={2.5} />
+          </div>
+        </button>
+      ) : null}
 
-      <section className="animate-fade-in-up stagger-2" aria-label="Care timeline">
+      <MobileCareSummary stats={stats} />
+
+      <section className="animate-fade-in-up stagger-3" aria-label="Care timeline">
         <div className="mb-5">
           <h2 className="native-display text-[18px] text-[#1a5c52]">Your Care Timeline</h2>
           <p className="mt-1 text-[14px] text-[#8a9e9a]">

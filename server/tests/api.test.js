@@ -19,7 +19,7 @@ const assert = require("node:assert/strict");
 const { createApp } = require("../src/app");
 const { db, labReportAttachmentsDir } = require("../src/db");
 const { parseMauritianID } = require("../src/lib/nicParser");
-const { getTodayLocal } = require("../src/lib/utils");
+const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
 
 let server;
 let baseUrl;
@@ -807,7 +807,7 @@ test("doctors only see assigned visit requests and can complete consultation", a
   assert.equal(completed.data.visit_request.status, "completed");
 });
 
-test("staff long-term review surfaces as an upcoming patient appointment", async () => {
+test("long-term review moves between overdue and upcoming dashboard states", async () => {
   const reg = await api("POST", "/api/patient-auth/register", {
     body: {
       email: uniqueEmail("review"),
@@ -827,7 +827,7 @@ test("staff long-term review surfaces as an upcoming patient appointment", async
     body: {
       is_under_review: true,
       review_reason_note: "Check up by Dr Joaheer",
-      review_due_date: "2026-07-19",
+      review_due_date: offsetLocalDate(-3),
     },
   });
   assert.equal(flagged.status, 200, JSON.stringify(flagged.data));
@@ -835,8 +835,32 @@ test("staff long-term review surfaces as an upcoming patient appointment", async
   const appts = await api("GET", "/api/patient-portal/appointments", { token });
   const review = (appts.data.appointments || []).find((a) => a.kind === "review");
   assert.ok(review, "expected a review item in appointments");
-  assert.equal(review.appointment_date, "2026-07-19");
-  assert.equal(review.status, "scheduled");
+  assert.equal(review.appointment_date, offsetLocalDate(-3));
+  assert.equal(review.status, "overdue");
+
+  const dashboard = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.data));
+  assert.equal(dashboard.data.next_appointment, null);
+  assert.equal(dashboard.data.stats.upcoming_appointments, 0);
+  assert.equal(dashboard.data.overdue_review.date, offsetLocalDate(-3));
+  assert.equal(dashboard.data.overdue_review.status, "overdue");
+
+  const futureDate = offsetLocalDate(3);
+  const rescheduled = await api("PATCH", `/api/patients/${patientId}/long-term-review`, {
+    token: adminToken,
+    body: {
+      is_under_review: true,
+      review_reason_note: "Check up by Dr Joaheer",
+      review_due_date: futureDate,
+    },
+  });
+  assert.equal(rescheduled.status, 200, JSON.stringify(rescheduled.data));
+
+  const futureDashboard = await api("GET", "/api/patient-portal/dashboard", { token });
+  assert.equal(futureDashboard.data.next_appointment.date, futureDate);
+  assert.equal(futureDashboard.data.next_appointment.status, "scheduled");
+  assert.equal(futureDashboard.data.stats.upcoming_appointments, 1);
+  assert.equal(futureDashboard.data.overdue_review, null);
 });
 
 test("patient dashboard returns stats and recent activity", async () => {

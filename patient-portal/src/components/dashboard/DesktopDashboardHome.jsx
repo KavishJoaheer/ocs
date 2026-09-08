@@ -1,7 +1,18 @@
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
-import { Calendar, HousePlus } from "lucide-react";
+import {
+  ArrowUpRight,
+  Calendar,
+  CalendarClock,
+  FileText,
+  HeartPulse,
+  HousePlus,
+  Phone,
+  ReceiptText,
+} from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
+import { CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
+import RequestVisitCta from "../request-visit/RequestVisitCta.jsx";
 
 const OCS_CARE_WHATSAPP_URL = "https://wa.me/23052522234";
 
@@ -21,33 +32,86 @@ function doctorInitials(name) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
+function appointmentDateLabel(value) {
+  const date = dayjs(value);
+  if (!date.isValid()) return value;
+  const daysAway = date.startOf("day").diff(dayjs().startOf("day"), "day");
+  if (daysAway === 0) return "Today";
+  if (daysAway === 1) return "Tomorrow";
+  return date.format("dddd, D MMMM");
+}
+
+function DesktopRequestHero() {
+  return (
+    <section className="relative overflow-hidden rounded-[28px] bg-[#173f4a] px-7 py-6 text-white shadow-[0_24px_54px_rgba(23,63,74,0.2)] animate-fade-in-up stagger-1">
+      <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full bg-brand-teal/25 blur-3xl" />
+      <div className="relative z-10 flex items-center justify-between gap-8">
+        <div className="max-w-xl">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#83ddd7]">24/7 home visits</p>
+          <h2 className="mt-2 font-display text-2xl font-bold tracking-tight text-white">Need medical care at home?</h2>
+          <p className="mt-2 text-sm leading-relaxed text-white/68">
+            Send your request to the OCS care team. We will confirm the visit and keep you updated here.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-stretch gap-2.5">
+          <RequestVisitCta
+            leading={<HousePlus className="size-4.5" />}
+            className="items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 py-3 text-sm font-bold text-[#173f4a] shadow-sm transition hover:brightness-105"
+          />
+          <a href={CLINIC_TEL_HREF} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-5 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white">
+            <Phone className="size-4" />
+            Call the clinic
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const summaryItems = [
+  { key: "upcoming_appointments", label: "Upcoming visits", to: "/appointments", icon: CalendarClock },
+  { key: "pending_bills", label: "Bills to review", to: "/billing", icon: ReceiptText },
+  { key: "total_visits", label: "Completed visits", to: "/health-records", icon: HeartPulse },
+];
+
+function DesktopSummaryRow({ stats = {} }) {
+  return (
+    <section className="grid grid-cols-3 gap-4 animate-fade-in-up stagger-2" aria-label="Care summary">
+      {summaryItems.map(({ key, label, to, icon: Icon }) => (
+        <Link key={key} to={to} className="group flex items-center gap-4 rounded-2xl border border-brand-teal/15 bg-white px-5 py-4 shadow-[0_8px_26px_rgba(34,72,91,0.04)] transition hover:-translate-y-0.5 hover:border-brand-teal/30 hover:shadow-[0_12px_30px_rgba(34,72,91,0.08)]">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-teal/10 text-[#287f86]">
+            <Icon className="size-5" strokeWidth={1.9} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-2xl font-black tabular-nums text-[#173f4a]">{Number(stats[key] || 0)}</span>
+            <span className="block text-xs font-semibold text-slate-500">{label}</span>
+          </span>
+          <ArrowUpRight className="size-4 shrink-0 text-slate-300 transition group-hover:text-brand-teal" />
+        </Link>
+      ))}
+    </section>
+  );
+}
+
 function DesktopCareTeamCard({ doctorName }) {
   const displayName = doctorName ? formatDoctorName(doctorName) : "Your OCS care team";
   const isAssigned = Boolean(doctorName);
 
   return (
-    <section className="desktop-card animate-fade-in-up stagger-1">
-      <p className="desktop-section-label text-ocs-grey">Your Care Team</p>
-
+    <section className="desktop-card animate-fade-in-up stagger-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Care team</p>
+        <Link to="/profile" className="text-xs font-bold text-[#287f86] hover:text-[#173f4a]">View profile</Link>
+      </div>
       <div className="mt-5 flex items-center gap-4">
-        <div className="desktop-care-team-avatar-wrap shrink-0">
-          <div className="desktop-care-team-avatar-ring">
-            <div className="desktop-care-team-avatar" aria-hidden="true">
-              {doctorInitials(doctorName || "Care Team")}
-            </div>
-          </div>
-          <span className="desktop-care-team-status" aria-label="Available" />
+        <div className="desktop-care-team-avatar-ring shrink-0">
+          <div className="desktop-care-team-avatar" aria-hidden="true">{doctorInitials(doctorName || "Care Team")}</div>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-base font-bold leading-snug text-ocs-slate">
-            {displayName}
+          <p className="font-display text-base font-bold leading-snug text-ocs-slate">{displayName}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {isAssigned ? "Your assigned primary care physician" : "We are assigning your physician"}
           </p>
-          <p className="mt-0.5 text-sm text-brand-cool-grey">
-            {isAssigned ? "Primary Care Physician" : "Assigning your physician shortly"}
-          </p>
-          {isAssigned ? (
-            <p className="mt-1 text-xs text-brand-cool-grey">Your assigned OCS doctor</p>
-          ) : null}
         </div>
       </div>
     </section>
@@ -56,118 +120,135 @@ function DesktopCareTeamCard({ doctorName }) {
 
 function DesktopConciergeCard() {
   return (
-    <section className="desktop-concierge-card desktop-concierge-card-hover animate-fade-in-up stagger-2">
-      <p className="font-display text-sm font-semibold text-ocs-yellow">We&apos;re here for you.</p>
-      <h2 className="mt-3 font-display text-2xl font-bold leading-tight tracking-tight text-white">
-        24/7 Medical Concierge
-      </h2>
-      <p className="mt-2 text-sm leading-relaxed text-white/70">
-        Immediate support for your health, day or night.
-      </p>
-      <a
-        href={OCS_CARE_WHATSAPP_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="desktop-concierge-dial mt-7"
-      >
-        <WhatsAppIcon className="size-5 shrink-0" />
-        <span>Chat on WhatsApp</span>
-      </a>
+    <section className="desktop-concierge-card animate-fade-in-up stagger-4">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#83ddd7]">Always available</p>
+      <h2 className="mt-3 font-display text-xl font-bold leading-tight tracking-tight text-white">Need help deciding what to do?</h2>
+      <p className="mt-2 text-sm leading-relaxed text-white/68">The OCS medical concierge can help with visits, appointments, and account questions.</p>
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <a href={CLINIC_TEL_HREF} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-sm font-bold text-[#173f4a] transition hover:bg-[#effafa]">
+          <Phone className="size-4" />
+          Call
+        </a>
+        <a href={OCS_CARE_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-gold px-3 py-3 text-sm font-bold text-[#173f4a] transition hover:brightness-105">
+          <WhatsAppIcon className="size-4" />
+          WhatsApp
+        </a>
+      </div>
     </section>
   );
 }
 
 function DesktopNextAppointmentCard({ appointment }) {
   const doctorName = formatDoctorName(appointment.doctor_name);
-  const dateLabel = dayjs(appointment.date).isValid()
-    ? dayjs(appointment.date).format("D MMMM YYYY")
-    : appointment.date;
+  const dateLabel = dayjs(appointment.date).isValid() ? dayjs(appointment.date).format("D MMMM YYYY") : appointment.date;
   const timeLabel = String(appointment.time || "").trim();
 
   return (
-    <section className="desktop-card animate-fade-in-up stagger-1">
-      <h2 className="font-display text-lg font-bold text-ocs-slate">Your Next Appointment</h2>
-
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <p className="text-[13px] font-medium text-brand-cool-grey">
-          {dateLabel}
-          {timeLabel ? ` · ${timeLabel}` : ""}
-        </p>
-        <span className="desktop-visit-badge shrink-0">Upcoming</span>
+    <section className="desktop-card animate-fade-in-up stagger-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#287f86]">Next appointment</p>
+          <h2 className="mt-2 font-display text-xl font-bold text-ocs-slate">{appointmentDateLabel(appointment.date)}</h2>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Confirmed</span>
       </div>
-
-      <div className="mt-5 flex items-center gap-4">
-        <div
-          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-brand-teal/10 text-brand-teal"
-          aria-hidden="true"
-        >
-          <Calendar className="size-6" strokeWidth={1.75} />
+      <div className="mt-5 flex items-center gap-4 rounded-2xl bg-slate-50/80 p-4">
+        <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-brand-teal/10 text-[#287f86]">
+          <Calendar className="size-5" strokeWidth={1.9} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-lg font-bold leading-snug text-ocs-slate">{doctorName}</p>
-          <p className="mt-0.5 text-sm text-brand-cool-grey">
-            {appointment.reason || "Scheduled home visit"}
-          </p>
+          <p className="font-display text-base font-bold text-ocs-slate">{doctorName}</p>
+          <p className="mt-0.5 text-sm text-slate-500">{dateLabel}{timeLabel ? ` · ${timeLabel}` : ""}</p>
+          <p className="mt-1 text-sm text-slate-600">{appointment.reason || "Scheduled home visit"}</p>
         </div>
       </div>
+      <Link to="/appointments" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#287f86] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#216d73]">
+        View appointment
+        <ArrowUpRight className="size-4" />
+      </Link>
+    </section>
+  );
+}
 
-      <div className="mt-8 flex justify-end">
-        <Link
-          to="/appointments"
-          className="text-sm font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
-        >
-          View Appointments →
-        </Link>
+function DesktopOverdueReviewCard({ review }) {
+  const dateLabel = dayjs(review.date).isValid() ? dayjs(review.date).format("D MMMM YYYY") : review.date;
+  return (
+    <section className="rounded-[18px] border border-amber-200 bg-amber-50/80 p-7 shadow-[0_8px_30px_rgba(120,83,15,0.06)] animate-fade-in-up stagger-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Needs attention</p>
+          <h2 className="mt-2 font-display text-xl font-bold text-[#5f4314]">Follow-up review overdue</h2>
+          <p className="mt-2 text-sm leading-relaxed text-amber-900/70">This review was due on {dateLabel}. Contact the care team to arrange a new time.</p>
+        </div>
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-amber-700 shadow-sm">
+          <CalendarClock className="size-5" />
+        </span>
       </div>
+      {review.reason ? <p className="mt-4 text-sm font-semibold text-[#5f4314]">{review.reason}</p> : null}
+      <a href={CLINIC_TEL_HREF} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-800">
+        <Phone className="size-4" />
+        Contact care team
+      </a>
+    </section>
+  );
+}
+
+function DesktopEmptyAppointmentCard() {
+  return (
+    <section className="desktop-card animate-fade-in-up stagger-3">
+      <div className="flex items-start gap-4">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-teal/10 text-[#287f86]"><Calendar className="size-5" /></span>
+        <div>
+          <p className="font-display text-lg font-bold text-ocs-slate">No upcoming appointments</p>
+          <p className="mt-1 text-sm leading-relaxed text-slate-500">Confirmed visits and follow-ups will appear here.</p>
+        </div>
+      </div>
+      <Link to="/appointments" className="mt-5 inline-flex text-sm font-bold text-[#287f86] hover:text-[#173f4a]">View appointments →</Link>
     </section>
   );
 }
 
 function DesktopLastVisitCard({ consultation }) {
   const doctorName = formatDoctorName(consultation.doctor_name);
-  const dateLabel = dayjs(consultation.date).isValid()
-    ? dayjs(consultation.date).format("D MMMM YYYY")
-    : consultation.date;
-  const summaryTo = "/health-records";
+  const dateLabel = dayjs(consultation.date).isValid() ? dayjs(consultation.date).format("D MMMM YYYY") : consultation.date;
+  const summaryTo = consultation.id ? `/health-records/visits/${consultation.id}` : "/health-records";
 
   return (
-    <section className="desktop-card animate-fade-in-up stagger-1">
-      <h2 className="font-display text-lg font-bold text-ocs-slate">Your Last Visit</h2>
-
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <p className="text-[13px] font-medium text-brand-cool-grey">{dateLabel}</p>
-        <span className="desktop-visit-badge shrink-0">Home Visit</span>
+    <section className="desktop-card animate-fade-in-up stagger-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Latest health update</p>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Home visit</span>
       </div>
-
       <div className="mt-5 flex items-center gap-4">
-        <div
-          className="flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-teal to-[#5ed9d2] text-[15px] font-bold text-white"
-          aria-hidden="true"
-        >
-          {doctorInitials(consultation.doctor_name)}
-        </div>
+        <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-teal to-[#5ed9d2] text-sm font-bold text-white">{doctorInitials(consultation.doctor_name)}</div>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-lg font-bold leading-snug text-ocs-slate">{doctorName}</p>
-          <p className="mt-0.5 text-sm text-brand-cool-grey">General Practitioner</p>
+          <p className="font-display text-base font-bold text-ocs-slate">{doctorName}</p>
+          <p className="mt-0.5 text-sm text-slate-500">{dateLabel}</p>
         </div>
       </div>
-
       {consultation.diagnosis ? (
-        <div className="mt-6">
-          <p className="consultation-micro-label">Diagnosis</p>
-          <span className="mt-2 inline-flex rounded-[14px] bg-brand-teal/10 px-4 py-1.5 text-[13px] font-medium text-ocs-slate">
-            {consultation.diagnosis}
-          </span>
+        <div className="mt-5 rounded-2xl bg-slate-50/80 px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Visit summary</p>
+          <p className="mt-1.5 text-sm font-semibold text-slate-700">{consultation.diagnosis}</p>
         </div>
       ) : null}
+      <Link to={summaryTo} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#287f86] hover:text-[#173f4a]">
+        View visit summary
+        <ArrowUpRight className="size-4" />
+      </Link>
+    </section>
+  );
+}
 
-      <div className="mt-8 flex justify-end">
-        <Link
-          to={summaryTo}
-          className="text-sm font-bold text-ocs-yellow transition hover:text-ocs-yellow-dark"
-        >
-          View Health Records →
-        </Link>
+function DesktopNoVisitsCard() {
+  return (
+    <section className="desktop-card animate-fade-in-up stagger-4">
+      <div className="flex items-center gap-4">
+        <span className="grid size-11 place-items-center rounded-xl bg-brand-teal/10 text-[#287f86]"><FileText className="size-5" /></span>
+        <div>
+          <p className="font-display text-base font-bold text-ocs-slate">No visit history yet</p>
+          <p className="mt-1 text-sm text-slate-500">Your care summaries will appear after your first visit.</p>
+        </div>
       </div>
     </section>
   );
@@ -176,6 +257,8 @@ function DesktopLastVisitCard({ consultation }) {
 function DesktopDashboardHome({
   profileLastConsultation,
   profileNextAppointment = null,
+  overdueReview = null,
+  stats = {},
   activeVisitSlot,
   headline,
   careTeamDoctorName,
@@ -183,49 +266,39 @@ function DesktopDashboardHome({
   return (
     <div className="desktop-dashboard">
       <header className="desktop-dashboard-greeting animate-fade-in-up">
-        <h1 className="font-display text-[2rem] tracking-tight sm:text-4xl">
-          {headline}
-        </h1>
-        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-ocs-grey">
-          Your health. Unwavering care. Accessed effortlessly, managed securely.
-        </p>
+        <h1 className="font-display text-[2rem] tracking-tight sm:text-4xl">{headline}</h1>
+        <p className="mt-1 max-w-xl text-left text-[15px] leading-relaxed text-slate-500">Here is your care overview and anything that needs attention today.</p>
       </header>
 
       {activeVisitSlot ? (
-        <div className="desktop-active-visit mb-6 animate-fade-in-up">{activeVisitSlot}</div>
-      ) : null}
+        <div className="desktop-active-visit mb-5 animate-fade-in-up">{activeVisitSlot}</div>
+      ) : (
+        <div className="mb-5"><DesktopRequestHero /></div>
+      )}
+
+      <div className="mb-6"><DesktopSummaryRow stats={stats} /></div>
 
       <div className="desktop-dashboard-shell">
-      <div className="desktop-dashboard-grid">
-        <div className="desktop-dashboard-col">
-          {profileNextAppointment ? (
-            <DesktopNextAppointmentCard appointment={profileNextAppointment} />
-          ) : null}
-          {profileLastConsultation ? (
-            <DesktopLastVisitCard consultation={profileLastConsultation} />
-          ) : profileNextAppointment ? null : (
-            <section className="desktop-card animate-fade-in-up stagger-1">
-              <h2 className="font-display text-lg font-bold text-ocs-slate">Your Last Visit</h2>
-              <div className="mt-6 flex items-center gap-4">
-                <div className="flex size-11 items-center justify-center rounded-[12px] bg-brand-teal/10">
-                  <HousePlus className="size-5 text-brand-teal" strokeWidth={1.5} />
-                </div>
-                <div>
-                  <p className="font-display text-base font-bold text-ocs-slate">No visits yet</p>
-                  <p className="mt-0.5 text-sm text-brand-cool-grey">
-                    Your care timeline will appear here after your first home visit.
-                  </p>
-                </div>
-              </div>
-            </section>
-          )}
+        <div className="desktop-dashboard-grid">
+          <div className="desktop-dashboard-col">
+            {profileNextAppointment ? (
+              <DesktopNextAppointmentCard appointment={profileNextAppointment} />
+            ) : overdueReview ? (
+              <DesktopOverdueReviewCard review={overdueReview} />
+            ) : (
+              <DesktopEmptyAppointmentCard />
+            )}
+            {profileLastConsultation ? (
+              <DesktopLastVisitCard consultation={profileLastConsultation} />
+            ) : (
+              <DesktopNoVisitsCard />
+            )}
+          </div>
+          <div className="desktop-dashboard-col">
+            <DesktopCareTeamCard doctorName={careTeamDoctorName} />
+            <DesktopConciergeCard />
+          </div>
         </div>
-
-        <div className="desktop-dashboard-col">
-          <DesktopCareTeamCard doctorName={careTeamDoctorName} />
-          <DesktopConciergeCard />
-        </div>
-      </div>
       </div>
     </div>
   );

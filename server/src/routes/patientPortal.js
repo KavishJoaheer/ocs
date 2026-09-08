@@ -125,6 +125,7 @@ function buildLongTermReviewAppointment(patient, patientId) {
   const doctorName =
     patient.review_doctor_name || patient.doctor_name || patient.assigned_doctor_name || null;
   const reviewTime = String(patient.review_appointment_time || "").trim();
+  const isOverdue = reviewDueDate < getTodayLocal();
 
   return {
     id: `review-${patientId}`,
@@ -133,7 +134,7 @@ function buildLongTermReviewAppointment(patient, patientId) {
     appointment_time: reviewTime,
     date: reviewDueDate,
     time: reviewTime,
-    status: "scheduled",
+    status: isOverdue ? "overdue" : "scheduled",
     doctor_name: doctorName,
     kind: "review",
     reason: String(patient.review_reason_note || "").trim() || null,
@@ -208,6 +209,7 @@ router.get("/dashboard", (req, res) => {
       upcoming_appointments_count: 0,
       pending_bills_count: 0,
       next_appointment: null,
+      overdue_review: null,
       last_consultation: null,
     });
   }
@@ -262,9 +264,12 @@ router.get("/dashboard", (req, res) => {
 
   const dbNextAppointment = serializeDashboardNextAppointment(nextAppointmentRow);
   const reviewAppointment = buildLongTermReviewAppointment(patient, patientId);
+  const upcomingReviewAppointment =
+    reviewAppointment?.status === "scheduled" ? reviewAppointment : null;
+  const overdueReview = reviewAppointment?.status === "overdue" ? reviewAppointment : null;
   const nextAppointment = pickEarliestNextAppointment(
     dbNextAppointment,
-    serializeDashboardNextAppointment(reviewAppointment),
+    serializeDashboardNextAppointment(upcomingReviewAppointment),
   );
 
   const lastConsultationRow = db
@@ -321,7 +326,7 @@ router.get("/dashboard", (req, res) => {
   });
 
   let upcomingAppointments = upcomingCount?.count || 0;
-  if (reviewAppointment) {
+  if (upcomingReviewAppointment) {
     upcomingAppointments += 1;
   }
   const pendingBillsCount = pendingBills?.count || 0;
@@ -337,6 +342,7 @@ router.get("/dashboard", (req, res) => {
     upcoming_appointments_count: upcomingAppointments,
     pending_bills_count: pendingBillsCount,
     next_appointment: nextAppointment || null,
+    overdue_review: serializeDashboardNextAppointment(overdueReview),
     last_consultation: lastConsultation,
   });
 });

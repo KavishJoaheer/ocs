@@ -112,8 +112,11 @@ function PatientAppointments() {
   const upcoming = appointments
     .filter((a) => a.status === "scheduled" && a.date >= today)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const overdue = appointments
+    .filter((a) => a.status === "overdue")
+    .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
   const past = appointments
-    .filter((a) => !(a.status === "scheduled" && a.date >= today))
+    .filter((a) => a.status !== "overdue" && !(a.status === "scheduled" && a.date >= today))
     .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 
   return (
@@ -150,6 +153,17 @@ function PatientAppointments() {
         </div>
       ) : (
         <>
+          {overdue.length > 0 ? (
+            <section className="animate-fade-in-up stagger-1 mt-5 lg:mt-6">
+              <SectionLabel>Needs attention</SectionLabel>
+              <div className="mt-4 flex flex-col gap-4">
+                {overdue.map((appointment) => (
+                  <PastAppointmentCard key={appointment.id} appointment={appointment} />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="animate-fade-in-up stagger-1 mt-5 lg:mt-6">
             <SectionLabel>Upcoming</SectionLabel>
             {upcoming.length === 0 ? (

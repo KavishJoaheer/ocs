@@ -243,7 +243,13 @@ function PatientDashboard() {
   const { activeProfile, activeProfileId } = useFamilyProfile();
   const [patient, setPatient] = useState(null);
   const [nextAppointment, setNextAppointment] = useState(null);
+  const [overdueReview, setOverdueReview] = useState(null);
   const [lastConsultation, setLastConsultation] = useState(null);
+  const [stats, setStats] = useState({
+    upcoming_appointments: 0,
+    pending_bills: 0,
+    total_visits: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [retryToken, setRetryToken] = useState(0);
@@ -262,7 +268,13 @@ function PatientDashboard() {
         if (!ignore) {
           setPatient(data.patient || null);
           setNextAppointment(data.next_appointment || null);
+          setOverdueReview(data.overdue_review || null);
           setLastConsultation(data.last_consultation || null);
+          setStats(data.stats || {
+            upcoming_appointments: 0,
+            pending_bills: 0,
+            total_visits: 0,
+          });
         }
       } catch (error) {
         if (!ignore) {
@@ -381,6 +393,8 @@ function PatientDashboard() {
             careTeamDoctorName={careTeamDoctorName}
             profileLastConsultation={profileLastConsultation}
             profileNextAppointment={profileNextAppointment}
+            overdueReview={overdueReview}
+            stats={stats}
             activeVisitSlot={
               profileActiveVisit ? (
                 <ActiveVisitCard visit={profileActiveVisit} onCancelled={handleVisitCancelled} />
@@ -408,6 +422,8 @@ function PatientDashboard() {
           managing={!isPrimaryProfile}
           lastConsultation={profileLastConsultation}
           nextAppointment={profileNextAppointment}
+          overdueReview={overdueReview}
+          stats={stats}
           careTeamDoctorName={careTeamDoctorName}
           activeVisitSlot={
             profileActiveVisit ? (
