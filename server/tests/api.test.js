@@ -1696,6 +1696,8 @@ test("operator dashboard metrics include visit requests and this-week unpaid", a
   assert.ok(Array.isArray(metrics.data.visit_requests?.unassigned));
   assert.equal(typeof metrics.data.pending_payment?.unpaid_this_week_count, "number");
   assert.equal(typeof metrics.data.scheduled_visits?.this_week, "number");
+  assert.equal(typeof metrics.data.scheduled_visits?.completed_this_week, "number");
+  assert.equal(typeof metrics.data.insurance_claims?.pending_count, "number");
   assert.equal(typeof metrics.data.coverage?.doctors_this_week, "number");
   assert.ok(Array.isArray(metrics.data.upcoming_visits));
 });

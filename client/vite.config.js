@@ -29,7 +29,7 @@ export default defineConfig({
       injectRegister: false,
       manifest: false,
       injectManifest: {
-        globPatterns: ["**/*.{js,css,html,png,svg,woff2,webmanifest}"],
+        globPatterns: ["**/*.{js,css,html,png,webp,svg,woff2,webmanifest}"],
       },
       integration: {
         configureCustomSWViteBuild(viteConfig) {

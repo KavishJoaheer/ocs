@@ -43,6 +43,7 @@ import {
   openInlinePreviewTab,
   presentFileBlob,
 } from "../lib/fileBlobViewer.js";
+import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
@@ -169,6 +170,8 @@ function getOperatorBoardCounts(metrics) {
     reviews: Number(metrics?.long_term_review?.active_followup_count ?? 0),
     unpaidThisWeek: Number(metrics?.pending_payment?.unpaid_this_week_count ?? 0),
     visitsThisWeek: Number(metrics?.scheduled_visits?.this_week ?? 0),
+    completedVisitsThisWeek: Number(metrics?.scheduled_visits?.completed_this_week ?? 0),
+    pendingClaims: Number(metrics?.insurance_claims?.pending_count ?? 0),
     healthPlans: Number(metrics?.health_plans?.active_subscribers_count ?? 0),
     doctorsThisWeek: Number(metrics?.coverage?.doctors_this_week ?? 0),
     onCall: Number(metrics?.coverage?.on_call_count ?? 0),
@@ -1031,275 +1034,6 @@ function DoctorDashboardView({
   );
 }
 
-const operatorMetricVariants = {
-  requests: {
-    card: "border border-gray-100 bg-white shadow-sm hover:shadow-md",
-    label: "text-slate-600",
-    value: "text-ocs-teal",
-    anchorTheme: "doctor-primary",
-  },
-  reviews: {
-    card: "border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] hover:bg-[#f7e6db]",
-    label: "text-[#ba5a32]",
-    value: "text-[#6e2f14]",
-    anchorTheme: "doctor-terracotta",
-  },
-  unpaid: {
-    card: "border border-rose-100 bg-rose-50/70 hover:bg-rose-50",
-    label: "text-rose-500",
-    value: "text-slate-900",
-  },
-  visits: {
-    card: "border border-gray-100 bg-white shadow-sm hover:shadow-md",
-    label: "text-slate-600",
-    value: "text-ocs-teal",
-    anchorTheme: "doctor-primary",
-  },
-};
-
-function OperatorMetricCard({ to, label, value, variant }) {
-  const styles = operatorMetricVariants[variant];
-
-  return (
-    <Link
-      to={to}
-      className={cx(
-        "group relative flex cursor-pointer flex-col rounded-2xl p-6 transition-all duration-300 ease-in-out",
-        styles.card,
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className={cx("text-xs font-bold uppercase tracking-widest", styles.label)}>{label}</span>
-        {styles.anchorTheme ? <MetricNavAnchor theme={styles.anchorTheme} /> : null}
-      </div>
-      <p className={cx("mt-4 text-4xl font-black tabular-nums", styles.value)}>{value}</p>
-    </Link>
-  );
-}
-
-function OperatorMetricsRow({ counts }) {
-  return (
-    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <OperatorMetricCard
-        to="/visit-requests"
-        label="Visit requests"
-        value={counts.visitRequests}
-        variant="requests"
-      />
-      <OperatorMetricCard
-        to="/operator/long-term-review"
-        label="Reviews due"
-        value={counts.reviews}
-        variant="reviews"
-      />
-      <OperatorMetricCard
-        to="/operator/scheduled-visits"
-        label="Visits this week"
-        value={counts.visitsThisWeek}
-        variant="visits"
-      />
-    </div>
-  );
-}
-
-function OperatorTodayStrip({ metrics }) {
-  const unassigned = Array.isArray(metrics?.visit_requests?.unassigned)
-    ? metrics.visit_requests.unassigned
-    : [];
-  const upcoming = Array.isArray(metrics?.upcoming_visits) ? metrics.upcoming_visits : [];
-  const unassignedCount = Number(metrics?.visit_requests?.unassigned_count ?? unassigned.length);
-
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
-        <span className="text-sm font-semibold text-slate-800">Today</span>
-        <Link to="/visit-requests" className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate">
-          Visit requests
-        </Link>
-      </div>
-
-      {unassigned.length ? (
-        <ul className="mt-3 divide-y divide-slate-100">
-          {unassigned.map((request) => (
-            <li key={`request-${request.id}`}>
-              <Link
-                to="/visit-requests"
-                className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-snug text-slate-800">
-                    {request.patient_name}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">
-                    {request.urgency === "emergency"
-                      ? "Emergency · unassigned"
-                      : request.urgency === "urgent"
-                        ? "Urgent · unassigned"
-                        : "Unassigned visit request"}
-                  </p>
-                </div>
-                <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Assign</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-sm text-slate-500">
-            {unassignedCount === 0
-              ? "No unassigned visit requests."
-              : "No unassigned visit requests in this list."}
-          </p>
-          <Link to="/visit-requests" className="text-xs font-semibold text-ocs-teal">
-            Board
-          </Link>
-        </div>
-      )}
-
-      <div className="mt-5 border-t border-gray-50 pt-4">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold text-slate-800">Next visits</span>
-          <Link
-            to="/operator/scheduled-visits"
-            className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
-          >
-            Schedule
-          </Link>
-        </div>
-        {upcoming.length ? (
-          <ul className="mt-2 divide-y divide-slate-100">
-            {upcoming.map((visit) => {
-              const timeLabel =
-                formatReviewAppointmentTime(visit.appointment_time) ||
-                String(visit.appointment_time || "").slice(0, 5);
-              const dateLabel = visit.appointment_date
-                ? dayjs(visit.appointment_date).format("ddd D MMM")
-                : "";
-
-              return (
-                <li key={`visit-${visit.id}`}>
-                  <Link
-                    to={visit.patient_id ? `/patients/${visit.patient_id}` : "/operator/scheduled-visits"}
-                    className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold tabular-nums text-slate-900">
-                        {dateLabel}
-                        {timeLabel ? ` · ${timeLabel}` : ""}
-                      </p>
-                      <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
-                        {visit.patient_name}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {visit.doctor_name}
-                        {visit.location ? ` · ${visit.location}` : ""}
-                      </p>
-                    </div>
-                    <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Open</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-slate-500">No upcoming scheduled visits.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function OperatorToolsColumn({
-  counts,
-  monthLabel,
-  lowStockAlert,
-  rosterMeta,
-  onOpenRosterPdf,
-  hcmUnreadCount = 0,
-}) {
-  const coverageLabel =
-    counts.doctorsThisWeek === 1
-      ? "1 doctor on this week"
-      : `${counts.doctorsThisWeek} doctors on this week`;
-  const onCallLabel =
-    counts.onCall === 1 ? "1 on call" : `${counts.onCall} on call`;
-
-  return (
-    <div className="flex flex-col gap-4 lg:col-span-2">
-      <Link
-        to="/operator/current-week-roster"
-        className="flex min-h-[132px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-colors hover:shadow-md"
-      >
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
-            Doctor shifts
-          </span>
-          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-            {onCallLabel}
-          </span>
-        </div>
-        <p className="mt-4 text-sm font-semibold leading-normal text-slate-800">{coverageLabel}</p>
-      </Link>
-
-      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <p className="text-sm font-semibold text-slate-800">Follow-up</p>
-        <div className="mt-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-800">{monthLabel} roster</p>
-              <Link
-                to="/operator/monthly-roster"
-                className="text-xs font-semibold text-slate-400 hover:text-ocs-slate"
-              >
-                Open roster
-              </Link>
-            </div>
-            <button
-              type="button"
-              onClick={onOpenRosterPdf}
-              disabled={!rosterMeta?.has_roster}
-              className="shrink-0 rounded-xl bg-ocs-teal px-3 py-2 text-xs font-semibold text-white transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Download PDF
-            </button>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-            <p className="text-sm font-medium text-slate-800">Health plans</p>
-            <Link
-              to="/patients?filter=subscribed"
-              className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
-            >
-              {counts.healthPlans} subscribed
-            </Link>
-          </div>
-          {lowStockAlert?.triggered ? null : (
-            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-              <p className="text-sm font-medium text-slate-800">Warehouse</p>
-              <Link
-                to="/inventory"
-                className="text-xs font-semibold text-slate-400 hover:text-ocs-slate"
-              >
-                Stock is fine
-              </Link>
-            </div>
-          )}
-          {hcmUnreadCount > 0 ? (
-            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-              <p className="text-sm font-medium text-slate-800">HCM</p>
-              <Link
-                to="/hcm-news"
-                className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
-              >
-                {hcmUnreadCount} unread
-              </Link>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function OperatorDashboardView({
   user,
   dashboard,
@@ -1311,47 +1045,21 @@ function OperatorDashboardView({
   onOpenRosterPdf,
   hcmUnreadCount = 0,
 }) {
-  const monthLabel = dayjs().format("MMMM");
   const counts = getOperatorBoardCounts(operatorMetrics);
-  const lowStockAlert = dashboard?.ocs_low_stock_alert;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-[2.125rem]">
-            Today
-          </h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">{dayjs().format("dddd D MMMM")}</p>
-        </div>
-        <OperationStatusSelector
-          align="right"
-          className="mt-0"
-          disabled={isSavingStatus}
-          onChange={onStatusChange}
-          options={["active", "offline"]}
-          value={user.operation_status}
-        />
-      </div>
-
-      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
-
-      <LowStockBanner alert={lowStockAlert} compact variant="ocs" />
-
-      <OperatorMetricsRow counts={counts} />
-
-      <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
-        <OperatorTodayStrip metrics={operatorMetrics} />
-        <OperatorToolsColumn
-          counts={counts}
-          hcmUnreadCount={hcmUnreadCount}
-          lowStockAlert={lowStockAlert}
-          monthLabel={monthLabel}
-          onOpenRosterPdf={onOpenRosterPdf}
-          rosterMeta={rosterMeta}
-        />
-      </div>
-    </div>
+    <OperatorCommandCentre
+      counts={counts}
+      hcmUnreadCount={hcmUnreadCount}
+      isSavingStatus={isSavingStatus}
+      latestHcmPost={latestHcmPost}
+      lowStockAlert={dashboard?.ocs_low_stock_alert}
+      onOpenRosterPdf={onOpenRosterPdf}
+      onStatusChange={onStatusChange}
+      operatorMetrics={operatorMetrics}
+      rosterMeta={rosterMeta}
+      user={user}
+    />
   );
 }
 

@@ -26,6 +26,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
+import OperatorDesktopIdentity from "./operator-dashboard/OperatorDesktopIdentity.jsx";
 
 function formatMobileDrawerDisplayName(user) {
   const name = String(user?.full_name || "").trim();
@@ -487,27 +488,31 @@ function Sidebar() {
             />
           </div>
 
-          <div className="mt-5 rounded-[30px] border border-ocs-yellow/30 bg-ocs-yellow p-5 text-slate-900 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-lg font-semibold text-slate-900">
-                  {user.role === "doctor"
-                    ? /^dr\.?\s/i.test(String(user.full_name || "").trim())
-                      ? user.full_name
-                      : `Dr ${user.full_name}`
-                    : user.full_name}
-                </p>
+          {user.role === "operator" ? (
+            <OperatorDesktopIdentity user={user} onSignOut={logout} />
+          ) : (
+            <div className="mt-5 rounded-[30px] border border-ocs-yellow/30 bg-ocs-yellow p-5 text-slate-900 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {user.role === "doctor"
+                      ? /^dr\.?\s/i.test(String(user.full_name || "").trim())
+                        ? user.full_name
+                        : `Dr ${user.full_name}`
+                      : user.full_name}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-grey px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-grey/90"
+                >
+                  <LogOut className="size-4" />
+                  Sign out
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => logout()}
-                className="inline-flex items-center gap-2 rounded-2xl bg-ocs-grey px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-grey/90"
-              >
-                <LogOut className="size-4" />
-                Sign out
-              </button>
             </div>
-          </div>
+          )}
 
           <div className="mt-6">
             <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-ocs-grey">

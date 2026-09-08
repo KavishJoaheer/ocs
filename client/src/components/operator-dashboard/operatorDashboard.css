@@ -1,0 +1,460 @@
+.ocs-cc {
+  --ocs-cc-charcoal: #203f42;
+  --ocs-cc-turquoise: #2bccc4;
+  --ocs-cc-gold: #f7ba24;
+  --ocs-cc-ink: #203f42;
+  --ocs-cc-muted: #5f7476;
+  --ocs-cc-card-shadow: 0 6px 18px rgba(32, 63, 66, 0.07);
+  --ocs-cc-card-shadow-hover: 0 10px 22px rgba(32, 63, 66, 0.12);
+  width: 100%;
+  min-width: 0;
+  max-width: 72rem;
+  margin-inline: auto;
+  color: var(--ocs-cc-ink);
+}
+
+.ocs-cc-hero {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: 13rem;
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 72% 24%, rgba(247, 186, 36, 0.19), transparent 27%),
+    radial-gradient(ellipse at 76% 84%, rgba(43, 204, 196, 0.13), transparent 31%),
+    linear-gradient(112deg, #0c2529 0%, #123236 52%, #0c292d 100%);
+  color: #f7fbfb;
+  box-shadow: 0 16px 30px rgba(20, 49, 52, 0.18);
+}
+
+@media (min-width: 1024px) {
+  .ocs-cc-hero {
+    min-height: 14.25rem;
+  }
+}
+
+.ocs-cc-network-art {
+  display: none;
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (min-width: 1024px) {
+  .ocs-cc-network-art {
+    display: block;
+  }
+}
+
+.ocs-cc-network-art::before {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: linear-gradient(90deg, #0c2529 0%, rgba(12, 37, 41, 0.98) 43%, rgba(12, 37, 41, 0.28) 65%, transparent 82%);
+  content: "";
+}
+
+.ocs-cc-network-island {
+  position: absolute;
+  right: 8.35rem;
+  top: 50%;
+  z-index: 1;
+  width: 13.65rem;
+  height: 14rem;
+  object-fit: contain;
+  opacity: 0;
+  transform: translateY(-48%) scale(0.98);
+  filter: saturate(0.94) contrast(1.06) drop-shadow(0 0 9px rgba(247, 186, 36, 0.16));
+  animation: ocs-cc-island-arrive 620ms cubic-bezier(0.22, 1, 0.36, 1) 80ms forwards;
+}
+
+.ocs-cc-network-mark {
+  position: absolute;
+  right: 11.8rem;
+  top: 50%;
+  z-index: 4;
+  width: 6.35rem;
+  height: 6.2rem;
+  transform: translateY(-46%);
+}
+
+.ocs-cc-network-mark-texture {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  -webkit-mask-image: url("/ocs-medecins-mark.png");
+  mask-image: url("/ocs-medecins-mark.png");
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.ocs-cc-network-mark-texture--c {
+  --mark-opacity: 0.18;
+  clip-path: polygon(0 0, 58% 0, 58% 47%, 100% 47%, 100% 100%, 0 100%);
+  background: #2bccc4;
+  filter: drop-shadow(0 0 4px rgba(43, 204, 196, 0.62));
+  animation: ocs-cc-mark-reveal 720ms cubic-bezier(0.22, 1, 0.36, 1) 620ms forwards;
+}
+
+.ocs-cc-network-mark-texture--x {
+  --mark-opacity: 0.24;
+  clip-path: polygon(56% 0, 100% 0, 100% 48%, 56% 48%);
+  background: #f7ba24;
+  filter: drop-shadow(0 0 4px rgba(247, 186, 36, 0.68));
+  animation: ocs-cc-mark-reveal 520ms cubic-bezier(0.16, 1, 0.3, 1) 1.42s forwards;
+}
+
+.ocs-cc-network-x {
+  position: absolute;
+  inset: 0;
+  transform: translate(-0.42rem, 0.48rem) scale(0.84);
+  transform-origin: 80% 20%;
+}
+
+.ocs-cc-network-routes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.ocs-cc-network-route {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ocs-cc-network-route--c {
+  stroke: rgba(173, 255, 250, 0.94);
+  stroke-width: 0.78;
+  stroke-dasharray: 280;
+  stroke-dashoffset: 280;
+  filter: drop-shadow(0 0 2.5px rgba(43, 204, 196, 0.9));
+  animation: ocs-cc-route-draw 900ms cubic-bezier(0.45, 0, 0.2, 1) 560ms forwards;
+}
+
+.ocs-cc-network-route--x {
+  stroke: rgba(255, 226, 137, 0.96);
+  stroke-width: 0.82;
+  stroke-dasharray: 42;
+  stroke-dashoffset: 42;
+  filter: drop-shadow(0 0 2px rgba(247, 186, 36, 0.9));
+  animation: ocs-cc-route-draw 420ms cubic-bezier(0.45, 0, 0.2, 1) 1.42s forwards;
+}
+
+.ocs-cc-network-node {
+  position: absolute;
+  z-index: 3;
+  width: 0.31rem;
+  height: 0.31rem;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.25);
+  animation: ocs-cc-node-awaken 360ms cubic-bezier(0.16, 1, 0.3, 1) var(--node-delay) forwards;
+}
+
+.ocs-cc-network-node--c {
+  background: #73f4ed;
+  box-shadow: 0 0 4px #2bccc4, 0 0 10px rgba(43, 204, 196, 0.72);
+}
+
+.ocs-cc-network-node--x {
+  background: #ffd66b;
+  box-shadow: 0 0 4px #f7ba24, 0 0 9px rgba(247, 186, 36, 0.76);
+}
+
+.ocs-cc-hero-body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 1.25rem;
+  align-items: center;
+  min-height: 10.75rem;
+}
+
+@media (min-width: 1024px) {
+  .ocs-cc-hero-body {
+    min-height: 12rem;
+    grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.55fr);
+  }
+}
+
+.ocs-cc-hero-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ocs-cc-hero-tagline {
+  max-width: 11rem;
+  color: rgba(247, 186, 36, 0.96);
+  font-family: var(--font-display, inherit);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  opacity: 0;
+  text-shadow: 0 1px 10px rgba(4, 27, 29, 0.72);
+  animation: ocs-cc-tagline-arrive 520ms ease-out 1.72s forwards;
+}
+
+@media (min-width: 1024px) {
+  .ocs-cc-hero-summary {
+    min-height: 10.75rem;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .ocs-cc-hero-on-call {
+    min-width: 8.75rem;
+    padding-top: 0.25rem;
+    text-shadow: 0 2px 16px rgba(3, 20, 22, 0.52);
+  }
+
+  .ocs-cc-hero-tagline {
+    text-align: right;
+  }
+}
+
+.ocs-cc-pulse {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--ocs-cc-turquoise);
+  box-shadow: 0 0 0 0 rgba(43, 204, 196, 0.55);
+  animation: ocs-cc-pulse 2s ease-out infinite;
+}
+
+.ocs-cc-card {
+  display: flex;
+  min-height: 8.45rem;
+  height: 100%;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid rgba(32, 63, 66, 0.1);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: var(--ocs-cc-card-shadow);
+  transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
+}
+
+.ocs-cc-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(43, 204, 196, 0.32);
+  box-shadow: var(--ocs-cc-card-shadow-hover);
+}
+
+.ocs-cc-card:focus-visible {
+  outline: 2px solid #2bccc4;
+  outline-offset: 3px;
+}
+
+.ocs-cc-card--create {
+  border-color: rgba(43, 204, 196, 0.38);
+  background: linear-gradient(180deg, #f4fffe 0%, #ffffff 72%);
+}
+
+.ocs-cc-card--live {
+  border-color: rgba(43, 204, 196, 0.42);
+  box-shadow: 0 0 0 1px rgba(43, 204, 196, 0.12), var(--ocs-cc-card-shadow);
+}
+
+.ocs-cc-card--amber {
+  border-color: rgba(247, 186, 36, 0.48);
+  background: #fffaf0;
+}
+
+.ocs-cc-card--amber:hover {
+  border-color: rgba(247, 186, 36, 0.7);
+}
+
+.ocs-cc-panel,
+.ocs-cc-side-card {
+  border: 1px solid rgba(32, 63, 66, 0.08);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: var(--ocs-cc-card-shadow);
+}
+
+.ocs-cc-pulse-row {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 0.75rem;
+  transition: background-color 220ms ease;
+}
+
+.ocs-cc-pulse-row:not(.ocs-cc-pulse-row--static):hover,
+.ocs-cc-pulse-row:focus-visible {
+  background: rgba(43, 204, 196, 0.08);
+}
+
+.ocs-cc-utility {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid rgba(32, 63, 66, 0.08);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: var(--ocs-cc-card-shadow);
+}
+
+@media (min-width: 768px) {
+  .ocs-cc-utility {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .ocs-cc-utility {
+    grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+  }
+}
+
+.ocs-cc-pdf {
+  border: 1px solid rgba(32, 63, 66, 0.16);
+  background: #203f42;
+  color: #ffffff;
+}
+
+.ocs-cc-pdf:hover:not(:disabled) {
+  background: #1a3538;
+}
+
+.ocs-cc-pdf:disabled {
+  border-color: rgba(32, 63, 66, 0.12);
+  background: #f3f5f4;
+  color: #8a9a9b;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.ocs-cc-identity {
+  margin-top: 1.25rem;
+  border: 1px solid rgba(32, 63, 66, 0.1);
+  border-radius: 1.15rem;
+  background: #fffdf7;
+  box-shadow: 0 6px 16px rgba(32, 63, 66, 0.05);
+}
+
+.ocs-cc-identity-menu {
+  position: absolute;
+  right: 0.65rem;
+  top: calc(100% - 0.35rem);
+  z-index: 20;
+  min-width: 10.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(32, 63, 66, 0.12);
+  border-radius: 0.9rem;
+  background: #ffffff;
+  box-shadow: 0 16px 32px rgba(32, 63, 66, 0.16);
+}
+
+@keyframes ocs-cc-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(43, 204, 196, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(43, 204, 196, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(43, 204, 196, 0);
+  }
+}
+
+@keyframes ocs-cc-island-arrive {
+  to {
+    opacity: 0.86;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+@keyframes ocs-cc-route-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ocs-cc-mark-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: var(--mark-opacity, 0.2);
+    transform: scale(1);
+  }
+}
+
+@keyframes ocs-cc-node-awaken {
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.45);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ocs-cc-tagline-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ocs-cc-network-island,
+  .ocs-cc-network-mark-texture,
+  .ocs-cc-network-route,
+  .ocs-cc-network-node,
+  .ocs-cc-hero-tagline,
+  .ocs-cc-pulse,
+  .ocs-cc-card,
+  .ocs-cc-pulse-row {
+    animation: none;
+    transition: none;
+  }
+
+  .ocs-cc-network-island {
+    opacity: 0.86;
+    transform: translateY(-50%) scale(1);
+  }
+
+  .ocs-cc-network-mark-texture {
+    opacity: var(--mark-opacity, 0.2);
+  }
+
+  .ocs-cc-network-route {
+    stroke-dashoffset: 0;
+  }
+
+  .ocs-cc-network-node,
+  .ocs-cc-hero-tagline {
+    opacity: 1;
+  }
+
+  .ocs-cc-network-node {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .ocs-cc-card:hover {
+    transform: none;
+  }
+}
