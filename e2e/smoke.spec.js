@@ -188,7 +188,9 @@ test.describe("OCS smoke", () => {
     ).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole("link", { name: /request a home visit/i })).toBeVisible();
+    await expect(
+      page.locator("#app-main-scroll").getByRole("link", { name: /request a home visit/i }),
+    ).toBeVisible();
   });
 
   test("patient health records overview loads", async ({ page, request }) => {
