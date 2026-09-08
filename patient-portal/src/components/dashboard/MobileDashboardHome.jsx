@@ -6,10 +6,12 @@ import {
   CalendarClock,
   FileText,
   FlaskConical,
+  Phone,
   Pill,
 } from "lucide-react";
 import { useRequestVisit } from "../../hooks/useRequestVisit.jsx";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
+import { CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 import { getVisitRequestLabel } from "../../lib/familyProfiles.js";
 
@@ -234,23 +236,30 @@ function MobileDashboardHome({
       ) : null}
 
       {!activeVisitSlot ? (
-        <button
-          type="button"
-          onClick={() => openRequestSheet()}
-          className="dashboard-hero-press squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 flex w-full items-center justify-between bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] text-left text-white"
-        >
-          <div className="pr-4">
-            <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-white/80">
-              24/7 Home Visits
-            </p>
-            <p className="native-display mt-2.5 text-[22px] leading-tight text-white">
-              {visitLabel}
-            </p>
+        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] p-5 text-white">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white/80">
+            24/7 home visits
+          </p>
+          <div className="mt-3 grid gap-2.5">
+            <button
+              type="button"
+              onClick={() => openRequestSheet()}
+              className="squircle-inner flex min-h-[52px] w-full items-center justify-between bg-white px-4 text-left shadow-sm transition active:scale-[0.98]"
+            >
+              <span className="native-display text-[20px] leading-tight text-[#173f4a]">
+                Request a doctor
+              </span>
+              <ArrowRight className="size-5 shrink-0 text-brand-gold" strokeWidth={2.5} />
+            </button>
+            <a
+              href={CLINIC_TEL_HREF}
+              className="squircle-inner inline-flex min-h-[48px] w-full items-center justify-center gap-2 border border-white/25 bg-white/10 px-4 text-[15px] font-bold text-white transition active:scale-[0.98] active:bg-white/15"
+            >
+              <Phone className="size-4.5" strokeWidth={2} aria-hidden="true" />
+              Call the clinic
+            </a>
           </div>
-          <div className="dashboard-hero-arrow-btn">
-            <ArrowRight className="size-6 text-brand-gold" strokeWidth={2.5} />
-          </div>
-        </button>
+        </section>
       ) : null}
 
       <section className="animate-fade-in-up stagger-3" aria-label="Care timeline">
