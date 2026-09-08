@@ -6,9 +6,7 @@ import {
   CalendarClock,
   FileText,
   FlaskConical,
-  HeartPulse,
   Pill,
-  ReceiptText,
 } from "lucide-react";
 import { useRequestVisit } from "../../hooks/useRequestVisit.jsx";
 import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
@@ -185,32 +183,6 @@ function TimelineCard({ card }) {
   );
 }
 
-const mobileSummaryItems = [
-  { key: "upcoming_appointments", label: "Upcoming", to: "/appointments", icon: CalendarClock },
-  { key: "pending_bills", label: "Bills", to: "/billing", icon: ReceiptText },
-  { key: "total_visits", label: "Visits", to: "/health-records", icon: HeartPulse },
-];
-
-function MobileCareSummary({ stats = {} }) {
-  return (
-    <section className="mb-9 grid grid-cols-3 gap-3 animate-fade-in-up stagger-2" aria-label="Care summary">
-      {mobileSummaryItems.map(({ key, label, to, icon: Icon }) => (
-        <Link
-          key={key}
-          to={to}
-          className="squircle-inner flex min-w-0 flex-col bg-white px-3 py-4 shadow-[var(--native-shadow-ambient)] transition active:scale-[0.98]"
-        >
-          <Icon className="size-4.5 text-[#2d8f98]" strokeWidth={1.9} />
-          <span className="mt-3 text-xl font-black tabular-nums text-[#22485b]">
-            {Number(stats[key] || 0)}
-          </span>
-          <span className="mt-0.5 truncate text-[11px] font-semibold text-[#6b858b]">{label}</span>
-        </Link>
-      ))}
-    </section>
-  );
-}
-
 // ─── Main dashboard view ──────────────────────────────────────────────────────
 
 function MobileDashboardHome({
@@ -218,7 +190,6 @@ function MobileDashboardHome({
   lastConsultation = null,
   nextAppointment = null,
   overdueReview = null,
-  stats = {},
   careTeamDoctorName = null,
   activeVisitSlot = null,
   managing = false,
@@ -281,8 +252,6 @@ function MobileDashboardHome({
           </div>
         </button>
       ) : null}
-
-      <MobileCareSummary stats={stats} />
 
       <section className="animate-fade-in-up stagger-3" aria-label="Care timeline">
         <div className="mb-5">

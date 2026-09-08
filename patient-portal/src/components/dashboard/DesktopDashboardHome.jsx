@@ -5,10 +5,8 @@ import {
   Calendar,
   CalendarClock,
   FileText,
-  HeartPulse,
   HousePlus,
   Phone,
-  ReceiptText,
 } from "lucide-react";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 import { CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
@@ -64,31 +62,6 @@ function DesktopRequestHero() {
           </a>
         </div>
       </div>
-    </section>
-  );
-}
-
-const summaryItems = [
-  { key: "upcoming_appointments", label: "Upcoming visits", to: "/appointments", icon: CalendarClock },
-  { key: "pending_bills", label: "Bills to review", to: "/billing", icon: ReceiptText },
-  { key: "total_visits", label: "Completed visits", to: "/health-records", icon: HeartPulse },
-];
-
-function DesktopSummaryRow({ stats = {} }) {
-  return (
-    <section className="grid grid-cols-3 gap-4 animate-fade-in-up stagger-2" aria-label="Care summary">
-      {summaryItems.map(({ key, label, to, icon: Icon }) => (
-        <Link key={key} to={to} className="group flex items-center gap-4 rounded-2xl border border-brand-teal/15 bg-white px-5 py-4 shadow-[0_8px_26px_rgba(34,72,91,0.04)] transition hover:-translate-y-0.5 hover:border-brand-teal/30 hover:shadow-[0_12px_30px_rgba(34,72,91,0.08)]">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-teal/10 text-[#287f86]">
-            <Icon className="size-5" strokeWidth={1.9} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-2xl font-black tabular-nums text-[#173f4a]">{Number(stats[key] || 0)}</span>
-            <span className="block text-xs font-semibold text-slate-500">{label}</span>
-          </span>
-          <ArrowUpRight className="size-4 shrink-0 text-slate-300 transition group-hover:text-brand-teal" />
-        </Link>
-      ))}
     </section>
   );
 }
@@ -258,7 +231,6 @@ function DesktopDashboardHome({
   profileLastConsultation,
   profileNextAppointment = null,
   overdueReview = null,
-  stats = {},
   activeVisitSlot,
   headline,
   careTeamDoctorName,
@@ -275,8 +247,6 @@ function DesktopDashboardHome({
       ) : (
         <div className="mb-5"><DesktopRequestHero /></div>
       )}
-
-      <div className="mb-6"><DesktopSummaryRow stats={stats} /></div>
 
       <div className="desktop-dashboard-shell">
         <div className="desktop-dashboard-grid">
