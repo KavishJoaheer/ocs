@@ -143,7 +143,7 @@ function DoctorMobileLauncher({ user, dashboard = null, latestHcmPost = null }) 
     .replace(/^dr\.?\s+/i, "")
     .trim()
     .split(/\s+/)[0] || "Doctor";
-  const { hasLowStockAlert, lowStockCount, loading } = useDoctorBagInventory();
+  const { lowStockCount, loading } = useDoctorBagInventory();
   const showLowStockStrip = !loading && lowStockCount > 0;
   const { activeCount: supplyPendingCount } = useDoctorSupplyRequests();
   const reviewCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
@@ -182,16 +182,6 @@ function DoctorMobileLauncher({ user, dashboard = null, latestHcmPost = null }) 
             label="Reviews due"
             icon={Activity}
             count={reviewCount}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <DoctorMobileSplitCard to="/patients" label="Patient Directory" icon={UserRound} />
-          <DoctorMobileSplitCard
-            to="/inventory"
-            label="Inventory"
-            icon={Package}
-            showLowStockLed={hasLowStockAlert}
           />
         </div>
 
