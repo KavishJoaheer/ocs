@@ -50,48 +50,49 @@ function OperationStatusSelector({
   align = "right",
   className,
   tone = "light",
+  showLabel = true,
 }) {
   const onDark = tone === "onDark";
 
   return (
     <div
       className={cx(
-        "flex flex-wrap items-center gap-1 text-sm",
+        "flex flex-wrap items-center gap-2 text-sm",
         align === "right" ? "justify-end" : "justify-start",
         className,
       )}
     >
-      <span className={cx("shrink-0 font-semibold", onDark ? "text-[#f7ba24]" : "text-[#f1bc35]")}>
-        STATUS:
-      </span>
+      {showLabel ? (
+        <span className={cx("shrink-0 text-xs font-bold uppercase tracking-wider", onDark ? "text-white/55" : "text-slate-400")}>
+          Status
+        </span>
+      ) : null}
 
-      {options.map((status, index) => {
-        const meta = onDark ? DARK_STATUS_META[status] : STATUS_META[status];
-        const isActive = value === status;
+      <div className={cx("flex items-center gap-1 rounded-xl p-1", onDark ? "bg-white/10" : "bg-slate-100")}>
+        {options.map((status) => {
+          const meta = onDark ? DARK_STATUS_META[status] : STATUS_META[status];
+          const isActive = value === status;
 
-        return (
-          <div key={status} className="flex items-center gap-1.5">
+          return (
             <button
+              key={status}
               type="button"
               onClick={() => onChange?.(status)}
               disabled={disabled || isActive}
               className={cx(
-                "rounded-full px-2.5 py-0.5 text-sm font-semibold normal-case transition disabled:cursor-default",
+                "rounded-lg px-3 py-1.5 text-xs font-bold normal-case transition disabled:cursor-default",
                 isActive
                   ? cx(meta?.textClassName, meta?.activeClassName)
                   : onDark
-                    ? "bg-transparent text-white/75 hover:bg-white/10 hover:text-white"
-                    : cx(meta?.textClassName, "bg-transparent opacity-90 hover:bg-white/55 hover:opacity-100"),
+                    ? "bg-transparent text-white/70 hover:bg-white/10 hover:text-white"
+                    : "bg-transparent text-slate-500 hover:bg-white hover:text-slate-800",
               )}
             >
               {meta?.label || STATUS_META[status]?.label || status}
             </button>
-            {index < options.length - 1 ? (
-              <span className={cx("text-sm", onDark ? "text-white/40" : "text-[#2d5f69]")}>/</span>
-            ) : null}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

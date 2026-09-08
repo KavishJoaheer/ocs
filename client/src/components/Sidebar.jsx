@@ -84,7 +84,7 @@ const navItems = [
   },
   {
     to: "/doctor/long-term-review",
-    label: "Review appointment",
+    label: "Reviews due",
     icon: Activity,
     roles: ["doctor"],
     hideInMobileDrawer: true,
@@ -325,7 +325,7 @@ function Sidebar() {
   }, [drawerOpen]);
 
   return (
-    <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80 lg:shrink-0">
+    <div className="flex w-full min-w-0 shrink-0 flex-col lg:w-72 lg:shrink-0">
       {/* ─── Phone: slim top bar ─── */}
       <div
         id="ocs-mobile-topbar"
@@ -478,23 +478,23 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-full min-w-0 border-r border-slate-200 bg-white text-slate-900 lg:flex lg:w-80 lg:shrink-0 lg:flex-col">
-        <div className="flex flex-1 flex-col px-6 py-6">
-          <div className="inline-flex w-full rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+      <aside className="hidden w-full min-w-0 border-r border-slate-200 bg-white text-slate-900 lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
+        <div className="flex flex-1 flex-col px-5 py-5">
+          <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <BrandMark
-              maxWidth={240}
+              maxWidth={220}
               logoClassName="drop-shadow-sm"
-              size={56}
+              size={48}
             />
           </div>
 
           {user.role === "operator" ? (
             <OperatorDesktopIdentity user={user} onSignOut={logout} />
           ) : (
-            <div className="mt-5 rounded-[30px] border border-ocs-yellow/30 bg-ocs-yellow p-5 text-slate-900 shadow-sm">
+            <div className="mt-4 rounded-2xl border border-ocs-yellow/30 bg-[#f7c747] p-4 text-slate-900 shadow-sm">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-lg font-semibold text-slate-900">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-bold text-slate-900">
                     {user.role === "doctor"
                       ? /^dr\.?\s/i.test(String(user.full_name || "").trim())
                         ? user.full_name
@@ -505,10 +505,11 @@ function Sidebar() {
                 <button
                   type="button"
                   onClick={() => logout()}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-grey px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-grey/90"
+                  className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/65 text-slate-700 transition hover:bg-white hover:text-slate-950"
+                  aria-label="Sign out"
+                  title="Sign out"
                 >
                   <LogOut className="size-4" />
-                  Sign out
                 </button>
               </div>
             </div>

@@ -86,7 +86,7 @@ const pageMeta = {
     helper: "Review all patients currently assigned to this doctor account.",
   },
   "/doctor/long-term-review": {
-    label: "Review appointment",
+    label: "Review appointments",
     helper: "Practice-wide chronic care follow-up queue.",
   },
   "/operator/current-week-roster": {
