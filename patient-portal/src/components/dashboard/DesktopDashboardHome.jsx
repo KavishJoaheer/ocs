@@ -94,19 +94,18 @@ function DesktopCareTeamCard({ doctorName }) {
 function DesktopConciergeCard() {
   return (
     <section className="desktop-concierge-card animate-fade-in-up stagger-4">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#83ddd7]">Always available</p>
-      <h2 className="mt-3 font-display text-xl font-bold leading-tight tracking-tight text-white">Need help deciding what to do?</h2>
-      <p className="mt-2 text-sm leading-relaxed text-white/68">The OCS medical concierge can help with visits, appointments, and account questions.</p>
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <a href={CLINIC_TEL_HREF} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-sm font-bold text-[#173f4a] transition hover:bg-[#effafa]">
-          <Phone className="size-4" />
-          Call
-        </a>
-        <a href={OCS_CARE_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-gold px-3 py-3 text-sm font-bold text-[#173f4a] transition hover:brightness-105">
-          <WhatsAppIcon className="size-4" />
-          WhatsApp
-        </a>
-      </div>
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#83ddd7]">WhatsApp support</p>
+      <h2 className="mt-3 font-display text-xl font-bold leading-tight tracking-tight text-white">Prefer to message us?</h2>
+      <p className="mt-2 text-sm leading-relaxed text-white/68">Chat with the OCS care team about visits, appointments, or account questions.</p>
+      <a
+        href={OCS_CARE_WHATSAPP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-gold px-4 py-3 text-sm font-bold text-[#173f4a] transition hover:brightness-105"
+      >
+        <WhatsAppIcon className="size-4" />
+        Chat on WhatsApp
+      </a>
     </section>
   );
 }

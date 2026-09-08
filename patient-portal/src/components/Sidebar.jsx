@@ -1,10 +1,9 @@
-import { LogOut, HousePlus } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 import MobileBottomNav from "./MobileBottomNav.jsx";
-import RequestVisitCta from "./request-visit/RequestVisitCta.jsx";
 
 function SidebarLink({ item }) {
   const Icon = item.icon;
@@ -77,14 +76,8 @@ function Sidebar() {
             </button>
           </div>
 
-          {/* Request a home visit — primary action */}
-          <RequestVisitCta
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-brand-gold px-4 py-3 text-sm font-bold text-brand-dark-grey shadow-[0_8px_24px_-6px_rgba(var(--ocs-brand-gold-rgb),0.35)] transition hover:brightness-105 hover:shadow-[0_10px_28px_-6px_rgba(var(--ocs-brand-gold-rgb),0.45)] active:scale-[0.98] lg:bg-ocs-yellow lg:text-slate-900"
-            leading={<HousePlus className="size-5" />}
-          />
-
           {/* Nav links */}
-          <div className="mt-7">
+          <div className="mt-8">
             <p className="px-3 text-[10px] font-bold uppercase tracking-[0.24em] text-brand-cool-grey">
               Navigation
             </p>
