@@ -6,6 +6,7 @@ import {
   CalendarClock,
   FileText,
   FlaskConical,
+  HousePlus,
   Phone,
   Pill,
 } from "lucide-react";
@@ -236,24 +237,36 @@ function MobileDashboardHome({
       ) : null}
 
       {!activeVisitSlot ? (
-        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 mb-9 bg-gradient-to-br from-[#1a6b72] via-[#2d8f98] to-[#41c8c6] p-5 text-white">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white/80">
-            24/7 home visits
-          </p>
-          <div className="mt-3 grid gap-2.5">
+        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 relative mb-9 overflow-hidden bg-[#173f4a] p-5 text-white">
+          <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-brand-gold/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 -left-12 size-40 rounded-full bg-brand-teal/25 blur-3xl" />
+
+          <div className="relative z-10 flex items-center gap-2.5">
+            <span className="size-2.5 rounded-full bg-brand-gold shadow-[0_0_0_5px_rgba(var(--ocs-brand-gold-rgb),0.14)]" />
+            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#9be5df]">
+              24/7 home visits
+            </p>
+          </div>
+
+          <div className="relative z-10 mt-5 grid gap-2">
             <button
               type="button"
               onClick={() => openRequestSheet()}
-              className="squircle-inner flex min-h-[52px] w-full items-center justify-between bg-white px-4 text-left shadow-sm transition active:scale-[0.98]"
+              className="squircle-inner flex min-h-[58px] w-full items-center gap-3 bg-brand-gold px-4 text-left text-[#173f4a] shadow-[0_10px_24px_rgba(var(--ocs-brand-gold-rgb),0.22)] transition active:scale-[0.98]"
             >
-              <span className="native-display text-[20px] leading-tight text-[#173f4a]">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/45">
+                <HousePlus className="size-[18px]" strokeWidth={2} aria-hidden="true" />
+              </span>
+              <span className="native-display min-w-0 flex-1 text-[19px] leading-tight">
                 Request a doctor
               </span>
-              <ArrowRight className="size-5 shrink-0 text-brand-gold" strokeWidth={2.5} />
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#173f4a]/10">
+                <ArrowRight className="size-4.5" strokeWidth={2.5} aria-hidden="true" />
+              </span>
             </button>
             <a
               href={CLINIC_TEL_HREF}
-              className="squircle-inner inline-flex min-h-[48px] w-full items-center justify-center gap-2 border border-white/25 bg-white/10 px-4 text-[15px] font-bold text-white transition active:scale-[0.98] active:bg-white/15"
+              className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 text-[15px] font-bold text-white/85 transition active:scale-[0.98] active:text-white"
             >
               <Phone className="size-4.5" strokeWidth={2} aria-hidden="true" />
               Call the clinic
