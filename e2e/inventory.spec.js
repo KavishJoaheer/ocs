@@ -736,8 +736,18 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByRole("button", { name: "Review correction" })).toBeVisible();
     await page.getByRole("button", { name: "Review correction" }).click();
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Reduce reservations and apply" }).click();
+    const correctionDialog = page.getByRole("dialog").filter({
+      has: page.getByRole("heading", { name: /Exceptional inventory correction/ }),
+    });
+    const applyReservationReduction = correctionDialog.getByRole("button", {
+      name: "Reduce reservations and apply",
+    });
+    await expect(applyReservationReduction).toBeDisabled();
+    await correctionDialog.getByRole("checkbox", {
+      name: /High risk: this will reduce reservations/,
+    }).check();
+    await expect(applyReservationReduction).toBeEnabled();
+    await applyReservationReduction.click();
     await expect(page.getByText("Exceptional correction applied.")).toBeVisible({ timeout: 15_000 });
 
     const pickedItem = await createStockedItem(request, {
