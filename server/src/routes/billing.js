@@ -146,9 +146,9 @@ function roundCurrency(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 
-function validateOperatorIssue(items, status) {
+function validateOperatorInvoice(items, status) {
   if (status !== "unpaid") {
-    return "Operators can issue unpaid invoices only. Payment must be recorded by an authorised finance or clinical user.";
+    return "Operators must issue the invoice as unpaid, then record payment through the confirmed payment action.";
   }
 
   const tariffRows = db
@@ -167,12 +167,11 @@ function validateOperatorIssue(items, status) {
       continue;
     }
 
-    if (
-      !item.inventory_item_id ||
-      item.type !== "Sale" ||
-      item.emergency_override === true
-    ) {
-      return "Operators can add available catalogue items only. Manual charges, wastage, adjustments, and emergency stock overrides require an authorised clinician or admin.";
+    if (item.type !== "Sale" || item.emergency_override === true) {
+      return "Operators can bill sale lines only. Wastage, adjustments, and emergency stock overrides require an authorised clinician or admin.";
+    }
+    if (!item.inventory_item_id && !String(item.description || "").trim()) {
+      return "Every line copied from the paper invoice needs a description.";
     }
   }
 
@@ -809,7 +808,12 @@ router.post("/", (req, res) => {
   }
 
   if (req.auth.role === "operator") {
-    const operatorIssueError = validateOperatorIssue(items, status);
+    if (String(req.body.source_reference || "").trim().length < 3) {
+      return res.status(400).json({
+        error: "Enter the OCS paper invoice number or photo reference before issuing this invoice.",
+      });
+    }
+    const operatorIssueError = validateOperatorInvoice(items, status);
     if (operatorIssueError) {
       return res.status(403).json({ error: operatorIssueError });
     }
@@ -854,9 +858,11 @@ router.post("/", (req, res) => {
           total_amount,
           status,
           payment_method,
-          payment_date, updated_by_user_id
+          payment_date,
+          updated_by_user_id,
+          change_reason
         )
-        VALUES (?, ?, '[]', 0, ?, ?, ?, ?)
+        VALUES (?, ?, '[]', 0, ?, ?, ?, ?, ?)
       `).run(
         consultationId,
         patientId,
@@ -864,6 +870,9 @@ router.post("/", (req, res) => {
         paymentMethod,
         paymentDate,
         req.auth.id,
+        req.auth.role === "operator"
+          ? `Paper invoice: ${String(req.body.source_reference || "").trim()}`
+          : "",
       );
       createdId = Number(inserted.lastInsertRowid);
 
@@ -919,9 +928,6 @@ router.post("/", (req, res) => {
 });
 
 router.put("/:id", (req, res) => {
-  if (req.auth.role === "operator") {
-    return res.status(403).json({ error: "Operators can issue invoices but cannot edit an issued bill." });
-  }
   const billId = Number(req.params.id);
   const existing = getJoinedBillById(billId);
   const accessError = ensureBillAccess(req, existing, { write: true });
@@ -933,6 +939,19 @@ router.put("/:id", (req, res) => {
   const items = normalizeBillingItems(req.body.items);
   if (!items.length) {
     return res.status(400).json({ error: "At least one billing line item is required." });
+  }
+  if (req.auth.role === "operator") {
+    const requestedStatus = String(req.body.status ?? existing.status).trim().toLowerCase();
+    if (requestedStatus !== existing.status) {
+      return res.status(403).json({ error: "Use the confirmed payment action to record payment." });
+    }
+    const operatorEditError = validateOperatorInvoice(items, existing.status);
+    if (operatorEditError) {
+      return res.status(403).json({ error: operatorEditError });
+    }
+    if (String(req.body.correction_reason || "").trim().length < 8) {
+      return res.status(400).json({ error: "Document the paper invoice reference or reason for this correction." });
+    }
   }
   if (inventorySignature(items) !== inventorySignature(existing.items)) {
     return res.status(400).json({
@@ -1027,9 +1046,6 @@ router.put("/:id", (req, res) => {
 });
 
 router.patch("/:id/pay", (req, res) => {
-  if (req.auth.role === "operator") {
-    return res.status(403).json({ error: "Operators can issue invoices but cannot record payment." });
-  }
   const billId = Number(req.params.id);
   const existing = getJoinedBillById(billId);
   const accessError = ensureBillAccess(req, existing, { write: true });

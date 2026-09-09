@@ -67,36 +67,67 @@ async function report(date=today,basis='visit') {
 }
 function row(id) {return db.prepare('SELECT * FROM inventory WHERE id = ?').get(id);}
 
-test('operators can issue reconciled unpaid invoices without payment or correction powers', async () => {
+test('operators transcribe paper invoices, correct unpaid bills and record payment with an audit trail', async () => {
   const ctx=context('Operator invoice'); const it=item('Operator invoice medicine');
   const options=await api('GET','/billing/consultation-options','operator');
   assert.equal(options.status,200,JSON.stringify(options.data));
   const option=options.data.find(row=>row.id===ctx.consultationId);
   assert.ok(option); assert.equal(Object.hasOwn(option,'doctor_notes'),false);
 
+  assert.equal((await api('POST','/billing','operator',{
+    consultation_id:ctx.consultationId,patient_id:ctx.patientId,items:[standardFee()],status:'unpaid',
+  })).status,400);
+
   const issued=await api('POST','/billing','operator',{
     consultation_id:ctx.consultationId,
     patient_id:ctx.patientId,
     items:[standardFee(),stockLine(it,1)],
     status:'unpaid',
+    source_reference:'OCS pad #0142',
   });
   assert.equal(issued.status,201,JSON.stringify(issued.data));
   assert.equal(issued.data.status,'unpaid'); assert.equal(row(it.id).quantity,19);
   assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(issued.data.updated_by_user_id).role,'operator');
   assert.ok((await api('GET','/billing','operator')).data.some(b=>b.id===issued.data.id));
+  assert.equal(db.prepare("SELECT reason FROM billing_events WHERE bill_id=? AND event_type='created'").get(issued.data.id).reason,'Paper invoice: OCS pad #0142');
 
   const paidCtx=context('Operator paid block');
   assert.equal((await api('POST','/billing','operator',{
     consultation_id:paidCtx.consultationId,patient_id:paidCtx.patientId,items:[standardFee()],
-    status:'paid',payment_method:'cash',payment_date:today,
+    status:'paid',payment_method:'cash',payment_date:today,source_reference:'OCS pad #0143',
   })).status,403);
-  const manualCtx=context('Operator manual block');
-  assert.equal((await api('POST','/billing','operator',{
+  const manualCtx=context('Operator manual line');
+  const manual=await api('POST','/billing','operator',{
     consultation_id:manualCtx.consultationId,patient_id:manualCtx.patientId,
-    items:[standardFee(),{description:'Custom service',type:'Sale',amount:500,quantity:1}],status:'unpaid',
+    items:[standardFee(),{description:'Doctor-written dressing charge',type:'Sale',amount:500,quantity:1}],
+    status:'unpaid',source_reference:'OCS pad #0144',
+  });
+  assert.equal(manual.status,201,JSON.stringify(manual.data));
+
+  const correctedItems=issued.data.items.map(line=>line.is_consultation_fee
+    ? {...line,description:'Night Consultation',amount:3000}
+    : line).concat({description:'Doctor-written aftercare item',type:'Sale',amount:100,quantity:1});
+  const corrected=await api('PUT',`/billing/${issued.data.id}`,'operator',{
+    items:correctedItems,expected_version:issued.data.row_version,
+    correction_reason:'OCS pad #0142 transcription correction',
+  });
+  assert.equal(corrected.status,200,JSON.stringify(corrected.data));
+  assert.equal(corrected.data.total_amount,3125);
+  assert.equal(row(it.id).quantity,19);
+  assert.equal((await api('PUT',`/billing/${issued.data.id}`,'operator',{
+    items:corrected.data.items,expected_version:corrected.data.row_version,
+  })).status,400);
+
+  const paid=await api('PATCH',`/billing/${issued.data.id}/pay`,'operator',{
+    payment_method:'cash',payment_date:today,expected_version:corrected.data.row_version,
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  assert.equal(paid.data.status,'paid');
+  assert.equal(paid.data.payment_method,'cash');
+  assert.equal(db.prepare("SELECT actor_role FROM billing_events WHERE bill_id=? AND after_json LIKE '%\"status\":\"paid\"%' ORDER BY id DESC LIMIT 1").get(issued.data.id).actor_role,'operator');
+  assert.equal((await api('PUT',`/billing/${issued.data.id}`,'operator',{
+    items:paid.data.items,expected_version:paid.data.row_version,correction_reason:'Try to change paid invoice',
   })).status,403);
-  assert.equal((await api('PUT',`/billing/${issued.data.id}`,'operator',{items:issued.data.items})).status,403);
-  assert.equal((await api('PATCH',`/billing/${issued.data.id}/pay`,'operator',{payment_method:'cash',payment_date:today})).status,403);
   assert.equal((await api('POST',`/billing/${issued.data.id}/void`,'operator',{reason:'Operator cannot void'})).status,403);
 });
 

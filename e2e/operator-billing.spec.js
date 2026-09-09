@@ -18,7 +18,7 @@ async function injectStaffSession(page, token) {
 }
 
 test.describe("operator billing", () => {
-  test("desktop exposes invoice issue controls without finance actions", async ({ page, request }) => {
+  test("desktop exposes paper-invoice transcription without admin controls", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -29,12 +29,12 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
     await expect(page.getByText("Financial reconciliation", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Record payment/i })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "Issue invoice" })).toBeVisible();
     await expect(page.getByText("Issued as unpaid", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Add manual item/i })).toHaveCount(0);
+    await expect(page.getByLabel("Paper invoice reference")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Add manual item/i })).toBeVisible();
   });
 
   test("mobile has a tailored billing destination and protected invoice form", async ({ page, request }) => {
@@ -53,6 +53,7 @@ test.describe("operator billing", () => {
     await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "Issue invoice" })).toBeVisible();
     await expect(page.getByText("Issued as unpaid", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Payment recording and invoice corrections remain/i)).toBeVisible();
+    await expect(page.getByLabel("Paper invoice reference")).toBeVisible();
+    await expect(page.getByText(/use Record payment to confirm/i)).toBeVisible();
   });
 });

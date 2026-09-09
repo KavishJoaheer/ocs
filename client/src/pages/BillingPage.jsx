@@ -332,6 +332,7 @@ function BillingItemsEditor({
   lockInventory = false,
   inventoryOptions = [],
   inventoryLoading = false,
+  operatorRestricted = false,
 }) {
   function updateItem(index, key, value) {
     setItems((current) =>
@@ -360,7 +361,8 @@ function BillingItemsEditor({
     <div className="space-y-3">
       {items.map((item, index) => {
         const isInventoryLine = Boolean(item.inventory_item_id) && Number(item.quantity || 0) > 0;
-        const lineLocked = lockInventory && isInventoryLine;
+        const isFeeLine = isVisitFee(item);
+        const lineLocked = (lockInventory && isInventoryLine) || (operatorRestricted && isFeeLine);
         return (
           <div key={index} className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_160px_150px_auto]">
             <InventoryItemDescriptionField
@@ -387,7 +389,7 @@ function BillingItemsEditor({
             <select
               value={item.type || "Sale"}
               onChange={(event) => updateItem(index, "type", event.target.value)}
-              disabled={lineLocked}
+              disabled={lineLocked || operatorRestricted}
               className={cx(BILLING_FIELD, "px-3 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:bg-slate-100")}
             >
               <option value="Sale">Sale</option>
@@ -533,6 +535,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   const [correctionReason, setCorrectionReason] = useState("");
   const [history, setHistory] = useState([]);
   const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || ((bill?.status === "paid" || bill?.legacy_fee_review_required) && user?.role !== "admin"));
+  const operatorEditing = user?.role === "operator" && !readOnly;
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
@@ -707,8 +710,14 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
           lockInventory
           inventoryOptions={inventoryOptions}
           inventoryLoading={inventoryLoading}
+          operatorRestricted={operatorEditing}
         />
 
+        {operatorEditing ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+            This invoice remains unpaid while you correct its transcription. Use Record payment from the billing list after saving.
+          </div>
+        ) : (
         <BillingStatusFields
           status={status}
           setStatus={setStatus}
@@ -718,9 +727,10 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
           setPaymentDate={setPaymentDate}
           total={total}
         />
+        )}
 
         {Boolean(bill.legacy_fee_review_required) && <p className="rounded-xl bg-amber-50 p-3 text-sm">Historical fee: an admin must verify the agreed charge against the original record. Keep the existing amount if it was agreed, or correct it with a documented reason. Payment stays blocked until this review is confirmed.</p>}
-        {(bill.status === "paid" || Boolean(bill.legacy_fee_review_required)) && !readOnly && <label className="block text-sm font-medium">Reason and source reference for review / correction
+        {(operatorEditing || bill.status === "paid" || Boolean(bill.legacy_fee_review_required)) && !readOnly && <label className="block text-sm font-medium">Reason and source reference for review / correction
           <textarea required minLength={8} value={correctionReason} onChange={e => setCorrectionReason(e.target.value)} className="mt-2 block w-full rounded-xl border border-slate-200 p-3" placeholder="Explain what is being corrected and why" />
         </label>}
         </fieldset>
@@ -747,7 +757,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
           </button>
           <button
             type="submit"
-            disabled={isSaving || readOnly}
+            disabled={isSaving || readOnly || (operatorEditing && correctionReason.trim().length < 8)}
             className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
           >
             {isSaving ? "Saving..." : "Update bill"}
@@ -1097,6 +1107,7 @@ function CreateBillingModal({
 }) {
   const { user: authUser } = useAuth();
   const operatorIssueOnly = authUser?.role === "operator";
+  const [sourceReference, setSourceReference] = useState("");
   const [patientId, setPatientId] = useState("");
   const [consultationId, setConsultationId] = useState("");
   const [status, setStatus] = useState("unpaid");
@@ -1143,6 +1154,7 @@ function CreateBillingModal({
     setStatus("unpaid");
     setPaymentMethod("");
     setPaymentDate("");
+    setSourceReference("");
     setConsultationType("Day Consultation");
     setConsultationPrice("");
     setItems([]);
@@ -1348,6 +1360,11 @@ function CreateBillingModal({
       return;
     }
 
+    if (operatorIssueOnly && sourceReference.trim().length < 3) {
+      toast.error("Enter the paper invoice number or photo reference.");
+      return;
+    }
+
     if (operatorIssueOnly && items.some((item) => item.emergency_override)) {
       toast.error("Reduce the quantity to available stock before issuing this invoice.");
       return;
@@ -1399,6 +1416,7 @@ function CreateBillingModal({
       status,
       payment_method: status === "paid" ? paymentMethod : null,
       payment_date: status === "paid" ? paymentDate || null : null,
+      source_reference: operatorIssueOnly ? sourceReference.trim() : null,
     });
   }
 
@@ -1933,14 +1951,27 @@ function CreateBillingModal({
           inventoryOptions={inventoryOptions}
           inventoryLoading={inventoryLoading}
           onPickManualInventory={pickManualInventoryItem}
-          allowManualItems={!operatorIssueOnly}
+          allowManualItems
           allowEmergencyOverride={!operatorIssueOnly}
         />
 
         {operatorIssueOnly ? (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
-            <p className="font-bold">Issued as unpaid</p>
-            <p className="mt-1">Payment recording and invoice corrections remain with authorised finance, clinical, or admin users.</p>
+          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+            <label className="block font-semibold">
+              Paper invoice reference
+              <input
+                required
+                minLength={3}
+                value={sourceReference}
+                onChange={(event) => setSourceReference(event.target.value)}
+                className={cx(BILLING_FIELD, "mt-2 bg-white")}
+                placeholder="e.g. OCS pad #0142 or photo reference"
+              />
+            </label>
+            <div>
+              <p className="font-bold">Issued as unpaid</p>
+              <p className="mt-1">Save the doctor’s written details first, then use Record payment to confirm the method and date during follow-up.</p>
+            </div>
           </div>
         ) : (
         <BillingStatusFields
@@ -2162,7 +2193,7 @@ function CreateBillingModal({
 }
 
 function canWriteBill(user, bill) {
-  if (user?.role === "admin" || user?.role === "accountant") {
+  if (user?.role === "admin" || user?.role === "accountant" || user?.role === "operator") {
     return true;
   }
   if (user?.role !== "doctor") {
@@ -2193,7 +2224,7 @@ function BillingPage() {
   const canCreateBills =
     user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const canMarkPaid =
-    user?.role === "admin" || user?.role === "doctor" || user?.role === "accountant";
+    user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const isMobile = useIsMobile();
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",

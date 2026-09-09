@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CreditCard, DollarSign, ReceiptText } from "lucide-react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -117,7 +118,12 @@ export default function OperatorBillingStatusPage() {
       <PageHeader
         eyebrow="Operator workspace"
         title="Billing Status"
-        description="Read-only billing visibility for operators so payment status can be tracked without editing finance records."
+        description="Track every invoice and open unpaid records for correction or payment follow-up."
+        actions={
+          <Link to="/billing" className="inline-flex min-h-11 items-center rounded-2xl bg-ocs-teal px-4 py-2.5 text-sm font-semibold text-white">
+            Open billing workspace
+          </Link>
+        }
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -138,7 +144,7 @@ export default function OperatorBillingStatusPage() {
       >
         <SectionCard
           title="Billing status"
-          subtitle="Read-only consultation billing visibility across the clinic."
+          subtitle="Consultation billing visibility across the clinic."
           actions={
             isMobile ? null : (
               <select
@@ -195,6 +201,7 @@ export default function OperatorBillingStatusPage() {
                         <th className="px-5 py-4">Status</th>
                         <th className="px-5 py-4">Pay by</th>
                         <th className="px-5 py-4">Payment date</th>
+                        <th className="px-5 py-4">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -219,6 +226,11 @@ export default function OperatorBillingStatusPage() {
                           </td>
                           <td className="px-5 py-4 text-sm text-slate-600">
                             {bill.payment_date ? formatDate(bill.payment_date) : "Not paid yet"}
+                          </td>
+                          <td className="px-5 py-4">
+                            <Link to={`/billing?billId=${bill.id}`} className="inline-flex min-h-11 items-center font-semibold text-ocs-teal underline">
+                              Open bill
+                            </Link>
                           </td>
                         </tr>
                       ))}
@@ -255,6 +267,9 @@ export default function OperatorBillingStatusPage() {
                           : "Awaiting payment"}
                       </p>
                     </div>
+                    <Link to={`/billing?billId=${bill.id}`} className="mt-3 inline-flex min-h-11 items-center font-semibold text-ocs-teal underline">
+                      Open bill
+                    </Link>
                   </div>
                 ))}
               </div>

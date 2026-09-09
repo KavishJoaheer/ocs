@@ -107,7 +107,7 @@ const pageMeta = {
   },
   "/operator/billing-status": {
     label: "Billing status",
-    helper: "Read-only billing visibility for operators to track payment status without editing finance records.",
+    helper: "Track invoices and open the billing workspace for payment follow-up.",
   },
   "/operator/pending-payment": {
     label: "Pending payment",

@@ -254,8 +254,8 @@ function createApp() {
     authorizeByMethod({
       GET: ["admin", "accountant", "doctor", "operator"],
       POST: ["admin", "accountant", "doctor", "operator"],
-      PUT: ["admin", "accountant", "doctor"],
-      PATCH: ["admin", "accountant", "doctor"],
+      PUT: ["admin", "accountant", "doctor", "operator"],
+      PATCH: ["admin", "accountant", "doctor", "operator"],
     }),
     billingRouter,
   );
