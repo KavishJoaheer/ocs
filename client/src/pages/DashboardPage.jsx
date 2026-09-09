@@ -975,7 +975,12 @@ function DoctorLiveRequestsPanel({ requests = [], activeCount = 0 }) {
               </span>
               Live requests
             </div>
-            <h2 className="mt-4 font-display text-2xl font-semibold tracking-tight md:text-3xl">
+            <h2
+              className={cx(
+                "font-display text-2xl font-semibold tracking-tight md:text-3xl",
+                hasRequests ? "mt-4" : "mt-2",
+              )}
+            >
               {hasRequests
                 ? `${activeCount} active ${activeCount === 1 ? "request" : "requests"}`
                 : "No active requests"}
@@ -1037,12 +1042,7 @@ function DoctorLiveRequestsPanel({ requests = [], activeCount = 0 }) {
               </Link>
             ))}
           </div>
-        ) : (
-          <div className="mt-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3.5 text-sm text-white/72">
-            <CheckCircle2 className="size-5 shrink-0 text-[#83ddd7]" />
-            Live board is clear. Keep your availability status up to date.
-          </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -1190,10 +1190,6 @@ function DoctorDashboardView({
   const liveVisitRequestCount = Number(
     dashboard?.liveVisitRequests?.active_count ?? liveVisitRequests.length,
   );
-  const firstName = String(user?.full_name || "Doctor")
-    .replace(/^dr\.?\s+/i, "")
-    .trim()
-    .split(/\s+/)[0];
 
   return (
     <section className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
@@ -1209,8 +1205,8 @@ function DoctorDashboardView({
               value={user.operation_status}
             />
           }
-          subtitle={`${dayjs().format("dddd D MMMM")} · Here is what needs your attention today.`}
-          title={`Hello, Dr ${firstName}`}
+          subtitle={dayjs().format("dddd D MMMM")}
+          title="Today’s overview"
         />
       </div>
 
