@@ -7,6 +7,7 @@ import {
   RefreshCw,
   GripVertical,
   Timer,
+  LockKeyhole,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -15,7 +16,6 @@ import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
-import { formatDate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
@@ -79,6 +79,15 @@ function visitForLabel(request) {
 }
 
 const POLL_INTERVAL_MS = 15000;
+const CLOSED_STATUSES = ["completed", "cancelled"];
+const requestDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric", month: "short", year: "numeric", timeZone: "Indian/Mauritius",
+});
+
+function formatRequestDate(value) {
+  const date = parseTimestamp(value);
+  return date ? requestDateFormatter.format(date) : "Not set";
+}
 
 function UrgencyBadge({ urgency }) {
   return (
@@ -388,7 +397,8 @@ function draftFromRequest(request) {
   };
 }
 
-function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }) {
+function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true, isAdmin = false }) {
+  const locked = !isAdmin && CLOSED_STATUSES.includes(request.status);
   const [draft, setDraft] = useState(() => draftFromRequest(request));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -397,8 +407,9 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
 
   if (serverKey !== syncedKey) {
     setSyncedKey(serverKey);
-    if (!dirty) {
+    if (!dirty || locked) {
       setDraft(draftFromRequest(request));
+      setDirty(false);
     }
   }
 
@@ -408,12 +419,14 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
   }
 
   async function handleSave() {
-    if (saving) return;
+    if (saving || locked) return;
     setSaving(true);
     try {
       await onUpdate(request.id, {
-        status: draft.status,
-        assigned_doctor_id: draft.assigned_doctor_id === "" ? null : Number(draft.assigned_doctor_id),
+        ...(draft.status !== request.status ? { status: draft.status } : {}),
+        ...(canAssignDoctor ? {
+          assigned_doctor_id: draft.assigned_doctor_id === "" ? null : Number(draft.assigned_doctor_id),
+        } : {}),
         eta_minutes: draft.eta_minutes === "" ? null : Number(draft.eta_minutes),
         staff_notes: draft.staff_notes,
       });
@@ -440,7 +453,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
             <UrgencyBadge urgency={request.urgency} />
           </div>
           <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-gray-400">
-            {request.patient_identifier || "—"} · Requested {formatDate(request.created_at)}
+            {request.patient_identifier || "—"} · Requested {formatRequestDate(request.created_at)}
           </p>
         </div>
         {request.patient_contact_number ? (
@@ -465,77 +478,93 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true }
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Status</span>
-          <select
-            value={draft.status}
-            onChange={(e) => updateDraft({ status: e.target.value })}
-            className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+      {locked ? (
+        <div className="mt-5 space-y-4">
+          <p className="flex items-start gap-2 rounded-xl bg-slate-100 px-3 py-3 text-sm font-medium text-slate-600">
+            <LockKeyhole className="mt-0.5 size-4 shrink-0" />
+            Locked · Only an admin can edit this {request.status} visit.
+          </p>
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <div><dt className="text-slate-500">Status</dt><dd className="mt-1 font-semibold text-slate-900">{request.status_label}</dd></div>
+            <div><dt className="text-slate-500">Doctor</dt><dd className="mt-1 font-semibold text-slate-900">{request.doctor_name || "Unassigned"}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-slate-500">Internal notes</dt><dd className="mt-1 whitespace-pre-wrap text-slate-700">{request.staff_notes || "No internal notes"}</dd></div>
+          </dl>
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Status</span>
+              <select
+                value={draft.status}
+                onChange={(e) => updateDraft({ status: e.target.value })}
+                className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
+              >
+                {STATUS_OPTIONS.filter((option) => canAssignDoctor || option.value === request.status || ["en_route", "arrived", "in_consultation", "completed"].includes(option.value)).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        {canAssignDoctor ? (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Doctor</span>
-            <select
-              value={draft.assigned_doctor_id}
-              onChange={(e) => updateDraft({ assigned_doctor_id: e.target.value })}
-              className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
-            >
-              <option value="">Unassigned</option>
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={String(doctor.id)}>
-                  {doctor.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+            {canAssignDoctor ? (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Doctor</span>
+                <select
+                  value={draft.assigned_doctor_id}
+                  onChange={(e) => updateDraft({ assigned_doctor_id: e.target.value })}
+                  className="rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
+                >
+                  <option value="">Unassigned</option>
+                  {doctors.map((doctor) => (
+                    <option key={doctor.id} value={String(doctor.id)}>
+                      {doctor.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">ETA (mins)</span>
-          <div className="relative">
-            <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#6e949b]" />
-            <input
-              type="number"
-              min="0"
-              value={draft.eta_minutes}
-              onChange={(e) => updateDraft({ eta_minutes: e.target.value })}
-              placeholder="e.g. 25"
-              className="w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
-            />
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">ETA (mins)</span>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#6e949b]" />
+                <input
+                  type="number"
+                  min="0"
+                  value={draft.eta_minutes}
+                  onChange={(e) => updateDraft({ eta_minutes: e.target.value })}
+                  placeholder="e.g. 25"
+                  className="w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
+                />
+              </div>
+            </label>
           </div>
-        </label>
-      </div>
 
-      <label className="mt-3 flex flex-col gap-1">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Internal notes</span>
-        <textarea
-          value={draft.staff_notes}
-          onChange={(e) => updateDraft({ staff_notes: e.target.value })}
-          rows={2}
-          placeholder="Add coordination notes for the team"
-          className="w-full resize-none rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
-        />
-      </label>
+          <label className="mt-3 flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Internal notes</span>
+            <textarea
+              value={draft.staff_notes}
+              onChange={(e) => updateDraft({ staff_notes: e.target.value })}
+              rows={2}
+              placeholder="Add coordination notes for the team"
+              className="w-full resize-none rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2d8f98]"
+            />
+          </label>
 
-      <div className="mt-4 flex justify-end">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!dirty || saving}
-          className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-        >
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-      </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!dirty || saving}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -547,6 +576,7 @@ export default function VisitRequestsPage() {
   const refreshKey = useLiveRefreshKey();
   const appointmentChangeCount = useAppointmentChangeCount();
   const isDoctor = user?.role === "doctor";
+  const isAdmin = user?.role === "admin";
   const canAssignDoctor = !isDoctor;
   const boardColumns = isDoctor ? DOCTOR_BOARD_COLUMNS : DISPATCH_BOARD_COLUMNS;
 
@@ -555,10 +585,16 @@ export default function VisitRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("active");
+  const [dateDraft, setDateDraft] = useState({ from: "", to: "" });
+  const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
+  const [dateError, setDateError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const loadRef = useRef(null);
+  const fetchIdRef = useRef(0);
 
   const loadRequests = useCallback(async ({ silent = false } = {}) => {
+    const fetchId = ++fetchIdRef.current;
     if (statusFilter === "changes") {
       setLoading(false);
       setRefreshing(false);
@@ -566,15 +602,24 @@ export default function VisitRequestsPage() {
     }
     if (silent) setRefreshing(true);
     try {
-      const data = await api.get(`/visit-requests?status=${statusFilter}`);
+      const query = new URLSearchParams({ status: statusFilter });
+      if (dateFilter.from) query.set("date_from", dateFilter.from);
+      if (dateFilter.to) query.set("date_to", dateFilter.to);
+      const data = await api.get(`/visit-requests?${query}`);
+      if (fetchId !== fetchIdRef.current) return;
       setRequests(data.visit_requests || []);
+      setLoadError("");
     } catch (error) {
+      if (fetchId !== fetchIdRef.current) return;
+      setLoadError(error?.message || "Could not load visit requests.");
       if (!silent) toast.error(error?.message || "Could not load visit requests.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (fetchId === fetchIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [statusFilter]);
+  }, [statusFilter, dateFilter]);
 
   loadRef.current = loadRequests;
 
@@ -602,6 +647,7 @@ export default function VisitRequestsPage() {
   useEffect(() => {
     setLoading(true);
     loadRequests();
+    return () => { fetchIdRef.current += 1; };
   }, [loadRequests, refreshKey]);
 
   // Keep the board live: poll quietly and tick the SLA timers every second.
@@ -615,16 +661,18 @@ export default function VisitRequestsPage() {
   }, []);
 
   const handleUpdate = useCallback(async (id, payload) => {
+    const existing = requests.find((request) => request.id === id);
+    if (!isAdmin && CLOSED_STATUSES.includes(existing?.status)) {
+      throw new Error("This visit is locked. Only an admin can edit completed or cancelled visits.");
+    }
     if (payload.status === "completed") {
-      const existing = requests.find((request) => request.id === id);
       const doctorId = Number(
         payload.assigned_doctor_id !== undefined
           ? payload.assigned_doctor_id
           : existing?.assigned_doctor_id,
       );
       if (!Number.isInteger(doctorId) || doctorId <= 0) {
-        toast.error("Assign a doctor before completing this visit.");
-        return;
+        throw new Error("Assign a doctor before completing this visit.");
       }
     }
 
@@ -658,7 +706,7 @@ export default function VisitRequestsPage() {
       throw error;
     }
     await loadRequests({ silent: true });
-  }, [isDoctor, loadRequests, navigate, requests]);
+  }, [isAdmin, isDoctor, loadRequests, navigate, requests]);
 
   const activeDoctors = useMemo(
     () => doctors.filter((doctor) => doctor.is_active !== 0 && !doctor.deleted_at),
@@ -666,6 +714,28 @@ export default function VisitRequestsPage() {
   );
 
   const isBoard = statusFilter === "active";
+  const hasDateFilter = Boolean(dateFilter.from || dateFilter.to);
+  const fromLabel = dateFilter.from ? formatRequestDate(`${dateFilter.from}T00:00:00Z`) : "any date";
+  const toLabel = dateFilter.to ? formatRequestDate(`${dateFilter.to}T00:00:00Z`) : "";
+  const dateSummary = dateFilter.from && dateFilter.from === dateFilter.to
+    ? `Showing requests for ${fromLabel}.`
+    : `Showing requests from ${fromLabel}${toLabel ? ` through ${toLabel}` : " onwards"}.`;
+
+  function applyDates(event) {
+    event.preventDefault();
+    if (dateDraft.from && dateDraft.to && dateDraft.from > dateDraft.to) {
+      setDateError("The start date must be on or before the end date.");
+      return;
+    }
+    setDateError("");
+    setDateFilter({ ...dateDraft });
+  }
+
+  function clearDates() {
+    setDateDraft({ from: "", to: "" });
+    setDateFilter({ from: "", to: "" });
+    setDateError("");
+  }
 
   return (
     <div className="space-y-6">
@@ -725,6 +795,34 @@ export default function VisitRequestsPage() {
         ))}
       </div>
 
+      {statusFilter !== "changes" ? (
+        <form onSubmit={applyDates} className="space-y-3 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-4">
+          <p className="text-sm font-semibold text-slate-700">Requested date <span className="font-normal text-slate-500">· Mauritius time</span></p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex">
+              <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-600">
+                From
+                <input type="date" value={dateDraft.from} onChange={(event) => setDateDraft((current) => ({ ...current, from: event.target.value }))} className="min-w-0 w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 sm:w-44" />
+              </label>
+              <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-600">
+                To
+                <input type="date" value={dateDraft.to} onChange={(event) => setDateDraft((current) => ({ ...current, to: event.target.value }))} className="min-w-0 w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 sm:w-44" />
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" className="flex-1 rounded-xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white sm:flex-none">Apply dates</button>
+              {hasDateFilter || dateDraft.from || dateDraft.to ? <button type="button" onClick={clearDates} className="rounded-xl border border-[rgba(65,200,198,0.25)] px-4 py-2 text-sm font-semibold text-[#2d8f98]">Clear dates</button> : null}
+            </div>
+          </div>
+          {dateError ? <p role="alert" className="text-sm text-red-700">{dateError}</p> : null}
+          <p aria-live="polite" className="text-xs text-slate-500">
+            {hasDateFilter
+              ? dateSummary
+              : "All dates. Use the same From and To date to find a single day."}
+          </p>
+        </form>
+      ) : null}
+
       {!isDoctor && statusFilter === "active" && appointmentChangeCount > 0 ? (
         <button
           type="button"
@@ -739,11 +837,15 @@ export default function VisitRequestsPage() {
         <AppointmentChangeInbox />
       ) : loading ? (
         <LoadingState label="Loading visit requests" />
+      ) : loadError ? (
+        <EmptyState title="Could not load visit requests" description={`${loadError} Use Refresh to try again.`} />
       ) : requests.length === 0 ? (
         <EmptyState
-          title="No visit requests"
+          title={hasDateFilter ? "No visits match these dates" : "No visit requests"}
           description={
-            isDoctor
+            hasDateFilter
+              ? "Try another date range, clear the dates, or choose All to include every visit status."
+              : isDoctor
               ? "When dispatch assigns you a home visit, it will appear here."
               : "When a patient requests a home visit from the patient portal, it will appear here for the team to action."
           }
@@ -768,6 +870,7 @@ export default function VisitRequestsPage() {
                 doctors={activeDoctors}
                 onUpdate={handleUpdate}
                 canAssignDoctor={canAssignDoctor}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

@@ -3,7 +3,6 @@ const { db, ensureBillingForConsultation } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { getTodayLocal } = require("../lib/utils");
 const {
-  notifyStaffNewVisitRequest,
   notifyVisitRequestUpdated,
 } = require("../lib/visitRequestNotifications");
 const {
@@ -31,14 +30,38 @@ function isDispatchRole(role) {
   return role === "admin" || role === "operator";
 }
 
-// GET /api/visit-requests?status=active|all|<status>
+function isValidDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+// Dates refer to when the request was made, in Mauritius time (UTC+4).
+// GET /api/visit-requests?status=active|all|<status>&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
 router.get("/", (req, res) => {
   const statusFilter = String(req.query.status || "active").trim().toLowerCase();
+  const dateFrom = String(req.query.date_from || "").trim();
+  const dateTo = String(req.query.date_to || "").trim();
+  if ((dateFrom && !isValidDate(dateFrom)) || (dateTo && !isValidDate(dateTo))) {
+    return res.status(400).json({ error: "Use a valid date in YYYY-MM-DD format." });
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    return res.status(400).json({ error: "The start date must be on or before the end date." });
+  }
   const role = req.auth?.role;
   const doctorId = role === "doctor" ? getDoctorIdForUser(req.auth.id) : null;
 
   const whereParts = [];
   const params = [];
+
+  if (dateFrom) {
+    whereParts.push("date(v.created_at, '+4 hours') >= ?");
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    whereParts.push("date(v.created_at, '+4 hours') <= ?");
+    params.push(dateTo);
+  }
 
   if (role === "doctor") {
     if (!doctorId) {
@@ -104,6 +127,12 @@ router.patch("/:id", (req, res) => {
 
   const role = req.auth?.role;
   const doctorId = role === "doctor" ? getDoctorIdForUser(req.auth.id) : null;
+
+  if (role !== "admin" && ["completed", "cancelled"].includes(existing.status)) {
+    return res.status(403).json({
+      error: "This visit is locked. Only an admin can edit completed or cancelled visits.",
+    });
+  }
 
   if (role === "doctor") {
     if (!doctorId || Number(existing.assigned_doctor_id) !== doctorId) {
