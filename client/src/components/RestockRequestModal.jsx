@@ -282,7 +282,8 @@ export default function RestockRequestModal({
             </div>
           ) : (
             items.map((row, idx) => {
-              const available = Number.isFinite(Number(row.ocs_available)) ? Number(row.ocs_available) : null;
+              const currentItem = (catalogItems || []).find(item => Number(item.id) === Number(row.inventory_id));
+              const available = row.inventory_id ? catalogAvailable(currentItem) : null;
               const shortage = available != null && Number(row.quantity || 0) > available;
               const duplicates = matchingActiveRequests(row);
               return (

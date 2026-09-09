@@ -1,3 +1,4 @@
+import FinancialReconciliation from "../components/FinancialReconciliation.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -1160,6 +1161,7 @@ export default function LiveReportPage() {
           </div>
         </section>
       ) : null}
+      <FinancialReconciliation report={report?.financialReconciliation} />
     </div>
   );
 }

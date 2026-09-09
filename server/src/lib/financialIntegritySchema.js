@@ -7,11 +7,13 @@ function ensureFinancialIntegritySchema(db) {
   };
   db.transaction(() => {
     add('billing', 'row_version', 'INTEGER NOT NULL DEFAULT 1');
+    add('billing', 'fee_review_required', 'INTEGER NOT NULL DEFAULT 0');
     add('billing', 'change_reason', "TEXT NOT NULL DEFAULT ''");
     add('inventory_movements', 'unit_cost_snapshot', 'REAL');
     add('inventory_movements', 'unit_price_snapshot', 'REAL');
     add('inventory_movements', 'valuation_basis', 'TEXT');
     db.exec(`
+      CREATE TABLE IF NOT EXISTS financial_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS operation_receipts (
         actor_id INTEGER NOT NULL, scope TEXT NOT NULL, operation_id TEXT NOT NULL,
         request_hash TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -24,13 +26,19 @@ function ensureFinancialIntegritySchema(db) {
       );
       CREATE INDEX IF NOT EXISTS idx_billing_events_bill ON billing_events(bill_id, id);
     `);
+    if (!db.prepare("SELECT 1 FROM financial_migrations WHERE name='consultation_tariffs_20260909'").get()) {
+      for (const [name, amount] of Object.entries(require('./consultationFees').CONSULTATION_FEES)) {
+        db.prepare('UPDATE consultation_fee_types SET default_amount=?, updated_at=CURRENT_TIMESTAMP WHERE type_name=?').run(amount, name);
+      }
+      db.prepare("INSERT INTO financial_migrations(name) VALUES ('consultation_tariffs_20260909')").run();
+    }
     add('billing_events', 'actor_name', "TEXT NOT NULL DEFAULT ''");
     add('billing_events', 'actor_role', "TEXT NOT NULL DEFAULT ''");
     const actorName = id => `(SELECT full_name FROM users WHERE id=${id})`;
     const actorRole = id => `(SELECT role FROM users WHERE id=${id})`;
     const snapshot = alias => `json_object('status', ${alias}.status, 'total_amount', ${alias}.total_amount,
       'items', ${alias}.items, 'payment_method', ${alias}.payment_method,
-      'payment_date', ${alias}.payment_date, 'voided_at', ${alias}.voided_at)`;
+      'payment_date', ${alias}.payment_date, 'voided_at', ${alias}.voided_at, 'fee_review_required', ${alias}.fee_review_required)`;
     db.exec(`
       INSERT INTO billing_events(bill_id, actor_id, actor_name, actor_role, event_type, after_json, reason)
       SELECT b.id, b.updated_by_user_id, COALESCE(${actorName('b.updated_by_user_id')}, ''), COALESCE(${actorRole('b.updated_by_user_id')}, ''), 'migration_baseline', ${snapshot('b')},
@@ -43,7 +51,7 @@ function ensureFinancialIntegritySchema(db) {
         INSERT INTO billing_events(bill_id, actor_id, actor_name, actor_role, event_type, after_json)
         VALUES (NEW.id, NEW.updated_by_user_id, COALESCE(${actorName('NEW.updated_by_user_id')}, ''), COALESCE(${actorRole('NEW.updated_by_user_id')}, ''), 'created', ${snapshot('NEW')});
       END;
-      CREATE TRIGGER IF NOT EXISTS billing_event_update AFTER UPDATE OF items, total_amount, status, payment_method, payment_date, voided_at ON billing
+      CREATE TRIGGER IF NOT EXISTS billing_event_update AFTER UPDATE OF items, total_amount, status, payment_method, payment_date, voided_at, fee_review_required ON billing
       WHEN ${snapshot('OLD')} != ${snapshot('NEW')} BEGIN
         INSERT INTO billing_events(bill_id, actor_id, actor_name, actor_role, event_type, before_json, after_json, reason)
         VALUES (NEW.id, COALESCE(NEW.voided_by_user_id, NEW.updated_by_user_id),

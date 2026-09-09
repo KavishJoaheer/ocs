@@ -42,7 +42,7 @@ function shouldProcessInventoryEvent(event, user) {
     return false;
   }
 
-  if (user.role === "admin" || user.role === "operator") {
+  if (user.role === "admin" || user.role === "operator" || user.role === "accountant") {
     return true;
   }
 
@@ -83,7 +83,7 @@ function scheduleInventoryInvalidation(user, event) {
       return;
     }
 
-    if (payload.user.role === "admin" || payload.user.role === "operator") {
+    if (payload.user.role === "admin" || payload.user.role === "operator" || payload.user.role === "accountant") {
       notifyOcsInventoryUpdated();
       if (payload.event?.stockScope === "doctor") {
         notifyDoctorBagInventoryUpdated();
@@ -186,12 +186,20 @@ export function startInventoryRealtimeSync(user) {
       eventSource = source;
 
   source.addEventListener("connected", () => {
+    if (eventSource !== source || buildSessionKey(user) !== activeSessionKey) return;
     clearReconnectTimer();
+    // A reconnect has no event replay. Reload every view which could have missed a change.
+    notifyDoctorBagInventoryUpdated();
+    notifyOcsInventoryUpdated();
+    notifySupplyRequestsUpdated();
+    notifyPatientsLiveUpdated();
+    notifyLongTermReviewUpdated();
+    if (user.role === 'linkham_admin') { notifyLinkhamClaimsUpdated(); notifyLinkhamPatientsUpdated(); }
   });
 
   source.addEventListener("inventory_resync", () => {
     notifyDoctorBagInventoryUpdated();
-    if (user.role === "admin" || user.role === "operator") {
+    if (user.role === "admin" || user.role === "operator" || user.role === "accountant") {
       notifyOcsInventoryUpdated();
     }
   });

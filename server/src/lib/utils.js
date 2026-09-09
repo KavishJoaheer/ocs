@@ -39,6 +39,8 @@ function normalizeBillingItems(items) {
       quantity: Number.isInteger(Number(item?.quantity)) ? Number(item.quantity) : 0,
       inventory_item_id: item?.inventory_item_id ? Number(item.inventory_item_id) : null,
       emergency_override: Boolean(item?.emergency_override),
+      ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
+      ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
       appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,
     }))
     .filter((item) => item.description || item.amount);

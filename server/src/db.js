@@ -2146,9 +2146,9 @@ function ensureConsultationFeeTypes() {
   `);
 
   const defaults = [
-    ["Day Consultation", 1500],
-    ["Night Consultation", 2500],
-    ["Review Consultation", 800],
+    ["Day Consultation", 2000],
+    ["Night Consultation", 3000],
+    ["Review Consultation", 2000],
   ];
 
   const upsert = db.prepare(`
@@ -3550,16 +3550,16 @@ function seedDatabase() {
   seed();
 }
 
-function getDefaultConsultationFeeAmount() {
+function getDefaultConsultationFeeAmount(type = "Day Consultation") {
   const row =
     db
       .prepare(`
         SELECT default_amount
         FROM consultation_fee_types
-        WHERE type_name = 'Day Consultation'
+        WHERE type_name = ?
         LIMIT 1
       `)
-      .get() ||
+      .get(type) ||
     db
       .prepare(`
         SELECT default_amount
@@ -3569,29 +3569,33 @@ function getDefaultConsultationFeeAmount() {
       `)
       .get();
 
-  return Number(row?.default_amount ?? 1500);
+  return Number(row?.default_amount ?? 2000);
 }
 
-function ensureBillingForConsultation(consultationId, patientId) {
+function ensureBillingForConsultation(consultationId, patientId, actor = null, consultationType = null) {
+  const { CONSULTATION_FEES } = require("./lib/consultationFees");
+  if (consultationType && !Object.hasOwn(CONSULTATION_FEES, consultationType)) throw Object.assign(new Error("Select Day, Night or Review Consultation."), {status:400});
   const existingBill = db
-    .prepare("SELECT id FROM billing WHERE consultation_id = ?")
+    .prepare("SELECT id FROM billing WHERE consultation_id = ? AND voided_at IS NULL ORDER BY id LIMIT 1")
     .get(consultationId);
 
   let billId;
   if (existingBill) {
     billId = existingBill.id;
   } else {
-    const feeAmount = getDefaultConsultationFeeAmount();
+    const feeType = consultationType || "Day Consultation";
+    const feeAmount = getDefaultConsultationFeeAmount(feeType);
     const items = normalizeBillingItems([
       {
-        description: "Day Consultation",
+        description: feeType,
+        is_consultation_fee: true,
         amount: feeAmount,
       },
     ]);
 
     const insert = db.prepare(`
-      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method)
-      VALUES (?, ?, ?, ?, 'unpaid', NULL)
+      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, updated_by_user_id, fee_review_required)
+      VALUES (?, ?, ?, ?, 'unpaid', NULL, ?, ?)
     `);
 
     const result = insert.run(
@@ -3599,6 +3603,8 @@ function ensureBillingForConsultation(consultationId, patientId) {
       patientId,
       JSON.stringify(items),
       calculateBillingTotal(items),
+      actor?.id || null,
+      consultationType ? 0 : 1,
     );
     billId = result.lastInsertRowid;
   }

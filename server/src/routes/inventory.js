@@ -1,3 +1,4 @@
+const { financialAction, stockFinancials, movementRows } = require("../lib/inventoryFinancials");
 const { operationFor } = require("../lib/operationReceipts");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const express = require("express");
@@ -955,38 +956,10 @@ function summarize(items, doctorId = null) {
   const missingExpiry = items.filter((item) => item.missing_expiry);
   const expired = items.filter((item) => item.has_expired);
 
-  const monthlyConsumed = doctorId
-    ? db
-      .prepare(`
-        SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount
-        FROM inventory_movements m
-        JOIN inventory i ON i.id = m.item_id
-        WHERE i.stock_scope = 'doctor'
-          AND i.owner_doctor_id = ?
-          AND m.movement_type = 'out'
-          AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
-      `)
-      .get(doctorId)
-    : db
-      .prepare(`
-        SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount
-        FROM inventory_movements m
-        JOIN inventory i ON i.id = m.item_id
-        WHERE i.stock_scope = 'ocs'
-          AND m.movement_type = 'out'
-          AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
-      `)
-      .get();
-
-  const monthlySales = db
-    .prepare(`
-      SELECT COALESCE(SUM(m.quantity * i.selling_price), 0) AS amount
-      FROM inventory_movements m
-      JOIN inventory i ON i.id = m.item_id
-      WHERE m.action_type = 'sell'
-        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
-    `)
-    .get();
+  const monthStart = db.prepare("SELECT date('now','+4 hours','start of month') AS d").get().d;
+  const monthRows = movementRows(db,{from:monthStart,doctorId});
+  const monthlySales = {amount:stockFinancials(monthRows).net_sales_rs};
+  const monthlyConsumed = {amount:stockFinancials(doctorId ? monthRows : monthRows.filter(r=>r.stock_scope==='ocs')).total_value_cost_rs};
 
   const monthlyReplenishments = db
     .prepare(`
@@ -994,7 +967,7 @@ function summarize(items, doctorId = null) {
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
       WHERE m.action_type IN ('restock_in', 'add')
-        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
+        AND strftime('%Y-%m', m.created_at, '+4 hours') = strftime('%Y-%m', 'now', '+4 hours')
     `)
     .get();
 
@@ -1553,6 +1526,8 @@ function buildActivityHistoryFilter(query = {}) {
     const includeSale = actionValues.includes("sell");
     where.push(`(h.action_type IN (${expandedActions.map((_, index) => `@action${index}`).join(", ")})
       ${includeLoss ? "OR (h.action_type = 'stock_out' AND lower(json_extract(h.meta_json, '$.stock_out_reason')) IN ('wasted', 'expired'))" : ""}
+      ${includeLoss ? "OR (m.action_type = 'reversal' AND json_extract(m.meta_json, '$.original_action_type') IN ('wastage', 'expired'))" : ""}
+      ${includeSale ? "OR (m.action_type = 'reversal' AND json_extract(m.meta_json, '$.original_action_type') = 'sell')" : ""}
       ${includeSale ? "OR (h.action_type = 'stock_out' AND lower(json_extract(h.meta_json, '$.stock_out_reason')) = 'sale')" : ""})`);
     expandedActions.forEach((action, index) => {
       params[`action${index}`] = action;
@@ -1570,22 +1545,14 @@ function escapeCsvValue(value) {
   return `"${normalized.replace(/"/g, '""')}"`;
 }
 
-function financialAction(row) {
-  const action = String(row.action_type || "").toLowerCase();
-  const reason = String(safeParseJson(row.meta_json, {}).stock_out_reason || "").toLowerCase();
-  if (action === "stock_out") {
-    if (reason === "sale") return "sell";
-    if (reason === "wasted" || reason === "expired") return "wastage";
-  }
-  return action === "expired" ? "wastage" : action;
-}
 function calculateEventValue(row) {
   const quantity = Math.abs(Number(row.quantity || 0));
   const actionType = financialAction(row);
   const cost = Number(row.cost_price || 0);
   const sell = Number(row.selling_price || 0);
-  if (actionType === "sell") return roundCurrency(quantity * sell);
-  return roundCurrency(quantity * cost);
+  const sign = (row.movement_action_type || row.action_type) === "reversal" ? -1 : 1;
+  if (actionType === "sell") return roundCurrency(sign * quantity * sell);
+  return roundCurrency(sign * quantity * cost);
 }
 
 function buildConsolidatedActivity(rows) {
@@ -1703,6 +1670,8 @@ function enrichActivityRow(row) {
     (!String(row.batch_id || "").trim() && String(row.action_type || "").includes("stock_out"));
   return {
     ...row,
+    billing_id: Number(safeParseJson(row.current_meta_json || row.meta_json, {}).billing_id || 0) || null,
+    billing_status: safeParseJson(row.current_meta_json || row.meta_json, {}).billing_status || null,
     request_id: requestId ? Number(requestId) || requestId : null,
     receipt_number: transactionId || null,
     resulting_balance: Number.isFinite(resultingBalance) ? resultingBalance : null,
@@ -1771,32 +1740,17 @@ function computeActivityAnalytics(consolidated, rawRows) {
     actorCounts.set(actorKey, previous);
   });
 
-  // Cost value uses raw movement rows (richer than consolidated for cost details)
-  let sellRevenue = 0;
-  let sellCost = 0;
-  rawRows.forEach((row) => {
-    const action = financialAction(row);
-    const qty = Math.abs(Number(row.quantity || 0));
-    const cost = Number(row.cost_price || 0);
-    const sell = Number(row.selling_price || 0);
-    if (action === "restock_in" || action === "restock_out") {
-      // Restock cost counted once via restock_out only to avoid double-counting
-      if (action === "restock_out") totalCostValue += qty * cost;
-    } else if (action === "sell") {
-      totalCostValue += qty * cost;
-      sellRevenue += qty * sell;
-      sellCost += qty * cost;
-    } else {
-      totalCostValue += qty * cost;
-    }
-  });
-
-  const grossMarginPct = sellRevenue > 0 ? ((sellRevenue - sellCost) / sellRevenue) * 100 : null;
+  const finances = stockFinancials(rawRows);
+  wastageUnits = finances.wastage_units;
+  wastageValue = finances.wastage_value_rs;
+  totalCostValue = finances.total_value_cost_rs;
+  const grossMarginPct = finances.gross_margin_pct;
   const wastagePct = totalUnitsMoved > 0 ? (wastageUnits / totalUnitsMoved) * 100 : 0;
   const ranked = Array.from(actorCounts.values()).sort((a, b) => b.count - a.count);
   const topPerformer = ranked[0] || null;
 
   return {
+    ...finances,
     total_transactions: totalTransactions,
     total_units_moved: totalUnitsMoved,
     total_value_cost_rs: roundCurrency(totalCostValue),
@@ -1858,7 +1812,8 @@ router.get("/activity-history", (req, res) => {
   const rawRows = db
     .prepare(`
       SELECT h.*, m.item_id AS movement_item_id, m.previous_quantity, m.next_quantity, m.note AS movement_note,
-        m.unit_cost_snapshot AS cost_price, m.unit_price_snapshot AS selling_price, m.valuation_basis
+        m.unit_cost_snapshot AS cost_price, m.unit_price_snapshot AS selling_price, m.valuation_basis,
+        m.action_type AS movement_action_type, m.meta_json AS current_meta_json
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
@@ -1945,7 +1900,8 @@ router.get("/activity-history/export.csv", (req, res) => {
   const rows = db
     .prepare(`
       SELECT h.*, m.item_id AS movement_item_id, m.previous_quantity, m.next_quantity, m.note AS movement_note,
-        m.unit_cost_snapshot AS cost_price, m.unit_price_snapshot AS selling_price, m.valuation_basis
+        m.unit_cost_snapshot AS cost_price, m.unit_price_snapshot AS selling_price, m.valuation_basis,
+        m.action_type AS movement_action_type, m.meta_json AS current_meta_json
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
@@ -1971,14 +1927,14 @@ router.get("/activity-history/export.csv", (req, res) => {
           "Batch or lot",
           "Expiry",
           "Reason or note",
-          "Legacy warning",
+          "Legacy warning", "Invoice number", "Billing linkage",
         ].join(","),
         ...consolidated.map((row) =>
           [
             escapeCsvValue(row.timestamp),
             escapeCsvValue(row.item_name),
             escapeCsvValue(row.action_type),
-            Number(row.quantity || 0),
+            signedMovementQuantity(row),
             row.resulting_balance == null ? "" : Number(row.resulting_balance),
             escapeCsvValue(row.actor_name),
             escapeCsvValue(row.source_text),
@@ -1989,11 +1945,12 @@ router.get("/activity-history/export.csv", (req, res) => {
             escapeCsvValue(row.expiry_date || ""),
             escapeCsvValue(row.reason_note || ""),
             row.legacy_data_unavailable ? "Legacy/unavailable data" : "",
+            row.billing_id || "", escapeCsvValue(row.billing_status || ""),
           ].join(","),
         ),
       ]
     : [
-        ["Timestamp (UTC)", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)", "Valuation basis"].join(","),
+        ["Timestamp (UTC)", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)", "Valuation basis", "Invoice number", "Billing linkage"].join(","),
         ...consolidated.map((row) =>
           [
             escapeCsvValue(row.timestamp),
@@ -2001,12 +1958,13 @@ router.get("/activity-history/export.csv", (req, res) => {
             escapeCsvValue(row.actor_role),
             escapeCsvValue(row.action_type),
             escapeCsvValue(row.item_name),
-            Number(row.quantity || 0),
+            signedMovementQuantity(row),
             escapeCsvValue(row.source_text),
             escapeCsvValue(row.destination_text),
             escapeCsvValue(row.batch_id),
             Number(row.value_rs || 0).toFixed(2),
             escapeCsvValue(row.valuation_basis || "unavailable"),
+            row.billing_id || "", escapeCsvValue(row.billing_status || ""),
           ].join(","),
         ),
       ];
@@ -2925,6 +2883,11 @@ router.post("/items/:id/actions", (req, res) => {
     };
   }
 
+  const dispensedOn = String(req.body.dispensed_on || new Date(Date.now()+4*3600000).toISOString().slice(0,10));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dispensedOn) || !Number.isFinite(Date.parse(dispensedOn)) || new Date(dispensedOn).toISOString().slice(0,10) !== dispensedOn) return res.status(400).json({error:'Enter a valid dispensing date.'});
+  const saleConsultationId = Number(req.body.consultation_id || 0) || null;
+  if (saleConsultationId && !db.prepare('SELECT id FROM consultations WHERE id=? AND patient_id=? AND doctor_id=? AND voided_at IS NULL').get(saleConsultationId,salePatient?.id || 0,doctorId)) return res.status(400).json({error:'The dispensing visit does not belong to this patient and doctor.'});
+
   const movementType = actionType === "add" ? "in" : "out";
   const previousQuantity = Number(item.quantity || 0);
   const nextQuantity = movementType === "in" ? previousQuantity + quantity : previousQuantity - quantity;
@@ -3021,6 +2984,8 @@ router.post("/items/:id/actions", (req, res) => {
                 ...(stockOutReason === "Sale"
                   ? {
                       billing_status: "Pending Manual Entry",
+                      dispensed_on: dispensedOn,
+                      consultation_id: saleConsultationId,
                       patient_id: salePatient?.id ?? null,
                       patient_name: salePatient?.full_name || "",
                       patient_identifier: salePatient?.patient_identifier || "",

@@ -1923,7 +1923,7 @@ router.post("/:id/consultations", (req, res) => {
         normalizedNotes.vital_pulse,
       ).lastInsertRowid;
 
-    ensureBillingForConsultation(consultationId, patientId);
+    ensureBillingForConsultation(consultationId, patientId, req.auth, req.body.consultation_type || null);
 
     return consultationId;
   });

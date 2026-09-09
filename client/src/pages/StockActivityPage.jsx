@@ -336,13 +336,13 @@ function StockActivityPage() {
 
         <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Financial Health</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Net stock sales</p>
             <span className="grid size-9 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
               <Wallet className="size-4" />
             </span>
           </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.total_value_cost_rs || 0)}</p>
-          <p className="mt-2 text-xs text-slate-500">Prices are fixed when recorded. Older movements without recorded prices use frozen legacy estimates.</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.net_sales_rs || 0)}</p>
+          <p className="mt-2 text-xs text-slate-500">Sales less linked reversals, by stock movement date. This is not collected cash. Older prices may be estimates.</p>
           {sellFilterActive ? (
             <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
           ) : null}
@@ -522,6 +522,8 @@ function StockActivityPage() {
                     <div>Actor: {actorDisplayName(row)} ({row.actor_role || "staff"})</div>
                     <div className="break-words">Source: {row.source_text || "—"}</div>
                     <div className="break-words">Destination: {row.destination_text || "—"}</div>
+                    {row.billing_id && ['doctor','admin','accountant'].includes(user?.role) ? <a href={`/billing?billId=${row.billing_id}`} className="min-h-11 inline-flex items-center font-semibold text-teal-700">Open bill #{row.billing_id}</a> : null}
+                    {row.billing_status ? <div>Billing: {row.billing_status}</div> : null}
                     <div>Request: {row.request_id ? `#${row.request_id}` : "—"}</div>
                     <div className="break-words">Transfer receipt: {row.receipt_number || transactionId || "—"}</div>
                     <div>Batch/lot: {row.batch_id || (row.legacy_data_unavailable ? "Legacy/unknown lot" : "—")}</div>
@@ -620,7 +622,9 @@ function StockActivityPage() {
                       <td className="px-3 py-3 text-xs text-slate-600">
                         {row.request_id ? <div>Request #{row.request_id}</div> : null}
                         {row.receipt_number ? <div>Receipt {row.receipt_number}</div> : null}
-                        {!row.request_id && !row.receipt_number ? "—" : null}
+                        {row.billing_id && ['doctor','admin','accountant'].includes(user?.role) ? <a href={`/billing?billId=${row.billing_id}`} className="inline-flex min-h-11 items-center text-teal-700">Bill #{row.billing_id}</a> : null}
+                        {row.billing_status ? <div>{row.billing_status}</div> : null}
+                        {!row.request_id && !row.receipt_number && !row.billing_id && !row.billing_status ? "—" : null}
                       </td>
                       <td className="px-3 py-3 text-xs text-slate-600">{row.expiry_date || "—"}</td>
                       <td className="px-3 py-3 text-xs text-slate-600">

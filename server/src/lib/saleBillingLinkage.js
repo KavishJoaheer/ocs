@@ -3,73 +3,52 @@ const {
   calculateBillingTotal,
   getTodayLocal,
   normalizeBillingItems,
-  offsetLocalDate,
 } = require("./utils");
 
-// How far back we will look when trying to match a freshly-created bill
-// against an earlier "Sale" stock-out the doctor logged from the field. A
-// week is generous enough to cover normal admin lag but short enough to
-// avoid accidental matches to historical entries.
+// Kept as an exported compatibility constant; billing linkage no longer expires.
 const LINKAGE_WINDOW_DAYS = 7;
-
-/**
- * Find unbilled "Sale" stock-out movements that can be credited against a
- * new billing line so the doctor's bag is not decremented twice.
- *
- * Matching is strict: same item, same patient, same doctor, billing_status
- * still "Pending Manual Entry", created within LINKAGE_WINDOW_DAYS. We only
- * consume whole movements (no partial credits) to keep the audit trail
- * unambiguous; any leftover quantity is decremented by the bill normally.
- *
- * @param {{ itemId: number, patientId: number, doctorId: number, maxQty: number }} args
- * @returns {{ matched: Array<{ id: number, quantity: number, meta_json: string }>, consumedQty: number }}
- */
-function findUnbilledSaleCredit({ itemId, patientId, doctorId, maxQty }) {
-  const item = Number(itemId || 0);
-  const patient = Number(patientId || 0);
-  const doctor = Number(doctorId || 0);
-  const cap = Number(maxQty || 0);
-
-  if (!item || !patient || !doctor || cap <= 0) {
-    return { matched: [], consumedQty: 0 };
-  }
-
-  const candidates = db
-    .prepare(
-      `
-        SELECT id, quantity, meta_json
-        FROM inventory_movements
-        WHERE item_id = ?
-          AND movement_type = 'out'
-          AND action_type = 'stock_out'
-          AND json_extract(meta_json, '$.stock_out_reason') = 'Sale'
-          AND CAST(json_extract(meta_json, '$.patient_id') AS INTEGER) = ?
-          AND CAST(json_extract(meta_json, '$.doctor_id') AS INTEGER) = ?
-          AND json_extract(meta_json, '$.billing_status') = 'Pending Manual Entry'
-          AND datetime(created_at) >= datetime('now', ?)
-        ORDER BY datetime(created_at) ASC, id ASC
-      `,
-    )
-    .all(item, patient, doctor, `-${LINKAGE_WINDOW_DAYS} days`);
-
-  const matched = [];
-  let consumedQty = 0;
-
-  for (const row of candidates) {
-    const qty = Number(row.quantity || 0);
-    if (qty <= 0) continue;
-    if (consumedQty + qty > cap) {
-      // Skip partial consumption — the bill will decrement the gap itself.
-      break;
-    }
-    matched.push(row);
-    consumedQty += qty;
-    if (consumedQty === cap) {
-      break;
-    }
-  }
-
-  return { matched, consumedQty };
+const parse = value => { try { return JSON.parse(value || '{}'); } catch { return {}; } };
+function pendingSales({patientId, doctorId, itemId = null}) {
+  return db.prepare(`SELECT m.*, i.item_name FROM inventory_movements m JOIN inventory i ON i.id=m.item_id
+    WHERE m.movement_type='out' AND m.action_type='stock_out'
+      AND json_extract(m.meta_json, '$.stock_out_reason')='Sale'
+      AND CAST(json_extract(m.meta_json, '$.patient_id') AS INTEGER)=?
+      AND CAST(json_extract(m.meta_json, '$.doctor_id') AS INTEGER)=?
+      AND json_extract(m.meta_json, '$.billing_status')='Pending Manual Entry'
+      AND (? IS NULL OR m.item_id=?)
+      AND NOT EXISTS (SELECT 1 FROM inventory_movements r WHERE json_extract(r.meta_json,'$.reversed_movement_id')=m.id)
+    ORDER BY m.created_at, m.id`).all(patientId, doctorId, itemId, itemId);
+}
+function matchesVisit(row, consultation) {
+  const meta = parse(row.meta_json);
+  if (meta.consultation_id) return Number(meta.consultation_id) === Number(consultation.id);
+  if (meta.appointment_id) return Number(meta.appointment_id) === Number(consultation.appointment_id);
+  const day = meta.dispensed_on || db.prepare("SELECT date(?,'+4 hours') AS day").get(row.created_at).day;
+  if (day !== String(consultation.consultation_date).slice(0,10)) return false;
+  const visits = db.prepare(`SELECT COUNT(*) AS n FROM consultations WHERE patient_id=? AND doctor_id=?
+    AND date(consultation_date)=date(?) AND voided_at IS NULL`).get(consultation.patient_id, consultation.doctor_id, day);
+  return visits.n === 1;
+}
+function linkageError(message) {
+  return Object.assign(new Error(message), {status:409, extra:{code:'DISPENSING_REVIEW_REQUIRED'}});
+}
+function findUnbilledSaleCredit({ itemId, patientId, doctorId, maxQty, consultationId, movementIds = [] }) {
+  const candidates = pendingSales({patientId, doctorId, itemId});
+  const consultation = db.prepare('SELECT * FROM consultations WHERE id=?').get(consultationId || 0);
+  const explicit = movementIds.length > 0;
+  if (new Set(movementIds).size !== movementIds.length) throw linkageError('Select each dispensing record once.');
+  let matched = explicit ? candidates.filter(r => movementIds.includes(r.id))
+    : candidates.filter(r => consultation && matchesVisit(r, consultation));
+  if (explicit && matched.length !== movementIds.length) throw linkageError('A selected dispensing record is already billed or does not belong to this patient, doctor and item. Reload billing.');
+  if (explicit && matched.some(r => {
+    const meta = parse(r.meta_json);
+    return (meta.consultation_id && Number(meta.consultation_id) !== Number(consultationId))
+      || (meta.appointment_id && Number(meta.appointment_id) !== Number(consultation?.appointment_id));
+  })) throw linkageError('The selected dispensing belongs to another visit. Review that visit before billing.');
+  if (!explicit && candidates.length && !matched.length) throw linkageError('Unbilled dispensing exists for this item. Select its original dispensing record before billing; stock has not been deducted again.');
+  const consumedQty = matched.reduce((n,r)=>n+Number(r.quantity),0);
+  if (consumedQty > maxQty) throw linkageError('The quantity is smaller than the original dispensing. Select the complete dispensing record or ask an admin to reconcile it.');
+  return {matched, consumedQty, recordedAmount: matched.reduce((n,r)=>n+Number(r.quantity)*Number(r.unit_price_snapshot),0)};
 }
 
 function markSaleMovementsBilled(movementRows, billingId) {
@@ -88,6 +67,7 @@ function markSaleMovementsBilled(movementRows, billingId) {
     }
     meta.billing_status = "Billed";
     meta.billing_id = Number(billingId) || null;
+    meta.consultation_id = db.prepare('SELECT consultation_id FROM billing WHERE id=?').get(billingId)?.consultation_id || meta.consultation_id;
     meta.billed_at = billedAt;
     stmt.run(JSON.stringify(meta), row.id);
     ids.push(Number(row.id));
@@ -98,10 +78,9 @@ function markSaleMovementsBilled(movementRows, billingId) {
 
 /**
  * Reverse the linkage between Sale stock-outs and a set of billing rows
- * that are about to be deleted. The bag stock itself stays decremented (the
+ * that are about to be voided. The bag stock itself stays decremented (the
  * doctor really did dispense the item) — we only flip billing_status back
- * to "Pending Manual Entry" so the next bill in the linkage window can pick
- * the credit up again.
+ * to "Pending Manual Entry" for explicit visit reconciliation.
  *
  * @param {number[]} billingIds
  * @returns {number} number of movements relinked
@@ -150,43 +129,13 @@ function roundCurrency(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 
-function findOpenBillForSale({ patientId, doctorId }) {
-  const patient = Number(patientId || 0);
-  const doctor = Number(doctorId || 0);
-  if (!patient || !doctor) return null;
-
-  const today = getTodayLocal();
-  const windowStart = offsetLocalDate(-LINKAGE_WINDOW_DAYS);
-
-  return (
-    db
-      .prepare(
-        `
-          SELECT
-            b.id,
-            b.items,
-            b.status,
-            b.consultation_id,
-            c.consultation_date
-          FROM billing b
-          JOIN consultations c ON c.id = b.consultation_id
-          JOIN patients p ON p.id = b.patient_id
-          WHERE b.patient_id = ?
-            AND c.doctor_id = ?
-            AND lower(b.status) = 'unpaid'
-            AND b.voided_at IS NULL AND c.voided_at IS NULL
-            AND p.deleted_at IS NULL
-            AND date(c.consultation_date) >= date(?)
-            AND date(c.consultation_date) <= date(?)
-          ORDER BY
-            CASE WHEN date(c.consultation_date) = date(?) THEN 0 ELSE 1 END ASC,
-            date(c.consultation_date) DESC,
-            b.id DESC
-          LIMIT 1
-        `,
-      )
-      .get(patient, doctor, windowStart, today, today) || null
-  );
+function findOpenBillForSale({ patientId, doctorId, consultationId = null, dispensedOn = null }) {
+  const day = dispensedOn || getTodayLocal();
+  const visits = db.prepare(`SELECT * FROM consultations WHERE patient_id=? AND doctor_id=? AND voided_at IS NULL
+    AND ((? IS NOT NULL AND id=?) OR (? IS NULL AND date(consultation_date)=date(?)))`)
+    .all(patientId, doctorId, consultationId, consultationId, consultationId, day);
+  if (visits.length !== 1) return null;
+  return db.prepare("SELECT * FROM billing WHERE consultation_id=? AND status='unpaid' AND voided_at IS NULL ORDER BY id LIMIT 1").get(visits[0].id) || null;
 }
 
 function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
@@ -199,12 +148,14 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
     return { attached: false, reason: "invalid_args" };
   }
 
-  const bill = db.prepare("SELECT id, items, status FROM billing WHERE id = ?").get(id);
-  if (!bill || String(bill.status || "").toLowerCase() !== "unpaid") {
+  const bill = db.prepare("SELECT id, items, status, voided_at FROM billing WHERE id = ?").get(id);
+  if (!bill || bill.voided_at || String(bill.status || "").toLowerCase() !== "unpaid") {
     return { attached: false, reason: "no_unpaid_bill" };
   }
 
-  const unitPrice = roundCurrency(Number(item?.selling_price || 0));
+  const sale = db.prepare('SELECT unit_price_snapshot, meta_json FROM inventory_movements WHERE id=?').get(movement);
+  if (parse(sale?.meta_json).billing_status === 'Billed') return {attached:true,billingId:id,reason:'already_billed'};
+  const unitPrice = Number(sale?.unit_price_snapshot ?? item?.selling_price ?? 0);
   const description = String(item?.item_name || item?.description || "").trim();
   const items = normalizeBillingItems(bill.items);
   const existingIndex = items.findIndex(
@@ -219,6 +170,7 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
     items[existingIndex] = {
       ...items[existingIndex],
       quantity: nextQty,
+      dispensing_movement_ids: [...(items[existingIndex].dispensing_movement_ids || []), movement],
       amount: roundCurrency(Number(items[existingIndex].amount || 0) + unitPrice * qty),
       description: items[existingIndex].description || description,
     };
@@ -228,6 +180,7 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
       amount: roundCurrency(unitPrice * qty),
       type: "Sale",
       quantity: qty,
+      dispensing_movement_ids: [movement],
       inventory_item_id: inventoryItemId,
       emergency_override: false,
       appointment_id: null,
@@ -256,7 +209,7 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
 
 /**
  * After a doctor Sale deduct, add quantity × selling price to the patient's
- * latest unpaid consultation bill (without deducting bag stock again).
+ * unambiguous visit's unpaid bill (without deducting bag stock again).
  * If no unpaid bill exists yet, the movement stays Pending Manual Entry and
  * is picked up when the consultation bill is created.
  */
@@ -282,7 +235,7 @@ function attachSaleDeductToPatientBill({ patientId, doctorId, item, quantity, mo
     };
   }
 
-  const bill = findOpenBillForSale({ patientId, doctorId });
+  const bill = findOpenBillForSale({ patientId, doctorId, consultationId:meta.consultation_id || null, dispensedOn:meta.dispensed_on || null });
   if (!bill) {
     return { attached: false, reason: "no_unpaid_bill" };
   }
@@ -301,43 +254,19 @@ function attachSaleDeductToPatientBill({ patientId, doctorId, item, quantity, mo
  */
 function attachPendingSalesToConsultationBill(consultationId, billId) {
   const consultation = db
-    .prepare("SELECT id, patient_id, doctor_id FROM consultations WHERE id = ?")
+    .prepare("SELECT * FROM consultations WHERE id = ?")
     .get(Number(consultationId || 0));
   if (!consultation) {
     return { attached: 0 };
   }
 
-  const bill = db.prepare("SELECT id, status FROM billing WHERE id = ?").get(Number(billId || 0));
-  if (!bill || String(bill.status || "").toLowerCase() !== "unpaid") {
+  const bill = db.prepare("SELECT id, status, voided_at FROM billing WHERE id = ?").get(Number(billId || 0));
+  if (!bill || bill.voided_at || String(bill.status || "").toLowerCase() !== "unpaid") {
     return { attached: 0 };
   }
 
-  const pending = db
-    .prepare(
-      `
-        SELECT
-          m.id,
-          m.quantity,
-          m.item_id,
-          i.item_name,
-          i.selling_price
-        FROM inventory_movements m
-        JOIN inventory i ON i.id = m.item_id
-        WHERE m.movement_type = 'out'
-          AND m.action_type = 'stock_out'
-          AND json_extract(m.meta_json, '$.stock_out_reason') = 'Sale'
-          AND CAST(json_extract(m.meta_json, '$.patient_id') AS INTEGER) = ?
-          AND CAST(json_extract(m.meta_json, '$.doctor_id') AS INTEGER) = ?
-          AND json_extract(m.meta_json, '$.billing_status') = 'Pending Manual Entry'
-          AND datetime(m.created_at) >= datetime('now', ?)
-        ORDER BY datetime(m.created_at) ASC, m.id ASC
-      `,
-    )
-    .all(
-      Number(consultation.patient_id),
-      Number(consultation.doctor_id),
-      `-${LINKAGE_WINDOW_DAYS} days`,
-    );
+  const pending = pendingSales({patientId:consultation.patient_id,doctorId:consultation.doctor_id})
+    .filter(row => matchesVisit(row, consultation));
 
   let attached = 0;
   for (const row of pending) {
@@ -346,7 +275,7 @@ function attachPendingSalesToConsultationBill(consultationId, billId) {
       item: {
         id: row.item_id,
         item_name: row.item_name,
-        selling_price: row.selling_price,
+        selling_price: row.unit_price_snapshot,
       },
       quantity: row.quantity,
       movementId: row.id,
@@ -361,6 +290,8 @@ function attachPendingSalesToConsultationBill(consultationId, billId) {
 
 module.exports = {
   LINKAGE_WINDOW_DAYS,
+  pendingSales,
+  matchesVisit,
   findUnbilledSaleCredit,
   markSaleMovementsBilled,
   unlinkSaleMovementsForBills,

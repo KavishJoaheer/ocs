@@ -15,6 +15,8 @@ const {
 const {
   findUnbilledSaleCredit,
   markSaleMovementsBilled,
+  pendingSales,
+  matchesVisit,
 } = require("../lib/saleBillingLinkage");
 const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 const { decorateInventoryItems } = require("../lib/inventoryStockState");
@@ -23,6 +25,7 @@ const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 
 const { operationFor } = require("../lib/operationReceipts");
+const { isConsultationFee, assertSingleVisitFee } = require("../lib/consultationFees");
 const router = express.Router();
 function validPaymentDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
@@ -275,6 +278,7 @@ function applyInventoryTransactions({
     }
 
     const isSellLine = line.type !== "Wastage" && line.type !== "Adjustment";
+    if (!isSellLine && line.dispensing_movement_ids?.length) throw Object.assign(new Error("A recorded sale must be reconciled as a sale, not a new wastage or adjustment."),{status:409});
 
     // For Sale-style lines, see if the doctor already deducted this exact
     // patient/item combo from the bag while in the field. If so we credit
@@ -282,14 +286,18 @@ function applyInventoryTransactions({
     // is how the bag was getting double-decremented before.
     let linkedSaleMovementIds = [];
     let qtyToDecrement = qty;
+    let recordedSaleAmount = 0;
     if (isSellLine && billingId) {
-      const { matched, consumedQty } = findUnbilledSaleCredit({
+      const { matched, consumedQty, recordedAmount } = findUnbilledSaleCredit({
         itemId: stockItem.id,
         patientId: Number(consultation.patient_id),
         doctorId: Number(consultation.doctor_id),
         maxQty: qty,
+        consultationId: consultation.id,
+        movementIds: line.dispensing_movement_ids || [],
       });
 
+      recordedSaleAmount = recordedAmount;
       if (matched.length > 0) {
         linkedSaleMovementIds = markSaleMovementsBilled(matched, billingId);
         qtyToDecrement = qty - consumedQty;
@@ -396,9 +404,10 @@ function applyInventoryTransactions({
       amount:
         line.type === "Wastage" || line.type === "Adjustment"
           ? roundCurrency(Number(stockItem.cost_price || 0) * qty)
-          : roundCurrency(Number(stockItem.selling_price || 0) * qty),
+          : roundCurrency(recordedSaleAmount + Number(stockItem.selling_price || 0) * qtyToDecrement),
       inventory_item_id: Number(stockItem.id),
       linked_sale_movement_ids: linkedSaleMovementIds,
+      dispensing_movement_ids: linkedSaleMovementIds,
     });
   }
 
@@ -571,6 +580,44 @@ router.get("/consultation-fees", (req, res) => {
   }
 });
 
+router.get('/reconciliation', (req,res) => {
+  const doctorId = req.auth.role==='doctor' ? Number(req.auth.doctor_id || 0) : Number(req.query.doctorId || 0) || null;
+  if (req.auth.role==='doctor' && !doctorId) return res.status(403).json({error:'Doctor account is not linked.'});
+  const result=require('../lib/financialReconciliation').financialReconciliation(db,{doctorId,from:req.query.dateFrom,to:req.query.dateTo});
+  if (req.auth.role==='doctor') delete result.stock;
+  res.json(result);
+});
+
+// Void a duplicate unpaid service bill without voiding the clinical visit or restoring stock.
+router.post('/:id/void', (req,res) => {
+  if (req.auth.role!=='admin') return res.status(403).json({error:'Only an admin can void a duplicate bill.'});
+  const bill=getJoinedBillById(Number(req.params.id));
+  if (!bill) return res.status(404).json({error:'Bill not found.'});
+  const reason=String(req.body.reason || '').trim();
+  if (reason.length<8) return res.status(400).json({error:'Enter a meaningful reason for voiding this bill.'});
+  if (bill.voided_at) return res.json(bill);
+  if (bill.status!=='unpaid' || bill.items.some(i=>i.inventory_item_id)) return res.status(409).json({error:'Only unpaid service-only bills can be voided here. Review payments or stock-linked lines separately.'});
+  if (Number(req.body.expected_version)!==Number(bill.row_version)) return res.status(409).json({error:'This bill changed. Reopen its details.'});
+  const result=db.prepare("UPDATE billing SET voided_at=CURRENT_TIMESTAMP,voided_by_user_id=?,void_reason=?,updated_by_user_id=? WHERE id=? AND row_version=? AND voided_at IS NULL").run(req.auth.id,reason,req.auth.id,bill.id,bill.row_version);
+  if (result.changes!==1) return res.status(409).json({error:'This bill changed. Reopen its details.'});
+  publishPatientDataChange(bill.patient_id,{reason:'billing'});
+  res.json(getJoinedBillById(bill.id));
+});
+
+router.get('/visit/:consultationId', (req,res) => {
+  const consultation = getConsultationContext(Number(req.params.consultationId));
+  if (!consultation || consultation.voided_at) return res.status(404).json({error:'Visit not found.'});
+  if (req.auth.role==='doctor' && Number(req.auth.doctor_id || 0)!==Number(consultation.doctor_id)) return res.status(403).json({error:'You can only bill your own visits.'});
+  const bills = db.prepare('SELECT id FROM billing WHERE consultation_id=? AND voided_at IS NULL ORDER BY id').all(consultation.id).map(b=>getJoinedBillById(b.id));
+  const pending = pendingSales({patientId:consultation.patient_id,doctorId:consultation.doctor_id})
+    .filter(m => {
+      const meta = JSON.parse(m.meta_json || '{}');
+      return (!meta.consultation_id && !meta.appointment_id) || matchesVisit(m, consultation);
+    })
+    .map(m=>({id:m.id,item_id:m.item_id,item_name:m.item_name,quantity:m.quantity,unit_price:m.unit_price_snapshot,created_at:m.created_at,valuation_basis:m.valuation_basis,matches_visit:matchesVisit(m,consultation)}));
+  res.json({bills,pending_sales:pending});
+});
+
 router.get("/:id", (req, res) => {
   const billId = Number(req.params.id);
   const bill = getJoinedBillById(billId);
@@ -706,6 +753,7 @@ router.post("/", (req, res) => {
       if (!current || current.voided_at) throw Object.assign(new Error("This consultation is no longer available for billing."), {status:409});
       const replay = operation.read();
       if (replay) { createdId = replay.billId; return; }
+      assertSingleVisitFee(db, consultationId, items);
       // Insert a placeholder bill first so the linkage helper has a billing
       // id to stamp onto any matched Sale movements. Items + total are
       // computed inside the same transaction below so callers never observe
@@ -801,6 +849,10 @@ router.put("/:id", (req, res) => {
     });
   }
 
+  try { assertSingleVisitFee(db, existing.consultation_id, items, billId); }
+  catch (error) { return res.status(error.status || 409).json({error:error.message,...error.extra}); }
+  if (existing.fee_review_required && req.body.confirm_consultation_fee !== true && String(req.body.status || existing.status) === 'paid') return res.status(409).json({error:'Review and confirm the consultation fee before recording payment.'});
+  if (existing.fee_review_required && req.body.confirm_consultation_fee === true && !items.some(isConsultationFee)) return res.status(400).json({error:'Select the consultation charge before confirming the fee.'});
   const expectedVersion = req.body.expected_version;
   if (expectedVersion != null && Number(expectedVersion) !== Number(existing.row_version)) {
     return res.status(409).json({ error: "This bill changed elsewhere. Reopen it before saving." });
@@ -834,7 +886,11 @@ router.put("/:id", (req, res) => {
   if (status === "paid" && !validPaymentDate(paymentDate)) {
     return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
   }
-  const updated = db.prepare(`
+  let updated;
+  try {
+    updated = db.transaction(() => {
+      assertSingleVisitFee(db, existing.consultation_id, preservedItems, billId);
+      return db.prepare(`
     UPDATE billing
     SET
       items = ?,
@@ -844,7 +900,8 @@ router.put("/:id", (req, res) => {
       payment_date = ?,
       updated_at = CURRENT_TIMESTAMP,
       updated_by_user_id = ?,
-      change_reason = ?
+      change_reason = ?,
+      fee_review_required = ?
     WHERE id = ? AND row_version = ? AND voided_at IS NULL
   `).run(
     JSON.stringify(preservedItems),
@@ -853,10 +910,13 @@ router.put("/:id", (req, res) => {
     paymentMethod,
     paymentDate || null,
     req.auth?.id || null,
-    correctionReason,
+    correctionReason || (existing.fee_review_required && req.body.confirm_consultation_fee ? "Consultation fee reviewed" : ""),
+    req.body.confirm_consultation_fee === true ? 0 : existing.fee_review_required,
     billId,
     existing.row_version,
-  );
+      );
+    }).immediate();
+  } catch (error) { return res.status(error.status || 400).json({error:error.message,...error.extra}); }
   if (updated.changes !== 1) return res.status(409).json({ error: "This bill changed elsewhere. Reopen it before saving." });
 
   if (existing?.patient_id) {
@@ -876,6 +936,7 @@ router.patch("/:id/pay", (req, res) => {
     return res.status(accessError.status).json({ error: accessError.error });
   }
 
+  if (existing.fee_review_required) return res.status(409).json({error:'Open bill details to confirm Day, Night or Review Consultation before recording payment.', code:'FEE_REVIEW_REQUIRED'});
   const paymentMethod =
     normalizePaymentMethod(req.body.payment_method ?? existing.payment_method ?? "cash");
 

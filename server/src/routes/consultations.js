@@ -276,7 +276,7 @@ router.post("/", (req, res) => {
       );
 
     db.prepare("UPDATE appointments SET status = 'completed' WHERE id = ?").run(appointmentId);
-    ensureBillingForConsultation(result.lastInsertRowid, appointment.patient_id);
+    ensureBillingForConsultation(result.lastInsertRowid, appointment.patient_id, req.auth, req.body.consultation_type || null);
 
     return result.lastInsertRowid;
   });

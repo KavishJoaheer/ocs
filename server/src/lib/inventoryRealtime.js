@@ -37,7 +37,7 @@ function shouldDeliverInventoryEvent(client, event) {
   const role = String(client.role || "");
   const doctorId = Number(client.doctorId || 0);
 
-  if (role === "admin" || role === "operator") {
+  if (role === "admin" || role === "operator" || role === "accountant") {
     return true;
   }
 

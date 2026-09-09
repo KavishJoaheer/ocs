@@ -25,6 +25,8 @@ import {
 } from "../lib/supplyRequests.js";
 import { cx } from "../lib/utils.js";
 
+import { DOCTOR_BAG_INVENTORY_EVENT, OCS_INVENTORY_EVENT } from "../lib/inventorySync.js";
+
 const HISTORY_PAGE_SIZE = 20;
 
 function amendmentStatusLabel(status) {
@@ -91,6 +93,8 @@ export default function SupplyRequestsPage() {
   const { user } = useAuth();
   const [tab, setTab] = useState("active");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [catalogTick, setCatalogTick] = useState(0);
+  const catalogRequestId = useRef(0);
   const [catalogItems, setCatalogItems] = useState([]);
   const [bagItems, setBagItems] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -138,7 +142,15 @@ export default function SupplyRequestsPage() {
   });
 
   useEffect(() => {
+    const refresh = () => setCatalogTick(n => n + 1);
+    const events = [DOCTOR_BAG_INVENTORY_EVENT, OCS_INVENTORY_EVENT, 'focus', 'online'];
+    events.forEach(e => window.addEventListener(e, refresh));
+    return () => events.forEach(e => window.removeEventListener(e, refresh));
+  }, []);
+
+  useEffect(() => {
     let ignore = false;
+    const requestId = ++catalogRequestId.current;
 
     async function loadCatalog() {
       setCatalogLoading(true);
@@ -149,7 +161,7 @@ export default function SupplyRequestsPage() {
             includeDoctorContext: true,
           })}`,
         );
-        if (!ignore) {
+        if (!ignore && requestId === catalogRequestId.current) {
           setCatalogItems(Array.isArray(payload?.ocs_stock) ? payload.ocs_stock : []);
           setBagItems(Array.isArray(payload?.my_stock) ? payload.my_stock : []);
         }
@@ -168,7 +180,7 @@ export default function SupplyRequestsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [catalogTick, modalOpen]);
 
   const composeConsumedRef = useRef(false);
 

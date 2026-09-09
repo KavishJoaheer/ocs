@@ -255,3 +255,150 @@ test('offline queue does not acknowledge a saved deduction before IndexedDB comm
   assert.ok(transaction); assert.equal(acknowledged,false);
   transaction.oncomplete(); await save; assert.equal(acknowledged,true);
 });
+
+test('current tariffs migrate once without repricing bills, and automatic fees require review', async () => {
+  const fees=(await api('GET','/billing/consultation-fees','doctor')).data;
+  assert.equal(fees['Day Consultation'],2000);assert.equal(fees['Night Consultation'],3000);assert.equal(fees['Review Consultation'],2000);
+  const ctx=context('Automatic fee review');db.prepare('DELETE FROM consultations WHERE id=?').run(ctx.consultationId);
+  const created=await api('POST','/consultations','doctor',{appointment_id:ctx.appointmentId,consultation_date:today,doctor_notes:'Saved consultation for fee review'});
+  assert.equal(created.status,201,JSON.stringify(created.data));
+  const state=await api('GET',`/billing/visit/${created.data.id}`,'doctor'); const original=state.data.bills[0];
+  assert.equal(original.total_amount,2000);assert.equal(original.fee_review_required,1);
+  assert.equal(original.history[0].actor_name,'Integrity doctor');
+  const pay={payment_method:'cash',payment_date:today};
+  assert.equal((await api('PATCH',`/billing/${original.id}/pay`,'doctor',pay)).status,409);
+  const items=original.items.map(i=>({...i,description:'Night Consultation',amount:3000}));
+  const confirmed=await api('PUT',`/billing/${original.id}`,'doctor',{items,status:'paid',...pay,confirm_consultation_fee:true,expected_version:original.row_version});
+  assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));assert.equal(confirmed.data.total_amount,3000);assert.equal(confirmed.data.fee_review_required,0);
+  const duplicate=await bill({...ctx,consultationId:created.data.id},fee(2000),{operation_id:randomUUID()});
+  assert.equal(duplicate.status,409);assert.equal(duplicate.data.existing_bill_id,original.id);
+  const additional=await bill({...ctx,consultationId:created.data.id},[{description:'Additional procedure',type:'Sale',amount:100}],{operation_id:randomUUID()});assert.equal(additional.status,201);
+  db.prepare("UPDATE consultation_fee_types SET default_amount=2100 WHERE type_name='Day Consultation'").run();
+  require('../src/lib/financialIntegritySchema').ensureFinancialIntegritySchema(db);
+  assert.equal(db.prepare("SELECT default_amount FROM consultation_fee_types WHERE type_name='Day Consultation'").get().default_amount,2100);
+  assert.equal((await api('GET',`/billing/${original.id}`)).data.total_amount,3000);
+  db.prepare("UPDATE consultation_fee_types SET default_amount=2000 WHERE type_name='Day Consultation'").run();
+});
+
+test('explicit consultation types create the correct fee and concurrent fee creation is unique', async () => {
+  const ctx=context('Review type');db.prepare('DELETE FROM consultations WHERE id=?').run(ctx.consultationId);
+  const c=await api('POST','/consultations','doctor',{appointment_id:ctx.appointmentId,consultation_date:today,doctor_notes:'Review consultation',consultation_type:'Review Consultation'});
+  assert.equal(c.status,201);const b=(await api('GET',`/billing/visit/${c.data.id}`,'doctor')).data.bills[0];
+  assert.equal(b.items[0].description,'Review Consultation');assert.equal(b.total_amount,2000);assert.equal(b.fee_review_required,0);
+  const separate=context('Concurrent fee');
+  const results=await Promise.all([bill(separate,fee(2000),{operation_id:randomUUID()}),bill(separate,fee(2000),{operation_id:randomUUID()})]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
+});
+
+async function fieldSale(ctx,it,extra={}) {
+  return api('POST',`/inventory/items/${it.id}/actions`,'doctor',deduction(it,{reason:'Sale',patient_id:ctx.patientId,quantity:2,...extra}));
+}
+
+test('eight-day-old dispensing links by its visit and keeps its original price without stock deduction', async () => {
+  const date=db.prepare("SELECT date('now','+4 hours','-8 days') AS day").get().day;
+  const ctx=context('Delayed same visit',date);const it=item('Delayed linked medicine');
+  assert.equal((await fieldSale(ctx,it,{dispensed_on:date})).status,201);
+  db.prepare("UPDATE inventory_movements SET created_at=datetime('now','-8 days') WHERE item_id=?").run(it.id);
+  await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
+  const first=await bill(ctx,[stockLine(it)],{operation_id:randomUUID()});assert.equal(first.status,201,JSON.stringify(first.data));
+  assert.equal(first.data.total_amount,50);assert.equal(row(it.id).quantity,18);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM inventory_movements WHERE item_id=?').get(it.id).n,1);
+  const h=(await api('GET','/inventory/activity-history?search=Delayed%20linked%20medicine')).data.rows[0];
+  assert.equal(h.billing_id,first.data.id);assert.equal(h.billing_status,'Billed');assert.equal(h.value_rs,50);
+  assert.equal(JSON.parse(h.meta_json).billing_status,'Pending Manual Entry'); // original event is retained
+  assert.ok(first.data.items[0].dispensing_movement_ids.length);
+});
+
+test('ambiguous and partial dispensing blocks new deductions; explicit visit reconciliation and retries work', async () => {
+  const ctx=context('Ambiguous visits');const it=item('Ambiguous medicine');
+  const secondAppointment=Number(db.prepare("INSERT INTO appointments(patient_id,doctor_id,appointment_date,appointment_time,status) VALUES (?,?,?,'18:00','completed')").run(ctx.patientId,doctorId,today).lastInsertRowid);
+  const secondId=Number(db.prepare("INSERT INTO consultations(appointment_id,patient_id,doctor_id,consultation_date,doctor_notes) VALUES (?,?,?,?,'Second visit')").run(secondAppointment,ctx.patientId,doctorId,today).lastInsertRowid);
+  assert.equal((await fieldSale(ctx,it)).status,201);
+  const m=db.prepare('SELECT id FROM inventory_movements WHERE item_id=?').get(it.id).id;
+  assert.equal((await bill(ctx,[stockLine(it)],{operation_id:randomUUID()})).status,409);assert.equal(row(it.id).quantity,18);
+  const line={...stockLine(it),dispensing_movement_ids:[m]};
+  assert.equal((await bill(ctx,[{...line,quantity:1}],{operation_id:randomUUID()})).status,409);assert.equal(row(it.id).quantity,18);
+  const op=randomUUID();const accepted=await bill(ctx,[line],{operation_id:op});assert.equal(accepted.status,201,JSON.stringify(accepted.data));
+  assert.equal((await bill(ctx,[line],{operation_id:op})).data.id,accepted.data.id);
+  assert.equal((await bill({...ctx,consultationId:secondId},[line],{operation_id:randomUUID()})).status,409);
+  const other=context('Other patient');assert.equal((await bill(other,[line],{operation_id:randomUUID()})).status,409);
+  assert.equal(row(it.id).quantity,18);
+});
+
+test('pending attachment uses frozen sale price and an invoice void does not invent a physical field return', async () => {
+  const ctx=context('Pending automatic');db.prepare('DELETE FROM consultations WHERE id=?').run(ctx.consultationId);const it=item('Frozen pending medicine');
+  await fieldSale(ctx,it,{dispensed_on:today});await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
+  const c=await api('POST','/consultations','doctor',{appointment_id:ctx.appointmentId,consultation_date:today,doctor_notes:'Delayed documentation',consultation_type:'Day Consultation'});assert.equal(c.status,201);
+  const b=(await api('GET',`/billing/visit/${c.data.id}`,'doctor')).data.bills[0];
+  assert.equal(b.total_amount,2050);assert.equal(row(it.id).quantity,18);
+  const h=(await api('GET','/inventory/activity-history?search=Frozen%20pending%20medicine')).data.rows[0];assert.equal(h.billing_id,b.id);assert.equal(h.value_rs,50);
+  assert.equal((await api('DELETE',`/consultations/${c.data.id}`,'admin',{reason:'Duplicate clinical note in test'})).status,204);
+  assert.equal(row(it.id).quantity,18);
+  assert.equal(JSON.parse(db.prepare('SELECT meta_json FROM inventory_movements WHERE item_id=?').get(it.id).meta_json).billing_status,'Pending Manual Entry');
+  const review=(await api('GET','/billing/reconciliation','doctor')).data;
+  assert.ok(review.issues.some(i=>i.type==='unbilled_dispensing'&&i.movement_id===h.movement_id));assert.equal(review.stock,undefined);
+});
+
+test('sale, price changes and reversal reconcile financial aggregates and sale-filter CSV', async () => {
+  const ctx=context('Net reversal');const it=item('Net reversal medicine');
+  const b=await bill(ctx,[stockLine(it)]);assert.equal(b.status,201);
+  const summary=async()=> (await api('GET',`/inventory?doctorId=${doctorId}`)).data.summary.total_monthly_sales_rs;
+  const before=await summary();await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});assert.equal(await summary(),before);
+  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Synthetic net reversal test'})).status,204);
+  assert.equal(await summary(),before-50);
+  const h=(await api('GET','/inventory/activity-history?search=Net%20reversal%20medicine&actions=sell')).data;
+  assert.equal(h.total,2);assert.equal(h.net_value_rs,0);assert.equal(h.analytics.net_sales_rs,0);assert.equal(h.analytics.total_value_cost_rs,0);assert.equal(h.analytics.gross_margin_pct,null);
+  const csv=await api('GET','/inventory/activity-history/export.csv?search=Net%20reversal%20medicine&actions=sell');assert.equal(csv.status,200);assert.ok(csv.data.includes('-50.00'));assert.ok(csv.data.includes('Invoice number'));
+});
+
+test('admin can void an unpaid duplicate service bill without losing the visit or stock', async () => {
+  const ctx=context('Duplicate resolution');const b=await bill(ctx,fee(2000));
+  const duplicateId=Number(db.prepare("INSERT INTO billing(consultation_id,patient_id,items,total_amount,status) VALUES (?,?,?,2000,'unpaid')").run(ctx.consultationId,ctx.patientId,JSON.stringify(fee(2000))).lastInsertRowid);
+  const review=await api('GET','/billing/reconciliation');assert.ok(review.data.issues.some(i=>i.type==='duplicate_fee'&&i.bill_ids.includes(duplicateId)));
+  const duplicate=(await api('GET',`/billing/${duplicateId}`)).data;
+  const body={reason:'Duplicate consultation fee confirmed',expected_version:duplicate.row_version};
+  assert.equal((await api('POST',`/billing/${duplicateId}/void`,'doctor',body)).status,403);
+  assert.equal((await api('POST',`/billing/${duplicateId}/void`,'admin',{...body,expected_version:99})).status,409);
+  const resolved=await api('POST',`/billing/${duplicateId}/void`,'admin',body);assert.equal(resolved.status,200);assert.ok(resolved.data.voided_at);assert.equal(resolved.data.history[0].actor_name,'Integrity admin');
+  assert.equal(db.prepare('SELECT voided_at FROM consultations WHERE id=?').get(ctx.consultationId).voided_at,null);
+  assert.ok(!(await api('GET','/billing/reconciliation')).data.issues.some(i=>i.type==='duplicate_fee'&&i.bill_ids.includes(duplicateId)));
+  assert.equal((await api('GET',`/billing/${b.data.id}`)).data.total_amount,2000);
+});
+
+test('reconnect refreshes financial, inventory and supply views and ignores an obsolete stream', async () => {
+  const events=[],sources=[],timers=new Map();let timerId=0;
+  class FakeSource {constructor(){this.handlers={};sources.push(this);}addEventListener(name,fn){this.handlers[name]=fn;}close(){}}
+  const sandbox={console,Set,Number,String,Boolean,Promise,EventSource:FakeSource,window:{setTimeout(fn){timers.set(++timerId,fn);return timerId;},clearTimeout(id){timers.delete(id);}},api:{post:async()=>({token:'synthetic'})},getStoredAuthToken:()=> 'synthetic',resolveApiPath:x=>x,getClientSessionId:()=> 'tab-test',DOCTOR_BAG_INVENTORY_EVENT:'bag',OCS_INVENTORY_EVENT:'ocs'};
+  for(const name of ['notifyDoctorBagInventoryUpdated','notifyLinkhamClaimsUpdated','notifyLinkhamPatientsUpdated','notifyLongTermReviewUpdated','notifyOcsInventoryUpdated','notifyPatientsLiveUpdated','notifySupplyRequestsUpdated'])sandbox[name]=()=>events.push(name);
+  const source=fs.readFileSync(path.resolve(__dirname,'../../client/src/lib/inventoryRealtimeSync.js'),'utf8').replace(/^import[\s\S]*?from\s+["'][^"']+["'];\s*/gm,'').replace(/\bexport\s+/g,'');
+  vm.runInNewContext(source+'\nglobalThis.start=startInventoryRealtimeSync;',sandbox);
+  sandbox.start({role:'doctor',id:1,doctor_id:1});await new Promise(r=>setImmediate(r));sources[0].handlers.connected();events.length=0;
+  sources[0].onerror();for(const fn of [...timers.values()])fn();await new Promise(r=>setImmediate(r));sources[1].handlers.connected();
+  assert.ok(events.includes('notifyPatientsLiveUpdated'));assert.ok(events.includes('notifyDoctorBagInventoryUpdated'));assert.ok(events.includes('notifySupplyRequestsUpdated'));
+  events.length=0;sources[0].handlers.connected();assert.equal(events.length,0);
+});
+
+test('financial review catches duplicate lines and malformed history, and excludes reversed pending dispensing', async () => {
+  const ctx=context('Legacy review edge');
+  const b=await bill(ctx,fee(2000));
+  db.prepare('UPDATE billing SET items=?,total_amount=4000 WHERE id=?').run(JSON.stringify([...fee(2000),...fee(2000)]),b.data.id);
+  let review=await api('GET','/billing/reconciliation');
+  assert.equal(review.status,200);
+  assert.ok(review.data.issues.some(i=>i.type==='duplicate_fee' && i.bill_ids.includes(b.data.id)));
+  db.prepare('UPDATE billing SET items=? WHERE id=?').run('null',b.data.id);
+  review=await api('GET','/billing/reconciliation');
+  assert.equal(review.status,200);
+  assert.ok(review.data.issues.some(i=>i.type==='invalid_bill' && i.bill_ids.includes(b.data.id)));
+  db.prepare('UPDATE billing SET items=?,total_amount=2000 WHERE id=?').run(JSON.stringify(fee(2000)),b.data.id);
+  const pendingCtx=context('Reversed pending');const it=item('Reversed pending medicine');
+  await fieldSale(pendingCtx,it);
+  const m=db.prepare('SELECT * FROM inventory_movements WHERE item_id=?').get(it.id);
+  const metadata={...JSON.parse(m.meta_json),original_action_type:'stock_out',reversed_movement_id:m.id};
+  db.prepare("INSERT INTO inventory_movements(item_id,movement_type,action_type,quantity,meta_json,unit_cost_snapshot,unit_price_snapshot) VALUES (?,'in','reversal',?,?,?,?)")
+    .run(it.id,m.quantity,JSON.stringify(metadata),m.unit_cost_snapshot,m.unit_price_snapshot);
+  review=await api('GET','/billing/reconciliation');
+  assert.equal(review.status,200);
+  assert.ok(!review.data.issues.some(i=>i.type==='unbilled_dispensing' && i.movement_id===m.id));
+  const reverse=db.prepare("SELECT id FROM inventory_movements WHERE item_id=? AND action_type='reversal'").get(it.id);
+  assert.ok(!review.data.issues.some(i=>i.type==='unbilled_dispensing' && i.movement_id===reverse.id));
+});

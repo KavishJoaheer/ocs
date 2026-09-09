@@ -294,11 +294,11 @@ router.patch("/:id", (req, res) => {
           today,
           "Home visit completed.",
         ).lastInsertRowid;
-      ensureBillingForConsultation(consultationId, existing.patient_id);
+      ensureBillingForConsultation(consultationId, existing.patient_id, req.auth, req.body.consultation_type || null);
       return { appointmentId, consultationId };
     }
 
-    ensureBillingForConsultation(consultation.id, existing.patient_id);
+    ensureBillingForConsultation(consultation.id, existing.patient_id, req.auth, req.body.consultation_type || null);
     return { appointmentId, consultationId: Number(consultation.id) };
   });
 

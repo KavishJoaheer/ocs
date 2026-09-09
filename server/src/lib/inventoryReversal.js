@@ -115,6 +115,7 @@ function reverseInventoryForConsultation(
       FROM inventory_movements m
       WHERE m.movement_type = 'out'
         AND m.action_type != 'reversal'
+        AND NOT (m.action_type='stock_out' AND json_extract(m.meta_json,'$.stock_out_reason')='Sale')
         AND (
           CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER) = ?
           OR (

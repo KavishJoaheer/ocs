@@ -1,3 +1,4 @@
+import FinancialReconciliation from "../components/FinancialReconciliation.jsx";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
@@ -46,6 +47,11 @@ import {
   normalizeReportPeriod,
   periodToBillingPreset,
 } from "../lib/reportPeriod.js";
+
+function isVisitFee(line) {
+  return !line.inventory_item_id && !['Wastage','Adjustment'].includes(line.type)
+    && (line.is_consultation_fee || /^(?:(?:day|night|review)\s+)?consultation(?:\s+(?:fee|charge))?$/i.test(String(line.description || '').trim()));
+}
 
 function billingPageTodayInputValue() {
   const now = new Date();
@@ -496,9 +502,12 @@ function BillingStatusFields({
   );
 }
 
-function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSaving }) {
+function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid, isSaving }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const [feeConfirmed, setFeeConfirmed] = useState(false);
+  const [feeOptions, setFeeOptions] = useState({});
+  useEffect(() => { if (open) { setFeeConfirmed(false); api.get('/billing/consultation-fees').then(setFeeOptions).catch(()=>{}); } }, [open,bill?.id]);
   const [correctionReason, setCorrectionReason] = useState("");
   const [history, setHistory] = useState([]);
   const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || (bill?.status === "paid" && user?.role !== "admin"));
@@ -527,6 +536,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
               quantity: Number(item.quantity || 0) || 0,
               inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
               emergency_override: Boolean(item.emergency_override),
+              is_consultation_fee: Boolean(item.is_consultation_fee),
+              dispensing_movement_ids: item.dispensing_movement_ids || [],
             }))
           : [createEmptyLineItem()],
       );
@@ -597,6 +608,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
     if (readOnly) return;
     onSubmit({
       expected_version: bill.row_version,
+      confirm_consultation_fee: feeConfirmed,
       correction_reason: correctionReason,
       items: items.map((item) => ({
         description: item.description,
@@ -605,6 +617,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
         quantity: Number(item.quantity || 0) || 0,
         inventory_item_id: item.inventory_item_id || null,
         emergency_override: Boolean(item.emergency_override),
+        is_consultation_fee: Boolean(item.is_consultation_fee),
+        dispensing_movement_ids: item.dispensing_movement_ids || [],
       })),
       status,
       payment_method: status === "paid" ? paymentMethod : null,
@@ -645,8 +659,22 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
         </div>
 
         {bill.patient_archived_at && <p className="text-sm text-slate-600">Archived patient · financial record retained</p>}
+        {user?.role==='admin' && bill.status==='unpaid' && !bill.voided_at && !bill.items.some(i=>i.inventory_item_id) && <div className="space-y-2 rounded-2xl border border-slate-200 p-3">
+          <label className="block text-sm">Reason for voiding a duplicate bill<input aria-label="Void bill reason" className={BILLING_FIELD} value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} /></label>
+          <button type="button" disabled={isSaving || correctionReason.trim().length<8} onClick={()=>onVoid?.(bill,correctionReason)} className="min-h-11 rounded-xl border px-3 text-sm disabled:opacity-50">Void this unpaid bill; keep the visit</button>
+        </div>}
         {readOnly && <p className="rounded-2xl bg-slate-50 p-3 text-sm">{bill.voided_at || bill.consultation_voided_at ? "Voided bill — retained for audit only." : "Payment recorded. An admin can make a documented correction."}</p>}
         <fieldset disabled={readOnly} className="min-w-0 space-y-5">
+        {items.some(i => isVisitFee(i)) && <div className="space-y-2 rounded-2xl bg-slate-50 p-3">
+          <label className="block text-sm font-semibold">Consultation type
+            <select aria-label="Review consultation type" className={BILLING_FIELD} value={Object.hasOwn(feeOptions, items.find(i=>isVisitFee(i))?.description || '') ? items.find(i=>isVisitFee(i)).description : ''}
+              onChange={event => { const type=event.target.value; setItems(current=>current.map(i=>isVisitFee(i) ? {...i,description:type,amount:Number(feeOptions[type]),is_consultation_fee:true} : i)); setFeeConfirmed(false); }}>
+              <option value="" disabled>Select consultation type</option>
+              {Object.keys(feeOptions).map(type=><option key={type}>{type}</option>)}
+            </select>
+          </label>
+          {Boolean(bill.fee_review_required) && <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={feeConfirmed} onChange={e=>setFeeConfirmed(e.target.checked)} />I confirm the consultation type and fee for this visit.</label>}
+        </div>}
         <BillingItemsEditor
           items={items}
           setItems={setItems}
@@ -718,6 +746,7 @@ function TypeBadge({ type }) {
 }
 
 function DescriptionList({
+  includeFee = true,
   consultationType,
   consultationPrice,
   items,
@@ -749,7 +778,7 @@ function DescriptionList({
       </div>
 
       <div className="divide-y divide-slate-100">
-        <div className="hidden items-center px-4 py-3 text-sm md:grid md:grid-cols-[2fr_70px_120px_110px_120px_44px] md:items-start md:gap-3">
+        {includeFee && <><div className="hidden items-center px-4 py-3 text-sm md:grid md:grid-cols-[2fr_70px_120px_110px_120px_44px] md:items-start md:gap-3">
           <div className="flex items-center gap-2">
             <span className="grid size-7 place-items-center rounded-xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
               <Stethoscope className="size-3.5" />
@@ -779,6 +808,7 @@ function DescriptionList({
           </div>
         ) : null}
 
+        </>}
         {hasInventoryRows ? (
           items.map((item, index) => {
             const qty = Number(item.quantity || 0);
@@ -788,7 +818,7 @@ function DescriptionList({
             const subtotal = item.type === "Wastage" ? 0 : Number(item.amount || 0);
             const available = Number(item.available || 0);
             const needsOverride = qty > available;
-            const canEditInventoryQty = Boolean(compactMobile && onUpdateInventoryLine && !item.is_manual);
+            const canEditInventoryQty = Boolean(compactMobile && onUpdateInventoryLine && !item.is_manual && !item.dispensing_movement_ids?.length);
 
             if (item.is_manual) {
               return (
@@ -942,7 +972,7 @@ function DescriptionList({
                       <div className="min-w-0">
                         <p className="font-semibold text-slate-900">{item.description}</p>
                         <p className="text-xs text-slate-500">
-                          {item.folder_name || "Inventory"} · Stock {available}
+                          {item.dispensing_movement_ids?.length ? "Already dispensed · Original quantity and price" : `${item.folder_name || "Inventory"} · Stock ${available}`}
                         </p>
                         {available <= 0 ? (
                           <p className="mt-1 text-xs font-bold text-rose-600">Out of stock</p>
@@ -1030,6 +1060,7 @@ function CreateBillingModal({
   patients,
   consultations,
   preselectedPatientId,
+  onOpenExisting,
 }) {
   const { user: authUser } = useAuth();
   const [patientId, setPatientId] = useState("");
@@ -1056,6 +1087,17 @@ function CreateBillingModal({
   const [inventoryCategory, setInventoryCategory] = useState("All");
   const [consultationFees, setConsultationFees] = useState({});
   const [consultationPriceEditable, setConsultationPriceEditable] = useState(false);
+  const [visitBilling, setVisitBilling] = useState(null);
+  const [visitBillingLoading, setVisitBillingLoading] = useState(false);
+  const includeFee = Boolean(visitBilling && !visitBilling.bills.some(b=>b.items.some(i=>isVisitFee(i))));
+  useEffect(() => {
+    if (!open || !consultationId) { setVisitBilling(null); return; }
+    let ignore=false; setVisitBilling(null); setVisitBillingLoading(true); setItems([]);
+    api.get(`/billing/visit/${consultationId}`).then(data=>{if(!ignore)setVisitBilling(data);})
+      .catch(e=>{if(!ignore)toast.error(e.message);}).finally(()=>{if(!ignore)setVisitBillingLoading(false);});
+    return ()=>{ignore=true;};
+  },[open,consultationId]);
+
 
   useEffect(() => {
     if (!open) {
@@ -1235,7 +1277,7 @@ function CreateBillingModal({
     setSuggestionsOpen(false);
   }
 
-  const consultationPriceNumber = Number(consultationPrice || 0);
+  const consultationPriceNumber = includeFee ? Number(consultationPrice || 0) : 0;
   const total = useMemo(() => {
     const inventoryTotal = items.reduce((sum, item) => {
       const itemType = String(item.type || "Sale");
@@ -1290,13 +1332,15 @@ function CreateBillingModal({
       return;
     }
 
+    if (!visitBilling || visitBillingLoading) { toast.error("Wait for the visit billing records to load."); return; }
     const combinedItems = [
-      {
+      ...(includeFee ? [{
         description: consultationType,
         amount: consultationPriceNumber,
         type: "Sale",
         quantity: 1,
-      },
+        is_consultation_fee: true,
+      }] : []),
       ...items,
     ];
 
@@ -1310,6 +1354,8 @@ function CreateBillingModal({
         quantity: Number(item.quantity || 0),
         inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
         emergency_override: Boolean(item.emergency_override),
+        is_consultation_fee: Boolean(item.is_consultation_fee),
+        dispensing_movement_ids: item.dispensing_movement_ids || [],
       })),
       status,
       payment_method: status === "paid" ? paymentMethod : null,
@@ -1396,7 +1442,7 @@ function CreateBillingModal({
   function updateInventoryLine(index, patch) {
     setItems((current) =>
       current.map((row, idx) => {
-        if (idx !== index || row.is_manual) return row;
+        if (idx !== index || row.is_manual || row.dispensing_movement_ids?.length) return row;
         const qty = Math.max(1, Math.floor(Number(patch.quantity !== undefined ? patch.quantity : row.quantity || 1)));
         const unitPrice = Number(row.unit_price || 0);
         const itemType = String(row.type || "Sale");
@@ -1625,6 +1671,20 @@ function CreateBillingModal({
           </div>
         ) : null}
 
+        {visitBillingLoading ? <p role="status">Checking the visit's existing bills…</p> : null}
+        {visitBilling?.bills.length>0 && <div className="rounded-2xl bg-slate-50 p-3 space-y-2">
+          <p className="text-sm font-semibold">This visit already has a bill. Review it to confirm the fee or record payment.</p>
+          {visitBilling.bills.map(existing=><button key={existing.id} type="button" className="block min-h-11 w-full rounded-xl border px-3 text-left text-sm" onClick={()=>onOpenExisting(existing)}>Open bill #{existing.id} · {formatCurrency(existing.total_amount)} · {existing.status}</button>)}
+          <p className="text-xs text-slate-600">{includeFee ? "No consultation charge is recorded yet. Confirm the fee below before saving." : "A new bill here covers additional items only; the consultation fee is not charged again."}</p>
+        </div>}
+        {!!visitBilling?.pending_sales.length && <div className="rounded-2xl border p-3 space-y-2">
+          <p className="text-sm font-semibold">Already dispensed — add to this bill without using stock again</p>
+          {visitBilling.pending_sales.map(m=><label key={m.id} className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" checked={items.some(i=>i.dispensing_movement_ids?.includes(m.id))} onChange={e=>setItems(current=>e.target.checked ? [...current,{description:m.item_name,type:'Sale',quantity:m.quantity,amount:m.quantity*m.unit_price,unit_price:m.unit_price,inventory_item_id:m.item_id,dispensing_movement_ids:[m.id],available:m.quantity}] : current.filter(i=>!i.dispensing_movement_ids?.includes(m.id)))} />
+            #{m.id} · {m.item_name} × {m.quantity} · {formatCurrency(m.quantity*m.unit_price)}{m.matches_visit ? '' : ' · Confirm this belongs to this visit'}
+          </label>)}
+        </div>}
+        {includeFee && <>
         <div className="grid min-w-0 gap-3 md:grid-cols-2">
           <label className="min-w-0 space-y-1.5">
             <span className="text-sm font-semibold text-slate-700">Consultation Type</span>
@@ -1669,6 +1729,7 @@ function CreateBillingModal({
             </div>
           </label>
         </div>
+        </>}
 
         <div className="hidden rounded-[24px] border border-slate-200 bg-slate-50/60 p-3 md:block">
           <div className="flex flex-row flex-wrap items-center gap-3">
@@ -1808,6 +1869,7 @@ function CreateBillingModal({
         </div>
 
         <DescriptionList
+          includeFee={includeFee}
           consultationType={consultationType}
           consultationPrice={consultationPriceNumber}
           items={items}
@@ -2152,6 +2214,7 @@ function BillingPage() {
         const fresh = rows.find((row) => Number(row.id) === Number(current.bill.id));
         if (!fresh) return current;
         const changedElsewhere =
+          Number(fresh.row_version) !== Number(current.bill.row_version) ||
           String(fresh.updated_at || "") !== String(current.bill.updated_at || "") ||
           String(fresh.status || "") !== String(current.bill.status || "");
         return changedElsewhere ? { ...current, stale: true } : current;
@@ -2344,7 +2407,7 @@ function BillingPage() {
       sessionStorage.setItem(key, operationId);
       await api.post("/billing", { ...payload, operation_id: operationId });
       sessionStorage.removeItem(key);
-      toast.success("Bill created and inventory updated.");
+      toast.success("Bill saved and dispensing linked.");
       setCreatorOpen(false);
       await loadData();
     } catch (error) {
@@ -2356,6 +2419,7 @@ function BillingPage() {
   }
 
   async function handleQuickMarkPaid(bill, paymentMethod = "cash") {
+    if (bill.fee_review_required) { setEditor({bill}); return; }
     if (!canWriteBill(user, bill)) {
       toast.error("You can only mark paid on bills from your own consultations.");
       return;
@@ -2475,6 +2539,8 @@ function BillingPage() {
           </button>
         </div>
       ) : null}
+
+      <FinancialReconciliation refreshToken={bills} />
 
       <div
         className={cx(
@@ -2627,7 +2693,7 @@ function BillingPage() {
                                   onClick={() => handleQuickMarkPaid(bill)}
                                   className="inline-flex items-center gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
                                 >
-                                  Mark paid
+                                  {bill.fee_review_required ? "Review consultation fee" : "Mark paid"}
                                 </button>
                               ) : null}
                               <button
@@ -2696,7 +2762,7 @@ function BillingPage() {
                           className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
                         >
                           <CreditCard className="size-4" />
-                          Mark paid (cash)
+                          {bill.fee_review_required ? "Review consultation fee" : "Mark paid (cash)"}
                         </button>
                       ) : null}
                       {bill && (
@@ -2779,6 +2845,7 @@ function BillingPage() {
         stale={Boolean(editor?.stale)}
         onClose={() => setEditor(null)}
         onSubmit={handleSave}
+        onVoid={async (bill, reason) => { setIsSaving(true); try { await api.post(`/billing/${bill.id}/void`,{reason,expected_version:bill.row_version}); setEditor(null); await loadData(); toast.success("Duplicate bill voided; visit retained."); } catch(e){toast.error(e.message);} finally {setIsSaving(false);} }}
         isSaving={isSaving}
       />
 
@@ -2790,6 +2857,7 @@ function BillingPage() {
         patients={patientOptions}
         consultations={consultationOptions}
         preselectedPatientId={patientIdFilter}
+        onOpenExisting={bill=>{setCreatorOpen(false);setEditor({bill});}}
       />
     </div>
   );

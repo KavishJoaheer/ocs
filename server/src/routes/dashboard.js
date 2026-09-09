@@ -1658,6 +1658,7 @@ router.get("/live-report", (req, res) => {
       dateBasis,
     },
     revenueStatement,
+    financialReconciliation: (() => {const result=require("../lib/financialReconciliation").financialReconciliation(db,{doctorId:selectedDoctorId,from:doctorRange.start,to:doctorRange.end}); if(req.auth.role==="doctor") delete result.stock; return result;})(),
     revenueReport: {
       anchorDate: revenueAnchorDate,
       ranges: revenueRanges,

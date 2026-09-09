@@ -17,7 +17,14 @@ export function useLiveRefreshKey() {
     const bump = () => setRefreshKey((value) => value + 1);
     window.addEventListener(PATIENTS_LIVE_EVENT, bump);
     window.addEventListener(LONG_TERM_REVIEW_EVENT, bump);
+    const visible = () => { if (document.visibilityState === 'visible') bump(); };
+    window.addEventListener('online', bump);
+    window.addEventListener('focus', bump);
+    document.addEventListener('visibilitychange', visible);
     return () => {
+      window.removeEventListener('online', bump);
+      window.removeEventListener('focus', bump);
+      document.removeEventListener('visibilitychange', visible);
       window.removeEventListener(PATIENTS_LIVE_EVENT, bump);
       window.removeEventListener(LONG_TERM_REVIEW_EVENT, bump);
     };

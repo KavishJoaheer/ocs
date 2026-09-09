@@ -106,6 +106,7 @@ const { matched, consumedQty } = runLinkageScenario.findUnbilledSaleCredit({
   patientId,
   doctorId,
   maxQty: saleQty,
+  movementIds: [saleMovementId],
 });
 
 if (matched.length !== 1) fail(`Expected 1 matched Sale movement, got ${matched.length}`);
@@ -181,15 +182,12 @@ movementInsert.run(
   }),
 );
 
-const partial = runLinkageScenario.findUnbilledSaleCredit({
-  itemId: bigItemId,
-  patientId,
-  doctorId,
-  maxQty: 3,
-});
-if (partial.matched.length !== 0 || partial.consumedQty !== 0) {
-  fail("Partial-match guard failed — a 5-qty Sale was credited against a 3-qty bill");
-}
+let partialRejected = false;
+try {
+  runLinkageScenario.findUnbilledSaleCredit({itemId:bigItemId,patientId,doctorId,maxQty:3,
+    movementIds:db.prepare('SELECT id FROM inventory_movements WHERE item_id=?').all(bigItemId).map(r=>r.id)});
+} catch (error) { partialRejected = error.extra?.code === 'DISPENSING_REVIEW_REQUIRED'; }
+if (!partialRejected) fail('Partial dispensing must require reconciliation, not deduct the difference again.');
 
 const { getTodayLocal, normalizeBillingItems, calculateBillingTotal } = require("../lib/utils");
 

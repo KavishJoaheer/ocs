@@ -3072,9 +3072,13 @@ export default function InventoryPage() {
     const handleInventoryRefresh = () => {
       void load(selectedContextDoctorId, doctorContext, { silent: true });
     };
+    window.addEventListener("focus", handleInventoryRefresh);
+    window.addEventListener("online", handleInventoryRefresh);
     window.addEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
     window.addEventListener(DOCTOR_BAG_INVENTORY_EVENT, handleInventoryRefresh);
     return () => {
+      window.removeEventListener("focus", handleInventoryRefresh);
+      window.removeEventListener("online", handleInventoryRefresh);
       window.removeEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
       window.removeEventListener(DOCTOR_BAG_INVENTORY_EVENT, handleInventoryRefresh);
     };
@@ -3812,6 +3816,7 @@ export default function InventoryPage() {
       ...(isSale
         ? {
             patient_id: Number(payload.patient_id),
+            dispensed_on: new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10),
             patient_label: payload.patient_label || "",
           }
         : {}),
@@ -4037,6 +4042,7 @@ export default function InventoryPage() {
       ...(stockOutReason === "Sale"
         ? {
             patient_id: Number(patient_id),
+            dispensed_on: new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10),
             patient_label,
           }
         : {}),
