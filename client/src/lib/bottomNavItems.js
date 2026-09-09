@@ -10,7 +10,8 @@ import {
 
 export const bottomNavItems = [
   { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["admin", "doctor", "operator", "lab_tech", "accountant"] },
-  { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "operator", "lab_tech"] },
+  { to: "/visit-requests", label: "Visits", icon: ClipboardList, roles: ["operator"] },
+  { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "lab_tech"] },
   { to: "/billing", label: "Billing", icon: CreditCard, roles: ["admin", "accountant"] },
   { to: "/lab", label: "Lab", icon: Stethoscope, roles: ["lab_tech"] },
   { to: "/consultations", label: "Consults", icon: ClipboardList, roles: ["lab_tech"] },

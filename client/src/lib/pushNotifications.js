@@ -174,7 +174,7 @@ export function getPushPermissionRecoveryInstructions() {
     return {
       title: "Notifications blocked",
       description:
-        "Low-stock and HCM alerts cannot reach this device until iOS notifications are re-enabled for OCS.",
+        "OCS visit, inventory, and team alerts cannot reach this device until iOS notifications are re-enabled.",
       steps: [
         "Open Settings → Notifications",
         "Select the OCS home-screen app",
@@ -188,7 +188,7 @@ export function getPushPermissionRecoveryInstructions() {
     return {
       title: "Notifications blocked",
       description:
-        "Critical inventory alerts are paused because Android blocked notifications for this app or browser.",
+        "OCS visit, inventory, and team alerts are paused because Android blocked this app or browser.",
       steps: [
         "Open Settings → Apps → OCS (or Chrome if using the browser)",
         "Tap Notifications and enable all categories",
@@ -225,7 +225,9 @@ export function getPushBannerCopy(role) {
     return {
       title: "Enable alerts",
       description:
-        "Get low stock reminders for OCS inventory on this device, with alerts every 6 hours until items are restocked.",
+        role === "operator"
+          ? "Receive new visit requests and warehouse alerts on this device, including when OCS is in the background."
+          : "Get low stock reminders for OCS inventory on this device, with alerts every 6 hours until items are restocked.",
     };
   }
 

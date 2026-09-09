@@ -240,6 +240,15 @@ function OperatorOperationalPulse({ counts, lowStockAlert }) {
         Operational pulse
       </h2>
       <div className="mt-3 space-y-1">
+        {counts.overdueReviews > 0 ? (
+          <OperatorPulseRow
+            icon={CalendarClock}
+            label="Overdue reviews"
+            tone="warning"
+            to="/operator/long-term-review"
+            value={counts.overdueReviews}
+          />
+        ) : null}
         <OperatorPulseRow
           icon={CalendarClock}
           label="Review appointments due"
@@ -255,8 +264,9 @@ function OperatorOperationalPulse({ counts, lowStockAlert }) {
         />
         <OperatorPulseRow
           icon={ReceiptText}
-          label="Pending claims"
-          value={counts.pendingClaims}
+          label="Payment follow-up"
+          to="/operator/pending-payment"
+          value={counts.unpaidThisWeek}
         />
       </div>
     </section>
@@ -367,16 +377,16 @@ export default function OperatorCommandCentre({
           <div className="ocs-cc-hero-summary relative z-[2] min-w-0 lg:text-right">
             <div className="ocs-cc-hero-on-call">
               <p className="font-display text-4xl font-semibold tabular-nums leading-none text-white lg:text-[2.65rem]">
-                {counts.onCall}
+                {counts.availableNow}
               </p>
-              <p className="mt-1.5 text-xs font-medium text-[#d5ecea]">Doctors on call now</p>
+              <p className="mt-1.5 text-xs font-medium text-[#d5ecea]">Doctors available now</p>
             </div>
             <p className="ocs-cc-hero-tagline">Connecting homes through care</p>
           </div>
         </div>
       </section>
 
-      <section aria-label="Operator trial workflows" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <section aria-label="Operator workflows" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <OperatorWorkflowCard
           action="Start intake"
           icon={UserPlus}

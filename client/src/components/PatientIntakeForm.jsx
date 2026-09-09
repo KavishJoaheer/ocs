@@ -13,6 +13,7 @@ import {
 } from "../lib/insuranceProvider.js";
 import {
   buildPatientLocationFieldFromTags,
+  hasStructuredLocationTags,
   sanitizeLocationTagsForDisplay,
 } from "../lib/locationTags.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
@@ -343,11 +344,15 @@ function PatientFormModal({
     if (!onFinalWizardStep) {
       return;
     }
-    clearDraft();
-
     const locationTags = sanitizeLocationTagsForDisplay(
       Array.isArray(form.location_tags) ? form.location_tags : [],
     );
+
+    if (!hasStructuredLocationTags(locationTags)) {
+      toast.error("Select a town, village, neighbourhood, or clinic before saving.");
+      return;
+    }
+
     const legacyLocation = buildPatientLocationFieldFromTags(locationTags);
 
     const insuranceProvider = resolveInsuranceProviderFromTags(
@@ -363,6 +368,7 @@ function PatientFormModal({
       return;
     }
 
+    clearDraft();
     onSubmit({
       ...form,
       location_tags: locationTags,
@@ -585,7 +591,7 @@ function PatientFormModal({
                   />
                 </label>
                 <div>
-                  <span className={MOBILE_FIELD_LABEL}>Locations and affiliations</span>
+                  <span className={MOBILE_FIELD_LABEL}>Service location and affiliations *</span>
                   <PatientLocationTags
                     tags={form.location_tags}
                     insuranceProvider={form.insurance_provider}
@@ -981,7 +987,7 @@ function PatientFormModal({
 
                 <div className="space-y-2">
                   <span className="text-sm font-semibold text-slate-700">
-                    Locations and affiliations
+                    Service location and affiliations *
                   </span>
                   <PatientLocationTags
                     tags={form.location_tags}

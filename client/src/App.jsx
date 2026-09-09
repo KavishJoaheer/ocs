@@ -126,7 +126,7 @@ function App() {
           <Route element={<ProtectedRoute roles={["operator"]} />}>
             <Route
               path="/operator/billing-status"
-              element={<Navigate to="/" replace />}
+              element={<OperatorWorkspacePage workspaceKey="pending-payment" />}
             />
             <Route
               path="/operator/current-week-roster"
@@ -146,7 +146,7 @@ function App() {
             />
             <Route
               path="/operator/pending-payment"
-              element={<Navigate to="/" replace />}
+              element={<OperatorWorkspacePage workspaceKey="pending-payment" />}
             />
             <Route path="/operator/long-term-review" element={<LongTermReviewQueuePage />} />
           </Route>

@@ -263,6 +263,24 @@ function createPatientRevisionsTable() {
   `);
 }
 
+function createPatientLifecycleEventsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_lifecycle_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('deleted', 'restored')),
+      reason TEXT NOT NULL,
+      actor_user_id INTEGER,
+      actor_role TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+      FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_patient_lifecycle_events_patient
+      ON patient_lifecycle_events(patient_id, created_at DESC);
+  `);
+}
+
 function createPatientOperatorAccessTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS patient_operator_access (
@@ -1580,6 +1598,7 @@ function initializeDatabase() {
   createLabReportsTable();
   createLabReportAttachmentsTable();
   createPatientRevisionsTable();
+  createPatientLifecycleEventsTable();
   createPatientOperatorAccessTable();
   createHcmNewsPostsTable();
   createHcmNewsReadsTable();
@@ -1814,6 +1833,26 @@ function ensurePatientColumns() {
     {
       name: "deleted_at",
       sql: "ALTER TABLE patients ADD COLUMN deleted_at TEXT",
+    },
+    {
+      name: "deleted_reason",
+      sql: "ALTER TABLE patients ADD COLUMN deleted_reason TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "deleted_by_user_id",
+      sql: "ALTER TABLE patients ADD COLUMN deleted_by_user_id INTEGER",
+    },
+    {
+      name: "restored_at",
+      sql: "ALTER TABLE patients ADD COLUMN restored_at TEXT",
+    },
+    {
+      name: "restored_by_user_id",
+      sql: "ALTER TABLE patients ADD COLUMN restored_by_user_id INTEGER",
+    },
+    {
+      name: "restore_reason",
+      sql: "ALTER TABLE patients ADD COLUMN restore_reason TEXT NOT NULL DEFAULT ''",
     },
     {
       name: "is_subscribed",

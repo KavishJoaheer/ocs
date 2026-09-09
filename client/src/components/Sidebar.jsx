@@ -98,6 +98,15 @@ const navItems = [
     isActiveWhen: (location) => location.pathname === "/operator/long-term-review",
   },
   {
+    to: "/operator/pending-payment",
+    label: "Payment follow-up",
+    icon: CreditCard,
+    roles: ["operator"],
+    isActiveWhen: (location) =>
+      location.pathname === "/operator/pending-payment" ||
+      location.pathname === "/operator/billing-status",
+  },
+  {
     to: "/admin/long-term-review",
     label: "Review appointment",
     icon: Activity,

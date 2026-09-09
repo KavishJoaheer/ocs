@@ -109,7 +109,7 @@ test('voiding reverses stock and excludes revenue, keeps audit details and block
 
 test('archived patients retain historical billing and revenue with existing doctor access scope', async () => {
   const ctx=context('Archive'); const original=await bill(ctx,fee(700),{status:'paid',payment_method:'cash',payment_date:today});
-  const before=await report(); assert.equal((await api('DELETE',`/patients/${ctx.patientId}`)).status,204);
+  const before=await report(); assert.equal((await api('DELETE',`/patients/${ctx.patientId}`,'admin',{reason:'Archive duplicate financial test patient'})).status,204);
   assert.equal((await report()).revenueStatement.paidRevenue,before.revenueStatement.paidRevenue);
   const detail=await api('GET',`/billing/${original.data.id}`,'doctor'); assert.equal(detail.status,200);
   assert.ok(detail.data.patient_archived_at);

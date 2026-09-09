@@ -24,7 +24,7 @@ function PushNotificationBanner({ role, className = "" }) {
     let cancelled = false;
 
     async function evaluateVisibility() {
-      if (!isPushSupported() || isPushBannerDismissed()) {
+      if (!isPushSupported()) {
         if (!cancelled) {
           setVisible(false);
           setIsDenied(false);
@@ -39,7 +39,10 @@ function PushNotificationBanner({ role, className = "" }) {
 
       if (!cancelled) {
         setIsDenied(permission === "denied");
-        setVisible(configured && (permission === "default" || permission === "denied"));
+        setVisible(
+          permission === "denied" ||
+            (configured && permission === "default" && !isPushBannerDismissed()),
+        );
       }
     }
 

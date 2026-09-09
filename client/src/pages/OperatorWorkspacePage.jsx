@@ -75,12 +75,20 @@ const COVERAGE_GROUPS = [
     stateClass: "text-[#1a7f4b]",
   },
   {
-    key: "active",
+    key: "on_visit",
     label: "On a visit",
-    stateLabel: "Busy",
+    stateLabel: "Active visit",
     empty: "No doctor is currently with a patient.",
     cardClass: "border-l-4 border-[#d97706] bg-[rgba(217,119,6,0.08)]",
     stateClass: "text-[#b45309]",
+  },
+  {
+    key: "unavailable",
+    label: "Unavailable",
+    stateLabel: "Unavailable",
+    empty: "No signed-in doctor is marked unavailable.",
+    cardClass: "border-l-4 border-[#8b5cf6] bg-[rgba(139,92,246,0.07)]",
+    stateClass: "text-[#6d28d9]",
   },
   {
     key: "offline",
@@ -93,8 +101,13 @@ const COVERAGE_GROUPS = [
 ];
 
 function coverageStatus(doctor) {
+  const derived = String(doctor?.coverage_status || "").toLowerCase();
+  if (["available", "on_visit", "unavailable", "offline"].includes(derived)) {
+    return derived;
+  }
   const status = String(doctor?.operation_status || "offline").toLowerCase();
-  if (status === "available" || status === "active") return status;
+  if (status === "available") return "available";
+  if (status === "active") return "unavailable";
   return "offline";
 }
 
@@ -324,7 +337,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
 
   if (workspaceKey === "current-week-roster") {
     const availableDoctors = (data.doctorStatuses || []).filter(
-      (doctor) => doctor.operation_status === "available" || doctor.operation_status === "active",
+      (doctor) => coverageStatus(doctor) === "available",
     );
     metrics = [
       {
@@ -343,9 +356,9 @@ function OperatorWorkspacePage({ workspaceKey }) {
       },
       {
         icon: UsersRound,
-        label: "Reachable doctors",
+        label: "Available now",
         value: availableDoctors.length,
-        description: "Doctors currently available or active for emergency coverage.",
+        description: "Doctors currently free to accept an emergency visit.",
         accent: "bg-[#1a7f4b]",
       },
     ];

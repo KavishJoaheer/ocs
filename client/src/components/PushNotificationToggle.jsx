@@ -76,24 +76,39 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
       return "On iPhone, add OCS to your Home Screen, then open the app to enable alerts.";
     }
 
-    if (!available) {
-      if (configurationUnavailable) return "Alert configuration could not be checked. Recheck when connected.";
-      return "Push alerts are not configured on this server yet.";
+    if (permission === "denied") {
+      return "This browser blocked OCS alerts. Re-enable notifications in device or site settings.";
     }
 
-    if (permission === "denied") {
-      return "Notifications are blocked. Enable them in your device Settings for OCS.";
+    if (!available) {
+      if (configurationUnavailable) {
+        return "OCS could not check the alert service. Recheck when the connection is stable.";
+      }
+      return "The OCS alert service needs server setup. Contact an administrator.";
     }
 
     if (role === "doctor") {
       return "Visit requests and low-stock alerts on this device. Use Test this device to verify alerts appear.";
     }
 
-    if (role === "admin" || role === "operator") {
+    if (role === "operator") {
+      return "New visit requests and warehouse alerts on this device. Use Test this device to confirm delivery.";
+    }
+
+    if (role === "admin") {
       return "Get alerts when OCS stock items are at or below par level (reminder every 6 hours).";
     }
 
     return "Low stock and HCM management updates";
+  })();
+  const statusLabel = (() => {
+    if (!isPushSupported()) return "Unavailable on this device";
+    if (permission === "denied") return "Blocked on this device";
+    if (configurationUnavailable) return "Status check failed";
+    if (!available) return "Server setup required";
+    if (enabled) return "Working on this device";
+    if (permission === "default") return "Permission needed";
+    return "Not enabled on this device";
   })();
 
   const toggleDisabled = isUpdating || !available;
@@ -160,6 +175,7 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
         onDark={onDark}
         helperText={helperText}
         permission={permission}
+        statusLabel={statusLabel}
         onShowDeniedGuide={() => setShowDeniedGuide(true)}
       >
         <label
@@ -202,7 +218,15 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
   );
 }
 
-function ToggleShell({ className, onDark, helperText, permission, onShowDeniedGuide, children }) {
+function ToggleShell({
+  className,
+  onDark,
+  helperText,
+  permission,
+  statusLabel,
+  onShowDeniedGuide,
+  children,
+}) {
   return (
     <div
       className={[
@@ -218,6 +242,15 @@ function ToggleShell({ className, onDark, helperText, permission, onShowDeniedGu
           className={onDark ? "text-xs font-bold tracking-wide text-white" : "text-xs font-bold tracking-wide text-gray-700"}
         >
           Push Notifications
+        </span>
+        <span
+          className={
+            onDark
+              ? "mt-1 w-fit rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+              : "mt-1 w-fit rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600"
+          }
+        >
+          {statusLabel}
         </span>
         <span
           className={

@@ -3,7 +3,7 @@ import LongTermReviewWorkspaceList from "./LongTermReviewWorkspaceList.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
-import { parsePatientReviewDueMonth } from "../lib/patientReview.js";
+import { getReviewDueTiming, parsePatientReviewDueMonth } from "../lib/patientReview.js";
 
 const CALENDAR_MONTH_OPTIONS = [
   { value: "01", label: "January" },
@@ -37,9 +37,9 @@ function filterPatientsByMonthIndex(patients, selectedMonthIndex) {
   );
 }
 
-function ReviewFilterSelect({ id, label, value, onChange, children }) {
+function ReviewFilterSelect({ id, label, value, onChange, children, className = "" }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
       <label
         className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400"
         htmlFor={id}
@@ -71,6 +71,7 @@ function LongTermReviewOperatorPanel({
   const isMobile = useIsMobile();
   const isDoctor = user?.role === "doctor";
   const [selectedMonthIndex, setSelectedMonthIndex] = useState("all");
+  const [timingFilter, setTimingFilter] = useState("all");
   const [doctors, setDoctors] = useState([]);
 
   useEffect(() => {
@@ -94,10 +95,28 @@ function LongTermReviewOperatorPanel({
     };
   }, []);
 
-  const filteredReviewList = useMemo(
-    () => filterPatientsByMonthIndex(patients, selectedMonthIndex),
-    [patients, selectedMonthIndex],
+  const timingCounts = useMemo(
+    () => patients.reduce(
+      (counts, patient) => {
+        const { status } = getReviewDueTiming(patient.review_due_date);
+        if (status === "overdue") counts.overdue += 1;
+        if (status === "today" || status === "due_7_days") counts.dueSoon += 1;
+        return counts;
+      },
+      { overdue: 0, dueSoon: 0 },
+    ),
+    [patients],
   );
+
+  const filteredReviewList = useMemo(() => {
+    const byMonth = filterPatientsByMonthIndex(patients, selectedMonthIndex);
+    if (timingFilter === "all") return byMonth;
+    return byMonth.filter((patient) => {
+      const { status } = getReviewDueTiming(patient.review_due_date);
+      if (timingFilter === "due_7_days") return status === "today" || status === "due_7_days";
+      return status === timingFilter;
+    });
+  }, [patients, selectedMonthIndex, timingFilter]);
 
   const filteredMonthLabel = monthLabelFromIndex(selectedMonthIndex);
   const heading = isDoctor && scope === "mine" ? "Your reviews" : "Review Appointments";
@@ -146,6 +165,20 @@ function LongTermReviewOperatorPanel({
           </option>
         ))}
       </ReviewFilterSelect>
+
+      <ReviewFilterSelect
+        id="long-term-review-timing-filter"
+        label="Due status"
+        value={timingFilter}
+        onChange={(event) => setTimingFilter(event.target.value)}
+        className={isMobile ? "col-span-2" : ""}
+      >
+        <option value="all">All due dates</option>
+        <option value="overdue">Overdue</option>
+        <option value="due_7_days">Due in 7 days</option>
+        <option value="upcoming">Later</option>
+        <option value="no_date">No due date</option>
+      </ReviewFilterSelect>
     </div>
   );
 
@@ -171,19 +204,44 @@ function LongTermReviewOperatorPanel({
         </div>
       )}
 
+      <div className="flex flex-wrap gap-2" aria-label="Review urgency summary">
+        <button
+          type="button"
+          onClick={() => setTimingFilter("overdue")}
+          className={`rounded-full border px-3 py-1.5 text-sm font-bold ${
+            timingCounts.overdue
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-slate-200 bg-white text-slate-500"
+          }`}
+        >
+          Overdue {timingCounts.overdue}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTimingFilter("due_7_days")}
+          className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-bold text-amber-800"
+        >
+          Due next 7 days {timingCounts.dueSoon}
+        </button>
+      </div>
+
       <LongTermReviewWorkspaceList
         patients={filteredReviewList}
         showMineBadge={isDoctor && scope !== "mine"}
         showReviewDoctor={!(isDoctor && scope === "mine")}
         emptyDescription={
-          selectedMonthIndex !== "all"
+          timingFilter !== "all"
+            ? "No reviews match this due-status filter."
+            : selectedMonthIndex !== "all"
             ? `No review appointment patients have a due date in ${filteredMonthLabel}.`
             : scope === "mine"
               ? "Reviews assigned to you will appear here."
               : "Patients flagged for a review appointment will appear here."
         }
         emptyTitle={
-          selectedMonthIndex !== "all"
+          timingFilter !== "all"
+            ? "No matching reviews"
+            : selectedMonthIndex !== "all"
             ? `No patients due in ${filteredMonthLabel}`
             : scope === "mine"
               ? "No reviews assigned to you"

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   CreditCard,
   Globe,
+  MapPin,
   MoreVertical,
   Plus,
   RotateCcw,
@@ -333,6 +334,9 @@ function PatientsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [patientToRestore, setPatientToRestore] = useState(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [restoreReason, setRestoreReason] = useState("");
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [patientToPurge, setPatientToPurge] = useState(null);
   const [patientCardMenu, setPatientCardMenu] = useState(null);
   const [desktopTableMenu, setDesktopTableMenu] = useState(null);
@@ -664,26 +668,38 @@ function PatientsPage() {
   async function handleDelete() {
     if (!patientToDelete) return;
 
+    setLifecycleBusy(true);
     try {
-      await api.delete(`/patients/${patientToDelete.id}`);
+      await api.delete(`/patients/${patientToDelete.id}`, {
+        body: { reason: deleteReason.trim() },
+      });
       toast.success("Patient removed from the directory.");
       setPatientToDelete(null);
+      setDeleteReason("");
       await loadPatients();
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setLifecycleBusy(false);
     }
   }
 
   async function handleRestore() {
     if (!patientToRestore) return;
 
+    setLifecycleBusy(true);
     try {
-      await api.post(`/patients/${patientToRestore.id}/restore`);
+      await api.post(`/patients/${patientToRestore.id}/restore`, {
+        reason: restoreReason.trim(),
+      });
       toast.success(`${patientToRestore.full_name} restored to the patient directory.`);
       setPatientToRestore(null);
+      setRestoreReason("");
       await loadPatients();
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setLifecycleBusy(false);
     }
   }
 
@@ -1014,6 +1030,14 @@ function PatientsPage() {
                             <p className="mt-1 break-words text-xs font-medium text-ocs-grey">
                               {formatMobilePatientMetaLine(patient)}
                             </p>
+                            <p
+                              className={`mt-1 flex items-start gap-1 text-xs font-semibold ${
+                                patient.location?.trim() ? "text-slate-500" : "text-rose-700"
+                              }`}
+                            >
+                              <MapPin className="mt-0.5 size-3 shrink-0" aria-hidden />
+                              {patient.location?.trim() || "Location required · not dispatch ready"}
+                            </p>
                             {showAssignedDoctor ? (
                               <p className="mt-1 text-xs font-medium text-ocs-grey">
                                 {displayText(patient.assigned_doctor_name, "Not assigned")}
@@ -1136,6 +1160,11 @@ function PatientsPage() {
                               </td>
                               <td className="px-4 py-3 align-top text-sm text-slate-600">
                                 {formatDate(patient.deleted_at)}
+                                {patient.deleted_reason ? (
+                                  <p className="mt-1 text-xs leading-snug text-slate-500">
+                                    Reason: {patient.deleted_reason}
+                                  </p>
+                                ) : null}
                               </td>
                               <td className="px-4 py-3 align-top text-xs leading-snug text-slate-500">
                                 <p>{Number(patient.appointment_count || 0)} appointments</p>
@@ -1570,7 +1599,10 @@ function PatientsPage() {
 
       <ConfirmDialog
         open={Boolean(patientToDelete)}
-        onClose={() => setPatientToDelete(null)}
+        onClose={() => {
+          setPatientToDelete(null);
+          setDeleteReason("");
+        }}
         onConfirm={handleDelete}
         title="Delete patient?"
         description={
@@ -1579,11 +1611,29 @@ function PatientsPage() {
             : ""
         }
         confirmLabel="Remove patient"
-      />
+        busy={lifecycleBusy}
+        confirmDisabled={deleteReason.trim().length < 10}
+      >
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Reason for removal *</span>
+          <textarea
+            autoFocus
+            rows={3}
+            value={deleteReason}
+            onChange={(event) => setDeleteReason(event.target.value)}
+            placeholder="Record why this patient is being removed"
+            className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-ocs-teal"
+          />
+          <span className="text-xs text-slate-500">At least 10 characters. This is kept in the audit trail.</span>
+        </label>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={Boolean(patientToRestore)}
-        onClose={() => setPatientToRestore(null)}
+        onClose={() => {
+          setPatientToRestore(null);
+          setRestoreReason("");
+        }}
         onConfirm={handleRestore}
         title="Restore patient?"
         description={
@@ -1593,7 +1643,22 @@ function PatientsPage() {
         }
         confirmLabel="Restore patient"
         tone="default"
-      />
+        busy={lifecycleBusy}
+        confirmDisabled={restoreReason.trim().length < 10}
+      >
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Reason for restoration *</span>
+          <textarea
+            autoFocus
+            rows={3}
+            value={restoreReason}
+            onChange={(event) => setRestoreReason(event.target.value)}
+            placeholder="Record why this patient is being restored"
+            className="w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-ocs-teal"
+          />
+          <span className="text-xs text-slate-500">At least 10 characters. This is kept in the audit trail.</span>
+        </label>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={Boolean(patientToPurge)}

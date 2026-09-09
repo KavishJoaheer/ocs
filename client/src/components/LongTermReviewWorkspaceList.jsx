@@ -9,6 +9,7 @@ import {
   formatReviewAppointmentTime,
   formatReviewDueShort,
   formatScheduledReviewDate,
+  getReviewDueTiming,
   getReviewDoctorName,
 } from "../lib/patientReview.js";
 
@@ -54,6 +55,26 @@ function dueText(patient, { short = false } = {}) {
     return "Due date not set";
   }
   return timeLabel ? `Due ${dueLabel} · ${timeLabel}` : `Due ${dueLabel}`;
+}
+
+function dueBadge(patient) {
+  const timing = getReviewDueTiming(patient.review_due_date);
+  if (timing.status === "overdue") {
+    return {
+      className: "bg-rose-100 text-rose-800",
+      label: `Overdue ${timing.days}d`,
+    };
+  }
+  if (timing.status === "today") {
+    return { className: "bg-amber-100 text-amber-900", label: "Due today" };
+  }
+  if (timing.status === "due_7_days") {
+    return { className: "bg-amber-50 text-amber-800", label: dueText(patient, { short: true }) };
+  }
+  if (timing.status === "no_date") {
+    return { className: "bg-slate-100 text-slate-500", label: "Date not set" };
+  }
+  return { className: "bg-teal-50 text-teal-800", label: dueText(patient, { short: true }) };
 }
 
 function ReviewActions({ canManage, canAssign, patient, onLogUpdate, onAssign, compact }) {
@@ -127,6 +148,7 @@ function LongTermReviewWorkspaceList({
           );
           const canManage = patient.can_manage !== false;
           const showYours = showMineBadge && patient.is_mine;
+          const timingBadge = dueBadge(patient);
 
           if (isMobile) {
             return (
@@ -149,11 +171,9 @@ function LongTermReviewWorkspaceList({
                     <p className="mt-0.5 text-sm text-[#4f6f7a]">{formatReviewPatientMetaLine(patient)}</p>
                   </div>
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-                      patient.review_due_date ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"
-                    }`}
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${timingBadge.className}`}
                   >
-                    {dueText(patient, { short: true })}
+                    {timingBadge.label}
                   </span>
                 </div>
 
@@ -211,11 +231,9 @@ function LongTermReviewWorkspaceList({
 
                 <div className="min-w-0">
                   <p
-                    className={`text-sm font-bold ${
-                      patient.review_due_date ? "text-amber-700" : "text-slate-500"
-                    }`}
+                    className={`inline-flex rounded-full px-2.5 py-1 text-sm font-bold ${timingBadge.className}`}
                   >
-                    {dueText(patient)}
+                    {timingBadge.label}
                   </p>
                 </div>
 

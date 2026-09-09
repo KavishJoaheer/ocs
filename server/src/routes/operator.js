@@ -121,13 +121,22 @@ function getOperatorDashboardMetrics() {
 
   const activeFollowupRow = db
     .prepare(`
-      SELECT COUNT(*) AS count
+      SELECT
+        COUNT(*) AS count,
+        SUM(
+          CASE
+            WHEN p.review_due_date IS NOT NULL
+              AND trim(p.review_due_date) <> ''
+              AND date(p.review_due_date) < date(?)
+            THEN 1 ELSE 0
+          END
+        ) AS overdue_count
       FROM patients p
       WHERE p.deleted_at IS NULL
         AND p.status = 'active'
         AND p.is_under_review = 1
     `)
-    .get();
+    .get(today);
 
   const activeSubscribersRow = db
     .prepare(`
@@ -213,9 +222,45 @@ function getOperatorDashboardMetrics() {
     `)
     .get(weekStart, weekEnd);
 
-  const onCallRow = db
+  const coverageRow = db
     .prepare(`
-      SELECT COUNT(*) AS count
+      SELECT
+        COUNT(*) AS signed_in_count,
+        SUM(
+          CASE
+            WHEN u.operation_status = 'available'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM visit_requests v
+                WHERE v.assigned_doctor_id = d.id
+                  AND v.status IN ('en_route', 'arrived', 'in_consultation')
+              )
+            THEN 1 ELSE 0
+          END
+        ) AS available_now_count,
+        SUM(
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM visit_requests v
+              WHERE v.assigned_doctor_id = d.id
+                AND v.status IN ('en_route', 'arrived', 'in_consultation')
+            )
+            THEN 1 ELSE 0
+          END
+        ) AS on_visit_count,
+        SUM(
+          CASE
+            WHEN u.operation_status = 'active'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM visit_requests v
+                WHERE v.assigned_doctor_id = d.id
+                  AND v.status IN ('en_route', 'arrived', 'in_consultation')
+              )
+            THEN 1 ELSE 0
+          END
+        ) AS unavailable_count
       FROM doctors d
       JOIN users u
         ON u.doctor_id = d.id
@@ -223,7 +268,15 @@ function getOperatorDashboardMetrics() {
        AND u.is_active = 1
        AND u.deleted_at IS NULL
       WHERE d.deleted_at IS NULL
-        AND u.operation_status IN ('available', 'active')
+        AND (
+          u.operation_status IN ('available', 'active')
+          OR EXISTS (
+            SELECT 1
+            FROM visit_requests v
+            WHERE v.assigned_doctor_id = d.id
+              AND v.status IN ('en_route', 'arrived', 'in_consultation')
+          )
+        )
     `)
     .get();
 
@@ -243,6 +296,7 @@ function getOperatorDashboardMetrics() {
     },
     long_term_review: {
       active_followup_count: Number(activeFollowupRow?.count || 0),
+      overdue_count: Number(activeFollowupRow?.overdue_count || 0),
     },
     health_plans: {
       active_subscribers_count: Number(activeSubscribersRow?.count || 0),
@@ -254,7 +308,10 @@ function getOperatorDashboardMetrics() {
     },
     coverage: {
       doctors_this_week: Number(doctorsThisWeekRow?.count || 0),
-      on_call_count: Number(onCallRow?.count || 0),
+      on_call_count: Number(coverageRow?.signed_in_count || 0),
+      available_now_count: Number(coverageRow?.available_now_count || 0),
+      on_visit_count: Number(coverageRow?.on_visit_count || 0),
+      unavailable_count: Number(coverageRow?.unavailable_count || 0),
     },
     upcoming_visits: upcomingVisits,
     periods: {

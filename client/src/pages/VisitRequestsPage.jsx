@@ -84,6 +84,31 @@ const requestDateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "numeric", month: "short", year: "numeric", timeZone: "Indian/Mauritius",
 });
 
+function playDispatchAlertTone() {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const context = new AudioContext();
+    void context.resume().then(() => {
+      const gain = context.createGain();
+      const oscillator = context.createOscillator();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.35);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.38);
+      oscillator.addEventListener("ended", () => void context.close(), { once: true });
+    }).catch(() => void context.close());
+  } catch {
+    // Browser autoplay rules can block sound until the operator interacts.
+  }
+}
+
 function formatRequestDate(value) {
   const date = parseTimestamp(value);
   return date ? requestDateFormatter.format(date) : "Not set";
@@ -592,6 +617,8 @@ export default function VisitRequestsPage() {
   const [now, setNow] = useState(() => Date.now());
   const loadRef = useRef(null);
   const fetchIdRef = useRef(0);
+  const knownActiveRequestIdsRef = useRef(null);
+  const [arrivalNotice, setArrivalNotice] = useState("");
 
   const loadRequests = useCallback(async ({ silent = false } = {}) => {
     const fetchId = ++fetchIdRef.current;
@@ -607,7 +634,27 @@ export default function VisitRequestsPage() {
       if (dateFilter.to) query.set("date_to", dateFilter.to);
       const data = await api.get(`/visit-requests?${query}`);
       if (fetchId !== fetchIdRef.current) return;
-      setRequests(data.visit_requests || []);
+      const nextRequests = data.visit_requests || [];
+      if (!isDoctor && statusFilter === "active" && !dateFilter.from && !dateFilter.to) {
+        const nextIds = new Set(nextRequests.map((request) => Number(request.id)));
+        const knownIds = knownActiveRequestIdsRef.current;
+        if (knownIds) {
+          const added = [...nextIds].filter((id) => !knownIds.has(id));
+          if (added.length > 0) {
+            const message = `${added.length} new visit request${added.length === 1 ? "" : "s"} need dispatch review.`;
+            setArrivalNotice(message);
+            toast.success(message, { duration: 10_000, icon: "🔔" });
+            if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+              navigator.vibrate([200, 100, 200]);
+            }
+            playDispatchAlertTone();
+          }
+        }
+        knownActiveRequestIdsRef.current = nextIds;
+      } else {
+        knownActiveRequestIdsRef.current = null;
+      }
+      setRequests(nextRequests);
       setLoadError("");
     } catch (error) {
       if (fetchId !== fetchIdRef.current) return;
@@ -619,7 +666,7 @@ export default function VisitRequestsPage() {
         setRefreshing(false);
       }
     }
-  }, [statusFilter, dateFilter]);
+  }, [statusFilter, dateFilter, isDoctor]);
 
   loadRef.current = loadRequests;
 
@@ -659,6 +706,12 @@ export default function VisitRequestsPage() {
       clearInterval(tick);
     };
   }, []);
+
+  useEffect(() => {
+    if (!arrivalNotice) return undefined;
+    const timeoutId = window.setTimeout(() => setArrivalNotice(""), 15_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [arrivalNotice]);
 
   const handleUpdate = useCallback(async (id, payload) => {
     const existing = requests.find((request) => request.id === id);
@@ -831,6 +884,16 @@ export default function VisitRequestsPage() {
         >
           {appointmentChangeCount} appointment change{appointmentChangeCount === 1 ? "" : "s"} waiting for the clinic
         </button>
+      ) : null}
+
+      {arrivalNotice ? (
+        <div
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800 shadow-sm"
+          role="alert"
+          aria-live="assertive"
+        >
+          {arrivalNotice} Open the first request and assign a doctor now.
+        </div>
       ) : null}
 
       {statusFilter === "changes" ? (

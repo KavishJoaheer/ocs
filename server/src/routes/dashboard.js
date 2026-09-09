@@ -516,7 +516,34 @@ function getDoctorStatuses() {
         d.specialization,
         u.username,
         u.operation_status,
-        u.operation_status_updated_at
+        u.operation_status_updated_at,
+        (
+          SELECT v.id
+          FROM visit_requests v
+          WHERE v.assigned_doctor_id = d.id
+            AND v.status IN ('en_route', 'arrived', 'in_consultation')
+          ORDER BY v.updated_at DESC, v.id DESC
+          LIMIT 1
+        ) AS active_visit_request_id,
+        (
+          SELECT v.status
+          FROM visit_requests v
+          WHERE v.assigned_doctor_id = d.id
+            AND v.status IN ('en_route', 'arrived', 'in_consultation')
+          ORDER BY v.updated_at DESC, v.id DESC
+          LIMIT 1
+        ) AS active_visit_status,
+        CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM visit_requests v
+            WHERE v.assigned_doctor_id = d.id
+              AND v.status IN ('en_route', 'arrived', 'in_consultation')
+          ) THEN 'on_visit'
+          WHEN u.operation_status = 'available' THEN 'available'
+          WHEN u.operation_status = 'active' THEN 'unavailable'
+          ELSE 'offline'
+        END AS coverage_status
       FROM doctors d
       LEFT JOIN users u
         ON u.doctor_id = d.id

@@ -1723,6 +1723,10 @@ test("operator dashboard metrics include visit requests and this-week unpaid", a
   assert.equal(typeof metrics.data.scheduled_visits?.completed_this_week, "number");
   assert.equal(typeof metrics.data.insurance_claims?.pending_count, "number");
   assert.equal(typeof metrics.data.coverage?.doctors_this_week, "number");
+  assert.equal(typeof metrics.data.coverage?.available_now_count, "number");
+  assert.equal(typeof metrics.data.coverage?.on_visit_count, "number");
+  assert.equal(typeof metrics.data.coverage?.unavailable_count, "number");
+  assert.equal(typeof metrics.data.long_term_review?.overdue_count, "number");
   assert.ok(Array.isArray(metrics.data.upcoming_visits));
 });
 
@@ -1735,13 +1739,31 @@ test("operator can delete a patient without admin permission", async () => {
 
   const patientId = insertDirectoryPatient("OperatorDelete");
 
-  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: operatorToken });
+  const missingReason = await api("DELETE", `/api/patients/${patientId}`, {
+    token: operatorToken,
+  });
+  assert.equal(missingReason.status, 400, JSON.stringify(missingReason.data));
+  assert.equal(
+    db.prepare("SELECT deleted_at FROM patients WHERE id = ?").get(patientId).deleted_at,
+    null,
+  );
+
+  const removed = await api("DELETE", `/api/patients/${patientId}`, {
+    token: operatorToken,
+    body: { reason: "Duplicate patient record confirmed" },
+  });
   assert.equal(removed.status, 204, JSON.stringify(removed.data));
 
   const softDeleted = db
-    .prepare("SELECT deleted_at FROM patients WHERE id = ?")
+    .prepare("SELECT deleted_at, deleted_reason, deleted_by_user_id FROM patients WHERE id = ?")
     .get(patientId);
   assert.ok(softDeleted.deleted_at, "expected the patient to be soft-deleted");
+  assert.equal(softDeleted.deleted_reason, "Duplicate patient record confirmed");
+  assert.ok(softDeleted.deleted_by_user_id);
+  assert.equal(
+    db.prepare("SELECT action FROM patient_lifecycle_events WHERE patient_id = ?").get(patientId)?.action,
+    "deleted",
+  );
 
   const profile = await api("GET", `/api/patients/${patientId}`, { token: operatorToken });
   assert.equal(profile.status, 404, JSON.stringify(profile.data));
@@ -1755,7 +1777,10 @@ test("operator can browse recently deleted patients and restore one", async () =
   const operatorToken = login.data.token;
 
   const patientId = insertDirectoryPatient("OperatorRestore");
-  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: operatorToken });
+  const removed = await api("DELETE", `/api/patients/${patientId}`, {
+    token: operatorToken,
+    body: { reason: "Patient record archived in error" },
+  });
   assert.equal(removed.status, 204, JSON.stringify(removed.data));
 
   const recentlyDeleted = await api("GET", "/api/patients/deleted/recent", {
@@ -1769,11 +1794,16 @@ test("operator can browse recently deleted patients and restore one", async () =
 
   const restored = await api("POST", `/api/patients/${patientId}/restore`, {
     token: operatorToken,
+    body: { reason: "Confirmed this patient remains active" },
   });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   assert.equal(
     db.prepare("SELECT deleted_at FROM patients WHERE id = ?").get(patientId).deleted_at,
     null,
+  );
+  assert.deepEqual(
+    db.prepare("SELECT action FROM patient_lifecycle_events WHERE patient_id = ? ORDER BY id").all(patientId).map((row) => row.action),
+    ["deleted", "restored"],
   );
 });
 
@@ -1834,6 +1864,7 @@ test("operators can edit a patient profile and reassign the doctor", async () =>
       date_of_birth: "1990-01-01",
       patient_contact_number: "57007777",
       address: "12 Operator Street",
+      location: "Port Louis",
       assigned_doctor_id: doctors[1].id,
       status: "active",
     },
@@ -1870,7 +1901,10 @@ test("operators cannot delete warehouse stock items", async () => {
 test("admin can permanently delete a patient from recently deleted", async () => {
   const patientId = insertDirectoryPatient("AdminPurge");
 
-  const removed = await api("DELETE", `/api/patients/${patientId}`, { token: adminToken });
+  const removed = await api("DELETE", `/api/patients/${patientId}`, {
+    token: adminToken,
+    body: { reason: "Preparing verified permanent deletion" },
+  });
   assert.equal(removed.status, 204, JSON.stringify(removed.data));
 
   const purged = await api("DELETE", `/api/patients/${patientId}/permanent`, {
@@ -1946,7 +1980,10 @@ test("purging a guardian keeps the dependent record but clears the link", async 
     `)
     .run(guardianId, dependentId).lastInsertRowid;
 
-  const removed = await api("DELETE", `/api/patients/${guardianId}`, { token: adminToken });
+  const removed = await api("DELETE", `/api/patients/${guardianId}`, {
+    token: adminToken,
+    body: { reason: "Preparing guardian record for permanent deletion" },
+  });
   assert.equal(removed.status, 204, JSON.stringify(removed.data));
 
   const purged = await api("DELETE", `/api/patients/${guardianId}/permanent`, { token: adminToken });

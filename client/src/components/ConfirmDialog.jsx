@@ -11,6 +11,7 @@ function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "danger",
   busy = false,
+  confirmDisabled = false,
 }) {
   return (
     <Modal open={open} onClose={onClose} title={title} description={description} size="md">
@@ -26,7 +27,7 @@ function ConfirmDialog({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || confirmDisabled}
           onClick={onConfirm}
           className={`min-h-11 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition disabled:opacity-60 ${
             tone === "danger"

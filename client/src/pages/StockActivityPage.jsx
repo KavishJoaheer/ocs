@@ -261,6 +261,9 @@ function StockActivityPage() {
 
   const sellFilterActive = selectedActions.includes("sell");
   const wastageRisk = Number(analytics?.wastage_pct || 0) > 5;
+  const historyReconciled =
+    Number(analytics?.unclassified_movement_count || 0) === 0 &&
+    Number(analytics?.estimated_movement_count || 0) === 0;
   const grossMarginValue =
     typeof analytics?.gross_margin_pct === "number"
       ? `${analytics.gross_margin_pct.toFixed(2)}%`
@@ -341,8 +344,14 @@ function StockActivityPage() {
               <Wallet className="size-4" />
             </span>
           </div>
-          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">{formatRupees(analytics.net_sales_rs || 0)}</p>
-          <p className="mt-2 text-xs text-slate-500">Sales less linked reversals, by stock movement date. This is not collected cash. Older prices may be estimates.</p>
+          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">
+            {historyReconciled ? formatRupees(analytics.net_sales_rs || 0) : "Incomplete"}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            {historyReconciled
+              ? "Sales less linked reversals, by stock movement date. This is not collected cash."
+              : `Known classified value: ${formatRupees(analytics.net_sales_rs || 0)}. Resolve estimated and unclassified records before reconciliation.`}
+          </p>
           {sellFilterActive ? (
             <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
           ) : null}
@@ -355,7 +364,9 @@ function StockActivityPage() {
               <TrendingUp className="size-4" />
             </span>
           </div>
-          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">{formatRupees(analytics.wastage_value_rs || 0)}</p>
+          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">
+            {historyReconciled ? formatRupees(analytics.wastage_value_rs || 0) : "Incomplete"}
+          </p>
           <p className={`mt-3 text-sm font-semibold ${wastageRisk ? "text-rose-600" : "text-slate-700"}`}>
             Wastage Rate: {Number(analytics.wastage_pct || 0).toFixed(2)}%
           </p>
@@ -381,12 +392,16 @@ function StockActivityPage() {
       )}
 
       <SectionCard title={`Activity (${total})`}>
-        {user?.role !== 'doctor' && (analytics.unclassified_movement_count > 0 || analytics.estimated_movement_count > 0) && <details className="mb-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-          <summary className="min-h-11 cursor-pointer font-semibold">
-          {analytics.unclassified_movement_count || 0} corrections / unclassified movements · {analytics.estimated_movement_count || 0} estimated valuations in this selection.
-          </summary>
-          <p>Sales and wastage include only explicitly classified records. Use the CSV and original records to investigate unknown purposes; zero recorded loss does not certify that no loss occurred.</p>
-        </details>}
+        {user?.role !== 'doctor' && !historyReconciled ? (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
+            <p className="font-bold">Historical valuation is not fully reconciled</p>
+            <p className="mt-1">
+              {analytics.unclassified_movement_count || 0} corrections or unclassified movements and {" "}
+              {analytics.estimated_movement_count || 0} estimated valuations are in this selection.
+              Sales and wastage totals show only known classified value until these records are resolved.
+            </p>
+          </div>
+        ) : null}
         <div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
           {user?.role === "doctor" ? null : (
           <label className="min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[14rem]">

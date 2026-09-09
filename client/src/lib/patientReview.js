@@ -64,3 +64,17 @@ export function formatReviewTimelineDate(value) {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format("MMM D, YYYY") : "";
 }
+
+export function getReviewDueTiming(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { status: "no_date", days: null };
+
+  const due = dayjs(raw).startOf("day");
+  if (!due.isValid()) return { status: "no_date", days: null };
+
+  const days = due.diff(dayjs().startOf("day"), "day");
+  if (days < 0) return { status: "overdue", days: Math.abs(days) };
+  if (days === 0) return { status: "today", days: 0 };
+  if (days <= 7) return { status: "due_7_days", days };
+  return { status: "upcoming", days };
+}

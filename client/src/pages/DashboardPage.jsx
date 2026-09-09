@@ -207,13 +207,14 @@ function getOperatorBoardCounts(metrics) {
     visitRequests: Number(metrics?.visit_requests?.active_count ?? 0),
     unassignedRequests: Number(metrics?.visit_requests?.unassigned_count ?? 0),
     reviews: Number(metrics?.long_term_review?.active_followup_count ?? 0),
+    overdueReviews: Number(metrics?.long_term_review?.overdue_count ?? 0),
     unpaidThisWeek: Number(metrics?.pending_payment?.unpaid_this_week_count ?? 0),
-    visitsThisWeek: Number(metrics?.scheduled_visits?.this_week ?? 0),
     completedVisitsThisWeek: Number(metrics?.scheduled_visits?.completed_this_week ?? 0),
-    pendingClaims: Number(metrics?.insurance_claims?.pending_count ?? 0),
     healthPlans: Number(metrics?.health_plans?.active_subscribers_count ?? 0),
     doctorsThisWeek: Number(metrics?.coverage?.doctors_this_week ?? 0),
-    onCall: Number(metrics?.coverage?.on_call_count ?? 0),
+    availableNow: Number(
+      metrics?.coverage?.available_now_count ?? metrics?.coverage?.on_call_count ?? 0,
+    ),
   };
 }
 
@@ -300,10 +301,10 @@ function OperatorMobileLauncher({
           count={counts.reviews}
         />
         <DoctorMobileSplitCard
-          to="/operator/scheduled-visits"
-          label="Visits this week"
+          to="/operator/current-week-roster"
+          label="Completed this week"
           icon={CalendarClock}
-          count={counts.visitsThisWeek}
+          count={counts.completedVisitsThisWeek}
         />
       </div>
 

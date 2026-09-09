@@ -161,6 +161,11 @@ function formatPatientRecord(patient, auth) {
     review_assigned_doctor_name: patient.review_assigned_doctor_name || "",
     review_assigned_doctor_specialization: patient.review_assigned_doctor_specialization || "",
     link_status: String(patient.link_status ?? "staff_created").trim() || "staff_created",
+    dispatch_ready: Boolean(
+      String(patient.patient_contact_number || patient.contact_number || "").trim() &&
+        String(patient.address || "").trim() &&
+        String(patient.location || "").trim(),
+    ),
   };
 
   if (!canViewConsultationNotes(auth)) {
@@ -330,7 +335,7 @@ function updatePatientLocationTags(patientId, rawTags) {
 
 function validatePatientPayload(
   payload,
-  { isCreate = false, requireAssignedDoctor = false } = {},
+  { isCreate = false, requireAssignedDoctor = false, requireDispatchLocation = false } = {},
 ) {
   if (!buildPatientFullName(payload.first_name, payload.last_name)) {
     return "Patient name is required.";
@@ -356,6 +361,9 @@ function validatePatientPayload(
   }
   if (!payload.patient_contact_number) return "Patient contact number is required.";
   if (!payload.address) return "Address is required.";
+  if (requireDispatchLocation && !payload.location) {
+    return "Select a town, village, neighbourhood, or clinic before saving this patient.";
+  }
   if (!["active", "discharged"].includes(payload.status)) {
     return "Status must be active or discharged.";
   }
@@ -535,6 +543,25 @@ function recordPatientRevision(patientId, previousSnapshot, updatedSnapshot, cha
     JSON.stringify(updatedSnapshot),
     JSON.stringify(changedFields),
     changedByUserId || null,
+  );
+}
+
+function recordPatientLifecycleEvent(patientId, action, reason, auth) {
+  db.prepare(`
+    INSERT INTO patient_lifecycle_events (
+      patient_id,
+      action,
+      reason,
+      actor_user_id,
+      actor_role
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    patientId,
+    action,
+    reason,
+    Number(auth?.id || 0) || null,
+    String(auth?.role || ""),
   );
 }
 
@@ -1134,7 +1161,24 @@ router.post("/:id/restore", (req, res) => {
     return res.status(404).json({ error: "Deleted patient not found." });
   }
 
-  db.prepare("UPDATE patients SET deleted_at = NULL WHERE id = ?").run(patientId);
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  if (reason.length < 10) {
+    return res.status(400).json({
+      error: "A restoration reason of at least 10 characters is required.",
+    });
+  }
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE patients
+      SET deleted_at = NULL,
+          restored_at = CURRENT_TIMESTAMP,
+          restored_by_user_id = ?,
+          restore_reason = ?
+      WHERE id = ?
+    `).run(Number(req.auth.id) || null, reason, patientId);
+    recordPatientLifecycleEvent(patientId, "restored", reason, req.auth);
+  })();
   publishPatientDataChange(patientId, { reason: "patient" });
   res.json(getPatientById(patientId));
 });
@@ -1505,6 +1549,7 @@ router.post("/", (req, res) => {
   const validationError = validatePatientPayload(payload, {
     isCreate: true,
     requireAssignedDoctor: ["admin", "operator"].includes(req.auth.role),
+    requireDispatchLocation: ["admin", "operator"].includes(req.auth.role),
   });
 
   if (validationError) {
@@ -1652,7 +1697,9 @@ router.put("/:id", (req, res) => {
   }
 
   const payload = normalizePatientPayload(req.body);
-  const validationError = validatePatientPayload(payload);
+  const validationError = validatePatientPayload(payload, {
+    requireDispatchLocation: req.auth.role === "operator",
+  });
 
   if (validationError) {
     return res.status(400).json({ error: validationError });
@@ -2089,9 +2136,26 @@ router.delete("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  if (reason.length < 10) {
+    return res.status(400).json({
+      error: "A deletion reason of at least 10 characters is required.",
+    });
+  }
+
   db.transaction(() => {
-    db.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(patientId);
+    db.prepare(`
+      UPDATE patients
+      SET deleted_at = CURRENT_TIMESTAMP,
+          deleted_reason = ?,
+          deleted_by_user_id = ?,
+          restored_at = NULL,
+          restored_by_user_id = NULL,
+          restore_reason = ''
+      WHERE id = ?
+    `).run(reason, Number(req.auth.id) || null, patientId);
     db.prepare("DELETE FROM patient_operator_access WHERE patient_id = ?").run(patientId);
+    recordPatientLifecycleEvent(patientId, "deleted", reason, req.auth);
   })();
 
   publishPatientDataChange(patientId, { reason: "patient" });
