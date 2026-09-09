@@ -53,7 +53,7 @@ export const ROUTE_ACCESS = {
   "/consultations": ["admin", "doctor", "lab_tech"],
   "/consultations/:id": ["admin", "doctor", "lab_tech"],
   "/lab": ["admin", "lab_tech"],
-  "/billing": ["admin", "doctor", "accountant"],
+  "/billing": ["admin", "doctor", "operator", "accountant"],
   "/admin/finance": ["admin", "doctor", "accountant"],
   "/admin/roster": ["admin"],
   "/live-report": ["admin", "doctor"],
@@ -86,7 +86,7 @@ export function getRoleLabel(role) {
   return ROLE_CONFIG[role]?.label || "User";
 }
 
-export const FINANCIAL_BILLING_ROLES = ["admin", "doctor", "accountant"];
+export const FINANCIAL_BILLING_ROLES = ["admin", "doctor", "operator", "accountant"];
 
 export function isFinancialBillingPath(pathname = "") {
   return pathname === "/billing" || pathname.startsWith("/billing/");
@@ -116,12 +116,12 @@ export function canAccessPath(role, path) {
   return false;
 }
 
-/** Admin and accountant: always. Doctors: any patient (same directory access as the Patients page). */
+/** Billing staff can open any patient; doctors use the shared patient directory. */
 export function canBillPatientForUser(user, patient) {
   if (!user?.role || !patient) {
     return false;
   }
-  if (user.role === "admin" || user.role === "accountant") {
+  if (["admin", "accountant", "operator"].includes(user.role)) {
     return true;
   }
   if (user.role === "doctor") {

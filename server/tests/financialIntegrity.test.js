@@ -61,10 +61,44 @@ async function bill(ctx, lines, extra = {}) {
 }
 function stockLine(it,qty=2) {return {description:'Audit medicine',type:'Sale',inventory_item_id:it.id,quantity:qty,amount:25*qty};}
 function fee(amount=1000) {return [{description:'Consultation fee',type:'Sale',amount}];}
+function standardFee(type='Day Consultation', amount=2000) {return {description:type,type:'Sale',amount,quantity:1,is_consultation_fee:true};}
 async function report(date=today,basis='visit') {
   return (await api('GET',`/dashboard/live-report?doctorPeriod=daily&doctorDate=${date}&locationPeriod=daily&locationDate=${date}&revenueDate=${date}&dateBasis=${basis}`)).data;
 }
 function row(id) {return db.prepare('SELECT * FROM inventory WHERE id = ?').get(id);}
+
+test('operators can issue reconciled unpaid invoices without payment or correction powers', async () => {
+  const ctx=context('Operator invoice'); const it=item('Operator invoice medicine');
+  const options=await api('GET','/billing/consultation-options','operator');
+  assert.equal(options.status,200,JSON.stringify(options.data));
+  const option=options.data.find(row=>row.id===ctx.consultationId);
+  assert.ok(option); assert.equal(Object.hasOwn(option,'doctor_notes'),false);
+
+  const issued=await api('POST','/billing','operator',{
+    consultation_id:ctx.consultationId,
+    patient_id:ctx.patientId,
+    items:[standardFee(),stockLine(it,1)],
+    status:'unpaid',
+  });
+  assert.equal(issued.status,201,JSON.stringify(issued.data));
+  assert.equal(issued.data.status,'unpaid'); assert.equal(row(it.id).quantity,19);
+  assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(issued.data.updated_by_user_id).role,'operator');
+  assert.ok((await api('GET','/billing','operator')).data.some(b=>b.id===issued.data.id));
+
+  const paidCtx=context('Operator paid block');
+  assert.equal((await api('POST','/billing','operator',{
+    consultation_id:paidCtx.consultationId,patient_id:paidCtx.patientId,items:[standardFee()],
+    status:'paid',payment_method:'cash',payment_date:today,
+  })).status,403);
+  const manualCtx=context('Operator manual block');
+  assert.equal((await api('POST','/billing','operator',{
+    consultation_id:manualCtx.consultationId,patient_id:manualCtx.patientId,
+    items:[standardFee(),{description:'Custom service',type:'Sale',amount:500,quantity:1}],status:'unpaid',
+  })).status,403);
+  assert.equal((await api('PUT',`/billing/${issued.data.id}`,'operator',{items:issued.data.items})).status,403);
+  assert.equal((await api('PATCH',`/billing/${issued.data.id}/pay`,'operator',{payment_method:'cash',payment_date:today})).status,403);
+  assert.equal((await api('POST',`/billing/${issued.data.id}/void`,'operator',{reason:'Operator cannot void'})).status,403);
+});
 
 
 test('invoice retries have one financial and stock effect, including concurrent and legacy clients', async () => {

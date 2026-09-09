@@ -310,7 +310,7 @@ function PatientsPage() {
   const canPurgePatients = user.role === "admin";
   const canEditPatientIdentifier = user.role === "admin";
   const canOpenBilling =
-    user.role === "admin" || user.role === "doctor" || user.role === "accountant";
+    user.role === "admin" || user.role === "doctor" || user.role === "operator" || user.role === "accountant";
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState(() =>

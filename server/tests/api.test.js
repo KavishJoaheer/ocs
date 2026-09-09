@@ -2528,12 +2528,13 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
   assert.equal(operatorProfile.status, 200, JSON.stringify(operatorProfile.data));
   assert.equal(operatorProfile.data.consultations?.length || 0, 0);
   assert.equal(operatorProfile.data.labReports?.length || 0, 0);
-  assert.equal(operatorProfile.data.bills?.length || 0, 0);
+  assert.equal(operatorProfile.data.bills?.length > 0, true);
   assert.equal(operatorProfile.data.patient.consultation_notes, undefined);
   assert.equal(operatorProfile.data.operator_can_edit, true);
 
   const operatorBilling = await api("GET", "/api/billing", { token: operatorToken });
-  assert.equal(operatorBilling.status, 403, JSON.stringify(operatorBilling.data));
+  assert.equal(operatorBilling.status, 200, JSON.stringify(operatorBilling.data));
+  assert.ok(operatorBilling.data.some((bill) => Number(bill.patient_id) === Number(patientId)));
 
   const operatorLabs = await api("GET", `/api/lab-reports?patientId=${patientId}`, {
     token: operatorToken,

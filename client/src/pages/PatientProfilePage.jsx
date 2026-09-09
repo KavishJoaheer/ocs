@@ -3248,7 +3248,7 @@ function PatientProfilePage() {
                   </button>
                 )}
                 {showPatientBillingUi &&
-                  (canModifyClinicalData || user.role === "accountant") && (
+                  (canModifyClinicalData || user.role === "operator" || user.role === "accountant") && (
                   <button
                     type="button"
                     onClick={() => {

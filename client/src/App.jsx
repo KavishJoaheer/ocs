@@ -169,8 +169,10 @@ function App() {
             <Route path="/lab" element={<LabWorkspacePage />} />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor", "accountant"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "accountant"]} />}>
             <Route path="/billing" element={<BillingPage />} />
+          </Route>
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "accountant"]} />}>
             <Route path="/admin/finance" element={<BillingPage />} />
           </Route>
 

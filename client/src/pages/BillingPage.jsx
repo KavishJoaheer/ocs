@@ -786,6 +786,8 @@ function DescriptionList({
   inventoryOptions = [],
   inventoryLoading = false,
   onPickManualInventory = null,
+  allowManualItems = true,
+  allowEmergencyOverride = true,
 }) {
   const consultationSubtotal = Math.max(0, Number(consultationPrice || 0));
   const hasInventoryRows = items.length > 0;
@@ -966,7 +968,7 @@ function DescriptionList({
                     <p className="text-xs text-slate-500">
                       {item.folder_name || "Inventory"} · Available: {available}
                     </p>
-                    {needsOverride ? (
+                    {needsOverride && allowEmergencyOverride ? (
                       <label className="mt-1 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
                         <input
                           type="checkbox"
@@ -1006,7 +1008,9 @@ function DescriptionList({
                         ) : needsOverride ? (
                           <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
                             <AlertTriangle className="size-3.5" />
-                            Above on-hand stock — billing uses emergency override
+                            {allowEmergencyOverride
+                              ? "Above on-hand stock — billing uses emergency override"
+                              : "Quantity exceeds available stock"}
                           </p>
                         ) : null}
                       </div>
@@ -1065,6 +1069,7 @@ function DescriptionList({
         )}
       </div>
 
+      {allowManualItems ? (
       <div className="flex justify-end border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 md:py-2">
         <button
           type="button"
@@ -1075,6 +1080,7 @@ function DescriptionList({
           Add manual item
         </button>
       </div>
+      ) : null}
     </div>
   );
 }
@@ -1090,6 +1096,7 @@ function CreateBillingModal({
   onOpenExisting,
 }) {
   const { user: authUser } = useAuth();
+  const operatorIssueOnly = authUser?.role === "operator";
   const [patientId, setPatientId] = useState("");
   const [consultationId, setConsultationId] = useState("");
   const [status, setStatus] = useState("unpaid");
@@ -1341,6 +1348,11 @@ function CreateBillingModal({
       return;
     }
 
+    if (operatorIssueOnly && items.some((item) => item.emergency_override)) {
+      toast.error("Reduce the quantity to available stock before issuing this invoice.");
+      return;
+    }
+
     if (status === "paid" && !paymentMethod) {
       toast.error("Select how the payment was made.");
       return;
@@ -1416,6 +1428,10 @@ function CreateBillingModal({
       return;
     }
     const available = Number(selected.quantity || 0);
+    if (operatorIssueOnly && (type !== "Sale" || qty > available)) {
+      toast.error("Operators can add available catalogue items only.");
+      return;
+    }
     const sellingPrice = getSellingPriceFromDoctorStock(selected.id);
     const unitPrice =
       type === "Wastage" ? Number(selected.cost_price || 0) : sellingPrice;
@@ -1447,6 +1463,10 @@ function CreateBillingModal({
     }
     const qty = 1;
     const available = Number(selected.quantity || 0);
+    if (operatorIssueOnly && available < 1) {
+      toast.error("This item has no available stock.");
+      return;
+    }
     const sellingPrice = Number(selected.selling_price || 0);
     setItems((current) => [
       ...current,
@@ -1554,7 +1574,7 @@ function CreateBillingModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={isMobile ? "New invoice" : "Add billing entry"}
+      title={operatorIssueOnly ? "Issue invoice" : isMobile ? "New invoice" : "Add billing entry"}
       size="xl"
       innerScroll={!isMobile}
     >
@@ -1735,16 +1755,17 @@ function CreateBillingModal({
                 type="number"
                 min="0"
                 step="0.01"
-                readOnly={!consultationPriceEditable}
+                readOnly={operatorIssueOnly || !consultationPriceEditable}
                 value={consultationPrice}
                 onChange={(event) => setConsultationPrice(event.target.value)}
                 placeholder="0.00"
                 className={cx(
                   BILLING_FIELD,
                   "min-h-12 pr-12 md:min-h-0",
-                  !consultationPriceEditable && "cursor-default bg-slate-100/90",
+                  (operatorIssueOnly || !consultationPriceEditable) && "cursor-default bg-slate-100/90",
                 )}
               />
+              {!operatorIssueOnly ? (
               <button
                 type="button"
                 aria-label={consultationPriceEditable ? "Lock consultation price" : "Edit consultation price"}
@@ -1753,6 +1774,7 @@ function CreateBillingModal({
               >
                 <Pencil className="size-4" />
               </button>
+              ) : null}
             </div>
           </label>
         </div>
@@ -1865,6 +1887,7 @@ function CreateBillingModal({
                 <Plus className="size-4 shrink-0" />
                 Add to Bill
               </button>
+              {!operatorIssueOnly ? (
               <button
                 type="button"
                 onClick={() => addInventoryLine("Wastage")}
@@ -1875,6 +1898,7 @@ function CreateBillingModal({
               >
                 <Trash2 className="size-4" />
               </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1909,8 +1933,16 @@ function CreateBillingModal({
           inventoryOptions={inventoryOptions}
           inventoryLoading={inventoryLoading}
           onPickManualInventory={pickManualInventoryItem}
+          allowManualItems={!operatorIssueOnly}
+          allowEmergencyOverride={!operatorIssueOnly}
         />
 
+        {operatorIssueOnly ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+            <p className="font-bold">Issued as unpaid</p>
+            <p className="mt-1">Payment recording and invoice corrections remain with authorised finance, clinical, or admin users.</p>
+          </div>
+        ) : (
         <BillingStatusFields
           status={status}
           setStatus={setStatus}
@@ -1920,6 +1952,7 @@ function CreateBillingModal({
           setPaymentDate={setPaymentDate}
           total={total}
         />
+        )}
         </div>
 
         {isMobile ? (
@@ -1940,7 +1973,7 @@ function CreateBillingModal({
                 disabled={isSaving || doctorHasNoAssignedPatients}
                 className="min-h-12 flex-1 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {isSaving ? "Saving…" : "Save invoice"}
+                {isSaving ? "Saving…" : operatorIssueOnly ? "Issue invoice" : "Save invoice"}
               </button>
             </div>
           </div>
@@ -1958,7 +1991,7 @@ function CreateBillingModal({
               disabled={isSaving || doctorHasNoAssignedPatients}
               className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
             >
-              {isSaving ? "Saving…" : "Create bill"}
+              {isSaving ? "Saving…" : operatorIssueOnly ? "Issue invoice" : "Create bill"}
             </button>
           </div>
         )}
@@ -2158,7 +2191,7 @@ function BillingPage() {
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
   const canCreateBills =
-    user?.role === "admin" || user?.role === "doctor" || user?.role === "accountant";
+    user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const canMarkPaid =
     user?.role === "admin" || user?.role === "doctor" || user?.role === "accountant";
   const isMobile = useIsMobile();
@@ -2258,14 +2291,14 @@ function BillingPage() {
     if (!user) {
       return;
     }
-    if (!(user.role === "admin" || user.role === "doctor" || user.role === "accountant")) {
+    if (!(user.role === "admin" || user.role === "doctor" || user.role === "operator" || user.role === "accountant")) {
       return;
     }
 
     try {
       const [patients, consultations] = await Promise.all([
         api.get("/patients/options"),
-        api.get("/consultations"),
+        api.get("/billing/consultation-options"),
       ]);
 
       setPatientOptions(patients);
@@ -2339,7 +2372,7 @@ function BillingPage() {
       return;
     }
 
-    if (["doctor", "admin", "accountant"].includes(user?.role)) {
+    if (["doctor", "admin", "operator", "accountant"].includes(user?.role)) {
       if (!patientOptions.length) {
         return;
       }
@@ -2522,7 +2555,7 @@ function BillingPage() {
                 className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
               >
                 <Plus className="size-4" />
-                Add bill
+                {user?.role === "operator" ? "Issue invoice" : "Add bill"}
               </button>
             ) : null}
           </>
@@ -2573,7 +2606,7 @@ function BillingPage() {
         </div>
       ) : null}
 
-      <FinancialReconciliation refreshToken={bills} />
+      {user?.role !== "operator" ? <FinancialReconciliation refreshToken={bills} /> : null}
 
       <div
         className={cx(
@@ -2816,7 +2849,7 @@ function BillingPage() {
           ) : (
             <EmptyState
               title="No bills found"
-              description="Bills are created from consultations, and admin or doctor accounts can add more billing entries here when needed."
+              description="Bills are created from consultations, and authorised staff can issue additional billing entries when needed."
             />
           )}
         </SectionCard>
@@ -2863,7 +2896,7 @@ function BillingPage() {
       {canCreateBills && isMobile ? (
         <button
           type="button"
-          aria-label="Create new invoice"
+          aria-label={user?.role === "operator" ? "Issue invoice" : "Create new invoice"}
           onClick={() => setCreatorOpen(true)}
           className="fixed right-6 z-[45] grid size-14 place-items-center rounded-full bg-ocs-teal text-white shadow-lg shadow-ocs-teal/25 md:hidden"
           style={{ bottom: "max(1.5rem, var(--sab))" }}

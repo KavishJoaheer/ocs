@@ -63,7 +63,7 @@ function canViewLabMedicalReports(auth) {
 }
 
 function canViewStaffBilling(auth) {
-  return ["admin", "doctor", "accountant"].includes(auth?.role);
+  return ["admin", "doctor", "accountant", "operator"].includes(auth?.role);
 }
 
 function getDoctorCaseloadFilterSql(alias = "p") {

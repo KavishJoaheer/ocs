@@ -43,8 +43,8 @@ function inventorySignature(items) {
   ).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 }
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
-const BILLING_READ_ROLES = new Set(["admin", "doctor", "accountant"]);
-const BILLING_WRITE_ROLES = new Set(["admin", "doctor", "accountant"]);
+const BILLING_READ_ROLES = new Set(["admin", "doctor", "accountant", "operator"]);
+const BILLING_WRITE_ROLES = new Set(["admin", "doctor", "accountant", "operator"]);
 
 router.use((req, res, next) => {
   const role = String(req.auth?.role || "").trim().toLowerCase();
@@ -144,6 +144,39 @@ function getConsultationContext(consultationId) {
 
 function roundCurrency(value) {
   return Number(Number(value || 0).toFixed(2));
+}
+
+function validateOperatorIssue(items, status) {
+  if (status !== "unpaid") {
+    return "Operators can issue unpaid invoices only. Payment must be recorded by an authorised finance or clinical user.";
+  }
+
+  const tariffRows = db
+    .prepare("SELECT type_name, default_amount FROM consultation_fee_types")
+    .all();
+  const tariffs = new Map(
+    tariffRows.map((row) => [String(row.type_name), roundCurrency(row.default_amount)]),
+  );
+
+  for (const item of items) {
+    if (isConsultationFee(item)) {
+      const expected = tariffs.get(String(item.description || "").trim());
+      if (expected === undefined || roundCurrency(item.amount) !== expected || Number(item.quantity) !== 1) {
+        return "Operators must use the current Day, Night, or Review consultation tariff without changing its price.";
+      }
+      continue;
+    }
+
+    if (
+      !item.inventory_item_id ||
+      item.type !== "Sale" ||
+      item.emergency_override === true
+    ) {
+      return "Operators can add available catalogue items only. Manual charges, wastage, adjustments, and emergency stock overrides require an authorised clinician or admin.";
+    }
+  }
+
+  return null;
 }
 
 function calculateAppointmentLossRevenue(items) {
@@ -595,7 +628,40 @@ router.get("/consultation-fees", (req, res) => {
   }
 });
 
+router.get("/consultation-options", (req, res) => {
+  const rows = db
+    .prepare(`
+      SELECT
+        c.id,
+        c.patient_id,
+        c.doctor_id,
+        c.consultation_date,
+        p.full_name AS patient_name,
+        d.full_name AS doctor_name,
+        COUNT(b.id) AS bill_count
+      FROM consultations c
+      JOIN patients p ON p.id = c.patient_id
+      JOIN doctors d ON d.id = c.doctor_id
+      LEFT JOIN billing b ON b.consultation_id = c.id AND b.voided_at IS NULL
+      WHERE p.deleted_at IS NULL
+        AND c.voided_at IS NULL
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      GROUP BY c.id, p.full_name, d.full_name
+      ORDER BY c.consultation_date DESC, c.created_at DESC
+    `)
+    .all({
+      doctorId:
+        req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) || -1 : null,
+    })
+    .map((row) => ({ ...row, bill_count: Number(row.bill_count || 0) }));
+
+  res.json(rows);
+});
+
 router.get('/reconciliation', (req,res) => {
+  if (req.auth.role === 'operator') {
+    return res.status(403).json({error:'Financial reconciliation is restricted to finance and clinical users.'});
+  }
   const doctorId = req.auth.role==='doctor' ? Number(req.auth.doctor_id || 0) : Number(req.query.doctorId || 0) || null;
   if (req.auth.role==='doctor' && !doctorId) return res.status(403).json({error:'Doctor account is not linked.'});
   const result=require('../lib/financialReconciliation').financialReconciliation(db,{doctorId,from:req.query.dateFrom,to:req.query.dateTo});
@@ -742,6 +808,13 @@ router.post("/", (req, res) => {
     return res.status(400).json({ error: "Billing status is invalid." });
   }
 
+  if (req.auth.role === "operator") {
+    const operatorIssueError = validateOperatorIssue(items, status);
+    if (operatorIssueError) {
+      return res.status(403).json({ error: operatorIssueError });
+    }
+  }
+
   const paymentMethod =
     status === "paid" ? normalizePaymentMethod(req.body.payment_method) : null;
 
@@ -846,6 +919,9 @@ router.post("/", (req, res) => {
 });
 
 router.put("/:id", (req, res) => {
+  if (req.auth.role === "operator") {
+    return res.status(403).json({ error: "Operators can issue invoices but cannot edit an issued bill." });
+  }
   const billId = Number(req.params.id);
   const existing = getJoinedBillById(billId);
   const accessError = ensureBillAccess(req, existing, { write: true });
@@ -951,6 +1027,9 @@ router.put("/:id", (req, res) => {
 });
 
 router.patch("/:id/pay", (req, res) => {
+  if (req.auth.role === "operator") {
+    return res.status(403).json({ error: "Operators can issue invoices but cannot record payment." });
+  }
   const billId = Number(req.params.id);
   const existing = getJoinedBillById(billId);
   const accessError = ensureBillAccess(req, existing, { write: true });

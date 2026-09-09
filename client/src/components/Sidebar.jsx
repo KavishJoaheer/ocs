@@ -123,7 +123,7 @@ const navItems = [
     to: "/billing",
     label: "Billing",
     icon: CreditCard,
-    roles: ["admin", "doctor", "accountant"],
+    roles: ["admin", "doctor", "operator", "accountant"],
   },
   {
     to: "/live-report",
