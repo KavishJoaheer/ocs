@@ -225,7 +225,7 @@ function getVolumeRows(period, range, doctorId = null) {
           COUNT(*) AS patient_count
         FROM consultations c
         JOIN patients p ON p.id = c.patient_id
-        WHERE p.deleted_at IS NULL
+        WHERE c.voided_at IS NULL
           AND c.consultation_date = @targetDate
           AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
         GROUP BY slot_hour
@@ -252,7 +252,7 @@ function getVolumeRows(period, range, doctorId = null) {
           COUNT(*) AS patient_count
         FROM consultations c
         JOIN patients p ON p.id = c.patient_id
-        WHERE p.deleted_at IS NULL
+        WHERE c.voided_at IS NULL
           AND c.consultation_date BETWEEN @startDate AND @endDate
           AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
         GROUP BY slot_month
@@ -280,7 +280,7 @@ function getVolumeRows(period, range, doctorId = null) {
         COUNT(*) AS patient_count
       FROM consultations c
       JOIN patients p ON p.id = c.patient_id
-      WHERE p.deleted_at IS NULL
+      WHERE c.voided_at IS NULL
         AND c.consultation_date BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       GROUP BY c.consultation_date
@@ -323,15 +323,14 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
         COUNT(DISTINCT c.patient_id) AS patient_count
       FROM doctors d
       LEFT JOIN consultations c
-        ON c.doctor_id = d.id
+        ON c.doctor_id = d.id AND c.voided_at IS NULL
        AND c.consultation_date BETWEEN @startDate AND @endDate
        AND EXISTS (
          SELECT 1
          FROM patients p
          WHERE p.id = c.patient_id
-           AND p.deleted_at IS NULL
        )
-      WHERE d.deleted_at IS NULL
+      WHERE 1 = 1
         AND (@doctorId IS NULL OR d.id = @doctorId)
       GROUP BY d.id, d.full_name
       HAVING @doctorId IS NOT NULL OR COUNT(c.id) > 0
@@ -394,7 +393,7 @@ function buildDoctorBreakdown(activityRows, revenueRows) {
       const unpaid = roundReportCurrency(entry.unpaid);
       const doctorCommission = roundReportCurrency(paid * DOCTOR_COMMISSION_RATE);
       const transportBenefits = roundReportCurrency(
-        entry.unique_patient_count * TRANSPORT_BENEFIT_PER_PATIENT,
+        entry.visit_count * TRANSPORT_BENEFIT_PER_PATIENT,
       );
       return {
         ...entry,
@@ -422,9 +421,9 @@ function getPaidRevenueTotal(startDate, endDate, doctorId = null) {
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
       JOIN consultations c ON c.id = b.consultation_id
-      WHERE b.status = 'paid'
-        AND p.deleted_at IS NULL
-        AND substr(COALESCE(NULLIF(b.payment_date, ''), b.created_at), 1, 10) BETWEEN ? AND ?
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.status = 'paid'
+
+        AND COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) BETWEEN ? AND ?
         AND (? IS NULL OR c.doctor_id = ?)
     `)
     .get(startDate, endDate, doctorId, doctorId);
@@ -694,8 +693,8 @@ function getDoctorWorkspacePayload(doctorId) {
       FROM billing b
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
-      WHERE c.doctor_id = ?
-        AND p.deleted_at IS NULL
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND c.doctor_id = ?
+
         AND b.status = 'unpaid'
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)
@@ -830,8 +829,8 @@ function getDoctorWorkspacePayload(doctorId) {
         FROM billing b
         JOIN consultations c ON c.id = b.consultation_id
         JOIN patients p ON p.id = b.patient_id
-        WHERE c.doctor_id = ?
-          AND p.deleted_at IS NULL
+        WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND c.doctor_id = ?
+
       )
       ORDER BY activity_at DESC
       LIMIT 12
@@ -953,8 +952,8 @@ function getOperatorWorkspacePayload() {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       JOIN doctors d ON d.id = c.doctor_id
-      WHERE b.status = 'unpaid'
-        AND p.deleted_at IS NULL
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.status = 'unpaid'
+
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)
     .all()
@@ -1076,8 +1075,8 @@ router.get("/", (_req, res) => {
       SELECT COUNT(*) AS count
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
-      WHERE b.status = 'unpaid'
-        AND p.deleted_at IS NULL
+      WHERE b.voided_at IS NULL AND b.status = 'unpaid'
+
     `)
     .get().count;
   const revenueRow = db
@@ -1085,8 +1084,8 @@ router.get("/", (_req, res) => {
       SELECT COALESCE(SUM(b.total_amount), 0) AS total
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
-      WHERE b.status = 'paid'
-        AND p.deleted_at IS NULL
+      WHERE b.voided_at IS NULL AND b.status = 'paid'
+
     `)
     .get();
 
@@ -1187,7 +1186,7 @@ router.get("/", (_req, res) => {
         JOIN patients p ON p.id = b.patient_id
         JOIN consultations c ON c.id = b.consultation_id
         JOIN doctors d ON d.id = c.doctor_id
-        WHERE p.deleted_at IS NULL
+        WHERE b.voided_at IS NULL AND c.voided_at IS NULL
           AND (@activityDoctorId IS NULL OR c.doctor_id = @activityDoctorId)
       )
       ORDER BY activity_at DESC
@@ -1416,7 +1415,7 @@ router.get("/live-report", (req, res) => {
       : "visit";
   const billDateSql =
     dateBasis === "payment"
-      ? `CASE WHEN b.status = 'paid' THEN substr(COALESCE(NULLIF(b.payment_date, ''), b.created_at), 1, 10) ELSE date(c.consultation_date) END`
+      ? `CASE WHEN b.status = 'paid' THEN COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) ELSE date(c.consultation_date) END`
       : `date(c.consultation_date)`;
 
   const locationDistribution = db
@@ -1426,7 +1425,7 @@ router.get("/live-report", (req, res) => {
         COUNT(DISTINCT c.patient_id) AS patient_count
       FROM consultations c
       JOIN patients p ON p.id = c.patient_id
-      WHERE p.deleted_at IS NULL
+      WHERE c.voided_at IS NULL
         AND c.consultation_date BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       GROUP BY location
@@ -1454,7 +1453,7 @@ router.get("/live-report", (req, res) => {
         COUNT(DISTINCT c.patient_id) AS unique_patient_count
       FROM consultations c
       JOIN patients p ON p.id = c.patient_id
-      WHERE p.deleted_at IS NULL
+      WHERE c.voided_at IS NULL
         AND c.consultation_date BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
     `)
@@ -1476,7 +1475,7 @@ router.get("/live-report", (req, res) => {
         MAX(c.consultation_date) AS consultation_date
       FROM consultations c
       JOIN patients p ON p.id = c.patient_id
-      WHERE p.deleted_at IS NULL
+      WHERE c.voided_at IS NULL
         AND c.consultation_date BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       GROUP BY p.id, p.full_name, p.patient_identifier
@@ -1536,7 +1535,7 @@ router.get("/live-report", (req, res) => {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       LEFT JOIN doctors d ON d.id = c.doctor_id
-      WHERE p.deleted_at IS NULL
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL
         AND (${billDateSql}) BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       ORDER BY c.consultation_date DESC, b.id DESC
@@ -1564,11 +1563,11 @@ router.get("/live-report", (req, res) => {
   );
   const doctorCommission = roundReportCurrency(paidRevenue * DOCTOR_COMMISSION_RATE);
   const ocsCommission = roundReportCurrency(paidRevenue * OCS_COMMISSION_RATE);
-  const transportPatientCount = selectedDoctorId
-    ? uniquePatientCount
-    : doctorBreakdown.reduce((sum, row) => sum + Number(row.unique_patient_count || 0), 0);
+  const transportVisitCount = selectedDoctorId
+    ? visitCount
+    : doctorBreakdown.reduce((sum, row) => sum + Number(row.visit_count || 0), 0);
   const transportBenefits = roundReportCurrency(
-    transportPatientCount * TRANSPORT_BENEFIT_PER_PATIENT,
+    transportVisitCount * TRANSPORT_BENEFIT_PER_PATIENT,
   );
   const doctorNetRevenue = roundReportCurrency(doctorCommission + transportBenefits);
   const ocsRemainder = roundReportCurrency(paidRevenue - doctorNetRevenue);
@@ -1585,7 +1584,8 @@ router.get("/live-report", (req, res) => {
   const shareRates = {
     doctor: DOCTOR_COMMISSION_RATE,
     ocs: OCS_COMMISSION_RATE,
-    transportPerPatient: TRANSPORT_BENEFIT_PER_PATIENT,
+    transportPerVisit: TRANSPORT_BENEFIT_PER_PATIENT,
+    transportPerPatient: TRANSPORT_BENEFIT_PER_PATIENT, // Legacy response alias.
     commissionOn: "paid",
   };
 
@@ -1596,7 +1596,8 @@ router.get("/live-report", (req, res) => {
     unpaidRevenue,
     doctorCommission,
     transportBenefits,
-    transportPatientCount,
+    transportVisitCount,
+    transportPatientCount: transportVisitCount, // Compatibility for cached clients.
     doctorNetRevenue,
     visitCount,
     uniquePatientCount,

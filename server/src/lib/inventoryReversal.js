@@ -57,7 +57,7 @@ function restoreOriginalAllocations(itemId, allocations) {
       batch_id: Number(batch.id),
       quantity: qty,
       expiry_date: batch.expiry_date || allocation.expiry_date || null,
-      unit_cost: Number(batch.unit_cost || allocation.unit_cost || 0),
+      unit_cost: Number(allocation.unit_cost ?? batch.unit_cost ?? 0),
     });
   }
   return restored;
@@ -221,6 +221,8 @@ function reverseInventoryForConsultation(
     );
     const reversalId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
     recordMovementAllocations(reversalId, restoredAllocations);
+    db.prepare(`UPDATE inventory_movements SET unit_cost_snapshot=?, unit_price_snapshot=?, valuation_basis=? WHERE id=?`)
+      .run(movement.unit_cost_snapshot, movement.unit_price_snapshot, movement.valuation_basis, reversalId);
     db.prepare(
       `
       INSERT INTO inventory_activity_history (

@@ -1,3 +1,5 @@
+const { operationFor } = require("../lib/operationReceipts");
+const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const express = require("express");
 const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
 const {
@@ -779,6 +781,7 @@ function consumeSpecificBatch(itemId, batchId, quantity, { allowExpired = false,
       allocations: [{
         batch_id: Number(batch.id),
         quantity: amount,
+        unit_cost: Number(batch.unit_cost || 0),
         expiry_date: batch.expiry_date || null,
         is_non_expiring: Number(batch.is_non_expiring || 0) === 1,
       }],
@@ -910,10 +913,10 @@ function recordMovement({
   const transferAllocations = Array.isArray(enrichedMeta.transfer_allocations)
     ? enrichedMeta.transfer_allocations
     : [];
-  const batchId =
+  const batchId = String(enrichedMeta.batch_id || (enrichedMeta.allocations || []).map(row => row.batch_id).filter(Boolean).join(",") || "") || (
     transferAllocations.length > 0
       ? transferAllocations.map((allocation, index) => `B${movementId}-${index + 1}`).join(", ")
-      : "";
+      : "");
 
   db.prepare(`
     INSERT INTO inventory_activity_history (
@@ -955,23 +958,23 @@ function summarize(items, doctorId = null) {
   const monthlyConsumed = doctorId
     ? db
       .prepare(`
-        SELECT COALESCE(SUM(m.quantity * i.cost_price), 0) AS amount
+        SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount
         FROM inventory_movements m
         JOIN inventory i ON i.id = m.item_id
         WHERE i.stock_scope = 'doctor'
           AND i.owner_doctor_id = ?
           AND m.movement_type = 'out'
-          AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+          AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
       `)
       .get(doctorId)
     : db
       .prepare(`
-        SELECT COALESCE(SUM(m.quantity * i.cost_price), 0) AS amount
+        SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount
         FROM inventory_movements m
         JOIN inventory i ON i.id = m.item_id
         WHERE i.stock_scope = 'ocs'
           AND m.movement_type = 'out'
-          AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+          AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
       `)
       .get();
 
@@ -981,17 +984,17 @@ function summarize(items, doctorId = null) {
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
       WHERE m.action_type = 'sell'
-        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
     `)
     .get();
 
   const monthlyReplenishments = db
     .prepare(`
-      SELECT COALESCE(SUM(m.quantity * i.cost_price), 0) AS amount
+      SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount
       FROM inventory_movements m
       JOIN inventory i ON i.id = m.item_id
       WHERE m.action_type IN ('restock_in', 'add')
-        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now')
+        AND strftime('%Y-%m', m.created_at) = strftime('%Y-%m', 'now', '+4 hours')
     `)
     .get();
 
@@ -1133,8 +1136,8 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
 
 function movementPeriodSql(movementAlias = "m") {
   return `(
-    (@useRange = 0 AND strftime('%Y-%m', ${movementAlias}.created_at) = strftime('%Y-%m', 'now'))
-    OR (@useRange = 1 AND date(${movementAlias}.created_at) >= date(@dateFrom) AND date(${movementAlias}.created_at) <= date(@dateTo))
+    (@useRange = 0 AND strftime('%Y-%m', ${movementAlias}.created_at, '+4 hours') = strftime('%Y-%m', 'now', '+4 hours'))
+    OR (@useRange = 1 AND date(${movementAlias}.created_at, '+4 hours') >= date(@dateFrom) AND date(${movementAlias}.created_at, '+4 hours') <= date(@dateTo))
   )`;
 }
 
@@ -1144,9 +1147,9 @@ function getCompareMetricByDoctor(params, periodSql, whereExtra) {
       `
         SELECT
           i.owner_doctor_id AS doctor_id,
-          COALESCE(SUM(m.quantity * i.cost_price), 0) AS amount,
+          COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount,
           COALESCE(SUM(m.quantity), 0) AS qty,
-          COALESCE(SUM(CASE WHEN COALESCE(i.cost_price, 0) = 0 THEN m.quantity ELSE 0 END), 0) AS unpriced_qty
+          COALESCE(SUM(CASE WHEN COALESCE(m.unit_cost_snapshot, 0) = 0 THEN m.quantity ELSE 0 END), 0) AS unpriced_qty
         FROM inventory_movements m
         JOIN inventory i ON i.id = m.item_id
         WHERE i.stock_scope = 'doctor'
@@ -1336,7 +1339,7 @@ function getDoctorConsumptionRecord(doctorId) {
 
     const stockConsumptionRow = db
       .prepare(`
-        SELECT COALESCE(SUM(m.quantity * i.cost_price), 0) AS stock_consumption
+        SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS stock_consumption
         FROM inventory_movements m
         JOIN inventory i ON i.id = m.item_id
         WHERE i.stock_scope = 'doctor'
@@ -1532,10 +1535,10 @@ function buildActivityHistoryFilter(query = {}) {
     where.push("(h.item_name LIKE @search OR h.actor_name LIKE @search OR h.source_text LIKE @search OR h.destination_text LIKE @search)");
   }
   if (dateFrom) {
-    where.push("date(h.timestamp) >= date(@dateFrom)");
+    where.push("date(h.timestamp, '+4 hours') >= date(@dateFrom)");
   }
   if (dateTo) {
-    where.push("date(h.timestamp) <= date(@dateTo)");
+    where.push("date(h.timestamp, '+4 hours') <= date(@dateTo)");
   }
   if (actionValues.length) {
     const expandedActions = [...new Set(actionValues.flatMap((action) => {
@@ -1546,7 +1549,11 @@ function buildActivityHistoryFilter(query = {}) {
       }
       return [action];
     }))];
-    where.push(`h.action_type IN (${expandedActions.map((_, index) => `@action${index}`).join(", ")})`);
+    const includeLoss = actionValues.includes("wastage");
+    const includeSale = actionValues.includes("sell");
+    where.push(`(h.action_type IN (${expandedActions.map((_, index) => `@action${index}`).join(", ")})
+      ${includeLoss ? "OR (h.action_type = 'stock_out' AND lower(json_extract(h.meta_json, '$.stock_out_reason')) IN ('wasted', 'expired'))" : ""}
+      ${includeSale ? "OR (h.action_type = 'stock_out' AND lower(json_extract(h.meta_json, '$.stock_out_reason')) = 'sale')" : ""})`);
     expandedActions.forEach((action, index) => {
       params[`action${index}`] = action;
     });
@@ -1563,9 +1570,18 @@ function escapeCsvValue(value) {
   return `"${normalized.replace(/"/g, '""')}"`;
 }
 
+function financialAction(row) {
+  const action = String(row.action_type || "").toLowerCase();
+  const reason = String(safeParseJson(row.meta_json, {}).stock_out_reason || "").toLowerCase();
+  if (action === "stock_out") {
+    if (reason === "sale") return "sell";
+    if (reason === "wasted" || reason === "expired") return "wastage";
+  }
+  return action === "expired" ? "wastage" : action;
+}
 function calculateEventValue(row) {
   const quantity = Math.abs(Number(row.quantity || 0));
-  const actionType = String(row.action_type || "").toLowerCase();
+  const actionType = financialAction(row);
   const cost = Number(row.cost_price || 0);
   const sell = Number(row.selling_price || 0);
   if (actionType === "sell") return roundCurrency(quantity * sell);
@@ -1679,7 +1695,8 @@ function enrichActivityRow(row) {
     row.next_quantity == null || row.next_quantity === ""
       ? (meta.next_quantity == null ? null : Number(meta.next_quantity))
       : Number(row.next_quantity);
-  const expiry = meta.expiry_date || meta.batch_expiry || null;
+  const allocationExpiries = [...new Set((meta.allocations || []).map(a => a.expiry_date).filter(Boolean))];
+  const expiry = meta.expiry_date || meta.batch_expiry || (allocationExpiries.length === 1 ? allocationExpiries[0] : null);
   const reason = String(meta.stock_out_note || meta.note || row.movement_note || "").trim();
   const legacy =
     Boolean(meta.legacy_unknown_lot || meta.source_identity_unavailable || meta.legacy_data_unavailable) ||
@@ -1723,7 +1740,7 @@ function computeActivityAnalytics(consolidated, rawRows) {
   const actorCounts = new Map();
 
   consolidated.forEach((row) => {
-    const action = String(row.action_type || "").toLowerCase();
+    const action = financialAction(row);
     const units = Math.abs(Number(row.quantity || 0));
     totalUnitsMoved += units;
     if (action === "wastage") {
@@ -1758,7 +1775,7 @@ function computeActivityAnalytics(consolidated, rawRows) {
   let sellRevenue = 0;
   let sellCost = 0;
   rawRows.forEach((row) => {
-    const action = String(row.action_type || "").toLowerCase();
+    const action = financialAction(row);
     const qty = Math.abs(Number(row.quantity || 0));
     const cost = Number(row.cost_price || 0);
     const sell = Number(row.selling_price || 0);
@@ -1841,7 +1858,7 @@ router.get("/activity-history", (req, res) => {
   const rawRows = db
     .prepare(`
       SELECT h.*, m.item_id AS movement_item_id, m.previous_quantity, m.next_quantity, m.note AS movement_note,
-        i.cost_price, i.selling_price
+        m.unit_cost_snapshot AS cost_price, m.unit_price_snapshot AS selling_price, m.valuation_basis
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
@@ -1898,6 +1915,7 @@ router.get("/activity-history", (req, res) => {
     totalPages: paginated.totalPages,
     rows,
     net_value_rs: isDoctorViewer ? null : netValueRs,
+    valuation_note: "Movement prices are fixed when recorded. Older movements without recorded prices use frozen legacy estimates.",
     analytics: isDoctorViewer ? null : analytics,
     actors,
     actions,
@@ -1927,7 +1945,7 @@ router.get("/activity-history/export.csv", (req, res) => {
   const rows = db
     .prepare(`
       SELECT h.*, m.item_id AS movement_item_id, m.previous_quantity, m.next_quantity, m.note AS movement_note,
-        i.cost_price, i.selling_price
+        m.unit_cost_snapshot AS cost_price, m.unit_price_snapshot AS selling_price, m.valuation_basis
       FROM inventory_activity_history h
       LEFT JOIN inventory_movements m ON m.id = h.movement_id
       LEFT JOIN inventory i ON i.id = m.item_id
@@ -1940,7 +1958,7 @@ router.get("/activity-history/export.csv", (req, res) => {
   const csvLines = isDoctorViewer
     ? [
         [
-          "Date and time",
+          "Date and time (UTC)",
           "Item",
           "Movement type",
           "Quantity change",
@@ -1975,7 +1993,7 @@ router.get("/activity-history/export.csv", (req, res) => {
         ),
       ]
     : [
-        ["Timestamp", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)"].join(","),
+        ["Timestamp (UTC)", "Actor", "Role", "Action Type", "Item Name", "Quantity", "Source", "Destination", "Batch ID", "Value (Rs)", "Valuation basis"].join(","),
         ...consolidated.map((row) =>
           [
             escapeCsvValue(row.timestamp),
@@ -1988,6 +2006,7 @@ router.get("/activity-history/export.csv", (req, res) => {
             escapeCsvValue(row.destination_text),
             escapeCsvValue(row.batch_id),
             Number(row.value_rs || 0).toFixed(2),
+            escapeCsvValue(row.valuation_basis || "unavailable"),
           ].join(","),
         ),
       ];
@@ -2808,6 +2827,13 @@ router.post("/items/:id/actions", (req, res) => {
   const item = findItem(itemId, "doctor", doctorId);
   if (!item) return res.status(404).json({ error: "My Stock item not found." });
 
+  let operation;
+  try {
+    operation = operationFor(req, `inventory:deduct:${itemId}`);
+    const replay = operation.read();
+    if (replay) return res.status(201).json({ ...getPayload(req), sale_billing: replay.saleBilling });
+  } catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
+
   const actionType = String(req.body.action_type || "").trim().toLowerCase();
   const quantity = Number(req.body.quantity || 0);
   const note = String(req.body.note || "").trim();
@@ -2907,6 +2933,8 @@ router.post("/items/:id/actions", (req, res) => {
   let saleBilling = null;
   try {
     db.transaction(() => {
+      const replay = operation.read();
+      if (replay) { saleBilling = replay.saleBilling; return; }
       if (movementType === "in") {
         const previousDeficit = Math.max(0, 0 - previousQuantity);
         const batchQty = Math.max(0, quantity - previousDeficit);
@@ -2972,6 +3000,7 @@ router.post("/items/:id/actions", (req, res) => {
           performed_by_name: req.auth.full_name || req.auth.username || "",
           ...(actionType === "stock_out"
             ? {
+                allocations: req._stockOutConsumed?.allocations || [],
                 stock_out_reason: stockOutReason,
                 stock_out_note: note || "",
                 item_name: item.item_name,
@@ -3002,6 +3031,7 @@ router.post("/items/:id/actions", (req, res) => {
         }),
       });
 
+      recordMovementAllocations(movementId, req._stockOutConsumed?.allocations || []);
       if (actionType === "stock_out" && stockOutReason === "Sale" && salePatient) {
         saleBilling = attachSaleDeductToPatientBill({
           patientId: salePatient.id,
@@ -3011,11 +3041,13 @@ router.post("/items/:id/actions", (req, res) => {
           movementId,
         });
       }
-    })();
+      operation.save({ saleBilling });
+    }).immediate();
   } catch (error) {
     if (error instanceof InventoryVersionConflictError) {
       return res.status(409).json({
         error: error.message,
+        code: "INVENTORY_VERSION_CONFLICT",
         inventory: getPayload(req),
       });
     }

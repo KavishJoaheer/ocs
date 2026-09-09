@@ -22,7 +22,23 @@ const { consumeAvailableFefo } = require("../lib/restockFulfilment");
 const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require("../lib/inventoryQuantity");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 
+const { operationFor } = require("../lib/operationReceipts");
 const router = express.Router();
+function validPaymentDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function billingDateSql(req) {
+  return req.query.dateBasis === "payment"
+    ? "CASE WHEN b.status = 'paid' THEN COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) ELSE date(c.consultation_date) END"
+    : "date(c.consultation_date)";
+}
+function inventorySignature(items) {
+  return JSON.stringify(normalizeBillingItems(items).filter(i => i.inventory_item_id).map(i =>
+    [i.inventory_item_id, i.quantity, i.type, i.amount, i.description, Boolean(i.emergency_override)]
+  ).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+}
 const PAYMENT_METHODS = new Set(["cash", "juice", "card", "ib"]);
 const BILLING_READ_ROLES = new Set(["admin", "doctor", "accountant"]);
 const BILLING_WRITE_ROLES = new Set(["admin", "doctor", "accountant"]);
@@ -396,6 +412,8 @@ function getJoinedBillById(billId) {
       SELECT
         b.*,
         p.full_name AS patient_name,
+        p.deleted_at AS patient_archived_at,
+        c.voided_at AS consultation_voided_at,
         c.consultation_date,
         c.appointment_id,
         c.doctor_id,
@@ -407,7 +425,6 @@ function getJoinedBillById(billId) {
       JOIN doctors d ON d.id = c.doctor_id
       LEFT JOIN users u ON u.id = b.updated_by_user_id
       WHERE b.id = ?
-        AND p.deleted_at IS NULL
     `)
     .get(billId);
 
@@ -415,6 +432,8 @@ function getJoinedBillById(billId) {
   const parsed = parseBillingRow(bill);
   return {
     ...parsed,
+    history: db.prepare(`SELECT e.*, COALESCE(NULLIF(e.actor_name, ''), u.full_name) AS actor_name FROM billing_events e
+      LEFT JOIN users u ON u.id=e.actor_id WHERE e.bill_id=? ORDER BY e.id DESC`).all(billId),
     appointment_financials: calculateAppointmentLossRevenue(parsed.items),
   };
 }
@@ -424,6 +443,9 @@ function ensureBillAccess(req, bill, { write = false } = {}) {
     return { status: 404, error: "Bill not found." };
   }
 
+  if (write && (bill.voided_at || bill.consultation_voided_at)) {
+    return { status: 409, error: "This bill is voided and cannot be changed or paid." };
+  }
   if (req.auth?.role !== "doctor") {
     return null;
   }
@@ -436,7 +458,7 @@ function ensureBillAccess(req, bill, { write = false } = {}) {
   }
 
   const patient = db
-    .prepare("SELECT * FROM patients WHERE id = ? AND deleted_at IS NULL")
+    .prepare("SELECT * FROM patients WHERE id = ?")
     .get(bill.patient_id);
   if (!doctorCanAccessPatient(patient, req.auth)) {
     return { status: 403, error: doctorPatientAccessError(req.auth) };
@@ -462,9 +484,10 @@ router.get("/patient-summary", (req, res) => {
       FROM patients p
       JOIN billing b ON b.patient_id = p.id
       JOIN consultations c ON c.id = b.consultation_id
-      WHERE p.deleted_at IS NULL
-        AND (@dateFrom = '' OR date(c.consultation_date) >= date(@dateFrom))
-        AND (@dateTo = '' OR date(c.consultation_date) <= date(@dateTo))
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+        AND (@dateFrom = '' OR ${billingDateSql(req)} >= date(@dateFrom))
+        AND (@dateTo = '' OR ${billingDateSql(req)} <= date(@dateTo))
+        AND (@reportDoctorId IS NULL OR c.doctor_id = @reportDoctorId)
         ${doctorAccess.clause}
       GROUP BY p.id
       ORDER BY unpaid_amount DESC, total_billed DESC, patient_name ASC
@@ -472,6 +495,7 @@ router.get("/patient-summary", (req, res) => {
     .all({
       dateFrom,
       dateTo,
+      reportDoctorId: req.query.doctorId ? Number(req.query.doctorId) : null,
       ...doctorAccess.params,
     });
 
@@ -490,6 +514,8 @@ router.get("/", (req, res) => {
       SELECT
         b.*,
         p.full_name AS patient_name,
+        p.deleted_at AS patient_archived_at,
+        c.voided_at AS consultation_voided_at,
         c.consultation_date,
         c.doctor_id,
         d.full_name AS doctor_name,
@@ -499,11 +525,12 @@ router.get("/", (req, res) => {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
       LEFT JOIN users u ON u.id = b.updated_by_user_id
-      WHERE p.deleted_at IS NULL
-        AND (@status = '' OR b.status = @status)
+      WHERE ((@status = 'voided' AND (b.voided_at IS NOT NULL OR c.voided_at IS NOT NULL))
+        OR (@status != 'voided' AND b.voided_at IS NULL AND c.voided_at IS NULL AND (@status = '' OR b.status = @status)))
         AND (@patientId = '' OR CAST(b.patient_id AS TEXT) = @patientId)
-        AND (@dateFrom = '' OR date(c.consultation_date) >= date(@dateFrom))
-        AND (@dateTo = '' OR date(c.consultation_date) <= date(@dateTo))
+        AND (@dateFrom = '' OR ${billingDateSql(req)} >= date(@dateFrom))
+        AND (@dateTo = '' OR ${billingDateSql(req)} <= date(@dateTo))
+        AND (@reportDoctorId IS NULL OR c.doctor_id = @reportDoctorId)
         ${doctorAccess.clause}
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)
@@ -512,6 +539,7 @@ router.get("/", (req, res) => {
       patientId,
       dateFrom,
       dateTo,
+      reportDoctorId: req.query.doctorId ? Number(req.query.doctorId) : null,
       ...doctorAccess.params,
     })
     .map(parseBillingRow);
@@ -564,8 +592,7 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
     }
     if (
       req.auth?.role === "doctor" &&
-      req.auth.doctor_id &&
-      Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
+      (!req.auth.doctor_id || Number(consultation.doctor_id) !== Number(req.auth.doctor_id))
     ) {
       return res.status(403).json({
         error: "You can only access inventory linked to your own consultations.",
@@ -634,8 +661,7 @@ router.post("/", (req, res) => {
 
   if (
     req.auth?.role === "doctor" &&
-    req.auth.doctor_id &&
-    Number(consultation.doctor_id) !== Number(req.auth.doctor_id)
+    (!req.auth.doctor_id || Number(consultation.doctor_id) !== Number(req.auth.doctor_id))
   ) {
     return res.status(403).json({
       error: "You can only create billing linked to your own consultations.",
@@ -668,10 +694,18 @@ router.post("/", (req, res) => {
       ? String(req.body.payment_date ?? getTodayLocal()).trim() || getTodayLocal()
       : null;
 
+  if (status === "paid" && !validPaymentDate(paymentDate)) {
+    return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
+  }
+  const operation = operationFor(req, "billing:create", { legacyWindow: true });
   let createdId = null;
   let touchedItemIds = [];
   try {
     db.transaction(() => {
+      const current = getConsultationContext(consultationId);
+      if (!current || current.voided_at) throw Object.assign(new Error("This consultation is no longer available for billing."), {status:409});
+      const replay = operation.read();
+      if (replay) { createdId = replay.billId; return; }
       // Insert a placeholder bill first so the linkage helper has a billing
       // id to stamp onto any matched Sale movements. Items + total are
       // computed inside the same transaction below so callers never observe
@@ -684,15 +718,16 @@ router.post("/", (req, res) => {
           total_amount,
           status,
           payment_method,
-          payment_date
+          payment_date, updated_by_user_id
         )
-        VALUES (?, ?, '[]', 0, ?, ?, ?)
+        VALUES (?, ?, '[]', 0, ?, ?, ?, ?)
       `).run(
         consultationId,
         patientId,
         status,
         paymentMethod,
         paymentDate,
+        req.auth.id,
       );
       createdId = Number(inserted.lastInsertRowid);
 
@@ -714,6 +749,7 @@ router.post("/", (req, res) => {
         calculateBillingTotal(computedItems),
         createdId,
       );
+      operation.save({ billId: createdId });
     }).immediate();
   } catch (error) {
     const status = Number(error?.status || 400);
@@ -739,7 +775,7 @@ router.post("/", (req, res) => {
   res.status(201).json(getJoinedBillById(createdId));
   } catch (error) {
     console.error("[billing][POST /]", error);
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       error: error?.message || "Failed to create billing entry.",
     });
   }
@@ -758,13 +794,22 @@ router.put("/:id", (req, res) => {
   if (!items.length) {
     return res.status(400).json({ error: "At least one billing line item is required." });
   }
-  if (items.some((item) => item.inventory_item_id && Number(item.quantity) > 0)) {
+  if (inventorySignature(items) !== inventorySignature(existing.items)) {
     return res.status(400).json({
       error:
-        "Editing inventory-linked lines is locked after sync. Create a new adjustment/wastage line in a new bill entry.",
+        "Inventory-linked lines must remain unchanged. Use an explicit stock reversal or a separate adjustment bill.",
     });
   }
 
+  const expectedVersion = req.body.expected_version;
+  if (expectedVersion != null && Number(expectedVersion) !== Number(existing.row_version)) {
+    return res.status(409).json({ error: "This bill changed elsewhere. Reopen it before saving." });
+  }
+  const correctionReason = String(req.body.correction_reason || "").trim();
+  if (existing.status === "paid" && (req.auth.role !== "admin" || correctionReason.length < 8)) {
+    return res.status(409).json({ error: "Paid bills require an admin correction with a meaningful reason." });
+  }
+  const preservedItems = items.filter(i => !i.inventory_item_id).concat(existing.items.filter(i => i.inventory_item_id));
   const status = String(req.body.status ?? existing.status).trim().toLowerCase();
   if (!["paid", "unpaid"].includes(status)) {
     return res.status(400).json({ error: "Billing status is invalid." });
@@ -786,7 +831,10 @@ router.put("/:id", (req, res) => {
       ? String(req.body.payment_date ?? existing.payment_date ?? getTodayLocal()).trim()
       : null;
 
-  db.prepare(`
+  if (status === "paid" && !validPaymentDate(paymentDate)) {
+    return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
+  }
+  const updated = db.prepare(`
     UPDATE billing
     SET
       items = ?,
@@ -795,17 +843,21 @@ router.put("/:id", (req, res) => {
       payment_method = ?,
       payment_date = ?,
       updated_at = CURRENT_TIMESTAMP,
-      updated_by_user_id = ?
-    WHERE id = ?
+      updated_by_user_id = ?,
+      change_reason = ?
+    WHERE id = ? AND row_version = ? AND voided_at IS NULL
   `).run(
-    JSON.stringify(items),
-    calculateBillingTotal(items),
+    JSON.stringify(preservedItems),
+    calculateBillingTotal(preservedItems),
     status,
     paymentMethod,
     paymentDate || null,
     req.auth?.id || null,
+    correctionReason,
     billId,
+    existing.row_version,
   );
+  if (updated.changes !== 1) return res.status(409).json({ error: "This bill changed elsewhere. Reopen it before saving." });
 
   if (existing?.patient_id) {
     publishPatientDataChange(existing.patient_id, { reason: "billing" });
@@ -833,17 +885,29 @@ router.patch("/:id/pay", (req, res) => {
     });
   }
 
-  const paymentDate = String(req.body.payment_date ?? getTodayLocal()).trim();
+  const paymentDate = String(req.body.payment_date ?? existing.payment_date ?? getTodayLocal()).trim();
+  if (!validPaymentDate(paymentDate)) {
+    return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
+  }
+  if (existing.status === "paid") {
+    if (paymentMethod === existing.payment_method && paymentDate === existing.payment_date) return res.json(existing);
+    return res.status(409).json({ error: "Payment already recorded. An admin must make a documented correction." });
+  }
+  if (req.body.expected_version != null && Number(req.body.expected_version) !== Number(existing.row_version)) {
+    return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
+  }
 
-  db.prepare(`
+  const updated = db.prepare(`
     UPDATE billing
     SET status = 'paid',
+        change_reason = 'Payment recorded',
         payment_method = ?,
         payment_date = ?,
         updated_at = CURRENT_TIMESTAMP,
         updated_by_user_id = ?
-    WHERE id = ?
-  `).run(paymentMethod, paymentDate, req.auth?.id || null, billId);
+    WHERE id = ? AND row_version = ? AND voided_at IS NULL
+  `).run(paymentMethod, paymentDate, req.auth?.id || null, billId, existing.row_version);
+  if (updated.changes !== 1) return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
 
   if (existing?.patient_id) {
     publishPatientDataChange(existing.patient_id, { reason: "billing" });

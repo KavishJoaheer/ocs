@@ -1696,6 +1696,7 @@ function initializeDatabase() {
 
   migrateLegacySeedDataIfNeeded();
   seedDatabase();
+  require("./lib/financialIntegritySchema").ensureFinancialIntegritySchema(db);
 }
 
 function ensureHcmNewsColumns() {

@@ -17,7 +17,7 @@ function buildBillPdf(bill) {
   y += 7;
   doc.text(`Total: ${formatCurrency(bill.total_amount)}`, 14, y);
   y += 7;
-  doc.text(`Status: ${bill.status || ""}`, 14, y);
+  doc.text(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : bill.status || ""}`, 14, y);
   y += 10;
   (bill.items || []).forEach((item) => {
     const line = `${item.description || ""} — ${formatCurrency(item.amount)} (${item.type || "Sale"})`;

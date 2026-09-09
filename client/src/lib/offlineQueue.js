@@ -48,17 +48,27 @@ async function withStore(mode, callback) {
     const transaction = db.transaction(STORE_NAME, mode);
     const store = transaction.objectStore(STORE_NAME);
 
+    let value;
+    let callbackDone = false;
+    let committed = false;
+    const finish = () => { if (callbackDone && committed) resolve(value); };
     transaction.oncomplete = () => {
+      committed = true;
       db.close();
+      finish();
     };
     transaction.onerror = () => {
       db.close();
       reject(transaction.error || new Error("Offline queue transaction failed."));
     };
 
-    Promise.resolve(callback(store))
-      .then(resolve)
-      .catch(reject);
+    transaction.onabort = () => {
+      db.close();
+      reject(transaction.error || new Error("Offline queue transaction was aborted."));
+    };
+    Promise.resolve().then(() => callback(store))
+      .then(result => { value = result; callbackDone = true; finish(); })
+      .catch(error => { transaction.abort(); reject(error); });
   });
 }
 
@@ -92,7 +102,9 @@ export async function enqueueOfflineMutation(entry) {
   }
 
   const entries = readLocalStorageQueue();
-  entries.push(record);
+  const existing = entries.findIndex(entry => entry.id === record.id);
+  if (existing >= 0) entries[existing] = record;
+  else entries.push(record);
   writeLocalStorageQueue(entries);
   return record;
 }

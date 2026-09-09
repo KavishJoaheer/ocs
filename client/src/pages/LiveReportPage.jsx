@@ -66,13 +66,15 @@ function buildTopLocationRows(rows, limit = LOCATION_BAR_LIMIT) {
   return top;
 }
 
-function billingHref({ status, patientId, billId, period, date } = {}) {
+function billingHref({ status, patientId, billId, period, date, dateBasis, doctorId } = {}) {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (patientId) params.set("patientId", String(patientId));
   if (billId) params.set("billId", String(billId));
   if (period) params.set("period", period);
   if (date) params.set("date", date);
+  if (dateBasis) params.set("dateBasis", dateBasis);
+  if (doctorId) params.set("doctorId", String(doctorId));
   return `/billing?${params.toString()}`;
 }
 
@@ -542,7 +544,7 @@ export default function LiveReportPage() {
   }, [doctors, doctorScope, isAdmin, selectedDoctorId, setSearchParams, today]);
 
   const statement = report?.revenueStatement || {};
-  const shareRates = statement.shareRates || { doctor: 0.4, ocs: 0.6, transportPerPatient: 300 };
+  const shareRates = statement.shareRates || { doctor: 0.4, ocs: 0.6, transportPerVisit: 300 };
   const volumeRows = report?.volumeReport?.rows || [];
   const locationRows = report?.locationReport?.rows || [];
   const revenueRows = report?.billingRevenueReport?.rows || [];
@@ -563,9 +565,10 @@ export default function LiveReportPage() {
   const doctorNet = Number(statement.doctorNetRevenue || 0);
   const ocsRemainder = Number(statement.ocsRemainder ?? collected - doctorNet);
   const collectionRate = Number(statement.collectionRate || 0);
-  const transportCount = Number(statement.transportPatientCount ?? uniquePatientCount);
+  const transportCount = Number(statement.transportVisitCount ?? visitCount);
+  const billingDoctorId = report?.doctorReport?.selectedDoctorId || "";
   const showClinicDoctors = isAdmin && doctorScope === "general";
-  const unpaidHref = billingHref({ status: "unpaid", period, date: anchorDate });
+  const unpaidHref = billingHref({ status: "unpaid", period, date: anchorDate, dateBasis, doctorId: billingDoctorId });
   const doctorShareLabel = `${percentLabel(shareRates.doctor)} of paid`;
 
   const filteredBills = useMemo(() => {
@@ -615,6 +618,8 @@ export default function LiveReportPage() {
         billId: row.bill_id,
         period,
         date: anchorDate,
+        dateBasis,
+        doctorId: billingDoctorId,
       }),
     );
   }
@@ -710,7 +715,7 @@ export default function LiveReportPage() {
                     else {
                       patchParams({
                         scope: "doctor",
-                        doctorId: selectedDoctorId || String(doctors[0]?.id || ""),
+                        doctorId: billingDoctorId || String(doctors[0]?.id || ""),
                       });
                     }
                   }}
@@ -772,7 +777,7 @@ export default function LiveReportPage() {
                 {formatCurrency(doctorNet)}
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                {doctorShareLabel} plus Rs {shareRates.transportPerPatient} × {transportCount} patient
+                {doctorShareLabel} plus Rs {shareRates.transportPerVisit} × {transportCount} visit
                 {transportCount === 1 ? "" : "s"}. Unpaid is separate.
               </p>
             </div>
@@ -808,7 +813,7 @@ export default function LiveReportPage() {
                   {formatCurrency(doctorNet)}
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  {doctorShareLabel} + Rs {shareRates.transportPerPatient} × {transportCount} patient
+                  {doctorShareLabel} + Rs {shareRates.transportPerVisit} × {transportCount} visit
                   {transportCount === 1 ? "" : "s"} seen
                 </p>
               </div>
@@ -845,7 +850,7 @@ export default function LiveReportPage() {
               <StatTile
                 label="Doctor net"
                 value={formatCurrency(doctorNet)}
-                hint={`${percentLabel(shareRates.doctor)} + Rs ${shareRates.transportPerPatient} × ${transportCount}`}
+                hint={`${percentLabel(shareRates.doctor)} + Rs ${shareRates.transportPerVisit} × ${transportCount}`}
               />
               <StatTile
                 label="OCS remainder"
@@ -881,7 +886,7 @@ export default function LiveReportPage() {
                 <StatementStat
                   label="Doctor net"
                   value={formatCurrency(doctorNet)}
-                  hint={`${percentLabel(shareRates.doctor)} + Rs ${shareRates.transportPerPatient} × ${transportCount}`}
+                  hint={`${percentLabel(shareRates.doctor)} + Rs ${shareRates.transportPerVisit} × ${transportCount}`}
                 />
                 <StatementStat
                   label="OCS remainder"
@@ -905,7 +910,7 @@ export default function LiveReportPage() {
           <div className="mb-4">
             <h2 className="text-base font-semibold text-ocs-slate">Doctors this period</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Net is 40% of that doctor's paid plus Rs {shareRates.transportPerPatient} per patient they
+              Net is 40% of that doctor's paid plus Rs {shareRates.transportPerVisit} per visit they
               saw. Click a row to open their report.
             </p>
           </div>
@@ -972,7 +977,7 @@ export default function LiveReportPage() {
               </p>
             </div>
             <Link
-              to={billingHref({ period, date: anchorDate })}
+              to={billingHref({ period, date: anchorDate, dateBasis, doctorId: billingDoctorId })}
               className="text-xs font-semibold text-ocs-teal hover:underline"
             >
               Open billing

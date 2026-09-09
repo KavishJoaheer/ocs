@@ -498,6 +498,10 @@ function BillingStatusFields({
 
 function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSaving }) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [history, setHistory] = useState([]);
+  const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || (bill?.status === "paid" && user?.role !== "admin"));
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
@@ -510,6 +514,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
   if (syncedDeps.open !== open || syncedDeps.billId !== billId) {
     setSyncedDeps({ open, billId });
     if (open && bill) {
+      setCorrectionReason("");
       setStatus(bill.status);
       setPaymentMethod(bill.payment_method || "");
       setPaymentDate(bill.payment_date || "");
@@ -563,6 +568,14 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
     };
   }, [open, bill?.consultation_id]);
 
+  useEffect(() => {
+    if (!open || !billId) return;
+    let ignore = false;
+    api.get(`/billing/${billId}`).then(detail => { if (!ignore) setHistory(detail.history || []); })
+      .catch(() => { if (!ignore) setHistory([]); });
+    return () => { ignore = true; };
+  }, [open, billId]);
+
   const total = useMemo(
     () =>
       items.reduce((sum, item) => {
@@ -581,7 +594,10 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
       return;
     }
 
+    if (readOnly) return;
     onSubmit({
+      expected_version: bill.row_version,
+      correction_reason: correctionReason,
       items: items.map((item) => ({
         description: item.description,
         amount: Number(item.amount || 0),
@@ -604,9 +620,11 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
     <Modal
       open={open}
       onClose={onClose}
-      title={`Edit bill #${bill.id}`}
+      title={`${readOnly ? "View" : "Edit"} bill #${bill.id}`}
       description={
-        isMobile
+        readOnly
+          ? "View the recorded bill and its change history."
+          : isMobile
           ? undefined
           : "Update line items, payment status, payment method, and payment date for this billing entry."
       }
@@ -626,6 +644,9 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
           </p>
         </div>
 
+        {bill.patient_archived_at && <p className="text-sm text-slate-600">Archived patient · financial record retained</p>}
+        {readOnly && <p className="rounded-2xl bg-slate-50 p-3 text-sm">{bill.voided_at || bill.consultation_voided_at ? "Voided bill — retained for audit only." : "Payment recorded. An admin can make a documented correction."}</p>}
+        <fieldset disabled={readOnly} className="min-w-0 space-y-5">
         <BillingItemsEditor
           items={items}
           setItems={setItems}
@@ -644,17 +665,34 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, isSavi
           total={total}
         />
 
+        {bill.status === "paid" && !readOnly && <label className="block text-sm font-medium">Reason for correction
+          <textarea required minLength={8} value={correctionReason} onChange={e => setCorrectionReason(e.target.value)} className="mt-2 block w-full rounded-xl border border-slate-200 p-3" placeholder="Explain what is being corrected and why" />
+        </label>}
+        </fieldset>
+        {history.length > 0 && <details className="rounded-2xl border border-slate-200 p-4">
+          <summary className="cursor-pointer font-semibold">Billing history ({history.length})</summary>
+          <ol className="mt-3 space-y-3">{history.map(entry => {
+            const before = entry.before_json ? JSON.parse(entry.before_json) : null;
+            const after = JSON.parse(entry.after_json);
+            return <li key={entry.id} className="border-t border-slate-100 pt-3 text-sm">
+              <p>{entry.event_type.replaceAll("_", " ")} · {entry.actor_name || "System / legacy"} · {new Date(`${entry.created_at.replace(" ", "T")}Z`).toLocaleString("en-GB", {timeZone:"Indian/Mauritius"})}</p>
+              {before && <p className="text-slate-600">Before: {before.status} · Rs {before.total_amount} · {before.payment_method || "—"} · {before.payment_date || "—"}</p>}
+              <p>After: {after.status} · Rs {after.total_amount} · {after.payment_method || "—"} · {after.payment_date || "—"}</p>
+              {entry.reason && <p className="text-slate-600">{entry.reason}</p>}
+            </li>;
+          })}</ol>
+        </details>}
         <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
             className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
           >
-            Cancel
+            Close
           </button>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || readOnly}
             className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
           >
             {isSaving ? "Saving..." : "Update bill"}
@@ -2015,6 +2053,9 @@ function BillingPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const patientIdFilter = searchParams.get("patientId") || "";
+  const dateBasis = searchParams.get("dateBasis") === "payment" ? "payment" : "visit";
+  const reportDoctorId = searchParams.get("doctorId") || "";
+  const createInFlight = useRef(false);
   const openCreateInvoice = searchParams.get("create") === "1";
   const [statusFilter, setStatusFilter] = useState("");
   const [searchText, setSearchText] = useState("");
@@ -2067,9 +2108,10 @@ function BillingPage() {
 
   async function loadData() {
     try {
-      const filterQuery = new URLSearchParams();
+      const filterQuery = new URLSearchParams({ dateBasis });
+      if (reportDoctorId) filterQuery.set("doctorId", reportDoctorId);
 
-      if (statusFilter && !isMobile) {
+      if (statusFilter && (!isMobile || statusFilter === "voided")) {
         filterQuery.set("status", statusFilter);
       }
 
@@ -2086,7 +2128,8 @@ function BillingPage() {
       }
 
       const queryString = filterQuery.toString();
-      const summaryQuery = new URLSearchParams();
+      const summaryQuery = new URLSearchParams({ dateBasis });
+      if (reportDoctorId) summaryQuery.set("doctorId", reportDoctorId);
       if (user?.role === "admin" && adminBillingDateRange) {
         summaryQuery.set("dateFrom", adminBillingDateRange.from);
         summaryQuery.set("dateTo", adminBillingDateRange.to);
@@ -2143,21 +2186,23 @@ function BillingPage() {
 
   useEffect(() => {
     const initialStatus = searchParams.get("status") || "";
-    if (initialStatus && initialStatus !== statusFilter) {
+    if (initialStatus) {
       setStatusFilter(initialStatus);
     }
     if (initialStatus === "paid") {
       setMobileBillTab("paid");
+    } else if (initialStatus === "voided") {
+      setMobileBillTab("voided");
     } else if (initialStatus === "unpaid") {
       setMobileBillTab("pending");
     }
-  }, [searchParams, statusFilter]);
+  }, [searchParams]);
 
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     loadData();
-  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, refreshKey]);
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, dateBasis, reportDoctorId, refreshKey]);
 
   useEffect(() => {
     loadReferenceData();
@@ -2252,7 +2297,8 @@ function BillingPage() {
   const billsForDisplay = useMemo(() => {
     if (!isMobile) return filteredBills;
     return filteredBills.filter((bill) =>
-      mobileBillTab === "pending" ? bill.status === "unpaid" : bill.status === "paid",
+      mobileBillTab === "voided" ? Boolean(bill.voided_at || bill.consultation_voided_at) :
+        !bill.voided_at && !bill.consultation_voided_at && (mobileBillTab === "pending" ? bill.status === "unpaid" : bill.status === "paid"),
     );
   }, [filteredBills, isMobile, mobileBillTab]);
 
@@ -2286,16 +2332,25 @@ function BillingPage() {
   }
 
   async function handleCreate(payload) {
+    if (createInFlight.current) return;
+    createInFlight.current = true;
     setIsSaving(true);
 
     try {
-      await api.post("/billing", payload);
+      const hashBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload)));
+      const fingerprint = Array.from(new Uint8Array(hashBytes), n => n.toString(16).padStart(2, "0")).join("");
+      const key = `ocs-bill-operation:${user.id}:${fingerprint}`;
+      const operationId = sessionStorage.getItem(key) || crypto.randomUUID();
+      sessionStorage.setItem(key, operationId);
+      await api.post("/billing", { ...payload, operation_id: operationId });
+      sessionStorage.removeItem(key);
       toast.success("Bill created and inventory updated.");
       setCreatorOpen(false);
       await loadData();
     } catch (error) {
       toast.error(error.message);
     } finally {
+      createInFlight.current = false;
       setIsSaving(false);
     }
   }
@@ -2311,6 +2366,7 @@ function BillingPage() {
       await api.patch(`/billing/${bill.id}/pay`, {
         payment_method: paymentMethod,
         payment_date: billingPageTodayInputValue(),
+        expected_version: bill.row_version,
       });
       toast.success("Payment recorded.");
       await loadData();
@@ -2389,7 +2445,7 @@ function BillingPage() {
           <div>
             <p className="text-sm font-semibold text-slate-900">Period filter from Revenue Report</p>
             <p className="mt-1 text-sm text-slate-600">
-              Showing bills from {formatDate(linkedDateRange.from)} to {formatDate(linkedDateRange.to)}.
+              Showing bills by {dateBasis === "payment" ? "payment date (unpaid by visit date)" : "visit date"} from {formatDate(linkedDateRange.from)} to {formatDate(linkedDateRange.to)}.
             </p>
           </div>
           <button
@@ -2456,6 +2512,7 @@ function BillingPage() {
                 <option value="">All bills</option>
                 <option value="unpaid">Unpaid only</option>
                 <option value="paid">Paid only</option>
+              <option value="voided">Voided</option>
               </select>
             </div>
           ) : null}
@@ -2463,7 +2520,7 @@ function BillingPage() {
             <div className="mb-4 flex rounded-2xl border border-slate-200 bg-slate-100 p-1 md:hidden">
               <button
                 type="button"
-                onClick={() => setMobileBillTab("pending")}
+                onClick={() => { setMobileBillTab("pending"); setStatusFilter(""); }}
                 className={cx(
                   "min-h-12 flex-1 rounded-xl py-2.5 text-sm font-bold transition",
                   mobileBillTab === "pending"
@@ -2475,7 +2532,7 @@ function BillingPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setMobileBillTab("paid")}
+                onClick={() => { setMobileBillTab("paid"); setStatusFilter(""); }}
                 className={cx(
                   "min-h-12 flex-1 rounded-xl py-2.5 text-sm font-bold transition",
                   mobileBillTab === "paid"
@@ -2485,6 +2542,7 @@ function BillingPage() {
               >
                 Paid
               </button>
+              <button type="button" onClick={() => { setMobileBillTab("voided"); setStatusFilter("voided"); }} className={cx("min-h-12 flex-1 rounded-xl py-2.5 text-sm font-bold", mobileBillTab === "voided" ? "bg-white text-ocs-teal" : "text-slate-500")}>Voided</button>
             </div>
           ) : null}
 
@@ -2540,7 +2598,7 @@ function BillingPage() {
                             {formatCurrency(bill.total_amount)}
                           </td>
                           <td className="px-5 py-3">
-                            <StatusBadge value={bill.status} />
+                            <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
                           </td>
                           <td className="px-5 py-3 text-sm text-slate-600">
                             {formatPaymentMethod(bill.payment_method)}
@@ -2562,7 +2620,7 @@ function BillingPage() {
                           </td>
                           <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
-                              {bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
+                              {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
                                 <button
                                   type="button"
                                   disabled={isSaving}
@@ -2580,16 +2638,16 @@ function BillingPage() {
                                 <Eye className="size-4 shrink-0" />
                                 View
                               </button>
-                              {canWriteBill(user, bill) ? (
+                              {bill && (
                               <button
                                 type="button"
                                 onClick={() => setEditor({ bill })}
-                                aria-label="Edit bill"
+                                aria-label="Bill details and history"
                                 className="grid size-9 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
                               >
                                 <SquarePen className="size-4" />
                               </button>
-                              ) : null}
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2621,7 +2679,7 @@ function BillingPage() {
                     </div>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xl font-bold text-slate-700">{formatCurrency(bill.total_amount)}</p>
-                      <StatusBadge value={bill.status} />
+                      <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
                     </div>
                     {bill.dispute_status === "Flagged_Review" ? (
                       <p className="mt-2 text-xs font-semibold text-amber-800">
@@ -2630,7 +2688,7 @@ function BillingPage() {
                       </p>
                     ) : null}
                     <div className="mt-4 flex flex-col gap-2">
-                      {bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
+                      {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
                         <button
                           type="button"
                           disabled={isSaving}
@@ -2641,16 +2699,16 @@ function BillingPage() {
                           Mark paid (cash)
                         </button>
                       ) : null}
-                      {canWriteBill(user, bill) ? (
+                      {bill && (
                       <button
                         type="button"
                         onClick={() => setEditor({ bill })}
                         className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-800"
                       >
                         <SquarePen className="size-4" />
-                        Edit invoice
+                        Bill details and history
                       </button>
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 ))}

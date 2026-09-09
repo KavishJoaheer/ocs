@@ -174,6 +174,7 @@ function findOpenBillForSale({ patientId, doctorId }) {
           WHERE b.patient_id = ?
             AND c.doctor_id = ?
             AND lower(b.status) = 'unpaid'
+            AND b.voided_at IS NULL AND c.voided_at IS NULL
             AND p.deleted_at IS NULL
             AND date(c.consultation_date) >= date(?)
             AND date(c.consultation_date) <= date(?)
@@ -218,7 +219,7 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
     items[existingIndex] = {
       ...items[existingIndex],
       quantity: nextQty,
-      amount: roundCurrency(unitPrice * nextQty),
+      amount: roundCurrency(Number(items[existingIndex].amount || 0) + unitPrice * qty),
       description: items[existingIndex].description || description,
     };
   } else {
@@ -236,10 +237,12 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
   db.prepare(
     `
       UPDATE billing
-      SET items = ?, total_amount = ?
+      SET items = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP,
+        updated_by_user_id = (SELECT recorded_by_user_id FROM inventory_movements WHERE id = ?),
+        change_reason = 'Inventory sale attached to unpaid bill'
       WHERE id = ?
     `,
-  ).run(JSON.stringify(items), calculateBillingTotal(items), id);
+  ).run(JSON.stringify(items), calculateBillingTotal(items), movement, id);
 
   const movementRow = db
     .prepare("SELECT id, meta_json FROM inventory_movements WHERE id = ?")

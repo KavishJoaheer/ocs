@@ -50,7 +50,11 @@ export function applyOptimisticBagDeduct(inventoryPayload, itemId, quantity) {
   const qty = Number(quantity || 0);
   const my_stock = inventoryPayload.my_stock.map((item) =>
     Number(item.id) === Number(itemId)
-      ? { ...item, quantity: Math.max(0, Number(item.quantity || 0) - qty) }
+      ? { ...item, quantity: Math.max(0, Number(item.quantity || 0) - qty),
+          on_hand_quantity: Math.max(0, Number(item.on_hand_quantity ?? item.quantity ?? 0) - qty),
+          available_to_use: Math.max(0, Number(item.available_to_use ?? item.quantity ?? 0) - qty),
+          available_to_promise: Math.max(0, Number(item.available_to_promise ?? item.quantity ?? 0) - qty),
+          row_version: Number(item.row_version || 0) + 1 }
       : item,
   );
 
@@ -95,7 +99,7 @@ export async function queueInventoryMutation({
     kind,
     method,
     endpoint,
-    payload,
+    payload: { ...payload, operation_id: payload.operation_id || crypto.randomUUID() },
     meta,
     userId: userId != null ? Number(userId) : null,
   });
@@ -113,7 +117,14 @@ export async function getPendingInventoryQueueCount() {
   return entries.filter((entry) => INVENTORY_QUEUE_KINDS.has(entry.kind)).length;
 }
 
-export async function flushOfflineQueue({ silent = false } = {}) {
+export function flushOfflineQueue(options = {}) {
+  if (!flushPromise) {
+    flushPromise = runOfflineQueue(options).finally(() => { flushPromise = null; });
+  }
+  return flushPromise;
+}
+
+async function runOfflineQueue({ silent = false } = {}) {
   if (typeof window === "undefined" || isBrowserOffline()) {
     return { synced: 0, remaining: await countOfflineMutations({ userId: activeUserId }) };
   }
@@ -129,32 +140,46 @@ export async function flushOfflineQueue({ silent = false } = {}) {
   // protects against scenarios where User A queues an offline action and
   // then User B signs in on the same device — without this scope, B's
   // bearer token would replay A's mutation against the server.
-  const entries = await listOfflineMutations({ userId: activeUserId });
+  const queueUserId = activeUserId;
+  const entries = await listOfflineMutations({ userId: queueUserId });
   let synced = 0;
 
   for (const entry of entries) {
+    if (activeUserId !== queueUserId) break;
     if (!INVENTORY_QUEUE_KINDS.has(entry.kind)) {
       continue;
     }
 
     try {
-      const result =
-        entry.method === "PUT"
-          ? await api.put(entry.endpoint, entry.payload)
-          : entry.method === "PATCH"
-            ? await api.patch(entry.endpoint, entry.payload)
-            : await api.post(entry.endpoint, entry.payload);
+      const send = payload => entry.method === "PUT" ? api.put(entry.endpoint, payload)
+        : entry.method === "PATCH" ? api.patch(entry.endpoint, payload) : api.post(entry.endpoint, payload);
+      let result;
+      try {
+        result = await send(entry.payload);
+      } catch (error) {
+        // A stock deduction is an additive intent. Rebase only identified
+        // operations on an explicit version conflict; the server rechecks lot,
+        // ownership, expiry and stock. Receipts prevent lost-response duplicates.
+        const item = error.data?.inventory?.my_stock?.find(row => Number(row.id) === Number(entry.meta?.itemId));
+        if (entry.kind !== "inventory_deduct" || !entry.payload.operation_id ||
+            error.data?.code !== "INVENTORY_VERSION_CONFLICT" || !item || activeUserId !== queueUserId) throw error;
+        result = await send({ ...entry.payload, expected_version: Number(item.row_version) });
+      }
 
       await removeOfflineMutation(entry.id);
       synced += 1;
-      notifyDoctorBagInventoryUpdated();
-      dispatchQueueEvent(OFFLINE_QUEUE_ITEM_SYNCED, { entry, result });
+      if (activeUserId === queueUserId) {
+        notifyDoctorBagInventoryUpdated();
+        dispatchQueueEvent(OFFLINE_QUEUE_ITEM_SYNCED, { entry, result });
+      }
     } catch (error) {
+      if (activeUserId !== queueUserId) break;
       if (error instanceof ApiError && error.status === 409) {
+        await enqueueOfflineMutation({ ...entry, sync_status: "needs_attention", sync_error: error.message });
         notifyDoctorBagInventoryUpdated();
         if (!silent) {
           const label = entry.meta?.itemName || "inventory update";
-          toast.error(`${label} conflicted with a newer server update. Refreshing latest stock.`);
+          toast.error(`${label} needs attention: ${error.message}. The pending entry is retained.`);
         }
         continue;
       }
@@ -164,10 +189,8 @@ export async function flushOfflineQueue({ silent = false } = {}) {
       }
 
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-        if (error.status === 410) {
-          await removeOfflineMutation(entry.id);
-          notifyQueueChanged();
-        }
+        await enqueueOfflineMutation({ ...entry, sync_status: "needs_attention", sync_error: error.message });
+        notifyQueueChanged();
         if (!silent) {
           const label = entry.meta?.itemName || "inventory update";
           toast.error(
@@ -194,7 +217,7 @@ export async function flushOfflineQueue({ silent = false } = {}) {
   notifyQueueChanged();
   dispatchQueueEvent(OFFLINE_QUEUE_FLUSH_COMPLETE, { synced, remaining });
 
-  if (synced > 0 && !silent) {
+  if (synced > 0 && !silent && activeUserId === queueUserId) {
     toast.success(
       synced === 1
         ? "1 pending inventory update synced."
@@ -212,28 +235,7 @@ export function startOfflineSyncListener() {
 
   listenerStarted = true;
 
-  const scheduleFlush = () => {
-    if (flushPromise) {
-      return flushPromise;
-    }
-
-    flushPromise = flushOfflineQueue({ silent: true })
-      .then((result) => {
-        if (result.synced > 0) {
-          toast.success(
-            result.synced === 1
-              ? "1 pending inventory update synced."
-              : `${result.synced} pending inventory updates synced.`,
-          );
-        }
-        return result;
-      })
-      .finally(() => {
-        flushPromise = null;
-      });
-
-    return flushPromise;
-  };
+  const scheduleFlush = () => flushOfflineQueue({ silent: false });
 
   const handleOnline = () => {
     void scheduleFlush();

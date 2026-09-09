@@ -1,3 +1,4 @@
+import PendingInventorySync from "../components/inventory/PendingInventorySync.jsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -3600,7 +3601,7 @@ export default function InventoryPage() {
     if (!movement?.item) return;
     setIsSaving(true);
     try {
-      const next = await api.post(`/inventory/items/${movement.item.id}/actions${inventoryListQuery}`, payload);
+      const next = await api.post(`/inventory/items/${movement.item.id}/actions${inventoryListQuery}`, { ...payload, operation_id: payload.operation_id || crypto.randomUUID() });
       commitInventoryData(next);
       setMovement(null);
       toast.success("Stock action saved.");
@@ -4024,6 +4025,7 @@ export default function InventoryPage() {
 
     const endpoint = `/inventory/items/${item.id}/actions${inventoryListQuery}`;
     const payload = {
+      operation_id: crypto.randomUUID(),
       action_type: "stock_out",
       quantity: qty,
       reason: stockOutReason,
@@ -4153,6 +4155,7 @@ export default function InventoryPage() {
 
   return (
     <>
+      {user?.role === "doctor" && <PendingInventorySync userId={user.id} />}
       {showMobileDoctorBag ? (
         <>
           <MobileDoctorBagLayout

@@ -11,7 +11,7 @@ import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { formatSignedQuantity, signedMovementQuantity } from "../lib/inventoryStockDisplay.js";
-import { OCS_INVENTORY_EVENT } from "../lib/inventorySync.js";
+import { OCS_INVENTORY_EVENT, DOCTOR_BAG_INVENTORY_EVENT, SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
 
 const BADGE_STYLES = {
   restock: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
@@ -52,8 +52,11 @@ function actorDisplayName(row) {
 
 function formatTimestamp(value) {
   if (!value) return "-";
-  const date = new Date(value);
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${String(value).replace(" ", "T")}Z`;
+  const date = new Date(normalized);
+  if (!Number.isFinite(date.getTime())) return "Unavailable";
   return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Indian/Mauritius",
     day: "2-digit",
     month: "long",
     hour: "2-digit",
@@ -154,8 +157,9 @@ function StockActivityPage() {
     function handleInventoryLive() {
       setInventoryTick((value) => value + 1);
     }
-    window.addEventListener(OCS_INVENTORY_EVENT, handleInventoryLive);
-    return () => window.removeEventListener(OCS_INVENTORY_EVENT, handleInventoryLive);
+    const events = [OCS_INVENTORY_EVENT, DOCTOR_BAG_INVENTORY_EVENT, SUPPLY_REQUESTS_EVENT, "online", "focus"];
+    events.forEach(event => window.addEventListener(event, handleInventoryLive));
+    return () => events.forEach(event => window.removeEventListener(event, handleInventoryLive));
   }, []);
 
   useEffect(() => {
@@ -338,6 +342,7 @@ function StockActivityPage() {
             </span>
           </div>
           <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.total_value_cost_rs || 0)}</p>
+          <p className="mt-2 text-xs text-slate-500">Prices are fixed when recorded. Older movements without recorded prices use frozen legacy estimates.</p>
           {sellFilterActive ? (
             <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
           ) : null}
