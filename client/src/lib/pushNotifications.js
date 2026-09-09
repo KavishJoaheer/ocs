@@ -77,8 +77,15 @@ export async function fetchPushConfiguration() {
 
     return { configured, publicKey };
   } catch {
-    return { configured: false, publicKey: null };
+    return { configured: false, publicKey: null, unavailable: true };
   }
+}
+
+export async function testCurrentDevicePush() {
+  const registration = await getPushServiceWorkerRegistration();
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) throw new Error('Enable alerts on this device before testing.');
+  return api.post('/push/test-device', {endpoint:subscription.endpoint});
 }
 
 export async function getPushServiceWorkerRegistration() {

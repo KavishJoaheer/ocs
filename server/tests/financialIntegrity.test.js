@@ -119,7 +119,7 @@ test('archived patients retain historical billing and revenue with existing doct
 
 test('payments validate dates, retry harmlessly, and require documented admin correction', async () => {
   const ctx=context('Payments'); const original=await bill(ctx,fee(800)); const url=`/billing/${original.data.id}`;
-  const pay={payment_method:'cash',payment_date:'2026-08-31'};
+  const pay={payment_method:'cash',payment_date:'2026-08-31',expected_version:original.data.row_version};
   for(const date of ['not-a-date','2026-02-30','2026-13-01']) {
     assert.equal((await api('PATCH',url+'/pay','doctor',{...pay,payment_date:date})).status,400);
   }
@@ -401,4 +401,117 @@ test('financial review catches duplicate lines and malformed history, and exclud
   assert.ok(!review.data.issues.some(i=>i.type==='unbilled_dispensing' && i.movement_id===m.id));
   const reverse=db.prepare("SELECT id FROM inventory_movements WHERE item_id=? AND action_type='reversal'").get(it.id);
   assert.ok(!review.data.issues.some(i=>i.type==='unbilled_dispensing' && i.movement_id===reverse.id));
+});
+
+test('all payment routes block legacy duplicate fees, including an additional-item invoice', async () => {
+  const ctx=context('Legacy duplicate payment');
+  const first=await bill(ctx,fee(1500));
+  const duplicateId=Number(db.prepare("INSERT INTO billing (consultation_id,patient_id,items,total_amount,status,payment_method,payment_date) VALUES (?,?,?,2000,'paid','juice',?)").run(ctx.consultationId,ctx.patientId,JSON.stringify(fee(2000)),today).lastInsertRowid);
+  const extra=await bill(ctx,[{description:'Additional service',amount:100,type:'Sale'}]);
+  const pay=await api('PATCH',`/billing/${first.data.id}/pay`,'admin',{payment_method:'cash',payment_date:today,expected_version:first.data.row_version});
+  assert.equal(pay.status,409); assert.equal(pay.data.code,'DUPLICATE_VISIT_FEE');
+  const listed=await api('GET',`/billing?patientId=${ctx.patientId}`);
+  assert.equal(listed.data.find(b=>b.id===first.data.id).payment_block.code,'DUPLICATE_VISIT_FEE');
+  const extraPay=await api('PATCH',`/billing/${extra.data.id}/pay`,'admin',{payment_method:'cash',payment_date:today,expected_version:extra.data.row_version});
+  assert.equal(extraPay.status,409); assert.equal(extraPay.data.code,'DUPLICATE_VISIT_FEE');
+  const put=await api('PUT',`/billing/${extra.data.id}`,'admin',{items:extra.data.items,status:'paid',payment_method:'card',payment_date:today,expected_version:extra.data.row_version});
+  assert.equal(put.status,409); assert.equal(db.prepare('SELECT status FROM billing WHERE id=?').get(extra.data.id).status,'unpaid');
+  const it=item('Blocked paid invoice medicine');
+  const created=await bill(ctx,[stockLine(it)],{status:'paid',payment_method:'cash',payment_date:today});
+  assert.equal(created.status,409); assert.equal(row(it.id).quantity,20,'blocked payment rolls back stock deduction');
+  const voided=await api('POST',`/billing/${first.data.id}/void`,'admin',{reason:'Verified duplicate against original visit receipt',expected_version:first.data.row_version});
+  assert.equal(voided.status,200);
+  const resolved=await api('PATCH',`/billing/${extra.data.id}/pay`,'admin',{payment_method:'card',payment_date:today,expected_version:extra.data.row_version});
+  assert.equal(resolved.status,200);
+  assert.equal(db.prepare('SELECT status FROM billing WHERE id=?').get(duplicateId).status,'paid');
+});
+
+test('legacy fee migration preserves amounts, is repeatable, and requires an audited admin review', async () => {
+  const ctx=context('Legacy tariff review'); const original=await bill(ctx,fee(1500));
+  const {ensureFinancialIntegritySchema}=require('../src/lib/financialIntegritySchema');
+  db.prepare("DELETE FROM financial_migrations WHERE name='legacy_unpaid_fee_review_20260909'").run();
+  ensureFinancialIntegritySchema(db);
+  let current=(await api('GET',`/billing/${original.data.id}`)).data;
+  assert.equal(current.total_amount,1500); assert.equal(current.legacy_fee_review_required,1);
+  const payload={items:current.items,confirm_consultation_fee:true,correction_reason:'Original booking confirms the agreed legacy Rs 1500 fee',expected_version:current.row_version};
+  const doctor=await api('PUT',`/billing/${current.id}`,'doctor',payload); assert.equal(doctor.status,403);
+  const noReason=await api('PUT',`/billing/${current.id}`,'admin',{...payload,correction_reason:''}); assert.equal(noReason.status,403);
+  const admin=await api('PUT',`/billing/${current.id}`,'admin',payload); assert.equal(admin.status,200,JSON.stringify(admin.data));
+  assert.equal(admin.data.total_amount,1500); assert.equal(admin.data.fee_review_required,0);
+  assert.equal(admin.data.legacy_fee_review_required,0);
+  assert.ok(admin.data.history.some(event=>event.reason===payload.correction_reason));
+  ensureFinancialIntegritySchema(db);
+  current=(await api('GET',`/billing/${original.data.id}`)).data;
+  assert.equal(current.fee_review_required,0,'restart must not reflag an admin-reviewed fee');
+});
+
+test('payment shortcut requires explicit method and date and retains version protection', async () => {
+  const ctx=context('Explicit payment'); const original=await bill(ctx,fee());
+  assert.equal((await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{})).status,400);
+  assert.equal((await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{payment_method:'cash'})).status,400);
+  const edited=await api('PUT',`/billing/${original.data.id}`,'admin',{items:fee(2000),expected_version:original.data.row_version});
+  assert.equal(edited.status,200);
+  const stale=await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{payment_method:'cash',payment_date:today,expected_version:original.data.row_version});
+  assert.equal(stale.status,409);
+  assert.equal(db.prepare('SELECT status FROM billing WHERE id=?').get(original.data.id).status,'unpaid');
+});
+
+test('stock corrections distinguish additions from consumption and surface incomplete classifications', () => {
+  const {stockFinancials}=require('../src/lib/inventoryFinancials');
+  const results=stockFinancials([
+    {action_type:'adjustment',movement_type:'adjustment',quantity:5,previous_quantity:10,next_quantity:15,unit_cost_snapshot:10,valuation_basis:'legacy_estimate'},
+    {action_type:'adjustment',movement_type:'adjustment',quantity:2,previous_quantity:10,next_quantity:8,unit_cost_snapshot:10},
+    {action_type:'reversal',movement_type:'in',quantity:2,unit_cost_snapshot:10,meta_json:JSON.stringify({original_action_type:'adjustment'})},
+  ]);
+  assert.equal(results.total_value_cost_rs,0);
+  assert.equal(results.unclassified_movement_count,3);
+  assert.equal(results.estimated_movement_count,1);
+  const historic=stockFinancials([{action_type:'correction',direction:'adjustment',quantity:4,previous_quantity:10,next_quantity:6,cost_price:10}]);
+  assert.equal(historic.total_value_cost_rs,40); assert.equal(historic.unclassified_movement_count,1);
+});
+
+test('supply follow-up retains stock and status, records the actor, and blocks closed or stale requests', async () => {
+  const now='2026-09-01 00:00:00';
+  const id=Number(db.prepare("INSERT INTO restock_requests (doctor_id,requested_by_user_id,collection_date,collection_day,status,note,updated_at) VALUES (?,(SELECT id FROM users WHERE username='integrity.doctor'),'2026-09-07',1,'ready','Synthetic follow-up',?)").run(doctorId,now).lastInsertRowid);
+  const data={note:'Verified collection outstanding; check with doctor on next shift',take_ownership:true,expected_updated_at:now};
+  const unauthorised=await api('POST',`/restock-requests/${id}/follow-up`,'doctor',data); assert.equal(unauthorised.status,403);
+  const follow=await api('POST',`/restock-requests/${id}/follow-up`,'admin',data); assert.equal(follow.status,200,JSON.stringify(follow.data));
+  assert.equal(follow.data.request.status,'ready'); assert.ok(follow.data.request.assigned_to_user_id);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM restock_request_events WHERE request_id=? AND event_type='collection_follow_up'").get(id).n,1);
+  assert.equal((await api('POST',`/restock-requests/${id}/follow-up`,'admin',data)).status,409);
+  db.prepare("UPDATE restock_requests SET status='completed' WHERE id=?").run(id);
+  assert.equal((await api('POST',`/restock-requests/${id}/follow-up`,'admin',{...data,expected_updated_at:follow.data.request.updated_at})).status,409);
+  assert.equal((await api('POST',`/restock-requests/${id}/assign`,'admin',{})).status,409);
+});
+
+test('device alert test targets only the caller device, limits retries and does not claim delivery', async () => {
+  const webpush=require('web-push');
+  const original=webpush.sendNotification;
+  const calls=[];
+  webpush.sendNotification=async (subscription,payload)=>{calls.push({subscription,payload:JSON.parse(payload)});return {statusCode:201};};
+  try {
+    const {saveUserPushSubscription}=require('../src/lib/push');
+    const adminId=db.prepare("SELECT id FROM users WHERE username='integrity.admin'").get().id;
+    const doctorUserId=db.prepare("SELECT id FROM users WHERE username='integrity.doctor'").get().id;
+    saveUserPushSubscription(adminId,{endpoint:'https://example.invalid/admin-device',keys:{p256dh:'test',auth:'test'}});
+    saveUserPushSubscription(doctorUserId,{endpoint:'https://example.invalid/doctor-device',keys:{p256dh:'test',auth:'test'}});
+    const other=await api('POST','/push/test-device','admin',{endpoint:'https://example.invalid/doctor-device'});
+    assert.equal(other.status,404); assert.equal(calls.length,0);
+    const own=await api('POST','/push/test-device','admin',{endpoint:'https://example.invalid/admin-device'});
+    assert.equal(own.status,200,JSON.stringify(own.data)); assert.equal(own.data.accepted,true);
+    assert.match(own.data.message,/does not prove delivery/);
+    assert.equal(calls.length,1); assert.equal(calls[0].subscription.endpoint,'https://example.invalid/admin-device');
+    assert.equal((await api('POST','/push/test-device','admin',{endpoint:'https://example.invalid/admin-device'})).status,429);
+    assert.equal(calls.length,1);
+  } finally { webpush.sendNotification=original; }
+});
+
+test('overdue supply calculation uses Mauritius day boundaries and excludes closed requests', () => {
+  const code=fs.readFileSync(path.join(__dirname,'../../client/src/lib/supplyRequests.js'),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
+  const sandbox={};vm.createContext(sandbox);vm.runInContext(code+';this.overdue=supplyRequestOverdueDays;',sandbox);
+  const request={status:'ready',collection_date:'2026-09-07'};
+  assert.equal(sandbox.overdue(request,new Date('2026-09-07T19:59:59Z')),0);
+  assert.equal(sandbox.overdue(request,new Date('2026-09-07T20:00:00Z')),1);
+  assert.equal(sandbox.overdue({...request,status:'completed'},new Date('2026-09-09')),0);
+  assert.equal(sandbox.overdue({...request,collection_date:'2026-02-30'},new Date('2026-09-09')),0);
 });

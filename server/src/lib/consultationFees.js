@@ -24,4 +24,23 @@ function assertSingleVisitFee(db, consultationId, items, exceptBillId = 0) {
     });
   if (other) throw Object.assign(new Error(`This visit already has a consultation charge on bill #${other.id}. Open that bill to review the fee or record payment.`), {status:409, extra:{code:'VISIT_FEE_EXISTS', existing_bill_id:other.id}});
 }
-module.exports = { CONSULTATION_FEES, isConsultationFee, assertSingleVisitFee };
+// Run inside the payment transaction. Check the whole visit, including when
+// the bill being paid contains only additional items.
+function assertVisitReadyForPayment(db, consultationId) {
+  const bills = db.prepare('SELECT id, items, fee_review_required FROM billing WHERE consultation_id=? AND voided_at IS NULL').all(consultationId);
+  let feeCount = 0;
+  for (const bill of bills) {
+    let items;
+    try {
+      items = JSON.parse(bill.items || '[]');
+      if (!Array.isArray(items) || items.some(item => !item || typeof item !== 'object')) throw new Error('Invalid lines');
+    } catch {
+      throw Object.assign(new Error(`Bill #${bill.id} has unreadable line items. An admin must review this visit before payment.`), {status:409, extra:{code:'VISIT_REVIEW_REQUIRED'}});
+    }
+    feeCount += items.filter(isConsultationFee).length;
+  }
+  if (feeCount > 1) throw Object.assign(new Error('Payment blocked: this visit has multiple consultation charges. An admin must resolve the duplicate bills first.'), {status:409, extra:{code:'DUPLICATE_VISIT_FEE', bill_ids:bills.map(b => b.id)}});
+  const review = bills.find(b => b.fee_review_required);
+  if (review) throw Object.assign(new Error(`Payment blocked: confirm the consultation fee on bill #${review.id} first.`), {status:409, extra:{code:'FEE_REVIEW_REQUIRED', existing_bill_id:review.id}});
+}
+module.exports = { CONSULTATION_FEES, isConsultationFee, assertSingleVisitFee, assertVisitReadyForPayment };

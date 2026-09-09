@@ -322,55 +322,55 @@ function StockActivityPage() {
       />
 
       {user?.role === "doctor" ? null : (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+        <article className="rounded-3xl border border-slate-200 bg-white p-3 md:p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Inventory Velocity</p>
-            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+            <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-500">Stock activity</p>
+            <span className="hidden md:grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
               <Activity className="size-4" />
             </span>
           </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{analytics.total_transactions}</p>
+          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">{analytics.total_transactions}</p>
           <p className="mt-3 text-sm font-semibold text-slate-700">{analytics.total_units_moved} units moved</p>
         </article>
 
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article className="rounded-3xl border border-slate-200 bg-white p-3 md:p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Net stock sales</p>
-            <span className="grid size-9 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
+            <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-500">Net stock sales</p>
+            <span className="hidden md:grid size-9 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
               <Wallet className="size-4" />
             </span>
           </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.net_sales_rs || 0)}</p>
+          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">{formatRupees(analytics.net_sales_rs || 0)}</p>
           <p className="mt-2 text-xs text-slate-500">Sales less linked reversals, by stock movement date. This is not collected cash. Older prices may be estimates.</p>
           {sellFilterActive ? (
             <p className="mt-3 text-sm font-semibold text-emerald-700">Gross Margin: {grossMarginValue}</p>
           ) : null}
         </article>
 
-        <article className={`rounded-3xl border p-5 shadow-sm ${wastageRisk ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
+        <article className={`rounded-3xl border p-3 md:p-5 shadow-sm ${wastageRisk ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
           <div className="flex items-center justify-between">
-            <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${wastageRisk ? "text-rose-600" : "text-slate-500"}`}>Clinical Wastage (Risk)</p>
-            <span className={`grid size-9 place-items-center rounded-2xl ${wastageRisk ? "bg-rose-200 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+            <p className={`text-[10px] md:text-xs font-semibold uppercase tracking-wide ${wastageRisk ? "text-rose-600" : "text-slate-500"}`}>Recorded wastage</p>
+            <span className={`hidden md:grid size-9 place-items-center rounded-2xl ${wastageRisk ? "bg-rose-200 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
               <TrendingUp className="size-4" />
             </span>
           </div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{formatRupees(analytics.wastage_value_rs || 0)}</p>
+          <p className="mt-3 text-lg md:text-3xl break-words font-bold text-slate-900">{formatRupees(analytics.wastage_value_rs || 0)}</p>
           <p className={`mt-3 text-sm font-semibold ${wastageRisk ? "text-rose-600" : "text-slate-700"}`}>
             Wastage Rate: {Number(analytics.wastage_pct || 0).toFixed(2)}%
           </p>
         </article>
 
-        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article className="rounded-3xl border border-slate-200 bg-white p-3 md:p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Top Performer</p>
-            <span className="grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
+            <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-500">Most stock updates</p>
+            <span className="hidden md:grid size-9 place-items-center rounded-2xl bg-[#4FB8B3]/15 text-[#1f7f7b]">
               <Trophy className="size-4" />
             </span>
           </div>
           {analytics.top_performer ? (
             <>
-              <p className="mt-3 text-2xl font-bold text-slate-900">{analytics.top_performer.name}</p>
+              <p className="mt-3 text-base md:text-2xl break-words font-bold text-slate-900">{analytics.top_performer.name}</p>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{analytics.top_performer.role}</p>
             </>
           ) : (
@@ -381,6 +381,12 @@ function StockActivityPage() {
       )}
 
       <SectionCard title={`Activity (${total})`}>
+        {user?.role !== 'doctor' && (analytics.unclassified_movement_count > 0 || analytics.estimated_movement_count > 0) && <details className="mb-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+          <summary className="min-h-11 cursor-pointer font-semibold">
+          {analytics.unclassified_movement_count || 0} corrections / unclassified movements · {analytics.estimated_movement_count || 0} estimated valuations in this selection.
+          </summary>
+          <p>Sales and wastage include only explicitly classified records. Use the CSV and original records to investigate unknown purposes; zero recorded loss does not certify that no loss occurred.</p>
+        </details>}
         <div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
           {user?.role === "doctor" ? null : (
           <label className="min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[14rem]">

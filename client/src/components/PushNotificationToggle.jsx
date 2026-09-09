@@ -9,6 +9,7 @@ import {
   isPushSupported,
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
+  testCurrentDevicePush,
 } from "../lib/pushNotifications.js";
 
 function PushNotificationToggle({ className = "", alwaysShow = false, role = null, variant = "light" }) {
@@ -18,6 +19,8 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
   const [permission, setPermission] = useState("unsupported");
   const [isUpdating, setIsUpdating] = useState(false);
   const [showDeniedGuide, setShowDeniedGuide] = useState(false);
+  const [configurationUnavailable, setConfigurationUnavailable] = useState(false);
+  const [testMessage, setTestMessage] = useState('');
   const recovery = getPushPermissionRecoveryInstructions();
 
   const refreshState = useCallback(async () => {
@@ -31,7 +34,8 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     const nextPermission = await getPushPermissionState();
     setPermission(nextPermission);
 
-    const { configured } = await fetchPushConfiguration();
+    const { configured, unavailable } = await fetchPushConfiguration();
+    setConfigurationUnavailable(Boolean(unavailable));
     if (!configured) {
       setAvailable(false);
       setEnabled(false);
@@ -73,6 +77,7 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     }
 
     if (!available) {
+      if (configurationUnavailable) return "Alert configuration could not be checked. Recheck when connected.";
       return "Push alerts are not configured on this server yet.";
     }
 
@@ -81,7 +86,7 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     }
 
     if (role === "doctor") {
-      return "Get mobile alerts when your kit items are at or below par level.";
+      return "Visit requests and low-stock alerts on this device. Use Test this device to verify alerts appear.";
     }
 
     if (role === "admin" || role === "operator") {
@@ -174,6 +179,17 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
           />
         </label>
       </ToggleShell>
+
+      <div className={`mx-5 flex flex-wrap gap-x-4 px-2 text-xs ${onDark ? 'text-white' : 'text-teal-800'}`}>
+        <button type="button" className="min-h-11 underline" disabled={isUpdating} onClick={() => void refreshState()}>Recheck alerts</button>
+        {enabled && <button type="button" className="min-h-11 underline" disabled={isUpdating} onClick={async () => {
+          setIsUpdating(true); setTestMessage('');
+          try { const result = await testCurrentDevicePush(); setTestMessage(result.message); }
+          catch (error) { setTestMessage(error.message); }
+          finally { setIsUpdating(false); }
+        }}>Test this device</button>}
+        {testMessage && <p role="status" className="pb-3">{testMessage}</p>}
+      </div>
 
       {showDeniedGuide ? (
         <DeniedGuideModal

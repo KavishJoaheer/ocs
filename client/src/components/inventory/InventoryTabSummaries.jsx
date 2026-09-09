@@ -78,7 +78,7 @@ export default function InventoryTabSummaries({
           value={data.awaiting_application || 0}
           onClick={() => onOpenApproval?.("approved")}
         />
-        <Card title="Total open variance" value={formatRupees(data.total_open_variance || 0)} />
+        <Card title="Recorded open variance" value={formatRupees(data.total_open_variance || 0)} hint="Only counted lines. Zero does not confirm uncounted stock." />
       </div>
     );
   }

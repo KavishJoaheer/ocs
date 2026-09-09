@@ -12,6 +12,7 @@ import { api, ApiError } from "../lib/api.js";
 import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
 import {
   describeSupplyRequestItems,
+  supplyRequestOverdueDays,
   formatSupplyRequestCollectionDay,
   formatSupplyRequestTimestamp,
   getSupplyRequestActions,
@@ -161,6 +162,7 @@ export default function OperatorSupplyRequestsPanel() {
   const { user } = useAuth();
   const role = user?.role === "admin" ? "admin" : "operator";
   const [tab, setTab] = useState("active");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [requests, setRequests] = useState([]);
   const [history, setHistory] = useState({
     requests: [],
@@ -306,6 +308,9 @@ export default function OperatorSupplyRequestsPanel() {
     }
   }
 
+  const overdueCount = requests.filter(request => supplyRequestOverdueDays(request) > 0).length;
+  const visibleRequests = requests.filter(request => !overdueOnly || supplyRequestOverdueDays(request) > 0)
+    .sort((a, b) => supplyRequestOverdueDays(b) - supplyRequestOverdueDays(a));
   const summaryLabel = summarizeActiveSupplyRequests(requests, role);
   const historyPage = Math.floor(historyOffset / HISTORY_PAGE_SIZE) + 1;
   const historyPages = Math.max(1, Math.ceil(history.total / HISTORY_PAGE_SIZE));
@@ -360,19 +365,23 @@ export default function OperatorSupplyRequestsPanel() {
           ))}
         </div>
 
+        {tab === "active" && <label className="mb-3 flex min-h-11 items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm">
+          <input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} />
+          Overdue only ({overdueCount}) · oldest first
+        </label>}
         {tab === "active" ? (
           error ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error}
             </div>
-          ) : !requests.length && !loading ? (
+          ) : !visibleRequests.length && !loading ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
-              No active supply requests.
+              No supply requests match this view.
             </div>
           ) : (
             <>
             <div className="space-y-3 lg:hidden">
-              {requests.map((request) => {
+              {visibleRequests.map((request) => {
                 const busy = updatingId === request.id;
                 return (
                   <article key={request.id} className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -385,7 +394,9 @@ export default function OperatorSupplyRequestsPanel() {
                     </div>
                     <LegacyReconciliationNotice request={request} compact />
                     <p className="mt-2 break-words text-sm text-slate-700">{describeSupplyRequestItems(request.items)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{dayjs(request.collection_date).format("ddd, DD MMM")}</p>
+                    <p className="mt-1 text-xs text-slate-500">{dayjs(request.collection_date).format("ddd, DD MMM")}
+                          {supplyRequestOverdueDays(request) > 0 && <span className="block font-semibold text-amber-800">{supplyRequestOverdueDays(request)} days overdue</span>}
+                          <span className="block">Follow-up owner: {request.assigned_to_name || 'Unassigned'}</span></p>
                     <CompactRequestActions
                       request={request}
                       role={role}
@@ -409,7 +420,7 @@ export default function OperatorSupplyRequestsPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {requests.map((request) => {
+                  {visibleRequests.map((request) => {
                     const busy = updatingId === request.id;
                     const pendingAmendment = request.pending_amendment;
                     return (
@@ -441,6 +452,8 @@ export default function OperatorSupplyRequestsPanel() {
                         </td>
                         <td className="px-3 py-3 text-slate-700">
                           {dayjs(request.collection_date).format("ddd, DD MMM")}
+                          {supplyRequestOverdueDays(request) > 0 && <span className="block font-semibold text-amber-800">{supplyRequestOverdueDays(request)} days overdue</span>}
+                          <span className="block">Follow-up owner: {request.assigned_to_name || 'Unassigned'}</span>
                         </td>
                         <td className="px-3 py-3">
                           {statusBadge(request, role)}

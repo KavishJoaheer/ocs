@@ -364,7 +364,7 @@ test("staff payment of a Linkham bill becomes a claim, and a flag reason reaches
 
   const paid = await api("PATCH", `/api/billing/${unpaid.billingId}/pay`, {
     token: staffToken,
-    body: { payment_method: "cash" },
+    body: { payment_method: "cash", payment_date: "2026-09-09", expected_version: db.prepare("SELECT row_version FROM billing WHERE id=?").get(unpaid.billingId).row_version },
   });
   assert.equal(paid.status, 200, JSON.stringify(paid.data));
 

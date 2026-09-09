@@ -25,7 +25,7 @@ const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 
 const { operationFor } = require("../lib/operationReceipts");
-const { isConsultationFee, assertSingleVisitFee } = require("../lib/consultationFees");
+const { isConsultationFee, assertSingleVisitFee, assertVisitReadyForPayment } = require("../lib/consultationFees");
 const router = express.Router();
 function validPaymentDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
@@ -415,6 +415,21 @@ function applyInventoryTransactions({
   return { items: [...passthrough, ...processed], touchedItemIds: [...touchedItemIds] };
 }
 
+function withPaymentReview(bills) {
+  const visits = new Map();
+  return bills.map(bill => {
+    if (bill.status !== 'unpaid' || bill.voided_at || bill.consultation_voided_at) return bill;
+    if (!visits.has(bill.consultation_id)) {
+      try { assertVisitReadyForPayment(db, bill.consultation_id); visits.set(bill.consultation_id, null); }
+      catch (error) {
+        if (error.status !== 409) throw error;
+        visits.set(bill.consultation_id, {reason:error.message, ...error.extra});
+      }
+    }
+    return {...bill, payment_block:visits.get(bill.consultation_id)};
+  });
+}
+
 function getJoinedBillById(billId) {
   const bill = db
     .prepare(`
@@ -438,7 +453,7 @@ function getJoinedBillById(billId) {
     .get(billId);
 
   if (!bill) return null;
-  const parsed = parseBillingRow(bill);
+  const parsed = withPaymentReview([parseBillingRow(bill)])[0];
   return {
     ...parsed,
     history: db.prepare(`SELECT e.*, COALESCE(NULLIF(e.actor_name, ''), u.full_name) AS actor_name FROM billing_events e
@@ -553,7 +568,7 @@ router.get("/", (req, res) => {
     })
     .map(parseBillingRow);
 
-  res.json(bills);
+  res.json(withPaymentReview(bills));
 });
 
 router.get("/consultation-fees", (req, res) => {
@@ -797,6 +812,7 @@ router.post("/", (req, res) => {
         calculateBillingTotal(computedItems),
         createdId,
       );
+      if (status === 'paid') assertVisitReadyForPayment(db, consultationId);
       operation.save({ billId: createdId });
     }).immediate();
   } catch (error) {
@@ -858,6 +874,9 @@ router.put("/:id", (req, res) => {
     return res.status(409).json({ error: "This bill changed elsewhere. Reopen it before saving." });
   }
   const correctionReason = String(req.body.correction_reason || "").trim();
+  if (existing.legacy_fee_review_required && req.body.confirm_consultation_fee === true && (req.auth.role !== 'admin' || correctionReason.length < 8)) {
+    return res.status(403).json({error:'An admin must verify this historical fee against the source record and document the reason before confirming it.'});
+  }
   if (existing.status === "paid" && (req.auth.role !== "admin" || correctionReason.length < 8)) {
     return res.status(409).json({ error: "Paid bills require an admin correction with a meaningful reason." });
   }
@@ -890,7 +909,7 @@ router.put("/:id", (req, res) => {
   try {
     updated = db.transaction(() => {
       assertSingleVisitFee(db, existing.consultation_id, preservedItems, billId);
-      return db.prepare(`
+      const result = db.prepare(`
     UPDATE billing
     SET
       items = ?,
@@ -901,7 +920,8 @@ router.put("/:id", (req, res) => {
       updated_at = CURRENT_TIMESTAMP,
       updated_by_user_id = ?,
       change_reason = ?,
-      fee_review_required = ?
+      fee_review_required = ?,
+      legacy_fee_review_required = ?
     WHERE id = ? AND row_version = ? AND voided_at IS NULL
   `).run(
     JSON.stringify(preservedItems),
@@ -912,9 +932,12 @@ router.put("/:id", (req, res) => {
     req.auth?.id || null,
     correctionReason || (existing.fee_review_required && req.body.confirm_consultation_fee ? "Consultation fee reviewed" : ""),
     req.body.confirm_consultation_fee === true ? 0 : existing.fee_review_required,
+    req.body.confirm_consultation_fee === true ? 0 : existing.legacy_fee_review_required,
     billId,
     existing.row_version,
       );
+      if (status === 'paid') assertVisitReadyForPayment(db, existing.consultation_id);
+      return result;
     }).immediate();
   } catch (error) { return res.status(error.status || 400).json({error:error.message,...error.extra}); }
   if (updated.changes !== 1) return res.status(409).json({ error: "This bill changed elsewhere. Reopen it before saving." });
@@ -938,7 +961,7 @@ router.patch("/:id/pay", (req, res) => {
 
   if (existing.fee_review_required) return res.status(409).json({error:'Open bill details to confirm Day, Night or Review Consultation before recording payment.', code:'FEE_REVIEW_REQUIRED'});
   const paymentMethod =
-    normalizePaymentMethod(req.body.payment_method ?? existing.payment_method ?? "cash");
+    normalizePaymentMethod(req.body.payment_method ?? (existing.status === 'paid' ? existing.payment_method : null));
 
   if (!PAYMENT_METHODS.has(paymentMethod)) {
     return res.status(400).json({
@@ -946,7 +969,7 @@ router.patch("/:id/pay", (req, res) => {
     });
   }
 
-  const paymentDate = String(req.body.payment_date ?? existing.payment_date ?? getTodayLocal()).trim();
+  const paymentDate = String(req.body.payment_date ?? (existing.status === 'paid' ? existing.payment_date : '')).trim();
   if (!validPaymentDate(paymentDate)) {
     return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
   }
@@ -954,11 +977,15 @@ router.patch("/:id/pay", (req, res) => {
     if (paymentMethod === existing.payment_method && paymentDate === existing.payment_date) return res.json(existing);
     return res.status(409).json({ error: "Payment already recorded. An admin must make a documented correction." });
   }
-  if (req.body.expected_version != null && Number(req.body.expected_version) !== Number(existing.row_version)) {
+  if (Number(req.body.expected_version) !== Number(existing.row_version)) {
     return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
   }
 
-  const updated = db.prepare(`
+  let updated;
+  try {
+    updated = db.transaction(() => {
+      assertVisitReadyForPayment(db, existing.consultation_id);
+      return db.prepare(`
     UPDATE billing
     SET status = 'paid',
         change_reason = 'Payment recorded',
@@ -968,6 +995,8 @@ router.patch("/:id/pay", (req, res) => {
         updated_by_user_id = ?
     WHERE id = ? AND row_version = ? AND voided_at IS NULL
   `).run(paymentMethod, paymentDate, req.auth?.id || null, billId, existing.row_version);
+    }).immediate();
+  } catch (error) { return res.status(error.status || 400).json({error:error.message,...error.extra}); }
   if (updated.changes !== 1) return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
 
   if (existing?.patient_id) {

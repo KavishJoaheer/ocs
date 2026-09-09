@@ -4,6 +4,17 @@ import { api } from "./api.js";
 export const ACTIVE_SUPPLY_STATUSES = ["pending", "accepted", "ready"];
 export const HISTORY_SUPPLY_STATUSES = ["completed", "cancelled"];
 
+// Collection dates are Mauritius calendar dates, regardless of device timezone.
+export function supplyRequestOverdueDays(request, now = new Date()) {
+  if (!isActiveSupplyRequestStatus(request?.status)) return 0;
+  const date = String(request?.collection_date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 0;
+  const due = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(due) || new Date(due).toISOString().slice(0, 10) !== date) return 0;
+  const localDay = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return Math.max(0, Math.round((Date.parse(`${localDay}T00:00:00Z`) - due) / 86400000));
+}
+
 export function normaliseSupplyRequestStatus(status) {
   const value = String(status || "").trim().toLowerCase();
   if (value === "prepared") return "ready";

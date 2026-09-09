@@ -31,11 +31,18 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
         </div>
       </li>)}</ul> : <p className="text-sm">No exceptions detected by these checks. This does not replace a bank reconciliation or physical stock count.</p>}
       {Boolean(result.legacy_estimate_count) && <p className="text-sm">{result.legacy_estimate_count} older stock movements use estimated historical prices. Verify source records before treating these valuations as exact.</p>}
+      {result.stock_readiness && user?.role!=='doctor' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+        <p className="font-semibold">Stock verification · all stock locations</p>
+        <p>{result.stock_readiness.unpriced_products} unpriced products · {result.stock_readiness.expiry_unverified_products} products with unverified expiry · {result.stock_readiness.unfinished_counts} unfinished stock counts</p>
+        <a href="/inventory" className="inline-flex min-h-11 items-center font-semibold text-teal-800">Open inventory: pricing, expiry filters and stock counts →</a>
+        <p className="text-xs">Resolve these from supplier records and physical counts. A recorded zero is not evidence that unknown stock values or losses are zero.</p>
+      </div>}
       {result.stock && user?.role!=='doctor' && <div className="grid gap-3 sm:grid-cols-3 text-sm">
         <div><p>Net stock sales</p><strong>{money(result.stock.net_sales_rs)}</strong></div>
         <div><p>Cost of stock sold</p><strong>{money(result.stock.sales_cost_rs)}</strong></div>
         <div><p>Stock wastage</p><strong>{money(result.stock.wastage_value_rs)}</strong></div>
         <p className="sm:col-span-3 text-xs">Stock values follow movement dates, include linked reversals, and include billed and unbilled dispensing. They are separate from collected cash.</p>
+        {result.stock.unclassified_movement_count > 0 && <p className="sm:col-span-3 rounded-xl bg-amber-50 p-3">{result.stock.unclassified_movement_count} movements are corrections or have no sales / wastage classification. Recorded sales and wastage exclude those unknown purposes. <a href="/stock-history" className="font-semibold underline">Review stock history and source records</a>.</p>}
       </div>}
       <p className="text-xs text-slate-500">{result.accounting_note}</p>
     </div>}

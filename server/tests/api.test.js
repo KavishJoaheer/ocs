@@ -1502,7 +1502,7 @@ test("marking a bill paid records who changed it and when", async () => {
 
   const paid = await api("PATCH", `/api/billing/${billId}/pay`, {
     token: adminToken,
-    body: { payment_method: "cash" },
+    body: { payment_method: "cash", payment_date: "2026-09-09", expected_version: db.prepare("SELECT row_version FROM billing WHERE id=?").get(billId).row_version },
   });
   assert.equal(paid.status, 200, JSON.stringify(paid.data));
   assert.equal(paid.data.status, "paid");

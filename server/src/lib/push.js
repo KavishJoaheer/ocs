@@ -1080,6 +1080,7 @@ module.exports = {
   dispatchLowStockAlert,
   getDoctorUserId,
   getVapidPublicKey,
+  getUserPushSubscriptions,
   isPushConfigured,
   listPushSubscriptionStatus,
   maybeNotifyDoctorLowStock,

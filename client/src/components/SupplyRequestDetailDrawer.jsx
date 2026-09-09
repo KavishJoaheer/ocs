@@ -7,6 +7,7 @@ import TransferReceiptModal from "./inventory/TransferReceiptModal.jsx";
 import { api, ApiError } from "../lib/api.js";
 import {
   fetchSupplyRequestDetail,
+  supplyRequestOverdueDays,
   formatSupplyRequestCollectionDay,
   formatSupplyRequestTimestamp,
   getSupplyRequestActions,
@@ -71,6 +72,9 @@ export default function SupplyRequestDetailDrawer({
   onPrintReceipt,
 }) {
   const [request, setRequest] = useState(null);
+  const [followUpNote, setFollowUpNote] = useState('');
+  const [takeOwnership, setTakeOwnership] = useState(false);
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [receiptError, setReceiptError] = useState("");
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -94,6 +98,8 @@ export default function SupplyRequestDetailDrawer({
   useEffect(() => {
     if (!open || !requestId) {
       setRequest(null);
+      setFollowUpNote('');
+      setTakeOwnership(false);
       setReceipt(null);
       setReceiptError("");
       setReceiptOpen(false);
@@ -214,6 +220,21 @@ export default function SupplyRequestDetailDrawer({
             </div>
 
             <LegacyReconciliationNotice request={request} />
+            {supplyRequestOverdueDays(request) > 0 && <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">Collection date is {supplyRequestOverdueDays(request)} days overdue. This request is still open. Check preparation or collection with the responsible team member and record the next action.</p>}
+            {['pending', 'accepted', 'ready'].includes(status) && ['admin', 'operator'].includes(role) && <details className="rounded-xl border border-slate-200 p-3">
+              <summary className="min-h-11 cursor-pointer text-sm font-semibold">Follow-up · {request.assigned_to_name || 'No owner assigned'}</summary>
+              <label className="block text-sm">Follow-up note and next action<textarea maxLength={500} value={followUpNote} onChange={event => setFollowUpNote(event.target.value)} className="mt-2 w-full rounded-xl border p-3" /></label>
+              <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={takeOwnership} onChange={event => setTakeOwnership(event.target.checked)} />Assign follow-up to me</label>
+              <button type="button" disabled={savingFollowUp || followUpNote.trim().length < 8} className="min-h-11 rounded-xl bg-ocs-teal px-4 text-sm font-semibold text-white disabled:opacity-50" onClick={async () => {
+                setSavingFollowUp(true);
+                try {
+                  const result = await api.post(`/restock-requests/${request.id}/follow-up`, {note:followUpNote, take_ownership:takeOwnership, expected_updated_at:request.updated_at});
+                  setRequest(result.request); setFollowUpNote(''); setTakeOwnership(false); toast.success('Follow-up recorded in the timeline.');
+                } catch (err) { toast.error(err.message); }
+                finally { setSavingFollowUp(false); }
+              }}>Save follow-up</button>
+              <p className="mt-2 text-xs text-slate-500">Adds an audit note. Collection status and stock stay unchanged.</p>
+            </details>}
 
             {status === "ready" && !request.reconciliation_required && !request.linkage_required ? (
               <p className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -237,7 +258,7 @@ export default function SupplyRequestDetailDrawer({
                       <p className="text-xs text-slate-500">
                         Original {original?.quantity ?? item.quantity} · Current {item.quantity}
                         {fulfilmentLine
-                          ? ` · Reserved ${fulfilmentLine.reserved_quantity ?? 0} · Picked ${fulfilmentLine.picked_quantity ?? 0} · Fulfilled ${fulfilmentLine.fulfilled_quantity ?? 0}`
+                          ? ` · Reserved ${fulfilmentLine.reserved_quantity ?? 0} · Picked ${fulfilmentLine.picked_quantity ?? 0} · ${status === 'completed' ? 'Collected' : 'Packed'} ${fulfilmentLine.fulfilled_quantity ?? 0}`
                           : ""}
                         {Number(fulfilmentLine?.shortage_quantity || 0) > 0
                           ? ` · Shortage ${fulfilmentLine.shortage_quantity}${fulfilmentLine.shortage_reason ? ` (${fulfilmentLine.shortage_reason})` : ""}`
@@ -263,7 +284,7 @@ export default function SupplyRequestDetailDrawer({
               <DetailSection title="Fulfilment">
                 {request.fulfilment_recorded ? (
                   <p className="text-sm text-slate-700">
-                    Reserved, fulfilled and picked-batch quantities are listed on each item above.
+                    Reserved, packed / collected and picked-batch quantities are listed on each item above.
                     {request.partial_fulfilment_approved
                       ? ` Partial fulfilment approved${request.partial_fulfilment_reason ? `: ${request.partial_fulfilment_reason}` : "."}`
                       : ""}

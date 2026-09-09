@@ -6,10 +6,29 @@ const {
   isPushConfigured,
   listPushSubscriptionStatus,
   saveUserPushSubscription,
+  getUserPushSubscriptions,
+  sendNotification,
 } = require("../lib/push");
 
 const router = express.Router();
 const PUSH_SUBSCRIBER_ROLES = ["admin", "doctor", "operator", "lab_tech", "accountant"];
+const testAttempts = new Map();
+
+router.post('/test-device', requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES), async (req, res) => {
+  if (!isPushConfigured()) return res.status(503).json({error:'Web push is not configured on this server.'});
+  const endpoint = String(req.body?.endpoint || '');
+  const owned = getUserPushSubscriptions(req.auth.id).find(raw => {
+    try { return JSON.parse(raw).endpoint === endpoint; } catch { return false; }
+  });
+  if (!owned) return res.status(404).json({error:'This device is not registered to your account. Turn alerts off and on again on this device.'});
+  const now = Date.now();
+  for (const [id, at] of testAttempts) if (now - at >= 60000) testAttempts.delete(id);
+  if (testAttempts.has(req.auth.id)) return res.status(429).json({error:'Wait one minute before testing again.'});
+  testAttempts.set(req.auth.id, now);
+  const result = await sendNotification(owned, {title:'OCS device alert test', body:'If you see this alert, notifications reached this device.', url:'/', tag:'ocs-device-test', icon:'/icon-192.png'});
+  if (!result.ok) return res.status(502).json({error:'The push service did not accept the test. Re-enable alerts on this device and try again.'});
+  return res.json({accepted:true, message:'Test accepted by the push service. Confirm that the alert appeared on this device; acceptance alone does not prove delivery.'});
+});
 
 router.get("/vapid-public-key", (_req, res) => {
   const configured = isPushConfigured();

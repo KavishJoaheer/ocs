@@ -840,7 +840,7 @@ export default function LiveReportPage() {
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
                   {dateBasis === "payment"
-                    ? "Cash that landed in this window"
+                    ? "Payments recorded in this window"
                     : `${formatCurrency(billed)} billed · ${collectionPercent(collectionRate)} collected`}
                   {` · ${visitCount} visit${visitCount === 1 ? "" : "s"} · ${uniquePatientCount} patient${uniquePatientCount === 1 ? "" : "s"}`}
                 </p>
@@ -878,7 +878,7 @@ export default function LiveReportPage() {
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   {dateBasis === "payment"
-                    ? "Cash that landed in this window"
+                    ? "Payments recorded in this window"
                     : `${formatCurrency(billed)} billed · ${collectionPercent(collectionRate)} collected`}
                 </p>
               </div>
@@ -917,6 +917,19 @@ export default function LiveReportPage() {
           </div>
           {doctorRows.length === 0 ? (
             <EmptyPanel title="No doctor activity" detail="Saved notes and bills will appear here." />
+          ) : isMobile ? (
+            <div className="space-y-3">{doctorRows.map(row => <button type="button" key={row.doctor_id}
+              onClick={() => patchParams({ scope: "doctor", doctorId: String(row.doctor_id) })}
+              className="block w-full rounded-2xl border border-slate-200 p-4 text-left">
+              <span className="block break-words font-semibold text-slate-900">{row.doctor_name}</span>
+              <span className="mt-1 block text-xs text-slate-500">{row.visit_count} visits · {row.unique_patient_count} patients</span>
+              <span className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                <span>Collected<strong className="mt-1 block break-words text-sm">{formatCurrency(row.paid)}</strong></span>
+                <span>Unpaid<strong className="mt-1 block break-words text-sm">{formatCurrency(row.unpaid)}</strong></span>
+                <span className="col-span-2 border-t pt-2 text-ocs-teal">Doctor entitlement<strong className="mt-1 block text-base">{formatCurrency(row.doctorNetRevenue)}</strong></span>
+              </span>
+              <span className="mt-2 block text-xs font-semibold text-ocs-teal">Open doctor report →</span>
+            </button>)}</div>
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-slate-100">
               <table className="min-w-full text-left text-sm">

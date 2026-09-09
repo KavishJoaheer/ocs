@@ -26,12 +26,23 @@ function stockFinancials(rows) {
     if (kind !== 'restock_in') gross += qty*cost;
     if (kind === 'sell') { sales += sign*qty*price; saleCost += sign*qty*cost; }
     if (kind === 'wastage') { loss += sign*qty*cost; lossUnits += sign*qty; }
-    if (['sell','wastage','remove','stock_out','adjustment'].includes(kind)) consumed += sign*qty*cost;
+    if (['sell','wastage','remove','stock_out'].includes(kind)) consumed += sign*qty*cost;
+    // A stock count increase is not consumption. A compensating reversal has
+    // the opposite direction, so reversing a decrease removes consumption.
+    if (['adjustment','correction','exceptional_correction','override'].includes(kind)) {
+      const meta = parse(row.current_meta_json || row.meta_json);
+      const deltaDirection = Number(row.next_quantity) < Number(row.previous_quantity) ? 'out' : 'in';
+      const direction = ['in','out'].includes(row.direction) ? row.direction : (['in','out'].includes(row.movement_type) ? row.movement_type : deltaDirection);
+      const originalDirection = reversal ? (meta.original_direction || (direction === 'in' ? 'out' : 'in')) : direction;
+      if (originalDirection === 'out' || (!originalDirection && Number(row.quantity) < 0)) consumed += sign*qty*cost;
+    }
   }
   return {net_sales_rs:round(sales),sales_cost_rs:round(saleCost),gross_margin_rs:round(sales-saleCost),
     gross_margin_pct:sales>0?round((sales-saleCost)/sales*100):null,
     wastage_value_rs:round(loss),wastage_units:lossUnits,total_value_cost_rs:round(consumed),
-    gross_movement_cost_rs:round(gross)};
+    gross_movement_cost_rs:round(gross),
+    unclassified_movement_count: rows.filter(row => ['adjustment','correction','exceptional_correction','override','remove','stock_out',''].includes(financialAction(row))).length,
+    estimated_movement_count: rows.filter(row => row.valuation_basis === 'legacy_estimate').length};
 }
 function movementRows(db, {from, to, doctorId = null} = {}) {
   return db.prepare(`SELECT m.*, i.stock_scope, i.owner_doctor_id FROM inventory_movements m

@@ -8,6 +8,7 @@ function ensureFinancialIntegritySchema(db) {
   db.transaction(() => {
     add('billing', 'row_version', 'INTEGER NOT NULL DEFAULT 1');
     add('billing', 'fee_review_required', 'INTEGER NOT NULL DEFAULT 0');
+    add('billing', 'legacy_fee_review_required', 'INTEGER NOT NULL DEFAULT 0');
     add('billing', 'change_reason', "TEXT NOT NULL DEFAULT ''");
     add('inventory_movements', 'unit_cost_snapshot', 'REAL');
     add('inventory_movements', 'unit_price_snapshot', 'REAL');
@@ -38,7 +39,8 @@ function ensureFinancialIntegritySchema(db) {
     const actorRole = id => `(SELECT role FROM users WHERE id=${id})`;
     const snapshot = alias => `json_object('status', ${alias}.status, 'total_amount', ${alias}.total_amount,
       'items', ${alias}.items, 'payment_method', ${alias}.payment_method,
-      'payment_date', ${alias}.payment_date, 'voided_at', ${alias}.voided_at, 'fee_review_required', ${alias}.fee_review_required)`;
+      'payment_date', ${alias}.payment_date, 'voided_at', ${alias}.voided_at, 'fee_review_required', ${alias}.fee_review_required,
+      'legacy_fee_review_required', ${alias}.legacy_fee_review_required)`;
     db.exec(`
       INSERT INTO billing_events(bill_id, actor_id, actor_name, actor_role, event_type, after_json, reason)
       SELECT b.id, b.updated_by_user_id, COALESCE(${actorName('b.updated_by_user_id')}, ''), COALESCE(${actorRole('b.updated_by_user_id')}, ''), 'migration_baseline', ${snapshot('b')},
@@ -51,7 +53,7 @@ function ensureFinancialIntegritySchema(db) {
         INSERT INTO billing_events(bill_id, actor_id, actor_name, actor_role, event_type, after_json)
         VALUES (NEW.id, NEW.updated_by_user_id, COALESCE(${actorName('NEW.updated_by_user_id')}, ''), COALESCE(${actorRole('NEW.updated_by_user_id')}, ''), 'created', ${snapshot('NEW')});
       END;
-      CREATE TRIGGER IF NOT EXISTS billing_event_update AFTER UPDATE OF items, total_amount, status, payment_method, payment_date, voided_at, fee_review_required ON billing
+      CREATE TRIGGER IF NOT EXISTS billing_event_update AFTER UPDATE OF items, total_amount, status, payment_method, payment_date, voided_at, fee_review_required, legacy_fee_review_required ON billing
       WHEN ${snapshot('OLD')} != ${snapshot('NEW')} BEGIN
         INSERT INTO billing_events(bill_id, actor_id, actor_name, actor_role, event_type, before_json, after_json, reason)
         VALUES (NEW.id, COALESCE(NEW.voided_by_user_id, NEW.updated_by_user_id),
@@ -68,6 +70,20 @@ function ensureFinancialIntegritySchema(db) {
         SELECT RAISE(ABORT, 'Billing history is append-only');
       END;
     `);
+    if (!db.prepare("SELECT 1 FROM financial_migrations WHERE name='legacy_unpaid_fee_review_20260909'").get()) {
+      const { isConsultationFee, CONSULTATION_FEES } = require('./consultationFees');
+      for (const bill of db.prepare("SELECT id, items FROM billing WHERE status='unpaid' AND voided_at IS NULL AND fee_review_required=0").all()) {
+        let items;
+        try { items = JSON.parse(bill.items); } catch { continue; }
+        if (!Array.isArray(items)) continue;
+        const fees = items.filter(isConsultationFee);
+        if (!fees.some(line => line.is_consultation_fee !== true || Number(line.amount) !== CONSULTATION_FEES[line.description])) continue;
+        db.prepare(`UPDATE billing SET fee_review_required=1, legacy_fee_review_required=1,
+          updated_by_user_id=NULL, change_reason='Historical unpaid fee requires source-record verification; amount preserved'
+          WHERE id=?`).run(bill.id);
+      }
+      db.prepare("INSERT INTO financial_migrations(name) VALUES ('legacy_unpaid_fee_review_20260909')").run();
+    }
     // Preserve exact allocation costs where available. Legacy catalogue values
     // are frozen once and explicitly labelled estimates, never silently repriced.
     db.exec(`

@@ -2044,6 +2044,32 @@ router.patch("/:id/fulfilment", (req, res) => {
   }
 });
 
+router.post('/:id/follow-up', (req, res) => {
+  if (!['admin', 'operator'].includes(req.auth?.role)) return res.status(403).json({error:'Only admins or operators can record supply follow-up.'});
+  const requestId = Number(req.params.id);
+  const note = String(req.body?.note || '').trim();
+  if (note.length < 8 || note.length > 500) return res.status(400).json({error:'Enter a follow-up note between 8 and 500 characters, including the next action.'});
+  try {
+    db.transaction(() => {
+      const request = db.prepare('SELECT * FROM restock_requests WHERE id=?').get(requestId);
+      if (!request) throw new HttpError(404, 'Supply request not found.');
+      if (!isActiveStatus(request.status)) throw new HttpError(409, 'This request is closed. Its operational record cannot be changed.');
+      if (req.body.expected_updated_at !== request.updated_at) throw new HttpError(409, 'This request changed. Reopen its details before recording follow-up.');
+      if (req.body.take_ownership === true) assignRequest(requestId, req.auth.id);
+      db.prepare("UPDATE restock_requests SET updated_at=strftime('%Y-%m-%d %H:%M:%f','now') WHERE id=?").run(requestId);
+      recordEvent({requestId, eventType:'collection_follow_up', previousStatus:request.status, newStatus:request.status,
+        actor:actorFromAuth(req.auth), reason:note,
+        metadata:{assigned_to_user_id:req.body.take_ownership === true ? req.auth.id : request.assigned_to_user_id}});
+    }).immediate();
+    const request = getRequestById(requestId);
+    broadcastSupplyRequestChange(request.doctor_id);
+    return res.json({request});
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({error:error.message});
+    throw error;
+  }
+});
+
 router.post("/:id/assign", (req, res) => {
   const role = req.auth?.role;
   if (role !== "operator" && role !== "admin") {
@@ -2053,7 +2079,9 @@ router.post("/:id/assign", (req, res) => {
   if (!requestId) return res.status(400).json({ error: "Invalid restock request id." });
   const existing = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(requestId);
   if (!existing) return res.status(404).json({ error: "Supply request not found." });
+  if (!isActiveStatus(existing.status)) return res.status(409).json({error:'Closed requests cannot be reassigned.'});
   const assigneeId = req.body?.user_id === null ? null : Number(req.body?.user_id || req.auth.id);
+  if (assigneeId && !db.prepare("SELECT 1 FROM users WHERE id=? AND role IN ('admin','operator') AND is_active=1 AND deleted_at IS NULL").get(assigneeId)) return res.status(400).json({error:'Select an active operator or admin.'});
   if (existing.status === "ready") {
     const detail = fulfilmentDetail(requestId);
     if (!detail?.reconciliation_required && !detail?.linkage_required) {

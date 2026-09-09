@@ -21,6 +21,7 @@ function roleLabel(role) {
 function PushSubscriberStatusCard() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +50,7 @@ function PushSubscriberStatusCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   if (loading) {
     return <LoadingState label="Loading notification status" />;
@@ -67,9 +68,10 @@ function PushSubscriberStatusCard() {
   return (
     <SectionCard
       title="Mobile & desktop alerts"
-      subtitle="See which team accounts have turned on push notifications on at least one device."
+      subtitle="Registered devices do not prove alert delivery. Each team member should use Test this device and verify the alert appears."
     >
       <div className="space-y-4">
+        <button type="button" className="min-h-11 rounded-xl border px-4 text-sm font-semibold" onClick={() => setRefreshKey(key => key + 1)}>Refresh subscriptions</button>
         <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
           <div
             className={cx(
@@ -85,7 +87,7 @@ function PushSubscriberStatusCard() {
             </p>
             <p className="mt-1 text-sm text-slate-600">
               {enabledCount} of {totalCount} team {totalCount === 1 ? "account has" : "accounts have"}{" "}
-              notifications enabled.
+              registered at least one device.
             </p>
             {roleBreakdown.length ? (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -139,7 +141,7 @@ function PushSubscriberStatusCard() {
                           ) : (
                             <BellOff className="size-3.5" aria-hidden />
                           )}
-                          {entry.push_enabled ? "Enabled" : "Not enabled"}
+                          {entry.push_enabled ? `Subscribed (${entry.device_count})` : "No subscription"}
                         </span>
                       </td>
                     </tr>
