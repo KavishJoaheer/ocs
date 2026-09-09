@@ -27,7 +27,7 @@ export default defineConfig({
       srcDir: "src",
       filename: "sw.js",
       injectRegister: false,
-      includeAssets: ["favicon.png", "ocs-medecins-mark.png", "pwa-192.png", "pwa-512.png"],
+      includeAssets: ["favicon.png", "ocs-medecins-mark.png", "pwa-192.png", "pwa-512.png", "ocs-mauritius-cinematic-v1.webp"],
       manifest: {
         name: "OCS Médecins — Patient Portal",
         short_name: "OCS Patient",

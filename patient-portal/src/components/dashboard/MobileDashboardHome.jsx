@@ -15,6 +15,7 @@ import { useFamilyProfile } from "../../hooks/useFamilyProfile.jsx";
 import { CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 import { getVisitRequestLabel } from "../../lib/familyProfiles.js";
+import { CareNetworkMap } from "./CareNetworkVisual.jsx";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -240,15 +241,19 @@ function MobileDashboardHome({
         <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 relative mb-9 overflow-hidden bg-[#173f4a] p-5 text-white">
           <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-brand-gold/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 -left-12 size-40 rounded-full bg-brand-teal/25 blur-3xl" />
-
-          <div className="relative z-10 flex items-center gap-2.5">
-            <span className="size-2.5 rounded-full bg-brand-gold shadow-[0_0_0_5px_rgba(var(--ocs-brand-gold-rgb),0.14)]" />
-            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#9be5df]">
-              24/7 home visits
-            </p>
+          <div className="mobile-care-hero-heading relative z-10">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9be5df]">
+                24/7 home visits
+              </p>
+              <p className="mt-2 font-display text-base font-semibold leading-snug text-brand-gold">
+                Connecting homes<br />through care
+              </p>
+            </div>
+            <CareNetworkMap className="care-network-mobile-map" />
           </div>
 
-          <div className="relative z-10 mt-5 grid gap-2">
+          <div className="relative z-10 mt-4 grid gap-2">
             <button
               type="button"
               onClick={() => openRequestSheet()}

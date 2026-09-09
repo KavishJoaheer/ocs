@@ -11,6 +11,7 @@ import {
 import { formatDoctorName } from "../../lib/healthRecordsDisplay.js";
 import { CLINIC_TEL_HREF } from "../../lib/clinicContact.js";
 import RequestVisitCta from "../request-visit/RequestVisitCta.jsx";
+import CareNetworkVisual from "./CareNetworkVisual.jsx";
 
 const OCS_CARE_WHATSAPP_URL = "https://wa.me/23052522234";
 
@@ -41,26 +42,27 @@ function appointmentDateLabel(value) {
 
 function DesktopRequestHero() {
   return (
-    <section className="relative overflow-hidden rounded-[28px] bg-[#173f4a] px-7 py-6 text-white shadow-[0_24px_54px_rgba(23,63,74,0.2)] animate-fade-in-up stagger-1">
+    <section className="relative overflow-hidden rounded-[28px] bg-[#102f36] px-7 py-6 text-white shadow-[0_24px_54px_rgba(23,63,74,0.2)] animate-fade-in-up stagger-1">
       <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full bg-brand-teal/25 blur-3xl" />
-      <div className="relative z-10 flex items-center justify-between gap-8">
-        <div className="max-w-xl">
+      <div className="desktop-care-hero-content relative z-10">
+        <div className="max-w-lg">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#83ddd7]">24/7 home visits</p>
           <h2 className="mt-2 font-display text-2xl font-bold tracking-tight text-white">Need medical care at home?</h2>
           <p className="mt-2 text-sm leading-relaxed text-white/68">
             Send your request to the OCS care team. We will confirm the visit and keep you updated here.
           </p>
+          <div className="mt-5 flex flex-wrap gap-2.5">
+            <RequestVisitCta
+              leading={<HousePlus className="size-4.5" />}
+              className="items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 py-3 text-sm font-bold text-[#173f4a] shadow-sm transition hover:brightness-105"
+            />
+            <a href={CLINIC_TEL_HREF} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-5 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white">
+              <Phone className="size-4" />
+              Call the clinic
+            </a>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-col items-stretch gap-2.5">
-          <RequestVisitCta
-            leading={<HousePlus className="size-4.5" />}
-            className="items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 py-3 text-sm font-bold text-[#173f4a] shadow-sm transition hover:brightness-105"
-          />
-          <a href={CLINIC_TEL_HREF} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-5 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white">
-            <Phone className="size-4" />
-            Call the clinic
-          </a>
-        </div>
+        <CareNetworkVisual />
       </div>
     </section>
   );

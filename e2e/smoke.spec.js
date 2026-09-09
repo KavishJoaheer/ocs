@@ -191,6 +191,29 @@ test.describe("OCS smoke", () => {
     await expect(
       page.locator("#app-main-scroll").getByRole("link", { name: /request a home visit/i }),
     ).toBeVisible();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const width of [1440, 1024, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const mobile = width < 1024;
+      const artwork = page.locator(mobile ? ".care-network-mobile-map" : ".care-network-desktop-map");
+      await expect(artwork).toBeVisible();
+      await expect(page.getByText(/doctors? on duty now/i)).toHaveCount(0);
+      await expect(artwork.locator("img")).toHaveCSS("opacity", "0.94");
+      const frame = await artwork.boundingBox();
+      const island = await artwork.locator("img").boundingBox();
+      // Keep the whole island inset; it previously overflowed a fixed-height frame.
+      expect(island.x).toBeGreaterThan(frame.x);
+      expect(island.y).toBeGreaterThan(frame.y);
+      expect(island.x + island.width).toBeLessThan(frame.x + frame.width);
+      expect(island.y + island.height).toBeLessThan(frame.y + frame.height);
+      if (mobile) {
+        const requestButton = page.getByRole("button", { name: /request a doctor/i });
+        await expect(requestButton).toBeVisible();
+        expect(frame.y + frame.height).toBeLessThan((await requestButton.boundingBox()).y);
+      }
+    }
+    await page.getByRole("button", { name: /request a doctor/i }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
   });
 
   test("patient health records overview loads", async ({ page, request }) => {
