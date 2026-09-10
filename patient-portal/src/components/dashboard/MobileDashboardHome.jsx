@@ -238,7 +238,7 @@ function MobileDashboardHome({
       ) : null}
 
       {!activeVisitSlot ? (
-        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 relative mb-9 overflow-hidden bg-[#173f4a] px-5 py-4 text-white">
+        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 relative mb-9 overflow-hidden bg-[#173f4a] px-5 py-2 text-white">
           <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-brand-gold/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 -left-12 size-40 rounded-full bg-brand-teal/25 blur-3xl" />
           <div className="mobile-care-hero-heading relative z-10">
@@ -257,16 +257,16 @@ function MobileDashboardHome({
             <button
               type="button"
               onClick={() => openRequestSheet()}
-              className="squircle-inner flex min-h-[58px] w-full items-center gap-3 bg-brand-gold px-4 text-left text-[#173f4a] shadow-[0_10px_24px_rgba(var(--ocs-brand-gold-rgb),0.22)] transition active:scale-[0.98]"
+              className="squircle-inner flex min-h-[48px] w-full items-center gap-2 bg-brand-gold px-3 text-left text-[#173f4a] shadow-[0_4px_12px_rgba(var(--ocs-brand-gold-rgb),0.16)] transition active:scale-[0.98]"
             >
-              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/45">
-                <HousePlus className="size-[18px]" strokeWidth={2} aria-hidden="true" />
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-white/45">
+                <HousePlus className="size-4" strokeWidth={2} aria-hidden="true" />
               </span>
-              <span className="native-display min-w-0 flex-1 text-[19px] leading-tight">
+              <span className="native-display min-w-0 flex-1 text-[16px] leading-tight">
                 Request a doctor
               </span>
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#173f4a]/10">
-                <ArrowRight className="size-4.5" strokeWidth={2.5} aria-hidden="true" />
+              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#173f4a]/10">
+                <ArrowRight className="size-4" strokeWidth={2.5} aria-hidden="true" />
               </span>
             </button>
             <a
