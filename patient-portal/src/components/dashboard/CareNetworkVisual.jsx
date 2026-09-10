@@ -17,9 +17,12 @@ const CARE_NETWORK_X_NODES = [
   [91.5, 31.5],
 ];
 
+const CARE_NETWORK_REPLAY_MS = 10_000;
+
 export function CareNetworkMap({ className = "" }) {
   const ref = useRef(null);
   const [active, setActive] = useState(true);
+  const [animationCycle, setAnimationCycle] = useState(0);
 
   useEffect(() => {
     if (!ref.current || typeof IntersectionObserver === "undefined") return undefined;
@@ -30,6 +33,29 @@ export function CareNetworkMap({ className = "" }) {
     observer.observe(ref.current);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!active) return undefined;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let intervalId;
+    const syncReplay = () => {
+      window.clearInterval(intervalId);
+      if (reducedMotion.matches || document.visibilityState !== "visible") return;
+      intervalId = window.setInterval(() => {
+        setAnimationCycle((cycle) => cycle + 1);
+      }, CARE_NETWORK_REPLAY_MS);
+    };
+
+    syncReplay();
+    reducedMotion.addEventListener("change", syncReplay);
+    document.addEventListener("visibilitychange", syncReplay);
+    return () => {
+      window.clearInterval(intervalId);
+      reducedMotion.removeEventListener("change", syncReplay);
+      document.removeEventListener("visibilitychange", syncReplay);
+    };
+  }, [active]);
 
   return (
     <div
@@ -45,7 +71,8 @@ export function CareNetworkMap({ className = "" }) {
           decoding="async"
           src="/ocs-mauritius-cinematic-v1.webp"
         />
-        <div className="patient-network-mark">
+        {/* Replay the C and X together while keeping the island in place. */}
+        <div key={animationCycle} className="patient-network-mark">
           <span className="patient-network-mark-texture patient-network-mark-texture--c" />
           <svg className="patient-network-routes patient-network-routes--c" viewBox="0 0 100 100" aria-hidden="true">
             <path

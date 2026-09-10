@@ -42,7 +42,7 @@ function appointmentDateLabel(value) {
 
 function DesktopRequestHero() {
   return (
-    <section className="relative overflow-hidden rounded-[28px] bg-[#102f36] px-7 py-6 text-white shadow-[0_24px_54px_rgba(23,63,74,0.2)] animate-fade-in-up stagger-1">
+    <section className="relative overflow-hidden rounded-[28px] bg-[#102f36] px-7 py-4 text-white shadow-[0_24px_54px_rgba(23,63,74,0.2)] animate-fade-in-up stagger-1">
       <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full bg-brand-teal/25 blur-3xl" />
       <div className="desktop-care-hero-content relative z-10">
         <div className="max-w-lg">
@@ -51,7 +51,7 @@ function DesktopRequestHero() {
           <p className="mt-2 text-sm leading-relaxed text-white/68">
             Send your request to the OCS care team. We will confirm the visit and keep you updated here.
           </p>
-          <div className="mt-5 flex flex-wrap gap-2.5">
+          <div className="mt-4 flex flex-wrap gap-2.5">
             <RequestVisitCta
               leading={<HousePlus className="size-4.5" />}
               className="items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 py-3 text-sm font-bold text-[#173f4a] shadow-sm transition hover:brightness-105"

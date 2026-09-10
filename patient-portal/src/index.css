@@ -408,7 +408,7 @@ table {
 /* Patient adaptation of the operator dashboard's cinematic Mauritius network. */
 .desktop-care-hero-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) 180px;
   align-items: center;
   gap: 24px;
 }
@@ -418,27 +418,51 @@ table {
   min-width: 0;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   margin: 0;
 }
 
 .care-network-desktop-map {
-  width: clamp(220px, 19vw, 252px);
+  width: 144px;
   max-width: 100%;
 }
 
 .care-network-caption {
   color: #f7ba24;
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
 }
 
+@media (min-width: 1280px) {
+  .desktop-care-hero-content {
+    grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.9fr);
+  }
+
+  .care-network-visual {
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .care-network-desktop-map {
+    flex-shrink: 0;
+    width: clamp(148px, 12.5vw, 184px);
+  }
+
+  .care-network-caption {
+    align-self: flex-end;
+    padding-bottom: 20px;
+    font-size: 14px;
+    text-align: right;
+  }
+}
+
 .mobile-care-hero-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(104px, 32vw, 128px);
+  grid-template-columns: minmax(0, 1fr) clamp(88px, 24vw, 100px);
   align-items: center;
   gap: 12px;
 }

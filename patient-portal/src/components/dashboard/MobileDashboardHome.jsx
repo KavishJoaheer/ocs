@@ -238,7 +238,7 @@ function MobileDashboardHome({
       ) : null}
 
       {!activeVisitSlot ? (
-        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 relative mb-9 overflow-hidden bg-[#173f4a] p-5 text-white">
+        <section className="squircle-outer ocs-elevate-hero animate-fade-in-up stagger-1 relative mb-9 overflow-hidden bg-[#173f4a] px-5 py-4 text-white">
           <div className="pointer-events-none absolute -right-12 -top-16 size-44 rounded-full bg-brand-gold/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 -left-12 size-40 rounded-full bg-brand-teal/25 blur-3xl" />
           <div className="mobile-care-hero-heading relative z-10">
@@ -253,7 +253,7 @@ function MobileDashboardHome({
             <CareNetworkMap className="care-network-mobile-map" />
           </div>
 
-          <div className="relative z-10 mt-4 grid gap-2">
+          <div className="relative z-10 mt-2 grid gap-1">
             <button
               type="button"
               onClick={() => openRequestSheet()}
@@ -271,7 +271,7 @@ function MobileDashboardHome({
             </button>
             <a
               href={CLINIC_TEL_HREF}
-              className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 text-[15px] font-bold text-white/85 transition active:scale-[0.98] active:text-white"
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 px-4 text-[15px] font-bold text-white/85 transition active:scale-[0.98] active:text-white"
             >
               <Phone className="size-4.5" strokeWidth={2} aria-hidden="true" />
               Call the clinic
