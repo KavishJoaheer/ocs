@@ -87,6 +87,7 @@ async function verifyPortalPatientForVisits(reg) {
 }
 
 let adminToken;
+let accountantToken;
 
 test("staff admin can log in", async () => {
   const res = await api("POST", "/api/auth/login", {
@@ -95,6 +96,64 @@ test("staff admin can log in", async () => {
   assert.equal(res.status, 200, JSON.stringify(res.data));
   assert.ok(res.data.token, "expected an auth token");
   adminToken = res.data.token;
+});
+
+test("staff login supports an HttpOnly cookie session", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "accountant01", password: "Welcome@123" }),
+  });
+  assert.equal(login.status, 200);
+  const payload = await login.json();
+  accountantToken = payload.token;
+
+  const setCookie = login.headers.get("set-cookie") || "";
+  assert.match(setCookie, /^ocs_staff_session=/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Strict/i);
+  assert.match(setCookie, /Path=\/api/i);
+
+  const cookie = setCookie.split(";", 1)[0];
+  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).user.role, "accountant");
+});
+
+test("accountant can use billing patient options but cannot read clinical patient routes", async () => {
+  assert.ok(accountantToken);
+
+  const options = await api("GET", "/api/patients/options", { token: accountantToken });
+  assert.equal(options.status, 200, JSON.stringify(options.data));
+  assert.ok(Array.isArray(options.data));
+  assert.ok(options.data.length > 0);
+  assert.deepEqual(
+    Object.keys(options.data[0]).sort(),
+    ["full_name", "id", "patient_id_number", "patient_identifier"],
+  );
+
+  const directory = await api("GET", "/api/patients", { token: accountantToken });
+  assert.equal(directory.status, 403, JSON.stringify(directory.data));
+
+  const patient = await api("GET", `/api/patients/${options.data[0].id}`, {
+    token: accountantToken,
+  });
+  assert.equal(patient.status, 403, JSON.stringify(patient.data));
+});
+
+test("API responses include a restrictive content security policy", async () => {
+  const response = await fetch(`${baseUrl}/api/health`);
+  assert.equal(response.status, 200);
+  const policy = response.headers.get("content-security-policy") || "";
+  assert.match(policy, /default-src 'self'/);
+  assert.match(policy, /script-src 'self'/);
+  assert.doesNotMatch(policy, /script-src[^;]*'unsafe-inline'/);
+  assert.match(policy, /frame-ancestors 'none'/);
+  const body = await response.json();
+  assert.equal(body.storage.database_readable, true);
+  assert.equal(body.storage.data_directory_writable, true);
+  assert.equal(body.storage.attachments_writable, true);
+  assert.ok(body.storage.free_bytes >= body.storage.minimum_free_bytes);
 });
 
 test("patient registration returns a normalized profile", async () => {

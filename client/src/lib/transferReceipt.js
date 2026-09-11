@@ -1,12 +1,21 @@
+export function escapePrintHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 export function buildTransferReceiptPrintHtml(receipt) {
   const rows = (receipt?.items || [])
     .map(
       (line) => `
           <tr>
-            <td>${line.item_name || ""}</td>
-            <td>${line.batch_number || "N/A"} / ${line.expiry || "N/A"}</td>
-            <td>${line.quantity || 0}</td>
-            <td>${line.unit || "unit"}</td>
+            <td>${escapePrintHtml(line.item_name || "")}</td>
+            <td>${escapePrintHtml(line.batch_number || "N/A")} / ${escapePrintHtml(line.expiry || "N/A")}</td>
+            <td>${escapePrintHtml(line.quantity || 0)}</td>
+            <td>${escapePrintHtml(line.unit || "unit")}</td>
           </tr>
         `,
     )
@@ -14,7 +23,7 @@ export function buildTransferReceiptPrintHtml(receipt) {
   return `
       <html>
         <head>
-          <title>Stock Transfer Note - ${receipt?.transaction_id || ""}</title>
+          <title>Stock Transfer Note - ${escapePrintHtml(receipt?.transaction_id || "")}</title>
           <style>
             body { font-family: Arial, sans-serif; color: #111; padding: 20px; }
             .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
@@ -31,12 +40,12 @@ export function buildTransferReceiptPrintHtml(receipt) {
               <div class="logo">OCS Medecins</div>
               <div>Stock Transfer Note</div>
             </div>
-            <div><strong>Transaction ID:</strong> ${receipt?.transaction_id || ""}</div>
+            <div><strong>Transaction ID:</strong> ${escapePrintHtml(receipt?.transaction_id || "")}</div>
           </div>
           <div class="meta">
-            <div><strong>Date & Time:</strong> ${receipt?.date_time || ""}</div>
-            <div><strong>Issued By:</strong> ${receipt?.issued_by_name || ""}</div>
-            <div><strong>Received By:</strong> ${receipt?.received_by_name || ""}</div>
+            <div><strong>Date & Time:</strong> ${escapePrintHtml(receipt?.date_time || "")}</div>
+            <div><strong>Issued By:</strong> ${escapePrintHtml(receipt?.issued_by_name || "")}</div>
+            <div><strong>Received By:</strong> ${escapePrintHtml(receipt?.received_by_name || "")}</div>
           </div>
           <table>
             <thead>

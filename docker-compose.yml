@@ -1,6 +1,6 @@
 services:
   app:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:${APP_IMAGE_TAG:-latest}
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:${APP_IMAGE_TAG:?Set APP_IMAGE_TAG to a tested sha-<commit> tag}
     container_name: clinicflow-app
     restart: unless-stopped
     env_file:
@@ -18,13 +18,12 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@ocs.local}
       SEED_OCS_MASTER_STOCK: ${SEED_OCS_MASTER_STOCK:-false}
       SEED_DOCTOR_STOCK_FROM_OCS: ${SEED_DOCTOR_STOCK_FROM_OCS:-false}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:?Set a unique production seed password of at least 12 characters}
       TZ: ${TZ:-Indian/Mauritius}
     ports:
       - "${APP_PORT:-8080}:3001"
     volumes:
       - clinicflow-data:/data
-    labels:
-      com.centurylinklabs.watchtower.enable: "true"
     healthcheck:
       test:
         [
@@ -41,40 +40,20 @@ services:
       - clinicflow-public
 
   patient-portal:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:${APP_IMAGE_TAG:-latest}
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:${APP_IMAGE_TAG:?Set APP_IMAGE_TAG to a tested sha-<commit> tag}
     container_name: clinicflow-patient-portal
     restart: unless-stopped
     depends_on:
       - app
-    labels:
-      com.centurylinklabs.watchtower.enable: "true"
     networks:
       - clinicflow-public
 
   linkham-portal:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:${APP_IMAGE_TAG:-latest}
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:${APP_IMAGE_TAG:?Set APP_IMAGE_TAG to a tested sha-<commit> tag}
     container_name: clinicflow-linkham-portal
     restart: unless-stopped
     depends_on:
       - app
-    labels:
-      com.centurylinklabs.watchtower.enable: "true"
-    networks:
-      - clinicflow-public
-
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: clinicflow-watchtower
-    restart: unless-stopped
-    command:
-      - --interval
-      - ${WATCHTOWER_POLL_INTERVAL:-300}
-      - --cleanup
-      - --label-enable
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      TZ: ${TZ:-Indian/Mauritius}
     networks:
       - clinicflow-public
 

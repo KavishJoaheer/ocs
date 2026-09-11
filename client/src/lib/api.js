@@ -38,11 +38,10 @@ export function getStoredAuthToken() {
 }
 
 export function setStoredAuthToken(token) {
-  if (token) {
-    window.localStorage.setItem(AUTH_TOKEN_KEY, token);
-    return;
-  }
-
+  // Authentication now uses an HttpOnly cookie. This function remains as a
+  // migration shim so older browser sessions are removed after the server has
+  // exchanged their bearer token for a cookie.
+  void token;
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
@@ -87,6 +86,7 @@ async function apiRequest(path, options = {}) {
   try {
     response = await fetch(resolveApiPath(path), {
       ...options,
+      credentials: "include",
       headers,
       body: options.body
         ? isFormData
@@ -113,8 +113,8 @@ async function apiRequest(path, options = {}) {
         data = null;
       }
 
-      if (response.status === 401 && authToken) {
-        if (getStoredAuthToken() === authToken) {
+      if (response.status === 401) {
+        if (authToken && getStoredAuthToken() === authToken) {
           setStoredAuthToken(null);
         }
 
@@ -156,8 +156,8 @@ async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    if (response.status === 401 && authToken) {
-      if (getStoredAuthToken() === authToken) {
+    if (response.status === 401) {
+      if (authToken && getStoredAuthToken() === authToken) {
         setStoredAuthToken(null);
       }
 

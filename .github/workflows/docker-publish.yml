@@ -98,7 +98,7 @@ jobs:
           EXPECTED_SHA: ${{ steps.sha.outputs.sha }}
         run: |
           docker pull "${IMAGE}"
-          cid="$(docker run -d --rm -e NODE_ENV=production -e DB_PATH=/tmp/smoke.db "${IMAGE}")"
+          cid="$(docker run -d --rm -e NODE_ENV=production -e DB_PATH=/tmp/smoke.db -e SEED_USER_PASSWORD=CI-Smoke-Only-Not-For-Production "${IMAGE}")"
           trap 'docker stop "${cid}" >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 30); do
             if docker exec -e EXPECTED_SHA="${EXPECTED_SHA}" "${cid}" node -e "fetch('http://127.0.0.1:3001/api/health').then((r)=>r.json()).then((j)=>{if(!j.ok)process.exit(1); if(!j.git_sha || j.git_sha!==process.env.EXPECTED_SHA)process.exit(2); process.exit(0);}).catch(()=>process.exit(1))"; then

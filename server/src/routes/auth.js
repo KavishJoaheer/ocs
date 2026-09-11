@@ -7,7 +7,10 @@ const {
 } = require("../lib/auth");
 const { mintStreamToken } = require("../lib/streamTokens");
 const {
+  STAFF_SESSION_COOKIE,
   generateSessionToken,
+  getClearSessionCookieOptions,
+  getSessionCookieOptions,
   getSessionExpiryTimestamp,
   hashSessionToken,
   verifyPassword,
@@ -51,6 +54,8 @@ router.post("/login", (req, res) => {
     VALUES (?, ?, ?)
   `).run(user.id, tokenHash, expiresAt);
 
+  res.cookie(STAFF_SESSION_COOKIE, token, getSessionCookieOptions());
+
   return res.json({
     token,
     user: serializeUser(user),
@@ -68,6 +73,7 @@ router.post("/stream-token", requireAuth, (req, res) => {
 
 router.post("/logout", requireAuth, (req, res) => {
   db.prepare("DELETE FROM auth_sessions WHERE id = ?").run(req.authSessionId);
+  res.clearCookie(STAFF_SESSION_COOKIE, getClearSessionCookieOptions());
   res.status(204).send();
 });
 

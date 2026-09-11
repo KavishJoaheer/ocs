@@ -12,6 +12,7 @@ import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { formatSignedQuantity, signedMovementQuantity } from "../lib/inventoryStockDisplay.js";
 import { OCS_INVENTORY_EVENT, DOCTOR_BAG_INVENTORY_EVENT, SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
+import { escapePrintHtml } from "../lib/transferReceipt.js";
 
 const BADGE_STYLES = {
   restock: "bg-[#4FB8B3]/15 text-[#1f7f7b]",
@@ -84,10 +85,10 @@ function buildReceiptPrintHtml(receipt) {
     .map(
       (item) => `
       <tr>
-        <td>${item.item_name || ""}</td>
-        <td>${item.expiry_date || "-"}</td>
-        <td>${item.quantity || 0}</td>
-        <td>${item.unit || "unit"}</td>
+        <td>${escapePrintHtml(item.item_name || "")}</td>
+        <td>${escapePrintHtml(item.expiry_date || "-")}</td>
+        <td>${escapePrintHtml(item.quantity || 0)}</td>
+        <td>${escapePrintHtml(item.unit || "unit")}</td>
       </tr>`,
     )
     .join("");
@@ -100,10 +101,10 @@ function buildReceiptPrintHtml(receipt) {
   th,td { border:1px solid #333; padding:6px 8px; font-size:12px; text-align:left; }
   </style></head><body>
   <h1>Stock Transfer Note</h1>
-  <p><strong>Transaction ID:</strong> ${receipt.transaction_id || "-"}</p>
-  <p><strong>Issued By:</strong> ${receipt.issued_by_name || "-"}</p>
-  <p><strong>Received By:</strong> ${receipt.received_by_name || "-"}</p>
-  <p><strong>Date & Time:</strong> ${formatTimestamp(receipt.created_at)}</p>
+  <p><strong>Transaction ID:</strong> ${escapePrintHtml(receipt.transaction_id || "-")}</p>
+  <p><strong>Issued By:</strong> ${escapePrintHtml(receipt.issued_by_name || "-")}</p>
+  <p><strong>Received By:</strong> ${escapePrintHtml(receipt.received_by_name || "-")}</p>
+  <p><strong>Date & Time:</strong> ${escapePrintHtml(formatTimestamp(receipt.created_at))}</p>
   <table><thead><tr><th>Item Name</th><th>Expiry</th><th>Qty</th><th>Unit</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`;
 }

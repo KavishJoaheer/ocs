@@ -44,6 +44,9 @@ jobs:
       - name: Lint
         working-directory: client
         run: npm run lint --if-present
+      - name: Run security-focused unit tests
+        working-directory: client
+        run: npm test
       - name: Build
         working-directory: client
         run: npm run build

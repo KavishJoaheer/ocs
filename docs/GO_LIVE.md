@@ -11,8 +11,8 @@ One-page checklist for putting the app into daily use on the NAS. Complete every
 
 | Item | Done |
 |------|------|
-| Docker Hub image published (`clinicflow:latest` on push to `main`) | ☐ |
-| UGOS Docker project running `docker-compose.yml` + Watchtower | ☐ |
+| SHA-tagged Docker images published after successful CI | ☐ |
+| UGOS Docker project running `docker-compose.yml` without automatic updates | ☐ |
 | Persistent volume `clinicflow-data` attached | ☐ |
 | `.env` copied from [.env.example](../.env.example) | ☐ |
 | VAPID keys set (or generated on first run in `/data/vapid.json`) | ☐ |
@@ -28,11 +28,18 @@ These values must be set **before** go-live:
 TZ=Indian/Mauritius
 USE_POSTGRES=false
 DB_PATH=/data/clinic.db
+APP_IMAGE_TAG=sha-<tested-commit>
+OCS_BACKUP_DIR=/volume1/ocs-encrypted-backups
+SEED_USER_PASSWORD=<unique-random-value-at-least-12-characters>
 
 # Keep false after go-live — prevents restarts from overwriting live stock
 SEED_OCS_MASTER_STOCK=false
 SEED_DOCTOR_STOCK_FROM_OCS=false
 ```
+
+Production startup is blocked if the seed password is missing, weak, or any
+active staff account still uses the historical `Welcome@123` password. Reset
+those accounts through team administration before upgrading.
 
 Do **not** set `DATABASE_URL` or `USE_POSTGRES=true` on the app container.
 
@@ -44,7 +51,7 @@ CLIENT_ORIGINS=https://your-app.example.com
 
 ---
 
-## 3. Deploy latest build
+## 3. Deploy a tested immutable build
 
 After code is merged to `main` and GitHub Actions publishes the image:
 
@@ -53,7 +60,13 @@ docker compose pull
 docker compose up -d
 ```
 
-Or wait for Watchtower (default poll every 5 minutes).
+Never use `latest` or an automatic image updater for the clinical deployment.
+The deployment helper creates a verified backup of an existing installation,
+rejects non-SHA tags, and verifies the running commit:
+
+```bash
+npm run deploy:nas -- hub
+```
 
 **Health check** (replace `<NAS_IP>` and port):
 
@@ -223,15 +236,40 @@ Expect: `All critical routes OK for every role.`
 |----|--------|
 | Keep `SEED_OCS_MASTER_STOCK=false` | Turn seeds back on unless disaster recovery |
 | Use billing workflow for stock-out (not manual “Sold” on doctor bag) | Run `purgeAndReseedOcsWarehouse` without `ALLOW_DB_PURGE=true` |
-| Let Watchtower pull image updates | Set `USE_POSTGRES=true` on NAS |
-| Back up Docker volume `clinicflow-data` regularly | Commit `vapid.json` or `.env` secrets to git |
+| Deploy an explicitly tested image tag | Set `USE_POSTGRES=true` on NAS |
+| Create verified, encrypted backups on separate storage | Commit `vapid.json` or `.env` secrets to git |
 
-**Backup (example):**
+**Verified online backup (safe while the application is running):**
 
 ```bash
-docker run --rm -v clinicflow-data:/data -v $(pwd):/backup alpine \
-  tar czf /backup/clinicflow-data-$(date +%Y%m%d).tar.gz -C /data .
+mkdir -p ./encrypted-backups
+docker run --rm \
+  -e DB_PATH=/data/clinic.db \
+  -e BACKUP_DIR=/backup \
+  -v clinicflow-data:/data \
+  -v "$(pwd)/encrypted-backups:/backup" \
+  "docker.io/${DOCKERHUB_USERNAME}/clinicflow:${APP_IMAGE_TAG}" \
+  node src/scripts/backupClinicData.js
 ```
+
+The command uses SQLite's online backup API, checks database integrity and
+foreign keys, copies every referenced report attachment plus the roster, and
+writes SHA-256 checksums. It only publishes the backup directory after all
+verification succeeds. `BACKUP_DIR` must be outside `clinicflow-data`.
+
+Encrypt the destination at rest, replicate it off the NAS, and use a retention
+policy matching the clinic's legal obligations. Do not treat a backup as proven
+until the following restore exercise succeeds on a separate host:
+
+1. Stop the test application and start with a new empty data volume.
+2. Copy `clinic.db`, `lab-report-attachments/`, and `roster/` from one verified backup.
+3. Compare every restored file with `manifest.json` and run SQLite `quick_check`
+   and `foreign_key_check`.
+4. Start the application and complete a patient-to-visit-to-consultation-to-bill
+   workflow, including opening an older report attachment.
+
+Run this restore drill at least quarterly and after database migration changes.
+Record the achieved recovery point and recovery time against the clinic's RPO/RTO.
 
 ---
 

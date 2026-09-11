@@ -3663,6 +3663,7 @@ function ensureBillingForConsultation(consultationId, patientId, actor = null, c
 
 module.exports = {
   db,
+  dbPath,
   ensureBillingForConsultation,
   labReportAttachmentsDir,
   rosterDir,

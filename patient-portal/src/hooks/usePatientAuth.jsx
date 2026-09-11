@@ -5,19 +5,20 @@ import { PATIENT_DATA_EVENT, startPatientRealtime, stopPatientRealtime } from ".
 import { syncPushSubscriptionIfGranted } from "../lib/pushNotifications.js";
 
 const AuthContext = createContext(null);
+const COOKIE_SESSION = "cookie-session";
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => getStoredAuthToken());
+  const [token, setToken] = useState(() => getStoredAuthToken() || COOKIE_SESSION);
   const [user, setUser] = useState(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
 
   const logout = useCallback(async ({ remote = true } = {}) => {
     const activeToken = getStoredAuthToken();
 
-    if (remote && activeToken) {
+    if (remote) {
       try {
         await api.post("/patient-auth/logout", undefined, {
-          headers: { Authorization: `Bearer ${activeToken}` },
+          headers: activeToken ? { Authorization: `Bearer ${activeToken}` } : {},
         });
       } catch {
         // Best effort cleanup only.
@@ -36,9 +37,9 @@ export function AuthProvider({ children }) {
       { skipAuth: true },
     );
 
-    setStoredAuthToken(payload.token);
+    setStoredAuthToken(null);
     setActingPatientId(null);
-    setToken(payload.token);
+    setToken(COOKIE_SESSION);
     setUser(payload.user);
     void syncPushSubscriptionIfGranted();
 
@@ -52,9 +53,9 @@ export function AuthProvider({ children }) {
       { skipAuth: true },
     );
 
-    setStoredAuthToken(payload.token);
+    setStoredAuthToken(null);
     setActingPatientId(null);
-    setToken(payload.token);
+    setToken(COOKIE_SESSION);
     setUser(payload.user);
     void syncPushSubscriptionIfGranted();
 
@@ -73,14 +74,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const handleUnauthorized = (event) => {
-      const invalidToken = event.detail?.token;
-      const activeToken = getStoredAuthToken();
-
-      if (invalidToken && activeToken && invalidToken !== activeToken) {
-        return;
-      }
-
+    const handleUnauthorized = () => {
       logout({ remote: false });
     };
 
@@ -92,8 +86,6 @@ export function AuthProvider({ children }) {
     let ignore = false;
 
     async function restoreSession() {
-      const restoringToken = token;
-
       if (!token) {
         if (!ignore) setIsBootstrapping(false);
         return;
@@ -101,9 +93,13 @@ export function AuthProvider({ children }) {
 
       try {
         const payload = await api.get("/patient-auth/me");
-        if (!ignore) setUser(payload.user);
+        if (!ignore) {
+          setStoredAuthToken(null);
+          setToken(COOKIE_SESSION);
+          setUser(payload.user);
+        }
       } catch {
-        if (!ignore && getStoredAuthToken() === restoringToken) {
+        if (!ignore) {
           setStoredAuthToken(null);
           setToken(null);
           setUser(null);

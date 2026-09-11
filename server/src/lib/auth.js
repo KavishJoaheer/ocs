@@ -1,5 +1,9 @@
 const { db } = require("../db");
-const { hashSessionToken } = require("./security");
+const {
+  STAFF_SESSION_COOKIE,
+  getSessionCookieOptions,
+  hashSessionToken,
+} = require("./security");
 const { getStaffUserByStreamToken } = require("./streamTokens");
 
 function cleanupExpiredSessions() {
@@ -72,8 +76,35 @@ function extractBearerToken(headerValue) {
   return header.slice(7).trim();
 }
 
+function extractCookieToken(headerValue, cookieName) {
+  const cookies = String(headerValue || "").split(";");
+  for (const cookie of cookies) {
+    const separatorIndex = cookie.indexOf("=");
+    if (separatorIndex < 0) continue;
+    const name = cookie.slice(0, separatorIndex).trim();
+    if (name !== cookieName) continue;
+    const encodedValue = cookie.slice(separatorIndex + 1).trim();
+    try {
+      return decodeURIComponent(encodedValue);
+    } catch {
+      return "";
+    }
+  }
+  return null;
+}
+
+function extractStaffSessionToken(req) {
+  const bearerToken = extractBearerToken(req.headers.authorization);
+  if (bearerToken) return { token: bearerToken, source: "header" };
+
+  const cookieToken = extractCookieToken(req.headers.cookie, STAFF_SESSION_COOKIE);
+  if (cookieToken) return { token: cookieToken, source: "cookie" };
+
+  return { token: null, source: null };
+}
+
 function requireAuth(req, res, next) {
-  const token = extractBearerToken(req.headers.authorization);
+  const { token, source } = extractStaffSessionToken(req);
 
   if (!token) {
     return res.status(401).json({ error: "Authentication is required." });
@@ -88,20 +119,28 @@ function requireAuth(req, res, next) {
   req.auth = serializeUser(session);
   req.authSessionId = Number(session.session_id);
   req.authToken = token;
+  if (source === "header") {
+    // Seamlessly move existing browser sessions away from JavaScript-readable
+    // localStorage tokens on their next authenticated request.
+    res.cookie(STAFF_SESSION_COOKIE, token, getSessionCookieOptions());
+  }
   return next();
 }
 
 function requireAuthFlexible(req, res, next) {
   const headerToken = extractBearerToken(req.headers.authorization);
   const queryToken = String(req.query.access_token || "").trim();
+  const cookieToken = extractCookieToken(req.headers.cookie, STAFF_SESSION_COOKIE);
 
-  if (!headerToken && !queryToken) {
+  if (!headerToken && !queryToken && !cookieToken) {
     return res.status(401).json({ error: "Authentication is required." });
   }
 
   const session = headerToken
     ? getSessionUserByToken(headerToken)
-    : getStaffUserByStreamToken(queryToken);
+    : queryToken
+      ? getStaffUserByStreamToken(queryToken)
+      : getSessionUserByToken(cookieToken);
 
   if (!session) {
     return res.status(401).json({ error: "Your session is invalid or has expired." });
@@ -109,7 +148,10 @@ function requireAuthFlexible(req, res, next) {
 
   req.auth = serializeUser(session);
   req.authSessionId = session.session_id ? Number(session.session_id) : null;
-  req.authToken = headerToken || queryToken;
+  req.authToken = headerToken || queryToken || cookieToken;
+  if (headerToken) {
+    res.cookie(STAFF_SESSION_COOKIE, headerToken, getSessionCookieOptions());
+  }
   return next();
 }
 
@@ -144,6 +186,7 @@ module.exports = {
   authorizeRoles,
   cleanupExpiredSessions,
   extractBearerToken,
+  extractCookieToken,
   requireAuth,
   requireAuthFlexible,
   revokeStaffSessionsForUser,

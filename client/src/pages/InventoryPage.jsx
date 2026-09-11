@@ -4652,6 +4652,7 @@ export default function InventoryPage() {
               onClick={() => {
                 const token = window.localStorage.getItem("ocs_medecins_auth_token");
                 void fetch(`/api/inventory/data-quality.csv${selectedContextDoctorId ? `?doctorId=${encodeURIComponent(selectedContextDoctorId)}` : ""}`, {
+                  credentials: "include",
                   headers: token ? { Authorization: `Bearer ${token}` } : {},
                 }).then(async (response) => {
                   const blob = await response.blob();

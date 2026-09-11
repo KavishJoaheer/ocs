@@ -1,4 +1,4 @@
-import { api, getStoredAuthToken } from "./api.js";
+import { api } from "./api.js";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const RECONNECT_DELAY_MS = 2500;
@@ -10,6 +10,7 @@ let eventSource = null;
 let reconnectTimer = null;
 let isConnected = false;
 let connecting = false;
+let sessionActive = false;
 
 function clearReconnectTimer() {
   if (reconnectTimer) {
@@ -19,7 +20,7 @@ function clearReconnectTimer() {
 }
 
 function scheduleReconnect() {
-  if (!getStoredAuthToken() || reconnectTimer) {
+  if (!sessionActive || reconnectTimer) {
     return;
   }
 
@@ -45,10 +46,7 @@ export function startPatientRealtime() {
     return;
   }
 
-  if (!getStoredAuthToken()) {
-    stopPatientRealtime();
-    return;
-  }
+  sessionActive = true;
 
   if (eventSource || connecting) {
     return;
@@ -100,6 +98,7 @@ export function startPatientRealtime() {
 }
 
 export function stopPatientRealtime() {
+  sessionActive = false;
   connecting = false;
   clearReconnectTimer();
   isConnected = false;

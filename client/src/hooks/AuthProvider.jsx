@@ -10,8 +10,12 @@ import {
 import { refreshPushSubscriptionOnLogin } from "../lib/pushNotifications.js";
 import { AuthContext } from "./authContext.js";
 
+const COOKIE_SESSION = "cookie-session";
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => getStoredAuthToken());
+  // Always probe /me on first load: the real session token is intentionally
+  // hidden in an HttpOnly cookie and cannot be read by React.
+  const [token, setToken] = useState(() => getStoredAuthToken() || COOKIE_SESSION);
   const [user, setUser] = useState(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [hcmUnreadCount, setHcmUnreadCount] = useState(0);
@@ -36,12 +40,10 @@ export function AuthProvider({ children }) {
       }
     }
 
-    if (remote && activeToken) {
+    if (remote) {
       try {
         await api.post("/auth/logout", undefined, {
-          headers: {
-            Authorization: `Bearer ${activeToken}`,
-          },
+          headers: activeToken ? { Authorization: `Bearer ${activeToken}` } : {},
         });
       } catch {
         // Best effort cleanup only.
@@ -79,8 +81,8 @@ export function AuthProvider({ children }) {
       { skipAuth: true },
     );
 
-    setStoredAuthToken(payload.token);
-    setToken(payload.token);
+    setStoredAuthToken(null);
+    setToken(COOKIE_SESSION);
     setUser(payload.user);
     setOfflineQueueUserContext(payload.user?.id ?? null);
 
@@ -104,9 +106,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const refreshHcmUnreadCount = useCallback(async ({ silent = false } = {}) => {
-    const activeToken = getStoredAuthToken();
-
-    if (!activeToken || !user || user.role === "admin") {
+    if (!token || !user || user.role === "admin") {
       setHcmUnreadCount(0);
       return 0;
     }
@@ -127,17 +127,10 @@ export function AuthProvider({ children }) {
     } catch {
       return 0;
     }
-  }, [user]);
+  }, [token, user]);
 
   useEffect(() => {
-    const handleUnauthorized = (event) => {
-      const invalidToken = event.detail?.token;
-      const activeToken = getStoredAuthToken();
-
-      if (invalidToken && activeToken && invalidToken !== activeToken) {
-        return;
-      }
-
+    const handleUnauthorized = () => {
       logout({ remote: false });
     };
 
@@ -164,8 +157,6 @@ export function AuthProvider({ children }) {
     let ignore = false;
 
     async function restoreSession() {
-      const restoringToken = token;
-
       if (!token) {
         if (!ignore) {
           setIsBootstrapping(false);
@@ -176,6 +167,8 @@ export function AuthProvider({ children }) {
       try {
         const payload = await api.get("/auth/me");
         if (!ignore) {
+          setStoredAuthToken(null);
+          setToken(COOKIE_SESSION);
           setUser(payload.user);
           setOfflineQueueUserContext(payload.user?.id ?? null);
           if (payload.user?.role === "doctor") {
@@ -184,7 +177,7 @@ export function AuthProvider({ children }) {
           void refreshPushSubscriptionOnLogin(payload.user?.role);
         }
       } catch {
-        if (!ignore && getStoredAuthToken() === restoringToken) {
+        if (!ignore) {
           setStoredAuthToken(null);
           setToken(null);
           setUser(null);

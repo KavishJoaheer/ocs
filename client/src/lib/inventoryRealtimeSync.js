@@ -1,4 +1,4 @@
-import { api, getStoredAuthToken, resolveApiPath } from "./api.js";
+import { api, resolveApiPath } from "./api.js";
 import { getClientSessionId } from "./clientSession.js";
 import {
   DOCTOR_BAG_INVENTORY_EVENT,
@@ -147,12 +147,6 @@ export function startInventoryRealtimeSync(user) {
   }
 
   if (!user?.role || !INVENTORY_REALTIME_ROLES.has(user.role)) {
-    stopInventoryRealtimeSync();
-    return;
-  }
-
-  const token = getStoredAuthToken();
-  if (!token) {
     stopInventoryRealtimeSync();
     return;
   }

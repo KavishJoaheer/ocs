@@ -9,7 +9,10 @@ const {
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { calculateAgeFromIsoDate, parseMauritianID } = require("../lib/nicParser");
 const {
+  PATIENT_SESSION_COOKIE,
   generateSessionToken,
+  getClearSessionCookieOptions,
+  getSessionCookieOptions,
   getSessionExpiryTimestamp,
   hashPassword,
   hashSessionToken,
@@ -213,6 +216,7 @@ router.post("/register", (req, res) => {
 
     publishPatientDataChange(patientId, { reason: "patient" });
 
+    res.cookie(PATIENT_SESSION_COOKIE, token, getSessionCookieOptions());
     return res.status(201).json({
       token,
       user: enrichPatientUserRow(user),
@@ -277,6 +281,8 @@ router.post("/login", (req, res) => {
     VALUES (?, ?, ?)
   `).run(user.id, tokenHash, expiresAt);
 
+  res.cookie(PATIENT_SESSION_COOKIE, token, getSessionCookieOptions());
+
   return res.json({
     token,
     user: enrichPatientUserRow(user),
@@ -289,6 +295,7 @@ router.get("/me", requirePatientAuth, (req, res) => {
 
 router.post("/logout", requirePatientAuth, (req, res) => {
   db.prepare("DELETE FROM patient_auth_sessions WHERE id = ?").run(req.patientAuthSessionId);
+  res.clearCookie(PATIENT_SESSION_COOKIE, getClearSessionCookieOptions());
   res.status(204).send();
 });
 

@@ -1,5 +1,10 @@
 const { db } = require("../db");
-const { hashSessionToken } = require("./security");
+const {
+  PATIENT_SESSION_COOKIE,
+  getSessionCookieOptions,
+  hashSessionToken,
+} = require("./security");
+const { extractCookieToken } = require("./auth");
 const { getPatientUserByStreamToken } = require("./streamTokens");
 
 function cleanupExpiredPatientSessions() {
@@ -117,6 +122,11 @@ function extractPatientToken(req, { allowQuery = false } = {}) {
     }
   }
 
+  const cookieToken = extractCookieToken(req.headers.cookie, PATIENT_SESSION_COOKIE);
+  if (cookieToken) {
+    return { token: cookieToken, source: "cookie" };
+  }
+
   return { token: "", source: null };
 }
 
@@ -141,6 +151,9 @@ function authenticatePatient(req, res, next, { allowQuery = false, allowStreamTo
   req.patientAuth = enrichPatientUserRow(session);
   req.patientAuthSessionId = session.session_id ? Number(session.session_id) : null;
   req.patientAuthToken = token;
+  if (source === "header") {
+    res.cookie(PATIENT_SESSION_COOKIE, token, getSessionCookieOptions());
+  }
 
   const guardianId = req.patientAuth?.patient_id ? Number(req.patientAuth.patient_id) : null;
   const requested = Number(req.get("x-ocs-patient-id") || 0);

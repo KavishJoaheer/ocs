@@ -7,11 +7,9 @@ export function getStoredAuthToken() {
 }
 
 export function setStoredAuthToken(token) {
-  if (token) {
-    window.localStorage.setItem(AUTH_TOKEN_KEY, token);
-    return;
-  }
-
+  // Authentication now uses an HttpOnly cookie. Retain this migration shim to
+  // clear bearer tokens left by older portal versions.
+  void token;
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
   window.sessionStorage.removeItem(ACTING_PATIENT_KEY);
 }
@@ -74,6 +72,7 @@ async function apiRequest(path, options = {}) {
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: "include",
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
@@ -86,8 +85,8 @@ async function apiRequest(path, options = {}) {
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    if (response.status === 401 && authToken) {
-      if (getStoredAuthToken() === authToken) {
+    if (response.status === 401) {
+      if (authToken && getStoredAuthToken() === authToken) {
         setStoredAuthToken(null);
       }
 
@@ -120,6 +119,7 @@ async function apiFormRequest(path, formData, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     method: "POST",
+    credentials: "include",
     headers,
     body: formData,
   });

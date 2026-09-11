@@ -305,6 +305,7 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
                       if (String(value || "").trim()) params.set(key, String(value).trim());
                     });
                     void fetch(`/api/restock-requests/export?${params.toString()}`, {
+                      credentials: "include",
                       headers: token ? { Authorization: `Bearer ${token}` } : {},
                     }).then(async (response) => {
                       const blob = await response.blob();

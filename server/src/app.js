@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const { initializeDatabase } = require("./db");
+const { db, dbPath, initializeDatabase, labReportAttachmentsDir } = require("./db");
 const authRouter = require("./routes/auth");
 const dashboardRouter = require("./routes/dashboard");
 const operatorRouter = require("./routes/operator");
@@ -32,6 +32,7 @@ const {
 } = require("./lib/patientAuth");
 const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
 const { getBuildInfo } = require("./lib/buildInfo");
+const { verifyPassword } = require("./lib/security");
 
 let initialized = false;
 
@@ -69,11 +70,61 @@ function isProductionEnv() {
   return String(process.env.NODE_ENV || "").toLowerCase() === "production";
 }
 
+function assertProductionCredentialSafety() {
+  if (!isProductionEnv()) return;
+
+  const seedPassword = String(process.env.SEED_USER_PASSWORD || "");
+  if (seedPassword.length < 12 || seedPassword === "Welcome@123") {
+    throw new Error(
+      "SEED_USER_PASSWORD must be set to a unique value of at least 12 characters in production.",
+    );
+  }
+}
+
+function assertNoKnownDefaultPasswords() {
+  if (!isProductionEnv()) return;
+
+  const unsafeUsers = db
+    .prepare("SELECT username, password_hash FROM users WHERE is_active = 1 AND deleted_at IS NULL")
+    .all()
+    .filter((user) => verifyPassword("Welcome@123", user.password_hash));
+
+  if (unsafeUsers.length > 0) {
+    throw new Error(
+      `Production startup blocked: ${unsafeUsers.length} active staff account(s) still use the known default password. Reset them before deployment.`,
+    );
+  }
+}
+
+const authorizePatientApi = authorizeByMethod({
+  GET: ["admin", "doctor", "operator", "lab_tech"],
+  HEAD: ["admin", "doctor", "operator", "lab_tech"],
+  POST: ["admin", "doctor", "operator"],
+  PUT: ["admin", "doctor", "operator"],
+  PATCH: ["admin", "doctor", "operator"],
+  DELETE: ["admin", "operator"],
+});
+
+function authorizePatientApiRequest(req, res, next) {
+  const isBillingPatientOptions =
+    req.auth?.role === "accountant" &&
+    (req.method === "GET" || req.method === "HEAD") &&
+    /^\/options\/?$/.test(req.path);
+
+  if (isBillingPatientOptions) {
+    return next();
+  }
+
+  return authorizePatientApi(req, res, next);
+}
+
 function createApp() {
+  assertProductionCredentialSafety();
   if (!initialized) {
     initializeDatabase();
     initialized = true;
   }
+  assertNoKnownDefaultPasswords();
 
   const configuredOrigins = getAllowedOrigins();
   const productionMode = isProductionEnv();
@@ -95,13 +146,26 @@ function createApp() {
   // record the real IP instead of the loopback proxy address.
   app.set("trust proxy", 1);
 
-  // Baseline security headers. CSP and COEP are disabled because the SPA
-  // bundle ships inline runtime, registers a service worker, and loads
-  // cross-origin push manager + EventSource — all of which need a tailored
-  // CSP that the SPA can opt into later.
+  // Baseline security headers. Inline CSS is required by the responsive React
+  // views, but executable content is restricted to our own built assets.
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          baseUri: ["'self'"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+          formAction: ["'self'"],
+          frameAncestors: ["'none'"],
+          imgSrc: ["'self'", "data:", "blob:"],
+          manifestSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          workerSrc: ["'self'", "blob:"],
+        },
+      },
       crossOriginEmbedderPolicy: false,
       crossOriginResourcePolicy: { policy: "cross-origin" },
     }),
@@ -152,19 +216,48 @@ function createApp() {
   });
 
   app.get("/api/health", (_req, res) => {
-    res.json({
-      ok: true,
-      mode: "sqlite",
-      database: process.env.DB_PATH || "server/data/clinic.db",
-      ...getBuildInfo(),
-      features: {
-        billing: true,
-        inventory: true,
-        consultations: true,
-        push: true,
-        realtime: true,
-      },
-    });
+    try {
+      db.prepare("SELECT 1 AS ok").get();
+      fs.accessSync(path.dirname(dbPath), fs.constants.R_OK | fs.constants.W_OK);
+      fs.accessSync(labReportAttachmentsDir, fs.constants.R_OK | fs.constants.W_OK);
+      const storage = fs.statfsSync(path.dirname(dbPath));
+      const freeBytes = Number(storage.bavail) * Number(storage.bsize);
+      const configuredMinimumFreeBytes = Number(process.env.MIN_FREE_DISK_BYTES);
+      const minimumFreeBytes =
+        Number.isFinite(configuredMinimumFreeBytes) && configuredMinimumFreeBytes >= 0
+          ? configuredMinimumFreeBytes
+          : 256 * 1024 * 1024;
+      if (!Number.isFinite(freeBytes) || freeBytes < minimumFreeBytes) {
+        throw new Error("Insufficient free storage for safe database operation.");
+      }
+
+      res.json({
+        ok: true,
+        mode: "sqlite",
+        database: process.env.DB_PATH || "server/data/clinic.db",
+        ...getBuildInfo(),
+        storage: {
+          database_readable: true,
+          data_directory_writable: true,
+          attachments_writable: true,
+          free_bytes: freeBytes,
+          minimum_free_bytes: minimumFreeBytes,
+        },
+        features: {
+          billing: true,
+          inventory: true,
+          consultations: true,
+          push: true,
+          realtime: true,
+        },
+      });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        mode: "sqlite",
+        error: "Database or storage readiness check failed.",
+      });
+    }
   });
 
   // Apply the API throttle before any router so it covers public push +
@@ -193,13 +286,7 @@ function createApp() {
   app.use(
     "/api/patients",
     requireAuth,
-    authorizeByMethod({
-      GET: ["admin", "doctor", "operator", "lab_tech", "accountant"],
-      POST: ["admin", "doctor", "operator"],
-      PUT: ["admin", "doctor", "operator"],
-      PATCH: ["admin", "doctor", "operator"],
-      DELETE: ["admin", "operator"],
-    }),
+    authorizePatientApiRequest,
     patientsRouter,
   );
   app.use(

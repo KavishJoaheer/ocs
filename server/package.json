@@ -28,6 +28,7 @@
     "dedupe:ocs-master": "node -e \"require('./src/db').initializeDatabase(); const r=require('./src/lib/dedupeOcsMasterInventory').prepareOcsMasterInventoryIntegrity(); console.log(r);\"",
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
     "smoke:production-flows": "node src/scripts/productionFlowSmoke.js",
+    "backup:clinic": "node src/scripts/backupClinicData.js",
     "audit:push-audience": "node src/scripts/validatePushAudienceRouting.js",
     "audit:inventory-realtime": "node src/scripts/validateInventoryRealtimeRouting.js",
     "audit:sale-billing-linkage": "node src/scripts/validateSaleBillingLinkage.js",
@@ -49,7 +50,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
-    "multer": "^2.1.1",
+    "multer": "^2.3.0",
     "pg": "^8.20.0",
     "web-push": "^3.6.7"
   },

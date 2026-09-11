@@ -41,10 +41,11 @@ Expected health response:
 
 ## NAS deployment (Docker Hub image)
 
-1. Publish image: push to `main` → GitHub Actions → `docker.io/<user>/clinicflow:latest`
-2. On UGOS: deploy [docker-compose.yml](../docker-compose.yml) with your `.env`
-3. **Do not** set `DATABASE_URL`, `POSTGRES_URL`, or `USE_POSTGRES=true` on the app service
-4. Expose via LAN (`APP_PORT`) or [Cloudflare tunnel](../NAS_DEPLOYMENT.md)
+1. Push to `main` and wait for both CI and Docker publishing to succeed.
+2. Set `APP_IMAGE_TAG=sha-<tested-commit>` in the NAS `.env`.
+3. Create a verified backup, then deploy [docker-compose.yml](../docker-compose.yml).
+4. **Do not** set `DATABASE_URL`, `POSTGRES_URL`, or `USE_POSTGRES=true` on the app service.
+5. Expose via LAN (`APP_PORT`) or [Cloudflare tunnel](../NAS_DEPLOYMENT.md).
 
 ## Frontend on Vercel + API on NAS (optional)
 

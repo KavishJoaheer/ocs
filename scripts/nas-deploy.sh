@@ -27,9 +27,32 @@ set +a
 APP_PORT="${APP_PORT:-8080}"
 
 MODE="${1:-local}"
+EXPECTED_DEPLOY_SHA=""
 
 if [[ "$MODE" == "hub" ]]; then
-  echo "Starting from Docker Hub image (docker-compose.yml)..."
+  if [[ -z "${APP_IMAGE_TAG:-}" || "${APP_IMAGE_TAG}" == "latest" || "${APP_IMAGE_TAG}" != sha-* ]]; then
+    echo "Refusing production deploy: set APP_IMAGE_TAG to the tested immutable sha-<commit> tag."
+    exit 1
+  fi
+  EXPECTED_DEPLOY_SHA="${APP_IMAGE_TAG#sha-}"
+  if docker container inspect clinicflow-app >/dev/null 2>&1; then
+    if [[ -z "${OCS_BACKUP_DIR:-}" ]]; then
+      echo "Refusing upgrade: set OCS_BACKUP_DIR to encrypted storage outside the Docker volume."
+      exit 1
+    fi
+    mkdir -p "${OCS_BACKUP_DIR}"
+    CURRENT_IMAGE_ID="$(docker container inspect --format '{{.Image}}' clinicflow-app)"
+    echo "Creating a verified pre-deployment backup..."
+    docker run --rm \
+      -e DB_PATH=/data/clinic.db \
+      -e BACKUP_DIR=/backup \
+      -v clinicflow-data:/data \
+      -v "${OCS_BACKUP_DIR}:/backup" \
+      "${CURRENT_IMAGE_ID}" \
+      node src/scripts/backupClinicData.js
+  fi
+  echo "Starting tested Docker Hub image ${APP_IMAGE_TAG} (docker-compose.yml)..."
+  docker compose pull
   docker compose up -d
 else
   echo "Building and starting from source (docker-compose.local.yml)..."
@@ -38,7 +61,7 @@ fi
 
 echo "Waiting for health check..."
 for i in $(seq 1 30); do
-  if node scripts/docker-health-check.mjs "http://127.0.0.1:${APP_PORT}" 2>/dev/null; then
+  if EXPECTED_GIT_SHA="${EXPECTED_DEPLOY_SHA}" node scripts/docker-health-check.mjs "http://127.0.0.1:${APP_PORT}" 2>/dev/null; then
     echo ""
     echo "Ready: http://127.0.0.1:${APP_PORT}"
     echo "Health: http://127.0.0.1:${APP_PORT}/api/health"

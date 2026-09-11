@@ -30,6 +30,14 @@ async function main() {
     process.exit(1);
   }
 
+  const expectedGitSha = String(process.env.EXPECTED_GIT_SHA || "").trim();
+  if (expectedGitSha && !String(body.git_sha || "").startsWith(expectedGitSha)) {
+    console.error(
+      `FAIL: running commit ${body.git_sha || "missing"} does not match expected ${expectedGitSha}`,
+    );
+    process.exit(1);
+  }
+
   console.log("OK:", url);
   console.log(JSON.stringify(body, null, 2));
 }

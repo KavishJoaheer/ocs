@@ -495,6 +495,7 @@ export default function OperatorSupplyRequestsPanel() {
                     void fetch(`/api/restock-requests/export?${new URLSearchParams({
                       ...Object.fromEntries(new URLSearchParams(historyQuery)),
                     })}`, {
+                      credentials: "include",
                       headers: token ? { Authorization: `Bearer ${token}` } : {},
                     }).then(async (response) => {
                       const blob = await response.blob();

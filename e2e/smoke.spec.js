@@ -71,6 +71,41 @@ test.describe("OCS smoke", () => {
     await expect(page.getByRole("heading", { name: /sign in to access your health records/i })).toBeVisible();
   });
 
+  test("staff UI keeps the session in an HttpOnly cookie across reloads", async ({ page, context }) => {
+    await context.clearCookies();
+    await page.goto(`${STAFF_BASE}/login`);
+    await page.getByLabel("Username").fill("shravan.joaheer");
+    await page.getByLabel("Password").fill("Welcome@123");
+    await page.getByRole("button", { name: "Sign in to Workspace" }).click();
+    await expect(page).not.toHaveURL(/\/login$/);
+
+    expect(await page.evaluate(() => window.localStorage.getItem("ocs_medecins_auth_token"))).toBeNull();
+    const sessionCookie = (await context.cookies()).find((cookie) => cookie.name === "ocs_staff_session");
+    expect(sessionCookie?.httpOnly).toBe(true);
+    expect(sessionCookie?.sameSite).toBe("Strict");
+
+    await page.reload();
+    await expect(page).not.toHaveURL(/\/login$/);
+  });
+
+  test("patient UI keeps the session in an HttpOnly cookie across reloads", async ({ page, request, context }) => {
+    const patient = await registerPatient(request, "cookie-ui");
+    await context.clearCookies();
+    await page.goto(`${PATIENT_BASE}/login`);
+    await page.getByLabel("Email address").fill(patient.email);
+    await page.getByLabel("Password").fill("secret123");
+    await page.getByRole("button", { name: "Sign in to OCS Care" }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    expect(await page.evaluate(() => window.localStorage.getItem("ocs_patient_auth_token"))).toBeNull();
+    const sessionCookie = (await context.cookies()).find((cookie) => cookie.name === "ocs_patient_session");
+    expect(sessionCookie?.httpOnly).toBe(true);
+    expect(sessionCookie?.sameSite).toBe("Strict");
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
   test("API staff login succeeds", async ({ request }) => {
     const body = await staffLogin(request);
     expect(body.token).toBeTruthy();
