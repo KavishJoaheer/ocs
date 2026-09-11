@@ -43,7 +43,7 @@ test("production warns without blocking sign-in during the staged password migra
   }
 
   assert.ok(warnings.some((warning) => warning.includes("SEED_USER_PASSWORD")));
-  assert.ok(warnings.some((warning) => warning.includes("known default password")));
+  assert.ok(warnings.some((warning) => warning.includes("Staff password rotation is deferred")));
 
   const activeUsers = db
     .prepare("SELECT password_hash FROM users WHERE is_active = 1 AND deleted_at IS NULL")

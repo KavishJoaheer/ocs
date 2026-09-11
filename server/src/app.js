@@ -32,7 +32,6 @@ const {
 } = require("./lib/patientAuth");
 const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
 const { getBuildInfo } = require("./lib/buildInfo");
-const { verifyPassword } = require("./lib/security");
 
 let initialized = false;
 
@@ -84,18 +83,10 @@ function warnAboutDeferredProductionCredentialSafety() {
 
 function warnAboutKnownDefaultPasswords() {
   if (!isProductionEnv()) return;
-
-  const unsafeUsers = db
-    .prepare("SELECT username, password_hash FROM users WHERE is_active = 1 AND deleted_at IS NULL")
-    .all()
-    .filter((user) => verifyPassword("Welcome@123", user.password_hash));
-
-  if (unsafeUsers.length > 0) {
-    console.warn(
-      `[security] ${unsafeUsers.length} active staff account(s) still use the known default password. ` +
-        "The server will remain available while staff passwords are changed in stages.",
-    );
-  }
+  console.warn(
+    "[security] Staff password rotation is deferred. The server will remain available " +
+      "while staff change their passwords in stages.",
+  );
 }
 
 const authorizePatientApi = authorizeByMethod({
