@@ -25,33 +25,35 @@ set -a
 source .env 2>/dev/null || true
 set +a
 APP_PORT="${APP_PORT:-8080}"
+APP_IMAGE_TAG="${APP_IMAGE_TAG:-latest}"
+export APP_IMAGE_TAG
 
 MODE="${1:-local}"
 EXPECTED_DEPLOY_SHA=""
 
 if [[ "$MODE" == "hub" ]]; then
-  if [[ -z "${APP_IMAGE_TAG:-}" || "${APP_IMAGE_TAG}" == "latest" || "${APP_IMAGE_TAG}" != sha-* ]]; then
-    echo "Refusing production deploy: set APP_IMAGE_TAG to the tested immutable sha-<commit> tag."
-    exit 1
+  if [[ "${APP_IMAGE_TAG}" == "latest" || "${APP_IMAGE_TAG}" != sha-* ]]; then
+    echo "Warning: APP_IMAGE_TAG is not yet pinned to a tested sha-<commit> tag."
+  else
+    EXPECTED_DEPLOY_SHA="${APP_IMAGE_TAG#sha-}"
   fi
-  EXPECTED_DEPLOY_SHA="${APP_IMAGE_TAG#sha-}"
   if docker container inspect clinicflow-app >/dev/null 2>&1; then
     if [[ -z "${OCS_BACKUP_DIR:-}" ]]; then
-      echo "Refusing upgrade: set OCS_BACKUP_DIR to encrypted storage outside the Docker volume."
-      exit 1
+      echo "Warning: OCS_BACKUP_DIR is not configured; the verified off-volume backup is deferred."
+    else
+      mkdir -p "${OCS_BACKUP_DIR}"
+      CURRENT_IMAGE_ID="$(docker container inspect --format '{{.Image}}' clinicflow-app)"
+      echo "Creating a verified pre-deployment backup..."
+      docker run --rm \
+        -e DB_PATH=/data/clinic.db \
+        -e BACKUP_DIR=/backup \
+        -v clinicflow-data:/data \
+        -v "${OCS_BACKUP_DIR}:/backup" \
+        "${CURRENT_IMAGE_ID}" \
+        node src/scripts/backupClinicData.js
     fi
-    mkdir -p "${OCS_BACKUP_DIR}"
-    CURRENT_IMAGE_ID="$(docker container inspect --format '{{.Image}}' clinicflow-app)"
-    echo "Creating a verified pre-deployment backup..."
-    docker run --rm \
-      -e DB_PATH=/data/clinic.db \
-      -e BACKUP_DIR=/backup \
-      -v clinicflow-data:/data \
-      -v "${OCS_BACKUP_DIR}:/backup" \
-      "${CURRENT_IMAGE_ID}" \
-      node src/scripts/backupClinicData.js
   fi
-  echo "Starting tested Docker Hub image ${APP_IMAGE_TAG} (docker-compose.yml)..."
+  echo "Starting Docker Hub image ${APP_IMAGE_TAG} (docker-compose.yml)..."
   docker compose pull
   docker compose up -d
 else

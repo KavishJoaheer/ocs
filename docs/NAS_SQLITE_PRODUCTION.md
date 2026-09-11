@@ -42,8 +42,10 @@ Expected health response:
 ## NAS deployment (Docker Hub image)
 
 1. Push to `main` and wait for both CI and Docker publishing to succeed.
-2. Set `APP_IMAGE_TAG=sha-<tested-commit>` in the NAS `.env`.
-3. Create a verified backup, then deploy [docker-compose.yml](../docker-compose.yml).
+2. During the staged rollout, an unset `APP_IMAGE_TAG` uses `latest`; pin
+   `sha-<tested-commit>` when the deferred production settings are ready.
+3. Deploy [docker-compose.yml](../docker-compose.yml). When `OCS_BACKUP_DIR` is
+   configured later, the deployment helper creates a verified backup first.
 4. **Do not** set `DATABASE_URL`, `POSTGRES_URL`, or `USE_POSTGRES=true` on the app service.
 5. Expose via LAN (`APP_PORT`) or [Cloudflare tunnel](../NAS_DEPLOYMENT.md).
 

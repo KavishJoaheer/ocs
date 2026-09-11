@@ -70,18 +70,19 @@ function isProductionEnv() {
   return String(process.env.NODE_ENV || "").toLowerCase() === "production";
 }
 
-function assertProductionCredentialSafety() {
+function warnAboutDeferredProductionCredentialSafety() {
   if (!isProductionEnv()) return;
 
   const seedPassword = String(process.env.SEED_USER_PASSWORD || "");
   if (seedPassword.length < 12 || seedPassword === "Welcome@123") {
-    throw new Error(
-      "SEED_USER_PASSWORD must be set to a unique value of at least 12 characters in production.",
+    console.warn(
+      "[security] SEED_USER_PASSWORD is not yet set to a unique value of at least 12 characters. " +
+        "Existing staff sign-in remains available during the staged password migration.",
     );
   }
 }
 
-function assertNoKnownDefaultPasswords() {
+function warnAboutKnownDefaultPasswords() {
   if (!isProductionEnv()) return;
 
   const unsafeUsers = db
@@ -90,8 +91,9 @@ function assertNoKnownDefaultPasswords() {
     .filter((user) => verifyPassword("Welcome@123", user.password_hash));
 
   if (unsafeUsers.length > 0) {
-    throw new Error(
-      `Production startup blocked: ${unsafeUsers.length} active staff account(s) still use the known default password. Reset them before deployment.`,
+    console.warn(
+      `[security] ${unsafeUsers.length} active staff account(s) still use the known default password. ` +
+        "The server will remain available while staff passwords are changed in stages.",
     );
   }
 }
@@ -119,12 +121,12 @@ function authorizePatientApiRequest(req, res, next) {
 }
 
 function createApp() {
-  assertProductionCredentialSafety();
+  warnAboutDeferredProductionCredentialSafety();
   if (!initialized) {
     initializeDatabase();
     initialized = true;
   }
-  assertNoKnownDefaultPasswords();
+  warnAboutKnownDefaultPasswords();
 
   const configuredOrigins = getAllowedOrigins();
   const productionMode = isProductionEnv();

@@ -22,24 +22,25 @@ One-page checklist for putting the app into daily use on the NAS. Complete every
 
 ## 2. Production environment (NAS `.env`)
 
-These values must be set **before** go-live:
+The core values below remain in use now. The image tag, backup directory, and
+seed password can be added later during the staged hardening rollout:
 
 ```text
 TZ=Indian/Mauritius
 USE_POSTGRES=false
 DB_PATH=/data/clinic.db
-APP_IMAGE_TAG=sha-<tested-commit>
-OCS_BACKUP_DIR=/volume1/ocs-encrypted-backups
-SEED_USER_PASSWORD=<unique-random-value-at-least-12-characters>
+# Deferred: APP_IMAGE_TAG=sha-<tested-commit>
+# Deferred: OCS_BACKUP_DIR=/volume1/ocs-encrypted-backups
+# Deferred: SEED_USER_PASSWORD=<unique-random-value-at-least-12-characters>
 
 # Keep false after go-live — prevents restarts from overwriting live stock
 SEED_OCS_MASTER_STOCK=false
 SEED_DOCTOR_STOCK_FROM_OCS=false
 ```
 
-Production startup is blocked if the seed password is missing, weak, or any
-active staff account still uses the historical `Welcome@123` password. Reset
-those accounts through team administration before upgrading.
+During the staged password migration, production logs a security warning if the
+seed password is missing or staff still use `Welcome@123`, but it remains
+available so staff can sign in and change passwords later.
 
 Do **not** set `DATABASE_URL` or `USE_POSTGRES=true` on the app container.
 
@@ -60,9 +61,9 @@ docker compose pull
 docker compose up -d
 ```
 
-Never use `latest` or an automatic image updater for the clinical deployment.
-The deployment helper creates a verified backup of an existing installation,
-rejects non-SHA tags, and verifies the running commit:
+When the deferred rollout settings are ready, pin a tested SHA rather than
+`latest`. The deployment helper creates a verified backup when
+`OCS_BACKUP_DIR` is configured and verifies pinned commits:
 
 ```bash
 npm run deploy:nas -- hub

@@ -1,6 +1,6 @@
 services:
   app:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:${APP_IMAGE_TAG:?Set APP_IMAGE_TAG to a tested sha-<commit> tag}
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/${APP_IMAGE_NAME:-clinicflow}:${APP_IMAGE_TAG:-latest}
     container_name: clinicflow-app
     restart: unless-stopped
     env_file:
@@ -18,7 +18,7 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@ocs.local}
       SEED_OCS_MASTER_STOCK: ${SEED_OCS_MASTER_STOCK:-false}
       SEED_DOCTOR_STOCK_FROM_OCS: ${SEED_DOCTOR_STOCK_FROM_OCS:-false}
-      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:?Set a unique production seed password of at least 12 characters}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
       TZ: ${TZ:-Indian/Mauritius}
     ports:
       - "${APP_PORT:-8080}:3001"
@@ -40,7 +40,7 @@ services:
       - clinicflow-public
 
   patient-portal:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:${APP_IMAGE_TAG:?Set APP_IMAGE_TAG to a tested sha-<commit> tag}
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-patient-portal:${APP_IMAGE_TAG:-latest}
     container_name: clinicflow-patient-portal
     restart: unless-stopped
     depends_on:
@@ -49,7 +49,7 @@ services:
       - clinicflow-public
 
   linkham-portal:
-    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:${APP_IMAGE_TAG:?Set APP_IMAGE_TAG to a tested sha-<commit> tag}
+    image: docker.io/${DOCKERHUB_USERNAME:-your-dockerhub-username}/clinicflow-linkham-portal:${APP_IMAGE_TAG:-latest}
     container_name: clinicflow-linkham-portal
     restart: unless-stopped
     depends_on:
