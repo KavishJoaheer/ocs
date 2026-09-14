@@ -190,19 +190,18 @@ function InventoryCsvImport({ onImported }) {
         Required columns: folder, item_name, quantity, minimum_quantity, unit, cost_price, selling_price, expiry_date.
         Example: Consumable,Lidocaine gel,10,2,unit,25,40,2027-06-30
       </p>
-      <textarea
-        id="shipment-csv-text"
-        value={csvText}
-        onChange={(event) => {
-          setCsvText(event.target.value);
-          setPreview(null);
-        }}
-        rows={6}
-        aria-describedby={`shipment-csv-help${preview?.rows?.some((row) => row.errors?.length) || lastResult?.skipped_rows?.length ? " shipment-csv-errors" : ""}`}
-        className="mt-2 mb-4 w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
-      />
-
-      <div className="space-y-3">
+      <div className="mt-2 grid gap-4">
+        <textarea
+          id="shipment-csv-text"
+          value={csvText}
+          onChange={(event) => {
+            setCsvText(event.target.value);
+            setPreview(null);
+          }}
+          rows={6}
+          aria-describedby={`shipment-csv-help${preview?.rows?.some((row) => row.errors?.length) || lastResult?.skipped_rows?.length ? " shipment-csv-errors" : ""}`}
+          className="block w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
+        />
         <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
       </div>
 
