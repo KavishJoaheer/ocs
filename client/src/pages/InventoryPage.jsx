@@ -1412,6 +1412,10 @@ function inventoryActionMenuPosition(anchor, { width = 224, estimatedHeight = 36
   return { top, left, maxHeight };
 }
 
+function inventoryActionMenuEstimatedHeight(items = []) {
+  return 8 + items.reduce((height, item) => height + (item.separator ? 28 : 44), 0);
+}
+
 const INVENTORY_MOBILE_MENU_ITEM =
   "flex w-full min-h-11 items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
 
@@ -1442,7 +1446,10 @@ function InventoryMobileActionTray({ primary, menuItems = [], moreLabel = "More 
   function openMenu() {
     const anchor = menuRef.current;
     if (!anchor) return;
-    setMenuPosition(inventoryActionMenuPosition(anchor, { width: 200, estimatedHeight: 280 }));
+    setMenuPosition(inventoryActionMenuPosition(anchor, {
+      width: 200,
+      estimatedHeight: inventoryActionMenuEstimatedHeight(menuItems),
+    }));
     setMenuOpen(true);
   }
 
@@ -1552,7 +1559,10 @@ function InventoryOcsMasterActions({
   function openMenu() {
     const anchor = menuRef.current;
     if (!anchor) return;
-    setMenuPosition(inventoryActionMenuPosition(anchor, { width: 224, estimatedHeight: 420 }));
+    setMenuPosition(inventoryActionMenuPosition(anchor, {
+      width: 224,
+      estimatedHeight: inventoryActionMenuEstimatedHeight(menuItems),
+    }));
     setMenuOpen(true);
   }
 
@@ -4408,9 +4418,9 @@ export default function InventoryPage() {
               aria-selected={logisticsTab === tab.id}
               aria-current={logisticsTab === tab.id ? "page" : undefined}
               onClick={() => setLogisticsTab(tab.id)}
-              className={`inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-1 rounded-full px-3 text-sm font-semibold transition ${
+              className={`inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-1 rounded-full px-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98] ${
                 logisticsTab === tab.id
-                  ? "bg-[#2d8f98] text-white shadow-sm ring-2 ring-[#2d8f98] ring-offset-2"
+                  ? "bg-[#2d8f98] text-white shadow-sm"
                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
