@@ -846,6 +846,7 @@ function PatientFormModal({
                 <span className="text-sm font-semibold text-slate-700">First name</span>
                 <input
                   ref={firstNameRef}
+                  data-modal-initial-focus
                   name="first_name"
                   value={form.first_name}
                   onChange={handleChange}

@@ -30,9 +30,14 @@ function Modal({
   labelledBy,
 }) {
   const panelRef = useRef(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
   const headingId = labelledBy || titleId;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -44,14 +49,14 @@ function Modal({
     const panel = panelRef.current;
     const focusables = getFocusable(panel);
     const initial = focusables.find((node) => node.getAttribute("data-modal-initial-focus") != null) || focusables[0];
-    window.requestAnimationFrame(() => {
+    const focusFrame = window.requestAnimationFrame(() => {
       initial?.focus();
     });
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== "Tab") return;
@@ -75,12 +80,13 @@ function Modal({
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", handleKeyDown);
       if (previouslyFocused && typeof previouslyFocused.focus === "function") {
         previouslyFocused.focus();
       }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

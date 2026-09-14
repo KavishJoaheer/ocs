@@ -1564,6 +1564,14 @@ function InventoryOcsMasterActions({
   const showArchive = Boolean(onDeleteItem);
   const menuItems = [];
   if (isOperator) {
+    if (onEdit) {
+      menuItems.push({
+        key: "edit",
+        label: "Edit catalogue item",
+        icon: <Pencil className="size-3.5" />,
+        onClick: () => onEdit(item),
+      });
+    }
     if (onRestockDoctor) {
       menuItems.push({
         key: "transfer",
@@ -5084,7 +5092,7 @@ export default function InventoryPage() {
         item={editor?.item}
         folders={folders}
         isSaving={isSaving}
-        lockMasterFields={(Boolean(editor?.item) && isDoctor) || isOperator}
+        lockMasterFields={Boolean(editor?.item) && isDoctor}
         bagSettingsOnly={Boolean(editor?.item) && isDoctor}
         onClose={() => setEditor(null)}
         onSubmit={saveItem}

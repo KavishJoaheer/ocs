@@ -435,8 +435,12 @@ test("enabled emergency override requires a valid reason and records the flag", 
   delete process.env.ENABLE_DOCTOR_EMERGENCY_RESTOCK;
 });
 
-test("doctors cannot change quantity through item editing and operators cannot change prices", async () => {
+test("doctors cannot change quantity through item editing and operators can edit catalogue details", async () => {
   const itemId = insertOcsItem({ name: `Edit ${Date.now()}`, qty: 4 });
+  const operatorFolderId = Number(
+    db.prepare("INSERT INTO inventory_folders (name, parent_id) VALUES (?, ?)")
+      .run(`Operator Catalogue ${Date.now()}`, folderId).lastInsertRowid,
+  );
   const bagId = Number(
     db
       .prepare(
@@ -457,9 +461,33 @@ test("doctors cannot change quantity through item editing and operators cannot c
   assert.equal(parOk.status, 200, JSON.stringify(parOk.data));
   const operatorPut = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: operatorToken,
-    body: { cost_price: 1, selling_price: 2, quantity: 4, minimum_quantity: 0, item_name: "Hacked" },
+    body: {
+      cost_price: 6,
+      selling_price: 12,
+      minimum_quantity: 3,
+      item_name: "Operator Updated Catalogue Item",
+      folder_id: operatorFolderId,
+      unit: "box",
+      attributes: "Operator-managed attributes",
+      moa_notes: "Operator-managed MOA notes",
+    },
   });
-  assert.equal(operatorPut.status, 403);
+  assert.equal(operatorPut.status, 200, JSON.stringify(operatorPut.data));
+  const operatorEdited = db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId);
+  assert.equal(operatorEdited.item_name, "Operator Updated Catalogue Item");
+  assert.equal(operatorEdited.folder_id, operatorFolderId);
+  assert.equal(operatorEdited.minimum_quantity, 3);
+  assert.equal(operatorEdited.unit, "box");
+  assert.equal(operatorEdited.cost_price, 6);
+  assert.equal(operatorEdited.selling_price, 12);
+  assert.equal(operatorEdited.attributes, "Operator-managed attributes");
+  assert.equal(operatorEdited.moa_notes, "Operator-managed MOA notes");
+
+  const operatorQuantityPut = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: operatorToken,
+    body: { quantity: 99 },
+  });
+  assert.equal(operatorQuantityPut.status, 403, JSON.stringify(operatorQuantityPut.data));
 });
 
 test("doctor history and receipts are scoped to their own bag", async () => {
@@ -1014,7 +1042,7 @@ test("past expiry receipt is rejected and future or non-expiring receipts are ac
   assert.equal(qty, 8);
 });
 
-test("admin cannot receive stock without an operational override and operators cannot edit catalogue prices", async () => {
+test("admin cannot receive stock without an operational override", async () => {
   const itemId = insertOcsItem({ name: `Perm ${Date.now()}`, qty: 2 });
   const adminReceive = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
     token: adminToken,

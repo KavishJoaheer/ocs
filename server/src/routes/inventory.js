@@ -2079,19 +2079,6 @@ router.put("/items/:id", (req, res) => {
   } else if (isOperator) {
     const protectedAttempts = [];
     if (fieldChanged("quantity", existing.quantity, req.body.quantity)) protectedAttempts.push("quantity");
-    if (fieldChanged("cost_price", existing.cost_price, req.body.cost_price)) protectedAttempts.push("cost_price");
-    if (fieldChanged("selling_price", existing.selling_price, req.body.selling_price)) protectedAttempts.push("selling_price");
-    if (isOcsMasterRow && fieldChanged("item_name", existing.item_name, req.body.item_name)) protectedAttempts.push("item_name");
-    if (isOcsMasterRow && fieldChanged("folder_id", existing.folder_id, req.body.folder_id)) protectedAttempts.push("folder_id");
-    if (isOcsMasterRow && fieldChanged("minimum_quantity", existing.minimum_quantity, req.body.minimum_quantity)) {
-      protectedAttempts.push("minimum_quantity");
-    }
-    if (isOcsMasterRow && fieldChanged("attributes", existing.attributes, req.body.attributes)) {
-      protectedAttempts.push("attributes");
-    }
-    if (isOcsMasterRow && fieldChanged("moa_notes", existing.moa_notes, req.body.moa_notes)) {
-      protectedAttempts.push("moa_notes");
-    }
     if (req.body.batches || req.body.batch_quantity) protectedAttempts.push("batches");
     if (protectedAttempts.length) {
       return res.status(403).json({
@@ -2100,7 +2087,7 @@ router.put("/items/:id", (req, res) => {
     }
   }
 
-  const masterFieldsLocked = isDoctor || isOperator;
+  const masterFieldsLocked = isDoctor;
   const quantityLocked = true;
 
   if (!isDoctor && Object.prototype.hasOwnProperty.call(req.body || {}, "quantity") && fieldChanged("quantity", existing.quantity, req.body.quantity)) {
@@ -2118,10 +2105,7 @@ router.put("/items/:id", (req, res) => {
   const quantity = quantityLocked
     ? Number(existing.quantity)
     : Number(req.body.quantity ?? existing.quantity);
-  const cataloguePolicyLocked = isOperator && isOcsMasterRow;
-  const minimumQuantity = cataloguePolicyLocked
-    ? Number(existing.minimum_quantity)
-    : Number(req.body.minimum_quantity ?? existing.minimum_quantity);
+  const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity);
   const unit = masterFieldsLocked
     ? String(existing.unit ?? "unit").trim()
     : String(req.body.unit ?? existing.unit ?? "unit").trim();
@@ -2131,12 +2115,8 @@ router.put("/items/:id", (req, res) => {
   const sellingPrice = masterFieldsLocked
     ? roundCurrency(existing.selling_price)
     : roundCurrency(req.body.selling_price ?? existing.selling_price);
-  const attributes = cataloguePolicyLocked
-    ? String(existing.attributes ?? "").trim()
-    : String(req.body.attributes ?? existing.attributes ?? "").trim();
-  const moaNotes = cataloguePolicyLocked
-    ? String(existing.moa_notes ?? "").trim()
-    : String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
+  const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
+  const moaNotes = String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
   // Deprecated catalogue expiry_date: preserve the historical column, never treat it as operational.
   // Incoming expiry_date is ignored so catalogue editing cannot change batch expiry or nearest-expiry.
   const expiryDate = String(existing.expiry_date || "").trim() || null;
