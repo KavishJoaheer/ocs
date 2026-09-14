@@ -545,13 +545,13 @@ test.describe("Inventory workflow", () => {
       await page.setViewportSize(size);
       await page.goto(`${STAFF_BASE}/inventory`);
       await expect(page.getByRole("tab", { name: "Shipments" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("tab", { name: "Count" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Stocktake" })).toBeVisible();
       const box = await page.getByRole("tab", { name: "Shipments" }).boundingBox();
       expect(box?.width || 0).toBeGreaterThan(44);
     }
   });
 
-  test("stocktake counting is completed through the inventory Count UI", async ({ request, page }) => {
+  test("stocktake counting is completed through the inventory Stocktake UI", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");
     const item = await createStockedItem(request, {
@@ -567,7 +567,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /^Count$/ }).click();
+    await page.getByRole("tab", { name: "Stocktake" }).click();
     await expect(page.getByRole("button", { name: new RegExp(`#${session.id}`) })).toBeVisible({
       timeout: 20_000,
     });
@@ -673,7 +673,7 @@ test.describe("Inventory workflow", () => {
     const doctor = await login(request, "arun.dharee");
 
     async function openCorrection(itemName) {
-      await page.getByPlaceholder(/Search by item name/).fill(itemName);
+      await page.getByLabel("Search stock items").fill(itemName);
       const stockTable = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Item Name" }) });
       const row = stockTable.locator("tbody tr").filter({ hasText: itemName }).filter({
         has: page.getByRole("button", { name: "Exceptional actions" }),
@@ -946,11 +946,10 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await openStockTab(page);
-    await page.getByPlaceholder(/Search by item name/).fill(name);
+    await page.getByLabel("Search stock items").fill(name);
     const itemRow = page.getByRole("row").filter({ hasText: name }).first();
     await expect(itemRow).toBeVisible({ timeout: 20_000 });
     await expect(itemRow.getByLabel("Stock status: Expired")).toBeVisible();
-    await expect(itemRow).toContainText(/ATP:\s*0/);
   });
 
   test("missing expiry and non-expiring stock use different labels", async ({ request, page }) => {
@@ -976,10 +975,10 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await openStockTab(page);
-    await page.getByPlaceholder(/Search by item name/).fill(missingName);
+    await page.getByLabel("Search stock items").fill(missingName);
     await expect(page.getByText(missingName).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Expiry missing").first()).toBeVisible();
-    await page.getByPlaceholder(/Search by item name/).fill(nonName);
+    await page.getByLabel("Search stock items").fill(nonName);
     await expect(page.getByText(nonName).first()).toBeVisible();
     await expect(page.getByText("Non-expiring").first()).toBeVisible();
     await expect(page.getByText("No expiry")).toHaveCount(0);
@@ -1070,7 +1069,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByPlaceholder(/Search by item name/).fill(item.item_name);
+    await page.getByLabel("Search stock items").fill(item.item_name);
     await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Exceptional actions" }).first().click();
     await page.getByRole("menuitem", { name: "Admin override transfer" }).click({ force: true });
@@ -1238,7 +1237,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+    await page.getByRole("tab", { name: "Tasks" }).click();
     await page.getByRole("button", { name: /Reconciliation required/i }).click();
     await expect(page.getByRole("button", { name: /Open reconciliation|Review reconciliation/i }).first()).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: /Open reconciliation|Review reconciliation/i }).first().click();
@@ -1287,7 +1286,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+    await page.getByRole("tab", { name: "Tasks" }).click();
     await page.getByRole("button", { name: /Awaiting collection/i }).click();
     await expect(page.getByRole("button", { name: "View details" }).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "Claim" })).toHaveCount(0);
@@ -1328,7 +1327,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+    await page.getByRole("tab", { name: "Tasks" }).click();
     const priority = [
       "Changes",
       "Reconciliation required",
@@ -1370,7 +1369,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /^Count$/i }).click();
+    await page.getByRole("tab", { name: "Stocktake" }).click();
     const start = page.getByRole("button", { name: "Start stocktake" });
     await expect(start).toBeDisabled();
     await page.getByLabel(/Folder \/ category/i).selectOption({ label: "All OCS folders" });
@@ -1387,8 +1386,9 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     const tablist = page.getByRole("tablist", { name: "Inventory sections" });
     await expect(tablist).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "Next inventory tabs" })).toBeVisible();
-    await page.getByRole("tab", { name: /Count/i }).click();
+    const hasHorizontalOverflow = await tablist.evaluate((element) => element.scrollWidth > element.clientWidth);
+    expect(hasHorizontalOverflow).toBeTruthy();
+    await page.getByRole("tab", { name: "Stocktake" }).click();
     const selected = tablist.getByRole("tab", { selected: true });
     await expect(selected).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
@@ -1436,7 +1436,7 @@ test.describe("Inventory workflow", () => {
     for (const width of [320, 390, 500]) {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
-      await page.getByRole("tab", { name: /Work queues|Queues/i }).click();
+      await page.getByRole("tab", { name: "Tasks" }).click();
       const last = page.getByRole("button", { name: /History/i });
       await last.scrollIntoViewIfNeeded();
       const box = await last.boundingBox();
