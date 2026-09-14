@@ -3687,7 +3687,7 @@ router.post("/shipments/:id/release", (req, res) => {
 router.get("/stocktake/scope", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can preview a stocktake scope." });
+    return res.status(403).json({ error: "Only admin/operator can preview a stock count scope." });
   }
   try {
     const preview = previewStocktakeScope({
@@ -3709,7 +3709,7 @@ router.get("/stocktake/scope", (req, res) => {
 router.post("/stocktake/sessions", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Start a stocktake session");
+    assertRoutineOperatorAction(req.auth, req.body, "Start a stock count session");
     const session = db.transaction(() =>
       createStocktakeSession({
         folderId: req.body?.folder_id ? Number(req.body.folder_id) : null,
@@ -3731,7 +3731,7 @@ router.post("/stocktake/sessions", (req, res) => {
 router.get("/stocktake/sessions", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can view stocktake sessions." });
+    return res.status(403).json({ error: "Only admin/operator can view stock count sessions." });
   }
   return res.json({ sessions: listStocktakeSessions() });
 });
@@ -3739,17 +3739,17 @@ router.get("/stocktake/sessions", (req, res) => {
 router.get("/stocktake/sessions/:id", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can view stocktake sessions." });
+    return res.status(403).json({ error: "Only admin/operator can view stock count sessions." });
   }
   const session = getStocktakeSession(req.params.id, { role: req.auth.role });
-  if (!session) return res.status(404).json({ error: "Stocktake session not found." });
+  if (!session) return res.status(404).json({ error: "Stock count session not found." });
   return res.json({ session });
 });
 
 router.patch("/stocktake/sessions/:id", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Record stocktake counts");
+    assertRoutineOperatorAction(req.auth, req.body, "Record stock count quantities");
     const session = saveStocktakeCounts(Number(req.params.id), req.body?.lines || [], req.auth.id);
     return res.json({ session });
   } catch (error) {
@@ -3761,7 +3761,7 @@ router.patch("/stocktake/sessions/:id", (req, res) => {
 router.post("/stocktake/sessions/:id/recount", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Recount conflicted stocktake lines");
+    assertRoutineOperatorAction(req.auth, req.body, "Recount conflicted stock count lines");
     const session = recountStocktakeLines(Number(req.params.id), req.body?.lines || [], req.auth.id);
     return res.json({ session });
   } catch (error) {
@@ -3779,7 +3779,7 @@ router.post("/stocktake/sessions/:id/recount", (req, res) => {
 router.post("/stocktake/sessions/:id/submit", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Submit a stocktake session");
+    assertRoutineOperatorAction(req.auth, req.body, "Submit a stock count session");
     const session = submitStocktakeSession(Number(req.params.id), req.auth.id);
     return res.json({ session });
   } catch (error) {
@@ -3813,7 +3813,7 @@ router.post("/stocktake/sessions/:id/review", (req, res) => {
 router.post("/stocktake/sessions/:id/apply", (req, res) => {
   ensureInfrastructure();
   if (req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only an admin can apply stocktake adjustments." });
+    return res.status(403).json({ error: "Only an admin can apply stock count adjustments." });
   }
   try {
     const result = applyStocktakeSession(Number(req.params.id), req.auth.id, {
@@ -3840,10 +3840,10 @@ router.post("/stocktake/sessions/:id/apply", (req, res) => {
 router.get("/stocktake/sessions/:id/export.csv", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can export stocktake sessions." });
+    return res.status(403).json({ error: "Only admin/operator can export stock count sessions." });
   }
   const session = getStocktakeSession(req.params.id, { role: req.auth.role });
-  if (!session) return res.status(404).json({ error: "Stocktake session not found." });
+  if (!session) return res.status(404).json({ error: "Stock count session not found." });
   const showSystem = session.items?.some((row) => row.system_quantity != null);
   const lines = showSystem
     ? [
@@ -3859,14 +3859,14 @@ router.get("/stocktake/sessions/:id/export.csv", (req, res) => {
         ),
       ];
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="stocktake-${session.id}.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="stock-count-${session.id}.csv"`);
   return res.status(200).send(lines.join("\n"));
 });
 
 router.post("/stocktake", (req, res) => {
   ensureInfrastructure();
   return res.status(410).json({
-    error: "One-row stocktake is no longer available. Use a stocktake session so counts stay blind, concurrent, and approved.",
+    error: "One-row stock count is no longer available. Use a stock count session so counts stay blind, concurrent, and approved.",
     use: "POST /api/inventory/stocktake/sessions",
   });
 });

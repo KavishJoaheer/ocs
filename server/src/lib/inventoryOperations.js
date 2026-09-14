@@ -31,6 +31,28 @@ function roundCurrency(value) {
   return Number(toNumber(value, 0).toFixed(2));
 }
 
+function storedTimestampMs(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+    ? `${raw.replace(" ", "T")}Z`
+    : raw;
+  const timestamp = Date.parse(normalized);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function latestStoredTimestamp(values = []) {
+  const latest = values.reduce((current, value) => {
+    const timestamp = storedTimestampMs(value);
+    return timestamp !== null && timestamp > current ? timestamp : current;
+  }, -1);
+  return latest >= 0 ? new Date(latest).toISOString() : null;
+}
+
+function mauritiusMonthKey(timestamp) {
+  return new Date(timestamp + 4 * 60 * 60 * 1000).toISOString().slice(0, 7);
+}
+
 function createTransferTransactionId() {
   return `TX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
@@ -815,8 +837,18 @@ function listShipments({ incomingOnly = false } = {}) {
   return rows;
 }
 
-function shipmentQueueStats(shipments = listShipments()) {
+function shipmentQueueStats(shipments = listShipments(), { now = Date.now() } = {}) {
   const incoming = shipments.filter((row) => row.in_incoming_queue);
+  const receivedShipments = shipments
+    .map((shipment) => {
+      const releasedAt = latestStoredTimestamp([
+        shipment.released_at,
+        ...(shipment.lines || []).map((line) => line.released_at),
+      ]);
+      return { shipment, releasedAt, timestamp: storedTimestampMs(releasedAt) };
+    })
+    .filter((entry) => entry.timestamp !== null);
+  const currentMonth = mauritiusMonthKey(now);
   return {
     incoming_shipments: incoming.length,
     pending_lines: incoming.reduce((sum, row) => sum + Number(row.pending_rows || 0), 0),
@@ -827,6 +859,10 @@ function shipmentQueueStats(shipments = listShipments()) {
     pending_shipment_value: roundCurrency(
       incoming.reduce((sum, row) => sum + Number(row.pending_value || 0), 0),
     ),
+    received_this_month: receivedShipments.filter(
+      (entry) => mauritiusMonthKey(entry.timestamp) === currentMonth,
+    ).length,
+    last_received_at: latestStoredTimestamp(receivedShipments.map((entry) => entry.releasedAt)),
   };
 }
 
@@ -1371,13 +1407,13 @@ function createStocktakeSession({
   const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
   const fullCatalogue = !folderId && !scopedIds.length;
   if (fullCatalogue && !confirmAll) {
-    throw HttpError(400, "Starting a full-catalogue stocktake requires explicit confirmation.");
+    throw HttpError(400, "Starting a full-catalogue stock count requires explicit confirmation.");
   }
   const items = loadStocktakeScopeItems({ folderId, itemIds: scopedIds });
   const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds: scopedIds });
   const providedToken = String(scopeToken || "").trim();
   if (!providedToken) {
-    throw HttpError(400, "A stocktake scope token is required.", {
+    throw HttpError(400, "A stock count scope token is required.", {
       code: "STOCKTAKE_SCOPE_TOKEN_REQUIRED",
       item_count: fingerprint.item_count,
       scope_token: fingerprint.scope_token,
@@ -1532,10 +1568,15 @@ function listStocktakeSessions() {
     }));
 }
 
-function stocktakeQueueStats(sessions = listStocktakeSessions()) {
+function stocktakeQueueStats(sessions = listStocktakeSessions(), { now = Date.now() } = {}) {
   const active = sessions.filter((row) => ["draft", "in_progress", "recount_required"].includes(row.status));
   const awaitingApproval = sessions.filter((row) => row.status === "submitted");
   const awaitingApplication = sessions.filter((row) => row.status === "approved");
+  const completed = sessions
+    .filter((row) => row.status === "applied")
+    .map((row) => row.applied_at || row.updated_at || row.created_at)
+    .filter(Boolean);
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
   const openVarianceValue = roundCurrency(
     [...awaitingApproval, ...awaitingApplication].reduce(
       (sum, row) => sum + Number(row.open_variance_value || 0),
@@ -1547,6 +1588,11 @@ function stocktakeQueueStats(sessions = listStocktakeSessions()) {
     awaiting_approval: awaitingApproval.length,
     awaiting_application: awaitingApplication.length,
     total_open_variance: openVarianceValue,
+    completed_last_7_days: completed.filter((value) => {
+      const timestamp = storedTimestampMs(value);
+      return timestamp !== null && timestamp >= sevenDaysAgo && timestamp <= now;
+    }).length,
+    last_completed_at: latestStoredTimestamp(completed),
   };
 }
 
@@ -1575,9 +1621,9 @@ function parseSubmittedPhysicalCount(value) {
 
 function saveStocktakeCounts(sessionId, lines, userId) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
-  if (!session) throw HttpError(404, "Stocktake session not found.");
+  if (!session) throw HttpError(404, "Stock count session not found.");
   if (!["draft", "in_progress", "recount_required"].includes(session.status)) {
-    throw HttpError(400, "This stocktake session can no longer be edited.");
+    throw HttpError(400, "This stock count session can no longer be edited.");
   }
   db.transaction(() => {
     for (const line of lines || []) {
@@ -1639,9 +1685,9 @@ function saveStocktakeCounts(sessionId, lines, userId) {
 
 function recountStocktakeLines(sessionId, lines, userId) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
-  if (!session) throw HttpError(404, "Stocktake session not found.");
+  if (!session) throw HttpError(404, "Stock count session not found.");
   if (session.status !== "recount_required") {
-    throw HttpError(400, "Only a conflicted stocktake session can receive a recount.");
+    throw HttpError(400, "Only a conflicted stock count session can receive a recount.");
   }
   if (!Array.isArray(lines) || !lines.length) {
     throw HttpError(400, "Recount lines are required.");
@@ -1666,7 +1712,7 @@ function recountStocktakeLines(sessionId, lines, userId) {
         )
         .get(sessionId, line.id);
       if (!current) {
-        throw HttpError(404, `Stocktake line #${line.id} was not found.`);
+        throw HttpError(404, `Stock count line #${line.id} was not found.`);
       }
       if (String(current.conflict_status || "") !== "recount_required") {
         throw HttpError(409, `Line #${line.id} is not waiting for a recount.`);
@@ -1808,7 +1854,7 @@ function persistRecountRequired(sessionId, conflicts) {
 
 function submitStocktakeSession(sessionId, userId) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
-  if (!session) throw HttpError(404, "Stocktake session not found.");
+  if (!session) throw HttpError(404, "Stock count session not found.");
   if (!["draft", "in_progress", "recount_required"].includes(session.status)) {
     throw HttpError(409, "This session has already been submitted.");
   }
@@ -1831,7 +1877,7 @@ function submitStocktakeSession(sessionId, userId) {
   if (openConflicts.length) {
     const error = HttpError(
       409,
-      `Stocktake cannot be submitted until ${openConflicts.length} conflicted line(s) are genuinely recounted.`,
+      `Stock count cannot be submitted until ${openConflicts.length} conflicted line(s) are genuinely recounted.`,
     );
     error.conflicts = openConflicts.map((row) => ({
       line_id: row.id,
@@ -1846,7 +1892,7 @@ function submitStocktakeSession(sessionId, userId) {
     persistRecountRequired(sessionId, conflicts);
     const error = HttpError(
       409,
-      `Stocktake cannot be submitted because ${conflicts.length} line(s) changed after they were counted.`,
+      `Stock count cannot be submitted because ${conflicts.length} line(s) changed after they were counted.`,
     );
     error.conflicts = conflicts;
     error.session = getStocktakeSession(sessionId, { role: "operator" });
@@ -1895,15 +1941,15 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
   if (!["approved", "rejected"].includes(decision)) {
     throw HttpError(400, "Decision must be approved or rejected.");
   }
-  if (role !== "admin") throw HttpError(403, "Only an admin can review stocktake variances.");
+  if (role !== "admin") throw HttpError(403, "Only an admin can review stock count variances.");
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
-  if (!session) throw HttpError(404, "Stocktake session not found.");
+  if (!session) throw HttpError(404, "Stock count session not found.");
   if (session.status !== "submitted") throw HttpError(400, "Only submitted sessions can be reviewed.");
   if (Number(session.submitted_by_user_id) === Number(userId) && otherActiveAdminExists(userId)) {
     throw HttpError(403, "The person who submitted this count cannot approve it while another admin is available.");
   }
   if (decision === "rejected" && String(reason || "").trim().length < 10) {
-    throw HttpError(400, "A reason is required to reject a stocktake session.");
+    throw HttpError(400, "A reason is required to reject a stock count session.");
   }
   db.prepare(`
     UPDATE inventory_stocktake_sessions
@@ -1921,7 +1967,7 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
 function applyStocktakeSession(sessionId, userId, actor = {}) {
   const reveal = { role: actor.role || "admin" };
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
-  if (!session) throw HttpError(404, "Stocktake session not found.");
+  if (!session) throw HttpError(404, "Stock count session not found.");
   if (session.status === "applied" && session.applied_transaction_id) {
     return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
   }
@@ -1946,7 +1992,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
     persistRecountRequired(sessionId, conflicts);
     const error = HttpError(
       409,
-      `Stocktake cannot be applied because ${conflicts.length} line(s) changed after they were counted.`,
+      `Stock count cannot be applied because ${conflicts.length} line(s) changed after they were counted.`,
     );
     error.conflicts = conflicts;
     error.session = getStocktakeSession(sessionId, reveal);
@@ -2010,7 +2056,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         previousQuantity: previous,
         nextQuantity: next,
         actionType: "adjustment",
-        note: line.reason || `Stocktake session #${sessionId}`,
+        note: line.reason || `Stock count session #${sessionId}`,
         userId,
         skipPublish: true,
         meta: {

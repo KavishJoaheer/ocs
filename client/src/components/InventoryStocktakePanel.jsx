@@ -23,6 +23,19 @@ function formatSavedAt(value) {
   return date.toLocaleString();
 }
 
+function countStatusLabel(status) {
+  return {
+    draft: "Not started",
+    in_progress: "In progress",
+    recount_required: "Recount required",
+    submitted: "Awaiting approval",
+    approved: "Approved",
+    rejected: "Rejected",
+    applied: "Completed",
+    cancelled: "Cancelled",
+  }[status] || status;
+}
+
 function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions = [], requestedStatus = "" }) {
   const { user } = useAuth();
   const canCount = canCountStocktake(user);
@@ -108,9 +121,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       setMobileIndex(0);
       setFinalReview(false);
       setEditedIds({});
-      toast.success("Stocktake session started. System quantities stay hidden until you submit.");
+      toast.success("Stock count started. System quantities stay hidden until you submit.");
     } catch (error) {
-      toast.error(error.message || "Could not start a stocktake session.");
+      toast.error(error.message || "Could not start the stock count.");
     } finally {
       setCreating(false);
     }
@@ -228,8 +241,8 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       setEditedIds({});
       toast.success(
         payload.session.status === "applied"
-          ? "Zero-variance session closed."
-          : "Counts submitted for approval.",
+          ? "Stock count completed—no differences found."
+          : "Stock count submitted for approval.",
       );
       await onApplied?.();
     } catch (error) {
@@ -286,7 +299,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename || `stocktake-session-${active.id}.csv`;
+      link.download = filename || `stock-count-${active.id}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -321,12 +334,12 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   return (
     <>
     <SectionCard
-      title="Stocktake sessions"
-      subtitle="Blind-count a category, submit together, and apply approved variances atomically."
+      title="Stock Count"
+      subtitle="Count any time operations require it. Quantities stay hidden until the completed count is submitted."
       actions={
         <span className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
           <ClipboardCheck className="size-3.5" />
-          Sessions
+          Count history
         </span>
       }
     >
@@ -357,7 +370,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
             onClick={createSession}
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
           >
-            Start stocktake
+            Start Stock Count
           </button>
         ) : (
           <button
@@ -392,7 +405,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       ) : null}
       {!canCount && !active ? (
         <p className="mb-4 text-sm text-slate-600">
-          Operators start, count and submit stocktake sessions. Administrators review discrepancies and apply approved variances.
+          Operators start and submit stock counts. Administrators review differences and apply approved adjustments.
         </p>
       ) : null}
 
@@ -409,7 +422,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
               )}
             >
               <span className="font-semibold">
-                #{session.id} · {session.folder_name || "All OCS folders"} · {session.status}
+                Count #{session.id} · {session.folder_name || "All OCS folders"} · {countStatusLabel(session.status)}
               </span>
               <span>
                 {session.assigned_counter_name || session.created_by_name || "Counter"} · {session.progress_percent || 0}% ·{" "}
@@ -423,16 +436,16 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       {active ? (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Session #{active.id} · {active.status} · {counted} of {total} ({progress}%)
+            Count #{active.id} · {countStatusLabel(active.status)} · {counted} of {total} ({progress}%)
             {lastSavedAt ? ` · saved ${formatSavedAt(lastSavedAt)}` : ""}
           </p>
           {saving ? <p className="text-xs text-slate-500" aria-live="polite">Saving progress…</p> : null}
 
           {submitted ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <p>Discrepancy lines: <strong>{active.discrepancy_count ?? 0}</strong></p>
-              <p>Open variance qty: <strong>{active.open_variance_qty ?? 0}</strong></p>
-              <p>Financial impact: <strong>{formatRupees(active.open_variance_value || 0)}</strong></p>
+              <p>Items with differences: <strong>{active.discrepancy_count ?? 0}</strong></p>
+              <p>Total quantity difference: <strong>{active.open_variance_qty ?? 0}</strong></p>
+              <p>Estimated value difference: <strong>{formatRupees(active.open_variance_value || 0)}</strong></p>
             </div>
           ) : null}
 
@@ -632,22 +645,22 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
           </div>
         </div>
       ) : (
-        <p className="text-sm text-slate-500">Start a session or open a submitted variance from the list.</p>
+        <p className="text-sm text-slate-500">Start a Stock Count or open an earlier count from the list.</p>
       )}
     </SectionCard>
     <ConfirmDialog
       open={confirmFullOpen}
       onClose={() => setConfirmFullOpen(false)}
       onConfirm={() => startStocktakeSession({ confirmAll: true })}
-      title="Start full-catalogue stocktake?"
-      description={`This will create a blind stocktake session for ${scopePreview?.item_count ?? scopedItems.length} items across all OCS folders.`}
+      title="Start a complete Stock Count?"
+      description={`This will start a blind stock count for ${scopePreview?.item_count ?? scopedItems.length} items across all OCS folders.`}
       confirmLabel="Start full-catalogue count"
       tone="primary"
       busy={creating}
     />
     <EmergencyOverrideDialog
       open={overrideOpen}
-      summary="This will start a stocktake session as an administrator. Operators should perform routine counting. The session still requires blind counts, concurrency checks, and approval."
+      summary="This will start a Stock Count as an administrator. Operators should perform routine counting. The count still requires blind entries, movement checks, and approval."
       onClose={() => setOverrideOpen(false)}
       onConfirm={async (reason) => {
         setCreating(true);
@@ -663,9 +676,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
             reason,
           ));
           setActive(payload.session);
-          toast.success("Emergency stocktake session started.");
+          toast.success("Emergency Stock Count started.");
         } catch (error) {
-          toast.error(error.message || "Could not start a stocktake session.");
+          toast.error(error.message || "Could not start the stock count.");
         } finally {
           setCreating(false);
         }

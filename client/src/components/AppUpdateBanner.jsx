@@ -76,7 +76,7 @@ export default function AppUpdateBanner() {
       <p>
         <span className="font-semibold">Update available.</span> A newer OCS release is deployed.
         {dirty
-          ? " Unsaved stocktake, fulfilment, shipment or correction work is open. Reloading now can lose those counts."
+          ? " Unsaved stock count, fulfilment, shipment or correction work is open. Reloading now can lose those counts."
           : " Reload to use the current version."}
         {confirmReload ? " Confirm reload to discard unsaved work." : ""}
       </p>

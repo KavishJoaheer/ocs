@@ -16,6 +16,37 @@ const { createApp } = require("../src/app");
 const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
+const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
+
+test("inventory cadence summaries remain flexible and use recorded activity", () => {
+  const now = Date.parse("2026-09-14T12:00:00.000Z");
+  const shipmentStats = shipmentQueueStats(
+    [
+      { id: 1, in_incoming_queue: false, released_at: "2026-09-12 08:00:00", lines: [] },
+      {
+        id: 2,
+        in_incoming_queue: false,
+        released_at: null,
+        lines: [{ released_at: "2026-08-28 09:30:00" }],
+      },
+      { id: 3, in_incoming_queue: true, pending_rows: 2, pending_value: 20, lines: [] },
+    ],
+    { now },
+  );
+  assert.equal(shipmentStats.received_this_month, 1);
+  assert.equal(shipmentStats.last_received_at, "2026-09-12T08:00:00.000Z");
+
+  const countStats = stocktakeQueueStats(
+    [
+      { id: 1, status: "applied", applied_at: "2026-09-10 10:00:00" },
+      { id: 2, status: "applied", applied_at: "2026-09-01 10:00:00" },
+      { id: 3, status: "submitted", submitted_at: "2026-09-13 10:00:00", open_variance_value: 5 },
+    ],
+    { now },
+  );
+  assert.equal(countStats.completed_last_7_days, 1);
+  assert.equal(countStats.last_completed_at, "2026-09-10T10:00:00.000Z");
+});
 
 let server;
 let baseUrl;

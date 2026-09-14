@@ -545,13 +545,13 @@ test.describe("Inventory workflow", () => {
       await page.setViewportSize(size);
       await page.goto(`${STAFF_BASE}/inventory`);
       await expect(page.getByRole("tab", { name: "Shipments" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("tab", { name: "Stocktake" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Stock Count" })).toBeVisible();
       const box = await page.getByRole("tab", { name: "Shipments" }).boundingBox();
       expect(box?.width || 0).toBeGreaterThan(44);
     }
   });
 
-  test("stocktake counting is completed through the inventory Stocktake UI", async ({ request, page }) => {
+  test("stock counting is completed through the inventory Stock Count UI", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");
     const item = await createStockedItem(request, {
@@ -567,7 +567,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Stocktake" }).click();
+    await page.getByRole("tab", { name: "Stock Count" }).click();
     await expect(page.getByRole("button", { name: new RegExp(`#${session.id}`) })).toBeVisible({
       timeout: 20_000,
     });
@@ -578,7 +578,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("button", { name: /Save progress/ }).click();
     await expect(page.getByText(/Counts saved|Recount saved/i)).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Submit counts" }).click();
-    await expect(page.getByText(/Zero-variance session closed|Counts submitted for approval/i)).toBeVisible({
+    await expect(page.getByText(/Stock count completed|Stock count submitted for approval/i)).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -1336,7 +1336,7 @@ test.describe("Inventory workflow", () => {
       "Pick today",
       "Awaiting collection",
       "Incoming shipments",
-      "Count variances",
+      "Stock count variances",
     ];
     const counts = body.counts;
     const keys = [
@@ -1359,23 +1359,27 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: /Shipments/i }).click();
+    await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i)).toBeVisible();
+    await expect(page.getByText(/Received this month/i)).toBeVisible();
     await expect(page.getByLabel(/CSV shipment data/i)).toBeVisible({ timeout: 20_000 });
     const importButton = page.getByRole("button", { name: "Import to staging" });
     await expect(importButton).toBeDisabled();
   });
 
-  test("stocktake requires a chosen scope and confirms full-catalogue sessions", async ({ request, page }) => {
+  test("stock count requires a chosen scope and confirms full-catalogue sessions", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Stocktake" }).click();
-    const start = page.getByRole("button", { name: "Start stocktake" });
+    await page.getByRole("tab", { name: "Stock Count" }).click();
+    await expect(page.getByText(/usually 2–3 times per week, with no fixed days/i)).toBeVisible();
+    await expect(page.getByText(/Completed in 7 days/i)).toBeVisible();
+    const start = page.getByRole("button", { name: "Start Stock Count" });
     await expect(start).toBeDisabled();
     await page.getByLabel(/Folder \/ category/i).selectOption({ label: "All OCS folders" });
     await expect(start).toBeEnabled();
     await start.click();
-    await expect(page.getByRole("dialog").getByText(/blind stocktake session/i)).toBeVisible();
+    await expect(page.getByRole("dialog").getByText(/blind stock count/i)).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   });
 
@@ -1388,7 +1392,7 @@ test.describe("Inventory workflow", () => {
     await expect(tablist).toBeVisible({ timeout: 20_000 });
     const hasHorizontalOverflow = await tablist.evaluate((element) => element.scrollWidth > element.clientWidth);
     expect(hasHorizontalOverflow).toBeTruthy();
-    await page.getByRole("tab", { name: "Stocktake" }).click();
+    await page.getByRole("tab", { name: "Stock Count" }).click();
     const selected = tablist.getByRole("tab", { selected: true });
     await expect(selected).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);

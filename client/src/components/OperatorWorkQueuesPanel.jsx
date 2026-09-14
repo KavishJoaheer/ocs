@@ -26,7 +26,7 @@ const QUEUE_DEFS = [
   { id: "pick_today", label: "Pick today", key: "pick_today" },
   { id: "awaiting_collection", label: "Awaiting collection", key: "awaiting_collection" },
   { id: "incoming_shipments", label: "Incoming shipments", key: "incoming_shipments", kind: "shipments" },
-  { id: "count_variances", label: "Count variances", key: "count_variances", kind: "variances" },
+  { id: "count_variances", label: "Stock count variances", key: "count_variances", kind: "variances" },
   { id: "history", label: "History", key: "history", kind: "history" },
 ];
 

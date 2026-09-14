@@ -27,6 +27,25 @@ function Card({ title, value, tone = "teal", hint, onClick, active = false }) {
   return <div className={className}>{body}</div>;
 }
 
+function formatActivityDate(value) {
+  if (!value) return "No completed activity yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No completed activity yet";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function CadenceSummary({ message, firstLabel, firstValue, secondLabel, secondValue }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white px-3 py-2.5 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+      <p className="min-w-0">{message}</p>
+      <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 tabular-nums">
+        <span>{firstLabel}: <strong className="text-slate-900">{firstValue}</strong></span>
+        <span>{secondLabel}: <strong className="text-slate-900">{secondValue}</strong></span>
+      </div>
+    </div>
+  );
+}
+
 function stockValueDisplay(stock, warehouseValue) {
   const known = Number(stock.stock_value ?? stock.warehouse_value ?? warehouseValue ?? 0);
   const unpriced = Number(stock.unpriced_count || 0);
@@ -83,31 +102,49 @@ export default function InventoryTabSummaries({
   if (tab === "shipments") {
     const data = summaries?.shipments || {};
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <Card title="Incoming shipments" value={data.incoming_shipments || 0} onClick={onOpenIncoming} />
-        <Card title="Pending lines" value={data.pending_lines || 0} />
-        <Card title="Invalid / excluded" value={data.invalid_excluded_lines || 0} tone="amber" />
-        <Card title="Pending shipment value" value={formatRupees(data.pending_shipment_value || 0)} />
+      <div className="space-y-2">
+        <CadenceSummary
+          message="Receive stock whenever a supplier delivery arrives—usually 2–3 times per month, with no fixed dates."
+          firstLabel="Received this month"
+          firstValue={data.received_this_month || 0}
+          secondLabel="Last received"
+          secondValue={formatActivityDate(data.last_received_at)}
+        />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+          <Card title="Incoming shipments" value={data.incoming_shipments || 0} onClick={onOpenIncoming} />
+          <Card title="Pending lines" value={data.pending_lines || 0} />
+          <Card title="Invalid / excluded" value={data.invalid_excluded_lines || 0} tone="amber" />
+          <Card title="Pending shipment value" value={formatRupees(data.pending_shipment_value || 0)} />
+        </div>
       </div>
     );
   }
   if (tab === "count") {
     const data = summaries?.count || {};
     return (
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <Card title="Active sessions" value={data.active_sessions || 0} />
-        <Card
-          title="Awaiting approval"
-          value={data.awaiting_approval || 0}
-          tone="amber"
-          onClick={() => onOpenApproval?.("submitted")}
+      <div className="space-y-2">
+        <CadenceSummary
+          message="Start a stock count whenever needed—usually 2–3 times per week, with no fixed days."
+          firstLabel="Completed in 7 days"
+          firstValue={data.completed_last_7_days || 0}
+          secondLabel="Last completed"
+          secondValue={formatActivityDate(data.last_completed_at)}
         />
-        <Card
-          title="Approved awaiting application"
-          value={data.awaiting_application || 0}
-          onClick={() => onOpenApproval?.("approved")}
-        />
-        <Card title="Recorded open variance" value={formatRupees(data.total_open_variance || 0)} hint="Only counted lines. Zero does not confirm uncounted stock." />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+          <Card title="Active counts" value={data.active_sessions || 0} />
+          <Card
+            title="Awaiting approval"
+            value={data.awaiting_approval || 0}
+            tone="amber"
+            onClick={() => onOpenApproval?.("submitted")}
+          />
+          <Card
+            title="Approved to apply"
+            value={data.awaiting_application || 0}
+            onClick={() => onOpenApproval?.("approved")}
+          />
+          <Card title="Open count variance" value={formatRupees(data.total_open_variance || 0)} hint="Only counted lines. Zero does not confirm uncounted stock." />
+        </div>
       </div>
     );
   }

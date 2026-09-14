@@ -4418,7 +4418,7 @@ export default function InventoryPage() {
             ...(isOperator ? [{ id: "queues", label: "Tasks", shortLabel: "Tasks" }] : []),
             { id: "stock", label: "Stock", shortLabel: "Stock" },
             { id: "shipments", label: "Shipments", shortLabel: "Shipments", badge: pendingStagingCount },
-            { id: "count", label: "Stocktake", shortLabel: "Stocktake" },
+            { id: "count", label: "Stock Count", shortLabel: "Stock Count" },
             ...(isAdmin ? [{ id: "bags", label: "Bags", shortLabel: "Bags" }] : []),
           ].map((tab) => (
             <button
