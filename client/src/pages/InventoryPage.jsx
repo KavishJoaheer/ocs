@@ -56,7 +56,7 @@ import {
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api, ApiError } from "../lib/api.js";
-import { buildInventoryListQuery, getDefaultFolderSelection } from "../lib/inventoryFolders.js";
+import { buildInventoryListQuery } from "../lib/inventoryFolders.js";
 import {
   notifyDoctorBagInventoryUpdated,
   notifyOcsInventoryUpdated,
@@ -75,7 +75,13 @@ import {
 } from "../lib/inventoryOfflineSync.js";
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
-import { doctorBagHeading, formatStockExpiryLabel, itemHasExpiredStock, itemHasQuarantinedStock } from "../lib/inventoryStockDisplay.js";
+import {
+  doctorBagHeading,
+  formatStockExpiryLabel,
+  inventoryQuantityBreakdown,
+  itemHasExpiredStock,
+  itemHasQuarantinedStock,
+} from "../lib/inventoryStockDisplay.js";
 import {
   isAtOrBelowPar,
   isExpiredItem,
@@ -2592,7 +2598,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
           </p>
           <InventoryStatusChips item={item} />
           <div className={cx("mt-1", qtyTone)}>
-            <InventoryQuantityLines item={item} compact firstAtp />
+            <InventoryQuantityLines item={item} compact firstAtp showMinimum={false} />
           </div>
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
             <span className={!item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
@@ -2806,7 +2812,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const searchInputRef = useRef(null);
   const [selectedView, setSelectedView] = useState("");
-  const [activeCategory, setActiveCategory] = useState("Consumable");
+  const [activeCategory, setActiveCategory] = useState("All");
   const [operatorAddOpen, setOperatorAddOpen] = useState(false);
   const [selectedContextDoctorId, setSelectedContextDoctorId] = useState("");
   const [doctorContext, setDoctorContext] = useState("my");
@@ -2847,7 +2853,6 @@ export default function InventoryPage() {
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const [logisticsTab, setLogisticsTab] = useState(user.role === "operator" ? "queues" : "stock");
   const inventoryTabListRef = useRef(null);
-  const [tabOverflowHint, setTabOverflowHint] = useState(true);
   const [tabsCanScroll, setTabsCanScroll] = useState({ left: false, right: false });
   const [emergencyRestockEnabled, setEmergencyRestockEnabled] = useState(false);
   const isDoctor = user.role === "doctor";
@@ -3170,22 +3175,15 @@ export default function InventoryPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Default category: first folder with stock, else Consumable (pills may list all categories on OCS view).
+  // Start with the complete stock list so users are not placed into an implicit category filter.
   useEffect(() => {
     if (!folders.length) return;
     const valid = selectedView === "all" || folders.some((f) => String(f.id) === String(selectedView));
     if (!selectedView || !valid) {
-      if (isDoctor) {
-        setSelectedView("all");
-        setActiveCategory("All");
-        return;
-      }
-      const next = getDefaultFolderSelection(folders, items);
-      if (!next) return;
-      setSelectedView(String(next.id));
-      if (next.name) setActiveCategory(next.name);
+      setSelectedView("all");
+      setActiveCategory("All");
     }
-  }, [folders, items, selectedView, isDoctor]);
+  }, [folders, selectedView]);
 
   useEffect(() => {
     if (!folders.length || !selectedView) return;
@@ -3506,6 +3504,19 @@ export default function InventoryPage() {
     if (kind === "reconciliation") {
       setLogisticsTab("queues");
     }
+  }
+
+  function clearStockFilters() {
+    setSearch("");
+    setSelectedView("all");
+    setActiveCategory("All");
+    setShowLowStockOnly(false);
+    setShowNearExpiryOnly(false);
+    setShowMissingExpiryOnly(false);
+    setShowExpiredOnly(false);
+    setShowUnpricedOnly(false);
+    setUnpricedFromBags(false);
+    setCurrentPage(1);
   }
 
   function openDoctorBagFromCompare(doctorId) {
@@ -4401,14 +4412,13 @@ export default function InventoryPage() {
             ref={inventoryTabListRef}
             role="tablist"
             aria-label="Inventory sections"
-            onScroll={() => setTabOverflowHint(false)}
-            className="flex gap-2 overflow-x-auto overflow-y-hidden pb-2 snap-x snap-mandatory [scrollbar-width:thin]"
+            className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
           {[
-            ...(isOperator ? [{ id: "queues", label: "Work queues", shortLabel: "Queues" }] : []),
-            { id: "stock", label: isOperator ? "Warehouse stock" : "Stock", shortLabel: "Stock" },
+            ...(isOperator ? [{ id: "queues", label: "Tasks", shortLabel: "Tasks" }] : []),
+            { id: "stock", label: "Stock", shortLabel: "Stock" },
             { id: "shipments", label: "Shipments", shortLabel: "Shipments", badge: pendingStagingCount },
-            { id: "count", label: "Count", shortLabel: "Count" },
+            { id: "count", label: "Stocktake", shortLabel: "Stocktake" },
             ...(isAdmin ? [{ id: "bags", label: "Bags", shortLabel: "Bags" }] : []),
           ].map((tab) => (
             <button
@@ -4443,39 +4453,6 @@ export default function InventoryPage() {
           {tabsCanScroll.right ? (
             <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
           ) : null}
-          <div className="mt-1 flex items-center justify-between gap-2 sm:hidden">
-            {tabOverflowHint && tabsCanScroll.right ? (
-              <p className="text-[11px] font-semibold text-slate-500">Scroll for more</p>
-            ) : (
-              <span />
-            )}
-            <div className="flex gap-1">
-              <button
-                type="button"
-                aria-label="Previous inventory tabs"
-                disabled={!tabsCanScroll.left}
-                onClick={() => {
-                  inventoryTabListRef.current?.scrollBy({ left: -160, behavior: "smooth" });
-                  setTabOverflowHint(false);
-                }}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next inventory tabs"
-                disabled={!tabsCanScroll.right}
-                onClick={() => {
-                  inventoryTabListRef.current?.scrollBy({ left: 160, behavior: "smooth" });
-                  setTabOverflowHint(false);
-                }}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          </div>
         </div>
       ) : null}
 
@@ -4540,7 +4517,7 @@ export default function InventoryPage() {
               ? "OCS depot"
               : "Bag items"
             : contextIsOcs
-              ? "OCS warehouse items"
+              ? "Stock items"
               : staffLocationHeading
         }
       >
@@ -4584,78 +4561,102 @@ export default function InventoryPage() {
               </select>
             )}
             <label className="relative min-w-0 flex-1">
+              <span className="sr-only">Search stock items</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <input
                 ref={searchInputRef}
+                aria-label="Search stock items"
+                aria-keyshortcuts="/"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by item name  (press / )"
-                className="w-full min-h-11 min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#4FB8B3]"
+                placeholder="Search stock items"
+                className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-12 text-sm outline-none focus:border-[#4FB8B3]"
               />
+              <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 sm:block">/</kbd>
+            </label>
+          </div>
+          <div className="flex items-center gap-2 lg:hidden">
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">Stock category</span>
+              <select
+                aria-label="Stock category"
+                value={selectedView || "all"}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedView(value);
+                  const folder = categoryFolders.find((entry) => String(entry.id) === value);
+                  setActiveCategory(folder?.name || "All");
+                }}
+                className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+              >
+                <option value="all">All categories ({items.length})</option>
+                {categoryFolders.map((folder) => (
+                  <option key={`mobile-category-${folder.id}`} value={String(folder.id)}>
+                    {folder.name} ({folderCounts.get(String(folder.id)) || 0})
+                  </option>
+                ))}
+              </select>
             </label>
             <button
               type="button"
               aria-expanded={stockFiltersOpen}
               onClick={() => setStockFiltersOpen((open) => !open)}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 lg:hidden"
+              className="inline-flex min-h-11 shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
             >
-              Filters
+              {canManageOcs ? "Sort & tools" : "Filters"}
+              {showLowStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? " · Active" : ""}
             </button>
           </div>
-          <div className="-mx-1 flex items-center gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedView("all");
-                setActiveCategory("All");
-              }}
-              className={`min-h-11 shrink-0 rounded-2xl px-3 text-xs font-semibold sm:text-sm ${selectedView === "all" ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
-            >
-              All ({items.length})
-            </button>
-            {categoryFolders.map((folder) => (
-              <button
-                key={folder.id}
-                type="button"
-                onClick={() => {
-                  setSelectedView(String(folder.id));
-                  setActiveCategory(folder.name);
+          <div className={cx("flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden lg:flex")}>
+            <label className="hidden min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 lg:flex">
+              <span className="text-xs font-semibold text-slate-500">Category</span>
+              <select
+                aria-label="Stock category"
+                value={selectedView || "all"}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedView(value);
+                  const folder = categoryFolders.find((entry) => String(entry.id) === value);
+                  setActiveCategory(folder?.name || "All");
                 }}
-                className={`min-h-11 shrink-0 rounded-2xl px-3 text-xs font-semibold sm:text-sm ${selectedView === String(folder.id) ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                className="max-w-48 bg-transparent text-xs font-semibold text-slate-700 outline-none"
               >
-                {folder.name} ({folderCounts.get(String(folder.id)) || 0})
-              </button>
-            ))}
-          </div>
-          <div className={cx("flex flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden lg:flex")}>
-            <button
+                <option value="all">All ({items.length})</option>
+                {categoryFolders.map((folder) => (
+                  <option key={`desktop-category-${folder.id}`} value={String(folder.id)}>
+                    {folder.name} ({folderCounts.get(String(folder.id)) || 0})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!canManageOcs ? <button
               type="button"
               onClick={() => applyChaseFilter("low")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Low stock ({chaseCounts.low})
-            </button>
-            <button
+            </button> : null}
+            {!canManageOcs ? <button
               type="button"
               onClick={() => applyChaseFilter("near")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Near expiry ({chaseCounts.near})
-            </button>
-            <button
+            </button> : null}
+            {!canManageOcs ? <button
               type="button"
               onClick={() => applyChaseFilter("missing")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showMissingExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Missing expiry ({chaseCounts.missing})
-            </button>
-            <button
+            </button> : null}
+            {!canManageOcs ? <button
               type="button"
               onClick={() => applyChaseFilter("expired")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showExpiredOnly ? "bg-rose-600 text-white" : "border border-rose-200 bg-white text-rose-700"}`}
             >
               Expired stock ({chaseCounts.expired})
-            </button>
+            </button> : null}
             {chaseCounts.reconciliation > 0 ? (
               <button
                 type="button"
@@ -4684,7 +4685,7 @@ export default function InventoryPage() {
               }}
               className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
             >
-              Export data-quality CSV
+              Data quality CSV
             </button>
             {isAdmin ? (
               <button
@@ -4704,6 +4705,18 @@ export default function InventoryPage() {
               <option value="qty_asc">Sort: Qty (Lowest)</option>
               <option value="qty_desc">Sort: Qty (Highest)</option>
             </select>
+            <span className="text-xs font-medium text-slate-500" aria-live="polite">
+              Showing {sortedItems.length} of {items.length}
+            </span>
+            {search || (selectedView && selectedView !== "all") || showLowStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? (
+              <button
+                type="button"
+                onClick={clearStockFilters}
+                className="min-h-11 rounded-xl px-2 text-xs font-semibold text-[#1f7f7b] hover:bg-teal-50"
+              >
+                Clear filters
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -4726,8 +4739,8 @@ export default function InventoryPage() {
                   <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500 lg:text-ocs-slate">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
+                      <th className="px-3 py-2 text-center align-middle">Available</th>
                       <th className="px-3 py-2 text-center align-middle">On hand</th>
-                      <th className="px-3 py-2 text-center align-middle">Minimum</th>
                       <th className="px-3 py-2 text-center align-middle">Nearest usable expiry</th>
                       <th className="sticky right-0 z-30 bg-slate-50 px-3 py-2 text-right align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
                         Actions
@@ -4739,6 +4752,7 @@ export default function InventoryPage() {
                       const isLow = isAtOrBelowPar(item);
                       const expanded = Boolean(expandedRows[item.id]);
                       const batches = batchMap[item.id] || [];
+                      const quantities = inventoryQuantityBreakdown(item);
                       return (
                         <Fragment key={item.id}>
                           <tr
@@ -4765,11 +4779,12 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <div className="flex flex-col items-center gap-0.5 text-left" title="On hand is physical stock. ATP excludes reserved, expired and quarantined units.">
-                                <InventoryQuantityLines item={item} showMinimum={false} firstAtp />
-                              </div>
+                              <strong className={cx("text-base tabular-nums", quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title="Available to promise: on-hand stock excluding reserved, expired and quarantined units">
+                                {quantities.atp}
+                              </strong>
+                              <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p>
                             </td>
-                            <td className="px-3 py-1.5 align-middle text-center tabular-nums">{item.minimum_quantity}</td>
+                            <td className="px-3 py-1.5 align-middle text-center font-semibold tabular-nums text-slate-900">{quantities.onHand}</td>
                             <td
                               className={cx(
                                 "truncate px-3 py-1.5 align-middle text-center",
@@ -4818,6 +4833,7 @@ export default function InventoryPage() {
                                     <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
+                                    <div className="mt-2"><InventoryQuantityLines item={item} firstAtp /></div>
                                   </div>
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>

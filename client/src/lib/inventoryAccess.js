@@ -39,7 +39,7 @@ export function canReviewStocktake(user) {
 }
 
 export function canEditCatalogue(user) {
-  return isAdminUser(user);
+  return isOperatorUser(user) || isAdminUser(user);
 }
 
 export function canArchiveCatalogueItem(user) {

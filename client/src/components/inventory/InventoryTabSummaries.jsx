@@ -40,6 +40,35 @@ function stockValueDisplay(stock, warehouseValue) {
   return { value: formatRupees(known), hint: undefined };
 }
 
+function StockAttentionButton({ label, compactLabel, accessibleLabel, value, tone = "slate", active = false, onClick }) {
+  const toneClass =
+    tone === "rose"
+      ? active
+        ? "border-rose-600 bg-rose-600 text-white"
+        : "border-rose-200 bg-rose-50 text-rose-800"
+      : tone === "amber"
+        ? active
+          ? "border-amber-600 bg-amber-600 text-white"
+          : "border-amber-200 bg-amber-50 text-amber-900"
+        : active
+          ? "border-ocs-teal bg-ocs-teal text-white"
+          : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return (
+    <button
+      type="button"
+      aria-label={`${accessibleLabel || label}: ${value}`}
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex min-h-11 min-w-0 flex-col items-center justify-center rounded-xl border px-1.5 py-1 text-center text-[10px] font-semibold leading-tight transition hover:border-ocs-teal/50 sm:flex-row sm:justify-between sm:px-3 sm:text-left sm:text-xs ${toneClass}`}
+    >
+      <span className="min-w-0 truncate sm:hidden">{compactLabel || label}</span>
+      <span className="hidden min-w-0 truncate sm:inline">{label}</span>
+      <strong className="shrink-0 text-sm leading-none tabular-nums">{value}</strong>
+    </button>
+  );
+}
+
 export default function InventoryTabSummaries({
   tab,
   summaries,
@@ -122,47 +151,32 @@ export default function InventoryTabSummaries({
   const isBag = stock.location_kind === "bag";
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-      <Card title={stock.value_title || (isBag ? "Bag value" : "Warehouse value")} value={valueDisplay.value} hint={valueDisplay.hint} />
-      <Card
-        title={stock.low_stock_title || (isBag ? "Bag low stock" : "Warehouse low stock")}
-        value={low}
-        tone="rose"
-        hint="Click to filter"
-        active={filters?.low}
-        onClick={() => onFilter?.("low")}
-      />
-      <Card
-        title={stock.near_expiry_title || (isBag ? "Bag near expiry" : "Warehouse near expiry")}
-        value={near}
-        tone="amber"
-        hint="Within 90 days"
-        active={filters?.near}
-        onClick={() => onFilter?.("near")}
-      />
-      <Card
-        title={stock.missing_expiry_title || (isBag ? "Bag missing expiry" : "Warehouse missing expiry")}
-        value={missing}
-        hint="Click to filter"
-        active={filters?.missing}
-        onClick={() => onFilter?.("missing")}
-      />
-      <Card
-        title={stock.expired_title || (isBag ? "Bag expired stock" : "Expired stock")}
-        value={expired}
-        tone="rose"
-        hint="Unusable until written off"
-        active={filters?.expired}
-        onClick={() => onFilter?.("expired")}
-      />
-      {isBag ? (
-        <Card
-          title={stock.reconciliation_title || "Bag reconciliation warnings"}
-          value={reconciliation}
-          tone="amber"
-          hint={reconciliation ? "Click to open queues" : "No unlinked requests"}
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-2 sm:p-3 md:p-4">
+      <div className="flex items-stretch gap-2 sm:flex-col sm:gap-3 xl:flex-row xl:items-center">
+        <div className="hidden min-w-0 shrink-0 sm:flex sm:w-auto sm:flex-row sm:items-baseline sm:justify-between sm:gap-3 xl:w-64 xl:flex-col xl:items-start xl:gap-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {stock.value_title || (isBag ? "Bag value" : "Stock value")}
+          </p>
+          <div className="min-w-0 sm:text-right xl:text-left">
+            <p className="truncate text-sm font-semibold text-slate-950 sm:text-base md:text-lg">{valueDisplay.value}</p>
+            {valueDisplay.hint ? <p className="hidden truncate text-[11px] text-slate-400 sm:block">{valueDisplay.hint}</p> : null}
+          </div>
+        </div>
+        <div className="grid min-w-0 flex-1 grid-cols-4 gap-1.5 sm:gap-2">
+          <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone="rose" active={filters?.low} onClick={() => onFilter?.("low")} />
+          <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone="amber" active={filters?.near} onClick={() => onFilter?.("near")} />
+          <StockAttentionButton label="Missing expiry" compactLabel="Miss." value={missing} active={filters?.missing} onClick={() => onFilter?.("missing")} />
+          <StockAttentionButton label="Expired" compactLabel="Exp." value={expired} tone="rose" active={filters?.expired} onClick={() => onFilter?.("expired")} />
+        </div>
+      </div>
+      {isBag && reconciliation > 0 ? (
+        <button
+          type="button"
           onClick={() => onFilter?.("reconciliation")}
-        />
+          className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 text-left text-xs font-semibold text-amber-900"
+        >
+          {stock.reconciliation_title || "Bag reconciliation warnings"}: {reconciliation}
+        </button>
       ) : null}
     </div>
   );

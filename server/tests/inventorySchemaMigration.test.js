@@ -47,3 +47,55 @@ test("previously upgraded inventory databases keep release columns when migratio
   assert.ok(items.includes("recounted_by_user_id"));
   assert.ok(items.includes("recounted_at"));
 });
+
+test("staging migration recovers from a leftover temporary table", () => {
+  const folderId = db.prepare("SELECT id FROM inventory_folders ORDER BY id LIMIT 1").get().id;
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("DROP TABLE IF EXISTS inventory_staging_migrated");
+  db.exec("DROP TABLE inventory_staging");
+  db.exec(`
+    CREATE TABLE inventory_staging (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folder_id INTEGER NOT NULL,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      minimum_quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'unit',
+      cost_price REAL NOT NULL DEFAULT 0,
+      selling_price REAL NOT NULL DEFAULT 0,
+      attributes TEXT NOT NULL DEFAULT '',
+      moa_notes TEXT NOT NULL DEFAULT '',
+      expiry_date TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled')),
+      created_by_user_id INTEGER,
+      released_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      released_at TEXT
+    );
+    CREATE TABLE inventory_staging_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folder_id INTEGER NOT NULL,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending'
+    );
+  `);
+  db.prepare("INSERT INTO inventory_staging (folder_id, item_name, quantity) VALUES (?, ?, ?)")
+    .run(folderId, "Migration recovery item", 7);
+  db.exec("PRAGMA foreign_keys = ON");
+
+  ensureInventoryOperationsSchema();
+
+  const ddl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inventory_staging'").get().sql;
+  const columns = db.prepare("PRAGMA table_info(inventory_staging)").all().map((row) => row.name);
+  const preserved = db.prepare("SELECT item_name, quantity FROM inventory_staging WHERE item_name = ?").get("Migration recovery item");
+  assert.match(ddl, /'excluded'/);
+  assert.ok(columns.includes("release_transaction_id"));
+  assert.ok(columns.includes("released_inventory_id"));
+  assert.ok(columns.includes("released_batch_id"));
+  assert.deepEqual(preserved, { item_name: "Migration recovery item", quantity: 7 });
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'inventory_staging_migrated'").get().count,
+    0,
+  );
+});

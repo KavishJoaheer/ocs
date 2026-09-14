@@ -2434,48 +2434,81 @@ function migrateStocktakeRecountStatus() {
 }
 
 function migrateStagingExcludedStatus() {
-  if (!tableExists("inventory_staging")) return;
+  const migratedTable = "inventory_staging_migrated";
+  const stagingExists = tableExists("inventory_staging");
+  const migratedExists = tableExists(migratedTable);
+
+  // Recover if a previous run stopped after dropping the source table but before
+  // renaming the migrated copy. When the source still exists it remains the
+  // authoritative copy and the temporary table can be recreated safely below.
+  if (!stagingExists && migratedExists) {
+    db.exec(`ALTER TABLE ${migratedTable} RENAME TO inventory_staging`);
+    const recoveredColumns = db.prepare("PRAGMA table_info(inventory_staging)").all().map((column) => column.name);
+    if (!recoveredColumns.includes("release_transaction_id")) {
+      db.exec("ALTER TABLE inventory_staging ADD COLUMN release_transaction_id TEXT");
+    }
+    if (!recoveredColumns.includes("released_inventory_id")) {
+      db.exec("ALTER TABLE inventory_staging ADD COLUMN released_inventory_id INTEGER");
+    }
+    if (!recoveredColumns.includes("released_batch_id")) {
+      db.exec("ALTER TABLE inventory_staging ADD COLUMN released_batch_id INTEGER");
+    }
+    db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_status ON inventory_staging(status)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_shipment ON inventory_staging(shipment_id, status)");
+    return;
+  }
+  if (!stagingExists) return;
   const ddl =
     db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inventory_staging'`).get()?.sql || "";
-  if (ddl.includes("'excluded'")) return;
+  if (ddl.includes("'excluded'")) {
+    if (migratedExists) db.exec(`DROP TABLE ${migratedTable}`);
+    return;
+  }
 
   const columns = db.prepare("PRAGMA table_info(inventory_staging)").all().map((column) => column.name);
   const columnList = columns.map((name) => `"${name}"`).join(", ");
   db.exec("PRAGMA foreign_keys = OFF");
-  db.exec(`
-    CREATE TABLE inventory_staging_migrated (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      folder_id INTEGER NOT NULL,
-      item_name TEXT NOT NULL,
-      quantity INTEGER NOT NULL DEFAULT 0,
-      minimum_quantity INTEGER NOT NULL DEFAULT 0,
-      unit TEXT NOT NULL DEFAULT 'unit',
-      cost_price REAL NOT NULL DEFAULT 0,
-      selling_price REAL NOT NULL DEFAULT 0,
-      attributes TEXT NOT NULL DEFAULT '',
-      moa_notes TEXT NOT NULL DEFAULT '',
-      expiry_date TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled', 'excluded')),
-      created_by_user_id INTEGER,
-      released_by_user_id INTEGER,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      released_at TEXT,
-      shipment_id INTEGER,
-      exclude_reason TEXT NOT NULL DEFAULT '',
-      is_non_expiring INTEGER NOT NULL DEFAULT 0,
-      excluded_by_user_id INTEGER,
-      excluded_at TEXT,
-      FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE RESTRICT
+  try {
+    db.exec(`DROP TABLE IF EXISTS ${migratedTable}`);
+    db.exec(`
+      CREATE TABLE ${migratedTable} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folder_id INTEGER NOT NULL,
+        item_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        minimum_quantity INTEGER NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL DEFAULT 'unit',
+        cost_price REAL NOT NULL DEFAULT 0,
+        selling_price REAL NOT NULL DEFAULT 0,
+        attributes TEXT NOT NULL DEFAULT '',
+        moa_notes TEXT NOT NULL DEFAULT '',
+        expiry_date TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'released', 'cancelled', 'excluded')),
+        created_by_user_id INTEGER,
+        released_by_user_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        released_at TEXT,
+        shipment_id INTEGER,
+        exclude_reason TEXT NOT NULL DEFAULT '',
+        is_non_expiring INTEGER NOT NULL DEFAULT 0,
+        excluded_by_user_id INTEGER,
+        excluded_at TEXT,
+        release_transaction_id TEXT,
+        released_inventory_id INTEGER,
+        released_batch_id INTEGER,
+        FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE RESTRICT
+      );
+    `);
+    db.exec(
+      `INSERT INTO ${migratedTable} (${columnList}) SELECT ${columnList} FROM inventory_staging`,
     );
-  `);
-  db.exec(
-    `INSERT INTO inventory_staging_migrated (${columnList}) SELECT ${columnList} FROM inventory_staging`,
-  );
-  db.exec("DROP TABLE inventory_staging");
-  db.exec("ALTER TABLE inventory_staging_migrated RENAME TO inventory_staging");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_status ON inventory_staging(status)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_shipment ON inventory_staging(shipment_id, status)");
-  db.exec("PRAGMA foreign_keys = ON");
+    db.exec("DROP TABLE inventory_staging");
+    db.exec(`ALTER TABLE ${migratedTable} RENAME TO inventory_staging`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_status ON inventory_staging(status)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_staging_shipment ON inventory_staging(shipment_id, status)");
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
 }
 
 function ensureInventoryOperationsSchema() {
