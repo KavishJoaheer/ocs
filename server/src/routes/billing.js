@@ -333,9 +333,10 @@ function validateOperatorInvoice(items, status) {
 
   for (const item of items) {
     if (isConsultationFee(item)) {
-      const expected = tariffs.get(String(item.description || "").trim());
-      if (expected === undefined || roundCurrency(item.amount) !== expected || Number(item.quantity) !== 1) {
-        return "Operators must use the current Day, Night, or Review consultation tariff without changing its price.";
+      const knownType = tariffs.has(String(item.description || "").trim());
+      const amount = Number(item.amount);
+      if (!knownType || Number(item.quantity) !== 1 || !Number.isFinite(amount) || amount < 0 || amount > 100000) {
+        return "Operators must select Day, Night, or Review Consultation and enter a price between Rs 0 and Rs 100,000.";
       }
       continue;
     }
@@ -1261,6 +1262,16 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
     return res.status(400).json({ error: "A unique submission reference is required." });
   }
 
+  const hasRequestedFee = Boolean(req.body?.consultation_fee && typeof req.body.consultation_fee === "object");
+  const requestedFeeType = String(req.body?.consultation_fee?.type || "").trim();
+  const requestedFeeAmount = Number(req.body?.consultation_fee?.amount);
+  if (hasRequestedFee && !Object.prototype.hasOwnProperty.call(CONSULTATION_FEES, requestedFeeType)) {
+    return res.status(400).json({ error: "Select Day, Night, or Review Consultation." });
+  }
+  if (hasRequestedFee && (!Number.isFinite(requestedFeeAmount) || requestedFeeAmount < 0 || requestedFeeAmount > 100000)) {
+    return res.status(400).json({ error: "Enter a consultation price between Rs 0 and Rs 100,000." });
+  }
+
   const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
   if (rawItems.length > 40) {
     return res.status(400).json({ error: "A quick billing submission can contain up to 40 different supplies." });
@@ -1315,6 +1326,38 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         throw Object.assign(new Error("This visit no longer has an unpaid bill that can receive supplies."), { status: 409 });
       }
       const bill = parseBillingRow(billRow);
+      if (hasRequestedFee && bill.legacy_fee_review_required) {
+        throw Object.assign(new Error("An admin must verify this historical consultation fee before it can be changed."), { status: 409 });
+      }
+      const existingFeeIndexes = (bill.items || [])
+        .map((item, index) => (isConsultationFee(item) ? index : -1))
+        .filter((index) => index >= 0);
+      if (existingFeeIndexes.length !== 1) {
+        throw Object.assign(new Error("This visit needs one valid consultation fee before quick billing can continue."), { status: 409 });
+      }
+      const feeIndex = existingFeeIndexes[0];
+      const previousFee = bill.items[feeIndex];
+      const consultationFeeType = hasRequestedFee ? requestedFeeType : String(previousFee.description || "");
+      const consultationFeeAmount = hasRequestedFee
+        ? roundCurrency(requestedFeeAmount)
+        : roundCurrency(previousFee.amount);
+      const feeChanged =
+        String(previousFee.description || "") !== consultationFeeType ||
+        roundCurrency(previousFee.amount) !== consultationFeeAmount;
+      const feeConfirmed = hasRequestedFee && Boolean(bill.fee_review_required);
+      const baseItems = (bill.items || []).map((item, index) =>
+        index === feeIndex
+          ? {
+              ...item,
+              description: consultationFeeType,
+              amount: consultationFeeAmount,
+              type: "Sale",
+              quantity: 1,
+              inventory_item_id: null,
+              is_consultation_fee: true,
+            }
+          : item,
+      );
 
       const requestedIds = [...mergedQuantities.keys()];
       let chargeLines = [];
@@ -1357,8 +1400,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       touchedItemIds = applied.touchedItemIds;
       const addedItems = normalizeBillingItems(applied.items);
 
-      if (addedItems.length) {
-        const nextItems = normalizeBillingItems([...(bill.items || []), ...addedItems]);
+      if (addedItems.length || feeChanged || feeConfirmed) {
+        const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);
         const updated = db
           .prepare(`
             UPDATE billing
@@ -1366,7 +1409,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
                 total_amount = ?,
                 updated_at = CURRENT_TIMESTAMP,
                 updated_by_user_id = ?,
-                change_reason = 'Supplies captured in quick billing'
+                change_reason = ?,
+                fee_review_required = CASE WHEN ? = 1 THEN 0 ELSE fee_review_required END
             WHERE id = ?
               AND row_version = ?
               AND status = 'unpaid'
@@ -1376,6 +1420,14 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             JSON.stringify(nextItems),
             calculateBillingTotal(nextItems),
             req.auth.id,
+            feeChanged && addedItems.length
+              ? "Consultation fee adjusted and supplies captured in quick billing"
+              : feeChanged
+                ? "Consultation fee adjusted in quick billing"
+                : feeConfirmed
+                  ? "Consultation fee confirmed in quick billing"
+                  : "Supplies captured in quick billing",
+            feeConfirmed ? 1 : 0,
             bill.id,
             bill.row_version,
           );
@@ -1415,6 +1467,14 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         details: {
           item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           amount_added: amountAdded,
+          consultation_fee: {
+            previous_type: String(previousFee.description || ""),
+            previous_amount: roundCurrency(previousFee.amount),
+            type: consultationFeeType,
+            amount: consultationFeeAmount,
+            changed: feeChanged,
+            confirmed: feeConfirmed,
+          },
         },
       });
 
@@ -1423,6 +1483,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         bill_id: Number(bill.id),
         amount_added: amountAdded,
         item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+        consultation_fee: { type: consultationFeeType, amount: consultationFeeAmount, changed: feeChanged },
       };
       operation.save(result);
     }).immediate();

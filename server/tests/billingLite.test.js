@@ -165,15 +165,25 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   const operationId = randomUUID();
   const body = {
     operation_id: operationId,
+    consultation_fee: { type: "Review Consultation", amount: 1750 },
     items: [{ inventory_item_id: itemId, quantity: 2 }],
   };
   const captured = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, body);
   assert.equal(captured.status, 201, JSON.stringify(captured.data));
   assert.equal(captured.data.submission.item_count, 2);
   assert.equal(captured.data.submission.amount_added, 150);
-  assert.equal(captured.data.visit.bill_total, 3150);
+  assert.equal(captured.data.submission.consultation_fee.type, "Review Consultation");
+  assert.equal(captured.data.submission.consultation_fee.amount, 1750);
+  assert.equal(captured.data.submission.consultation_fee.changed, true);
+  assert.equal(captured.data.visit.consultation_fee.type, "Review Consultation");
+  assert.equal(captured.data.visit.consultation_fee.amount, 1750);
+  assert.equal(captured.data.visit.bill_total, 1900);
   assert.equal(captured.data.visit.submission_status, "awaiting_operator");
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
+  const billEvent = db.prepare("SELECT reason FROM billing_events WHERE bill_id = ? ORDER BY id DESC LIMIT 1").get(captured.data.submission.bill_id);
+  assert.match(billEvent.reason, /Consultation fee adjusted/);
+  const quickEvent = db.prepare("SELECT details_json FROM billing_quick_events WHERE submission_id = ? AND event_type = 'submitted'").get(captured.data.submission.submission_id);
+  assert.equal(JSON.parse(quickEvent.details_json).consultation_fee.amount, 1750);
 
   const retried = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, body);
   assert.equal(retried.status, 201, JSON.stringify(retried.data));
@@ -258,7 +268,7 @@ test("incorrect quick-billing supplies reverse stock and bill lines with an immu
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
 
   const bill = db.prepare("SELECT total_amount FROM billing WHERE id = ?").get(submission.billing_id);
-  assert.equal(bill.total_amount, 3000);
+  assert.equal(bill.total_amount, 1750);
   const audit = db.prepare("SELECT * FROM billing_quick_events WHERE submission_id = ? AND event_type = 'supplies_reversed'").get(submission.id);
   assert.ok(audit);
   assert.equal(audit.reason, "Saline was entered twice");

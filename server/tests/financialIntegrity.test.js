@@ -81,12 +81,12 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   const issued=await api('POST','/billing','operator',{
     consultation_id:ctx.consultationId,
     patient_id:ctx.patientId,
-    items:[standardFee(),stockLine(it,1)],
+    items:[standardFee('Day Consultation',2250),stockLine(it,1)],
     status:'unpaid',
     source_reference:'OCS pad #0142',
   });
   assert.equal(issued.status,201,JSON.stringify(issued.data));
-  assert.equal(issued.data.status,'unpaid'); assert.equal(row(it.id).quantity,19);
+  assert.equal(issued.data.status,'unpaid'); assert.equal(issued.data.total_amount,2275); assert.equal(row(it.id).quantity,19);
   assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(issued.data.updated_by_user_id).role,'operator');
   assert.ok((await api('GET','/billing','operator')).data.some(b=>b.id===issued.data.id));
   assert.equal(db.prepare("SELECT reason FROM billing_events WHERE bill_id=? AND event_type='created'").get(issued.data.id).reason,'Paper invoice: OCS pad #0142');

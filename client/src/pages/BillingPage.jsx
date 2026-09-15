@@ -1792,17 +1792,16 @@ function CreateBillingModal({
                 type="number"
                 min="0"
                 step="0.01"
-                readOnly={operatorIssueOnly || !consultationPriceEditable}
+                readOnly={!consultationPriceEditable}
                 value={consultationPrice}
                 onChange={(event) => setConsultationPrice(event.target.value)}
                 placeholder="0.00"
                 className={cx(
                   BILLING_FIELD,
                   "min-h-12 pr-12 md:min-h-0",
-                  (operatorIssueOnly || !consultationPriceEditable) && "cursor-default bg-slate-100/90",
+                  !consultationPriceEditable && "cursor-default bg-slate-100/90",
                 )}
               />
-              {!operatorIssueOnly ? (
               <button
                 type="button"
                 aria-label={consultationPriceEditable ? "Lock consultation price" : "Edit consultation price"}
@@ -1811,7 +1810,6 @@ function CreateBillingModal({
               >
                 <Pencil className="size-4" />
               </button>
-              ) : null}
             </div>
           </label>
         </div>

@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Clock3,
   Home,
   LoaderCircle,
   Minus,
@@ -18,7 +17,6 @@ import {
   Send,
   ShoppingBasket,
   Star,
-  Stethoscope,
   UserRound,
 } from "lucide-react";
 import dayjs from "dayjs";
@@ -142,6 +140,9 @@ function BillingLitePage({ onOpenHistory }) {
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPickerVisitId, setSelectedPickerVisitId] = useState("");
+  const [consultationFees, setConsultationFees] = useState({});
+  const [consultationType, setConsultationType] = useState("Day Consultation");
+  const [consultationPrice, setConsultationPrice] = useState("2000");
   const [isLoading, setIsLoading] = useState(true);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -171,12 +172,14 @@ function BillingLitePage({ onOpenHistory }) {
   async function loadDashboard({ silent = false } = {}) {
     if (!silent) setIsLoading(true);
     try {
-      const [submissionPayload, pickerPayload] = await Promise.all([
+      const [submissionPayload, pickerPayload, feePayload] = await Promise.all([
         api.get("/billing/quick/submissions"),
         api.get("/billing/quick/picker-options"),
+        api.get("/billing/consultation-fees"),
       ]);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
+      setConsultationFees(feePayload || {});
     } catch (error) {
       toast.error(error.message || "Quick billing could not be loaded.");
     } finally {
@@ -273,7 +276,7 @@ function BillingLitePage({ onOpenHistory }) {
     (sum, item) => sum + Number(item.selling_price || 0) * item.quantity,
     0,
   );
-  const consultationTotal = Number(selectedVisit?.consultation_fee?.amount || 0);
+  const consultationTotal = Number(consultationPrice || 0);
   const grandTotal = consultationTotal + supplyTotal;
   const selectedUnitCount = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -283,6 +286,10 @@ function BillingLitePage({ onOpenHistory }) {
       return;
     }
     setSelectedVisit(visit);
+    const nextType = visit.consultation_fee?.type || "Day Consultation";
+    const nextAmount = Number(visit.consultation_fee?.amount ?? consultationFees[nextType] ?? 0);
+    setConsultationType(nextType);
+    setConsultationPrice(String(nextAmount));
     setCart({});
     setCatalog([]);
     setCatalogSearch("");
@@ -298,6 +305,15 @@ function BillingLitePage({ onOpenHistory }) {
 
   async function openCatalog() {
     if (!selectedVisit) return;
+    const amount = Number(consultationPrice);
+    if (!Object.hasOwn(consultationFees, consultationType)) {
+      toast.error("Select a valid consultation type.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0 || amount > 100000) {
+      toast.error("Enter a consultation price between Rs 0 and Rs 100,000.");
+      return;
+    }
     setIsCatalogLoading(true);
     try {
       const payload = await api.get(`/billing/quick/catalog/${selectedVisit.consultation_id}`);
@@ -361,6 +377,10 @@ function BillingLitePage({ onOpenHistory }) {
     const endpoint = `/billing/quick/visits/${selectedVisit.consultation_id}/capture`;
     const submissionPayload = {
       operation_id: crypto.randomUUID(),
+      consultation_fee: {
+        type: consultationType,
+        amount: Number(consultationPrice),
+      },
       items: selectedItems.map((item) => ({
         inventory_item_id: item.id,
         quantity: item.quantity,
@@ -674,31 +694,55 @@ function BillingLitePage({ onOpenHistory }) {
             >
               <ArrowLeft className="size-5" /> Back
             </button>
-            <div className="overflow-hidden rounded-[2.25rem] border border-white/70 bg-white shadow-[0_24px_65px_rgba(23,77,80,0.18)]">
-              <div className="bg-[#dff5f1] px-6 py-7 text-center">
-                <span className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-[#17666a] text-white shadow-lg">
-                  <Stethoscope className="size-8" />
-                </span>
-                <p className="mt-5 text-sm font-black uppercase tracking-[0.16em] text-[#26787a]">Confirm visit</p>
-                <h1 className="mt-2 text-3xl font-black text-[#173f47]">{selectedVisit.patient_identifier}</h1>
-                <p className="mt-2 text-2xl font-black text-[#173f47]">{selectedVisit.patient_masked_name}</p>
+            <div className="rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_24px_65px_rgba(23,77,80,0.18)] md:p-7">
+              <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-[#248f91]">{selectedVisit.patient_identifier}</p>
+                  <h1 className="mt-1 truncate text-2xl font-black text-[#173f47]">{selectedVisit.patient_masked_name}</h1>
+                </div>
+                <div className="shrink-0 text-left sm:text-right">
+                  <p className="font-black text-[#173f47]">{formatVisitDate(selectedVisit.visit_date)}, {formatVisitTime(selectedVisit.visit_time)}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-500">{selectedVisit.visit_number}</p>
+                </div>
               </div>
-              <div className="space-y-4 px-6 py-7">
-                <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-5 py-4">
-                  <span className="flex items-center gap-3 font-bold text-slate-600"><Clock3 className="size-5 text-[#248f91]" /> Open visit</span>
-                  <span className="text-right font-black">{formatVisitDate(selectedVisit.visit_date)}, {formatVisitTime(selectedVisit.visit_time)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-5 py-4">
-                  <span className="font-bold text-slate-600">Visit number</span>
-                  <span className="font-black">{selectedVisit.visit_number}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#fff8df] px-5 py-4">
-                  <span>
-                    <span className="block font-black text-[#173f47]">{selectedVisit.consultation_fee?.type || "Consultation fee"}</span>
-                    <span className="block text-sm font-semibold text-slate-500">Locked from OCS VP</span>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-black text-slate-700">Consultation type</span>
+                  <select
+                    value={consultationType}
+                    onChange={(event) => {
+                      const nextType = event.target.value;
+                      setConsultationType(nextType);
+                      setConsultationPrice(String(consultationFees[nextType] ?? 0));
+                    }}
+                    className="mt-2 min-h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 font-black text-[#173f47] outline-none transition focus:border-[#2aa7a0] focus:bg-white"
+                  >
+                    {Object.keys(consultationFees).map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-black text-slate-700">Price</span>
+                  <span className="relative mt-2 block">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-500">Rs</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      max="100000"
+                      step="0.01"
+                      value={consultationPrice}
+                      onChange={(event) => setConsultationPrice(event.target.value)}
+                      className="min-h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 pl-12 pr-4 text-lg font-black text-[#173f47] outline-none transition focus:border-[#2aa7a0] focus:bg-white"
+                    />
                   </span>
-                  <span className="text-xl font-black">{formatRupees(selectedVisit.consultation_fee?.amount)}</span>
-                </div>
+                </label>
+              </div>
+
+              <p className="mt-3 text-sm font-semibold text-slate-500">Any change from the current fee is saved in the bill audit history.</p>
                 <button
                   type="button"
                   onClick={openCatalog}
@@ -708,7 +752,6 @@ function BillingLitePage({ onOpenHistory }) {
                   {isCatalogLoading ? <LoaderCircle className="size-6 animate-spin" /> : <ChevronRight className="size-6" />}
                   Continue to supplies
                 </button>
-              </div>
             </div>
           </section>
         ) : null}
@@ -890,8 +933,8 @@ function BillingLitePage({ onOpenHistory }) {
               <div className="p-6">
                 <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-5">
                   <div>
-                    <p className="text-lg font-black">{selectedVisit.consultation_fee?.type || "Consultation fee"}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">Set and locked in OCS VP</p>
+                    <p className="text-lg font-black">{consultationType}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">Confirmed for this bill</p>
                   </div>
                   <p className="text-lg font-black">{formatRupees(consultationTotal)}</p>
                 </div>
