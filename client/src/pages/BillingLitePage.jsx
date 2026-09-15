@@ -131,8 +131,9 @@ function BillingLitePage({ onOpenHistory }) {
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [cart, setCart] = useState({});
-  const [category, setCategory] = useState("Favourites");
+  const [category, setCategory] = useState("All supplies");
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [showUnavailable, setShowUnavailable] = useState(false);
   const [lookup, setLookup] = useState("");
   const [lookupResults, setLookupResults] = useState([]);
   const [patientOptions, setPatientOptions] = useState([]);
@@ -225,7 +226,7 @@ function BillingLitePage({ onOpenHistory }) {
     return ["Favourites", "All supplies", ...[...names].sort((a, b) => a.localeCompare(b))];
   }, [catalog]);
 
-  const visibleCatalog = useMemo(() => {
+  const matchingCatalog = useMemo(() => {
     const needle = catalogSearch.trim().toLowerCase();
     return catalog.filter((item) => {
       const inCategory =
@@ -242,6 +243,20 @@ function BillingLitePage({ onOpenHistory }) {
       return inCategory && matchesSearch;
     });
   }, [catalog, catalogSearch, category, favorites]);
+
+  const visibleCatalog = useMemo(() => {
+    return matchingCatalog
+      .filter((item) => showUnavailable || Number(item.available_to_use || 0) > 0)
+      .sort((a, b) => {
+        const availabilityDifference = Number(Number(b.available_to_use || 0) > 0) - Number(Number(a.available_to_use || 0) > 0);
+        return availabilityDifference || a.item_name.localeCompare(b.item_name);
+      });
+  }, [matchingCatalog, showUnavailable]);
+
+  const unavailableCount = useMemo(
+    () => matchingCatalog.filter((item) => Number(item.available_to_use || 0) < 1).length,
+    [matchingCatalog],
+  );
 
   const selectedItems = useMemo(
     () =>
@@ -293,6 +308,7 @@ function BillingLitePage({ onOpenHistory }) {
     setCart({});
     setCatalog([]);
     setCatalogSearch("");
+    setShowUnavailable(false);
     setView("confirm");
   }
 
@@ -774,7 +790,7 @@ function BillingLitePage({ onOpenHistory }) {
               <button
                 type="button"
                 onClick={() => setView("review")}
-                className="relative flex min-h-12 items-center gap-2 rounded-2xl bg-[#f2b52b] px-4 font-black text-[#173f47] transition active:scale-95"
+                className="relative hidden min-h-12 items-center gap-2 rounded-2xl bg-[#f2b52b] px-4 font-black text-[#173f47] transition active:scale-95 md:flex"
               >
                 <ShoppingBasket className="size-5" />
                 Review
@@ -784,27 +800,44 @@ function BillingLitePage({ onOpenHistory }) {
               </button>
             </div>
 
-            <div className="sticky top-20 z-20 rounded-[1.75rem] border border-white/70 bg-white/95 p-4 shadow-[0_15px_45px_rgba(23,77,80,0.12)] backdrop-blur-xl">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={catalogSearch}
-                  onChange={(event) => {
-                    setCatalogSearch(event.target.value);
-                    if (event.target.value) setCategory("All supplies");
-                  }}
-                  placeholder="Search medicines and supplies"
-                  className="min-h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-bold outline-none transition focus:border-[#2aa7a0] focus:bg-white"
-                />
+            <div className="sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={catalogSearch}
+                    onChange={(event) => {
+                      setCatalogSearch(event.target.value);
+                      if (event.target.value) setCategory("All supplies");
+                    }}
+                    placeholder="Search supplies"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-bold outline-none transition focus:border-[#2aa7a0] focus:bg-white"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 lg:shrink-0">
+                  <span className="text-sm font-bold text-slate-500">{visibleCatalog.length} shown</span>
+                  {unavailableCount ? (
+                    <button
+                      type="button"
+                      aria-pressed={showUnavailable}
+                      onClick={() => setShowUnavailable((current) => !current)}
+                      className={`min-h-11 rounded-xl px-4 text-sm font-black transition ${
+                        showUnavailable ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {showUnavailable ? "Hide out of stock" : `Show out of stock (${unavailableCount})`}
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <div className="ocs-h-scroll mt-3 pb-1">
+              <div className="ocs-h-scroll mt-3 border-t border-slate-100 pt-3">
                 {categories.map((name) => (
                   <button
                     key={name}
                     type="button"
                     onClick={() => setCategory(name)}
-                    className={`min-h-11 shrink-0 rounded-full px-4 text-sm font-black transition ${
-                      category === name ? "bg-[#17666a] text-white" : "bg-[#edf6f5] text-[#315e64]"
+                    className={`min-h-10 shrink-0 rounded-full px-4 text-sm font-black transition ${
+                      category === name ? "bg-[#17666a] text-white shadow-sm" : "bg-[#edf6f5] text-[#315e64]"
                     }`}
                   >
                     {name === "Favourites" ? "★ Favourites" : name}
@@ -814,7 +847,7 @@ function BillingLitePage({ onOpenHistory }) {
             </div>
 
             {visibleCatalog.length ? (
-              <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {visibleCatalog.map((item) => {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
@@ -823,14 +856,14 @@ function BillingLitePage({ onOpenHistory }) {
                   return (
                     <article
                       key={item.id}
-                      className={`relative flex min-h-52 flex-col overflow-hidden rounded-[1.6rem] border bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.08)] ${
+                      className={`relative flex min-h-44 flex-col rounded-2xl border p-4 transition ${
                         quantity > 0 ? "border-[#2aa7a0] ring-2 ring-[#2aa7a0]/20" : "border-slate-200/80"
-                      } ${isUnavailable ? "opacity-55" : ""}`}
+                      } ${isUnavailable ? "bg-slate-50" : "bg-white shadow-[0_8px_24px_rgba(23,77,80,0.07)]"}`}
                     >
                       <button
                         type="button"
                         onClick={() => toggleFavorite(item.id)}
-                        className={`absolute right-3 top-3 flex size-10 items-center justify-center rounded-xl transition active:scale-90 ${
+                        className={`absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl transition active:scale-90 ${
                           isFavorite ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-400"
                         }`}
                         aria-label={isFavorite ? `Remove ${item.item_name} from favourites` : `Add ${item.item_name} to favourites`}
@@ -839,43 +872,44 @@ function BillingLitePage({ onOpenHistory }) {
                       </button>
                       <div className="pr-10">
                         <p className="line-clamp-2 text-base font-black leading-6 text-[#173f47]">{item.item_name}</p>
-                        <p className="mt-1 line-clamp-1 text-sm font-bold text-slate-400">{item.subcategory || item.category}</p>
+                        <p className="mt-1 line-clamp-1 text-sm font-semibold text-slate-400">{item.subcategory || item.category}</p>
                       </div>
-                      <div className="mt-auto pt-4">
-                        <p className="text-lg font-black text-[#17666a]">{formatRupees(item.selling_price)}</p>
-                        <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                          {isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"} available`}
-                        </p>
+                      <div className="mt-auto flex items-end justify-between gap-3 pt-5">
+                        <div className="min-w-0">
+                          <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{formatRupees(item.selling_price)}</p>
+                          <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
+                            {isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
+                          </p>
+                        </div>
                         {quantity > 0 ? (
-                          <div className="mt-3 flex items-center justify-between rounded-2xl bg-[#e6f7f4] p-1.5">
+                          <div className="flex shrink-0 items-center rounded-xl bg-[#e6f7f4] p-1">
                             <button
                               type="button"
                               onClick={() => changeQuantity(item, -1)}
-                              className="flex size-11 items-center justify-center rounded-xl bg-white text-[#17666a] shadow-sm active:scale-90"
+                              className="flex size-10 items-center justify-center rounded-lg bg-white text-[#17666a] shadow-sm active:scale-90"
                               aria-label={`Remove one ${item.item_name}`}
                             >
                               <Minus className="size-5" />
                             </button>
-                            <span className="text-xl font-black tabular-nums">{quantity}</span>
+                            <span className="min-w-9 text-center text-lg font-black tabular-nums">{quantity}</span>
                             <button
                               type="button"
                               onClick={() => changeQuantity(item, 1)}
-                              className="flex size-11 items-center justify-center rounded-xl bg-[#17666a] text-white active:scale-90"
+                              className="flex size-10 items-center justify-center rounded-lg bg-[#17666a] text-white active:scale-90"
                               aria-label={`Add another ${item.item_name}`}
                             >
                               <Plus className="size-5" />
                             </button>
                           </div>
-                        ) : (
+                        ) : !isUnavailable ? (
                           <button
                             type="button"
-                            disabled={isUnavailable}
                             onClick={() => changeQuantity(item, 1)}
-                            className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#17666a] font-black text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#17666a] px-4 font-black text-white transition active:scale-95"
                           >
                             <Plus className="size-5" /> Add
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </article>
                   );
@@ -885,16 +919,22 @@ function BillingLitePage({ onOpenHistory }) {
               <div className="mt-5">
                 <EmptyState
                   icon={PackageOpen}
-                  title={category === "Favourites" ? "No favourite supplies yet" : "No supplies found"}
+                  title={category === "Favourites" ? "No favourite supplies yet" : showUnavailable ? "No supplies found" : "No available supplies found"}
                   description={
                     category === "Favourites"
                       ? "Open All supplies and tap the star on frequently used items."
-                      : "Try another category or search term."
+                      : showUnavailable
+                        ? "Try another category or search term."
+                        : "Try another category, change your search, or show out-of-stock supplies."
                   }
                   action={
                     category === "Favourites" ? (
                       <button type="button" onClick={() => setCategory("All supplies")} className="rounded-2xl bg-[#17666a] px-6 py-3 font-black text-white">
                         Browse all supplies
+                      </button>
+                    ) : !showUnavailable && unavailableCount ? (
+                      <button type="button" onClick={() => setShowUnavailable(true)} className="rounded-2xl bg-[#17666a] px-6 py-3 font-black text-white">
+                        Show out-of-stock supplies
                       </button>
                     ) : null
                   }
@@ -905,10 +945,10 @@ function BillingLitePage({ onOpenHistory }) {
             <button
               type="button"
               onClick={() => setView("review")}
-              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-16 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-[1.4rem] bg-[#f2b52b] px-6 text-[#173f47] shadow-[0_20px_50px_rgba(23,63,71,0.3)] transition active:scale-[0.98]"
+              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-16 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-[1.4rem] bg-[#f2b52b] px-6 text-[#173f47] shadow-[0_20px_50px_rgba(23,63,71,0.3)] transition active:scale-[0.98] md:hidden"
             >
               <span className="text-left">
-                <span className="block text-sm font-bold">{selectedUnitCount ? `${selectedUnitCount} supply unit${selectedUnitCount === 1 ? "" : "s"}` : "No supplies selected"}</span>
+                <span className="block text-sm font-bold">{selectedUnitCount ? `${selectedUnitCount} supply unit${selectedUnitCount === 1 ? "" : "s"}` : "Consultation only"}</span>
                 <span className="block text-lg font-black">{formatRupees(grandTotal)}</span>
               </span>
               <span className="flex items-center gap-2 text-base font-black">Review <ChevronRight className="size-5" /></span>
