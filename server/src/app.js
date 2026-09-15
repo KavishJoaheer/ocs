@@ -53,6 +53,10 @@ function getAllowedOrigins() {
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "http://192.168.8.41:5173",
     "https://ocsvp.com",
     "https://staff.ocsvp.com",
     "https://ins.ocsvp.com"

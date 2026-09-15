@@ -51,6 +51,16 @@
   background-color: #f5fbfb;
 }
 
+.billing-integrated-review-bar {
+  bottom: calc(var(--ocs-mobile-nav-clearance, 5.5rem) + 1rem);
+}
+
+@media (min-width: 768px) {
+  .billing-integrated-review-bar {
+    bottom: 2rem;
+  }
+}
+
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;

@@ -66,6 +66,25 @@ const ADMIN_BILLING_PRESETS = [
   { id: "weekly", label: "Weekly" },
 ];
 
+const QUICK_WORKFLOW_META = {
+  awaiting_operator: {
+    label: "Awaiting operator",
+    className: "bg-cyan-50 text-cyan-800 ring-cyan-200",
+  },
+  needs_doctor: {
+    label: "Needs doctor",
+    className: "bg-rose-50 text-rose-800 ring-rose-200",
+  },
+  ready_for_payment: {
+    label: "Ready for payment",
+    className: "bg-violet-50 text-violet-800 ring-violet-200",
+  },
+  completed: {
+    label: "Completed",
+    className: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  },
+};
+
 function getAdminBillingDateRange(preset, anchorDateStr) {
   const anchor = dayjs(anchorDateStr || billingPageTodayInputValue());
   if (!anchor.isValid()) {
@@ -2214,6 +2233,7 @@ function BillingPage() {
   const [searchText, setSearchText] = useState("");
   const [bills, setBills] = useState([]);
   const [patientSummary, setPatientSummary] = useState([]);
+  const [quickReviewQueue, setQuickReviewQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
   const [paymentBill, setPaymentBill] = useState(null);
@@ -2293,13 +2313,19 @@ function BillingPage() {
       }
       const summaryQueryString = summaryQuery.toString();
 
-      const [billingData, summaryData] = await Promise.all([
+      const [billingData, summaryData, quickQueueData] = await Promise.all([
         api.get(`/billing${queryString ? `?${queryString}` : ""}`),
         api.get(`/billing/patient-summary${summaryQueryString ? `?${summaryQueryString}` : ""}`),
+        ["admin", "operator"].includes(user?.role)
+          ? api.get("/billing/quick/operator-queue")
+          : Promise.resolve({ submissions: [] }),
       ]);
 
       setBills(billingData);
       setPatientSummary(summaryData);
+      setQuickReviewQueue(
+        Array.isArray(quickQueueData?.submissions) ? quickQueueData.submissions : [],
+      );
       setEditor((current) => {
         if (!current?.bill) return current;
         const rows = Array.isArray(billingData) ? billingData : [];
@@ -2458,6 +2484,53 @@ function BillingPage() {
   }, [filteredBills, isMobile, mobileBillTab]);
 
   const pendingPayments = patientSummary.filter((patient) => Number(patient.unpaid_amount || 0) > 0);
+  const pendingQuickReviews = quickReviewQueue.filter(
+    (submission) => submission.workflow_status !== "completed",
+  );
+
+  async function openQuickReview(submission) {
+    const loaded = bills.find((bill) => Number(bill.id) === Number(submission.bill_id));
+    if (loaded) {
+      setEditor({ bill: loaded });
+      return;
+    }
+    try {
+      const bill = await api.get(`/billing/${submission.bill_id}`);
+      setEditor({ bill });
+    } catch (error) {
+      toast.error(error.message || "This bill could not be opened.");
+    }
+  }
+
+  async function updateQuickWorkflow(submission, status) {
+    let note = "";
+    if (status === "needs_doctor") {
+      const response = window.prompt("What should the doctor clarify?");
+      if (response === null) return;
+      note = response.trim();
+      if (note.length < 3) {
+        toast.error("Add a short clarification note for the doctor.");
+        return;
+      }
+    }
+
+    try {
+      await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, {
+        status,
+        note,
+      });
+      await loadData();
+      toast.success(
+        status === "needs_doctor"
+          ? "Sent back to the doctor for clarification."
+          : status === "ready_for_payment"
+            ? "Bill marked ready for payment."
+            : "Submission returned to the operator queue.",
+      );
+    } catch (error) {
+      toast.error(error.message || "The billing workflow could not be updated.");
+    }
+  }
 
   async function handleShareBillPdf(bill) {
     try {
@@ -2599,6 +2672,93 @@ function BillingPage() {
           <BillingStat icon={CreditCard} label="Collected" value={formatRupees(billingDashboardTotals.collected)} />
           <BillingStat icon={ReceiptText} label="Outstanding" value={formatRupees(billingDashboardTotals.outstanding)} />
         </div>
+      ) : null}
+
+      {["admin", "operator"].includes(user?.role) && pendingQuickReviews.length ? (
+        <SectionCard
+          title={`Doctor billing review queue (${pendingQuickReviews.length})`}
+          className="border-[#9fdad4] bg-[#effaf8]"
+        >
+          <div className="grid gap-3 lg:grid-cols-2">
+            {pendingQuickReviews.map((submission) => {
+              const workflow = QUICK_WORKFLOW_META[submission.workflow_status] || QUICK_WORKFLOW_META.awaiting_operator;
+              return (
+              <article
+                key={`${submission.consultation_id}-${submission.bill_id}`}
+                className="rounded-[24px] border border-[#bce3df] bg-white p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-bold text-slate-950">{submission.patient_name}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      {submission.patient_identifier} · {submission.visit_number}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-[#226f73]">
+                      {submission.doctor_name} · {formatDate(submission.visit_date)} {submission.visit_time || ""}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-sm font-bold ring-1 ring-inset ${workflow.className}`}>
+                    {workflow.label}
+                  </span>
+                </div>
+                {submission.workflow_note ? (
+                  <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
+                    Clarification: {submission.workflow_note}
+                  </p>
+                ) : null}
+                <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 p-3 text-center">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-400">Supplies</p>
+                    <p className="mt-1 font-bold text-slate-900">{submission.supply_item_count || "None"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-400">Supply value</p>
+                    <p className="mt-1 font-bold text-slate-900">{formatRupees(submission.supply_amount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-400">Bill total</p>
+                    <p className="mt-1 font-bold text-slate-900">{formatRupees(submission.bill_total)}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => openQuickReview(submission)}
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#17666a] px-4 text-sm font-bold text-white transition hover:bg-[#12575a] active:scale-[0.99]"
+                  >
+                    <ReceiptText className="size-4" />
+                    Open bill
+                  </button>
+                  {submission.workflow_status === "ready_for_payment" ? (
+                    <button
+                      type="button"
+                      onClick={() => updateQuickWorkflow(submission, "awaiting_operator")}
+                      className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Return to review
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => updateQuickWorkflow(submission, "ready_for_payment")}
+                      className="min-h-12 rounded-2xl bg-violet-600 px-4 text-sm font-bold text-white transition hover:bg-violet-700"
+                    >
+                      Ready for payment
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => updateQuickWorkflow(submission, "needs_doctor")}
+                    className="min-h-11 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-800 transition hover:bg-rose-100 sm:col-span-2"
+                  >
+                    Ask doctor to clarify
+                  </button>
+                </div>
+              </article>
+              );
+            })}
+          </div>
+        </SectionCard>
       ) : null}
 
       {user?.role !== "admin" && linkedDateRange ? (

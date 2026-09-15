@@ -26,7 +26,36 @@ function ensureFinancialIntegritySchema(db) {
         reason TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_billing_events_bill ON billing_events(bill_id, id);
+      CREATE TABLE IF NOT EXISTS billing_lite_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        consultation_id INTEGER NOT NULL,
+        billing_id INTEGER NOT NULL,
+        doctor_id INTEGER NOT NULL,
+        submitted_by_user_id INTEGER NOT NULL,
+        operation_id TEXT NOT NULL,
+        item_count INTEGER NOT NULL DEFAULT 0,
+        items_json TEXT NOT NULL DEFAULT '[]',
+        amount_added REAL NOT NULL DEFAULT 0,
+        workflow_status TEXT NOT NULL DEFAULT 'awaiting_operator',
+        workflow_note TEXT NOT NULL DEFAULT '',
+        workflow_updated_by_user_id INTEGER,
+        workflow_updated_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE RESTRICT,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE RESTRICT,
+        FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+        UNIQUE (submitted_by_user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_lite_visit
+        ON billing_lite_submissions(consultation_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_billing_lite_doctor
+        ON billing_lite_submissions(doctor_id, created_at DESC);
     `);
+    add('billing_lite_submissions', 'workflow_status', "TEXT NOT NULL DEFAULT 'awaiting_operator'");
+    add('billing_lite_submissions', 'workflow_note', "TEXT NOT NULL DEFAULT ''");
+    add('billing_lite_submissions', 'workflow_updated_by_user_id', 'INTEGER');
+    add('billing_lite_submissions', 'workflow_updated_at', 'TEXT');
     if (!db.prepare("SELECT 1 FROM financial_migrations WHERE name='consultation_tariffs_20260909'").get()) {
       for (const [name, amount] of Object.entries(require('./consultationFees').CONSULTATION_FEES)) {
         db.prepare('UPDATE consultation_fee_types SET default_amount=?, updated_at=CURRENT_TIMESTAMP WHERE type_name=?').run(amount, name);
