@@ -35,12 +35,6 @@ import {
   queueQuickBillingMutation,
 } from "../lib/inventoryOfflineSync.js";
 
-const NAV_ITEMS = [
-  { id: "today", label: "Today", icon: Home },
-  { id: "find", label: "Find visit", icon: Search },
-  { id: "status", label: "Status", icon: ReceiptText },
-];
-
 const STATUS_META = {
   ready: { label: "Ready to bill", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   awaiting_operator: { label: "Awaiting operator", className: "bg-cyan-50 text-cyan-800 ring-cyan-200" },
@@ -135,7 +129,6 @@ function EmptyState({ icon: Icon = CalendarDays, title, description, action }) {
 function BillingLitePage({ onOpenHistory }) {
   const { user } = useAuth();
   const [view, setView] = useState("today");
-  const [visits, setVisits] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [catalog, setCatalog] = useState([]);
@@ -178,12 +171,10 @@ function BillingLitePage({ onOpenHistory }) {
   async function loadDashboard({ silent = false } = {}) {
     if (!silent) setIsLoading(true);
     try {
-      const [visitPayload, submissionPayload, pickerPayload] = await Promise.all([
-        api.get("/billing/quick/visits"),
+      const [submissionPayload, pickerPayload] = await Promise.all([
         api.get("/billing/quick/submissions"),
         api.get("/billing/quick/picker-options"),
       ]);
-      setVisits(Array.isArray(visitPayload?.visits) ? visitPayload.visits : []);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
     } catch (error) {
@@ -459,39 +450,19 @@ function BillingLitePage({ onOpenHistory }) {
     ...submissions,
   ];
 
-  const showBottomNav = ["today", "find", "status"].includes(view);
+  const attentionCount = displayedSubmissions.filter((submission) =>
+    ["needs_doctor", "needs_attention", "queued_offline"].includes(submission.status),
+  ).length;
 
   return (
     <div className="relative min-h-[70svh] overflow-hidden rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
       <div className="absolute inset-x-0 top-0 z-0 h-72 bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
 
-      <main className={`relative z-10 mx-auto w-full max-w-5xl px-4 pt-5 ${showBottomNav ? "pb-8" : "pb-10"}`}>
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-10 pt-5">
         {isLoading ? (
           <div className="flex min-h-[55svh] items-center justify-center">
             <LoaderCircle className="size-10 animate-spin text-white" aria-label="Loading quick billing" />
           </div>
-        ) : null}
-
-        {!isLoading && showBottomNav ? (
-          <nav className="mb-5 grid grid-cols-3 gap-2 rounded-[1.4rem] border border-white/15 bg-white/10 p-1.5 backdrop-blur-md" aria-label="Doctor billing sections">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const active = view === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setView(item.id)}
-                  className={`flex min-h-14 items-center justify-center gap-2 rounded-2xl text-sm font-black transition active:scale-95 ${
-                    active ? "bg-white text-[#17666a] shadow-sm" : "text-white/80"
-                  }`}
-                >
-                  <Icon className="size-5" />
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
         ) : null}
 
         {!isLoading && view === "today" ? (
@@ -499,15 +470,27 @@ function BillingLitePage({ onOpenHistory }) {
             <div className="mb-6 flex items-end justify-between gap-4 text-white">
               <div>
                 <p className="text-sm font-bold text-white/70">{dayjs().format("dddd, D MMMM")}</p>
-                <h1 className="mt-1 text-3xl font-black tracking-tight">Today’s visits</h1>
+                <h1 className="mt-1 text-3xl font-black tracking-tight">Billing</h1>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setView("status")}
+                  className="relative min-h-12 rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-black transition active:scale-95"
+                >
+                  Updates
+                  {attentionCount ? (
+                    <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-[#f2b52b] px-1.5 py-0.5 text-xs text-[#173f47]">
+                      {attentionCount}
+                    </span>
+                  ) : null}
+                </button>
                 <button
                   type="button"
                   onClick={onOpenHistory}
                   className="min-h-12 rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-black transition active:scale-95"
                 >
-                  Full history
+                  History
                 </button>
                 <button
                   type="button"
@@ -523,8 +506,7 @@ function BillingLitePage({ onOpenHistory }) {
             <div className="relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:p-6">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-sm font-black uppercase tracking-[0.14em] text-[#248f91]">Start a bill</p>
-                  <h2 className="mt-1 text-xl font-black text-[#173f47]">Choose patient and consultation</h2>
+                  <h2 className="text-xl font-black text-[#173f47]">Select patient and consultation</h2>
                 </div>
                 <button
                   type="button"
@@ -532,7 +514,7 @@ function BillingLitePage({ onOpenHistory }) {
                   className="mt-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-2 text-sm font-bold text-[#17666a] sm:mt-0"
                 >
                   <Search className="size-4" aria-hidden="true" />
-                  Use OCS or visit number
+                  Search by number
                 </button>
               </div>
 
@@ -629,38 +611,20 @@ function BillingLitePage({ onOpenHistory }) {
               </div>
             </div>
 
-            {visits.length ? (
-              <div>
-                <h2 className="mb-3 text-lg font-black text-[#173f47]">Today’s completed consultations</h2>
-                <div className="grid gap-4 md:grid-cols-2">
-                {visits.map((visit) => (
-                  <VisitCard key={visit.consultation_id} visit={visit} onSelect={chooseVisit} />
-                ))}
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                title="No completed visits today"
-                description="A visit will appear here after its consultation has been recorded in OCS VP."
-                action={
-                  <button
-                    type="button"
-                    onClick={() => setView("find")}
-                    className="rounded-2xl bg-[#17666a] px-6 py-3 text-base font-black text-white"
-                  >
-                    Find another visit
-                  </button>
-                }
-              />
-            )}
           </section>
         ) : null}
 
         {!isLoading && view === "find" ? (
           <section>
+            <button
+              type="button"
+              onClick={() => resetFlow("today")}
+              className="mb-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
+            >
+              <ArrowLeft className="size-5" /> Back to billing
+            </button>
             <div className="mb-6 text-white">
-              <p className="text-sm font-bold text-white/70">Your visits only</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight">Find a visit</h1>
+              <h1 className="text-3xl font-black tracking-tight">Search by number</h1>
             </div>
             <form onSubmit={runLookup} className="rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_18px_50px_rgba(23,77,80,0.14)] md:p-7">
               <label htmlFor="billing-lite-lookup" className="text-base font-black text-[#173f47]">
@@ -1006,10 +970,16 @@ function BillingLitePage({ onOpenHistory }) {
 
         {!isLoading && view === "status" ? (
           <section>
+            <button
+              type="button"
+              onClick={() => resetFlow("today")}
+              className="mb-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
+            >
+              <ArrowLeft className="size-5" /> Back to billing
+            </button>
             <div className="mb-6 flex items-end justify-between gap-4 text-white">
               <div>
-                <p className="text-sm font-bold text-white/70">Your recent activity</p>
-                <h1 className="mt-1 text-3xl font-black tracking-tight">Submission status</h1>
+                <h1 className="text-3xl font-black tracking-tight">Billing updates</h1>
               </div>
               <button
                 type="button"
