@@ -94,7 +94,7 @@ function VisitCard({ visit, onSelect }) {
         </span>
         <span className="flex min-w-0 flex-1 items-center justify-between gap-3 px-5 py-4">
           <span className="min-w-0">
-            <span className="block text-lg font-black text-[#173f47]">{visit.patient_masked_name}</span>
+            <span className="block text-lg font-black text-[#173f47]">{visit.patient_name || visit.patient_masked_name}</span>
             <span className="mt-1 block text-sm font-bold text-slate-500">
               {visit.patient_identifier} · {visit.visit_number}
             </span>
@@ -420,6 +420,7 @@ function BillingLitePage({ onOpenHistory }) {
               label: `Billing ${selectedVisit.visit_number}`,
               consultationId: selectedVisit.consultation_id,
               visitNumber: selectedVisit.visit_number,
+              patientName: selectedVisit.patient_name || selectedVisit.patient_masked_name,
               itemCount: selectedUnitCount,
             },
           });
@@ -473,7 +474,7 @@ function BillingLitePage({ onOpenHistory }) {
   const displayedSubmissions = [
     ...offlineSubmissions.map((entry) => ({
       id: `offline-${entry.id}`,
-      patient_masked_name: "Saved securely on this device",
+      patient_name: entry.meta?.patientName || "Saved securely on this device",
       patient_identifier: entry.meta?.visitNumber || "Pending visit",
       visit_number: entry.meta?.visitNumber || "Pending sync",
       submitted_at: entry.timestamp,
@@ -714,7 +715,7 @@ function BillingLitePage({ onOpenHistory }) {
               <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-black text-[#248f91]">{selectedVisit.patient_identifier}</p>
-                  <h1 className="mt-1 truncate text-2xl font-black text-[#173f47]">{selectedVisit.patient_masked_name}</h1>
+                  <h1 className="mt-1 break-words text-xl font-black leading-tight text-[#173f47] sm:text-2xl">{selectedVisit.patient_name || selectedVisit.patient_masked_name}</h1>
                 </div>
                 <div className="shrink-0 text-left sm:text-right">
                   <p className="font-black text-[#173f47]">{formatVisitDate(selectedVisit.visit_date)}, {formatVisitTime(selectedVisit.visit_time)}</p>
@@ -1098,7 +1099,7 @@ function BillingLitePage({ onOpenHistory }) {
                   <article key={submission.id} className="rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(23,77,80,0.08)]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-lg font-black">{submission.patient_masked_name}</p>
+                        <p className="truncate text-lg font-black">{submission.patient_name || submission.patient_masked_name}</p>
                         <p className="mt-1 text-sm font-bold text-slate-500">{submission.patient_identifier} · {submission.visit_number}</p>
                       </div>
                       <StatusBadge status={submission.status} />

@@ -117,14 +117,13 @@ after(async () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test("Billing Lite exposes only masked visits belonging to the signed-in doctor", async () => {
+test("Billing Lite exposes full patient names only for visits belonging to the signed-in doctor", async () => {
   const today = await api("GET", "/billing/quick/visits");
   assert.equal(today.status, 200, JSON.stringify(today.data));
   const visit = today.data.visits.find((row) => row.consultation_id === consultationId);
   assert.ok(visit);
   assert.equal(visit.patient_identifier, patientIdentifier);
-  assert.match(visit.patient_masked_name, /^P•+ E•+$/);
-  assert.equal(JSON.stringify(visit).includes("Patient Example"), false);
+  assert.equal(visit.patient_name, "Patient Example");
   assert.equal(visit.consultation_fee.type, "Night Consultation");
   assert.equal(visit.consultation_fee.amount, 3000);
 
