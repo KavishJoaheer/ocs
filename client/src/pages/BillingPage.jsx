@@ -1233,7 +1233,7 @@ function CreateBillingModal({
     }
 
     if (!patientConsultations.some((consultation) => consultation.id === Number(consultationId))) {
-      setConsultationId(String(patientConsultations[0].id));
+      setConsultationId("");
     }
   }, [consultationId, open, patientConsultations]);
 
@@ -1676,7 +1676,7 @@ function CreateBillingModal({
               </option>
               {patientConsultations.map((consultation) => (
                 <option key={consultation.id} value={consultation.id}>
-                  {formatDate(consultation.consultation_date)} - {consultation.doctor_name}
+                  V-{String(consultation.id).padStart(6, "0")} · {formatDate(consultation.consultation_date)} · {consultation.doctor_name}
                 </option>
               ))}
             </select>
@@ -1737,7 +1737,7 @@ function CreateBillingModal({
               </option>
               {patientConsultations.map((consultation) => (
                 <option key={consultation.id} value={consultation.id}>
-                  {formatDate(consultation.consultation_date)} - {consultation.doctor_name}
+                  V-{String(consultation.id).padStart(6, "0")} · {formatDate(consultation.consultation_date)} · {consultation.doctor_name}
                 </option>
               ))}
             </select>
@@ -2234,6 +2234,7 @@ function BillingPage() {
   const [bills, setBills] = useState([]);
   const [patientSummary, setPatientSummary] = useState([]);
   const [quickReviewQueue, setQuickReviewQueue] = useState([]);
+  const [unbilledReport, setUnbilledReport] = useState({ count: 0, visits: [], date_from: "", date_to: "" });
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
   const [paymentBill, setPaymentBill] = useState(null);
@@ -2313,12 +2314,15 @@ function BillingPage() {
       }
       const summaryQueryString = summaryQuery.toString();
 
-      const [billingData, summaryData, quickQueueData] = await Promise.all([
+      const [billingData, summaryData, quickQueueData, unbilledData] = await Promise.all([
         api.get(`/billing${queryString ? `?${queryString}` : ""}`),
         api.get(`/billing/patient-summary${summaryQueryString ? `?${summaryQueryString}` : ""}`),
         ["admin", "operator"].includes(user?.role)
           ? api.get("/billing/quick/operator-queue")
           : Promise.resolve({ submissions: [] }),
+        ["admin", "operator"].includes(user?.role)
+          ? api.get("/billing/quick/unbilled-report")
+          : Promise.resolve({ count: 0, visits: [], date_from: "", date_to: "" }),
       ]);
 
       setBills(billingData);
@@ -2326,6 +2330,12 @@ function BillingPage() {
       setQuickReviewQueue(
         Array.isArray(quickQueueData?.submissions) ? quickQueueData.submissions : [],
       );
+      setUnbilledReport({
+        count: Number(unbilledData?.count || 0),
+        visits: Array.isArray(unbilledData?.visits) ? unbilledData.visits : [],
+        date_from: unbilledData?.date_from || "",
+        date_to: unbilledData?.date_to || "",
+      });
       setEditor((current) => {
         if (!current?.bill) return current;
         const rows = Array.isArray(billingData) ? billingData : [];
@@ -2532,6 +2542,26 @@ function BillingPage() {
     }
   }
 
+  async function reverseQuickSubmission(submission) {
+    const response = window.prompt("Why are these submitted supplies being reversed?");
+    if (response === null) return;
+    const reason = response.trim();
+    if (reason.length < 5) {
+      toast.error("Enter a clear reason for the reversal.");
+      return;
+    }
+    try {
+      await api.post(`/billing/quick/submissions/${submission.submission_id}/reverse`, {
+        operation_id: crypto.randomUUID(),
+        reason,
+      });
+      await loadData();
+      toast.success("Supplies reversed with stock and billing audit records.");
+    } catch (error) {
+      toast.error(error.message || "The submitted supplies could not be reversed.");
+    }
+  }
+
   async function handleShareBillPdf(bill) {
     try {
       await shareOrDownloadBillPdf(bill);
@@ -2674,6 +2704,53 @@ function BillingPage() {
         </div>
       ) : null}
 
+      {["admin", "operator"].includes(user?.role) ? (
+        <SectionCard
+          title={`Visits missing final billing (${unbilledReport.count})`}
+          className={unbilledReport.count ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60"}
+        >
+          {unbilledReport.count ? (
+            <div>
+              <p className="mb-4 text-sm font-semibold text-slate-600">
+                Completed visits from {formatDate(unbilledReport.date_from)} to {formatDate(unbilledReport.date_to)} with no doctor submission, payment, supply charge, or documented billing edit.
+              </p>
+              <div className="grid gap-3 lg:grid-cols-2">
+                {unbilledReport.visits.map((visit) => (
+                  <article key={visit.consultation_id} className="rounded-[22px] border border-amber-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-slate-950">{visit.patient_name}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">
+                          {visit.patient_identifier} · {visit.visit_number}
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-amber-800">
+                          {visit.doctor_name} · {formatDate(visit.visit_date)} {visit.visit_time || ""}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900">Action needed</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                      <span className="font-semibold text-slate-500">Current bill total</span>
+                      <span className="font-bold text-slate-900">{formatRupees(visit.bill_total)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!visit.bill_id}
+                      onClick={() => openQuickReview(visit)}
+                      className="mt-3 min-h-11 w-full rounded-2xl bg-amber-500 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {visit.bill_id ? "Open and finish billing" : "Bill record needs administrator"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm font-semibold text-emerald-800">No completed visit is missing final billing in the last 14 completed days.</p>
+          )}
+        </SectionCard>
+      ) : null}
+
       {["admin", "operator"].includes(user?.role) && pendingQuickReviews.length ? (
         <SectionCard
           title={`Doctor billing review queue (${pendingQuickReviews.length})`}
@@ -2749,9 +2826,17 @@ function BillingPage() {
                   <button
                     type="button"
                     onClick={() => updateQuickWorkflow(submission, "needs_doctor")}
-                    className="min-h-11 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-800 transition hover:bg-rose-100 sm:col-span-2"
+                    className="min-h-11 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-800 transition hover:bg-rose-100"
                   >
                     Ask doctor to clarify
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!submission.supply_item_count}
+                    onClick={() => reverseQuickSubmission(submission)}
+                    className="min-h-11 rounded-2xl border border-slate-300 bg-slate-50 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Reverse supplies
                   </button>
                 </div>
               </article>

@@ -41,6 +41,7 @@ function normalizeBillingItems(items) {
       emergency_override: Boolean(item?.emergency_override),
       ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
       ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
+      ...(Array.isArray(item?.inventory_movement_ids) ? {inventory_movement_ids: item.inventory_movement_ids.map(Number).filter(Boolean)} : {}),
       appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,
     }))
     .filter((item) => item.description || item.amount);

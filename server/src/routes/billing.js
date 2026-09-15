@@ -23,6 +23,8 @@ const { decorateInventoryItems } = require("../lib/inventoryStockState");
 const { consumeAvailableFefo } = require("../lib/restockFulfilment");
 const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require("../lib/inventoryQuantity");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
+const { reverseBillingSubmissionInventory } = require("../lib/inventoryReversal");
+const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -286,6 +288,37 @@ function roundCurrency(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 
+function recordQuickBillingEvent({
+  submissionId,
+  consultationId,
+  billingId,
+  actor = {},
+  eventType,
+  previousStatus = null,
+  nextStatus = null,
+  reason = "",
+  details = {},
+}) {
+  db.prepare(`
+    INSERT INTO billing_quick_events (
+      submission_id, consultation_id, billing_id, actor_user_id, actor_name, actor_role,
+      event_type, previous_status, next_status, reason, details_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    submissionId || null,
+    consultationId,
+    billingId || null,
+    actor.id || null,
+    String(actor.full_name || actor.username || ""),
+    String(actor.role || ""),
+    eventType,
+    previousStatus,
+    nextStatus,
+    String(reason || "").trim(),
+    JSON.stringify(details || {}),
+  );
+}
+
 function validateOperatorInvoice(items, status) {
   if (status !== "unpaid") {
     return "Operators must issue the invoice as unpaid, then record payment through the confirmed payment action.";
@@ -496,6 +529,7 @@ function applyInventoryTransactions({
     const expectedVersion = Number(locked?.row_version || 1);
     let allocations = [];
     let nextQuantity = previousQuantity;
+    const inventoryMovementIds = [];
     if (qtyToDecrement > 0) {
       const consumed = consumeDoctorBatches(stockItem.id, qtyToDecrement);
       allocations = consumed.allocations || [];
@@ -566,6 +600,7 @@ function applyInventoryTransactions({
         },
       });
       recordMovementAllocations(movementId, allocations);
+      inventoryMovementIds.push(movementId);
     }
 
     touchedItemIds.add(Number(stockItem.id));
@@ -580,6 +615,7 @@ function applyInventoryTransactions({
       inventory_item_id: Number(stockItem.id),
       linked_sale_movement_ids: linkedSaleMovementIds,
       dispensing_movement_ids: linkedSaleMovementIds,
+      inventory_movement_ids: inventoryMovementIds,
     });
   }
 
@@ -809,6 +845,35 @@ router.get("/quick/visits", (req, res) => {
   });
 });
 
+router.get("/quick/picker-options", (req, res) => {
+  const doctorId = requireQuickBillingDoctor(req, res);
+  if (!doctorId) return;
+
+  const patientMap = new Map();
+  const visits = quickVisitBaseRows(doctorId)
+    .map((row) => ({ row, visit: serializeQuickVisit(row) }))
+    .filter(({ visit }) => visit.can_submit);
+
+  for (const { row, visit } of visits) {
+    const patientId = Number(row.patient_id);
+    if (!patientMap.has(patientId)) {
+      patientMap.set(patientId, {
+        patient_id: patientId,
+        patient_name: String(row.patient_name || ""),
+        patient_identifier: String(row.patient_identifier || ""),
+        visits: [],
+      });
+    }
+    patientMap.get(patientId).visits.push(visit);
+  }
+
+  const patients = [...patientMap.values()].sort((a, b) =>
+    a.patient_name.localeCompare(b.patient_name, undefined, { sensitivity: "base" }),
+  );
+
+  res.json({ patients });
+});
+
 router.get("/quick/lookup", (req, res) => {
   const doctorId = requireQuickBillingDoctor(req, res);
   if (!doctorId) return;
@@ -884,6 +949,104 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
   res.json({ visit, items });
 });
 
+router.get("/quick/unbilled-report", (req, res) => {
+  if (!["admin", "operator", "accountant", "doctor"].includes(req.auth?.role)) {
+    return res.status(403).json({ error: "You do not have permission to view missing billing." });
+  }
+  if (req.auth.role === "doctor" && !Number(req.auth.doctor_id || 0)) {
+    return res.status(403).json({ error: "Your account is not linked to a doctor profile." });
+  }
+
+  const sqlDates = db.prepare(`
+    SELECT
+      date('now', '+4 hours', '-14 days') AS default_from,
+      date('now', '+4 hours', '-1 day') AS default_to,
+      date('now', '+4 hours') AS today
+  `).get();
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const dateFrom = datePattern.test(String(req.query.dateFrom || "")) ? String(req.query.dateFrom) : sqlDates.default_from;
+  const dateTo = datePattern.test(String(req.query.dateTo || "")) ? String(req.query.dateTo) : sqlDates.default_to;
+  if (dateFrom > dateTo || dateTo >= sqlDates.today) {
+    return res.status(400).json({ error: "Missing-billing reports must cover completed days before today." });
+  }
+
+  const requestedDoctorId = Number(req.query.doctorId || 0);
+  const doctorId = req.auth.role === "doctor"
+    ? Number(req.auth.doctor_id)
+    : Number.isInteger(requestedDoctorId) && requestedDoctorId > 0
+      ? requestedDoctorId
+      : null;
+  const visits = db.prepare(`
+    SELECT
+      c.id AS consultation_id,
+      c.consultation_date,
+      a.appointment_date,
+      a.appointment_time,
+      p.id AS patient_id,
+      p.full_name AS patient_name,
+      p.patient_identifier,
+      d.id AS doctor_id,
+      d.full_name AS doctor_name
+    FROM consultations c
+    JOIN appointments a ON a.id = c.appointment_id
+    JOIN patients p ON p.id = c.patient_id
+    JOIN doctors d ON d.id = c.doctor_id
+    WHERE c.voided_at IS NULL
+      AND p.deleted_at IS NULL
+      AND date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) BETWEEN ? AND ?
+      AND (? IS NULL OR c.doctor_id = ?)
+    ORDER BY date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) DESC,
+      a.appointment_time DESC, c.id DESC
+    LIMIT 500
+  `).all(dateFrom, dateTo, doctorId, doctorId);
+
+  const missing = visits.filter((visit) => {
+    const bills = db.prepare(`
+      SELECT * FROM billing
+      WHERE consultation_id = ? AND voided_at IS NULL
+      ORDER BY id ASC
+    `).all(visit.consultation_id).map(parseBillingRow);
+    const hasActiveSubmission = Boolean(db.prepare(`
+      SELECT 1 FROM billing_lite_submissions
+      WHERE consultation_id = ? AND reversed_at IS NULL
+      LIMIT 1
+    `).get(visit.consultation_id));
+    const hasDocumentedEdit = bills.some((bill) => db.prepare(`
+      SELECT 1 FROM billing_events
+      WHERE bill_id = ? AND event_type NOT IN ('created', 'migration_baseline')
+      LIMIT 1
+    `).get(bill.id));
+    const hasNonConsultationCharge = bills.some((bill) =>
+      (bill.items || []).some((item) => !isConsultationFee(item)),
+    );
+    const hasFinalBilling = hasActiveSubmission
+      || hasDocumentedEdit
+      || hasNonConsultationCharge
+      || bills.length > 1
+      || bills.some((bill) => bill.status === "paid");
+    visit.bill_count = bills.length;
+    visit.bill_id = bills[0]?.id ? Number(bills[0].id) : null;
+    visit.bill_total = roundCurrency(bills.reduce((sum, bill) => sum + Number(bill.total_amount || 0), 0));
+    return !hasFinalBilling;
+  }).map((visit) => ({
+    consultation_id: Number(visit.consultation_id),
+    visit_number: formatVisitNumber(visit.consultation_id),
+    visit_date: visit.appointment_date || String(visit.consultation_date || "").slice(0, 10),
+    visit_time: visit.appointment_time || "",
+    patient_name: visit.patient_name,
+    patient_id: Number(visit.patient_id),
+    patient_identifier: visit.patient_identifier,
+    doctor_id: Number(visit.doctor_id),
+    doctor_name: visit.doctor_name,
+    bill_count: Number(visit.bill_count || 0),
+    bill_id: visit.bill_id,
+    bill_total: roundCurrency(visit.bill_total),
+    status: "missing_final_billing",
+  }));
+
+  res.json({ date_from: dateFrom, date_to: dateTo, count: missing.length, visits: missing });
+});
+
 router.get("/quick/operator-queue", (req, res) => {
   if (!["admin", "operator"].includes(req.auth?.role)) {
     return res.status(403).json({ error: "The doctor billing review queue is restricted to operators and administrators." });
@@ -902,10 +1065,17 @@ router.get("/quick/operator-queue", (req, res) => {
         b.total_amount,
         b.status AS bill_status,
         b.fee_review_required,
-        SUM(s.item_count) AS supply_item_count,
-        SUM(s.amount_added) AS supply_amount,
+        SUM(CASE WHEN s.reversed_at IS NULL THEN s.item_count ELSE 0 END) AS supply_item_count,
+        SUM(CASE WHEN s.reversed_at IS NULL THEN s.amount_added ELSE 0 END) AS supply_amount,
         MAX(s.created_at) AS submitted_at,
         COUNT(s.id) AS submission_count,
+        (
+          SELECT latest.id
+          FROM billing_lite_submissions latest
+          WHERE latest.consultation_id = s.consultation_id
+          ORDER BY latest.id DESC
+          LIMIT 1
+        ) AS latest_submission_id,
         (
           SELECT latest.workflow_status
           FROM billing_lite_submissions latest
@@ -940,6 +1110,7 @@ router.get("/quick/operator-queue", (req, res) => {
     .all()
     .map((row) => ({
       consultation_id: Number(row.consultation_id),
+      submission_id: Number(row.latest_submission_id),
       visit_number: formatVisitNumber(row.consultation_id),
       bill_id: Number(row.billing_id),
       patient_name: row.patient_name,
@@ -977,24 +1148,56 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
     return res.status(400).json({ error: "Add a short note explaining what the doctor should clarify." });
   }
 
-  const updated = db
-    .prepare(`
+  const submission = db.prepare(`
+    SELECT *
+    FROM billing_lite_submissions
+    WHERE consultation_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(consultationId);
+  if (!submission) {
+    return res.status(404).json({ error: "Doctor billing submission not found." });
+  }
+
+  if (submission.reversed_at) {
+    return res.status(409).json({ error: "This submission has already been reversed." });
+  }
+
+  db.transaction(() => {
+    db.prepare(`
       UPDATE billing_lite_submissions
       SET workflow_status = ?,
           workflow_note = ?,
           workflow_updated_by_user_id = ?,
           workflow_updated_at = CURRENT_TIMESTAMP
-      WHERE id = (
-        SELECT id
-        FROM billing_lite_submissions
-        WHERE consultation_id = ?
-        ORDER BY id DESC
-        LIMIT 1
-      )
-    `)
-    .run(status, note, req.auth.id, consultationId);
-  if (updated.changes !== 1) {
-    return res.status(404).json({ error: "Doctor billing submission not found." });
+      WHERE id = ?
+    `).run(status, note, req.auth.id, submission.id);
+    recordQuickBillingEvent({
+      submissionId: submission.id,
+      consultationId,
+      billingId: submission.billing_id,
+      actor: req.auth,
+      eventType: status === "needs_doctor" ? "clarification_requested" : "workflow_status_changed",
+      previousStatus: submission.workflow_status,
+      nextStatus: status,
+      reason: note,
+    });
+  }).immediate();
+
+  if (status === "needs_doctor") {
+    const doctorUserId = getDoctorUserId(submission.doctor_id);
+    if (doctorUserId) {
+      void sendPushToUser(doctorUserId, {
+        title: "Billing clarification needed",
+        body: `${formatVisitNumber(consultationId)}: ${note}`,
+        url: "/billing",
+        icon: "/icon-192.png",
+        tag: `billing-clarification-${consultationId}`,
+        requireInteraction: true,
+      }).catch((error) => {
+        console.warn("[quick-billing] doctor clarification push failed:", error?.message || error);
+      });
+    }
   }
 
   res.json({ consultation_id: consultationId, workflow_status: status, workflow_note: note });
@@ -1041,6 +1244,8 @@ router.get("/quick/submissions", (req, res) => {
       submitted_at: row.created_at,
       status: row.bill_status === "paid" ? "completed" : row.workflow_status || "awaiting_operator",
       workflow_note: row.workflow_note || "",
+      reversed_at: row.reversed_at || null,
+      reversal_reason: row.reversal_reason || "",
     }));
 
   res.json({ submissions: rows });
@@ -1200,6 +1405,19 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           amountAdded,
         );
 
+      recordQuickBillingEvent({
+        submissionId: Number(inserted.lastInsertRowid),
+        consultationId,
+        billingId: bill.id,
+        actor: req.auth,
+        eventType: "submitted",
+        nextStatus: "awaiting_operator",
+        details: {
+          item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+          amount_added: amountAdded,
+        },
+      });
+
       result = {
         submission_id: Number(inserted.lastInsertRowid),
         bill_id: Number(bill.id),
@@ -1228,6 +1446,139 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
     submission: result,
     visit: getQuickVisit(consultationId, doctorId),
   });
+});
+
+router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
+  const submissionId = Number(req.params.submissionId || 0);
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  if (!Number.isInteger(submissionId) || submissionId <= 0) {
+    return res.status(400).json({ error: "Select a valid billing submission." });
+  }
+  if (reason.length < 5) {
+    return res.status(400).json({ error: "Enter a clear reason for reversing the submitted supplies." });
+  }
+
+  const submission = db.prepare(`
+    SELECT s.*, c.patient_id, c.doctor_id AS consultation_doctor_id, b.status AS bill_status, b.row_version
+    FROM billing_lite_submissions s
+    JOIN consultations c ON c.id = s.consultation_id
+    JOIN billing b ON b.id = s.billing_id
+    WHERE s.id = ? AND c.voided_at IS NULL AND b.voided_at IS NULL
+  `).get(submissionId);
+  if (!submission) {
+    return res.status(404).json({ error: "Billing submission not found." });
+  }
+  const isOwnerDoctor = req.auth?.role === "doctor"
+    && Number(req.auth?.doctor_id || 0) === Number(submission.doctor_id);
+  if (!["admin", "operator"].includes(req.auth?.role) && !isOwnerDoctor) {
+    return res.status(403).json({ error: "You cannot reverse this doctor billing submission." });
+  }
+  if (submission.bill_status === "paid") {
+    return res.status(409).json({ error: "A paid bill requires the documented admin correction process before stock can be reversed." });
+  }
+
+  let operation;
+  try {
+    operation = operationFor(req, `billing:quick-reverse:${submissionId}`);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  let result;
+  let touchedItemIds = [];
+  try {
+    db.transaction(() => {
+      const replay = operation.read();
+      if (replay) {
+        result = replay;
+        return;
+      }
+      const fresh = db.prepare("SELECT * FROM billing_lite_submissions WHERE id = ?").get(submissionId);
+      if (fresh.reversed_at) {
+        result = { submission_id: submissionId, reversed: 0, already_reversed: true };
+        operation.save(result);
+        return;
+      }
+
+      const submittedItems = normalizeBillingItems(fresh.items_json);
+      const movementIds = submittedItems.flatMap((item) => item.inventory_movement_ids || []);
+      if (!movementIds.length) {
+        throw Object.assign(new Error("This submission has no automatically reversible supply movements."), {
+          status: 409,
+          extra: { code: "SUBMISSION_REVERSAL_REQUIRES_CORRECTION" },
+        });
+      }
+      const reversed = reverseBillingSubmissionInventory({
+        movementIds,
+        consultationId: fresh.consultation_id,
+        billingId: fresh.billing_id,
+        actor: req.auth,
+        reason,
+      });
+      touchedItemIds = reversed.touchedItemIds;
+
+      const bill = parseBillingRow(db.prepare("SELECT * FROM billing WHERE id = ?").get(fresh.billing_id));
+      const movementIdSet = new Set(movementIds.map(Number));
+      const nextItems = (bill.items || []).filter(
+        (item) => !(item.inventory_movement_ids || []).some((id) => movementIdSet.has(Number(id))),
+      );
+      if (nextItems.length === (bill.items || []).length) {
+        throw Object.assign(new Error("The submitted supply lines no longer match the unpaid bill. Reopen the bill and use an authorised correction."), {
+          status: 409,
+          extra: { code: "SUBMISSION_BILL_LINES_CHANGED" },
+        });
+      }
+      const billUpdated = db.prepare(`
+        UPDATE billing
+        SET items = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP,
+            updated_by_user_id = ?, change_reason = ?
+        WHERE id = ? AND row_version = ? AND status = 'unpaid' AND voided_at IS NULL
+      `).run(
+        JSON.stringify(nextItems),
+        calculateBillingTotal(nextItems),
+        req.auth.id,
+        `Reversed quick billing submission #${submissionId}: ${reason}`,
+        bill.id,
+        bill.row_version,
+      );
+      if (billUpdated.changes !== 1) {
+        throw Object.assign(new Error("The bill changed on another device. Reopen it before reversing supplies."), { status: 409 });
+      }
+
+      db.prepare(`
+        UPDATE billing_lite_submissions
+        SET workflow_status = 'reversed', workflow_note = '',
+            reversed_at = CURRENT_TIMESTAMP, reversed_by_user_id = ?, reversal_reason = ?,
+            reversal_operation_id = ?, workflow_updated_by_user_id = ?, workflow_updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND reversed_at IS NULL
+      `).run(req.auth.id, reason, String(req.body?.operation_id || ""), req.auth.id, submissionId);
+      recordQuickBillingEvent({
+        submissionId,
+        consultationId: fresh.consultation_id,
+        billingId: fresh.billing_id,
+        actor: req.auth,
+        eventType: "supplies_reversed",
+        previousStatus: fresh.workflow_status,
+        nextStatus: "reversed",
+        reason,
+        details: { movement_ids: movementIds, reversal_movement_ids: reversed.reversalIds },
+      });
+      result = { submission_id: submissionId, reversed: reversed.reversed, already_reversed: false };
+      operation.save(result);
+    }).immediate();
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
+
+  for (const itemId of touchedItemIds) {
+    try {
+      publishInventoryChange({ itemId, changedByUserId: req.auth.id });
+    } catch (error) {
+      console.warn("[quick-billing] reversal inventory publish failed:", error?.message || error);
+    }
+  }
+  publishPatientDataChange(submission.patient_id, { reason: "billing" });
+  res.json(result);
 });
 
 router.get('/reconciliation', (req,res) => {
@@ -1664,6 +2015,11 @@ router.patch("/:id/pay", (req, res) => {
     WHERE id = ? AND row_version = ? AND voided_at IS NULL
   `).run(paymentMethod, paymentDate, req.auth?.id || null, billId, existing.row_version);
       if (result.changes === 1) {
+        const quickSubmission = db.prepare(`
+          SELECT * FROM billing_lite_submissions
+          WHERE consultation_id = ? AND reversed_at IS NULL
+          ORDER BY id DESC LIMIT 1
+        `).get(existing.consultation_id);
         db.prepare(`
           UPDATE billing_lite_submissions
           SET workflow_status = 'completed',
@@ -1678,6 +2034,18 @@ router.patch("/:id/pay", (req, res) => {
             LIMIT 1
           )
         `).run(req.auth?.id || null, existing.consultation_id);
+        if (quickSubmission) {
+          recordQuickBillingEvent({
+            submissionId: quickSubmission.id,
+            consultationId: existing.consultation_id,
+            billingId: billId,
+            actor: req.auth,
+            eventType: "payment_completed",
+            previousStatus: quickSubmission.workflow_status,
+            nextStatus: "completed",
+            reason: "Payment recorded",
+          });
+        }
       }
       return result;
     }).immediate();

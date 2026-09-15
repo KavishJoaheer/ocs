@@ -257,6 +257,146 @@ function reverseInventoryForConsultation(
   return { reversed, skipped, idempotent: reversed === 0 && skipped > 0 };
 }
 
+function reverseBillingSubmissionInventory({
+  movementIds = [],
+  consultationId,
+  billingId,
+  actor = {},
+  reason = "",
+}) {
+  const ids = [...new Set((movementIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) {
+    throw HttpError(
+      409,
+      "This submission predates exact movement tracking and cannot be safely reversed automatically. Use an authorised inventory correction.",
+      { code: "SUBMISSION_REVERSAL_REQUIRES_CORRECTION" },
+    );
+  }
+
+  const actorName = resolveAuditActor({
+    displayName: actor.full_name || actor.username,
+    userId: actor.id,
+    required: true,
+  });
+  const touchedItemIds = new Set();
+  const reversalIds = [];
+
+  for (const movementId of ids) {
+    const movement = db.prepare("SELECT * FROM inventory_movements WHERE id = ?").get(movementId);
+    if (!movement || movement.movement_type !== "out" || movement.action_type !== "sell") {
+      throw HttpError(409, "A linked stock movement is missing or is not reversible.", {
+        code: "SUBMISSION_MOVEMENT_INVALID",
+        movement_id: movementId,
+      });
+    }
+    let movementMeta = {};
+    try {
+      movementMeta = JSON.parse(movement.meta_json || "{}");
+    } catch {
+      movementMeta = {};
+    }
+    if (
+      Number(movementMeta.consultation_id || 0) !== Number(consultationId) ||
+      Number(movementMeta.billing_id || 0) !== Number(billingId)
+    ) {
+      throw HttpError(409, "A linked stock movement does not belong to this bill submission.", {
+        code: "SUBMISSION_MOVEMENT_MISMATCH",
+        movement_id: movementId,
+      });
+    }
+    if (reversalForMovement(movementId)) {
+      continue;
+    }
+
+    const quantity = Number(movement.quantity || 0);
+    const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(movement.item_id);
+    if (!item || !Number.isInteger(quantity) || quantity <= 0) {
+      throw HttpError(409, "The original stock movement can no longer be restored safely.", {
+        code: "SUBMISSION_MOVEMENT_UNRESTORABLE",
+        movement_id: movementId,
+      });
+    }
+
+    const tableAllocations = allocationsForMovement(movementId);
+    const metaAllocations = parseMetaAllocations(movement.meta_json);
+    const sourceAllocations = tableAllocations.length ? tableAllocations : metaAllocations;
+    const allocatedQuantity = sourceAllocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+    if (!sourceAllocations.length || allocatedQuantity !== quantity) {
+      throw HttpError(
+        409,
+        "The original batch allocation is incomplete. Use an authorised inventory correction.",
+        { code: "SUBMISSION_REVERSAL_REQUIRES_CORRECTION", movement_id: movementId },
+      );
+    }
+
+    const restoredAllocations = restoreOriginalAllocations(item.id, sourceAllocations);
+    const previousQuantity = Number(item.quantity || 0);
+    const nextQuantity = previousQuantity + quantity;
+    assertInventoryQuantityUpdate(item.id, nextQuantity, item.row_version);
+
+    const meta = {
+      consultation_id: Number(consultationId),
+      billing_id: Number(billingId),
+      reversed_movement_id: movementId,
+      performed_by_user_id: actor.id || null,
+      performed_by_role: actor.role || "",
+      performed_by_name: actorName,
+      reason: String(reason || "").trim(),
+      allocations: restoredAllocations,
+      original_action_type: movement.action_type,
+      reversal_scope: "billing_submission",
+    };
+
+    db.prepare(`
+      INSERT INTO inventory_movements (
+        item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+        recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+        unit_cost_snapshot, unit_price_snapshot, valuation_basis
+      ) VALUES (?, 'in', ?, ?, ?, ?, ?, ?, 'reversal', 'consultation', ?, ?, ?, ?, ?)
+    `).run(
+      item.id,
+      quantity,
+      previousQuantity,
+      nextQuantity,
+      item.owner_doctor_id || null,
+      actor.id || null,
+      `Reversed incorrect billing submission for consultation #${consultationId}.`,
+      Number(consultationId),
+      JSON.stringify(meta),
+      movement.unit_cost_snapshot,
+      movement.unit_price_snapshot,
+      movement.valuation_basis,
+    );
+    const reversalId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+    recordMovementAllocations(reversalId, restoredAllocations);
+    db.prepare(`
+      INSERT INTO inventory_activity_history (
+        movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
+        quantity, direction, source_text, destination_text, batch_id, meta_json
+      ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, 'reversal', ?, ?, 'in', 'Patient Bill', 'Doctor Stock', ?, ?)
+    `).run(
+      reversalId,
+      actor.id || null,
+      actorName,
+      actor.role || "",
+      item.item_name || "",
+      quantity,
+      restoredAllocations.map((row) => row.batch_id).join(","),
+      JSON.stringify(meta),
+    );
+    reversalIds.push(reversalId);
+    touchedItemIds.add(Number(item.id));
+  }
+
+  return {
+    reversed: reversalIds.length,
+    reversalIds,
+    touchedItemIds: [...touchedItemIds],
+    idempotent: reversalIds.length === 0,
+  };
+}
+
 module.exports = {
+  reverseBillingSubmissionInventory,
   reverseInventoryForConsultation,
 };

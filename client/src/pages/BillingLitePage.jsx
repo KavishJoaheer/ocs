@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Clock3,
   Home,
@@ -18,11 +19,21 @@ import {
   ShoppingBasket,
   Star,
   Stethoscope,
+  UserRound,
 } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
+import { listOfflineMutations } from "../lib/offlineQueue.js";
+import { isBrowserOffline, isNetworkFailure } from "../lib/networkErrors.js";
+import {
+  flushOfflineQueue,
+  OFFLINE_QUEUE_CHANGED,
+  OFFLINE_QUEUE_ITEM_SYNCED,
+  OFFLINE_SAVED_TOAST,
+  queueQuickBillingMutation,
+} from "../lib/inventoryOfflineSync.js";
 
 const NAV_ITEMS = [
   { id: "today", label: "Today", icon: Home },
@@ -35,6 +46,9 @@ const STATUS_META = {
   awaiting_operator: { label: "Awaiting operator", className: "bg-cyan-50 text-cyan-800 ring-cyan-200" },
   needs_doctor: { label: "Needs clarification", className: "bg-rose-50 text-rose-800 ring-rose-200" },
   ready_for_payment: { label: "Ready for payment", className: "bg-violet-50 text-violet-800 ring-violet-200" },
+  queued_offline: { label: "Saved offline", className: "bg-amber-50 text-amber-800 ring-amber-200" },
+  needs_attention: { label: "Sync needs attention", className: "bg-rose-50 text-rose-800 ring-rose-200" },
+  reversed: { label: "Reversed", className: "bg-slate-100 text-slate-700 ring-slate-300" },
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
 
@@ -130,10 +144,19 @@ function BillingLitePage({ onOpenHistory }) {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [lookup, setLookup] = useState("");
   const [lookupResults, setLookupResults] = useState([]);
+  const [patientOptions, setPatientOptions] = useState([]);
+  const [patientPickerOpen, setPatientPickerOpen] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedPickerVisitId, setSelectedPickerVisitId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSyncingOffline, setIsSyncingOffline] = useState(false);
+  const [offlineSubmissions, setOfflineSubmissions] = useState([]);
+  const [lastSubmissionOffline, setLastSubmissionOffline] = useState(false);
+  const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
   const [favorites, setFavorites] = useState(() => {
     return new Set();
   });
@@ -155,12 +178,14 @@ function BillingLitePage({ onOpenHistory }) {
   async function loadDashboard({ silent = false } = {}) {
     if (!silent) setIsLoading(true);
     try {
-      const [visitPayload, submissionPayload] = await Promise.all([
+      const [visitPayload, submissionPayload, pickerPayload] = await Promise.all([
         api.get("/billing/quick/visits"),
         api.get("/billing/quick/submissions"),
+        api.get("/billing/quick/picker-options"),
       ]);
       setVisits(Array.isArray(visitPayload?.visits) ? visitPayload.visits : []);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
+      setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
     } catch (error) {
       toast.error(error.message || "Quick billing could not be loaded.");
     } finally {
@@ -171,6 +196,27 @@ function BillingLitePage({ onOpenHistory }) {
   useEffect(() => {
     void loadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let ignore = false;
+    const refresh = async () => {
+      const entries = await listOfflineMutations({ userId: user.id });
+      if (!ignore) setOfflineSubmissions(entries.filter((entry) => entry.kind === "billing_quick_capture"));
+    };
+    const handleSynced = (event) => {
+      void refresh();
+      if (event.detail?.entry?.kind === "billing_quick_capture") void loadDashboard({ silent: true });
+    };
+    void refresh();
+    window.addEventListener(OFFLINE_QUEUE_CHANGED, refresh);
+    window.addEventListener(OFFLINE_QUEUE_ITEM_SYNCED, handleSynced);
+    return () => {
+      ignore = true;
+      window.removeEventListener(OFFLINE_QUEUE_CHANGED, refresh);
+      window.removeEventListener(OFFLINE_QUEUE_ITEM_SYNCED, handleSynced);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -211,6 +257,27 @@ function BillingLitePage({ onOpenHistory }) {
     [catalog, cart],
   );
 
+  const selectedPatient = useMemo(
+    () => patientOptions.find((patient) => String(patient.patient_id) === String(selectedPatientId)) || null,
+    [patientOptions, selectedPatientId],
+  );
+
+  const filteredPatientOptions = useMemo(() => {
+    const needle = patientSearch.trim().toLowerCase();
+    if (!needle) return patientOptions;
+    return patientOptions.filter((patient) =>
+      String(patient.patient_name || "").toLowerCase().includes(needle) ||
+      String(patient.patient_identifier || "").toLowerCase().includes(needle),
+    );
+  }, [patientOptions, patientSearch]);
+
+  const selectedPickerVisit = useMemo(
+    () => selectedPatient?.visits?.find(
+      (visit) => String(visit.consultation_id) === String(selectedPickerVisitId),
+    ) || null,
+    [selectedPatient, selectedPickerVisitId],
+  );
+
   const supplyTotal = selectedItems.reduce(
     (sum, item) => sum + Number(item.selling_price || 0) * item.quantity,
     0,
@@ -229,6 +296,13 @@ function BillingLitePage({ onOpenHistory }) {
     setCatalog([]);
     setCatalogSearch("");
     setView("confirm");
+  }
+
+  function choosePatient(patient) {
+    setSelectedPatientId(String(patient.patient_id));
+    setSelectedPickerVisitId(patient.visits?.length === 1 ? String(patient.visits[0].consultation_id) : "");
+    setPatientPickerOpen(false);
+    setPatientSearch("");
   }
 
   async function openCatalog() {
@@ -293,25 +367,69 @@ function BillingLitePage({ onOpenHistory }) {
   async function submitBilling() {
     if (!selectedVisit || isSubmitting) return;
     setIsSubmitting(true);
+    const endpoint = `/billing/quick/visits/${selectedVisit.consultation_id}/capture`;
+    const submissionPayload = {
+      operation_id: crypto.randomUUID(),
+      items: selectedItems.map((item) => ({
+        inventory_item_id: item.id,
+        quantity: item.quantity,
+      })),
+    };
     try {
-      const payload = await api.post(
-        `/billing/quick/visits/${selectedVisit.consultation_id}/capture`,
-        {
-          operation_id: crypto.randomUUID(),
-          items: selectedItems.map((item) => ({
-            inventory_item_id: item.id,
-            quantity: item.quantity,
-          })),
-        },
-      );
+      const payload = await api.post(endpoint, submissionPayload);
+      setLastSubmissionOffline(false);
       setSelectedVisit(payload.visit || selectedVisit);
       setView("success");
       await loadDashboard({ silent: true });
       toast.success(selectedItems.length ? "Billing sent to the operator." : "Consultation-only billing submitted.");
     } catch (error) {
-      toast.error(error.message || "Billing could not be submitted.");
+      if (isBrowserOffline() || isNetworkFailure(error)) {
+        try {
+          await queueQuickBillingMutation({
+            endpoint,
+            payload: submissionPayload,
+            userId: user.id,
+            meta: {
+              label: `Billing ${selectedVisit.visit_number}`,
+              consultationId: selectedVisit.consultation_id,
+              visitNumber: selectedVisit.visit_number,
+              itemCount: selectedUnitCount,
+            },
+          });
+          setLastSubmissionOffline(true);
+          setView("success");
+          toast.success(OFFLINE_SAVED_TOAST, { duration: 6500 });
+        } catch (queueError) {
+          toast.error(queueError.message || "Billing could not be saved on this device.");
+        }
+      } else {
+        toast.error(error.message || "Billing could not be submitted.");
+      }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function reverseSubmission(submission) {
+    const response = window.prompt("Why are these submitted supplies being reversed?");
+    if (response === null) return;
+    const reason = response.trim();
+    if (reason.length < 5) {
+      toast.error("Enter a clear reason for the reversal.");
+      return;
+    }
+    setReversingSubmissionId(submission.id);
+    try {
+      await api.post(`/billing/quick/submissions/${submission.id}/reverse`, {
+        operation_id: crypto.randomUUID(),
+        reason,
+      });
+      await loadDashboard({ silent: true });
+      toast.success("Supplies reversed. The stock and bill audit trails were updated.");
+    } catch (error) {
+      toast.error(error.message || "The submitted supplies could not be reversed.");
+    } finally {
+      setReversingSubmissionId(null);
     }
   }
 
@@ -321,8 +439,25 @@ function BillingLitePage({ onOpenHistory }) {
     setCart({});
     setLookupResults([]);
     setCatalogSearch("");
+    setLastSubmissionOffline(false);
     setView(destination);
   }
+
+  const displayedSubmissions = [
+    ...offlineSubmissions.map((entry) => ({
+      id: `offline-${entry.id}`,
+      patient_masked_name: "Saved securely on this device",
+      patient_identifier: entry.meta?.visitNumber || "Pending visit",
+      visit_number: entry.meta?.visitNumber || "Pending sync",
+      submitted_at: entry.timestamp,
+      item_count: Number(entry.meta?.itemCount || 0),
+      items: [],
+      status: entry.sync_status === "needs_attention" ? "needs_attention" : "queued_offline",
+      sync_error: entry.sync_error || "",
+      offline: true,
+    })),
+    ...submissions,
+  ];
 
   const showBottomNav = ["today", "find", "status"].includes(view);
 
@@ -385,20 +520,123 @@ function BillingLitePage({ onOpenHistory }) {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setView("find")}
-              className="mb-5 flex min-h-16 w-full items-center gap-3 rounded-2xl border border-white/70 bg-white px-5 text-left text-slate-500 shadow-[0_12px_35px_rgba(23,77,80,0.12)] transition active:scale-[0.99]"
-            >
-              <Search className="size-6 text-[#248f91]" aria-hidden="true" />
-              <span className="text-base font-bold">Enter OCS or visit number</span>
-            </button>
+            <div className="relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-[0.14em] text-[#248f91]">Start a bill</p>
+                  <h2 className="mt-1 text-xl font-black text-[#173f47]">Choose patient and consultation</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setView("find")}
+                  className="mt-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-2 text-sm font-bold text-[#17666a] sm:mt-0"
+                >
+                  <Search className="size-4" aria-hidden="true" />
+                  Use OCS or visit number
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <div className="relative">
+                  <label className="text-sm font-black text-slate-700">1. Patient</label>
+                  <button
+                    type="button"
+                    onClick={() => setPatientPickerOpen((open) => !open)}
+                    className="mt-2 flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-left outline-none transition focus:border-[#2aa7a0]"
+                    aria-haspopup="listbox"
+                    aria-expanded={patientPickerOpen}
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <UserRound className="size-6 shrink-0 text-[#248f91]" aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className={`block truncate font-black ${selectedPatient ? "text-[#173f47]" : "text-slate-500"}`}>
+                          {selectedPatient?.patient_name || "Select patient"}
+                        </span>
+                        <span className="block truncate text-sm font-semibold text-slate-500">
+                          {selectedPatient?.patient_identifier || "Search by name or OCS number"}
+                        </span>
+                      </span>
+                    </span>
+                    <ChevronDown className={`size-5 shrink-0 text-slate-400 transition ${patientPickerOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                  </button>
+
+                  {patientPickerOpen ? (
+                    <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,50,55,0.2)]">
+                      <div className="border-b border-slate-100 p-3">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                          <input
+                            autoFocus
+                            value={patientSearch}
+                            onChange={(event) => setPatientSearch(event.target.value)}
+                            placeholder="Type patient name or OCS number"
+                            className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 font-semibold text-[#173f47] outline-none focus:border-[#2aa7a0] focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto" role="listbox" aria-label="Patients with consultations ready to bill">
+                        {filteredPatientOptions.length ? filteredPatientOptions.map((patient) => (
+                          <button
+                            key={patient.patient_id}
+                            type="button"
+                            role="option"
+                            aria-selected={String(patient.patient_id) === String(selectedPatientId)}
+                            onClick={() => choosePatient(patient)}
+                            className="flex min-h-16 w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-[#eff8f7] active:bg-[#dff5f1]"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-black text-[#173f47]">{patient.patient_name}</span>
+                              <span className="block text-sm font-semibold text-slate-500">{patient.patient_identifier}</span>
+                            </span>
+                            <span className="shrink-0 rounded-full bg-[#e7f8f5] px-2.5 py-1 text-xs font-black text-[#17666a]">
+                              {patient.visits.length} {patient.visits.length === 1 ? "visit" : "visits"}
+                            </span>
+                          </button>
+                        )) : (
+                          <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No matching patient.</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <label className="block">
+                  <span className="text-sm font-black text-slate-700">2. Consultation</span>
+                  <select
+                    value={selectedPickerVisitId}
+                    onChange={(event) => setSelectedPickerVisitId(event.target.value)}
+                    disabled={!selectedPatient}
+                    className="mt-2 min-h-16 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 font-black text-[#173f47] outline-none transition focus:border-[#2aa7a0] disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    <option value="">{selectedPatient ? "Select consultation" : "Select patient first"}</option>
+                    {(selectedPatient?.visits || []).map((visit) => (
+                      <option key={visit.consultation_id} value={visit.consultation_id}>
+                        {formatVisitDate(visit.visit_date)} · {formatVisitTime(visit.visit_time)} · {visit.visit_number}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  disabled={!selectedPickerVisit}
+                  onClick={() => selectedPickerVisit && chooseVisit(selectedPickerVisit)}
+                  className="flex min-h-16 items-center justify-center gap-2 rounded-2xl bg-[#f2b52b] px-6 font-black text-[#173f47] shadow-[0_12px_30px_rgba(242,181,43,0.25)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 md:min-w-36"
+                >
+                  Continue
+                  <ChevronRight className="size-5" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
 
             {visits.length ? (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <h2 className="mb-3 text-lg font-black text-[#173f47]">Today’s completed consultations</h2>
+                <div className="grid gap-4 md:grid-cols-2">
                 {visits.map((visit) => (
                   <VisitCard key={visit.consultation_id} visit={visit} onSelect={chooseVisit} />
                 ))}
+                </div>
               </div>
             ) : (
               <EmptyState
@@ -741,15 +979,19 @@ function BillingLitePage({ onOpenHistory }) {
               <span className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                 <Check className="size-10 stroke-[3]" />
               </span>
-              <p className="mt-6 text-sm font-black uppercase tracking-[0.18em] text-emerald-700">Submission received</p>
-              <h1 className="mt-2 text-3xl font-black text-[#173f47]">Sent to the operator</h1>
+              <p className="mt-6 text-sm font-black uppercase tracking-[0.18em] text-emerald-700">
+                {lastSubmissionOffline ? "Saved on this device" : "Submission received"}
+              </p>
+              <h1 className="mt-2 text-3xl font-black text-[#173f47]">
+                {lastSubmissionOffline ? "Will send when online" : "Sent to the operator"}
+              </h1>
               <p className="mt-3 text-base font-semibold leading-7 text-slate-600">
                 {selectedVisit.visit_number} · {selectedVisit.patient_identifier}<br />
                 {selectedUnitCount ? `${selectedUnitCount} supply unit${selectedUnitCount === 1 ? "" : "s"} recorded` : "Consultation only"}
               </p>
               <div className="mt-7 rounded-2xl bg-[#edf8f6] px-5 py-4 text-left">
                 <p className="text-sm font-bold text-slate-500">Current status</p>
-                <div className="mt-2"><StatusBadge status="awaiting_operator" /></div>
+                <div className="mt-2"><StatusBadge status={lastSubmissionOffline ? "queued_offline" : "awaiting_operator"} /></div>
               </div>
               <button
                 type="button"
@@ -778,9 +1020,28 @@ function BillingLitePage({ onOpenHistory }) {
                 <RefreshCw className="size-5" />
               </button>
             </div>
-            {submissions.length ? (
+            {offlineSubmissions.length ? (
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <div>
+                  <p className="font-black">{offlineSubmissions.length} billing submission{offlineSubmissions.length === 1 ? "" : "s"} waiting to sync</p>
+                  <p className="mt-1 text-sm font-semibold">Saved on this device and protected against duplicate submission.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isSyncingOffline}
+                  onClick={async () => {
+                    setIsSyncingOffline(true);
+                    try { await flushOfflineQueue(); } finally { setIsSyncingOffline(false); }
+                  }}
+                  className="min-h-11 rounded-xl border border-amber-300 bg-white px-4 text-sm font-black disabled:opacity-50"
+                >
+                  {isSyncingOffline ? "Syncing…" : "Retry now"}
+                </button>
+              </div>
+            ) : null}
+            {displayedSubmissions.length ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {submissions.map((submission) => (
+                {displayedSubmissions.map((submission) => (
                   <article key={submission.id} className="rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(23,77,80,0.08)]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -799,13 +1060,33 @@ function BillingLitePage({ onOpenHistory }) {
                         <p className="mt-1 font-black">{submission.item_count || "None"}</p>
                       </div>
                     </div>
+                    {submission.workflow_note ? (
+                      <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-800">
+                        Operator note: {submission.workflow_note}
+                      </p>
+                    ) : null}
+                    {submission.sync_error ? (
+                      <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-800">
+                        {submission.sync_error}
+                      </p>
+                    ) : null}
                     {submission.items.length ? (
                       <p className="mt-4 line-clamp-2 text-sm font-semibold leading-6 text-slate-600">
                         {submission.items.map((item) => `${item.description} ×${item.quantity}`).join(", ")}
                       </p>
-                    ) : (
+                    ) : !submission.offline ? (
                       <p className="mt-4 text-sm font-semibold text-slate-600">Consultation only · no supplies submitted</p>
-                    )}
+                    ) : null}
+                    {!submission.offline && submission.item_count > 0 && !["completed", "reversed"].includes(submission.status) ? (
+                      <button
+                        type="button"
+                        disabled={reversingSubmissionId === submission.id}
+                        onClick={() => reverseSubmission(submission)}
+                        className="mt-4 min-h-11 w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-black text-rose-800 transition hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        {reversingSubmissionId === submission.id ? "Reversing…" : "Reverse incorrect supplies"}
+                      </button>
+                    ) : null}
                   </article>
                 ))}
               </div>

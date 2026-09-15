@@ -85,6 +85,7 @@ export function AuthProvider({ children }) {
     setToken(COOKIE_SESSION);
     setUser(payload.user);
     setOfflineQueueUserContext(payload.user?.id ?? null);
+    void flushOfflineQueue({ silent: true });
 
     if (payload.user?.role === "doctor") {
       void prefetchPatientOfflineDirectory(payload.user.id);
@@ -171,6 +172,7 @@ export function AuthProvider({ children }) {
           setToken(COOKIE_SESSION);
           setUser(payload.user);
           setOfflineQueueUserContext(payload.user?.id ?? null);
+          void flushOfflineQueue({ silent: true });
           if (payload.user?.role === "doctor") {
             void prefetchPatientOfflineDirectory(payload.user.id);
           }

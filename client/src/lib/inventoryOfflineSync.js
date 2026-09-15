@@ -27,6 +27,8 @@ export const OFFLINE_QUEUE_FLUSH_COMPLETE = "offline-queue-flush-complete";
 export const OFFLINE_QUEUE_CHANGED = "offline-queue-changed";
 
 const INVENTORY_QUEUE_KINDS = new Set(["inventory_deduct", "inventory_restock"]);
+const BILLING_QUEUE_KINDS = new Set(["billing_quick_capture"]);
+const SYNC_QUEUE_KINDS = new Set([...INVENTORY_QUEUE_KINDS, ...BILLING_QUEUE_KINDS]);
 
 let flushPromise = null;
 let listenerStarted = false;
@@ -108,6 +110,19 @@ export async function queueInventoryMutation({
   return record;
 }
 
+export async function queueQuickBillingMutation({ endpoint, payload, meta = {}, userId = activeUserId }) {
+  const record = await enqueueOfflineMutation({
+    kind: "billing_quick_capture",
+    method: "POST",
+    endpoint,
+    payload: { ...payload, operation_id: payload.operation_id || crypto.randomUUID() },
+    meta,
+    userId: userId != null ? Number(userId) : null,
+  });
+  notifyQueueChanged();
+  return record;
+}
+
 export function shouldQueueInventoryMutation(error) {
   return isBrowserOffline() || isNetworkFailure(error);
 }
@@ -146,7 +161,7 @@ async function runOfflineQueue({ silent = false } = {}) {
 
   for (const entry of entries) {
     if (activeUserId !== queueUserId) break;
-    if (!INVENTORY_QUEUE_KINDS.has(entry.kind)) {
+    if (!SYNC_QUEUE_KINDS.has(entry.kind)) {
       continue;
     }
 
@@ -178,7 +193,7 @@ async function runOfflineQueue({ silent = false } = {}) {
         await enqueueOfflineMutation({ ...entry, sync_status: "needs_attention", sync_error: error.message });
         notifyDoctorBagInventoryUpdated();
         if (!silent) {
-          const label = entry.meta?.itemName || "inventory update";
+          const label = entry.meta?.label || entry.meta?.itemName || "offline update";
           toast.error(`${label} needs attention: ${error.message}. The pending entry is retained.`);
         }
         continue;
@@ -192,7 +207,7 @@ async function runOfflineQueue({ silent = false } = {}) {
         await enqueueOfflineMutation({ ...entry, sync_status: "needs_attention", sync_error: error.message });
         notifyQueueChanged();
         if (!silent) {
-          const label = entry.meta?.itemName || "inventory update";
+          const label = entry.meta?.label || entry.meta?.itemName || "offline update";
           toast.error(
             error.status === 410
               ? `${label} was rejected by the server (${error.message}).`
@@ -206,7 +221,7 @@ async function runOfflineQueue({ silent = false } = {}) {
       // are usually transient, so keep the entry queued for the next pass.
       // Dropping it here would silently lose a real sale.
       if (!silent) {
-        const label = entry.meta?.itemName || "inventory update";
+        const label = entry.meta?.label || entry.meta?.itemName || "offline update";
         toast.error(`Could not sync ${label} yet: ${error.message}. It stays queued.`);
       }
       break;
@@ -220,8 +235,8 @@ async function runOfflineQueue({ silent = false } = {}) {
   if (synced > 0 && !silent && activeUserId === queueUserId) {
     toast.success(
       synced === 1
-        ? "1 pending inventory update synced."
-        : `${synced} pending inventory updates synced.`,
+        ? "1 pending offline update synced."
+        : `${synced} pending offline updates synced.`,
     );
   }
 

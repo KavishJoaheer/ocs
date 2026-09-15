@@ -40,6 +40,10 @@ function ensureFinancialIntegritySchema(db) {
         workflow_note TEXT NOT NULL DEFAULT '',
         workflow_updated_by_user_id INTEGER,
         workflow_updated_at TEXT,
+        reversed_at TEXT,
+        reversed_by_user_id INTEGER,
+        reversal_reason TEXT NOT NULL DEFAULT '',
+        reversal_operation_id TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE RESTRICT,
         FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
@@ -51,11 +55,43 @@ function ensureFinancialIntegritySchema(db) {
         ON billing_lite_submissions(consultation_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_billing_lite_doctor
         ON billing_lite_submissions(doctor_id, created_at DESC);
+      CREATE TABLE IF NOT EXISTS billing_quick_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id INTEGER,
+        consultation_id INTEGER NOT NULL,
+        billing_id INTEGER,
+        actor_user_id INTEGER,
+        actor_name TEXT NOT NULL DEFAULT '',
+        actor_role TEXT NOT NULL DEFAULT '',
+        event_type TEXT NOT NULL,
+        previous_status TEXT,
+        next_status TEXT,
+        reason TEXT NOT NULL DEFAULT '',
+        details_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (submission_id) REFERENCES billing_lite_submissions(id) ON DELETE RESTRICT,
+        FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE RESTRICT,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_quick_events_visit
+        ON billing_quick_events(consultation_id, created_at DESC);
+      CREATE TRIGGER IF NOT EXISTS billing_quick_events_no_update
+      BEFORE UPDATE ON billing_quick_events BEGIN
+        SELECT RAISE(ABORT, 'Quick billing history is append-only');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_quick_events_no_delete
+      BEFORE DELETE ON billing_quick_events BEGIN
+        SELECT RAISE(ABORT, 'Quick billing history is append-only');
+      END;
     `);
     add('billing_lite_submissions', 'workflow_status', "TEXT NOT NULL DEFAULT 'awaiting_operator'");
     add('billing_lite_submissions', 'workflow_note', "TEXT NOT NULL DEFAULT ''");
     add('billing_lite_submissions', 'workflow_updated_by_user_id', 'INTEGER');
     add('billing_lite_submissions', 'workflow_updated_at', 'TEXT');
+    add('billing_lite_submissions', 'reversed_at', 'TEXT');
+    add('billing_lite_submissions', 'reversed_by_user_id', 'INTEGER');
+    add('billing_lite_submissions', 'reversal_reason', "TEXT NOT NULL DEFAULT ''");
+    add('billing_lite_submissions', 'reversal_operation_id', 'TEXT');
     if (!db.prepare("SELECT 1 FROM financial_migrations WHERE name='consultation_tariffs_20260909'").get()) {
       for (const [name, amount] of Object.entries(require('./consultationFees').CONSULTATION_FEES)) {
         db.prepare('UPDATE consultation_fee_types SET default_amount=?, updated_at=CURRENT_TIMESTAMP WHERE type_name=?').run(amount, name);

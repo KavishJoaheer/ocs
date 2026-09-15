@@ -16,6 +16,7 @@ const { createApp } = require("../src/app");
 const { db, ensureBillingForConsultation } = require("../src/db");
 const { hashPassword } = require("../src/lib/security");
 const { getTodayLocal } = require("../src/lib/utils");
+const { saveUserPushSubscription } = require("../src/lib/push");
 
 let server;
 let baseUrl;
@@ -138,6 +139,24 @@ test("Billing Lite resolves OCS numbers without requiring a hyphen", async () =>
   assert.equal(lookup.data.visits[0].consultation_id, consultationId);
 });
 
+test("Billing Lite offers a patient-first picker scoped to the signed-in doctor's billable visits", async () => {
+  const picker = await api("GET", "/billing/quick/picker-options");
+  assert.equal(picker.status, 200, JSON.stringify(picker.data));
+
+  const patient = picker.data.patients.find((row) => row.patient_identifier === patientIdentifier);
+  assert.ok(patient);
+  assert.equal(patient.patient_name, "Patient Example");
+  assert.ok(patient.visits.some((visit) => visit.consultation_id === consultationId));
+  assert.ok(patient.visits.every((visit) => visit.can_submit));
+
+  const otherDoctor = await api("GET", "/billing/quick/picker-options", otherDoctorToken);
+  assert.equal(otherDoctor.status, 200, JSON.stringify(otherDoctor.data));
+  assert.equal(otherDoctor.data.patients.some((row) => row.patient_identifier === patientIdentifier), false);
+
+  const operator = await api("GET", "/billing/quick/picker-options", operatorToken);
+  assert.equal(operator.status, 403);
+});
+
 test("Billing Lite atomically appends supplies, deducts stock, and prevents retry duplication", async () => {
   const catalog = await api("GET", `/billing/quick/catalog/${consultationId}`);
   assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
@@ -174,13 +193,34 @@ test("operator review status is independent from paid or unpaid bill status", as
   assert.equal(submission.bill_status, "unpaid");
   assert.equal(submission.workflow_status, "awaiting_operator");
 
-  const needsDoctor = await api(
-    "PATCH",
-    `/billing/quick/operator-queue/${consultationId}/status`,
-    operatorToken,
-    { status: "needs_doctor", note: "Confirm the saline quantity" },
-  );
-  assert.equal(needsDoctor.status, 200, JSON.stringify(needsDoctor.data));
+  const webpush = require("web-push");
+  const originalSend = webpush.sendNotification;
+  const notifications = [];
+  const doctorUserId = db.prepare("SELECT id FROM users WHERE username = 'billing.lite.doctor'").get().id;
+  saveUserPushSubscription(doctorUserId, {
+    endpoint: "https://example.invalid/billing-doctor",
+    keys: { p256dh: "test", auth: "test" },
+  });
+  webpush.sendNotification = async (_subscription, payload) => {
+    notifications.push(JSON.parse(payload));
+    return { statusCode: 201 };
+  };
+
+  try {
+    const needsDoctor = await api(
+      "PATCH",
+      `/billing/quick/operator-queue/${consultationId}/status`,
+      operatorToken,
+      { status: "needs_doctor", note: "Confirm the saline quantity" },
+    );
+    assert.equal(needsDoctor.status, 200, JSON.stringify(needsDoctor.data));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].title, "Billing clarification needed");
+    assert.match(notifications[0].body, /Confirm the saline quantity/);
+  } finally {
+    webpush.sendNotification = originalSend;
+  }
 
   const visits = await api("GET", "/billing/quick/visits", doctorToken);
   const visit = visits.data.visits.find((row) => row.consultation_id === consultationId);
@@ -202,4 +242,64 @@ test("operator review status is independent from paid or unpaid bill status", as
     { status: "ready_for_payment" },
   );
   assert.equal(forbidden.status, 403);
+});
+
+test("incorrect quick-billing supplies reverse stock and bill lines with an immutable audit trail", async () => {
+  const submission = db.prepare("SELECT * FROM billing_lite_submissions WHERE consultation_id = ? ORDER BY id DESC LIMIT 1").get(consultationId);
+  const operationId = randomUUID();
+  const reversed = await api(
+    "POST",
+    `/billing/quick/submissions/${submission.id}/reverse`,
+    operatorToken,
+    { operation_id: operationId, reason: "Saline was entered twice" },
+  );
+  assert.equal(reversed.status, 200, JSON.stringify(reversed.data));
+  assert.equal(reversed.data.reversed, 1);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
+
+  const bill = db.prepare("SELECT total_amount FROM billing WHERE id = ?").get(submission.billing_id);
+  assert.equal(bill.total_amount, 3000);
+  const audit = db.prepare("SELECT * FROM billing_quick_events WHERE submission_id = ? AND event_type = 'supplies_reversed'").get(submission.id);
+  assert.ok(audit);
+  assert.equal(audit.reason, "Saline was entered twice");
+  assert.equal(audit.actor_role, "operator");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(itemId).count, 1);
+
+  const retry = await api(
+    "POST",
+    `/billing/quick/submissions/${submission.id}/reverse`,
+    operatorToken,
+    { operation_id: operationId, reason: "Saline was entered twice" },
+  );
+  assert.equal(retry.status, 200, JSON.stringify(retry.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(itemId).count, 1);
+});
+
+test("operators can report completed prior-day visits that still lack final billing", async () => {
+  const today = new Date(`${getTodayLocal()}T12:00:00`);
+  today.setDate(today.getDate() - 1);
+  const yesterday = today.toISOString().slice(0, 10);
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (full_name, first_name, last_name, patient_identifier, age, contact_number, patient_contact_number, address, assigned_doctor_id)
+    VALUES ('Unbilled Patient', 'Unbilled', 'Patient', ?, 40, '57111111', '57111111', 'Test address', ?)
+  `).run(`OCS-${900000 + Math.floor(Math.random() * 10000)}`, doctorId).lastInsertRowid);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '14:00', 'completed')
+  `).run(patientId, doctorId, yesterday).lastInsertRowid);
+  const missingConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Awaiting final billing')
+  `).run(appointmentId, patientId, doctorId, yesterday).lastInsertRowid);
+  ensureBillingForConsultation(missingConsultationId, patientId, null, "Day Consultation");
+
+  const report = await api(
+    "GET",
+    `/billing/quick/unbilled-report?dateFrom=${yesterday}&dateTo=${yesterday}`,
+    operatorToken,
+  );
+  assert.equal(report.status, 200, JSON.stringify(report.data));
+  assert.ok(report.data.visits.some((visit) => visit.consultation_id === missingConsultationId));
+  assert.ok(!report.data.visits.some((visit) => visit.consultation_id === consultationId));
 });
