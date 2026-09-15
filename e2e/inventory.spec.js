@@ -1086,12 +1086,19 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: /Shipments/i }).click();
-    await expect(page.getByLabel(/CSV shipment data/i)).toBeVisible({ timeout: 20_000 });
-    const paste = await page.getByLabel(/CSV shipment data/i).boundingBox();
+    const paste = page.getByLabel(/CSV shipment data/i);
+    await expect(paste).toBeVisible({ timeout: 20_000 });
     const override = page.getByText("Operational override reason");
     if (await override.count()) {
-      const overrideBox = await override.boundingBox();
-      expect((paste?.y || 0) + (paste?.height || 0)).toBeLessThan((overrideBox?.y || 9999) - 4);
+      const gap = await paste.evaluate((element) => {
+        const overrideContainer = element.nextElementSibling;
+        if (!overrideContainer) return null;
+        const pasteBox = element.getBoundingClientRect();
+        const overrideBox = overrideContainer.getBoundingClientRect();
+        return overrideBox.top - pasteBox.bottom;
+      });
+      expect(gap).not.toBeNull();
+      expect(gap).toBeGreaterThanOrEqual(4);
     }
     await expect(page.getByRole("button", { name: "Validate preview" })).toBeVisible();
     const validate = await page.getByRole("button", { name: "Validate preview" }).boundingBox();
