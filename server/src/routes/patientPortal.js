@@ -242,8 +242,12 @@ router.get("/dashboard", (req, res) => {
   const pendingBills = db
     .prepare(`
       SELECT COUNT(*) AS count
-      FROM billing
-      WHERE patient_id = ? AND status = 'unpaid'
+      FROM billing b
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.patient_id = ?
+        AND b.status = 'unpaid'
+        AND b.voided_at IS NULL
+        AND c.voided_at IS NULL
     `)
     .get(patientId);
 

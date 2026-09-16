@@ -118,14 +118,14 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   const manualCtx=context('Operator manual line');
   const manual=await api('POST','/billing','operator',{
     consultation_id:manualCtx.consultationId,patient_id:manualCtx.patientId,
-    items:[standardFee(),{description:'Doctor-written dressing charge',type:'Sale',amount:500,quantity:1}],
+    items:[standardFee(),{description:'Doctor-written dressing charge',type:'Sale',amount:500,quantity:1,is_service_charge:true}],
     status:'unpaid',source_reference:'OCS pad #0144',
   });
   assert.equal(manual.status,201,JSON.stringify(manual.data));
 
   const correctedItems=issued.data.items.map(line=>line.is_consultation_fee
     ? {...line,description:'Night Consultation',amount:3000}
-    : line).concat({description:'Doctor-written aftercare item',type:'Sale',amount:100,quantity:1});
+    : line).concat({description:'Doctor-written aftercare item',type:'Sale',amount:100,quantity:1,is_service_charge:true});
   const corrected=await api('PUT',`/billing/${issued.data.id}`,'operator',{
     items:correctedItems,expected_version:issued.data.row_version,
     correction_reason:'OCS pad #0142 transcription correction',
@@ -267,15 +267,46 @@ test('archived patients retain historical billing and revenue with existing doct
 test('service charges cannot impersonate a stocked supply and bypass inventory', async () => {
   item('Protected saline ampoule');
   const bypass=await bill(context('Manual stock bypass'),[{
-    description:'  protected   saline ampoule ',type:'Sale',amount:250,
+    description:'  protected   saline ampoule ',type:'Sale',amount:250,is_service_charge:true,
   }],{operation_id:randomUUID()});
   assert.equal(bypass.status,409,JSON.stringify(bypass.data));
   assert.equal(bypass.data.code,'STOCK_ITEM_REQUIRES_SELECTION');
+  const typoBypass=await bill(context('Typo stock bypass'),[{
+    description:'Protectd saline ampule',type:'Sale',amount:250,is_service_charge:true,
+  }],{operation_id:randomUUID()});
+  assert.equal(typoBypass.status,409,JSON.stringify(typoBypass.data));
+  assert.equal(typoBypass.data.code,'STOCK_ITEM_REQUIRES_SELECTION');
 
   const service=await bill(context('Legitimate non-stock service'),[{
-    description:'Home nursing coordination',type:'Sale',amount:250,
+    description:'Home nursing coordination',type:'Sale',amount:250,is_service_charge:true,
   }],{operation_id:randomUUID()});
   assert.equal(service.status,201,JSON.stringify(service.data));
+});
+
+test('archived stock cannot be selected or billed and accountants cannot rewrite invoice lines', async () => {
+  const archivedCtx=context('Archived catalogue item');
+  const archived=item('Archived catalogue medicine');
+  db.prepare("UPDATE inventory SET archived_at=CURRENT_TIMESTAMP WHERE id=?").run(archived.id);
+  const options=await api('GET',`/billing/inventory-options/by-consultation/${archivedCtx.consultationId}`,'doctor');
+  assert.equal(options.status,200,JSON.stringify(options.data));
+  assert.ok(!options.data.some(entry=>entry.id===archived.id));
+  const blocked=await bill(archivedCtx,[stockLine(archived)],{operation_id:randomUUID()});
+  assert.equal(blocked.status,400,JSON.stringify(blocked.data));
+  assert.equal(row(archived.id).quantity,20);
+
+  const financeCtx=context('Finance role boundaries');
+  const invoice=await bill(financeCtx,[standardFee()],{operation_id:randomUUID()});
+  assert.equal(invoice.status,201,JSON.stringify(invoice.data));
+  const edited=await api('PUT',`/billing/${invoice.data.id}`,'accountant',{
+    items:[{...standardFee(),amount:1}],expected_version:invoice.data.row_version,
+    correction_reason:'Finance should not rewrite charges',
+  });
+  assert.equal(edited.status,403,JSON.stringify(edited.data));
+  const paid=await api('PATCH',`/billing/${invoice.data.id}/pay`,'accountant',{
+    payment_method:'cash',payment_date:today,expected_version:invoice.data.row_version,
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  assert.equal(paid.data.total_amount,2000);
 });
 
 test("doctors cannot read another doctor's invoices through a shared patient", async () => {
@@ -387,12 +418,17 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
   assert.equal(replay.status,201,JSON.stringify(replay.data));
   assert.equal(replay.data.credit_note.id,issued.data.credit_note.id);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(original.data.id).count,1);
-  const lostResponseRetry=await api('POST',`/billing/${original.data.id}/refunds`,'admin',{
+  const reusedReference=await api('POST',`/billing/${original.data.id}/refunds`,'admin',{
     ...payload,operation_id:randomUUID(),
   });
-  assert.equal(lostResponseRetry.status,201,JSON.stringify(lostResponseRetry.data));
-  assert.equal(lostResponseRetry.data.credit_note.id,issued.data.credit_note.id);
+  assert.equal(reusedReference.status,409,JSON.stringify(reusedReference.data));
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(original.data.id).count,1);
+  const legitimateSecondRefund=await api('POST',`/billing/${original.data.id}/refunds`,'admin',{
+    ...payload,external_reference:`CARD-REF-SECOND-${fixtureIndex}`,operation_id:randomUUID(),
+  });
+  assert.equal(legitimateSecondRefund.status,201,JSON.stringify(legitimateSecondRefund.data));
+  assert.notEqual(legitimateSecondRefund.data.credit_note.id,issued.data.credit_note.id);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(original.data.id).count,2);
   const downgrade=await api('PUT',`/billing/${original.data.id}`,'admin',{
     items:issued.data.bill.items,status:'unpaid',expected_version:issued.data.bill.row_version,
     correction_reason:'Attempt to reopen a refunded paid invoice',
@@ -413,14 +449,14 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
   })).status,409);
 
   const listed=(await api('GET',`/billing?patientId=${ctx.patientId}`,'admin')).data[0];
-  assert.equal(listed.refunded_amount,500);
-  assert.equal(listed.net_paid_amount,1525);
+  assert.equal(listed.refunded_amount,1000);
+  assert.equal(listed.net_paid_amount,1025);
   const summary=(await api('GET','/billing/patient-summary','admin')).data.find(entry=>entry.patient_id===ctx.patientId);
-  assert.equal(summary.paid_amount,1525);
-  assert.equal(summary.refunded_amount,500);
+  assert.equal(summary.paid_amount,1025);
+  assert.equal(summary.refunded_amount,1000);
   const after=await report(today,'payment');
-  assert.equal(after.revenueStatement.paidRevenue,before.revenueStatement.paidRevenue-500);
-  assert.equal(after.revenueStatement.refundedRevenue,before.revenueStatement.refundedRevenue+500);
+  assert.equal(after.revenueStatement.paidRevenue,before.revenueStatement.paidRevenue-1000);
+  assert.equal(after.revenueStatement.refundedRevenue,before.revenueStatement.refundedRevenue+1000);
   assert.throws(()=>db.prepare('UPDATE billing_refunds SET reason=? WHERE id=?').run('Changed later',issued.data.credit_note.id),/immutable/);
   assert.throws(()=>db.prepare('DELETE FROM billing_refunds WHERE id=?').run(issued.data.credit_note.id),/immutable/);
 });
@@ -623,7 +659,7 @@ test('current tariffs migrate once without repricing bills, and automatic fees r
   assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));assert.equal(confirmed.data.total_amount,3000);assert.equal(confirmed.data.fee_review_required,0);
   const duplicate=await bill({...ctx,consultationId:created.data.id},fee(2000),{operation_id:randomUUID()});
   assert.equal(duplicate.status,409);assert.equal(duplicate.data.existing_bill_id,original.id);
-  const additional=await bill({...ctx,consultationId:created.data.id},[{description:'Additional procedure',type:'Sale',amount:100}],{operation_id:randomUUID()});assert.equal(additional.status,201);
+  const additional=await bill({...ctx,consultationId:created.data.id},[{description:'Additional procedure',type:'Sale',amount:100,is_service_charge:true}],{operation_id:randomUUID()});assert.equal(additional.status,201);
   db.prepare("UPDATE consultation_fee_types SET default_amount=2100 WHERE type_name='Day Consultation'").run();
   require('../src/lib/financialIntegritySchema').ensureFinancialIntegritySchema(db);
   assert.equal(db.prepare("SELECT default_amount FROM consultation_fee_types WHERE type_name='Day Consultation'").get().default_amount,2100);
@@ -743,6 +779,22 @@ test('financial review catches duplicate lines and malformed history, and exclud
   assert.equal(review.status,200);
   assert.ok(review.data.issues.some(i=>i.type==='invalid_bill' && i.bill_ids.includes(b.data.id)));
   db.prepare('UPDATE billing SET items=?,total_amount=2000 WHERE id=?').run(JSON.stringify(fee(2000)),b.data.id);
+  db.prepare('UPDATE billing SET total_amount=1999 WHERE id=?').run(b.data.id);
+  review=await api('GET','/billing/reconciliation');
+  assert.ok(review.data.issues.some(i=>i.type==='invoice_total_mismatch' && i.bill_ids.includes(b.data.id)));
+  db.prepare('UPDATE billing SET total_amount=2000 WHERE id=?').run(b.data.id);
+
+  const stockCtx=context('Movement reconciliation');const billedItem=item('Movement reconciliation medicine');
+  const stockBill=await bill(stockCtx,[stockLine(billedItem,1)],{operation_id:randomUUID()});
+  assert.equal(stockBill.status,201,JSON.stringify(stockBill.data));
+  const detachedItems=stockBill.data.items.map(line=>line.inventory_item_id?{
+    ...line,inventory_movement_ids:[],dispensing_movement_ids:[],
+  }:line);
+  db.prepare('UPDATE billing SET items=? WHERE id=?').run(JSON.stringify(detachedItems),stockBill.data.id);
+  review=await api('GET','/billing/reconciliation');
+  assert.ok(review.data.issues.some(i=>i.type==='invoice_line_missing_movement' && i.bill_ids.includes(stockBill.data.id)));
+  assert.ok(review.data.issues.some(i=>i.type==='orphan_billed_movement' && i.bill_ids.includes(stockBill.data.id)));
+
   const pendingCtx=context('Reversed pending');const it=item('Reversed pending medicine');
   await fieldSale(pendingCtx,it);
   const m=db.prepare('SELECT * FROM inventory_movements WHERE item_id=?').get(it.id);
@@ -760,7 +812,7 @@ test('all payment routes block legacy duplicate fees, including an additional-it
   const ctx=context('Legacy duplicate payment');
   const first=await bill(ctx,fee(1500));
   const duplicateId=Number(db.prepare("INSERT INTO billing (consultation_id,patient_id,items,total_amount,status,payment_method,payment_date) VALUES (?,?,?,2000,'paid','juice',?)").run(ctx.consultationId,ctx.patientId,JSON.stringify(fee(2000)),today).lastInsertRowid);
-  const extra=await bill(ctx,[{description:'Additional service',amount:100,type:'Sale'}]);
+  const extra=await bill(ctx,[{description:'Additional service',amount:100,type:'Sale',is_service_charge:true}]);
   const pay=await api('PATCH',`/billing/${first.data.id}/pay`,'admin',{payment_method:'cash',payment_date:today,expected_version:first.data.row_version});
   assert.equal(pay.status,409); assert.equal(pay.data.code,'DUPLICATE_VISIT_FEE');
   const listed=await api('GET',`/billing?patientId=${ctx.patientId}`);
@@ -867,4 +919,73 @@ test('overdue supply calculation uses Mauritius day boundaries and excludes clos
   assert.equal(sandbox.overdue(request,new Date('2026-09-07T20:00:00Z')),1);
   assert.equal(sandbox.overdue({...request,status:'completed'},new Date('2026-09-09')),0);
   assert.equal(sandbox.overdue({...request,collection_date:'2026-02-30'},new Date('2026-09-09')),0);
+});
+
+test('financial reports use frozen commission and transport rates', async () => {
+  const before=await report(today,'visit');
+  const beforeDoctor=before.doctorReport.rows.find(row=>row.doctor_id===doctorId) || {};
+  const ctx=context('Frozen revenue rates');
+  const invoice=await bill(ctx,fee(1000),{
+    status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(invoice.status,201,JSON.stringify(invoice.data));
+  db.prepare('UPDATE billing SET doctor_commission_rate_snapshot=0.33,ocs_commission_rate_snapshot=0.22 WHERE id=?').run(invoice.data.id);
+  db.prepare('UPDATE consultations SET transport_benefit_snapshot=123 WHERE id=?').run(ctx.consultationId);
+  const after=await report(today,'visit');
+  const afterDoctor=after.doctorReport.rows.find(row=>row.doctor_id===doctorId);
+  assert.equal(Number((afterDoctor.doctorCommission-Number(beforeDoctor.doctorCommission||0)).toFixed(2)),330);
+  assert.equal(Number((afterDoctor.ocsCommission-Number(beforeDoctor.ocsCommission||0)).toFixed(2)),220);
+  assert.equal(Number((afterDoctor.transportBenefits-Number(beforeDoctor.transportBenefits||0)).toFixed(2)),123);
+  assert.equal(after.revenueStatement.shareRates.rateBasis,'invoice_snapshot');
+  assert.equal(after.revenueStatement.shareRates.transportBasis,'consultation_snapshot');
+});
+
+test('finance can close a day once and closed dates reject later payments and refunds', async () => {
+  const unpaidCtx=context('Closed day payment block');
+  const unpaid=await bill(unpaidCtx,[standardFee()],{operation_id:randomUUID()});
+  assert.equal(unpaid.status,201,JSON.stringify(unpaid.data));
+  const refundableCtx=context('Closed day refund block');
+  const refundable=await bill(refundableCtx,[standardFee()],{
+    status:'paid',payment_method:'card',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(refundable.status,201,JSON.stringify(refundable.data));
+
+  assert.equal((await api('GET',`/billing/day-close?date=${today}`,'doctor')).status,403);
+  const preview=await api('GET',`/billing/day-close?date=${today}`,'accountant');
+  assert.equal(preview.status,200,JSON.stringify(preview.data));
+  assert.equal(preview.data.closing,null);
+  const operationId=randomUUID();
+  const settlements=Object.fromEntries(['juice','card','ib'].map(method=>[method,{
+    amount:preview.data.expected_totals[method].expected,
+    reference:Math.abs(Number(preview.data.expected_totals[method].expected||0))>=0.005
+      ? `CLOSE-${method}-${fixtureIndex}` : '',
+  }]));
+  const payload={
+    business_date:today,
+    counted_cash:preview.data.expected_totals.cash.expected,
+    settlements,
+    notes:'Daily finance settlement matched to recorded collections.',
+    operation_id:operationId,
+  };
+  const closed=await api('POST','/billing/day-close','accountant',payload);
+  assert.equal(closed.status,201,JSON.stringify(closed.data));
+  assert.equal(closed.data.variance_total,0);
+  assert.equal(closed.data.closed_by_role,'accountant');
+  const replay=await api('POST','/billing/day-close','accountant',payload);
+  assert.equal(replay.status,201,JSON.stringify(replay.data));
+  assert.equal(replay.data.id,closed.data.id);
+  assert.equal((await api('POST','/billing/day-close','accountant',{...payload,operation_id:randomUUID()})).status,409);
+  assert.throws(()=>db.prepare('UPDATE financial_day_closings SET notes=? WHERE id=?').run('Changed later',closed.data.id),/immutable/);
+
+  const latePayment=await api('PATCH',`/billing/${unpaid.data.id}/pay`,'accountant',{
+    payment_method:'cash',payment_date:today,expected_version:unpaid.data.row_version,
+  });
+  assert.equal(latePayment.status,409,JSON.stringify(latePayment.data));
+  assert.equal(latePayment.data.code,'FINANCIAL_DAY_CLOSED');
+  const lateRefund=await api('POST',`/billing/${refundable.data.id}/refunds`,'accountant',{
+    amount:100,refund_method:'card',refund_date:today,
+    reason:'Refund requested after finance day was closed',operation_id:randomUUID(),
+  });
+  assert.equal(lateRefund.status,409,JSON.stringify(lateRefund.data));
+  assert.equal(lateRefund.data.code,'FINANCIAL_DAY_CLOSED');
 });

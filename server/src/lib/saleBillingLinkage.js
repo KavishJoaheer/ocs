@@ -209,11 +209,13 @@ function appendInventorySaleLineToBill({ billId, item, quantity, movementId }) {
 
   if (existingIndex >= 0) {
     const nextQty = Number(items[existingIndex].quantity) + qty;
+    const nextAmount = roundCurrency(Number(items[existingIndex].amount || 0) + unitPrice * qty);
     items[existingIndex] = {
       ...items[existingIndex],
       quantity: nextQty,
       dispensing_movement_ids: [...(items[existingIndex].dispensing_movement_ids || []), movement],
-      amount: roundCurrency(Number(items[existingIndex].amount || 0) + unitPrice * qty),
+      amount: nextAmount,
+      unit_price: roundCurrency(nextAmount / nextQty),
       description: items[existingIndex].description || description,
     };
   } else {

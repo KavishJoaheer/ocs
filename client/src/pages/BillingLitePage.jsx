@@ -41,6 +41,7 @@ const STATUS_META = {
   queued_offline: { label: "Saved offline", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   needs_attention: { label: "Sync needs attention", className: "bg-rose-50 text-rose-800 ring-rose-200" },
   reversed: { label: "Reversed", className: "bg-slate-100 text-slate-700 ring-slate-300" },
+  superseded: { label: "Corrected", className: "bg-slate-100 text-slate-700 ring-slate-300" },
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
 

@@ -7,6 +7,7 @@ const {
   isValidCurrencyAmount,
   normalizeBillingItems,
   parseBillingRow,
+  safeJsonParse,
 } = require("../lib/utils");
 const { isLinkhamInsuranceProvider } = require("../lib/insuranceProvider");
 const {
@@ -43,6 +44,24 @@ function validPaymentDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function isValidSignedCurrencyAmount(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const amount = Number(value);
+  return Number.isFinite(amount) && Math.abs(amount * 100 - Math.round(amount * 100)) < 1e-8;
+}
+function assertBusinessDateOpen(value) {
+  const closing = db.prepare(`
+    SELECT id, closed_by_name, created_at
+    FROM financial_day_closings
+    WHERE business_date = ?
+  `).get(value);
+  if (closing) {
+    throw Object.assign(
+      new Error(`The finance day for ${value} is closed. Post the transaction on an open date or ask finance to document a correction.`),
+      { status: 409, extra: { code: "FINANCIAL_DAY_CLOSED", closing_id: closing.id } },
+    );
+  }
 }
 function billingDateSql(req) {
   return req.query.dateBasis === "payment"
@@ -91,6 +110,9 @@ function ensureActivityHistoryTable() {
 }
 
 function notifyLinkhamBillingIfNeeded(patientId, userId) {
+  if (String(process.env.LINKHAM_BILLING_ENABLED || "").trim().toLowerCase() !== "true") {
+    return;
+  }
   const pid = Number(patientId || 0);
   if (!pid) {
     return;
@@ -120,22 +142,68 @@ function consultationTypeFromItems(items) {
 }
 
 function assertNoManualInventoryBypass(consultation, items) {
-  const normalizeName = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const normalizeName = (value) => String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  const compactName = (value) => normalizeName(value).replace(/\s+/g, "");
+  const editDistance = (left, right) => {
+    const a = compactName(left);
+    const b = compactName(right);
+    if (!a || !b) return Number.POSITIVE_INFINITY;
+    const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+      let previous = row[0];
+      row[0] = i;
+      for (let j = 1; j <= b.length; j += 1) {
+        const current = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+        previous = current;
+      }
+    }
+    return row[b.length];
+  };
+  const resemblesInventory = (description, itemName) => {
+    const descriptionKey = compactName(description);
+    const itemKey = compactName(itemName);
+    if (!descriptionKey || !itemKey) return false;
+    if (descriptionKey === itemKey) return true;
+    if (Math.min(descriptionKey.length, itemKey.length) >= 5 &&
+        (descriptionKey.includes(itemKey) || itemKey.includes(descriptionKey))) return true;
+    const threshold = Math.max(1, Math.floor(Math.max(descriptionKey.length, itemKey.length) * 0.16));
+    if (editDistance(descriptionKey, itemKey) <= threshold) return true;
+    const descriptionTokens = normalizeName(description).split(" ").filter((token) => token.length >= 2);
+    const itemTokens = normalizeName(itemName).split(" ").filter((token) => token.length >= 2);
+    return descriptionTokens.length > 0 && descriptionTokens.every((token) =>
+      itemTokens.some((candidate) => candidate === token ||
+        (Math.min(candidate.length, token.length) >= 3 && (candidate.startsWith(token) || token.startsWith(candidate)))),
+    );
+  };
   const manualSales = normalizeBillingItems(items).filter(
     (item) => !item.inventory_item_id && item.type === "Sale" && !isConsultationFee(item) && item.description,
   );
   if (!manualSales.length) return;
 
-  const catalogueNames = new Set(
+  const unclassified = manualSales.find((item) => item.is_service_charge !== true);
+  if (unclassified) {
+    throw Object.assign(
+      new Error(`${unclassified.description} must be explicitly recorded as a service/non-stock charge or selected from inventory.`),
+      { status: 409, extra: { code: "UNCLASSIFIED_BILLING_LINE" } },
+    );
+  }
+
+  const catalogueNames =
     db.prepare(`
       SELECT item_name
       FROM inventory
-      WHERE stock_scope = 'doctor'
-        AND owner_doctor_id = ?
-        AND archived_at IS NULL
-    `).all(Number(consultation.doctor_id)).map((row) => normalizeName(row.item_name)),
+      WHERE trim(COALESCE(item_name, '')) != ''
+    `).all().map((row) => String(row.item_name || ""));
+  const bypass = manualSales.find((item) =>
+    catalogueNames.some((catalogueName) => resemblesInventory(item.description, catalogueName)),
   );
-  const bypass = manualSales.find((item) => catalogueNames.has(normalizeName(item.description)));
   if (bypass) {
     throw Object.assign(
       new Error(`${bypass.description} is a stocked supply. Select it from inventory so stock and cost records stay complete.`),
@@ -529,6 +597,7 @@ function applyInventoryTransactions({
         WHERE id = ?
           AND stock_scope = 'doctor'
           AND owner_doctor_id = ?
+          AND archived_at IS NULL
       `)
       .get(Number(line.inventory_item_id), Number(consultation.doctor_id));
 
@@ -1557,6 +1626,39 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           amountAdded,
         );
 
+      const supersededClarifications = db.prepare(`
+        SELECT id, workflow_note
+        FROM billing_lite_submissions
+        WHERE consultation_id = ?
+          AND id != ?
+          AND workflow_status = 'needs_doctor'
+          AND reversed_at IS NULL
+      `).all(consultationId, Number(inserted.lastInsertRowid));
+      if (supersededClarifications.length) {
+        db.prepare(`
+          UPDATE billing_lite_submissions
+          SET workflow_status = 'superseded', workflow_note = '',
+              workflow_updated_by_user_id = ?, workflow_updated_at = CURRENT_TIMESTAMP
+          WHERE consultation_id = ?
+            AND id != ?
+            AND workflow_status = 'needs_doctor'
+            AND reversed_at IS NULL
+        `).run(req.auth.id, consultationId, Number(inserted.lastInsertRowid));
+        for (const previous of supersededClarifications) {
+          recordQuickBillingEvent({
+            submissionId: previous.id,
+            consultationId,
+            billingId: bill.id,
+            actor: req.auth,
+            eventType: "clarification_superseded",
+            previousStatus: "needs_doctor",
+            nextStatus: "superseded",
+            reason: "Doctor submitted a corrected billing entry.",
+            details: { replacement_submission_id: Number(inserted.lastInsertRowid) },
+          });
+        }
+      }
+
       recordQuickBillingEvent({
         submissionId: Number(inserted.lastInsertRowid),
         consultationId,
@@ -1802,6 +1904,7 @@ router.post("/:id/refunds", (req, res) => {
         creditNote = replay;
         return;
       }
+      assertBusinessDateOpen(refundDate);
       const bill = db.prepare(`
         SELECT b.*, c.voided_at AS consultation_voided_at
         FROM billing b
@@ -1811,41 +1914,6 @@ router.post("/:id/refunds", (req, res) => {
       if (!bill) throw Object.assign(new Error("Invoice not found."), { status: 404 });
       if (bill.status !== "paid" || bill.voided_at || bill.consultation_voided_at) {
         throw Object.assign(new Error("Credit notes can only be issued against an active paid invoice."), { status: 409 });
-      }
-      // Recover safely when the first response was lost and a client retries with
-      // a newly generated operation id. Exact, same-actor duplicates in this
-      // short window are treated as the original credit note, not new money.
-      const recentDuplicate = db.prepare(`
-        SELECT *
-        FROM billing_refunds
-        WHERE billing_id = ?
-          AND amount = ?
-          AND refund_method = ?
-          AND refund_date = ?
-          AND lower(trim(reason)) = lower(trim(?))
-          AND COALESCE(lower(trim(external_reference)), '') = COALESCE(lower(trim(?)), '')
-          AND issued_by_user_id = ?
-          AND created_at >= datetime('now', '-15 minutes')
-        ORDER BY id DESC
-        LIMIT 1
-      `).get(
-        billId,
-        roundCurrency(amount),
-        refundMethod,
-        refundDate,
-        reason,
-        externalReference || null,
-        req.auth.id || null,
-      );
-      if (recentDuplicate) {
-        creditNote = {
-          ...recentDuplicate,
-          amount: roundCurrency(recentDuplicate.amount),
-          inventory_restored: false,
-          accounting_note: "This credit note changes net collections only. Stock is not returned automatically.",
-        };
-        operation.save(creditNote);
-        return;
       }
       const alreadyRefunded = roundCurrency(db.prepare(`
         SELECT COALESCE(SUM(amount), 0) AS amount
@@ -1929,6 +1997,189 @@ router.get('/reconciliation', (req,res) => {
   res.json(result);
 });
 
+function paymentTotalsForDate(businessDate) {
+  const rows = db.prepare(`
+    WITH methods(method) AS (VALUES ('cash'), ('juice'), ('card'), ('ib')),
+    payments AS (
+      SELECT b.payment_method AS method, SUM(b.total_amount) AS amount
+      FROM billing b
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.status = 'paid'
+        AND b.voided_at IS NULL
+        AND c.voided_at IS NULL
+        AND b.payment_date = ?
+      GROUP BY b.payment_method
+    ),
+    refunds AS (
+      SELECT r.refund_method AS method, SUM(r.amount) AS amount
+      FROM billing_refunds r
+      WHERE r.refund_date = ?
+      GROUP BY r.refund_method
+    )
+    SELECT methods.method,
+      COALESCE(payments.amount, 0) AS collected,
+      COALESCE(refunds.amount, 0) AS refunded,
+      COALESCE(payments.amount, 0) - COALESCE(refunds.amount, 0) AS expected
+    FROM methods
+    LEFT JOIN payments ON payments.method = methods.method
+    LEFT JOIN refunds ON refunds.method = methods.method
+  `).all(businessDate, businessDate);
+  return Object.fromEntries(rows.map((row) => [row.method, {
+    collected: roundCurrency(row.collected),
+    refunded: roundCurrency(row.refunded),
+    expected: roundCurrency(row.expected),
+  }]));
+}
+
+function serializeDayClosing(row) {
+  if (!row) return null;
+  const settlements = db.prepare(`
+    SELECT payment_method, expected_amount, settled_amount, external_reference
+    FROM financial_day_close_settlements
+    WHERE closing_id = ?
+    ORDER BY payment_method
+  `).all(row.id).map((entry) => ({
+    ...entry,
+    expected_amount: roundCurrency(entry.expected_amount),
+    settled_amount: roundCurrency(entry.settled_amount),
+  }));
+  return {
+    ...row,
+    counted_cash: roundCurrency(row.counted_cash),
+    variance_total: roundCurrency(row.variance_total),
+    expected_totals: safeJsonParse(row.expected_totals_json, {}),
+    settlement_totals: safeJsonParse(row.settlement_totals_json, {}),
+    settlement_references: safeJsonParse(row.settlement_references_json, {}),
+    settlements,
+  };
+}
+
+router.get('/day-close', (req, res) => {
+  if (!['admin', 'accountant'].includes(req.auth?.role)) {
+    return res.status(403).json({ error: 'Day closing is restricted to administrators and finance.' });
+  }
+  const businessDate = String(req.query.date || getTodayLocal()).trim();
+  if (!validPaymentDate(businessDate)) {
+    return res.status(400).json({ error: 'Enter a valid business date (YYYY-MM-DD).' });
+  }
+  const closing = serializeDayClosing(
+    db.prepare('SELECT * FROM financial_day_closings WHERE business_date = ?').get(businessDate),
+  );
+  return res.json({ business_date: businessDate, expected_totals: paymentTotalsForDate(businessDate), closing });
+});
+
+router.post('/day-close', (req, res) => {
+  if (!['admin', 'accountant'].includes(req.auth?.role)) {
+    return res.status(403).json({ error: 'Day closing is restricted to administrators and finance.' });
+  }
+  const businessDate = String(req.body?.business_date || '').trim();
+  if (!validPaymentDate(businessDate)) {
+    return res.status(400).json({ error: 'Enter a valid business date (YYYY-MM-DD).' });
+  }
+  if (!isValidCurrencyAmount(req.body?.counted_cash)) {
+    return res.status(400).json({ error: 'Enter the non-negative cash amount physically counted.' });
+  }
+  const countedCash = roundCurrency(req.body.counted_cash);
+  const requestedSettlements = req.body?.settlements && typeof req.body.settlements === 'object'
+    ? req.body.settlements
+    : {};
+  const expectedTotals = paymentTotalsForDate(businessDate);
+  const settlements = [];
+  for (const method of ['juice', 'card', 'ib']) {
+    const requested = requestedSettlements[method] || {};
+    if (!isValidSignedCurrencyAmount(requested.amount)) {
+      return res.status(400).json({ error: `Enter the settled ${method.toUpperCase()} amount using no more than two decimal places.` });
+    }
+    const settledAmount = roundCurrency(requested.amount);
+    const externalReference = normalizeSourceReference(requested.reference);
+    if ((Math.abs(Number(expectedTotals[method]?.expected || 0)) >= 0.005 || Math.abs(settledAmount) >= 0.005) && externalReference.length < 3) {
+      return res.status(400).json({ error: `Enter the ${method.toUpperCase()} settlement or deposit reference.` });
+    }
+    settlements.push({
+      payment_method: method,
+      expected_amount: roundCurrency(expectedTotals[method]?.expected || 0),
+      settled_amount: settledAmount,
+      external_reference: externalReference,
+    });
+  }
+  const cashVariance = roundCurrency(countedCash - Number(expectedTotals.cash?.expected || 0));
+  const settlementVariance = roundCurrency(settlements.reduce(
+    (sum, entry) => sum + entry.settled_amount - entry.expected_amount,
+    0,
+  ));
+  const varianceTotal = roundCurrency(cashVariance + settlementVariance);
+  const notes = String(req.body?.notes || '').trim().slice(0, 1000);
+  if (Math.abs(varianceTotal) >= 0.005 && notes.length < 8) {
+    return res.status(400).json({ error: 'Explain the day-close variance before confirming.' });
+  }
+
+  let operation;
+  try {
+    operation = operationFor(req, `billing:day-close:${businessDate}`);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+  let result;
+  try {
+    db.transaction(() => {
+      const replay = operation.read();
+      if (replay) {
+        result = replay;
+        return;
+      }
+      if (db.prepare('SELECT 1 FROM financial_day_closings WHERE business_date = ?').get(businessDate)) {
+        throw Object.assign(new Error('This business date has already been closed.'), { status: 409 });
+      }
+      const settlementTotals = Object.fromEntries(settlements.map((entry) => [entry.payment_method, entry.settled_amount]));
+      const settlementReferences = Object.fromEntries(settlements.map((entry) => [entry.payment_method, entry.external_reference]));
+      const inserted = db.prepare(`
+        INSERT INTO financial_day_closings (
+          business_date, expected_totals_json, counted_cash, settlement_totals_json,
+          settlement_references_json, variance_total, notes, operation_id,
+          closed_by_user_id, closed_by_name, closed_by_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        businessDate,
+        JSON.stringify(expectedTotals),
+        countedCash,
+        JSON.stringify(settlementTotals),
+        JSON.stringify(settlementReferences),
+        varianceTotal,
+        notes,
+        String(req.body.operation_id || ''),
+        req.auth.id || null,
+        String(req.auth.full_name || req.auth.username || ''),
+        String(req.auth.role || ''),
+      );
+      for (const settlement of settlements) {
+        db.prepare(`
+          INSERT INTO financial_day_close_settlements (
+            closing_id, payment_method, expected_amount, settled_amount, external_reference
+          ) VALUES (?, ?, ?, ?, ?)
+        `).run(
+          Number(inserted.lastInsertRowid),
+          settlement.payment_method,
+          settlement.expected_amount,
+          settlement.settled_amount,
+          settlement.external_reference || null,
+        );
+      }
+      result = serializeDayClosing(
+        db.prepare('SELECT * FROM financial_day_closings WHERE id = ?').get(Number(inserted.lastInsertRowid)),
+      );
+      operation.save(result);
+    }).immediate();
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (message.includes('idx_day_close_settlement_reference') ||
+        message.includes('financial_day_close_settlements.payment_method, financial_day_close_settlements.external_reference')) {
+      return res.status(409).json({ error: 'That settlement reference has already been used for this payment method.' });
+    }
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+  return res.status(201).json(result);
+});
+
 // Void a duplicate unpaid service bill without voiding the clinical visit or restoring stock.
 router.post('/:id/void', (req,res) => {
   if (req.auth.role!=='admin') return res.status(403).json({error:'Only an admin can void a duplicate bill.'});
@@ -2001,6 +2252,7 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
         LEFT JOIN inventory_folders f ON f.id = i.folder_id
         WHERE i.stock_scope = 'doctor'
           AND i.owner_doctor_id = ?
+          AND i.archived_at IS NULL
         ORDER BY i.item_name ASC
       `)
       .all(Number(consultation.doctor_id));
@@ -2128,6 +2380,7 @@ router.post("/", (req, res) => {
       if (!current || current.voided_at) throw Object.assign(new Error("This consultation is no longer available for billing."), {status:409});
       const replay = operation.read();
       if (replay) { createdId = replay.billId; return; }
+      if (status === "paid") assertBusinessDateOpen(paymentDate);
       if (sourceReference) {
         const duplicate = db.prepare(`
           SELECT id, invoice_number
@@ -2265,6 +2518,9 @@ router.put("/:id", (req, res) => {
   if (accessError) {
     return res.status(accessError.status).json({ error: accessError.error });
   }
+  if (req.auth?.role === "accountant") {
+    return res.status(403).json({ error: "Accountants can record payments and issue credit notes, but cannot change invoice lines or consultation fees." });
+  }
 
   const itemValidationError = billingItemsValidationError(req.body.items);
   if (itemValidationError) return res.status(400).json({ error: itemValidationError });
@@ -2346,6 +2602,7 @@ router.put("/:id", (req, res) => {
   let updated;
   try {
     updated = db.transaction(() => {
+      if (status === 'paid') assertBusinessDateOpen(paymentDate);
       assertSingleVisitFee(db, existing.consultation_id, preservedItems, billId);
       const result = db.prepare(`
     UPDATE billing
@@ -2424,6 +2681,7 @@ router.patch("/:id/pay", (req, res) => {
   let updated;
   try {
     updated = db.transaction(() => {
+      assertBusinessDateOpen(paymentDate);
       assertVisitReadyForPayment(db, existing.consultation_id);
       const result = db.prepare(`
     UPDATE billing

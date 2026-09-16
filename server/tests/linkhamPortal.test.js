@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const TMP_DB = path.join(os.tmpdir(), `ocs-linkham-test-${process.pid}-${Date.now()}.db`);
 process.env.DB_PATH = TMP_DB;
 process.env.NODE_ENV = "test";
+process.env.LINKHAM_BILLING_ENABLED = "true";
 
 const { test, before, after, describe } = require("node:test");
 const assert = require("node:assert/strict");

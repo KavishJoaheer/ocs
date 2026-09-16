@@ -293,6 +293,58 @@ test("incorrect quick-billing supplies reverse stock and bill lines with an immu
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(itemId).count, 1);
 });
 
+test("a corrected doctor submission supersedes and clears an older clarification", async () => {
+  const today = getTodayLocal();
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (
+      full_name, first_name, last_name, patient_identifier, age,
+      contact_number, patient_contact_number, address, assigned_doctor_id
+    ) VALUES (?, 'Clarification', 'Correction', ?, 35, '57000002', '57000002', 'Test address', ?)
+  `).run(`Clarification correction ${suffix}`, `OCS-CLAR-${suffix}`, doctorId).lastInsertRowid);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '11:00', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const correctedConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Clarification correction test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  const baseInvoice = await api("POST", "/billing", doctorToken, {
+    consultation_id: correctedConsultationId,
+    patient_id: patientId,
+    items: [{ description: "Day Consultation", type: "Sale", amount: 2000, quantity: 1, is_consultation_fee: true }],
+    status: "unpaid",
+    operation_id: randomUUID(),
+  });
+  assert.equal(baseInvoice.status, 201, JSON.stringify(baseInvoice.data));
+
+  const first = await api("POST", `/billing/quick/visits/${correctedConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    consultation_fee: { type: "Day Consultation", amount: 2000 },
+    items: [{ inventory_item_id: itemId, quantity: 1 }],
+  });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const requested = await api(
+    "PATCH",
+    `/billing/quick/operator-queue/${correctedConsultationId}/status`,
+    operatorToken,
+    { status: "needs_doctor", note: "Confirm the corrected supply quantity" },
+  );
+  assert.equal(requested.status, 200, JSON.stringify(requested.data));
+  const corrected = await api("POST", `/billing/quick/visits/${correctedConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    consultation_fee: { type: "Day Consultation", amount: 2000 },
+    items: [],
+  });
+  assert.equal(corrected.status, 201, JSON.stringify(corrected.data));
+  assert.notEqual(corrected.data.submission.submission_id, first.data.submission.submission_id);
+  const superseded = db.prepare("SELECT workflow_status, workflow_note FROM billing_lite_submissions WHERE id = ?").get(first.data.submission.submission_id);
+  assert.equal(superseded.workflow_status, "superseded");
+  assert.equal(superseded.workflow_note, "");
+  assert.ok(db.prepare("SELECT 1 FROM billing_quick_events WHERE submission_id = ? AND event_type = 'clarification_superseded'").get(first.data.submission.submission_id));
+});
+
 test("a mixed reused and newly deducted supply line reverses completely without restoring dispensed stock", async () => {
   const today = getTodayLocal();
   const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;

@@ -1,4 +1,5 @@
 import FinancialReconciliation from "../components/FinancialReconciliation.jsx";
+import FinancialDayClose from "../components/FinancialDayClose.jsx";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
@@ -673,6 +674,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
               inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
               emergency_override: Boolean(item.emergency_override),
               is_consultation_fee: Boolean(item.is_consultation_fee),
+              is_service_charge: Boolean(item.is_service_charge || (!item.inventory_item_id && !isVisitFee(item))),
               dispensing_movement_ids: item.dispensing_movement_ids || [],
               wastage_reason: item.wastage_reason || "",
               batch_id: item.batch_id || null,
@@ -757,6 +759,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
         inventory_item_id: item.inventory_item_id || null,
         emergency_override: Boolean(item.emergency_override),
         is_consultation_fee: Boolean(item.is_consultation_fee),
+        is_service_charge: Boolean(item.is_service_charge),
         dispensing_movement_ids: item.dispensing_movement_ids || [],
         wastage_reason: item.wastage_reason || undefined,
         batch_id: item.batch_id || undefined,
@@ -1589,6 +1592,7 @@ function CreateBillingModal({
         inventory_item_id: item.inventory_item_id ? Number(item.inventory_item_id) : null,
         emergency_override: Boolean(item.emergency_override),
         is_consultation_fee: Boolean(item.is_consultation_fee),
+        is_service_charge: Boolean(item.is_service_charge || item.is_manual),
         dispensing_movement_ids: item.dispensing_movement_ids || [],
         wastage_reason: item.wastage_reason || undefined,
         batch_id: item.batch_id || undefined,
@@ -1750,6 +1754,7 @@ function CreateBillingModal({
         inventory_item_id: null,
         emergency_override: false,
         is_manual: true,
+        is_service_charge: true,
         folder_name: "Custom",
       },
     ]);
@@ -2422,13 +2427,20 @@ function CreateBillingModal({
 }
 
 function canWriteBill(user, bill) {
-  if (user?.role === "admin" || user?.role === "accountant" || user?.role === "operator") {
+  if (user?.role === "admin" || user?.role === "operator") {
     return true;
   }
   if (user?.role !== "doctor") {
     return false;
   }
   return Number(bill?.doctor_id) === Number(user?.doctor_id);
+}
+
+function canRecordPayment(user, bill) {
+  if (user?.role === "admin" || user?.role === "operator" || user?.role === "accountant") {
+    return true;
+  }
+  return user?.role === "doctor" && Number(bill?.doctor_id) === Number(user?.doctor_id);
 }
 
 function BillingPage() {
@@ -2831,13 +2843,20 @@ function BillingPage() {
   }
 
   function handleQuickMarkPaid(bill) {
-    if (bill.fee_review_required || bill.payment_block) { setEditor({bill}); return; }
+    if (bill.fee_review_required || bill.payment_block) {
+      if (!canWriteBill(user, bill)) {
+        toast.error("A doctor or operator must resolve this invoice before payment can be recorded.");
+        return;
+      }
+      setEditor({bill});
+      return;
+    }
     setPaymentBill(bill);
   }
 
   async function recordPayment(bill, paymentMethod, paymentDate) {
-    if (!canWriteBill(user, bill)) {
-      toast.error("You can only mark paid on bills from your own consultations.");
+    if (!canRecordPayment(user, bill)) {
+      toast.error("You do not have permission to record payment for this invoice.");
       return;
     }
     setIsSaving(true);
@@ -3133,6 +3152,7 @@ function BillingPage() {
       ) : null}
 
       {user?.role !== "operator" ? <FinancialReconciliation refreshToken={bills} /> : null}
+      {["admin", "accountant"].includes(user?.role) ? <FinancialDayClose refreshToken={bills} /> : null}
 
       <div
         className={cx(
@@ -3274,16 +3294,10 @@ function BillingPage() {
                                 {bill.updated_at ? ` · ${formatDate(bill.updated_at)}` : ""}
                               </span>
                             ) : null}
-                            {bill.dispute_status === "Flagged_Review" ? (
-                              <span className="mt-1 block text-xs font-semibold text-amber-800">
-                                Linkham flagged
-                                {bill.dispute_reason ? `: ${bill.dispute_reason}` : ""}
-                              </span>
-                            ) : null}
                           </td>
                           <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
-                              {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
+                              {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canRecordPayment(user, bill) ? (
                                 <button
                                   type="button"
                                   disabled={isSaving}
@@ -3357,14 +3371,8 @@ function BillingPage() {
                       </div>
                       <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
                     </div>
-                    {bill.dispute_status === "Flagged_Review" ? (
-                      <p className="mt-2 text-xs font-semibold text-amber-800">
-                        Linkham flagged
-                        {bill.dispute_reason ? `: ${bill.dispute_reason}` : ""}
-                      </p>
-                    ) : null}
                     <div className="mt-4 flex flex-col gap-2">
-                      {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canWriteBill(user, bill) ? (
+                      {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canRecordPayment(user, bill) ? (
                         <button
                           type="button"
                           disabled={isSaving}

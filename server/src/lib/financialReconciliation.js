@@ -1,5 +1,6 @@
 const { isConsultationFee } = require('./consultationFees');
 const { stockFinancials, movementRows } = require('./inventoryFinancials');
+const { calculateBillingTotal, normalizeBillingItems } = require('./utils');
 
 function financialReconciliation(db, { doctorId = null, from = null, to = null } = {}) {
   const bills = db.prepare(`
@@ -10,6 +11,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   const active = bills.filter(b => !b.voided_at && !b.consultation_voided_at);
   const issues = [];
   const feeGroups = new Map();
+  const billItems = new Map();
   for (const bill of active) {
     let items;
     try {
@@ -19,7 +21,20 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       issues.push({ type: 'invalid_bill', label: `Bill #${bill.id}: review unreadable historical line items`, bill_ids: [bill.id], amount: bill.total_amount });
       continue;
     }
-    const feeCount = items.filter(isConsultationFee).length;
+    const normalizedItems = normalizeBillingItems(items);
+    billItems.set(Number(bill.id), normalizedItems);
+    const calculatedTotal = calculateBillingTotal(normalizedItems);
+    if (Math.abs(calculatedTotal - Number(bill.total_amount || 0)) >= 0.005) {
+      issues.push({
+        type: 'invoice_total_mismatch',
+        label: `Bill #${bill.id}: stored total does not match its sale lines`,
+        bill_ids: [bill.id],
+        amount: Number((Number(bill.total_amount || 0) - calculatedTotal).toFixed(2)),
+        expected_amount: calculatedTotal,
+        recorded_amount: Number(bill.total_amount || 0),
+      });
+    }
+    const feeCount = normalizedItems.filter(isConsultationFee).length;
     if (!feeCount) continue;
     const group = feeGroups.get(bill.consultation_id) || [];
     group.push({ bill, feeCount });
@@ -53,6 +68,80 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   }
   const reversed = new Set(movements.filter(m => m.action_type === 'reversal')
     .map(m => Number(metadata.get(m.id)?.reversed_movement_id)));
+  const movementById = new Map(movements.map((movement) => [Number(movement.id), movement]));
+  const claimedMovementIds = new Map();
+  for (const bill of active) {
+    const items = billItems.get(Number(bill.id)) || [];
+    for (const [index, line] of items.entries()) {
+      if (!line.inventory_item_id || Number(line.quantity || 0) <= 0) continue;
+      const movementIds = [...new Set([
+        ...(line.inventory_movement_ids || []),
+        ...(line.dispensing_movement_ids || []),
+      ].map(Number).filter(Boolean))];
+      if (!movementIds.length) {
+        issues.push({
+          type: 'invoice_line_missing_movement',
+          label: `Bill #${bill.id} line ${index + 1}: inventory item has no stock movement reference`,
+          bill_ids: [bill.id], amount: Number(line.amount || 0), inventory_item_id: Number(line.inventory_item_id),
+        });
+        continue;
+      }
+      let linkedQuantity = 0;
+      let lineHasInvalidMovement = false;
+      for (const movementId of movementIds) {
+        const movement = movementById.get(movementId);
+        if (!movement || reversed.has(movementId)) {
+          lineHasInvalidMovement = true;
+          issues.push({
+            type: 'invoice_line_invalid_movement',
+            label: `Bill #${bill.id} line ${index + 1}: stock movement #${movementId} is missing or reversed`,
+            bill_ids: [bill.id], movement_id: movementId, amount: Number(line.amount || 0),
+          });
+          continue;
+        }
+        const movementMeta = metadata.get(movementId) || {};
+        if (Number(movement.item_id) !== Number(line.inventory_item_id) ||
+            (movementMeta.billing_id && Number(movementMeta.billing_id) !== Number(bill.id))) {
+          lineHasInvalidMovement = true;
+          issues.push({
+            type: 'invoice_line_movement_mismatch',
+            label: `Bill #${bill.id} line ${index + 1}: stock movement #${movementId} belongs to another item or bill`,
+            bill_ids: [bill.id], movement_id: movementId, amount: Number(line.amount || 0),
+          });
+          continue;
+        }
+        if (claimedMovementIds.has(movementId) && claimedMovementIds.get(movementId) !== Number(bill.id)) {
+          lineHasInvalidMovement = true;
+          issues.push({
+            type: 'movement_claimed_twice',
+            label: `Stock movement #${movementId}: referenced by more than one invoice`,
+            bill_ids: [claimedMovementIds.get(movementId), Number(bill.id)], movement_id: movementId, amount: 0,
+          });
+        } else {
+          claimedMovementIds.set(movementId, Number(bill.id));
+        }
+        linkedQuantity += Math.abs(Number(movement.quantity || 0));
+      }
+      if (!lineHasInvalidMovement && linkedQuantity !== Number(line.quantity || 0)) {
+        issues.push({
+          type: 'invoice_line_quantity_mismatch',
+          label: `Bill #${bill.id} line ${index + 1}: billed quantity ${line.quantity} does not match ${linkedQuantity} linked stock unit(s)`,
+          bill_ids: [bill.id], amount: Number(line.amount || 0), inventory_item_id: Number(line.inventory_item_id),
+        });
+      }
+    }
+  }
+  for (const movement of movements) {
+    if (reversed.has(Number(movement.id))) continue;
+    const linkedBillId = Number(metadata.get(movement.id)?.billing_id || 0);
+    if (linkedBillId && billItems.has(linkedBillId) && !claimedMovementIds.has(Number(movement.id))) {
+      issues.push({
+        type: 'orphan_billed_movement',
+        label: `Stock movement #${movement.id}: points to bill #${linkedBillId} but no invoice line references it`,
+        bill_ids: [linkedBillId], movement_id: Number(movement.id), amount: 0,
+      });
+    }
+  }
   for (const movement of movements) {
     const meta = metadata.get(movement.id);
     if (movement.action_type !== 'stock_out' || reversed.has(movement.id)

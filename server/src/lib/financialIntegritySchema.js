@@ -1,5 +1,10 @@
 // Additive migration: retain financial history and freeze movement valuations.
 function ensureFinancialIntegritySchema(db) {
+  const {
+    DOCTOR_COMMISSION_RATE,
+    OCS_COMMISSION_RATE,
+    TRANSPORT_BENEFIT_PER_PATIENT,
+  } = require('../config/revenueShare');
   const add = (table, name, type) => {
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === name)) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
@@ -23,11 +28,61 @@ function ensureFinancialIntegritySchema(db) {
     add('billing', 'consultation_date_snapshot', 'TEXT');
     add('billing', 'consultation_type_snapshot', "TEXT NOT NULL DEFAULT ''");
     add('billing', 'partner_category_snapshot', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'doctor_commission_rate_snapshot', 'REAL');
+    add('billing', 'ocs_commission_rate_snapshot', 'REAL');
+    add('consultations', 'transport_benefit_snapshot', 'REAL');
     add('inventory_movements', 'unit_cost_snapshot', 'REAL');
     add('inventory_movements', 'unit_price_snapshot', 'REAL');
     add('inventory_movements', 'valuation_basis', 'TEXT');
     db.exec(`
       CREATE TABLE IF NOT EXISTS financial_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE IF NOT EXISTS financial_day_closings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_date TEXT NOT NULL UNIQUE,
+        expected_totals_json TEXT NOT NULL,
+        counted_cash REAL NOT NULL CHECK (counted_cash >= 0),
+        settlement_totals_json TEXT NOT NULL,
+        settlement_references_json TEXT NOT NULL,
+        variance_total REAL NOT NULL,
+        notes TEXT NOT NULL DEFAULT '',
+        operation_id TEXT NOT NULL,
+        closed_by_user_id INTEGER,
+        closed_by_name TEXT NOT NULL DEFAULT '',
+        closed_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (closed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE (closed_by_user_id, operation_id)
+      );
+      CREATE TABLE IF NOT EXISTS financial_day_close_settlements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        closing_id INTEGER NOT NULL,
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('juice', 'card', 'ib')),
+        expected_amount REAL NOT NULL,
+        settled_amount REAL NOT NULL,
+        external_reference TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (closing_id) REFERENCES financial_day_closings(id) ON DELETE RESTRICT,
+        UNIQUE (closing_id, payment_method)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_day_close_settlement_reference
+        ON financial_day_close_settlements(payment_method, lower(trim(external_reference)))
+        WHERE external_reference IS NOT NULL AND trim(external_reference) != '';
+      CREATE TRIGGER IF NOT EXISTS financial_day_closings_no_update
+      BEFORE UPDATE ON financial_day_closings BEGIN
+        SELECT RAISE(ABORT, 'Day closings are immutable; document a compensating close');
+      END;
+      CREATE TRIGGER IF NOT EXISTS financial_day_closings_no_delete
+      BEFORE DELETE ON financial_day_closings BEGIN
+        SELECT RAISE(ABORT, 'Day closings are immutable; document a compensating close');
+      END;
+      CREATE TRIGGER IF NOT EXISTS financial_day_close_settlements_no_update
+      BEFORE UPDATE ON financial_day_close_settlements BEGIN
+        SELECT RAISE(ABORT, 'Settlement records are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS financial_day_close_settlements_no_delete
+      BEFORE DELETE ON financial_day_close_settlements BEGIN
+        SELECT RAISE(ABORT, 'Settlement records are immutable');
+      END;
       CREATE TABLE IF NOT EXISTS operation_receipts (
         actor_id INTEGER NOT NULL, scope TEXT NOT NULL, operation_id TEXT NOT NULL,
         request_hash TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -271,6 +326,27 @@ function ensureFinancialIntegritySchema(db) {
     // Backfill them once from the linked records, then serve them instead of
     // mutable patient/doctor directory values on historical invoices.
     db.exec(`
+      UPDATE billing
+      SET doctor_commission_rate_snapshot = COALESCE(doctor_commission_rate_snapshot, ${Number(DOCTOR_COMMISSION_RATE)}),
+          ocs_commission_rate_snapshot = COALESCE(ocs_commission_rate_snapshot, ${Number(OCS_COMMISSION_RATE)});
+      UPDATE consultations
+      SET transport_benefit_snapshot = COALESCE(transport_benefit_snapshot, ${Number(TRANSPORT_BENEFIT_PER_PATIENT)});
+      DROP TRIGGER IF EXISTS billing_revenue_share_snapshot_after_insert;
+      CREATE TRIGGER billing_revenue_share_snapshot_after_insert
+      AFTER INSERT ON billing BEGIN
+        UPDATE billing
+        SET doctor_commission_rate_snapshot = COALESCE(NEW.doctor_commission_rate_snapshot, ${Number(DOCTOR_COMMISSION_RATE)}),
+            ocs_commission_rate_snapshot = COALESCE(NEW.ocs_commission_rate_snapshot, ${Number(OCS_COMMISSION_RATE)})
+        WHERE id = NEW.id;
+      END;
+      DROP TRIGGER IF EXISTS consultation_transport_snapshot_after_insert;
+      CREATE TRIGGER consultation_transport_snapshot_after_insert
+      AFTER INSERT ON consultations BEGIN
+        UPDATE consultations
+        SET transport_benefit_snapshot = COALESCE(NEW.transport_benefit_snapshot, ${Number(TRANSPORT_BENEFIT_PER_PATIENT)})
+        WHERE id = NEW.id;
+      END;
+
       UPDATE billing
       SET invoice_number = printf('OCS-INV-%08d', id)
       WHERE trim(COALESCE(invoice_number, '')) = '';

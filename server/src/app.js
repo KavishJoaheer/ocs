@@ -303,12 +303,18 @@ function createApp() {
     authorizeRoles("admin"),
     teamOperationsRouter,
   );
-  app.use(
-    "/api/linkham",
-    requireAuth,
-    authorizeRoles("linkham_admin"),
-    linkhamRouter,
-  );
+  if (String(process.env.LINKHAM_BILLING_ENABLED || "").trim().toLowerCase() === "true") {
+    app.use(
+      "/api/linkham",
+      requireAuth,
+      authorizeRoles("linkham_admin"),
+      linkhamRouter,
+    );
+  } else {
+    app.use("/api/linkham", requireAuth, (_req, res) => {
+      res.status(404).json({ error: "Linkham billing is not enabled." });
+    });
+  }
   app.use(
     "/api/appointments",
     requireAuth,

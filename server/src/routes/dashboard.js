@@ -320,7 +320,8 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
         d.id AS doctor_id,
         d.full_name AS doctor_name,
         COUNT(c.id) AS visit_count,
-        COUNT(DISTINCT c.patient_id) AS patient_count
+        COUNT(DISTINCT c.patient_id) AS patient_count,
+        COALESCE(SUM(c.transport_benefit_snapshot), 0) AS transport_benefits
       FROM doctors d
       LEFT JOIN consultations c
         ON c.doctor_id = d.id AND c.voided_at IS NULL
@@ -345,6 +346,7 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
       ...row,
       visit_count: Number(row.visit_count || 0),
       patient_count: Number(row.patient_count || 0),
+      transport_benefits: roundReportCurrency(row.transport_benefits || 0),
     }));
 }
 
@@ -362,6 +364,9 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
       billed: 0,
       paid: 0,
       unpaid: 0,
+      doctor_commission: 0,
+      ocs_commission: 0,
+      transport_benefits: roundReportCurrency(row.transport_benefits || 0),
     });
   }
 
@@ -377,6 +382,9 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
         billed: 0,
         paid: 0,
         unpaid: 0,
+        doctor_commission: 0,
+        ocs_commission: 0,
+        transport_benefits: 0,
       });
     }
     const entry = byId.get(doctorId);
@@ -385,6 +393,10 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
     entry.billed += amount;
     if (bill.status === "paid") entry.paid += netPaid;
     else entry.unpaid += amount;
+    if (bill.status === "paid") {
+      entry.doctor_commission += netPaid * toNumber(bill.doctor_commission_rate_snapshot, DOCTOR_COMMISSION_RATE);
+      entry.ocs_commission += netPaid * toNumber(bill.ocs_commission_rate_snapshot, OCS_COMMISSION_RATE);
+    }
   }
 
   if (dateBasis === "payment") {
@@ -400,9 +412,16 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
           billed: 0,
           paid: 0,
           unpaid: 0,
+          doctor_commission: 0,
+          ocs_commission: 0,
+          transport_benefits: 0,
         });
       }
-      byId.get(doctorId).paid -= toNumber(refund.amount, 0);
+      const entry = byId.get(doctorId);
+      const refundAmount = toNumber(refund.amount, 0);
+      entry.paid -= refundAmount;
+      entry.doctor_commission -= refundAmount * toNumber(refund.doctor_commission_rate_snapshot, DOCTOR_COMMISSION_RATE);
+      entry.ocs_commission -= refundAmount * toNumber(refund.ocs_commission_rate_snapshot, OCS_COMMISSION_RATE);
     }
   }
 
@@ -411,16 +430,15 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
       const billed = roundReportCurrency(entry.billed);
       const paid = roundReportCurrency(entry.paid);
       const unpaid = roundReportCurrency(entry.unpaid);
-      const doctorCommission = roundReportCurrency(paid * DOCTOR_COMMISSION_RATE);
-      const transportBenefits = roundReportCurrency(
-        entry.visit_count * TRANSPORT_BENEFIT_PER_PATIENT,
-      );
+      const doctorCommission = roundReportCurrency(entry.doctor_commission);
+      const transportBenefits = roundReportCurrency(entry.transport_benefits);
       return {
         ...entry,
         billed,
         paid,
         unpaid,
         doctorCommission,
+        ocsCommission: roundReportCurrency(entry.ocs_commission),
         transportBenefits,
         doctorNetRevenue: roundReportCurrency(doctorCommission + transportBenefits),
         ocsRemainder: roundReportCurrency(paid - (doctorCommission + transportBenefits)),
@@ -1585,13 +1603,19 @@ router.get("/live-report", (req, res) => {
         c.doctor_id,
         d.full_name AS doctor_name,
         b.total_amount,
-        COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0) AS refunded_amount,
-        CASE WHEN b.status = 'paid' THEN b.total_amount - COALESCE((
-          SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
-        ), 0) ELSE 0 END AS net_paid_amount,
+        CASE WHEN @dateBasis = 'payment' THEN 0 ELSE
+          COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0)
+        END AS refunded_amount,
+        CASE WHEN b.status = 'paid' THEN
+          CASE WHEN @dateBasis = 'payment' THEN b.total_amount ELSE b.total_amount - COALESCE((
+            SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
+          ), 0) END
+        ELSE 0 END AS net_paid_amount,
         b.status,
         b.payment_date,
-        COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
+        COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method,
+        b.doctor_commission_rate_snapshot,
+        b.ocs_commission_rate_snapshot
       FROM billing b
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
@@ -1605,6 +1629,7 @@ router.get("/live-report", (req, res) => {
       startDate: doctorRange.start,
       endDate: doctorRange.end,
       doctorId: selectedDoctorId,
+      dateBasis,
     });
 
   const refundRows = db.prepare(`
@@ -1623,6 +1648,8 @@ router.get("/live-report", (req, res) => {
       p.patient_identifier,
       c.doctor_id,
       d.full_name AS doctor_name
+      , b.doctor_commission_rate_snapshot
+      , b.ocs_commission_rate_snapshot
     FROM billing_refunds r
     JOIN billing b ON b.id = r.billing_id
     JOIN consultations c ON c.id = b.consultation_id
@@ -1652,13 +1679,17 @@ router.get("/live-report", (req, res) => {
       .filter((row) => row.status !== "paid")
       .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
   );
-  const doctorCommission = roundReportCurrency(paidRevenue * DOCTOR_COMMISSION_RATE);
-  const ocsCommission = roundReportCurrency(paidRevenue * OCS_COMMISSION_RATE);
+  const doctorCommission = roundReportCurrency(
+    doctorBreakdown.reduce((sum, row) => sum + Number(row.doctorCommission || 0), 0),
+  );
+  const ocsCommission = roundReportCurrency(
+    doctorBreakdown.reduce((sum, row) => sum + Number(row.ocsCommission || 0), 0),
+  );
   const transportVisitCount = selectedDoctorId
     ? visitCount
     : doctorBreakdown.reduce((sum, row) => sum + Number(row.visit_count || 0), 0);
   const transportBenefits = roundReportCurrency(
-    transportVisitCount * TRANSPORT_BENEFIT_PER_PATIENT,
+    doctorBreakdown.reduce((sum, row) => sum + Number(row.transportBenefits || 0), 0),
   );
   const doctorNetRevenue = roundReportCurrency(doctorCommission + transportBenefits);
   const ocsRemainder = roundReportCurrency(paidRevenue - doctorNetRevenue);
@@ -1679,6 +1710,8 @@ router.get("/live-report", (req, res) => {
     transportPerVisit: TRANSPORT_BENEFIT_PER_PATIENT,
     transportPerPatient: TRANSPORT_BENEFIT_PER_PATIENT, // Legacy response alias.
     commissionOn: "paid",
+    rateBasis: "invoice_snapshot",
+    transportBasis: "consultation_snapshot",
   };
 
   const statementCore = {
