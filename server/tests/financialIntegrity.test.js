@@ -78,13 +78,24 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   const option=options.data.find(row=>row.id===ctx.consultationId);
   assert.ok(option); assert.equal(Object.hasOwn(option,'doctor_notes'),false);
 
-  assert.equal((await api('POST','/billing','operator',{
+  const missingDoctor=await api('POST','/billing','operator',{
     consultation_id:ctx.consultationId,patient_id:ctx.patientId,items:[standardFee()],status:'unpaid',
-  })).status,400);
+    source_reference:'OCS pad #doctor-required',
+  });
+  assert.equal(missingDoctor.status,400);
+  assert.equal(missingDoctor.data.code,'BILLING_DOCTOR_REQUIRED');
+  const otherDoctorId=Number(db.prepare('SELECT id FROM doctors WHERE id != ? ORDER BY id LIMIT 1').get(doctorId).id);
+  const mismatchedDoctor=await api('POST','/billing','operator',{
+    consultation_id:ctx.consultationId,patient_id:ctx.patientId,doctor_id:otherDoctorId,
+    items:[standardFee()],status:'unpaid',source_reference:'OCS pad #doctor-mismatch',
+  });
+  assert.equal(mismatchedDoctor.status,409);
+  assert.equal(mismatchedDoctor.data.code,'BILLING_DOCTOR_MISMATCH');
 
   const issued=await api('POST','/billing','operator',{
     consultation_id:ctx.consultationId,
     patient_id:ctx.patientId,
+    doctor_id:doctorId,
     items:[standardFee('Day Consultation',2250),stockLine(it,1)],
     status:'unpaid',
     source_reference:'OCS pad #0142',
@@ -108,6 +119,7 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   const duplicateReference=await api('POST','/billing','operator',{
     consultation_id:duplicateReferenceCtx.consultationId,
     patient_id:duplicateReferenceCtx.patientId,
+    doctor_id:doctorId,
     items:[standardFee()],status:'unpaid',source_reference:'  ocs   PAD #0142  ',
   });
   assert.equal(duplicateReference.status,409,JSON.stringify(duplicateReference.data));
@@ -116,12 +128,12 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
 
   const paidCtx=context('Operator paid block');
   assert.equal((await api('POST','/billing','operator',{
-    consultation_id:paidCtx.consultationId,patient_id:paidCtx.patientId,items:[standardFee()],
+    consultation_id:paidCtx.consultationId,patient_id:paidCtx.patientId,doctor_id:doctorId,items:[standardFee()],
     status:'paid',payment_method:'cash',payment_date:today,source_reference:'OCS pad #0143',
   })).status,403);
   const manualCtx=context('Operator manual line');
   const manual=await api('POST','/billing','operator',{
-    consultation_id:manualCtx.consultationId,patient_id:manualCtx.patientId,
+    consultation_id:manualCtx.consultationId,patient_id:manualCtx.patientId,doctor_id:doctorId,
     items:[standardFee(),{description:'Doctor-written dressing charge',type:'Sale',amount:500,quantity:1,is_service_charge:true}],
     status:'unpaid',source_reference:'OCS pad #0144',
   });
@@ -325,6 +337,14 @@ test("doctors cannot read another doctor's invoices through a shared patient", a
 
   const denied=await api('GET',`/billing/${foreignBillId}`,'doctor');
   assert.equal(denied.status,403,JSON.stringify(denied.data));
+  const deniedCreate=await api('POST','/billing','doctor',{
+    consultation_id:consultationId,patient_id:ctx.patientId,items:[standardFee()],status:'unpaid',
+  });
+  assert.equal(deniedCreate.status,403,JSON.stringify(deniedCreate.data));
+  assert.equal(deniedCreate.data.code,'DOCTOR_CONSULTATION_SCOPE');
+  const consultationOptions=await api('GET','/billing/consultation-options','doctor');
+  assert.equal(consultationOptions.status,200);
+  assert.equal(consultationOptions.data.some((entry)=>Number(entry.id)===consultationId),false);
   const visible=await api('GET',`/billing?patientId=${ctx.patientId}`,'doctor');
   assert.equal(visible.data.some((entry)=>entry.id===foreignBillId),false);
   assert.equal((await api('GET',`/billing/${foreignBillId}`,'admin')).status,200);

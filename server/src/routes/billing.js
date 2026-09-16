@@ -380,6 +380,34 @@ function getConsultationContext(consultationId) {
     .get(consultationId);
 }
 
+function assertBillingActorConsultationAccess(auth, consultation, submittedDoctorId) {
+  if (auth?.role === "doctor") {
+    if (!auth.doctor_id || Number(consultation?.doctor_id) !== Number(auth.doctor_id)) {
+      throw Object.assign(
+        new Error("You can only create billing for consultations completed by you."),
+        { status: 403, extra: { code: "DOCTOR_CONSULTATION_SCOPE" } },
+      );
+    }
+    return;
+  }
+
+  if (auth?.role === "operator") {
+    const doctorId = Number(submittedDoctorId || 0);
+    if (!Number.isInteger(doctorId) || doctorId <= 0) {
+      throw Object.assign(
+        new Error("Select the doctor whose consultation this invoice belongs to."),
+        { status: 400, extra: { code: "BILLING_DOCTOR_REQUIRED" } },
+      );
+    }
+    if (doctorId !== Number(consultation?.doctor_id)) {
+      throw Object.assign(
+        new Error("The selected consultation belongs to a different doctor. Select the matching doctor and visit."),
+        { status: 409, extra: { code: "BILLING_DOCTOR_MISMATCH" } },
+      );
+    }
+  }
+}
+
 function requireQuickBillingDoctor(req, res) {
   if (req.auth?.role !== "doctor" || !Number(req.auth?.doctor_id || 0)) {
     res.status(403).json({ error: "Quick billing is available to linked doctor accounts only." });
@@ -1085,6 +1113,12 @@ router.get("/consultation-fees", (req, res) => {
 });
 
 router.get("/consultation-options", (req, res) => {
+  const requestedDoctorId = Number(req.query.doctorId || 0);
+  const doctorId = req.auth.role === "doctor"
+    ? Number(req.auth.doctor_id || 0) || -1
+    : Number.isInteger(requestedDoctorId) && requestedDoctorId > 0
+      ? requestedDoctorId
+      : null;
   const rows = db
     .prepare(`
       SELECT
@@ -1107,7 +1141,7 @@ router.get("/consultation-options", (req, res) => {
     `)
     .all({
       doctorId:
-        req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) || -1 : null,
+        doctorId,
     })
     .map((row) => ({ ...row, bill_count: Number(row.bill_count || 0) }));
 
@@ -2531,13 +2565,10 @@ router.post("/", (req, res) => {
     });
   }
 
-  if (
-    req.auth?.role === "doctor" &&
-    (!req.auth.doctor_id || Number(consultation.doctor_id) !== Number(req.auth.doctor_id))
-  ) {
-    return res.status(403).json({
-      error: "You can only create billing linked to your own consultations.",
-    });
+  try {
+    assertBillingActorConsultationAccess(req.auth, consultation, req.body.doctor_id);
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
   }
 
   const itemValidationError = billingItemsValidationError(req.body.items);
@@ -2597,6 +2628,7 @@ router.post("/", (req, res) => {
     db.transaction(() => {
       const current = getConsultationContext(consultationId);
       if (!current || current.voided_at) throw Object.assign(new Error("This consultation is no longer available for billing."), {status:409});
+      assertBillingActorConsultationAccess(req.auth, current, req.body.doctor_id);
       const replay = operation.read();
       if (replay) { createdId = replay.billId; return; }
       if (status === "paid") assertBusinessDateOpen(paymentDate);

@@ -1300,11 +1300,13 @@ function CreateBillingModal({
   consultations,
   preselectedPatientId,
   preselectedConsultationId,
+  preselectedDoctorId,
   onOpenExisting,
 }) {
   const { user: authUser } = useAuth();
   const operatorIssueOnly = authUser?.role === "operator";
   const [sourceReference, setSourceReference] = useState("");
+  const [billingDoctorId, setBillingDoctorId] = useState("");
   const [patientId, setPatientId] = useState("");
   const [consultationId, setConsultationId] = useState("");
   const [status, setStatus] = useState("unpaid");
@@ -1351,6 +1353,15 @@ function CreateBillingModal({
 
     setPatientId(preselectedPatientId || "");
     setConsultationId(preselectedConsultationId ? String(preselectedConsultationId) : "");
+    setBillingDoctorId(
+      operatorIssueOnly
+        ? String(
+          preselectedDoctorId ||
+          consultations.find((row) => Number(row.id) === Number(preselectedConsultationId || 0))?.doctor_id ||
+          "",
+        )
+        : "",
+    );
     setStatus("unpaid");
     setPaymentMethod("");
     setPaymentDate("");
@@ -1374,7 +1385,7 @@ function CreateBillingModal({
     setConsultationPriceEditable(false);
     setConsultationFees({});
     setStep(1);
-  }, [open, preselectedPatientId, preselectedConsultationId]);
+  }, [open, preselectedPatientId, preselectedConsultationId, preselectedDoctorId, operatorIssueOnly, consultations]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1398,12 +1409,38 @@ function CreateBillingModal({
     if (fee !== "") setConsultationPrice(fee);
   }, [open, consultationFees, consultationType, consultationPriceEditable]);
 
+  const operatorDoctorOptions = useMemo(() => {
+    const rows = new Map();
+    consultations.forEach((consultation) => {
+      const id = Number(consultation.doctor_id || 0);
+      if (id > 0 && !rows.has(id)) rows.set(id, {
+        id,
+        full_name: String(consultation.doctor_name || `Doctor #${id}`),
+      });
+    });
+    return [...rows.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  }, [consultations]);
+
+  const availableConsultations = useMemo(() => {
+    if (!operatorIssueOnly) return consultations;
+    if (!billingDoctorId) return [];
+    return consultations.filter(
+      (consultation) => Number(consultation.doctor_id) === Number(billingDoctorId),
+    );
+  }, [billingDoctorId, consultations, operatorIssueOnly]);
+
+  const availablePatients = useMemo(() => {
+    if (!operatorIssueOnly && authUser?.role !== "doctor") return patients;
+    const patientIds = new Set(availableConsultations.map((row) => Number(row.patient_id)));
+    return patients.filter((patient) => patientIds.has(Number(patient.id)));
+  }, [authUser?.role, availableConsultations, operatorIssueOnly, patients]);
+
   const patientConsultations = useMemo(
     () =>
-      consultations.filter(
+      availableConsultations.filter(
         (consultation) => Number(consultation.patient_id) === Number(patientId || 0),
       ),
-    [consultations, patientId],
+    [availableConsultations, patientId],
   );
 
   const filteredPatientConsultations = useMemo(() => {
@@ -1417,7 +1454,7 @@ function CreateBillingModal({
   }, [consultationSearchQuery, patientConsultations]);
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !patientId || (operatorIssueOnly && !billingDoctorId)) {
       return;
     }
 
@@ -1429,7 +1466,7 @@ function CreateBillingModal({
     if (!patientConsultations.some((consultation) => consultation.id === Number(consultationId))) {
       setConsultationId("");
     }
-  }, [consultationId, open, patientConsultations]);
+  }, [billingDoctorId, consultationId, open, operatorIssueOnly, patientConsultations, patientId]);
 
   const selectedConsultation =
     patientConsultations.find((consultation) => consultation.id === Number(consultationId)) || null;
@@ -1445,23 +1482,25 @@ function CreateBillingModal({
 
   const filteredPatientsForPicker = useMemo(() => {
     const needle = String(patientSearchQuery || "").trim().toLowerCase();
-    if (!needle) return patients;
-    return patients.filter((patient) => {
+    if (!needle) return availablePatients;
+    return availablePatients.filter((patient) => {
       const name = String(patient.full_name || "").toLowerCase();
       const id = String(patient.patient_identifier || patient.patient_id_number || "").toLowerCase();
       return name.includes(needle) || id.includes(needle);
     });
-  }, [patients, patientSearchQuery]);
+  }, [availablePatients, patientSearchQuery]);
 
-  const doctorHasNoAssignedPatients = authUser?.role === "doctor" && patients.length === 0;
-  const patientLocked = Boolean(preselectedPatientId);
+  const doctorHasNoAssignedPatients = authUser?.role === "doctor" && availablePatients.length === 0;
+  const patientLocked = Boolean(
+    preselectedPatientId && (!operatorIssueOnly || preselectedConsultationId),
+  );
 
   useEffect(() => {
-    if (!open || !patientId || !patients.length || patientLocked) return;
-    if (!patients.some((p) => String(p.id) === String(patientId))) {
+    if (!open || !patientId || patientLocked) return;
+    if (!availablePatients.some((p) => String(p.id) === String(patientId))) {
       setPatientId("");
     }
-  }, [open, patients, patientId, patientLocked]);
+  }, [availablePatients, open, patientId, patientLocked]);
 
   const inventoryCategories = useMemo(() => {
     const folders = new Set();
@@ -1562,7 +1601,12 @@ function CreateBillingModal({
     event.preventDefault();
 
     if (doctorHasNoAssignedPatients) {
-      toast.error("No patients are assigned to your account.");
+      toast.error("No patients have a billable consultation in your doctor workspace.");
+      return;
+    }
+
+    if (operatorIssueOnly && !billingDoctorId) {
+      toast.error("Select the doctor whose consultation this invoice belongs to.");
       return;
     }
 
@@ -1632,6 +1676,7 @@ function CreateBillingModal({
     onSubmit({
       patient_id: Number(patientId),
       consultation_id: Number(consultationId),
+      doctor_id: operatorIssueOnly ? Number(billingDoctorId) : undefined,
       items: combinedItems.map((item) => ({
         description: item.description,
         amount: Number(item.amount || 0),
@@ -1853,17 +1898,42 @@ function CreateBillingModal({
           })}
         </div>
         {step === 1 ? <div className="space-y-3">
-        <div className="hidden min-w-0 gap-3 md:grid md:grid-cols-2">
+        <div className={cx(
+          "hidden min-w-0 gap-3 md:grid",
+          operatorIssueOnly ? "md:grid-cols-3" : "md:grid-cols-2",
+        )}>
+          {operatorIssueOnly ? (
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Consultation doctor</span>
+              <select
+                required
+                value={billingDoctorId}
+                onChange={(event) => {
+                  setBillingDoctorId(event.target.value);
+                  setPatientId("");
+                  setConsultationId("");
+                  setItems([]);
+                }}
+                className={BILLING_FIELD}
+              >
+                <option value="">Select doctor</option>
+                {operatorDoctorOptions.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">The invoice is recorded against this doctor’s visit and stock.</p>
+            </label>
+          ) : null}
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
             {doctorHasNoAssignedPatients ? (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
-                No patients currently assigned to you.
+                No patients with a consultation completed by you are available for billing.
               </div>
             ) : (
               <button
                 type="button"
-                disabled={patientLocked}
+                disabled={patientLocked || (operatorIssueOnly && !billingDoctorId)}
                 onClick={() => {
                   setPatientSearchQuery("");
                   setPatientPickerOpen(true);
@@ -1874,7 +1944,13 @@ function CreateBillingModal({
                   patientLocked && "cursor-not-allowed bg-slate-100",
                 )}
               >
-                <span className={patientId ? "text-slate-900" : "text-slate-400"}>{patientId ? selectedPatientLabel : "Search by patient name or OCS number"}</span>
+                <span className={patientId ? "text-slate-900" : "text-slate-400"}>
+                  {patientId
+                    ? selectedPatientLabel
+                    : operatorIssueOnly && !billingDoctorId
+                      ? "Select doctor first"
+                      : "Search by patient name or OCS number"}
+                </span>
                 <Search className="size-4 shrink-0 text-slate-400" />
               </button>
             )}
@@ -1913,11 +1989,32 @@ function CreateBillingModal({
         </div>
 
         <div className="min-w-0 space-y-3 md:hidden">
+          {operatorIssueOnly ? (
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Consultation doctor</span>
+              <select
+                required
+                value={billingDoctorId}
+                onChange={(event) => {
+                  setBillingDoctorId(event.target.value);
+                  setPatientId("");
+                  setConsultationId("");
+                  setItems([]);
+                }}
+                className={cx(BILLING_FIELD, "min-h-12")}
+              >
+                <option value="">Select doctor</option>
+                {operatorDoctorOptions.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div>
             <span className="text-sm font-semibold text-slate-700">Patient</span>
             {doctorHasNoAssignedPatients ? (
               <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
-                No patients currently assigned to you.
+                No patients with a consultation completed by you are available for billing.
               </div>
             ) : patientLocked ? (
               <div
@@ -1932,6 +2029,7 @@ function CreateBillingModal({
             ) : (
               <button
                 type="button"
+                disabled={operatorIssueOnly && !billingDoctorId}
                 onClick={() => {
                   setPatientSearchQuery("");
                   setPatientPickerOpen(true);
@@ -1939,10 +2037,15 @@ function CreateBillingModal({
                 className={cx(
                   BILLING_FIELD,
                   "mt-2 flex min-h-12 items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 focus:border-[#4FB8B3]",
+                  operatorIssueOnly && !billingDoctorId && "cursor-not-allowed bg-slate-100",
                 )}
               >
                 <span className={patientId ? "text-slate-900" : "text-slate-400"}>
-                  {patientId ? selectedPatientLabel : "Search and select patient"}
+                  {patientId
+                    ? selectedPatientLabel
+                    : operatorIssueOnly && !billingDoctorId
+                      ? "Select doctor first"
+                      : "Search and select patient"}
                 </span>
                 <Search className="size-5 shrink-0 text-slate-400" />
               </button>
@@ -2215,6 +2318,11 @@ function CreateBillingModal({
               <p className="mt-1 text-xs font-semibold text-slate-500">
                 {selectedConsultation ? `V-${String(selectedConsultation.id).padStart(6, "0")} · ${formatDate(selectedConsultation.consultation_date)}` : "Visit not selected"}
               </p>
+              {selectedConsultation ? (
+                <p className="mt-1 text-xs font-bold text-[#17666a]">
+                  Consultation doctor: {selectedConsultation.doctor_name}
+                </p>
+              ) : null}
             </div>
             <p className="text-lg font-black text-[#17666a]">{formatCurrency(total)}</p>
           </div>
@@ -2348,7 +2456,7 @@ function CreateBillingModal({
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                     {doctorHasNoAssignedPatients ? (
-                      <p className="px-4 py-10 text-center text-sm font-semibold text-rose-900">No patients currently assigned to you.</p>
+                      <p className="px-4 py-10 text-center text-sm font-semibold text-rose-900">No patients with a consultation completed by you are available for billing.</p>
                     ) : filteredPatientsForPicker.length === 0 ? (
                       <p className="px-4 py-10 text-center text-sm text-slate-500">No matches.</p>
                     ) : (
@@ -3543,6 +3651,7 @@ function BillingPage() {
         consultations={consultationOptions}
         preselectedPatientId={creatorVisit?.patient_id || patientIdFilter}
         preselectedConsultationId={creatorVisit?.consultation_id || ""}
+        preselectedDoctorId={creatorVisit?.doctor_id || ""}
         onOpenExisting={bill=>{setCreatorOpen(false);setCreatorVisit(null);setEditor({bill});}}
       />
     </div>
