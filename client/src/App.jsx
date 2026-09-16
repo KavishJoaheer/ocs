@@ -169,10 +169,10 @@ function App() {
             <Route path="/lab" element={<LabWorkspacePage />} />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "accountant"]} />}>
+          <Route element={<ProtectedRoute roles={["doctor", "operator"]} />}>
             <Route path="/billing" element={<BillingWorkspacePage />} />
           </Route>
-          <Route element={<ProtectedRoute roles={["admin", "doctor", "accountant"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "accountant"]} />}>
             <Route path="/admin/finance" element={<BillingWorkspacePage />} />
           </Route>
 

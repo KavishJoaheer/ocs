@@ -125,8 +125,9 @@ function EmptyState({ icon: Icon = CalendarDays, title, description, action }) {
   );
 }
 
-function BillingLitePage({ onOpenHistory }) {
+function BillingLitePage() {
   const { user } = useAuth();
+  const operatorIssueOnly = user?.role === "operator";
   const [view, setView] = useState("today");
   const [submissions, setSubmissions] = useState([]);
   const [selectedVisit, setSelectedVisit] = useState(null);
@@ -138,6 +139,9 @@ function BillingLitePage({ onOpenHistory }) {
   const [lookup, setLookup] = useState("");
   const [lookupResults, setLookupResults] = useState([]);
   const [patientOptions, setPatientOptions] = useState([]);
+  const [doctorOptions, setDoctorOptions] = useState([]);
+  const [billingDoctorId, setBillingDoctorId] = useState("");
+  const [sourceReference, setSourceReference] = useState("");
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const patientPickerRef = useRef(null);
@@ -177,13 +181,17 @@ function BillingLitePage({ onOpenHistory }) {
   async function loadDashboard({ silent = false } = {}) {
     if (!silent) setIsLoading(true);
     try {
+      const pickerQuery = operatorIssueOnly && billingDoctorId
+        ? `?doctorId=${encodeURIComponent(billingDoctorId)}`
+        : "";
       const [submissionPayload, pickerPayload, feePayload] = await Promise.all([
         api.get("/billing/quick/submissions"),
-        api.get("/billing/quick/picker-options"),
+        api.get(`/billing/quick/picker-options${pickerQuery}`),
         api.get("/billing/consultation-fees"),
       ]);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
+      setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
       setConsultationFees(feePayload || {});
     } catch (error) {
       toast.error(error.message || "Quick billing could not be loaded.");
@@ -195,6 +203,26 @@ function BillingLitePage({ onOpenHistory }) {
   useEffect(() => {
     void loadDashboard();
   }, []);
+
+  async function selectBillingDoctor(doctorId) {
+    setBillingDoctorId(doctorId);
+    setPatientOptions([]);
+    setSelectedPatientId("");
+    setSelectedPickerVisitId("");
+    setSelectedVisit(null);
+    setSourceReference("");
+    if (!doctorId) return;
+    setIsCatalogLoading(true);
+    try {
+      const payload = await api.get(`/billing/quick/picker-options?doctorId=${encodeURIComponent(doctorId)}`);
+      setPatientOptions(Array.isArray(payload?.patients) ? payload.patients : []);
+      if (Array.isArray(payload?.doctors)) setDoctorOptions(payload.doctors);
+    } catch (error) {
+      toast.error(error.message || "This doctor’s billable visits could not be loaded.");
+    } finally {
+      setIsCatalogLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -375,7 +403,10 @@ function BillingLitePage({ onOpenHistory }) {
     if (!visit) return;
     setIsCatalogLoading(true);
     try {
-      const payload = await api.get(`/billing/quick/catalog/${visit.consultation_id}`);
+      const doctorQuery = operatorIssueOnly
+        ? `?doctorId=${encodeURIComponent(billingDoctorId)}`
+        : "";
+      const payload = await api.get(`/billing/quick/catalog/${visit.consultation_id}${doctorQuery}`);
       const items = Array.isArray(payload?.items) ? payload.items : [];
       setCatalog(items);
       setSelectedVisit(payload.visit || visit);
@@ -397,6 +428,10 @@ function BillingLitePage({ onOpenHistory }) {
     }
     if (!Number.isFinite(amount) || amount < 0 || amount > 100000) {
       toast.error("Enter a consultation price between Rs 0 and Rs 100,000.");
+      return;
+    }
+    if (operatorIssueOnly && !billingDoctorId) {
+      toast.error("Select the consultation doctor first.");
       return;
     }
     setView("review");
@@ -432,7 +467,12 @@ function BillingLitePage({ onOpenHistory }) {
     setIsLookingUp(true);
     setLookupResults([]);
     try {
-      const payload = await api.get(`/billing/quick/lookup?reference=${encodeURIComponent(reference)}`);
+      if (operatorIssueOnly && !billingDoctorId) {
+        toast.error("Select the consultation doctor before searching.");
+        return;
+      }
+      const doctorQuery = operatorIssueOnly ? `&doctorId=${encodeURIComponent(billingDoctorId)}` : "";
+      const payload = await api.get(`/billing/quick/lookup?reference=${encodeURIComponent(reference)}${doctorQuery}`);
       const matches = Array.isArray(payload?.visits) ? payload.visits : [];
       setLookupResults(matches);
       if (matches.length === 1) await chooseVisit(matches[0]);
@@ -445,10 +485,16 @@ function BillingLitePage({ onOpenHistory }) {
 
   async function submitBilling() {
     if (!selectedVisit || isSubmitting) return;
+    if (operatorIssueOnly && sourceReference.trim().length < 3) {
+      toast.error("Enter the paper invoice number or photo reference.");
+      return;
+    }
     setIsSubmitting(true);
     const endpoint = `/billing/quick/visits/${selectedVisit.consultation_id}/capture`;
     const submissionPayload = {
       operation_id: editingOfflineEntry?.payload?.operation_id || crypto.randomUUID(),
+      doctor_id: operatorIssueOnly ? Number(billingDoctorId) : undefined,
+      source_reference: operatorIssueOnly ? sourceReference.trim() : undefined,
       consultation_fee: {
         type: consultationType,
         amount: Number(consultationPrice),
@@ -469,7 +515,9 @@ function BillingLitePage({ onOpenHistory }) {
       setSelectedVisit(payload.visit || selectedVisit);
       setView("success");
       await loadDashboard({ silent: true });
-      toast.success(selectedItems.length ? "Billing sent to the operator." : "Consultation-only billing submitted.");
+      toast.success(operatorIssueOnly
+        ? "Invoice issued and ready for payment."
+        : selectedItems.length ? "Billing sent to the operator." : "Consultation-only billing submitted.");
     } catch (error) {
       if (isBrowserOffline() || isNetworkFailure(error)) {
         try {
@@ -540,7 +588,10 @@ function BillingLitePage({ onOpenHistory }) {
     setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
     setIsCatalogLoading(true);
     try {
-      const payload = await api.get(`/billing/quick/catalog/${consultationId}`);
+      const doctorQuery = operatorIssueOnly
+        ? `?doctorId=${encodeURIComponent(billingDoctorId || visit.doctor_id || "")}`
+        : "";
+      const payload = await api.get(`/billing/quick/catalog/${consultationId}${doctorQuery}`);
       const items = Array.isArray(payload?.items) ? payload.items : [];
       const nextCart = {};
       for (const savedItem of queueEntry.payload?.items || []) {
@@ -576,6 +627,7 @@ function BillingLitePage({ onOpenHistory }) {
     setCatalogSearch("");
     setLastSubmissionOffline(false);
     setEditingOfflineEntry(null);
+    setSourceReference("");
     setView(destination);
   }
 
@@ -633,13 +685,6 @@ function BillingLitePage({ onOpenHistory }) {
                 </button>
                 <button
                   type="button"
-                  onClick={onOpenHistory}
-                  className="min-h-12 rounded-2xl border border-white/15 bg-white/10 px-4 text-sm font-black transition active:scale-95"
-                >
-                  History
-                </button>
-                <button
-                  type="button"
                   onClick={() => loadDashboard()}
                   className="flex size-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 transition active:scale-95"
                   aria-label="Refresh visits"
@@ -656,6 +701,27 @@ function BillingLitePage({ onOpenHistory }) {
               </div>
             ) : null}
 
+            {operatorIssueOnly ? (
+              <div className="relative z-20 mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
+                <label className="block">
+                  <span className="text-sm font-black text-slate-700">Consultation doctor</span>
+                  <select
+                    value={billingDoctorId}
+                    onChange={(event) => void selectBillingDoctor(event.target.value)}
+                    className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-bold text-[#173f47] outline-none transition focus:border-[#2aa7a0] focus:bg-white"
+                  >
+                    <option value="">Select doctor first</option>
+                    {doctorOptions.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
+                    ))}
+                  </select>
+                  <span className="mt-2 block text-xs font-semibold text-slate-500">
+                    The invoice and supply deduction will be recorded against this doctor’s consultation.
+                  </span>
+                </label>
+              </div>
+            ) : null}
+
             <div className="relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white/95 p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -669,7 +735,11 @@ function BillingLitePage({ onOpenHistory }) {
                   ) : null}
                 </div>
               </div>
-              {priorityVisits.length ? (
+              {operatorIssueOnly && !billingDoctorId ? (
+                <div className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">
+                  Select the consultation doctor to see visits needing billing.
+                </div>
+              ) : priorityVisits.length ? (
                 <div className="mt-3 grid gap-2.5 md:grid-cols-2">
                   {priorityVisits.slice(0, 4).map((visit) => (
                     <VisitCard key={visit.consultation_id} visit={visit} onSelect={chooseVisit} />
@@ -694,8 +764,9 @@ function BillingLitePage({ onOpenHistory }) {
                 </div>
                 <button
                   type="button"
+                  disabled={operatorIssueOnly && !billingDoctorId}
                   onClick={() => setView("find")}
-                  className="mt-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-2 text-sm font-bold text-[#17666a] sm:mt-0"
+                  className="mt-2 inline-flex min-h-11 items-center gap-2 self-start rounded-xl px-2 text-sm font-bold text-[#17666a] disabled:cursor-not-allowed disabled:opacity-50 sm:mt-0"
                 >
                   <Search className="size-4" aria-hidden="true" />
                   Search by number
@@ -707,8 +778,9 @@ function BillingLitePage({ onOpenHistory }) {
                   <label className="text-sm font-black text-slate-700">1. Patient</label>
                   <button
                     type="button"
+                    disabled={operatorIssueOnly && !billingDoctorId}
                     onClick={() => setPatientPickerOpen((open) => !open)}
-                    className="mt-2 flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-left outline-none transition focus:border-[#2aa7a0]"
+                    className="mt-2 flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-left outline-none transition focus:border-[#2aa7a0] disabled:cursor-not-allowed disabled:opacity-60"
                     aria-haspopup="listbox"
                     aria-expanded={patientPickerOpen}
                   >
@@ -716,10 +788,10 @@ function BillingLitePage({ onOpenHistory }) {
                       <UserRound className="size-6 shrink-0 text-[#248f91]" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className={`block truncate font-black ${selectedPatient ? "text-[#173f47]" : "text-slate-500"}`}>
-                          {selectedPatient?.patient_name || "Select patient"}
+                          {selectedPatient?.patient_name || (operatorIssueOnly && !billingDoctorId ? "Select doctor first" : "Select patient")}
                         </span>
                         <span className="block truncate text-sm font-semibold text-slate-500">
-                          {selectedPatient?.patient_identifier || "Search by name or OCS number"}
+                          {selectedPatient?.patient_identifier || (operatorIssueOnly && !billingDoctorId ? "Doctor selection is required" : "Search by name or OCS number")}
                         </span>
                       </span>
                     </span>
@@ -1131,10 +1203,27 @@ function BillingLitePage({ onOpenHistory }) {
                   </div>
                 )}
 
+                {operatorIssueOnly ? (
+                  <label className="mt-5 block rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <span className="text-sm font-black text-slate-700">Paper invoice or photo reference</span>
+                    <input
+                      value={sourceReference}
+                      onChange={(event) => setSourceReference(event.target.value)}
+                      placeholder="Example: PAPER-1042"
+                      className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                    />
+                    <span className="mt-2 block text-xs font-semibold text-slate-500">
+                      Required for audit and duplicate protection.
+                    </span>
+                  </label>
+                ) : null}
+
                 <div className="mt-2 flex items-center justify-between rounded-2xl bg-[#fff5cf] px-5 py-5">
                   <div>
                     <p className="text-sm font-bold text-slate-600">Provisional total</p>
-                    <p className="text-sm font-semibold text-slate-500">Operator completes payment details</p>
+                    <p className="text-sm font-semibold text-slate-500">
+                      {operatorIssueOnly ? "Issued unpaid and ready for payment recording" : "Operator completes payment details"}
+                    </p>
                   </div>
                   <p className="text-2xl font-black text-[#173f47]">{formatRupees(grandTotal)}</p>
                 </div>
@@ -1146,7 +1235,7 @@ function BillingLitePage({ onOpenHistory }) {
                   className="mt-6 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#17666a] px-6 text-lg font-black text-white shadow-[0_15px_35px_rgba(23,102,106,0.25)] transition active:scale-[0.98] disabled:opacity-60"
                 >
                   {isSubmitting ? <LoaderCircle className="size-6 animate-spin" /> : <Send className="size-6" />}
-                  {isSubmitting ? "Submitting…" : "Submit to operator"}
+                  {isSubmitting ? "Submitting…" : operatorIssueOnly ? "Issue invoice" : "Submit to operator"}
                 </button>
               </div>
             </div>
@@ -1163,7 +1252,9 @@ function BillingLitePage({ onOpenHistory }) {
                 {lastSubmissionOffline ? "Saved on this device" : "Submission received"}
               </p>
               <h1 className="mt-2 text-3xl font-black text-[#173f47]">
-                {lastSubmissionOffline ? "Will send when online" : "Sent to the operator"}
+                {lastSubmissionOffline
+                  ? "Will send when online"
+                  : operatorIssueOnly ? "Invoice issued" : "Sent to the operator"}
               </h1>
               <p className="mt-3 text-base font-semibold leading-7 text-slate-600">
                 {selectedVisit.visit_number} · {selectedVisit.patient_identifier}<br />
@@ -1171,7 +1262,7 @@ function BillingLitePage({ onOpenHistory }) {
               </p>
               <div className="mt-7 rounded-2xl bg-[#edf8f6] px-5 py-4 text-left">
                 <p className="text-sm font-bold text-slate-500">Current status</p>
-                <div className="mt-2"><StatusBadge status={lastSubmissionOffline ? "queued_offline" : "awaiting_operator"} /></div>
+                <div className="mt-2"><StatusBadge status={lastSubmissionOffline ? "queued_offline" : operatorIssueOnly ? "ready_for_payment" : "awaiting_operator"} /></div>
               </div>
               <button
                 type="button"

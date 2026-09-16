@@ -399,9 +399,9 @@ function MobileLauncher({
 
   if (["admin", "doctor", "accountant"].includes(user.role)) {
     cards.push({
-      label: "Billing",
+      label: user.role === "doctor" ? "Billing" : "Finance",
       icon: CreditCard,
-      to: "/billing",
+      to: user.role === "doctor" ? "/billing" : "/admin/finance",
       description: "Open bills, payments, and consultation finance.",
     });
   }
@@ -1356,14 +1356,14 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
             icon: CreditCard,
             title: "Billing workspace",
             size: "hero",
-            to: "/billing",
+            to: "/admin/finance",
           },
           {
             eyebrow: "Revenue",
             icon: DollarSign,
             title: "Collected revenue",
             size: "compact",
-            to: "/billing",
+            to: "/admin/finance",
           },
         ]}
         promoItem={{
@@ -1380,19 +1380,19 @@ function AccountantDashboardView({ dashboard, user, onStatusChange, isSavingStat
             eyebrow: "Outstanding bills",
             icon: CreditCard,
             title: "Pending payment",
-            to: "/billing",
+            to: "/admin/finance",
           },
           {
             eyebrow: "Collection review",
             icon: DollarSign,
             title: "Payment review",
-            to: "/billing",
+            to: "/admin/finance",
           },
           {
             eyebrow: "Billing summary",
             icon: ClipboardList,
             title: "Patient billing",
-            to: "/billing",
+            to: "/admin/finance",
           },
           {
             eyebrow: "Operations news",

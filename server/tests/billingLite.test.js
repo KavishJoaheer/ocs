@@ -153,7 +153,75 @@ test("Billing Lite offers a patient-first picker scoped to the signed-in doctor'
   assert.equal(otherDoctor.data.patients.some((row) => row.patient_identifier === patientIdentifier), false);
 
   const operator = await api("GET", "/billing/quick/picker-options", operatorToken);
-  assert.equal(operator.status, 403);
+  assert.equal(operator.status, 200, JSON.stringify(operator.data));
+  assert.ok(operator.data.doctors.some((row) => row.id === doctorId));
+  assert.deepEqual(operator.data.patients, []);
+
+  const operatorDoctor = await api(
+    "GET",
+    `/billing/quick/picker-options?doctorId=${doctorId}`,
+    operatorToken,
+  );
+  assert.equal(operatorDoctor.status, 200, JSON.stringify(operatorDoctor.data));
+  assert.ok(operatorDoctor.data.patients.some((row) => row.patient_identifier === patientIdentifier));
+});
+
+test("operator quick billing requires the matching consultation doctor and paper reference", async () => {
+  const patient = db.prepare("SELECT id FROM patients WHERE patient_identifier = ?").get(patientIdentifier);
+  const today = getTodayLocal();
+  const appointmentId = Number(
+    db.prepare("INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status) VALUES (?, ?, ?, '18:00', 'completed')")
+      .run(patient.id, doctorId, today).lastInsertRowid,
+  );
+  const operatorConsultationId = Number(
+    db.prepare("INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes) VALUES (?, ?, ?, ?, 'Operator quick billing test')")
+      .run(appointmentId, patient.id, doctorId, today).lastInsertRowid,
+  );
+  ensureBillingForConsultation(operatorConsultationId, patient.id, null, "Day Consultation");
+
+  const missingDoctor = await api(
+    "POST",
+    `/billing/quick/visits/${operatorConsultationId}/capture`,
+    operatorToken,
+    { operation_id: randomUUID(), source_reference: "PAPER-QB-1", items: [] },
+  );
+  assert.equal(missingDoctor.status, 400);
+  assert.equal(missingDoctor.data.code, "BILLING_DOCTOR_REQUIRED");
+
+  const wrongDoctor = await api(
+    "POST",
+    `/billing/quick/visits/${operatorConsultationId}/capture`,
+    operatorToken,
+    { operation_id: randomUUID(), doctor_id: otherDoctorId, source_reference: "PAPER-QB-1", items: [] },
+  );
+  assert.equal(wrongDoctor.status, 409);
+  assert.equal(wrongDoctor.data.code, "BILLING_DOCTOR_MISMATCH");
+
+  const missingReference = await api(
+    "POST",
+    `/billing/quick/visits/${operatorConsultationId}/capture`,
+    operatorToken,
+    { operation_id: randomUUID(), doctor_id: doctorId, items: [] },
+  );
+  assert.equal(missingReference.status, 400);
+
+  const issued = await api(
+    "POST",
+    `/billing/quick/visits/${operatorConsultationId}/capture`,
+    operatorToken,
+    {
+      operation_id: randomUUID(),
+      doctor_id: doctorId,
+      source_reference: "PAPER-QB-1",
+      consultation_fee: { type: "Day Consultation", amount: 2000 },
+      items: [],
+    },
+  );
+  assert.equal(issued.status, 201, JSON.stringify(issued.data));
+  assert.equal(issued.data.visit.submission_status, "ready_for_payment");
+  const bill = db.prepare("SELECT source_reference, issued_by_role FROM billing WHERE consultation_id = ?").get(operatorConsultationId);
+  assert.equal(bill.source_reference, "PAPER-QB-1");
+  assert.equal(bill.issued_by_role, "operator");
 });
 
 test("Billing Lite atomically appends supplies, deducts stock, and prevents retry duplication", async () => {

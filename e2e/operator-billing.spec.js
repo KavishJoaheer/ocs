@@ -22,32 +22,43 @@ function escapeRegExp(value) {
 }
 
 async function advanceOperatorInvoiceToReview(page, request, token) {
-  const response = await request.get(`${API_BASE}/billing/consultation-options`, {
+  const doctorResponse = await request.get(`${API_BASE}/billing/quick/picker-options`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  expect(response.ok(), await response.text()).toBeTruthy();
-  const visits = await response.json();
-  expect(visits.length).toBeGreaterThan(0);
-  const visit = visits[0];
-  const dialog = page.getByRole("dialog");
+  expect(doctorResponse.ok(), await doctorResponse.text()).toBeTruthy();
+  const doctors = (await doctorResponse.json()).doctors || [];
+  let doctor = null;
+  let patient = null;
+  let visit = null;
+  for (const candidate of doctors) {
+    const pickerResponse = await request.get(
+      `${API_BASE}/billing/quick/picker-options?doctorId=${candidate.id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(pickerResponse.ok(), await pickerResponse.text()).toBeTruthy();
+    const patients = (await pickerResponse.json()).patients || [];
+    if (patients[0]?.visits?.[0]) {
+      doctor = candidate;
+      patient = patients[0];
+      visit = patients[0].visits[0];
+      break;
+    }
+  }
+  expect(doctor).toBeTruthy();
 
-  const doctorSelect = dialog.locator("select:visible").first();
-  await expect(doctorSelect).toBeEnabled();
-  await doctorSelect.selectOption(String(visit.doctor_id));
-
-  await dialog.locator("button:visible").filter({ hasText: /Search.*patient/i }).click();
+  await page.getByLabel("Consultation doctor").selectOption(String(doctor.id));
+  await page.getByRole("button", { name: /Select patient/i }).click();
   await page
-    .getByRole("button", { name: new RegExp(escapeRegExp(visit.patient_name), "i") })
+    .getByRole("option", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
     .click();
 
-  const consultationSelect = dialog.locator("select:visible").nth(1);
+  const consultationSelect = page.getByLabel("2. Consultation");
   await expect(consultationSelect).toBeEnabled();
-  await consultationSelect.selectOption(String(visit.id));
-  await dialog.getByRole("button", { name: "Continue to charges", exact: true }).click();
-  await expect(
-    dialog.getByRole("button", { name: "Add service / non-stock charge", exact: true }),
-  ).toBeVisible();
-  await dialog.getByRole("button", { name: "Review bill", exact: true }).click();
+  await consultationSelect.selectOption(String(visit.consultation_id));
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
+  await page.getByRole("button").filter({ hasText: /Review/ }).click();
+  await expect(page.getByRole("heading", { name: "Review billing" })).toBeVisible();
 }
 
 test.describe("operator billing", () => {
@@ -60,14 +71,11 @@ test.describe("operator billing", () => {
     await expect(page).toHaveURL(/\/billing/);
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Consultation doctor")).toBeVisible();
     await expect(page.getByText("Financial reconciliation", { exact: true })).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
-    await expect(page.getByRole("dialog").getByRole("heading", { name: "Issue invoice" })).toBeVisible();
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByText("Issued as unpaid", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Paper invoice reference")).toBeVisible();
+    await expect(page.getByLabel("Paper invoice or photo reference")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
   });
 
   test("mobile has a tailored billing destination and protected invoice form", async ({ page, request }) => {
@@ -83,11 +91,8 @@ test.describe("operator billing", () => {
     await expect(bottomNav.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Inventory", exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
-    await expect(page.getByRole("dialog").getByRole("heading", { name: "Issue invoice" })).toBeVisible();
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByText("Issued as unpaid", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Paper invoice reference")).toBeVisible();
-    await expect(page.getByText(/use Record payment to confirm/i)).toBeVisible();
+    await expect(page.getByLabel("Paper invoice or photo reference")).toBeVisible();
+    await expect(page.getByText(/ready for payment recording/i)).toBeVisible();
   });
 });

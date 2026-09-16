@@ -2625,8 +2625,9 @@ function BillingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
-  const canCreateBills =
-    user?.role === "admin" || user?.role === "doctor" || user?.role === "operator";
+  // Routine invoice creation lives exclusively in the quick billing workspace.
+  // This page remains a finance/reconciliation ledger for admin and accounting roles.
+  const canCreateBills = false;
   const canMarkPaid =
     user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const canIssueCreditNotes = user?.role === "admin" || user?.role === "accountant";

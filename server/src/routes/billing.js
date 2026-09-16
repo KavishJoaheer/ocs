@@ -416,6 +416,43 @@ function requireQuickBillingDoctor(req, res) {
   return Number(req.auth.doctor_id);
 }
 
+function resolveQuickBillingDoctor(req, res, submittedDoctorId, { required = true } = {}) {
+  if (req.auth?.role === "doctor") {
+    const doctorId = Number(req.auth?.doctor_id || 0);
+    if (!doctorId) {
+      res.status(403).json({ error: "Your account is not linked to a doctor profile." });
+      return null;
+    }
+    return doctorId;
+  }
+  if (!["operator", "admin"].includes(req.auth?.role)) {
+    res.status(403).json({ error: "Only doctors and operators can issue bills." });
+    return null;
+  }
+  const doctorId = Number(submittedDoctorId || 0);
+  if (!Number.isInteger(doctorId) || doctorId <= 0) {
+    if (!required) return null;
+    res.status(400).json({
+      error: "Select the doctor whose consultation this invoice belongs to.",
+      code: "BILLING_DOCTOR_REQUIRED",
+    });
+    return null;
+  }
+  return doctorId;
+}
+
+function quickBillingDoctorOptions() {
+  return db.prepare(`
+    SELECT DISTINCT d.id, d.full_name
+    FROM doctors d
+    JOIN consultations c ON c.doctor_id = d.id AND c.voided_at IS NULL
+    JOIN patients p ON p.id = c.patient_id AND p.deleted_at IS NULL
+    WHERE d.is_active = 1
+      AND d.deleted_at IS NULL
+    ORDER BY d.full_name COLLATE NOCASE ASC
+  `).all().map((doctor) => ({ id: Number(doctor.id), full_name: String(doctor.full_name || "") }));
+}
+
 function formatVisitNumber(consultationId) {
   return `V-${String(Number(consultationId || 0)).padStart(6, "0")}`;
 }
@@ -448,15 +485,18 @@ function quickVisitBaseRows(doctorId, { consultationId = null, patientIdentifier
         c.id AS consultation_id,
         c.appointment_id,
         c.patient_id,
+        c.doctor_id,
         c.consultation_date,
         a.appointment_date,
         a.appointment_time,
         a.status AS appointment_status,
         p.full_name AS patient_name,
-        p.patient_identifier
+        p.patient_identifier,
+        d.full_name AS doctor_name
       FROM consultations c
       JOIN appointments a ON a.id = c.appointment_id
       JOIN patients p ON p.id = c.patient_id
+      JOIN doctors d ON d.id = c.doctor_id
       WHERE c.doctor_id = @doctorId
         AND c.voided_at IS NULL
         AND p.deleted_at IS NULL
@@ -514,6 +554,9 @@ function serializeQuickVisit(row) {
 
   return {
     consultation_id: Number(row.consultation_id),
+    patient_id: Number(row.patient_id),
+    doctor_id: Number(row.doctor_id),
+    doctor_name: String(row.doctor_name || ""),
     visit_number: formatVisitNumber(row.consultation_id),
     patient_identifier: String(row.patient_identifier || ""),
     patient_name: String(row.patient_name || ""),
@@ -1161,8 +1204,10 @@ router.get("/quick/visits", (req, res) => {
 });
 
 router.get("/quick/picker-options", (req, res) => {
-  const doctorId = requireQuickBillingDoctor(req, res);
-  if (!doctorId) return;
+  const doctorId = resolveQuickBillingDoctor(req, res, req.query.doctorId, { required: false });
+  if (!doctorId && res.headersSent) return;
+  const doctors = ["operator", "admin"].includes(req.auth?.role) ? quickBillingDoctorOptions() : [];
+  if (!doctorId) return res.json({ doctors, patients: [] });
 
   const patientMap = new Map();
   const visits = quickVisitBaseRows(doctorId)
@@ -1186,11 +1231,11 @@ router.get("/quick/picker-options", (req, res) => {
     a.patient_name.localeCompare(b.patient_name, undefined, { sensitivity: "base" }),
   );
 
-  res.json({ patients });
+  res.json({ doctors, patients });
 });
 
 router.get("/quick/lookup", (req, res) => {
-  const doctorId = requireQuickBillingDoctor(req, res);
+  const doctorId = resolveQuickBillingDoctor(req, res, req.query.doctorId);
   if (!doctorId) return;
 
   const reference = String(req.query.reference || "").trim();
@@ -1221,8 +1266,16 @@ router.get("/quick/lookup", (req, res) => {
 });
 
 router.get("/quick/catalog/:consultationId", (req, res) => {
-  const doctorId = requireQuickBillingDoctor(req, res);
-  if (!doctorId) return;
+  const consultation = getConsultationContext(Number(req.params.consultationId));
+  if (!consultation || consultation.voided_at) {
+    return res.status(404).json({ error: "This visit was not found." });
+  }
+  try {
+    assertBillingActorConsultationAccess(req.auth, consultation, req.query.doctorId);
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
+  }
+  const doctorId = Number(consultation.doctor_id);
 
   const visit = getQuickVisit(Number(req.params.consultationId), doctorId);
   if (!visit) {
@@ -1523,8 +1576,11 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
 });
 
 router.get("/quick/submissions", (req, res) => {
-  const doctorId = requireQuickBillingDoctor(req, res);
-  if (!doctorId) return;
+  const doctorId = req.auth?.role === "doctor" ? requireQuickBillingDoctor(req, res) : null;
+  if (req.auth?.role === "doctor" && !doctorId) return;
+  if (!["doctor", "operator", "admin"].includes(req.auth?.role)) {
+    return res.status(403).json({ error: "You do not have access to billing submissions." });
+  }
 
   const rows = db
     .prepare(`
@@ -1540,11 +1596,11 @@ router.get("/quick/submissions", (req, res) => {
       JOIN appointments a ON a.id = c.appointment_id
       JOIN patients p ON p.id = c.patient_id
       JOIN billing b ON b.id = s.billing_id
-      WHERE s.doctor_id = ?
+      WHERE (? IS NULL OR s.doctor_id = ?)
       ORDER BY s.id DESC
-      LIMIT 30
+      LIMIT 60
     `)
-    .all(doctorId)
+    .all(doctorId, doctorId)
     .map((row) => ({
       id: Number(row.id),
       consultation_id: Number(row.consultation_id),
@@ -1572,13 +1628,26 @@ router.get("/quick/submissions", (req, res) => {
 });
 
 router.post("/quick/visits/:consultationId/capture", (req, res) => {
-  const doctorId = requireQuickBillingDoctor(req, res);
-  if (!doctorId) return;
-
   const consultationId = Number(req.params.consultationId || 0);
+  const requestedConsultation = getConsultationContext(consultationId);
+  if (!requestedConsultation || requestedConsultation.voided_at) {
+    return res.status(404).json({ error: "This visit was not found." });
+  }
+  try {
+    assertBillingActorConsultationAccess(req.auth, requestedConsultation, req.body?.doctor_id);
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
+  }
+  const doctorId = Number(requestedConsultation.doctor_id);
   const operationId = String(req.body?.operation_id || "").trim();
   if (!operationId) {
     return res.status(400).json({ error: "A unique submission reference is required." });
+  }
+  const sourceReference = normalizeSourceReference(req.body?.source_reference);
+  if (req.auth?.role === "operator" && sourceReference.length < 3) {
+    return res.status(400).json({
+      error: "Enter the OCS paper invoice number or photo reference before issuing this invoice.",
+    });
   }
 
   const hasRequestedFee = Boolean(req.body?.consultation_fee && typeof req.body.consultation_fee === "object");
@@ -1645,6 +1714,28 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         throw Object.assign(new Error("This visit no longer has an unpaid bill that can receive supplies."), { status: 409 });
       }
       const bill = parseBillingRow(billRow);
+      if (sourceReference) {
+        const existingReference = normalizeSourceReference(bill.source_reference);
+        if (existingReference && existingReference.toLowerCase() !== sourceReference.toLowerCase()) {
+          throw Object.assign(
+            new Error(`This invoice is already linked to source reference ${existingReference}.`),
+            { status: 409, extra: { code: "SOURCE_REFERENCE_LOCKED", bill_id: bill.id } },
+          );
+        }
+        const duplicate = db.prepare(`
+          SELECT id, invoice_number
+          FROM billing
+          WHERE lower(trim(source_reference)) = lower(trim(?))
+            AND id != ?
+          LIMIT 1
+        `).get(sourceReference, bill.id);
+        if (duplicate) {
+          throw Object.assign(
+            new Error(`Source reference ${sourceReference} is already attached to ${duplicate.invoice_number || `bill #${duplicate.id}`}.`),
+            { status: 409, extra: { code: "DUPLICATE_SOURCE_REFERENCE", bill_id: duplicate.id } },
+          );
+        }
+      }
       if (hasRequestedFee && bill.legacy_fee_review_required) {
         throw Object.assign(new Error("An admin must verify this historical consultation fee before it can be changed."), { status: 409 });
       }
@@ -1719,7 +1810,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       touchedItemIds = applied.touchedItemIds;
       const addedItems = normalizeBillingItems(applied.items);
 
-      if (addedItems.length || feeChanged || feeConfirmed) {
+      if (addedItems.length || feeChanged || feeConfirmed || sourceReference) {
         const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);
         const updated = db
           .prepare(`
@@ -1730,6 +1821,11 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
                 updated_at = CURRENT_TIMESTAMP,
                 updated_by_user_id = ?,
                 change_reason = ?,
+                source_reference = CASE WHEN ? != '' THEN ? ELSE source_reference END,
+                issued_at = CASE WHEN ? != '' THEN COALESCE(issued_at, CURRENT_TIMESTAMP) ELSE issued_at END,
+                issued_by_user_id = CASE WHEN ? != '' AND COALESCE(NULLIF(issued_by_role, ''), 'system') = 'system' THEN ? ELSE issued_by_user_id END,
+                issued_by_name = CASE WHEN ? != '' AND COALESCE(NULLIF(issued_by_role, ''), 'system') = 'system' THEN ? ELSE issued_by_name END,
+                issued_by_role = CASE WHEN ? != '' AND COALESCE(NULLIF(issued_by_role, ''), 'system') = 'system' THEN ? ELSE issued_by_role END,
                 fee_review_required = CASE WHEN ? = 1 THEN 0 ELSE fee_review_required END
             WHERE id = ?
               AND row_version = ?
@@ -1748,6 +1844,15 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
                 : feeConfirmed
                   ? "Consultation fee confirmed in quick billing"
                   : "Supplies captured in quick billing",
+            sourceReference,
+            sourceReference,
+            sourceReference,
+            sourceReference,
+            req.auth.id,
+            sourceReference,
+            String(req.auth.full_name || req.auth.username || ""),
+            sourceReference,
+            String(req.auth.role || ""),
             feeConfirmed ? 1 : 0,
             bill.id,
             bill.row_version,
@@ -1764,8 +1869,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         .prepare(`
           INSERT INTO billing_lite_submissions (
             consultation_id, billing_id, doctor_id, submitted_by_user_id,
-            operation_id, item_count, items_json, amount_added
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            operation_id, item_count, items_json, amount_added, workflow_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .run(
           consultationId,
@@ -1776,6 +1881,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           JSON.stringify(addedItems),
           amountAdded,
+          req.auth?.role === "operator" ? "ready_for_payment" : "awaiting_operator",
         );
 
       const supersededClarifications = db.prepare(`
@@ -1817,7 +1923,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         billingId: bill.id,
         actor: req.auth,
         eventType: "submitted",
-        nextStatus: "awaiting_operator",
+        nextStatus: req.auth?.role === "operator" ? "ready_for_payment" : "awaiting_operator",
         details: {
           item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           amount_added: amountAdded,
