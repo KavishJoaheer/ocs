@@ -27,6 +27,12 @@ function FinancialDayClose({ refreshToken }) {
   ));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [correction, setCorrection] = useState(() => ({
+    cash_delta: "0",
+    reason: "",
+    settlements: Object.fromEntries(METHODS.map(({ id }) => [id, { delta: "0", reference: "" }])),
+  }));
 
   const load = useCallback(async () => {
     const payload = await api.get(`/billing/day-close?date=${encodeURIComponent(date)}`);
@@ -82,6 +88,30 @@ function FinancialDayClose({ refreshToken }) {
     }
   }
 
+  async function submitCorrection(event) {
+    event.preventDefault();
+    if (!data?.closing?.id) return;
+    setBusy(true);
+    const operationId = crypto.randomUUID();
+    try {
+      await api.post(`/billing/day-close/${data.closing.id}/adjustments`, {
+        cash_delta: Number(correction.cash_delta || 0),
+        settlement_deltas: Object.fromEntries(METHODS.map(({ id }) => [id, Number(correction.settlements[id]?.delta || 0)])),
+        settlement_references: Object.fromEntries(METHODS.map(({ id }) => [id, String(correction.settlements[id]?.reference || "").trim()])),
+        reason: correction.reason.trim(),
+        operation_id: operationId,
+      });
+      toast.success("Compensating day-close adjustment recorded.");
+      setShowCorrection(false);
+      setCorrection({ cash_delta: "0", reason: "", settlements: Object.fromEntries(METHODS.map(({ id }) => [id, { delta: "0", reference: "" }])) });
+      await load();
+    } catch (error) {
+      toast.error(error.message || "Could not record the day-close correction.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const closing = data?.closing;
   return (
     <details className="rounded-[24px] border border-slate-200 bg-white" open={!closing}>
@@ -97,23 +127,37 @@ function FinancialDayClose({ refreshToken }) {
       <div className="border-t border-slate-100 p-5">
         <label className="block max-w-xs text-sm font-semibold text-slate-700">
           Business date
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3" />
+          <input type="date" max={todayInputValue()} value={date} onChange={(event) => setDate(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3" />
         </label>
 
         {closing ? (
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Expected cash</p><p className="mt-1 font-black">{money(closing.expected_totals?.cash?.expected)}</p></div>
-            <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Counted cash</p><p className="mt-1 font-black">{money(closing.counted_cash)}</p></div>
-            <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Total variance</p><p className={`mt-1 font-black ${Math.abs(Number(closing.variance_total || 0)) >= 0.005 ? "text-rose-700" : "text-emerald-700"}`}>{money(closing.variance_total)}</p></div>
+            <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Effective counted cash</p><p className="mt-1 font-black">{money(closing.effective_counted_cash ?? closing.counted_cash)}</p></div>
+            <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Effective variance</p><p className={`mt-1 font-black ${Math.abs(Number(closing.effective_variance_total ?? closing.variance_total ?? 0)) >= 0.005 ? "text-rose-700" : "text-emerald-700"}`}>{money(closing.effective_variance_total ?? closing.variance_total)}</p></div>
             <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Closed by</p><p className="mt-1 font-black">{closing.closed_by_name || "Finance"}</p></div>
             {closing.settlements?.map((entry) => (
               <div key={entry.payment_method} className="rounded-2xl border border-slate-100 p-4 md:col-span-1">
                 <p className="text-xs font-bold uppercase text-slate-500">{entry.payment_method}</p>
-                <p className="mt-1 font-bold">{money(entry.settled_amount)}</p>
+                <p className="mt-1 font-bold">{money(closing.effective_settlement_totals?.[entry.payment_method] ?? entry.settled_amount)}</p>
                 <p className="mt-1 break-all text-xs text-slate-500">{entry.external_reference || "No settlement due"}</p>
               </div>
             ))}
             {closing.notes ? <p className="text-sm text-slate-600 md:col-span-4">{closing.notes}</p> : null}
+            {closing.adjustments?.length ? <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm md:col-span-4"><p className="font-bold text-amber-950">Compensating adjustments</p>{closing.adjustments.map((entry) => <div key={entry.id} className="border-t border-amber-200 pt-2 text-amber-950"><p className="font-semibold">{entry.adjusted_by_name || "Finance"} · {entry.created_at}</p><p>{entry.reason}</p><p className="text-xs">Cash {money(entry.cash_delta)} · Juice {money(entry.settlement_deltas?.juice)} · Card {money(entry.settlement_deltas?.card)} · IB {money(entry.settlement_deltas?.ib)}</p></div>)}</div> : null}
+            <div className="md:col-span-4">
+              {!showCorrection ? <button type="button" onClick={() => setShowCorrection(true)} className="min-h-11 rounded-xl border border-amber-300 px-4 text-sm font-bold text-amber-900">Add audited correction</button> : (
+                <form onSubmit={submitCorrection} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="font-bold text-amber-950">Compensating adjustment</p>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <label className="text-sm font-semibold">Cash change<input required type="number" step="0.01" value={correction.cash_delta} onChange={(event) => setCorrection((current) => ({ ...current, cash_delta: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3" /></label>
+                    {METHODS.map(({ id, label }) => <div key={id}><label className="text-sm font-semibold">{label} change<input required type="number" step="0.01" value={correction.settlements[id]?.delta || "0"} onChange={(event) => setCorrection((current) => ({ ...current, settlements: { ...current.settlements, [id]: { ...current.settlements[id], delta: event.target.value } } }))} className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3" /></label><input aria-label={`${label} corrected reference`} value={correction.settlements[id]?.reference || ""} onChange={(event) => setCorrection((current) => ({ ...current, settlements: { ...current.settlements, [id]: { ...current.settlements[id], reference: event.target.value } } }))} placeholder="Corrected reference" className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm" /></div>)}
+                  </div>
+                  <label className="block text-sm font-semibold">Reason<textarea required minLength={8} rows={2} value={correction.reason} onChange={(event) => setCorrection((current) => ({ ...current, reason: event.target.value }))} className="mt-1 w-full rounded-xl border border-amber-200 bg-white p-3" placeholder="Explain what was wrong and why this correction is required." /></label>
+                  <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setShowCorrection(false)} className="min-h-11 rounded-xl border px-4">Cancel</button><button disabled={busy || correction.reason.trim().length < 8} className="min-h-11 rounded-xl bg-amber-800 px-4 font-bold text-white disabled:opacity-50">{busy ? "Recording…" : "Record immutable adjustment"}</button></div>
+                </form>
+              )}
+            </div>
           </div>
         ) : (
           <form onSubmit={submit} className="mt-5 space-y-4">

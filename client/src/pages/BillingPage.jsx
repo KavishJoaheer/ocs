@@ -160,6 +160,7 @@ function AdminBillingDateRangeFilter({ preset, anchorDate, onPresetChange, onAnc
         <span className="sr-only">Specific date</span>
         <input
           type="date"
+          max={billingPageTodayInputValue()}
           value={anchorDate}
           onChange={(event) => {
             onAnchorDateChange(event.target.value);
@@ -481,6 +482,8 @@ function BillingStatusFields({
   setPaymentMethod,
   paymentDate,
   setPaymentDate,
+  paymentReference,
+  setPaymentReference,
   total,
 }) {
   function handleStatusChange(nextStatus) {
@@ -489,11 +492,12 @@ function BillingStatusFields({
     if (nextStatus !== "paid") {
       setPaymentMethod("");
       setPaymentDate("");
+      setPaymentReference("");
     }
   }
 
   return (
-    <div className="grid min-w-0 gap-4 md:grid-cols-4">
+    <div className="grid min-w-0 gap-4 md:grid-cols-5">
       <label className="min-w-0 space-y-2">
         <span className="text-sm font-semibold text-slate-700">Status</span>
         <select
@@ -534,6 +538,18 @@ function BillingStatusFields({
         />
       </label>
 
+      <label className="space-y-2">
+        <span className="text-sm font-semibold text-slate-700">Transaction reference</span>
+        <input
+          disabled={status !== "paid"}
+          required={status === "paid" && paymentMethod !== "cash"}
+          value={paymentReference}
+          onChange={(event) => setPaymentReference(event.target.value)}
+          placeholder={paymentMethod === "cash" ? "Optional" : "Required for non-cash"}
+          className={cx(BILLING_FIELD, "disabled:cursor-not-allowed disabled:bg-slate-100")}
+        />
+      </label>
+
       <div className="min-w-0 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
           Total
@@ -547,20 +563,29 @@ function BillingStatusFields({
 function PaymentConfirmation({ bill, busy, onClose, onConfirm }) {
   const [method, setMethod] = useState('');
   const [date, setDate] = useState(billingPageTodayInputValue());
+  const balance = Math.max(0, Number(bill.payment_balance_amount ?? bill.total_amount ?? 0));
+  const [amount, setAmount] = useState(balance ? balance.toFixed(2) : "");
+  const [externalReference, setExternalReference] = useState("");
+  const [operationId] = useState(() => crypto.randomUUID());
   const [confirmed, setConfirmed] = useState(false);
+  const amountNumber = Number(amount || 0);
+  const valid = amountNumber > 0 && amountNumber <= balance && method && date &&
+    (method === "cash" || externalReference.trim().length >= 3) && confirmed;
   return <Modal open onClose={onClose} title={`Record payment · ${billReference(bill)}`} size="md">
-    <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (!busy && confirmed && method && date) onConfirm(method, date); }}>
+    <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (!busy && valid) onConfirm({ amount: amountNumber, payment_method: method, payment_date: date, external_reference: externalReference.trim() || null, operation_id: operationId }); }}>
       <p className="text-sm">{bill.patient_name} · {formatDate(bill.consultation_date)}</p>
-      <p className="text-2xl font-bold">{formatCurrency(bill.total_amount)}</p>
+      <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Outstanding balance</p><p className="text-2xl font-bold">{formatCurrency(balance)}</p></div>
+      <label className="block text-sm font-semibold">Amount received<input required type="number" min="0.01" max={balance} step="0.01" className={BILLING_FIELD} value={amount} onChange={event => {setAmount(event.target.value);setConfirmed(false);}} /></label>
       <label className="block text-sm font-semibold">Payment method<select required className={BILLING_FIELD} value={method} onChange={event => {setMethod(event.target.value);setConfirmed(false);}}>
         <option value="">Select method</option>{PAYMENT_METHOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select></label>
-      <label className="block text-sm font-semibold">Payment date<input required type="date" className={BILLING_FIELD} value={date} onChange={event => {setDate(event.target.value);setConfirmed(false);}} /></label>
-      <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I confirm receipt of the full amount using this method on this date.</label>
-      <p className="text-xs text-slate-500">After recording, payment corrections require an admin and a reason.</p>
+      <label className="block text-sm font-semibold">Payment date<input required type="date" max={billingPageTodayInputValue()} className={BILLING_FIELD} value={date} onChange={event => {setDate(event.target.value);setConfirmed(false);}} /></label>
+      <label className="block text-sm font-semibold">Transaction reference {method === "cash" ? <span className="font-normal text-slate-500">(optional)</span> : null}<input required={method !== "cash"} minLength={method === "cash" ? undefined : 3} className={BILLING_FIELD} value={externalReference} onChange={event => {setExternalReference(event.target.value);setConfirmed(false);}} placeholder={method === "cash" ? "Receipt or cash reference" : "Provider transaction reference"} /></label>
+      <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I confirm receipt of this amount using this method on this date.</label>
+      <p className="text-xs text-slate-500">The payment is immutable. A partial amount leaves the remaining balance open.</p>
       <div className="flex flex-wrap justify-end gap-3">
         <button type="button" disabled={busy} className="min-h-11 rounded-xl border px-4" onClick={onClose}>Cancel</button>
-        <button disabled={busy || !confirmed || !method || !date} className="min-h-11 rounded-xl bg-ocs-teal px-4 font-semibold text-white disabled:opacity-50">{busy ? 'Recording…' : 'Confirm payment'}</button>
+        <button disabled={busy || !valid} className="min-h-11 rounded-xl bg-ocs-teal px-4 font-semibold text-white disabled:opacity-50">{busy ? 'Recording…' : amountNumber < balance ? 'Record partial payment' : 'Confirm payment'}</button>
       </div>
     </form>
   </Modal>;
@@ -614,7 +639,7 @@ function RefundConfirmation({ bill, busy, onClose, onConfirm }) {
         </label>
         <label className="block text-sm font-semibold">
           Refund date
-          <input required type="date" className={BILLING_FIELD} value={date} onChange={(event) => { setDate(event.target.value); setConfirmed(false); }} />
+          <input required type="date" max={billingPageTodayInputValue()} className={BILLING_FIELD} value={date} onChange={(event) => { setDate(event.target.value); setConfirmed(false); }} />
         </label>
         <label className="block text-sm font-semibold">
           Reason
@@ -646,11 +671,13 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   const [correctionReason, setCorrectionReason] = useState("");
   const [history, setHistory] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
+  const [payments, setPayments] = useState([]);
   const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || ((bill?.status === "paid" || bill?.legacy_fee_review_required) && user?.role !== "admin"));
   const operatorEditing = user?.role === "operator" && !readOnly;
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
   const [items, setItems] = useState([createEmptyLineItem()]);
   const [inventoryOptions, setInventoryOptions] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -664,6 +691,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
       setStatus(bill.status);
       setPaymentMethod(bill.payment_method || "");
       setPaymentDate(bill.payment_date || "");
+      setPaymentReference("");
       setItems(
         bill.items.length
           ? bill.items.map((item) => ({
@@ -722,8 +750,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   useEffect(() => {
     if (!open || !billId) return;
     let ignore = false;
-    api.get(`/billing/${billId}`).then(detail => { if (!ignore) { setHistory(detail.history || []); setCreditNotes(detail.refunds || []); } })
-      .catch(() => { if (!ignore) { setHistory([]); setCreditNotes([]); } });
+    api.get(`/billing/${billId}`).then(detail => { if (!ignore) { setHistory(detail.history || []); setCreditNotes(detail.refunds || []); setPayments(detail.payments || []); } })
+      .catch(() => { if (!ignore) { setHistory([]); setCreditNotes([]); setPayments([]); } });
     return () => { ignore = true; };
   }, [open, billId]);
 
@@ -767,6 +795,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
       status,
       payment_method: status === "paid" ? paymentMethod : null,
       payment_date: status === "paid" ? paymentDate || null : null,
+      payment_reference: status === "paid" ? paymentReference.trim() || null : null,
     });
   }
 
@@ -811,6 +840,22 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
         </div>
 
         {bill.patient_archived_at && <p className="text-sm text-slate-600">Archived patient · financial record retained</p>}
+        {payments.length ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-bold text-emerald-950">Payment transactions</p>
+              <p className="text-sm font-bold text-emerald-950">Received {formatCurrency(bill.payment_received_amount || 0)} · Balance {formatCurrency(bill.payment_balance_amount || 0)}</p>
+            </div>
+            <div className="mt-2 space-y-2">
+              {payments.map((payment) => (
+                <div key={payment.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-emerald-200 pt-2 text-sm text-emerald-950">
+                  <div><span className="font-bold">{formatDate(payment.payment_date)} · {formatPaymentMethod(payment.payment_method)}</span><p className="text-xs text-emerald-800">{payment.external_reference || "Cash / migrated record"} · {payment.recorded_by_name || "Legacy staff record"}</p></div>
+                  <span className="font-bold">{formatCurrency(payment.amount)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {creditNotes.length ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
             <p className="text-sm font-bold text-rose-950">Credit notes</p>
@@ -862,15 +907,12 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
             This invoice remains unpaid while you correct its transcription. Use Record payment from the billing list after saving.
           </div>
         ) : (
-        <BillingStatusFields
-          status={status}
-          setStatus={setStatus}
-          paymentMethod={paymentMethod}
-          setPaymentMethod={setPaymentMethod}
-          paymentDate={paymentDate}
-          setPaymentDate={setPaymentDate}
-          total={total}
-        />
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
+          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Invoice total</p><p className="mt-1 text-xl font-black">{formatCurrency(total)}</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Received</p><p className="mt-1 text-xl font-black">{formatCurrency(bill.payment_received_amount || 0)}</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Balance</p><p className="mt-1 text-xl font-black">{formatCurrency(bill.payment_balance_amount ?? total)}</p></div>
+          <p className="text-xs text-slate-500 sm:col-span-3">Save invoice corrections here. Add money received through Record payment so every receipt remains an immutable transaction.</p>
+        </div>
         )}
 
         {Boolean(bill.legacy_fee_review_required) && <p className="rounded-xl bg-amber-50 p-3 text-sm">Historical fee: an admin must verify the agreed charge against the original record. Keep the existing amount if it was agreed, or correct it with a documented reason. Payment stays blocked until this review is confirmed.</p>}
@@ -1268,6 +1310,7 @@ function CreateBillingModal({
   const [status, setStatus] = useState("unpaid");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
   const [consultationType, setConsultationType] = useState("Day Consultation");
   const [consultationPrice, setConsultationPrice] = useState("");
   const [items, setItems] = useState([]);
@@ -1311,6 +1354,7 @@ function CreateBillingModal({
     setStatus("unpaid");
     setPaymentMethod("");
     setPaymentDate("");
+    setPaymentReference("");
     setSourceReference("");
     setConsultationType("Day Consultation");
     setConsultationPrice("");
@@ -1546,6 +1590,10 @@ function CreateBillingModal({
       toast.error("Select how the payment was made.");
       return;
     }
+    if (status === "paid" && paymentMethod !== "cash" && paymentReference.trim().length < 3) {
+      toast.error("Enter the provider transaction reference for this non-cash payment.");
+      return;
+    }
 
     if (consultationPriceNumber < 0) {
       toast.error("Consultation price must be zero or more.");
@@ -1600,6 +1648,7 @@ function CreateBillingModal({
       status,
       payment_method: status === "paid" ? paymentMethod : null,
       payment_date: status === "paid" ? paymentDate || null : null,
+      payment_reference: status === "paid" ? paymentReference.trim() || null : null,
       source_reference: operatorIssueOnly ? sourceReference.trim() : null,
     });
   }
@@ -2200,6 +2249,8 @@ function CreateBillingModal({
           setPaymentMethod={setPaymentMethod}
           paymentDate={paymentDate}
           setPaymentDate={setPaymentDate}
+          paymentReference={paymentReference}
+          setPaymentReference={setPaymentReference}
           total={total}
         />
         )}
@@ -2854,7 +2905,7 @@ function BillingPage() {
     setPaymentBill(bill);
   }
 
-  async function recordPayment(bill, paymentMethod, paymentDate) {
+  async function recordPayment(bill, payload) {
     if (!canRecordPayment(user, bill)) {
       toast.error("You do not have permission to record payment for this invoice.");
       return;
@@ -2863,11 +2914,10 @@ function BillingPage() {
 
     try {
       await api.patch(`/billing/${bill.id}/pay`, {
-        payment_method: paymentMethod,
-        payment_date: paymentDate,
+        ...payload,
         expected_version: bill.row_version,
       });
-      toast.success("Payment recorded.");
+      toast.success(Number(payload.amount) < Number(bill.payment_balance_amount ?? bill.total_amount) ? "Partial payment recorded." : "Payment recorded.");
       setPaymentBill(null);
       await loadData();
     } catch (error) {
@@ -3237,7 +3287,7 @@ function BillingPage() {
                         <th className="px-5 py-3">Consultation</th>
                         <th className="px-5 py-3">Total</th>
                         <th className="px-5 py-3">Status</th>
-                        <th className="px-5 py-3">Pay by</th>
+                        <th className="px-5 py-3">Payment method</th>
                         <th className="px-5 py-3">Payment date</th>
                         <th className="sticky right-0 z-[1] bg-slate-50 px-5 py-3 text-right shadow-[-2px_0_0_rgba(226,232,240,0.9)]">
                           Actions
@@ -3279,9 +3329,10 @@ function BillingPage() {
                                 Refunded {formatCurrency(bill.refunded_amount)} · Net {formatCurrency(bill.net_paid_amount || 0)}
                               </span>
                             ) : null}
+                            {bill.payment_state === "partial" ? <span className="mt-1 block text-xs font-semibold text-amber-700">Received {formatCurrency(bill.payment_received_amount)} · Balance {formatCurrency(bill.payment_balance_amount)}</span> : null}
                           </td>
                           <td className="px-5 py-3">
-                            <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
+                            <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.payment_state || bill.status} />
                           </td>
                           <td className="px-5 py-3 text-sm text-slate-600">
                             {formatPaymentMethod(bill.payment_method)}
@@ -3369,7 +3420,7 @@ function BillingPage() {
                         <p className="text-xl font-bold text-slate-700">{formatCurrency(bill.total_amount)}</p>
                         {Number(bill.refunded_amount || 0) > 0 ? <p className="mt-1 text-xs font-bold text-rose-700">Refunded {formatCurrency(bill.refunded_amount)} · Net {formatCurrency(bill.net_paid_amount || 0)}</p> : null}
                       </div>
-                      <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
+                      <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.payment_state || bill.status} />
                     </div>
                     <div className="mt-4 flex flex-col gap-2">
                       {!bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" && canMarkPaid && canRecordPayment(user, bill) ? (
@@ -3469,7 +3520,7 @@ function BillingPage() {
 
       {paymentBill && <PaymentConfirmation key={paymentBill.id} bill={paymentBill} busy={isSaving}
         onClose={() => { if (!isSaving) setPaymentBill(null); }}
-        onConfirm={(method, date) => recordPayment(paymentBill, method, date)} />}
+        onConfirm={(payload) => recordPayment(paymentBill, payload)} />}
       {refundBill && <RefundConfirmation key={refundBill.id} bill={refundBill} busy={isSaving}
         onClose={() => { if (!isSaving) setRefundBill(null); }}
         onConfirm={(payload) => recordRefund(refundBill, payload)} />}

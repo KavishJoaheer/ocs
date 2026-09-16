@@ -64,6 +64,32 @@ function ensureFinancialIntegritySchema(db) {
         FOREIGN KEY (closing_id) REFERENCES financial_day_closings(id) ON DELETE RESTRICT,
         UNIQUE (closing_id, payment_method)
       );
+      CREATE TABLE IF NOT EXISTS financial_day_close_adjustments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        closing_id INTEGER NOT NULL,
+        cash_delta REAL NOT NULL DEFAULT 0,
+        settlement_deltas_json TEXT NOT NULL DEFAULT '{}',
+        settlement_references_json TEXT NOT NULL DEFAULT '{}',
+        reason TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        adjusted_by_user_id INTEGER,
+        adjusted_by_name TEXT NOT NULL DEFAULT '',
+        adjusted_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (closing_id) REFERENCES financial_day_closings(id) ON DELETE RESTRICT,
+        FOREIGN KEY (adjusted_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE (adjusted_by_user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_day_close_adjustments_closing
+        ON financial_day_close_adjustments(closing_id, id);
+      CREATE TRIGGER IF NOT EXISTS financial_day_close_adjustments_no_update
+      BEFORE UPDATE ON financial_day_close_adjustments BEGIN
+        SELECT RAISE(ABORT, 'Day-close adjustments are immutable; add another compensating adjustment');
+      END;
+      CREATE TRIGGER IF NOT EXISTS financial_day_close_adjustments_no_delete
+      BEFORE DELETE ON financial_day_close_adjustments BEGIN
+        SELECT RAISE(ABORT, 'Day-close adjustments are immutable; add another compensating adjustment');
+      END;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_day_close_settlement_reference
         ON financial_day_close_settlements(payment_method, lower(trim(external_reference)))
         WHERE external_reference IS NOT NULL AND trim(external_reference) != '';
@@ -74,6 +100,15 @@ function ensureFinancialIntegritySchema(db) {
       CREATE TRIGGER IF NOT EXISTS financial_day_closings_no_delete
       BEFORE DELETE ON financial_day_closings BEGIN
         SELECT RAISE(ABORT, 'Day closings are immutable; document a compensating close');
+      END;
+      DROP TRIGGER IF EXISTS financial_day_closings_date_guard;
+      CREATE TRIGGER financial_day_closings_date_guard
+      BEFORE INSERT ON financial_day_closings
+      WHEN date(NEW.business_date) IS NULL
+        OR date(NEW.business_date) != NEW.business_date
+        OR date(NEW.business_date) > date('now', '+4 hours')
+      BEGIN
+        SELECT RAISE(ABORT, 'Day closings require a valid non-future Mauritius business date');
       END;
       CREATE TRIGGER IF NOT EXISTS financial_day_close_settlements_no_update
       BEFORE UPDATE ON financial_day_close_settlements BEGIN
@@ -88,6 +123,75 @@ function ensureFinancialIntegritySchema(db) {
         request_hash TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY(actor_id, scope, operation_id)
       );
+      CREATE TABLE IF NOT EXISTS billing_payment_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        billing_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'juice', 'card', 'ib')),
+        payment_date TEXT NOT NULL,
+        external_reference TEXT,
+        operation_id TEXT NOT NULL UNIQUE,
+        recorded_by_user_id INTEGER,
+        recorded_by_name TEXT NOT NULL DEFAULT '',
+        recorded_by_role TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'recorded' CHECK (source IN ('recorded', 'legacy_migration')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (recorded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_payments_bill
+        ON billing_payment_transactions(billing_id, id);
+      CREATE INDEX IF NOT EXISTS idx_billing_payments_date
+        ON billing_payment_transactions(payment_date, payment_method);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_payments_external_reference
+        ON billing_payment_transactions(payment_method, lower(trim(external_reference)))
+        WHERE external_reference IS NOT NULL AND trim(external_reference) != '';
+      CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_amount_guard
+      BEFORE INSERT ON billing_payment_transactions
+      WHEN
+        typeof(NEW.amount) NOT IN ('integer', 'real')
+        OR NEW.amount <= 0
+        OR abs(NEW.amount * 100 - round(NEW.amount * 100)) > 0.000001
+      BEGIN
+        SELECT RAISE(ABORT, 'Payment amounts must be positive currency values with no more than two decimal places');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_document_guard
+      BEFORE INSERT ON billing_payment_transactions
+      WHEN
+        length(trim(NEW.operation_id)) = 0
+        OR date(NEW.payment_date) IS NULL
+        OR date(NEW.payment_date) != NEW.payment_date
+        OR (NEW.source = 'recorded' AND date(NEW.payment_date) > date('now', '+4 hours'))
+        OR (NEW.payment_method != 'cash' AND NEW.source = 'recorded' AND length(trim(COALESCE(NEW.external_reference, ''))) < 3)
+      BEGIN
+        SELECT RAISE(ABORT, 'Payments require a valid non-future date, operation reference, and provider reference for non-cash methods');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_balance_guard
+      BEFORE INSERT ON billing_payment_transactions
+      WHEN NOT EXISTS (
+        SELECT 1
+        FROM billing bill
+        JOIN consultations consultation ON consultation.id = bill.consultation_id
+        WHERE bill.id = NEW.billing_id
+          AND bill.voided_at IS NULL
+          AND consultation.voided_at IS NULL
+          AND NEW.amount <= bill.total_amount - COALESCE((
+            SELECT SUM(existing.amount)
+            FROM billing_payment_transactions existing
+            WHERE existing.billing_id = bill.id
+          ), 0) + 0.000001
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'Payment exceeds the outstanding invoice balance or invoice is not active');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_no_update
+      BEFORE UPDATE ON billing_payment_transactions BEGIN
+        SELECT RAISE(ABORT, 'Payment transactions are immutable; record a compensating transaction');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_no_delete
+      BEFORE DELETE ON billing_payment_transactions BEGIN
+        SELECT RAISE(ABORT, 'Payment transactions are immutable; record a compensating transaction');
+      END;
       CREATE TABLE IF NOT EXISTS billing_refunds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         credit_note_number TEXT NOT NULL UNIQUE,
@@ -120,7 +224,8 @@ function ensureFinancialIntegritySchema(db) {
       BEGIN
         SELECT RAISE(ABORT, 'Refund amounts must be positive currency values with no more than two decimal places');
       END;
-      CREATE TRIGGER IF NOT EXISTS billing_refunds_document_guard
+      DROP TRIGGER IF EXISTS billing_refunds_document_guard;
+      CREATE TRIGGER billing_refunds_document_guard
       BEFORE INSERT ON billing_refunds
       WHEN
         length(trim(NEW.reason)) < 8
@@ -128,8 +233,9 @@ function ensureFinancialIntegritySchema(db) {
         OR NEW.refund_date IS NULL
         OR date(NEW.refund_date) IS NULL
         OR date(NEW.refund_date) != NEW.refund_date
+        OR date(NEW.refund_date) > date('now', '+4 hours')
       BEGIN
-        SELECT RAISE(ABORT, 'Credit notes require a valid date, operation reference, and documented reason');
+        SELECT RAISE(ABORT, 'Credit notes require a valid non-future date, operation reference, and documented reason');
       END;
       CREATE TRIGGER IF NOT EXISTS billing_refunds_balance_guard
       BEFORE INSERT ON billing_refunds
@@ -186,6 +292,18 @@ function ensureFinancialIntegritySchema(db) {
       )
       BEGIN
         SELECT RAISE(ABORT, 'Paid invoice financial lines are immutable; use a credit note and adjustment invoice');
+      END;
+      DROP TRIGGER IF EXISTS billing_part_paid_financial_guard;
+      CREATE TRIGGER billing_part_paid_financial_guard
+      BEFORE UPDATE ON billing
+      WHEN EXISTS (SELECT 1 FROM billing_payment_transactions p WHERE p.billing_id = OLD.id)
+        AND (
+          NEW.items != OLD.items
+          OR NEW.total_amount != OLD.total_amount
+          OR NEW.voided_at IS NOT OLD.voided_at
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'Invoices with payment transactions cannot change financial lines; use a credit note or adjustment invoice');
       END;
       CREATE TABLE IF NOT EXISTS billing_events (
         id INTEGER PRIMARY KEY, bill_id INTEGER NOT NULL, actor_id INTEGER,
@@ -449,6 +567,32 @@ function ensureFinancialIntegritySchema(db) {
       seenSourceReferences.add(key);
       restoreSourceReference.run(reference, bill.id);
     }
+
+    db.exec(`
+      INSERT INTO billing_payment_transactions (
+        billing_id, amount, payment_method, payment_date, external_reference,
+        operation_id, recorded_by_user_id, recorded_by_name, recorded_by_role, source
+      )
+      SELECT
+        b.id,
+        b.total_amount,
+        b.payment_method,
+        COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')),
+        NULL,
+        'legacy-paid-bill-' || b.id,
+        b.updated_by_user_id,
+        COALESCE((SELECT full_name FROM users WHERE id = b.updated_by_user_id), 'Legacy staff record'),
+        COALESCE((SELECT role FROM users WHERE id = b.updated_by_user_id), 'legacy'),
+        'legacy_migration'
+      FROM billing b
+      WHERE b.status = 'paid'
+        AND b.voided_at IS NULL
+        AND b.total_amount > 0
+        AND b.payment_method IN ('cash', 'juice', 'card', 'ib')
+        AND NOT EXISTS (
+          SELECT 1 FROM billing_payment_transactions payment WHERE payment.billing_id = b.id
+        );
+    `);
 
     db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_invoice_number_unique

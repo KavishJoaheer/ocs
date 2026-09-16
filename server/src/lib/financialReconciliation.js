@@ -52,6 +52,26 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   for (const bill of active.filter(b => b.fee_review_required)) {
     issues.push({ type: 'fee_review', label: `Bill #${bill.id}: ${bill.legacy_fee_review_required ? 'admin must verify the historical fee against source records' : 'confirm consultation type and fee'}`, bill_ids: [bill.id], amount: bill.total_amount });
   }
+  const paymentTotals = new Map(db.prepare(`
+    SELECT billing_id, SUM(amount) AS amount
+    FROM billing_payment_transactions
+    GROUP BY billing_id
+  `).all().map((row) => [Number(row.billing_id), Number(row.amount || 0)]));
+  for (const bill of active) {
+    const received = paymentTotals.get(Number(bill.id)) || 0;
+    const total = Number(bill.total_amount || 0);
+    if ((bill.status === 'paid' && Math.abs(received - total) >= 0.005) ||
+        (bill.status === 'unpaid' && received >= total - 0.005 && total > 0)) {
+      issues.push({
+        type: 'payment_status_mismatch',
+        label: `Bill #${bill.id}: payment transactions do not match invoice status`,
+        bill_ids: [bill.id],
+        amount: Number((received - total).toFixed(2)),
+        received_amount: received,
+        invoice_amount: total,
+      });
+    }
+  }
   for (const bill of bills.filter(b => (b.voided_at || b.consultation_voided_at) && b.status === 'paid')) {
     issues.push({ type: 'voided_payment', label: `Voided bill #${bill.id}: verify the collected money and any refund`, bill_ids: [bill.id], amount: bill.total_amount });
   }
@@ -158,6 +178,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
     stock: stockFinancials(movementRows(db, { doctorId, from, to })),
     stock_readiness: doctorId == null ? {
       unpriced_products: db.prepare('SELECT COUNT(*) AS n FROM inventory WHERE archived_at IS NULL AND quantity > 0 AND (cost_price IS NULL OR cost_price <= 0)').get().n,
+      zero_sale_price_products: db.prepare('SELECT COUNT(*) AS n FROM inventory WHERE archived_at IS NULL AND quantity > 0 AND (selling_price IS NULL OR selling_price <= 0)').get().n,
       expiry_unverified_products: db.prepare(`SELECT COUNT(DISTINCT i.id) AS n FROM inventory i WHERE i.archived_at IS NULL AND i.quantity > 0 AND (
         EXISTS (SELECT 1 FROM inventory_batches b WHERE b.item_id=i.id AND b.quantity_remaining>0 AND b.expiry_date IS NULL AND COALESCE(b.is_non_expiring,0)=0)
         OR i.quantity > COALESCE((SELECT SUM(b.quantity_remaining) FROM inventory_batches b WHERE b.item_id=i.id),0))`).get().n,

@@ -63,6 +63,111 @@ function assertBusinessDateOpen(value) {
     );
   }
 }
+function assertNotFutureBusinessDate(value, label = "Transaction") {
+  if (value > getTodayLocal()) {
+    throw Object.assign(
+      new Error(`${label} date cannot be later than today in Mauritius.`),
+      { status: 400, extra: { code: "FUTURE_FINANCIAL_DATE" } },
+    );
+  }
+}
+function paymentTransactionsForBill(billId) {
+  return db.prepare(`
+    SELECT id, billing_id, amount, payment_method, payment_date, external_reference,
+      operation_id, recorded_by_user_id, recorded_by_name, recorded_by_role, source, created_at
+    FROM billing_payment_transactions
+    WHERE billing_id = ?
+    ORDER BY payment_date ASC, id ASC
+  `).all(billId).map((payment) => ({
+    ...payment,
+    amount: roundCurrency(payment.amount),
+  }));
+}
+function paymentSummaryForBill(billId, totalAmount) {
+  const payments = paymentTransactionsForBill(billId);
+  const receivedAmount = roundCurrency(payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
+  const balanceAmount = roundCurrency(Math.max(0, Number(totalAmount || 0) - receivedAmount));
+  const lastPayment = payments.at(-1) || null;
+  return {
+    payments,
+    payment_received_amount: receivedAmount,
+    payment_balance_amount: balanceAmount,
+    payment_state: receivedAmount <= 0 ? "unpaid" : balanceAmount > 0 ? "partial" : "paid",
+    payment_count: payments.length,
+    last_payment_method: lastPayment?.payment_method || null,
+    last_payment_date: lastPayment?.payment_date || null,
+  };
+}
+function syncBillingPaymentSummary(billId, actor) {
+  const bill = db.prepare("SELECT id, total_amount FROM billing WHERE id = ?").get(billId);
+  if (!bill) throw Object.assign(new Error("Bill not found."), { status: 404 });
+  const summary = paymentSummaryForBill(billId, bill.total_amount);
+  db.prepare(`
+    UPDATE billing
+    SET status = ?, payment_method = ?, payment_date = ?, updated_at = CURRENT_TIMESTAMP,
+      updated_by_user_id = ?, change_reason = ?
+    WHERE id = ?
+  `).run(
+    summary.payment_state === "paid" ? "paid" : "unpaid",
+    summary.last_payment_method,
+    summary.last_payment_date,
+    actor?.id || null,
+    summary.payment_state === "paid" ? "Payment completed" : "Partial payment recorded",
+    billId,
+  );
+  return summary;
+}
+function recordPaymentTransaction({ bill, amount, paymentMethod, paymentDate, externalReference, operationId, actor }) {
+  if (!isValidCurrencyAmount(amount) || Number(amount) <= 0) {
+    throw Object.assign(new Error("Enter a positive payment amount using no more than two decimal places."), { status: 400 });
+  }
+  if (!PAYMENT_METHODS.has(paymentMethod)) {
+    throw Object.assign(new Error("Select a valid payment method: cash, juice, card, or IB."), { status: 400 });
+  }
+  if (!validPaymentDate(paymentDate)) {
+    throw Object.assign(new Error("Enter a valid payment date (YYYY-MM-DD)."), { status: 400 });
+  }
+  assertNotFutureBusinessDate(paymentDate, "Payment");
+  assertBusinessDateOpen(paymentDate);
+  const reference = normalizeSourceReference(externalReference);
+  if (paymentMethod !== "cash" && reference.length < 3) {
+    throw Object.assign(new Error("Enter the Juice, card, or IB transaction reference."), { status: 400 });
+  }
+  const key = String(operationId || "").trim();
+  if (!key) throw Object.assign(new Error("A unique payment operation reference is required."), { status: 400 });
+  const roundedAmount = roundCurrency(amount);
+  const existing = db.prepare("SELECT * FROM billing_payment_transactions WHERE operation_id = ?").get(key);
+  if (existing) {
+    const same = Number(existing.billing_id) === Number(bill.id)
+      && Number(existing.amount) === roundedAmount
+      && existing.payment_method === paymentMethod
+      && existing.payment_date === paymentDate
+      && String(existing.external_reference || "") === reference;
+    if (!same) throw Object.assign(new Error("That payment operation reference was already used for different details."), { status: 409 });
+    return existing;
+  }
+  const summary = paymentSummaryForBill(bill.id, bill.total_amount);
+  if (roundedAmount > summary.payment_balance_amount + 0.000001) {
+    throw Object.assign(new Error(`Payment exceeds the outstanding balance of Rs ${summary.payment_balance_amount.toFixed(2)}.`), { status: 409 });
+  }
+  const result = db.prepare(`
+    INSERT INTO billing_payment_transactions (
+      billing_id, amount, payment_method, payment_date, external_reference,
+      operation_id, recorded_by_user_id, recorded_by_name, recorded_by_role, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'recorded')
+  `).run(
+    bill.id,
+    roundedAmount,
+    paymentMethod,
+    paymentDate,
+    reference || null,
+    key,
+    actor?.id || null,
+    String(actor?.full_name || actor?.username || ""),
+    String(actor?.role || ""),
+  );
+  return db.prepare("SELECT * FROM billing_payment_transactions WHERE id = ?").get(Number(result.lastInsertRowid));
+}
 function billingDateSql(req) {
   return req.query.dateBasis === "payment"
     ? "CASE WHEN b.status = 'paid' THEN COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) ELSE date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) END"
@@ -357,7 +462,8 @@ function serializeQuickVisit(row) {
       ORDER BY id ASC
     `)
     .all(row.consultation_id)
-    .map(parseBillingRow);
+    .map(parseBillingRow)
+    .map((bill) => ({ ...bill, ...paymentSummaryForBill(bill.id, bill.total_amount) }));
   const submissions = db
     .prepare(`
       SELECT id, item_count, amount_added, workflow_status, workflow_note, workflow_updated_at, created_at
@@ -614,6 +720,12 @@ function applyInventoryTransactions({
 
     const isSellLine = line.type !== "Wastage" && line.type !== "Adjustment";
     if (!isSellLine && line.dispensing_movement_ids?.length) throw Object.assign(new Error("A recorded sale must be reconciled as a sale, not a new wastage or adjustment."),{status:409});
+    if (isSellLine && Number(stockItem.selling_price || 0) <= 0) {
+      throw Object.assign(
+        new Error(`${stockItem.item_name} has no selling price. Finance or inventory must price it before it can be billed.`),
+        { status: 409, extra: { code: "SUPPLY_PRICE_REQUIRED", inventory_item_id: Number(stockItem.id) } },
+      );
+    }
 
     // For Sale-style lines, see if the doctor already deducted this exact
     // patient/item combo from the bag while in the field. If so we credit
@@ -812,14 +924,14 @@ function getJoinedBillById(billId) {
     ORDER BY id DESC
   `).all(billId).map((refund) => ({ ...refund, amount: roundCurrency(refund.amount) }));
   const refundedAmount = roundCurrency(refunds.reduce((sum, refund) => sum + refund.amount, 0));
+  const paymentSummary = paymentSummaryForBill(billId, parsed.total_amount);
   return {
     ...parsed,
+    ...paymentSummary,
     refunds,
     refunded_amount: refundedAmount,
     refundable_amount: roundCurrency(Math.max(0, Number(parsed.total_amount || 0) - refundedAmount)),
-    net_paid_amount: parsed.status === "paid"
-      ? roundCurrency(Math.max(0, Number(parsed.total_amount || 0) - refundedAmount))
-      : 0,
+    net_paid_amount: roundCurrency(Math.max(0, paymentSummary.payment_received_amount - refundedAmount)),
     history: db.prepare(`SELECT e.*, COALESCE(NULLIF(e.actor_name, ''), u.full_name) AS actor_name FROM billing_events e
       LEFT JOIN users u ON u.id=e.actor_id WHERE e.bill_id=? ORDER BY e.id DESC`).all(billId),
     appointment_financials: calculateAppointmentLossRevenue(parsed.items),
@@ -864,13 +976,17 @@ router.get("/patient-summary", (req, res) => {
         COALESCE(NULLIF(MAX(b.patient_name_snapshot), ''), MAX(p.full_name)) AS patient_name,
         COUNT(b.id) AS bill_count,
         COALESCE(SUM(b.total_amount), 0) AS total_billed,
-        COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.total_amount - COALESCE((
+        COALESCE(SUM(COALESCE((
+          SELECT SUM(payment.amount) FROM billing_payment_transactions payment WHERE payment.billing_id = b.id
+        ), 0) - COALESCE((
           SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
-        ), 0) ELSE 0 END), 0) AS paid_amount,
-        COALESCE(SUM(CASE WHEN b.status = 'paid' THEN COALESCE((
+        ), 0)), 0) AS paid_amount,
+        COALESCE(SUM(COALESCE((
           SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
-        ), 0) ELSE 0 END), 0) AS refunded_amount,
-        COALESCE(SUM(CASE WHEN b.status = 'unpaid' THEN b.total_amount ELSE 0 END), 0) AS unpaid_amount
+        ), 0)), 0) AS refunded_amount,
+        COALESCE(SUM(MAX(0, b.total_amount - COALESCE((
+          SELECT SUM(payment.amount) FROM billing_payment_transactions payment WHERE payment.billing_id = b.id
+        ), 0))), 0) AS unpaid_amount
       FROM patients p
       JOIN billing b ON b.patient_id = p.id
       JOIN consultations c ON c.id = b.consultation_id
@@ -911,9 +1027,11 @@ router.get("/", (req, res) => {
         COALESCE(b.doctor_id_snapshot, c.doctor_id) AS doctor_id,
         COALESCE(NULLIF(b.doctor_name_snapshot, ''), d.full_name) AS doctor_name,
         COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0) AS refunded_amount,
-        CASE WHEN b.status = 'paid' THEN b.total_amount - COALESCE((
+        MAX(0, COALESCE((
+          SELECT SUM(payment.amount) FROM billing_payment_transactions payment WHERE payment.billing_id = b.id
+        ), 0) - COALESCE((
           SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
-        ), 0) ELSE 0 END AS net_paid_amount,
+        ), 0)) AS net_paid_amount,
         u.full_name AS updated_by_name
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
@@ -1882,6 +2000,8 @@ router.post("/:id/refunds", (req, res) => {
   if (!validPaymentDate(refundDate)) {
     return res.status(400).json({ error: "Enter a valid refund date (YYYY-MM-DD)." });
   }
+  try { assertNotFutureBusinessDate(refundDate, "Refund"); }
+  catch (error) { return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) }); }
   if (reason.length < 8) {
     return res.status(400).json({ error: "Document why this refund is being issued." });
   }
@@ -2001,14 +2121,14 @@ function paymentTotalsForDate(businessDate) {
   const rows = db.prepare(`
     WITH methods(method) AS (VALUES ('cash'), ('juice'), ('card'), ('ib')),
     payments AS (
-      SELECT b.payment_method AS method, SUM(b.total_amount) AS amount
-      FROM billing b
+      SELECT payment.payment_method AS method, SUM(payment.amount) AS amount
+      FROM billing_payment_transactions payment
+      JOIN billing b ON b.id = payment.billing_id
       JOIN consultations c ON c.id = b.consultation_id
-      WHERE b.status = 'paid'
-        AND b.voided_at IS NULL
+      WHERE b.voided_at IS NULL
         AND c.voided_at IS NULL
-        AND b.payment_date = ?
-      GROUP BY b.payment_method
+        AND payment.payment_date = ?
+      GROUP BY payment.payment_method
     ),
     refunds AS (
       SELECT r.refund_method AS method, SUM(r.amount) AS amount
@@ -2043,6 +2163,26 @@ function serializeDayClosing(row) {
     expected_amount: roundCurrency(entry.expected_amount),
     settled_amount: roundCurrency(entry.settled_amount),
   }));
+  const adjustments = db.prepare(`
+    SELECT *
+    FROM financial_day_close_adjustments
+    WHERE closing_id = ?
+    ORDER BY id ASC
+  `).all(row.id).map((entry) => ({
+    ...entry,
+    cash_delta: roundCurrency(entry.cash_delta),
+    settlement_deltas: safeJsonParse(entry.settlement_deltas_json, {}),
+    settlement_references: safeJsonParse(entry.settlement_references_json, {}),
+  }));
+  const cashAdjustment = roundCurrency(adjustments.reduce((sum, entry) => sum + Number(entry.cash_delta || 0), 0));
+  const settlementAdjustments = Object.fromEntries(['juice', 'card', 'ib'].map((method) => [
+    method,
+    roundCurrency(adjustments.reduce((sum, entry) => sum + Number(entry.settlement_deltas?.[method] || 0), 0)),
+  ]));
+  const effectiveSettlementTotals = Object.fromEntries(settlements.map((entry) => [
+    entry.payment_method,
+    roundCurrency(entry.settled_amount + Number(settlementAdjustments[entry.payment_method] || 0)),
+  ]));
   return {
     ...row,
     counted_cash: roundCurrency(row.counted_cash),
@@ -2051,6 +2191,12 @@ function serializeDayClosing(row) {
     settlement_totals: safeJsonParse(row.settlement_totals_json, {}),
     settlement_references: safeJsonParse(row.settlement_references_json, {}),
     settlements,
+    adjustments,
+    effective_counted_cash: roundCurrency(row.counted_cash + cashAdjustment),
+    effective_settlement_totals: effectiveSettlementTotals,
+    effective_variance_total: roundCurrency(
+      row.variance_total + cashAdjustment + Object.values(settlementAdjustments).reduce((sum, value) => sum + Number(value || 0), 0),
+    ),
   };
 }
 
@@ -2062,6 +2208,8 @@ router.get('/day-close', (req, res) => {
   if (!validPaymentDate(businessDate)) {
     return res.status(400).json({ error: 'Enter a valid business date (YYYY-MM-DD).' });
   }
+  try { assertNotFutureBusinessDate(businessDate, "Day close"); }
+  catch (error) { return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) }); }
   const closing = serializeDayClosing(
     db.prepare('SELECT * FROM financial_day_closings WHERE business_date = ?').get(businessDate),
   );
@@ -2076,6 +2224,8 @@ router.post('/day-close', (req, res) => {
   if (!validPaymentDate(businessDate)) {
     return res.status(400).json({ error: 'Enter a valid business date (YYYY-MM-DD).' });
   }
+  try { assertNotFutureBusinessDate(businessDate, "Day close"); }
+  catch (error) { return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) }); }
   if (!isValidCurrencyAmount(req.body?.counted_cash)) {
     return res.status(400).json({ error: 'Enter the non-negative cash amount physically counted.' });
   }
@@ -2175,6 +2325,75 @@ router.post('/day-close', (req, res) => {
         message.includes('financial_day_close_settlements.payment_method, financial_day_close_settlements.external_reference')) {
       return res.status(409).json({ error: 'That settlement reference has already been used for this payment method.' });
     }
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+  return res.status(201).json(result);
+});
+
+router.post('/day-close/:id/adjustments', (req, res) => {
+  if (!['admin', 'accountant'].includes(req.auth?.role)) {
+    return res.status(403).json({ error: 'Day-close corrections are restricted to administrators and finance.' });
+  }
+  const closingId = Number(req.params.id || 0);
+  const closing = db.prepare('SELECT * FROM financial_day_closings WHERE id = ?').get(closingId);
+  if (!closing) return res.status(404).json({ error: 'Day closing not found.' });
+  const reason = String(req.body?.reason || '').trim().slice(0, 1000);
+  if (reason.length < 8) return res.status(400).json({ error: 'Document why this day-close correction is required.' });
+  if (!isValidSignedCurrencyAmount(req.body?.cash_delta ?? 0)) {
+    return res.status(400).json({ error: 'Enter a valid signed cash correction using no more than two decimal places.' });
+  }
+  const cashDelta = roundCurrency(req.body?.cash_delta || 0);
+  const requestedDeltas = req.body?.settlement_deltas && typeof req.body.settlement_deltas === 'object'
+    ? req.body.settlement_deltas
+    : {};
+  const requestedReferences = req.body?.settlement_references && typeof req.body.settlement_references === 'object'
+    ? req.body.settlement_references
+    : {};
+  const settlementDeltas = {};
+  const settlementReferences = {};
+  for (const method of ['juice', 'card', 'ib']) {
+    if (!isValidSignedCurrencyAmount(requestedDeltas[method] ?? 0)) {
+      return res.status(400).json({ error: `Enter a valid signed ${method.toUpperCase()} correction.` });
+    }
+    settlementDeltas[method] = roundCurrency(requestedDeltas[method] || 0);
+    settlementReferences[method] = normalizeSourceReference(requestedReferences[method]);
+    if (Math.abs(settlementDeltas[method]) >= 0.005 && settlementReferences[method].length < 3) {
+      return res.status(400).json({ error: `Enter the corrected ${method.toUpperCase()} settlement reference.` });
+    }
+  }
+  const totalDelta = roundCurrency(cashDelta + Object.values(settlementDeltas).reduce((sum, value) => sum + value, 0));
+  if (Math.abs(totalDelta) < 0.005 && Math.abs(cashDelta) < 0.005 &&
+      Object.values(settlementDeltas).every((value) => Math.abs(value) < 0.005)) {
+    return res.status(400).json({ error: 'Enter at least one non-zero correction.' });
+  }
+  let operation;
+  try { operation = operationFor(req, `billing:day-close-adjustment:${closingId}`); }
+  catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
+  let result;
+  try {
+    db.transaction(() => {
+      const replay = operation.read();
+      if (replay) { result = replay; return; }
+      db.prepare(`
+        INSERT INTO financial_day_close_adjustments (
+          closing_id, cash_delta, settlement_deltas_json, settlement_references_json,
+          reason, operation_id, adjusted_by_user_id, adjusted_by_name, adjusted_by_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        closingId,
+        cashDelta,
+        JSON.stringify(settlementDeltas),
+        JSON.stringify(settlementReferences),
+        reason,
+        String(req.body.operation_id || ''),
+        req.auth.id || null,
+        String(req.auth.full_name || req.auth.username || ''),
+        String(req.auth.role || ''),
+      );
+      result = serializeDayClosing(closing);
+      operation.save(result);
+    }).immediate();
+  } catch (error) {
     return res.status(error.status || 400).json({ error: error.message });
   }
   return res.status(201).json(result);
@@ -2467,11 +2686,24 @@ router.post("/", (req, res) => {
       `).run(
         JSON.stringify(computedItems),
         calculateBillingTotal(computedItems),
-        status,
-        paymentMethod,
-        paymentDate,
+        "unpaid",
+        null,
+        null,
         createdId,
       );
+      if (status === "paid") {
+        const createdBill = db.prepare("SELECT * FROM billing WHERE id = ?").get(createdId);
+        recordPaymentTransaction({
+          bill: createdBill,
+          amount: createdBill.total_amount,
+          paymentMethod,
+          paymentDate,
+          externalReference: req.body.payment_reference,
+          operationId: String(req.body.payment_operation_id || `${req.body.operation_id || `bill-${createdId}`}:payment`),
+          actor: req.auth,
+        });
+        syncBillingPaymentSummary(createdId, req.auth);
+      }
       operation.save({ billId: createdId });
     }).immediate();
   } catch (error) {
@@ -2561,6 +2793,19 @@ router.put("/:id", (req, res) => {
     return res.status(409).json({ error: "Paid bills require an admin correction with a meaningful reason." });
   }
   const requestedStatus = String(req.body.status ?? existing.status).trim().toLowerCase();
+  if (Number(existing.payment_received_amount || 0) > 0 &&
+      JSON.stringify(normalizeBillingItems(items)) !== JSON.stringify(normalizeBillingItems(existing.items))) {
+    return res.status(409).json({ error: "Invoice lines are locked after the first payment transaction. Use a credit note or adjustment invoice." });
+  }
+  if (Number(existing.payment_received_amount || 0) > 0 && (
+    (req.body.payment_method != null && normalizePaymentMethod(req.body.payment_method) !== existing.last_payment_method) ||
+    (req.body.payment_date != null && String(req.body.payment_date || "").trim() !== existing.last_payment_date)
+  )) {
+    return res.status(409).json({ error: "Payment transactions are immutable. Add a compensating financial transaction instead of rewriting the method or date." });
+  }
+  if (requestedStatus !== existing.status) {
+    return res.status(409).json({ error: "Use Record payment to add an immutable payment transaction." });
+  }
   if (existing.status === "paid") {
     if (requestedStatus !== "paid") {
       return res.status(409).json({ error: "A paid invoice cannot be changed back to unpaid. Issue a credit note for money returned." });
@@ -2656,9 +2901,19 @@ router.patch("/:id/pay", (req, res) => {
     return res.status(accessError.status).json({ error: accessError.error });
   }
 
+  const requestedOperationId = String(req.body.operation_id || "").trim();
+  if (requestedOperationId) {
+    const replay = db.prepare("SELECT billing_id FROM billing_payment_transactions WHERE operation_id = ?").get(requestedOperationId);
+    if (replay) {
+      if (Number(replay.billing_id) !== billId) {
+        return res.status(409).json({ error: "That payment operation reference belongs to another invoice." });
+      }
+      return res.json(getJoinedBillById(billId));
+    }
+  }
+
   if (existing.fee_review_required) return res.status(409).json({error:'Open bill details to confirm Day, Night or Review Consultation before recording payment.', code:'FEE_REVIEW_REQUIRED'});
-  const paymentMethod =
-    normalizePaymentMethod(req.body.payment_method ?? (existing.status === 'paid' ? existing.payment_method : null));
+  const paymentMethod = normalizePaymentMethod(req.body.payment_method);
 
   if (!PAYMENT_METHODS.has(paymentMethod)) {
     return res.status(400).json({
@@ -2666,34 +2921,44 @@ router.patch("/:id/pay", (req, res) => {
     });
   }
 
-  const paymentDate = String(req.body.payment_date ?? (existing.status === 'paid' ? existing.payment_date : '')).trim();
+  const paymentDate = String(req.body.payment_date || "").trim();
   if (!validPaymentDate(paymentDate)) {
     return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
   }
-  if (existing.status === "paid") {
-    if (paymentMethod === existing.payment_method && paymentDate === existing.payment_date) return res.json(existing);
-    return res.status(409).json({ error: "Payment already recorded. An admin must make a documented correction." });
+  if (existing.payment_state === "paid" || existing.status === "paid") {
+    if (!requestedOperationId && existing.payments?.length === 1 &&
+        existing.payments[0].payment_method === paymentMethod &&
+        existing.payments[0].payment_date === paymentDate) {
+      return res.json(existing);
+    }
+    return res.status(409).json({ error: "This invoice is already paid in full." });
   }
   if (Number(req.body.expected_version) !== Number(existing.row_version)) {
     return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
   }
 
-  let updated;
+  const amount = req.body.amount == null || req.body.amount === ""
+    ? existing.payment_balance_amount
+    : Number(req.body.amount);
+  const operationId = String(req.body.operation_id ||
+    `legacy-payment-${req.auth?.id || 0}-${billId}-${existing.row_version}-${amount}`).trim();
+  let summary;
   try {
-    updated = db.transaction(() => {
-      assertBusinessDateOpen(paymentDate);
+    db.transaction(() => {
       assertVisitReadyForPayment(db, existing.consultation_id);
-      const result = db.prepare(`
-    UPDATE billing
-    SET status = 'paid',
-        change_reason = 'Payment recorded',
-        payment_method = ?,
-        payment_date = ?,
-        updated_at = CURRENT_TIMESTAMP,
-        updated_by_user_id = ?
-    WHERE id = ? AND row_version = ? AND voided_at IS NULL
-  `).run(paymentMethod, paymentDate, req.auth?.id || null, billId, existing.row_version);
-      if (result.changes === 1) {
+      const current = db.prepare("SELECT * FROM billing WHERE id = ? AND row_version = ? AND voided_at IS NULL").get(billId, existing.row_version);
+      if (!current) throw Object.assign(new Error("This bill changed elsewhere. Refresh before recording payment."), { status: 409 });
+      recordPaymentTransaction({
+        bill: current,
+        amount,
+        paymentMethod,
+        paymentDate,
+        externalReference: req.body.external_reference,
+        operationId,
+        actor: req.auth,
+      });
+      summary = syncBillingPaymentSummary(billId, req.auth);
+      if (summary.payment_state === "paid") {
         const quickSubmission = db.prepare(`
           SELECT * FROM billing_lite_submissions
           WHERE consultation_id = ? AND reversed_at IS NULL
@@ -2726,10 +2991,14 @@ router.patch("/:id/pay", (req, res) => {
           });
         }
       }
-      return result;
     }).immediate();
-  } catch (error) { return res.status(error.status || 400).json({error:error.message,...error.extra}); }
-  if (updated.changes !== 1) return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("idx_billing_payments_external_reference")) {
+      return res.status(409).json({ error: "That payment reference has already been recorded for this method." });
+    }
+    return res.status(error.status || 400).json({error:error.message,...error.extra});
+  }
 
   if (existing?.patient_id) {
     publishPatientDataChange(existing.patient_id, { reason: "billing" });

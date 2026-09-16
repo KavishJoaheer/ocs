@@ -57,7 +57,11 @@ function item(name, quantity = 20, scope = 'doctor') {
   return {id,batchId};
 }
 async function bill(ctx, lines, extra = {}) {
-  return api('POST','/billing','doctor',{consultation_id:ctx.consultationId,patient_id:ctx.patientId,items:lines,status:'unpaid',...extra});
+  const payload={consultation_id:ctx.consultationId,patient_id:ctx.patientId,items:lines,status:'unpaid',...extra};
+  if (payload.status==='paid' && payload.payment_method && payload.payment_method!=='cash' && !payload.payment_reference) {
+    payload.payment_reference=`TEST-${payload.payment_method}-${fixtureIndex}-${randomUUID()}`;
+  }
+  return api('POST','/billing','doctor',payload);
 }
 function stockLine(it,qty=2) {return {description:'Audit medicine',type:'Sale',inventory_item_id:it.id,quantity:qty,amount:25*qty};}
 function fee(amount=1000) {return [{description:'Consultation fee',type:'Sale',amount}];}
@@ -359,7 +363,7 @@ test('permanent deletion anonymizes a billed patient while preserving invoice an
   assert.equal(retained.data.total_amount,2000);
 });
 
-test('payments validate dates, retry harmlessly, and require documented admin correction', async () => {
+test('payments validate dates, retry harmlessly, and remain immutable', async () => {
   const ctx=context('Payments'); const original=await bill(ctx,fee(800)); const url=`/billing/${original.data.id}`;
   const pay={payment_method:'cash',payment_date:'2026-08-31',expected_version:original.data.row_version};
   for(const date of ['not-a-date','2026-02-30','2026-13-01']) {
@@ -373,14 +377,11 @@ test('payments validate dates, retry harmlessly, and require documented admin co
   assert.equal((await api('PUT',url,'admin',correction)).status,409);
   assert.equal((await api('PUT',url,'doctor',{...correction,correction_reason:'Corrected the collection date'})).status,409);
   const changed=await api('PUT',url,'admin',{...correction,correction_reason:'Corrected the collection date'});
-  assert.equal(changed.status,200,JSON.stringify(changed.data)); assert.equal(changed.data.payment_date,'2026-09-01');
-  const event=changed.data.history[0]; assert.equal(JSON.parse(event.before_json).payment_date,'2026-08-31');
-  assert.equal(event.reason,'Corrected the collection date'); assert.ok(event.actor_id);
-  assert.equal(event.actor_name,'Integrity admin');
-  db.prepare("UPDATE users SET full_name='Renamed administrator' WHERE id=?").run(event.actor_id);
-  assert.equal((await api('GET',url)).data.history[0].actor_name,'Integrity admin');
-  db.prepare("UPDATE users SET full_name='Integrity admin' WHERE id=?").run(event.actor_id);
-  assert.throws(()=>db.prepare('DELETE FROM billing_events WHERE id=?').run(event.id),/append-only/);
+  assert.equal(changed.status,409,JSON.stringify(changed.data));
+  const transaction=db.prepare('SELECT * FROM billing_payment_transactions WHERE billing_id=?').get(original.data.id);
+  assert.equal(transaction.amount,800);assert.equal(transaction.payment_method,'cash');assert.equal(transaction.payment_date,'2026-08-31');
+  assert.throws(()=>db.prepare('UPDATE billing_payment_transactions SET payment_date=? WHERE id=?').run('2026-09-01',transaction.id),/immutable/);
+  assert.throws(()=>db.prepare('DELETE FROM billing_payment_transactions WHERE id=?').run(transaction.id),/immutable/);
   assert.equal((await bill(context('Invalid paid create'),fee(),{status:'paid',payment_method:'cash',payment_date:'2026-02-30'})).status,400);
 });
 
@@ -577,7 +578,7 @@ test('payment-date drilldown and summary retain date basis and doctor scope', as
 });
 
 test('transport counts each visit, not unique patients or invoices, and excludes voided consultations', async () => {
-  const date='2027-01-15'; const ctx=context('Transport',date);
+  const date=offsetLocalDate(-30); const ctx=context('Transport',date);
   const appointmentId=Number(db.prepare("INSERT INTO appointments(patient_id,doctor_id,appointment_date,appointment_time,status) VALUES (?,?,?,'17:00','completed')").run(ctx.patientId,doctorId,date).lastInsertRowid);
   const second=Number(db.prepare("INSERT INTO consultations(appointment_id,patient_id,doctor_id,consultation_date,doctor_notes) VALUES (?,?,?,?,'Review visit')").run(appointmentId,ctx.patientId,doctorId,date).lastInsertRowid);
   const a=await bill(ctx,fee(2000),{status:'paid',payment_method:'cash',payment_date:date}); assert.equal(a.status,201);
@@ -655,8 +656,10 @@ test('current tariffs migrate once without repricing bills, and automatic fees r
   const pay={payment_method:'cash',payment_date:today};
   assert.equal((await api('PATCH',`/billing/${original.id}/pay`,'doctor',pay)).status,409);
   const items=original.items.map(i=>({...i,description:'Night Consultation',amount:3000}));
-  const confirmed=await api('PUT',`/billing/${original.id}`,'doctor',{items,status:'paid',...pay,confirm_consultation_fee:true,expected_version:original.row_version});
+  const confirmed=await api('PUT',`/billing/${original.id}`,'doctor',{items,status:'unpaid',confirm_consultation_fee:true,expected_version:original.row_version});
   assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));assert.equal(confirmed.data.total_amount,3000);assert.equal(confirmed.data.fee_review_required,0);
+  const completed=await api('PATCH',`/billing/${original.id}/pay`,'doctor',{...pay,expected_version:confirmed.data.row_version,operation_id:randomUUID()});
+  assert.equal(completed.status,200,JSON.stringify(completed.data));assert.equal(completed.data.status,'paid');
   const duplicate=await bill({...ctx,consultationId:created.data.id},fee(2000),{operation_id:randomUUID()});
   assert.equal(duplicate.status,409);assert.equal(duplicate.data.existing_bill_id,original.id);
   const additional=await bill({...ctx,consultationId:created.data.id},[{description:'Additional procedure',type:'Sale',amount:100,is_service_charge:true}],{operation_id:randomUUID()});assert.equal(additional.status,201);
@@ -826,7 +829,7 @@ test('all payment routes block legacy duplicate fees, including an additional-it
   assert.equal(created.status,409); assert.equal(row(it.id).quantity,20,'blocked payment rolls back stock deduction');
   const voided=await api('POST',`/billing/${first.data.id}/void`,'admin',{reason:'Verified duplicate against original visit receipt',expected_version:first.data.row_version});
   assert.equal(voided.status,200);
-  const resolved=await api('PATCH',`/billing/${extra.data.id}/pay`,'admin',{payment_method:'card',payment_date:today,expected_version:extra.data.row_version});
+  const resolved=await api('PATCH',`/billing/${extra.data.id}/pay`,'admin',{payment_method:'card',payment_date:today,external_reference:`CARD-DUP-${fixtureIndex}`,operation_id:randomUUID(),expected_version:extra.data.row_version});
   assert.equal(resolved.status,200);
   assert.equal(db.prepare('SELECT status FROM billing WHERE id=?').get(duplicateId).status,'paid');
 });
@@ -940,6 +943,63 @@ test('financial reports use frozen commission and transport rates', async () => 
   assert.equal(after.revenueStatement.shareRates.transportBasis,'consultation_snapshot');
 });
 
+test('payment ledger supports partial and split receipts without allowing invoice rewrites', async () => {
+  const ctx=context('Split payment ledger');
+  const original=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const firstOperation=randomUUID();
+  const first=await api('PATCH',`/billing/${original.data.id}/pay`,'operator',{
+    amount:500,payment_method:'cash',payment_date:today,operation_id:firstOperation,expected_version:original.data.row_version,
+  });
+  assert.equal(first.status,200,JSON.stringify(first.data));
+  assert.equal(first.data.status,'unpaid');assert.equal(first.data.payment_state,'partial');
+  assert.equal(first.data.payment_received_amount,500);assert.equal(first.data.payment_balance_amount,1500);
+  const replay=await api('PATCH',`/billing/${original.data.id}/pay`,'operator',{
+    amount:500,payment_method:'cash',payment_date:today,operation_id:firstOperation,expected_version:original.data.row_version,
+  });
+  assert.equal(replay.status,200,JSON.stringify(replay.data));assert.equal(replay.data.payment_count,1);
+  const locked=await api('PUT',`/billing/${original.data.id}`,'admin',{
+    items:[standardFee('Day Consultation',2100)],status:'unpaid',expected_version:first.data.row_version,correction_reason:'Attempt after partial payment',
+  });
+  assert.equal(locked.status,409,JSON.stringify(locked.data));
+  const second=await api('PATCH',`/billing/${original.data.id}/pay`,'operator',{
+    amount:1500,payment_method:'juice',payment_date:today,external_reference:`JUICE-SPLIT-${fixtureIndex}`,
+    operation_id:randomUUID(),expected_version:first.data.row_version,
+  });
+  assert.equal(second.status,200,JSON.stringify(second.data));
+  assert.equal(second.data.status,'paid');assert.equal(second.data.payment_state,'paid');
+  assert.equal(second.data.payment_count,2);assert.equal(second.data.payment_balance_amount,0);
+  assert.deepEqual(second.data.payments.map((payment)=>payment.amount),[500,1500]);
+});
+
+test('future financial dates and zero-priced supply sales are blocked without side effects', async () => {
+  const future=offsetLocalDate(1);
+  const ctx=context('Future date block');
+  const invoice=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const futurePayment=await api('PATCH',`/billing/${invoice.data.id}/pay`,'admin',{
+    amount:2000,payment_method:'cash',payment_date:future,operation_id:randomUUID(),expected_version:invoice.data.row_version,
+  });
+  assert.equal(futurePayment.status,400,JSON.stringify(futurePayment.data));
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_payment_transactions WHERE billing_id=?').get(invoice.data.id).count,0);
+  assert.equal((await api('GET',`/billing/day-close?date=${future}`,'accountant')).status,400);
+
+  const paid=await api('PATCH',`/billing/${invoice.data.id}/pay`,'admin',{
+    amount:2000,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:invoice.data.row_version,
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  const futureRefund=await api('POST',`/billing/${invoice.data.id}/refunds`,'admin',{
+    amount:100,refund_method:'cash',refund_date:future,reason:'Future refund date must not post',operation_id:randomUUID(),
+  });
+  assert.equal(futureRefund.status,400,JSON.stringify(futureRefund.data));
+
+  const zero=item('Zero sale price item');
+  db.prepare('UPDATE inventory SET selling_price=0 WHERE id=?').run(zero.id);
+  const zeroCtx=context('Zero price block');
+  const zeroBill=await bill(zeroCtx,[stockLine(zero,1)],{operation_id:randomUUID()});
+  assert.equal(zeroBill.status,409,JSON.stringify(zeroBill.data));
+  assert.equal(zeroBill.data.code,'SUPPLY_PRICE_REQUIRED');
+  assert.equal(row(zero.id).quantity,20);
+});
+
 test('finance can close a day once and closed dates reject later payments and refunds', async () => {
   const unpaidCtx=context('Closed day payment block');
   const unpaid=await bill(unpaidCtx,[standardFee()],{operation_id:randomUUID()});
@@ -976,6 +1036,27 @@ test('finance can close a day once and closed dates reject later payments and re
   assert.equal(replay.data.id,closed.data.id);
   assert.equal((await api('POST','/billing/day-close','accountant',{...payload,operation_id:randomUUID()})).status,409);
   assert.throws(()=>db.prepare('UPDATE financial_day_closings SET notes=? WHERE id=?').run('Changed later',closed.data.id),/immutable/);
+
+  const adjustmentOperation=randomUUID();
+  const adjusted=await api('POST',`/billing/day-close/${closed.data.id}/adjustments`,'accountant',{
+    cash_delta:10,
+    settlement_deltas:{juice:0,card:-5,ib:0},
+    settlement_references:{juice:'',card:`CORRECTED-CARD-${fixtureIndex}`,ib:''},
+    reason:'Corrected cash count and card settlement from signed close sheet.',
+    operation_id:adjustmentOperation,
+  });
+  assert.equal(adjusted.status,201,JSON.stringify(adjusted.data));
+  assert.equal(adjusted.data.adjustments.length,1);
+  assert.equal(adjusted.data.effective_counted_cash,closed.data.counted_cash+10);
+  assert.equal(adjusted.data.effective_variance_total,5);
+  const adjustedReplay=await api('POST',`/billing/day-close/${closed.data.id}/adjustments`,'accountant',{
+    cash_delta:10,settlement_deltas:{juice:0,card:-5,ib:0},settlement_references:{juice:'',card:`CORRECTED-CARD-${fixtureIndex}`,ib:''},
+    reason:'Corrected cash count and card settlement from signed close sheet.',operation_id:adjustmentOperation,
+  });
+  assert.equal(adjustedReplay.status,201);assert.equal(adjustedReplay.data.adjustments.length,1);
+  const adjustmentId=adjusted.data.adjustments[0].id;
+  assert.throws(()=>db.prepare('UPDATE financial_day_close_adjustments SET reason=? WHERE id=?').run('Changed later',adjustmentId),/immutable/);
+  assert.throws(()=>db.prepare('DELETE FROM financial_day_close_adjustments WHERE id=?').run(adjustmentId),/immutable/);
 
   const latePayment=await api('PATCH',`/billing/${unpaid.data.id}/pay`,'accountant',{
     payment_method:'cash',payment_date:today,expected_version:unpaid.data.row_version,

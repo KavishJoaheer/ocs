@@ -258,15 +258,15 @@ function BillingLitePage({ onOpenHistory }) {
 
   const visibleCatalog = useMemo(() => {
     return matchingCatalog
-      .filter((item) => showUnavailable || Number(item.available_to_use || 0) > 0)
+      .filter((item) => showUnavailable || (Number(item.available_to_use || 0) > 0 && Number(item.selling_price || 0) > 0))
       .sort((a, b) => {
-        const availabilityDifference = Number(Number(b.available_to_use || 0) > 0) - Number(Number(a.available_to_use || 0) > 0);
+        const availabilityDifference = Number(Number(b.available_to_use || 0) > 0 && Number(b.selling_price || 0) > 0) - Number(Number(a.available_to_use || 0) > 0 && Number(a.selling_price || 0) > 0);
         return availabilityDifference || a.item_name.localeCompare(b.item_name);
       });
   }, [matchingCatalog, showUnavailable]);
 
   const unavailableCount = useMemo(
-    () => matchingCatalog.filter((item) => Number(item.available_to_use || 0) < 1).length,
+    () => matchingCatalog.filter((item) => Number(item.available_to_use || 0) < 1 || Number(item.selling_price || 0) <= 0).length,
     [matchingCatalog],
   );
 
@@ -983,7 +983,8 @@ function BillingLitePage({ onOpenHistory }) {
                 {visibleCatalog.map((item) => {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
-                  const isUnavailable = available < 1;
+                  const priceMissing = Number(item.selling_price || 0) <= 0;
+                  const isUnavailable = available < 1 || priceMissing;
                   const isFavorite = favorites.has(item.id);
                   return (
                     <article
@@ -1010,7 +1011,7 @@ function BillingLitePage({ onOpenHistory }) {
                         <div className="min-w-0">
                           <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
+                            {priceMissing ? "Price required" : isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
                           </p>
                         </div>
                         {quantity > 0 ? (

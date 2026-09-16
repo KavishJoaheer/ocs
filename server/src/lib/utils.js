@@ -155,22 +155,41 @@ function summarizeBillingItems(items) {
 }
 
 function serializePatientBillingRows(rows) {
-  const bills = rows.map((row) => ({
-    id: row.id,
-    amount: toNumber(row.total_amount, 0),
-    refunded_amount: toNumber(row.refunded_amount, 0),
-    net_paid_amount: row.status === "paid"
-      ? Math.max(0, toNumber(row.total_amount, 0) - toNumber(row.refunded_amount, 0))
-      : 0,
-    date: row.payment_date || row.consultation_date || row.created_at,
-    status: row.status,
-    payment_method: row.payment_method,
-    items_summary: summarizeBillingItems(row.items),
-    doctor_name: row.doctor_name || null,
-    linkham_claim_status: row.linkham_claim_status || null,
-    dispute_status: row.dispute_status || null,
-    dispute_reason: row.dispute_reason || null,
-  }));
+  const bills = rows.map((row) => {
+    const amount = toNumber(row.total_amount, 0);
+    const ledgerReceivedAmount = toNumber(row.payment_received_amount, 0);
+    const receivedAmount = ledgerReceivedAmount > 0
+      ? ledgerReceivedAmount
+      : row.status === "paid" ? amount : 0;
+    const refundedAmount = toNumber(row.refunded_amount, 0);
+    const outstandingAmount = Math.max(
+      0,
+      row.status === "paid" && ledgerReceivedAmount <= 0
+        ? 0
+        : toNumber(row.payment_balance_amount, amount - receivedAmount),
+    );
+    const paymentState = outstandingAmount <= 0.000001
+      ? "paid"
+      : receivedAmount > 0.000001
+        ? "partial"
+        : "unpaid";
+    return {
+      id: row.id,
+      amount,
+      payment_received_amount: receivedAmount,
+      payment_balance_amount: outstandingAmount,
+      refunded_amount: refundedAmount,
+      net_paid_amount: Math.max(0, receivedAmount - refundedAmount),
+      date: row.payment_date || row.consultation_date || row.created_at,
+      status: paymentState,
+      payment_method: row.payment_method,
+      items_summary: summarizeBillingItems(row.items),
+      doctor_name: row.doctor_name || null,
+      linkham_claim_status: row.linkham_claim_status || null,
+      dispute_status: row.dispute_status || null,
+      dispute_reason: row.dispute_reason || null,
+    };
+  });
 
   let total_billed = 0;
   let total_paid = 0;
@@ -179,12 +198,9 @@ function serializePatientBillingRows(rows) {
 
   for (const bill of bills) {
     total_billed += bill.amount;
-    if (bill.status === "paid") {
-      total_paid += bill.net_paid_amount;
-      total_refunded += bill.refunded_amount;
-    } else {
-      outstanding += bill.amount;
-    }
+    total_paid += bill.net_paid_amount;
+    total_refunded += bill.refunded_amount;
+    outstanding += bill.payment_balance_amount;
   }
 
   return {

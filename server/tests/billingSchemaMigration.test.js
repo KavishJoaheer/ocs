@@ -40,6 +40,7 @@ test("legacy unique-consultation migration preserves every billing column and ro
 
   db.pragma("foreign_keys = OFF");
   db.exec(`
+    DROP TABLE billing_payment_transactions;
     DROP TABLE billing_refunds;
     DROP TABLE billing_quick_events;
     DROP TABLE billing_lite_submissions;

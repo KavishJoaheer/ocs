@@ -435,6 +435,16 @@ router.get("/billing", (req, res) => {
       SELECT
         b.*,
         COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id=b.id),0) AS refunded_amount,
+        COALESCE((
+          SELECT SUM(payment.amount)
+          FROM billing_payment_transactions payment
+          WHERE payment.billing_id = b.id
+        ), 0) AS payment_received_amount,
+        MAX(0, b.total_amount - COALESCE((
+          SELECT SUM(payment.amount)
+          FROM billing_payment_transactions payment
+          WHERE payment.billing_id = b.id
+        ), 0)) AS payment_balance_amount,
         c.consultation_date,
         c.doctor_notes,
         d.full_name AS doctor_name

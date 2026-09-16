@@ -101,6 +101,8 @@ export function statusTone(status) {
       return "bg-sky-100 text-sky-700 ring-sky-600/20";
     case "unpaid":
       return "bg-ocs-yellow/10 text-yellow-700 ring-ocs-yellow/20";
+    case "partial":
+      return "bg-amber-100 text-amber-800 ring-amber-600/20";
     default:
       return "bg-slate-100 text-slate-700 ring-slate-500/20";
   }
