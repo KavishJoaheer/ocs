@@ -971,16 +971,12 @@ function DescriptionList({
   consultationPrice,
   items,
   onRemoveLine,
-  onToggleOverride,
   onUpdateManual,
   onAddManual,
   compactMobile = false,
   onUpdateInventoryLine = null,
   inventoryOptions = [],
-  inventoryLoading = false,
-  onPickManualInventory = null,
   allowManualItems = true,
-  allowEmergencyOverride = true,
 }) {
   const consultationSubtotal = Math.max(0, Number(consultationPrice || 0));
   const hasInventoryRows = items.length > 0;
@@ -1722,14 +1718,6 @@ function CreateBillingModal({
     setItems((current) => current.filter((_, idx) => idx !== index));
   }
 
-  function setLineEmergencyOverride(index, checked) {
-    setItems((current) =>
-      current.map((row, idx) =>
-        idx === index ? { ...row, emergency_override: Boolean(checked) } : row,
-      ),
-    );
-  }
-
   function updateManualLine(index, patch) {
     setItems((current) =>
       current.map((row, idx) => {
@@ -1744,28 +1732,6 @@ function CreateBillingModal({
         return next;
       }),
     );
-  }
-
-  function pickManualInventoryItem(index, stockItem) {
-    const sellingPrice = Number(stockItem.selling_price || 0);
-    const qty = 1;
-    const available = Number(stockItem.quantity || 0);
-    if (available < 1) {
-      toast.error("This item has no available stock.");
-      return;
-    }
-    updateManualLine(index, {
-      description: stockItem.item_name || "",
-      unit_price: sellingPrice,
-      quantity: qty,
-      inventory_item_id: stockItem.id,
-      folder_name: stockItem.folder_name || "",
-      available,
-      emergency_override: false,
-      batches: stockItem.batches || [],
-      batch_id: "",
-      wastage_reason: "",
-    });
   }
 
   function addManualLine() {
@@ -2178,16 +2144,12 @@ function CreateBillingModal({
           consultationPrice={consultationPriceNumber}
           items={items}
           onRemoveLine={removeLine}
-          onToggleOverride={setLineEmergencyOverride}
           onUpdateManual={updateManualLine}
           onAddManual={addManualLine}
           compactMobile={isMobile}
           onUpdateInventoryLine={updateInventoryLine}
           inventoryOptions={inventoryOptions}
-          inventoryLoading={inventoryLoading}
-          onPickManualInventory={pickManualInventoryItem}
           allowManualItems
-          allowEmergencyOverride={false}
         />
         </div> : null}
 
