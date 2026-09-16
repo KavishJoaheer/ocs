@@ -23,7 +23,7 @@ const {
   buildHealthRecordsPayload,
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
-const { parseBillingRow, serializePatientBillingRows, offsetLocalDate, getTodayLocal } = require("../lib/utils");
+const { parseBillingRow, serializePatientBillingRows, offsetLocalDate, getTodayLocal, toNumber } = require("../lib/utils");
 const {
   isVerifiedPatientPortalAccount,
   requireConfirmedChartAccess,
@@ -430,6 +430,7 @@ router.get("/billing", (req, res) => {
     .prepare(`
       SELECT
         b.*,
+        COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id=b.id),0) AS refunded_amount,
         c.consultation_date,
         c.doctor_notes,
         d.full_name AS doctor_name
@@ -461,6 +462,7 @@ router.get("/billing/:id", (req, res) => {
       `
         SELECT
           b.*,
+          COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id=b.id),0) AS refunded_amount,
           p.full_name AS patient_name,
           c.consultation_date,
           d.full_name AS doctor_name
@@ -480,16 +482,23 @@ router.get("/billing/:id", (req, res) => {
   }
 
   const bill = parseBillingRow(row);
+  const creditNotes = db.prepare(`
+    SELECT credit_note_number, amount, refund_method, refund_date, reason
+    FROM billing_refunds WHERE billing_id=? ORDER BY id DESC
+  `).all(bill.id);
   return res.json({
     bill: {
       id: bill.id,
       patient_name: bill.patient_name,
       consultation_date: bill.consultation_date,
       total_amount: bill.total_amount,
+      refunded_amount: toNumber(bill.refunded_amount, 0),
+      net_paid_amount: bill.status === "paid" ? Math.max(0, bill.total_amount - toNumber(bill.refunded_amount, 0)) : 0,
       status: bill.status,
       items: bill.items,
       doctor_name: bill.doctor_name || null,
       linkham_claim_status: bill.linkham_claim_status || null,
+      credit_notes: creditNotes,
     },
   });
 });

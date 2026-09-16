@@ -226,6 +226,11 @@ function PatientBilling() {
                       {dayjs(bill.date).format("MMM D, YYYY")}
                       {bill.payment_method && ` · ${bill.payment_method}`}
                     </p>
+                    {Number(bill.refunded_amount || 0) > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-rose-700">
+                        Credit note {formatCurrency(bill.refunded_amount)} · Net paid {formatCurrency(bill.net_paid_amount)}
+                      </p>
+                    ) : null}
                     {formatClaimStatus(bill.linkham_claim_status) ? (
                       <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-brand-teal">
                         {formatClaimStatus(bill.linkham_claim_status)}

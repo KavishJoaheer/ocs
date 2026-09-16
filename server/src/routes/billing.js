@@ -22,7 +22,11 @@ const {
 } = require("../lib/saleBillingLinkage");
 const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 const { decorateInventoryItems } = require("../lib/inventoryStockState");
-const { consumeAvailableFefo } = require("../lib/restockFulfilment");
+const {
+  consumeAvailableBatch,
+  consumeAvailableFefo,
+  listAllocatableBatches,
+} = require("../lib/restockFulfilment");
 const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require("../lib/inventoryQuantity");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const { reverseBillingSubmissionInventory } = require("../lib/inventoryReversal");
@@ -563,7 +567,9 @@ function applyInventoryTransactions({
     let nextQuantity = previousQuantity;
     const inventoryMovementIds = [];
     if (qtyToDecrement > 0) {
-      const consumed = consumeDoctorBatches(stockItem.id, qtyToDecrement);
+      const consumed = line.type === "Wastage"
+        ? consumeAvailableBatch(stockItem.id, line.batch_id, qtyToDecrement)
+        : consumeDoctorBatches(stockItem.id, qtyToDecrement);
       allocations = consumed.allocations || [];
       const allocated = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
       if (allocated !== qtyToDecrement) {
@@ -606,7 +612,7 @@ function applyInventoryTransactions({
         actionType,
         note:
           actionType === "wastage"
-            ? "Marked as clinical wastage from billing."
+            ? `Clinical wastage: ${line.wastage_reason}`
             : actionType === "adjustment"
               ? "Inventory adjustment recorded from billing."
             : "Billed to patient.",
@@ -627,6 +633,8 @@ function applyInventoryTransactions({
           destination_text: "Patient Bill",
           billing_id: billingId,
           billing_line_description: line.description || stockItem.item_name,
+          wastage_reason: actionType === "wastage" ? line.wastage_reason : null,
+          selected_batch_id: actionType === "wastage" ? Number(line.batch_id) : null,
           linked_sale_movement_ids: linkedSaleMovementIds,
           linked_sale_credit_qty: qty - qtyToDecrement,
         },
@@ -695,8 +703,21 @@ function getJoinedBillById(billId) {
 
   if (!bill) return null;
   const parsed = withPaymentReview([parseBillingRow(bill)])[0];
+  const refunds = db.prepare(`
+    SELECT *
+    FROM billing_refunds
+    WHERE billing_id = ?
+    ORDER BY id DESC
+  `).all(billId).map((refund) => ({ ...refund, amount: roundCurrency(refund.amount) }));
+  const refundedAmount = roundCurrency(refunds.reduce((sum, refund) => sum + refund.amount, 0));
   return {
     ...parsed,
+    refunds,
+    refunded_amount: refundedAmount,
+    refundable_amount: roundCurrency(Math.max(0, Number(parsed.total_amount || 0) - refundedAmount)),
+    net_paid_amount: parsed.status === "paid"
+      ? roundCurrency(Math.max(0, Number(parsed.total_amount || 0) - refundedAmount))
+      : 0,
     history: db.prepare(`SELECT e.*, COALESCE(NULLIF(e.actor_name, ''), u.full_name) AS actor_name FROM billing_events e
       LEFT JOIN users u ON u.id=e.actor_id WHERE e.bill_id=? ORDER BY e.id DESC`).all(billId),
     appointment_financials: calculateAppointmentLossRevenue(parsed.items),
@@ -744,7 +765,12 @@ router.get("/patient-summary", (req, res) => {
         COALESCE(NULLIF(MAX(b.patient_name_snapshot), ''), MAX(p.full_name)) AS patient_name,
         COUNT(b.id) AS bill_count,
         COALESCE(SUM(b.total_amount), 0) AS total_billed,
-        COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.total_amount ELSE 0 END), 0) AS paid_amount,
+        COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.total_amount - COALESCE((
+          SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
+        ), 0) ELSE 0 END), 0) AS paid_amount,
+        COALESCE(SUM(CASE WHEN b.status = 'paid' THEN COALESCE((
+          SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
+        ), 0) ELSE 0 END), 0) AS refunded_amount,
         COALESCE(SUM(CASE WHEN b.status = 'unpaid' THEN b.total_amount ELSE 0 END), 0) AS unpaid_amount
       FROM patients p
       JOIN billing b ON b.patient_id = p.id
@@ -785,6 +811,10 @@ router.get("/", (req, res) => {
         COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date) AS consultation_date,
         COALESCE(b.doctor_id_snapshot, c.doctor_id) AS doctor_id,
         COALESCE(NULLIF(b.doctor_name_snapshot, ''), d.full_name) AS doctor_name,
+        COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0) AS refunded_amount,
+        CASE WHEN b.status = 'paid' THEN b.total_amount - COALESCE((
+          SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
+        ), 0) ELSE 0 END AS net_paid_amount,
         u.full_name AS updated_by_name
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
@@ -1694,6 +1724,131 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
   res.json(result);
 });
 
+router.post("/:id/refunds", (req, res) => {
+  if (!["admin", "accountant"].includes(req.auth?.role)) {
+    return res.status(403).json({ error: "Only administrators and accountants can issue credit notes." });
+  }
+  const billId = Number(req.params.id || 0);
+  const amount = Number(req.body?.amount);
+  const refundMethod = normalizePaymentMethod(req.body?.refund_method);
+  const refundDate = String(req.body?.refund_date || "").trim();
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  const externalReference = normalizeSourceReference(req.body?.external_reference);
+  if (!Number.isInteger(billId) || billId <= 0) {
+    return res.status(400).json({ error: "Select a valid paid invoice." });
+  }
+  if (!isValidCurrencyAmount(req.body?.amount) || amount <= 0) {
+    return res.status(400).json({ error: "Enter a positive refund amount using no more than two decimal places." });
+  }
+  if (!PAYMENT_METHODS.has(refundMethod)) {
+    return res.status(400).json({ error: "Select the method used to return the money." });
+  }
+  if (!validPaymentDate(refundDate)) {
+    return res.status(400).json({ error: "Enter a valid refund date (YYYY-MM-DD)." });
+  }
+  if (reason.length < 8) {
+    return res.status(400).json({ error: "Document why this refund is being issued." });
+  }
+  if (externalReference && externalReference.length < 3) {
+    return res.status(400).json({ error: "External refund references must contain at least 3 characters." });
+  }
+
+  let operation;
+  try {
+    operation = operationFor(req, `billing:refund:${billId}`);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  let creditNote;
+  try {
+    db.transaction(() => {
+      const replay = operation.read();
+      if (replay) {
+        creditNote = replay;
+        return;
+      }
+      const bill = db.prepare(`
+        SELECT b.*, c.voided_at AS consultation_voided_at
+        FROM billing b
+        JOIN consultations c ON c.id = b.consultation_id
+        WHERE b.id = ?
+      `).get(billId);
+      if (!bill) throw Object.assign(new Error("Invoice not found."), { status: 404 });
+      if (bill.status !== "paid" || bill.voided_at || bill.consultation_voided_at) {
+        throw Object.assign(new Error("Credit notes can only be issued against an active paid invoice."), { status: 409 });
+      }
+      const alreadyRefunded = roundCurrency(db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) AS amount
+        FROM billing_refunds
+        WHERE billing_id = ?
+      `).get(billId)?.amount || 0);
+      const refundable = roundCurrency(Number(bill.total_amount || 0) - alreadyRefunded);
+      if (amount > refundable) {
+        throw Object.assign(
+          new Error(`Only Rs ${refundable.toFixed(2)} remains refundable on this invoice.`),
+          { status: 409, extra: { code: "REFUND_EXCEEDS_BALANCE", refundable_amount: refundable } },
+        );
+      }
+      if (externalReference) {
+        const duplicate = db.prepare(`
+          SELECT id, credit_note_number
+          FROM billing_refunds
+          WHERE lower(trim(external_reference)) = lower(trim(?))
+          LIMIT 1
+        `).get(externalReference);
+        if (duplicate) {
+          throw Object.assign(
+            new Error(`Refund reference ${externalReference} is already attached to ${duplicate.credit_note_number}.`),
+            { status: 409, extra: { code: "DUPLICATE_REFUND_REFERENCE" } },
+          );
+        }
+      }
+      const nextId = Number(db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM billing_refunds").get().id);
+      const creditNoteNumber = `OCS-CN-${String(nextId).padStart(8, "0")}`;
+      db.prepare(`
+        INSERT INTO billing_refunds (
+          id, credit_note_number, billing_id, amount, refund_method, refund_date,
+          reason, external_reference, issued_by_user_id, issued_by_name,
+          issued_by_role, operation_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        nextId,
+        creditNoteNumber,
+        billId,
+        roundCurrency(amount),
+        refundMethod,
+        refundDate,
+        reason,
+        externalReference || null,
+        req.auth.id || null,
+        String(req.auth.full_name || req.auth.username || ""),
+        String(req.auth.role || ""),
+        String(req.body.operation_id || ""),
+      );
+      creditNote = db.prepare("SELECT * FROM billing_refunds WHERE id = ?").get(nextId);
+      creditNote = {
+        ...creditNote,
+        amount: roundCurrency(creditNote.amount),
+        inventory_restored: false,
+        accounting_note: "This credit note changes net collections only. Stock is not returned automatically.",
+      };
+      operation.save(creditNote);
+    }).immediate();
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("idx_billing_refunds_external_reference")) {
+      return res.status(409).json({ error: "That external refund reference has already been used.", code: "DUPLICATE_REFUND_REFERENCE" });
+    }
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
+
+  const bill = getJoinedBillById(billId);
+  publishPatientDataChange(bill.patient_id, { reason: "billing" });
+  notifyLinkhamBillingIfNeeded(bill.patient_id, req.auth?.id);
+  return res.status(201).json({ credit_note: creditNote, bill });
+});
+
 router.get('/reconciliation', (req,res) => {
   if (req.auth.role === 'operator') {
     return res.status(403).json({error:'Financial reconciliation is restricted to finance and clinical users.'});
@@ -1780,8 +1935,17 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
         ORDER BY i.item_name ASC
       `)
       .all(Number(consultation.doctor_id));
-    const decorated = decorateInventoryItems(rows).map((row) => ({
+  const decorated = decorateInventoryItems(rows).map((row) => {
+    const batches = listAllocatableBatches(row.id).map((batch) => ({
+      id: Number(batch.id),
+      available: Number(batch.available || 0),
+      expiry_date: batch.expiry_date || null,
+      is_non_expiring: Boolean(batch.is_non_expiring),
+      missing_expiry: Boolean(batch.missing_expiry),
+    }));
+    return {
       ...row,
+      batches,
       quantity: Number(row.on_hand_quantity ?? row.quantity ?? 0),
       available_to_promise: Number(row.available_to_promise ?? row.available_to_use ?? 0),
       expired_quantity: Number(row.expired_quantity || 0),
@@ -1789,7 +1953,8 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
       minimum_quantity: Number(row.minimum_quantity || 0),
       selling_price: roundCurrency(row.selling_price),
       cost_price: roundCurrency(row.cost_price),
-    }));
+    };
+  });
 
     res.json(decorated);
   } catch (error) {

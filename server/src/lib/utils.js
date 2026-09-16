@@ -57,6 +57,15 @@ function billingItemsValidationError(items, { allowEmpty = false } = {}) {
     if (!isValidCurrencyAmount(item.amount)) {
       return `Billing line ${index + 1} amount must be zero or more and use no more than two decimal places.`;
     }
+    if (String(item.type || "").trim() === "Wastage") {
+      if (String(item.wastage_reason || "").trim().length < 8) {
+        return `Wastage line ${index + 1} needs a meaningful reason of at least 8 characters.`;
+      }
+      const batchId = Number(item.batch_id || 0);
+      if (!Number.isInteger(batchId) || batchId <= 0) {
+        return `Wastage line ${index + 1} needs the affected batch or lot.`;
+      }
+    }
   }
 
   return null;
@@ -83,6 +92,12 @@ function normalizeBillingItems(items) {
         quantity,
         inventory_item_id: item?.inventory_item_id ? Number(item.inventory_item_id) : null,
         emergency_override: Boolean(item?.emergency_override),
+        ...(String(item?.wastage_reason || "").trim()
+          ? { wastage_reason: String(item.wastage_reason).trim().slice(0, 500) }
+          : {}),
+        ...(Number.isInteger(Number(item?.batch_id)) && Number(item.batch_id) > 0
+          ? { batch_id: Number(item.batch_id) }
+          : {}),
         ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
         ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
         ...(Array.isArray(item?.inventory_movement_ids) ? {inventory_movement_ids: item.inventory_movement_ids.map(Number).filter(Boolean)} : {}),
@@ -132,6 +147,10 @@ function serializePatientBillingRows(rows) {
   const bills = rows.map((row) => ({
     id: row.id,
     amount: toNumber(row.total_amount, 0),
+    refunded_amount: toNumber(row.refunded_amount, 0),
+    net_paid_amount: row.status === "paid"
+      ? Math.max(0, toNumber(row.total_amount, 0) - toNumber(row.refunded_amount, 0))
+      : 0,
     date: row.payment_date || row.consultation_date || row.created_at,
     status: row.status,
     payment_method: row.payment_method,
@@ -144,12 +163,14 @@ function serializePatientBillingRows(rows) {
 
   let total_billed = 0;
   let total_paid = 0;
+  let total_refunded = 0;
   let outstanding = 0;
 
   for (const bill of bills) {
     total_billed += bill.amount;
     if (bill.status === "paid") {
-      total_paid += bill.amount;
+      total_paid += bill.net_paid_amount;
+      total_refunded += bill.refunded_amount;
     } else {
       outstanding += bill.amount;
     }
@@ -157,7 +178,7 @@ function serializePatientBillingRows(rows) {
 
   return {
     bills,
-    summary: { total_billed, total_paid, outstanding },
+    summary: { total_billed, total_paid, total_refunded, outstanding },
     billing: bills,
   };
 }

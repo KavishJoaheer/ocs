@@ -34,7 +34,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
-import { shareOrDownloadBillPdf } from "../lib/billPdf.js";
+import { shareOrDownloadBillPdf, shareOrDownloadCreditNotePdf } from "../lib/billPdf.js";
 import {
   formatCurrency,
   formatDate,
@@ -549,6 +549,77 @@ function PaymentConfirmation({ bill, busy, onClose, onConfirm }) {
   </Modal>;
 }
 
+function RefundConfirmation({ bill, busy, onClose, onConfirm }) {
+  const refundable = Math.max(0, Number(bill.refundable_amount ?? (Number(bill.total_amount || 0) - Number(bill.refunded_amount || 0))));
+  const [amount, setAmount] = useState(refundable ? refundable.toFixed(2) : "");
+  const [method, setMethod] = useState("");
+  const [date, setDate] = useState(billingPageTodayInputValue());
+  const [reason, setReason] = useState("");
+  const [externalReference, setExternalReference] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const amountNumber = Number(amount || 0);
+  const valid = amountNumber > 0 && amountNumber <= refundable && method && date && reason.trim().length >= 8 && confirmed;
+
+  return (
+    <Modal open onClose={onClose} title={`Issue credit note · ${billReference(bill)}`} size="md">
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy && valid) {
+            onConfirm({
+              amount: amountNumber,
+              refund_method: method,
+              refund_date: date,
+              reason: reason.trim(),
+              external_reference: externalReference.trim() || null,
+            });
+          }
+        }}
+      >
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="font-semibold text-slate-950">{bill.patient_name}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Paid {formatCurrency(bill.total_amount)} · Already refunded {formatCurrency(bill.refunded_amount || 0)}
+          </p>
+          <p className="mt-2 text-sm font-bold text-ocs-teal">Available to refund: {formatCurrency(refundable)}</p>
+        </div>
+        <label className="block text-sm font-semibold">
+          Refund amount
+          <input required type="number" min="0.01" max={refundable} step="0.01" className={BILLING_FIELD} value={amount} onChange={(event) => { setAmount(event.target.value); setConfirmed(false); }} />
+        </label>
+        <label className="block text-sm font-semibold">
+          Refund method
+          <select required className={BILLING_FIELD} value={method} onChange={(event) => { setMethod(event.target.value); setConfirmed(false); }}>
+            <option value="">Select method</option>
+            {PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm font-semibold">
+          Refund date
+          <input required type="date" className={BILLING_FIELD} value={date} onChange={(event) => { setDate(event.target.value); setConfirmed(false); }} />
+        </label>
+        <label className="block text-sm font-semibold">
+          Reason
+          <textarea required minLength={8} rows={3} className={cx(BILLING_FIELD, "resize-y")} value={reason} onChange={(event) => { setReason(event.target.value); setConfirmed(false); }} placeholder="Why is this refund being issued?" />
+        </label>
+        <label className="block text-sm font-semibold">
+          External reference <span className="font-normal text-slate-500">(optional)</span>
+          <input className={BILLING_FIELD} value={externalReference} onChange={(event) => { setExternalReference(event.target.value); setConfirmed(false); }} placeholder="Bank, Juice or receipt reference" />
+        </label>
+        <label className="flex min-h-11 items-start gap-3 text-sm">
+          <input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>I confirm the money was returned. This creates an immutable credit note and does not restore inventory.</span>
+        </label>
+        <div className="flex flex-wrap justify-end gap-3">
+          <button type="button" disabled={busy} className="min-h-11 rounded-xl border px-4" onClick={onClose}>Cancel</button>
+          <button disabled={busy || !valid} className="min-h-11 rounded-xl bg-rose-700 px-4 font-semibold text-white disabled:opacity-50">{busy ? "Issuing…" : "Issue credit note"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid, isSaving }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -557,6 +628,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   useEffect(() => { if (open) { setFeeConfirmed(false); api.get('/billing/consultation-fees').then(setFeeOptions).catch(()=>{}); } }, [open,bill?.id]);
   const [correctionReason, setCorrectionReason] = useState("");
   const [history, setHistory] = useState([]);
+  const [creditNotes, setCreditNotes] = useState([]);
   const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || ((bill?.status === "paid" || bill?.legacy_fee_review_required) && user?.role !== "admin"));
   const operatorEditing = user?.role === "operator" && !readOnly;
   const [status, setStatus] = useState("unpaid");
@@ -586,6 +658,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
               emergency_override: Boolean(item.emergency_override),
               is_consultation_fee: Boolean(item.is_consultation_fee),
               dispensing_movement_ids: item.dispensing_movement_ids || [],
+              wastage_reason: item.wastage_reason || "",
+              batch_id: item.batch_id || null,
             }))
           : [createEmptyLineItem()],
       );
@@ -630,8 +704,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   useEffect(() => {
     if (!open || !billId) return;
     let ignore = false;
-    api.get(`/billing/${billId}`).then(detail => { if (!ignore) setHistory(detail.history || []); })
-      .catch(() => { if (!ignore) setHistory([]); });
+    api.get(`/billing/${billId}`).then(detail => { if (!ignore) { setHistory(detail.history || []); setCreditNotes(detail.refunds || []); } })
+      .catch(() => { if (!ignore) { setHistory([]); setCreditNotes([]); } });
     return () => { ignore = true; };
   }, [open, billId]);
 
@@ -668,6 +742,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
         emergency_override: Boolean(item.emergency_override),
         is_consultation_fee: Boolean(item.is_consultation_fee),
         dispensing_movement_ids: item.dispensing_movement_ids || [],
+        wastage_reason: item.wastage_reason || undefined,
+        batch_id: item.batch_id || undefined,
       })),
       status,
       payment_method: status === "paid" ? paymentMethod : null,
@@ -716,6 +792,23 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
         </div>
 
         {bill.patient_archived_at && <p className="text-sm text-slate-600">Archived patient · financial record retained</p>}
+        {creditNotes.length ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <p className="text-sm font-bold text-rose-950">Credit notes</p>
+            <div className="mt-2 space-y-2">
+              {creditNotes.map((note) => (
+                <div key={note.id} className="flex flex-wrap items-start justify-between gap-2 text-sm text-rose-950">
+                  <div><span className="font-bold">{note.credit_note_number}</span> · {formatDate(note.refund_date)}<p className="text-xs text-rose-800">{note.reason} · {formatPaymentMethod(note.refund_method)}</p></div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold">−{formatCurrency(note.amount)}</span>
+                    <button type="button" className="min-h-9 rounded-xl border border-rose-300 bg-white px-3 text-xs font-bold" onClick={() => shareOrDownloadCreditNotePdf(note, bill).catch((error) => toast.error(error.message || "Could not create credit note PDF."))}>PDF</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 border-t border-rose-200 pt-2 text-xs font-semibold text-rose-900">Credit notes change net collections only; inventory is not restored automatically.</p>
+          </div>
+        ) : null}
         {bill.payment_block && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           <p>{bill.payment_block.reason}</p>
           <div className="flex flex-wrap gap-3">{[...new Set([...(bill.payment_block.bill_ids || []), bill.payment_block.existing_bill_id].filter(id => id && id !== bill.id))].map(id => <a key={id} href={`/billing?billId=${id}`} className="inline-flex min-h-11 items-center font-semibold underline">Open bill #{id}</a>)}</div>
@@ -811,6 +904,48 @@ function TypeBadge({ type }) {
     <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${palette}`}>
       {type}
     </span>
+  );
+}
+
+function WastageTraceabilityFields({ item, onChange, inventoryOptions }) {
+  if (item.type !== "Wastage") return null;
+  const stockItem = inventoryOptions.find((row) => Number(row.id) === Number(item.inventory_item_id));
+  const batches = Array.isArray(item.batches) && item.batches.length
+    ? item.batches
+    : Array.isArray(stockItem?.batches) ? stockItem.batches : [];
+  return (
+    <div className="mx-3 mb-3 grid gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 md:mx-4 md:grid-cols-2">
+      <label className="space-y-1">
+        <span className="text-xs font-bold uppercase tracking-[0.12em] text-amber-900">Affected batch / lot</span>
+        <select
+          required
+          value={item.batch_id || ""}
+          onChange={(event) => onChange({ batch_id: event.target.value ? Number(event.target.value) : "" })}
+          className={cx(BILLING_FIELD, "bg-white")}
+        >
+          <option value="">Select the batch actually wasted</option>
+          {batches.map((batch) => (
+            <option key={batch.id} value={batch.id}>
+              Lot #{batch.id} · {batch.is_non_expiring ? "No expiry" : batch.expiry_date || "Expiry missing"} · {batch.available} available
+            </option>
+          ))}
+        </select>
+        {!batches.length ? <p className="text-xs font-semibold text-rose-700">No eligible batch is available for this item.</p> : null}
+      </label>
+      <label className="space-y-1">
+        <span className="text-xs font-bold uppercase tracking-[0.12em] text-amber-900">Reason for wastage</span>
+        <textarea
+          required
+          minLength={8}
+          rows={2}
+          value={item.wastage_reason || ""}
+          onChange={(event) => onChange({ wastage_reason: event.target.value })}
+          className={cx(BILLING_FIELD, "resize-y bg-white")}
+          placeholder="e.g. Vial broke during treatment setup"
+        />
+      </label>
+      <p className="text-xs text-amber-900 md:col-span-2">Wastage reduces the selected batch and records its cost as a loss. It is never charged to the patient.</p>
+    </div>
   );
 }
 
@@ -998,6 +1133,11 @@ function DescriptionList({
                       </div>
                     </div>
                   ) : null}
+                  <WastageTraceabilityFields
+                    item={item}
+                    inventoryOptions={inventoryOptions}
+                    onChange={(patch) => onUpdateManual(index, patch)}
+                  />
                 </div>
               );
             }
@@ -1100,6 +1240,11 @@ function DescriptionList({
                     </div>
                   </div>
                 ) : null}
+                <WastageTraceabilityFields
+                  item={item}
+                  inventoryOptions={inventoryOptions}
+                  onChange={(patch) => onUpdateInventoryLine?.(index, patch)}
+                />
               </div>
             );
           })
@@ -1420,6 +1565,15 @@ function CreateBillingModal({
       return;
     }
 
+    const invalidWastage = items.find(
+      (item) => item.type === "Wastage" &&
+        (!Number(item.batch_id) || String(item.wastage_reason || "").trim().length < 8),
+    );
+    if (invalidWastage) {
+      toast.error("Select the affected batch and enter a meaningful wastage reason.");
+      return;
+    }
+
     if (!visitBilling || visitBillingLoading) { toast.error("Wait for the visit billing records to load."); return; }
     const combinedItems = [
       ...(includeFee ? [{
@@ -1444,6 +1598,8 @@ function CreateBillingModal({
         emergency_override: Boolean(item.emergency_override),
         is_consultation_fee: Boolean(item.is_consultation_fee),
         dispensing_movement_ids: item.dispensing_movement_ids || [],
+        wastage_reason: item.wastage_reason || undefined,
+        batch_id: item.batch_id || undefined,
       })),
       status,
       payment_method: status === "paid" ? paymentMethod : null,
@@ -1497,6 +1653,9 @@ function CreateBillingModal({
         available,
         folder_name: selected.folder_name || "",
         emergency_override: qty > available,
+        batches: selected.batches || [],
+        batch_id: type === "Wastage" ? "" : null,
+        wastage_reason: type === "Wastage" ? "" : undefined,
       },
     ]);
     resetItemSearch();
@@ -1530,6 +1689,7 @@ function CreateBillingModal({
         available,
         folder_name: selected.folder_name || "",
         emergency_override: qty > available,
+        batches: selected.batches || [],
       },
     ]);
     setInventoryOverlayOpen(false);
@@ -1542,12 +1702,13 @@ function CreateBillingModal({
         if (idx !== index || row.is_manual || row.dispensing_movement_ids?.length) return row;
         const qty = Math.max(1, Math.floor(Number(patch.quantity !== undefined ? patch.quantity : row.quantity || 1)));
         const unitPrice = Number(row.unit_price || 0);
-        const itemType = String(row.type || "Sale");
+        const itemType = String(patch.type ?? row.type ?? "Sale");
         const amount =
           itemType === "Wastage" ? Number(row.unit_price || 0) * qty : itemType === "Adjustment" ? 0 : unitPrice * qty;
         const available = Number(row.available || 0);
         return {
           ...row,
+          ...patch,
           quantity: qty,
           amount,
           emergency_override: qty > available,
@@ -1596,6 +1757,9 @@ function CreateBillingModal({
       folder_name: stockItem.folder_name || "",
       available,
       emergency_override: qty > available,
+      batches: stockItem.batches || [],
+      batch_id: "",
+      wastage_reason: "",
     });
   }
 
@@ -1977,7 +2141,7 @@ function CreateBillingModal({
           onUpdateManual={updateManualLine}
           onAddManual={addManualLine}
           compactMobile={isMobile}
-          onUpdateInventoryLine={isMobile ? updateInventoryLine : null}
+          onUpdateInventoryLine={updateInventoryLine}
           inventoryOptions={inventoryOptions}
           inventoryLoading={inventoryLoading}
           onPickManualInventory={pickManualInventoryItem}
@@ -2249,6 +2413,7 @@ function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
   const [paymentBill, setPaymentBill] = useState(null);
+  const [refundBill, setRefundBill] = useState(null);
   const [creatorOpen, setCreatorOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [patientOptions, setPatientOptions] = useState([]);
@@ -2257,6 +2422,7 @@ function BillingPage() {
     user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const canMarkPaid =
     user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
+  const canIssueCreditNotes = user?.role === "admin" || user?.role === "accountant";
   const isMobile = useIsMobile();
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",
@@ -2655,6 +2821,23 @@ function BillingPage() {
     }
   }
 
+  async function recordRefund(bill, payload) {
+    setIsSaving(true);
+    try {
+      const result = await api.post(`/billing/${bill.id}/refunds`, {
+        ...payload,
+        operation_id: crypto.randomUUID(),
+      });
+      toast.success(`${result.credit_note.credit_note_number} issued. Inventory was not changed.`);
+      setRefundBill(null);
+      await loadData();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function clearPatientFilter() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("patientId");
@@ -3018,6 +3201,11 @@ function BillingPage() {
                           </td>
                           <td className="px-5 py-3 font-semibold text-slate-950">
                             {formatCurrency(bill.total_amount)}
+                            {Number(bill.refunded_amount || 0) > 0 ? (
+                              <span className="mt-1 block text-xs font-semibold text-rose-700">
+                                Refunded {formatCurrency(bill.refunded_amount)} · Net {formatCurrency(bill.net_paid_amount || 0)}
+                              </span>
+                            ) : null}
                           </td>
                           <td className="px-5 py-3">
                             <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
@@ -3050,6 +3238,16 @@ function BillingPage() {
                                   className="inline-flex items-center gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
                                 >
                                   {bill.fee_review_required ? "Review consultation fee" : bill.payment_block ? "Review visit" : "Record payment"}
+                                </button>
+                              ) : null}
+                              {!bill.voided_at && !bill.consultation_voided_at && bill.status === "paid" && canIssueCreditNotes && Number(bill.total_amount || 0) > Number(bill.refunded_amount || 0) ? (
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() => setRefundBill(bill)}
+                                  className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:opacity-60"
+                                >
+                                  Refund
                                 </button>
                               ) : null}
                               <button
@@ -3100,7 +3298,10 @@ function BillingPage() {
                       </button>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xl font-bold text-slate-700">{formatCurrency(bill.total_amount)}</p>
+                      <div>
+                        <p className="text-xl font-bold text-slate-700">{formatCurrency(bill.total_amount)}</p>
+                        {Number(bill.refunded_amount || 0) > 0 ? <p className="mt-1 text-xs font-bold text-rose-700">Refunded {formatCurrency(bill.refunded_amount)} · Net {formatCurrency(bill.net_paid_amount || 0)}</p> : null}
+                      </div>
                       <StatusBadge value={bill.voided_at || bill.consultation_voided_at ? "voided" : bill.status} />
                     </div>
                     {bill.dispute_status === "Flagged_Review" ? (
@@ -3119,6 +3320,16 @@ function BillingPage() {
                         >
                           <CreditCard className="size-4" />
                           {bill.fee_review_required ? "Review consultation fee" : bill.payment_block ? "Review visit" : "Record payment"}
+                        </button>
+                      ) : null}
+                      {!bill.voided_at && !bill.consultation_voided_at && bill.status === "paid" && canIssueCreditNotes && Number(bill.total_amount || 0) > Number(bill.refunded_amount || 0) ? (
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() => setRefundBill(bill)}
+                          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-800 disabled:opacity-60"
+                        >
+                          Refund / credit note
                         </button>
                       ) : null}
                       {bill && (
@@ -3198,6 +3409,9 @@ function BillingPage() {
       {paymentBill && <PaymentConfirmation key={paymentBill.id} bill={paymentBill} busy={isSaving}
         onClose={() => { if (!isSaving) setPaymentBill(null); }}
         onConfirm={(method, date) => recordPayment(paymentBill, method, date)} />}
+      {refundBill && <RefundConfirmation key={refundBill.id} bill={refundBill} busy={isSaving}
+        onClose={() => { if (!isSaving) setRefundBill(null); }}
+        onConfirm={(payload) => recordRefund(refundBill, payload)} />}
       <EditBillingModal
         open={Boolean(editor)}
         bill={editor?.bill}

@@ -80,3 +80,43 @@ export async function shareOrDownloadBillPdf(bill) {
     previewTab: openInlinePreviewTab(),
   });
 }
+
+export async function shareOrDownloadCreditNotePdf(creditNote, bill) {
+  const doc = new jsPDF();
+  const creditNumber = creditNote.credit_note_number || `OCS-CN-${String(creditNote.id || 0).padStart(8, "0")}`;
+  const invoiceNumber = bill.invoice_number || `OCS-INV-${String(bill.id || 0).padStart(8, "0")}`;
+  const rows = [
+    ["OCS Medecins — Credit Note", 16, true],
+    [`Credit note: ${creditNumber}`, 11, true],
+    [`Original invoice: ${invoiceNumber}`, 10, false],
+    [`Patient: ${bill.patient_name || bill.patient_name_snapshot || ""} (${bill.patient_identifier || bill.patient_identifier_snapshot || "No OCS number"})`, 10, false],
+    [`Refund date: ${formatDate(creditNote.refund_date)}`, 10, false],
+    [`Refund method: ${creditNote.refund_method || ""}`, 10, false],
+    [`Amount credited: ${formatCurrency(creditNote.amount)}`, 12, true],
+    [`Reason: ${creditNote.reason || ""}`, 10, false],
+    ...(creditNote.external_reference ? [[`External reference: ${creditNote.external_reference}`, 10, false]] : []),
+    [`Issued by: ${creditNote.issued_by_name || "System"} (${creditNote.issued_by_role || "system"})`, 10, false],
+    ["This credit note adjusts net collections only. Inventory is not restored automatically.", 9, false],
+  ];
+  let y = 20;
+  for (const [line, size, bold] of rows) {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    const wrapped = doc.splitTextToSize(String(line || ""), 180);
+    doc.text(wrapped, 14, y);
+    y += wrapped.length * 6 + 2;
+  }
+  const blob = doc.output("blob");
+  const filename = `${creditNumber.replace(/[^a-z0-9_-]+/gi, "-")}.pdf`;
+  const file = new File([blob], filename, { type: "application/pdf" });
+  const canShare = typeof navigator !== "undefined" && navigator.share && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
+  if (canShare) {
+    try {
+      await navigator.share({ files: [file], title: `Credit note ${creditNumber}` });
+      return "share";
+    } catch {
+      // Fall through to preview/download if sharing is dismissed or unavailable.
+    }
+  }
+  return presentFileBlob({ blob, filename, mimeType: "application/pdf", previewTab: openInlinePreviewTab() });
+}

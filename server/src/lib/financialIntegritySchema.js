@@ -33,6 +33,93 @@ function ensureFinancialIntegritySchema(db) {
         request_hash TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY(actor_id, scope, operation_id)
       );
+      CREATE TABLE IF NOT EXISTS billing_refunds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        credit_note_number TEXT NOT NULL UNIQUE,
+        billing_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        refund_method TEXT NOT NULL CHECK (refund_method IN ('cash', 'juice', 'card', 'ib')),
+        refund_date TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        external_reference TEXT,
+        issued_by_user_id INTEGER,
+        issued_by_name TEXT NOT NULL DEFAULT '',
+        issued_by_role TEXT NOT NULL DEFAULT '',
+        operation_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (issued_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE (issued_by_user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_refunds_bill
+        ON billing_refunds(billing_id, id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_refunds_external_reference
+        ON billing_refunds(lower(trim(external_reference)))
+        WHERE external_reference IS NOT NULL AND trim(external_reference) != '';
+      CREATE TRIGGER IF NOT EXISTS billing_refunds_amount_guard
+      BEFORE INSERT ON billing_refunds
+      WHEN
+        typeof(NEW.amount) NOT IN ('integer', 'real')
+        OR NEW.amount <= 0
+        OR abs(NEW.amount * 100 - round(NEW.amount * 100)) > 0.000001
+      BEGIN
+        SELECT RAISE(ABORT, 'Refund amounts must be positive currency values with no more than two decimal places');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_refunds_document_guard
+      BEFORE INSERT ON billing_refunds
+      WHEN
+        length(trim(NEW.reason)) < 8
+        OR length(trim(NEW.operation_id)) = 0
+        OR NEW.refund_date IS NULL
+        OR date(NEW.refund_date) IS NULL
+        OR date(NEW.refund_date) != NEW.refund_date
+      BEGIN
+        SELECT RAISE(ABORT, 'Credit notes require a valid date, operation reference, and documented reason');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_refunds_balance_guard
+      BEFORE INSERT ON billing_refunds
+      WHEN NOT EXISTS (
+        SELECT 1
+        FROM billing bill
+        JOIN consultations consultation ON consultation.id = bill.consultation_id
+        WHERE bill.id = NEW.billing_id
+          AND bill.status = 'paid'
+          AND bill.voided_at IS NULL
+          AND consultation.voided_at IS NULL
+          AND NEW.amount <= bill.total_amount - COALESCE((
+            SELECT SUM(existing.amount)
+            FROM billing_refunds existing
+            WHERE existing.billing_id = bill.id
+          ), 0)
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'Credit note exceeds the refundable balance or invoice is not active and paid');
+      END;
+      DROP TRIGGER IF EXISTS billing_refunds_no_update;
+      CREATE TRIGGER billing_refunds_no_update
+      BEFORE UPDATE ON billing_refunds
+      WHEN NOT (
+        NEW.id = OLD.id
+        AND NEW.credit_note_number = OLD.credit_note_number
+        AND NEW.billing_id = OLD.billing_id
+        AND NEW.amount = OLD.amount
+        AND NEW.refund_method = OLD.refund_method
+        AND NEW.refund_date = OLD.refund_date
+        AND NEW.reason = OLD.reason
+        AND NEW.external_reference IS OLD.external_reference
+        AND NEW.issued_by_user_id IS NULL
+        AND NEW.issued_by_name = OLD.issued_by_name
+        AND NEW.issued_by_role = OLD.issued_by_role
+        AND NEW.operation_id = OLD.operation_id
+        AND NEW.created_at = OLD.created_at
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'Credit notes are immutable; record a compensating accounting entry');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_refunds_no_delete
+      BEFORE DELETE ON billing_refunds BEGIN
+        SELECT RAISE(ABORT, 'Credit notes are immutable; record a compensating accounting entry');
+      END;
       CREATE TABLE IF NOT EXISTS billing_events (
         id INTEGER PRIMARY KEY, bill_id INTEGER NOT NULL, actor_id INTEGER,
         event_type TEXT NOT NULL, before_json TEXT, after_json TEXT NOT NULL,

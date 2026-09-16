@@ -295,6 +295,43 @@ function consumeAvailableFefo(inventoryId, quantity, { exceptRequestId = null } 
   return { ok: true, allocations: consumed };
 }
 
+function consumeAvailableBatch(inventoryId, batchId, quantity, { exceptRequestId = null } = {}) {
+  const qty = requiredIntegerQty(quantity, "Quantity");
+  lockInventoryRow(inventoryId);
+  const batch = db.prepare("SELECT * FROM inventory_batches WHERE id = ? AND item_id = ?")
+    .get(Number(batchId), Number(inventoryId));
+  if (!batch) throw HttpError(409, "The selected batch or lot was not found for this supply.");
+  if (isExpiredBatch(batch) || isQuarantinedBatch(batch)) {
+    throw HttpError(409, "Expired or quarantined batches cannot be recorded as consultation wastage.");
+  }
+  const reserved = reservedQuantityForBatch(batch.id, { exceptRequestId });
+  const available = Math.max(0, (integerQty(batch.quantity_remaining) ?? 0) - reserved);
+  if (qty > available) {
+    throw HttpError(409, `The selected batch has only ${available} unreserved unit(s) available.`);
+  }
+  const updated = db.prepare(`
+    UPDATE inventory_batches
+    SET quantity_remaining = quantity_remaining - ?,
+        row_version = COALESCE(row_version, 1) + 1
+    WHERE id = ?
+      AND item_id = ?
+      AND quantity_remaining >= ?
+      AND COALESCE(status, 'usable') = 'usable'
+  `).run(qty, batch.id, Number(inventoryId), qty);
+  if (!updated.changes) throw HttpError(409, "The selected batch changed. Reload the stock list and try again.");
+  return {
+    ok: true,
+    allocations: [{
+      batch_id: Number(batch.id),
+      quantity: qty,
+      expiry_date: batch.expiry_date || null,
+      is_non_expiring: Number(batch.is_non_expiring || 0) === 1 ? 1 : 0,
+      unit_cost: toNumber(batch.unit_cost, 0),
+      missing_expiry: !batch.expiry_date && Number(batch.is_non_expiring || 0) !== 1,
+    }],
+  };
+}
+
 function listImpactedActiveRequests(inventoryId) {
   return db
     .prepare(
@@ -2232,10 +2269,12 @@ module.exports = {
   applyLegacyReconciliation,
   canonicaliseRequestItem,
   consumeAvailableFefo,
+  consumeAvailableBatch,
   describeFulfilmentCollectionGaps,
   findRequestableOcsItem,
   fulfilmentDetail,
   listImpactedActiveRequests,
+  listAllocatableBatches,
   lockPackedFulfilment,
   namesMateriallyMatch,
   postCollectionTransfer,

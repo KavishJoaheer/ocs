@@ -348,7 +348,7 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
     }));
 }
 
-function buildDoctorBreakdown(activityRows, revenueRows) {
+function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", refundRows = [] } = {}) {
   const byId = new Map();
 
   for (const row of activityRows || []) {
@@ -381,9 +381,17 @@ function buildDoctorBreakdown(activityRows, revenueRows) {
     }
     const entry = byId.get(doctorId);
     const amount = toNumber(bill.total_amount, 0);
+    const netPaid = dateBasis === "payment" ? amount : toNumber(bill.net_paid_amount, amount);
     entry.billed += amount;
-    if (bill.status === "paid") entry.paid += amount;
+    if (bill.status === "paid") entry.paid += netPaid;
     else entry.unpaid += amount;
+  }
+
+  if (dateBasis === "payment") {
+    for (const refund of refundRows) {
+      const entry = byId.get(Number(refund.doctor_id));
+      if (entry) entry.paid -= toNumber(refund.amount, 0);
+    }
   }
 
   return [...byId.values()]
@@ -417,16 +425,24 @@ function buildDoctorBreakdown(activityRows, revenueRows) {
 function getPaidRevenueTotal(startDate, endDate, doctorId = null) {
   const row = db
     .prepare(`
-      SELECT COALESCE(SUM(b.total_amount), 0) AS total
-      FROM billing b
-      JOIN patients p ON p.id = b.patient_id
-      JOIN consultations c ON c.id = b.consultation_id
-      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.status = 'paid'
-
-        AND COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) BETWEEN ? AND ?
-        AND (? IS NULL OR c.doctor_id = ?)
+      SELECT
+        COALESCE((
+          SELECT SUM(b.total_amount)
+          FROM billing b
+          JOIN consultations c ON c.id = b.consultation_id
+          WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.status = 'paid'
+            AND COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) BETWEEN @startDate AND @endDate
+            AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+        ), 0) - COALESCE((
+          SELECT SUM(r.amount)
+          FROM billing_refunds r
+          JOIN billing b ON b.id = r.billing_id
+          JOIN consultations c ON c.id = b.consultation_id
+          WHERE r.refund_date BETWEEN @startDate AND @endDate
+            AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+        ), 0) AS total
     `)
-    .get(startDate, endDate, doctorId, doctorId);
+    .get({ startDate, endDate, doctorId });
 
   return toNumber(row?.total, 0);
 }
@@ -1108,7 +1124,9 @@ router.get("/", (_req, res) => {
     .get().count;
   const revenueRow = db
     .prepare(`
-      SELECT COALESCE(SUM(b.total_amount), 0) AS total
+      SELECT COALESCE(SUM(
+        b.total_amount - COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0)
+      ), 0) AS total
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
       WHERE b.voided_at IS NULL AND b.status = 'paid'
@@ -1555,6 +1573,10 @@ router.get("/live-report", (req, res) => {
         c.doctor_id,
         d.full_name AS doctor_name,
         b.total_amount,
+        COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0) AS refunded_amount,
+        CASE WHEN b.status = 'paid' THEN b.total_amount - COALESCE((
+          SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
+        ), 0) ELSE 0 END AS net_paid_amount,
         b.status,
         b.payment_date,
         COALESCE(NULLIF(b.payment_method, ''), 'unpaid') AS payment_method
@@ -1573,16 +1595,30 @@ router.get("/live-report", (req, res) => {
       doctorId: selectedDoctorId,
     });
 
-  const doctorBreakdown = buildDoctorBreakdown(doctorRows, revenueRows);
+  const refundRows = db.prepare(`
+    SELECT r.amount, r.refund_method, r.refund_date, c.doctor_id
+    FROM billing_refunds r
+    JOIN billing b ON b.id = r.billing_id
+    JOIN consultations c ON c.id = b.consultation_id
+    WHERE r.refund_date BETWEEN @startDate AND @endDate
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+  `).all({
+    startDate: doctorRange.start,
+    endDate: doctorRange.end,
+    doctorId: selectedDoctorId,
+  });
+
+  const doctorBreakdown = buildDoctorBreakdown(doctorRows, revenueRows, { dateBasis, refundRows });
 
   const totalRevenue = roundReportCurrency(
     revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
   );
-  const paidRevenue = roundReportCurrency(
-    revenueRows
-      .filter((row) => row.status === "paid")
-      .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
-  );
+  const refundedRevenue = roundReportCurrency(dateBasis === "payment"
+    ? refundRows.reduce((sum, row) => sum + toNumber(row.amount, 0), 0)
+    : revenueRows.reduce((sum, row) => sum + toNumber(row.refunded_amount, 0), 0));
+  const paidRevenue = roundReportCurrency(dateBasis === "payment"
+    ? revenueRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0) - refundedRevenue
+    : revenueRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toNumber(row.net_paid_amount, row.total_amount), 0));
   const unpaidRevenue = roundReportCurrency(
     revenueRows
       .filter((row) => row.status !== "paid")
@@ -1602,9 +1638,10 @@ router.get("/live-report", (req, res) => {
   const paymentMethodBreakdown = ["cash", "juice", "card", "ib"].map((method) => ({
     method,
     amount: roundReportCurrency(
-      revenueRows
-        .filter((row) => row.status === "paid" && row.payment_method === method)
-        .reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
+      (dateBasis === "payment"
+        ? revenueRows.filter((row) => row.status === "paid" && row.payment_method === method).reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0)
+          - refundRows.filter((row) => row.refund_method === method).reduce((sum, row) => sum + toNumber(row.amount, 0), 0)
+        : revenueRows.filter((row) => row.status === "paid" && row.payment_method === method).reduce((sum, row) => sum + toNumber(row.net_paid_amount, row.total_amount), 0)),
     ),
   }));
 
@@ -1620,6 +1657,7 @@ router.get("/live-report", (req, res) => {
     dateBasis,
     billedRevenue: totalRevenue,
     paidRevenue,
+    refundedRevenue,
     unpaidRevenue,
     doctorCommission,
     transportBenefits,

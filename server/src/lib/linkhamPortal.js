@@ -139,9 +139,12 @@ function claimStatusClauses(statusFilter) {
   return [];
 }
 
+const LINKHAM_NET_AMOUNT_SQL = `(b.total_amount - COALESCE((SELECT SUM(refund.amount) FROM billing_refunds refund WHERE refund.billing_id = b.id), 0))`;
+
 const LINKHAM_CLAIM_SELECT = `
   b.id,
   b.total_amount,
+  ${LINKHAM_NET_AMOUNT_SQL} AS net_amount,
   b.status AS billing_status,
   COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
   COALESCE(b.dispute_status, 'Clean') AS dispute_status,
@@ -171,7 +174,8 @@ const LINKHAM_CLAIM_FROM = `
 `;
 
 function formatClaimRow(row) {
-  const total = Number(row.total_amount || 0);
+  const grossTotal = Number(row.total_amount || 0);
+  const total = Number(row.net_amount ?? grossTotal);
   const disputeStatus = normalizeDisputeStatus(row.dispute_status);
   const policyNumber = String(row.insurance_policy_number || "").trim();
   return {
@@ -185,6 +189,8 @@ function formatClaimRow(row) {
     has_policy_number: Boolean(policyNumber),
     doctor_name: row.doctor_name || "",
     total_amount: roundMoney(total),
+    gross_total_amount: roundMoney(grossTotal),
+    refunded_amount: roundMoney(Math.max(0, grossTotal - total)),
     patient_copay_amount: roundMoney(total * 0.2),
     linkham_share_amount: roundMoney(total * 0.8),
     billing_status: row.billing_status,
@@ -227,7 +233,7 @@ function getLinkhamBudgetExposure() {
   const currentMonthClaimsTotal = roundMoney(
     db
       .prepare(`
-        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         JOIN consultations c ON c.id = b.consultation_id
@@ -657,7 +663,7 @@ function getLinkhamClaimsVolume(period, range) {
       .prepare(`
         SELECT
           CAST(strftime('%m', c.consultation_date) AS INTEGER) AS slot_month,
-          COALESCE(SUM(b.total_amount * 0.8), 0) AS linkham_outlay
+          COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS linkham_outlay
         FROM billing b
         JOIN consultations c ON c.id = b.consultation_id
         JOIN patients p ON p.id = b.patient_id
@@ -687,7 +693,7 @@ function getLinkhamClaimsVolume(period, range) {
     .prepare(`
       SELECT
         c.consultation_date AS slot_date,
-        COALESCE(SUM(b.total_amount * 0.8), 0) AS linkham_outlay
+        COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS linkham_outlay
       FROM billing b
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
@@ -782,7 +788,7 @@ function getLinkhamDashboardMetrics() {
   const monthlyApprovedAmount = roundMoney(
     db
       .prepare(`
-        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         WHERE ${LINKHAM_PATIENT_SQL}
@@ -796,7 +802,7 @@ function getLinkhamDashboardMetrics() {
   const monthlyClaimsSettled = roundMoney(
     db
       .prepare(`
-        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         WHERE ${LINKHAM_PATIENT_SQL}
@@ -810,7 +816,7 @@ function getLinkhamDashboardMetrics() {
   const outstandingEightyLedger = roundMoney(
     db
       .prepare(`
-        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         WHERE ${LINKHAM_PATIENT_SQL}
@@ -823,7 +829,7 @@ function getLinkhamDashboardMetrics() {
   const outstandingCleanEightyLedger = roundMoney(
     db
       .prepare(`
-        SELECT COALESCE(SUM(b.total_amount * 0.8), 0) AS total
+        SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         WHERE ${LINKHAM_PATIENT_SQL}
@@ -954,6 +960,7 @@ function getLinkhamPatientFinancing(patientId) {
       SELECT
         b.id,
         b.total_amount,
+        ${LINKHAM_NET_AMOUNT_SQL} AS net_amount,
         b.status,
         COALESCE(b.linkham_claim_status, 'pending') AS linkham_claim_status,
         c.consultation_date AS visit_date
@@ -973,7 +980,8 @@ function getLinkhamPatientFinancing(patientId) {
   let linkhamOutstandingAmount = 0;
 
   const visits = rows.map((row) => {
-    const total = Number(row.total_amount || 0);
+    const grossTotal = Number(row.total_amount || 0);
+    const total = Number(row.net_amount ?? grossTotal);
     const copay = roundMoney(total * 0.2);
     const linkhamShare = roundMoney(total * 0.8);
     const paid = row.status === "paid";
@@ -993,6 +1001,8 @@ function getLinkhamPatientFinancing(patientId) {
       billing_id: Number(row.id),
       visit_date: row.visit_date,
       total_amount: roundMoney(total),
+      gross_total_amount: roundMoney(grossTotal),
+      refunded_amount: roundMoney(Math.max(0, grossTotal - total)),
       patient_copay_amount: copay,
       linkham_share_amount: linkhamShare,
       copay_collected: paid,

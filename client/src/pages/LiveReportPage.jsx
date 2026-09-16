@@ -562,6 +562,7 @@ export default function LiveReportPage() {
   );
   const billed = Number(statement.billedRevenue ?? statement.totalRevenue ?? 0);
   const collected = Number(statement.paidRevenue || 0);
+  const refunded = Number(statement.refundedRevenue || 0);
   const unpaid = Number(statement.unpaidRevenue || 0);
   const doctorNet = Number(statement.doctorNetRevenue || 0);
   const ocsRemainder = Number(statement.ocsRemainder ?? collected - doctorNet);
@@ -632,6 +633,7 @@ export default function LiveReportPage() {
       ["Scope", report?.volumeReport?.entityLabel || ""],
       ["Money follows", dateBasis === "payment" ? "Payment date" : "Visit date"],
       ["Collected", collected],
+      ["Refunded by credit note", refunded],
       ["Billed", billed],
       ["Unpaid", unpaid],
       ["Doctor net", doctorNet],
@@ -658,7 +660,7 @@ export default function LiveReportPage() {
     }
 
     rows.push(["Bills"]);
-    rows.push(["Bill ID", "Patient", "Identifier", "Doctor", "Consultation", "Payment date", "Amount", "Status", "Method"]);
+    rows.push(["Bill ID", "Patient", "Identifier", "Doctor", "Consultation", "Payment date", "Gross amount", "Refunded", "Net paid", "Status", "Method"]);
     for (const row of revenueRows) {
       rows.push([
         row.bill_id,
@@ -668,6 +670,8 @@ export default function LiveReportPage() {
         row.consultation_date || "",
         row.payment_date || "",
         row.total_amount,
+        row.refunded_amount || 0,
+        row.net_paid_amount || 0,
         row.status,
         row.payment_method,
       ]);
@@ -844,6 +848,7 @@ export default function LiveReportPage() {
                     : `${formatCurrency(billed)} billed · ${collectionPercent(collectionRate)} collected`}
                   {` · ${visitCount} visit${visitCount === 1 ? "" : "s"} · ${uniquePatientCount} patient${uniquePatientCount === 1 ? "" : "s"}`}
                 </p>
+                {refunded > 0 ? <p className="mt-1 text-xs font-semibold text-rose-700">After {formatCurrency(refunded)} in credit notes</p> : null}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -881,6 +886,7 @@ export default function LiveReportPage() {
                     ? "Payments recorded in this window"
                     : `${formatCurrency(billed)} billed · ${collectionPercent(collectionRate)} collected`}
                 </p>
+                {refunded > 0 ? <p className="mt-1 text-xs font-semibold text-rose-700">After {formatCurrency(refunded)} in credit notes</p> : null}
               </div>
               <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
                 <StatementStat label="Unpaid" value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} />
