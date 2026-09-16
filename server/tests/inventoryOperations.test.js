@@ -2771,7 +2771,10 @@ test("consultation reversal keeps original movements and restores original batch
   assert.equal(originalMovements.length, 1);
   const originalHistory = db.prepare("SELECT COUNT(*) AS count FROM inventory_activity_history WHERE movement_id = ?").get(originalMovements[0].id).count;
   assert.ok(originalHistory >= 1);
-  const voided = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  const voided = await api("DELETE", `/api/consultations/${consultationId}`, {
+    token: adminToken,
+    body: { reason: "Duplicate unpaid consultation regression" },
+  });
   assert.equal(voided.status, 204, JSON.stringify(voided.data));
   const stillThere = db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(originalMovements[0].id).count;
   assert.equal(stillThere, 1);
@@ -2781,7 +2784,10 @@ test("consultation reversal keeps original movements and restores original batch
   assert.equal(Number(restored[0].quantity_remaining), 2);
   assert.equal(Number(restored[1].quantity_remaining), 2);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 4);
-  const again = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  const again = await api("DELETE", `/api/consultations/${consultationId}`, {
+    token: adminToken,
+    body: { reason: "Duplicate unpaid consultation regression" },
+  });
   assert.equal(again.status, 204, JSON.stringify(again.data));
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(stock.itemId).count, 1);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 4);
@@ -2810,7 +2816,10 @@ test("legacy consultation reversal without allocations does not invent a usable 
         JSON.stringify({ consultation_id: consultationId }),
       ).lastInsertRowid,
   );
-  const blocked = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  const blocked = await api("DELETE", `/api/consultations/${consultationId}`, {
+    token: adminToken,
+    body: { reason: "Legacy reversal requires correction" },
+  });
   assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
   assert.equal(blocked.data.code, "LEGACY_REVERSAL_REQUIRES_CORRECTION");
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 1);
@@ -2972,7 +2981,10 @@ test("consultation reversal rolls back when a later movement cannot be restored"
     db.prepare("SELECT appointment_id FROM consultations WHERE id = ?").get(consultationId).appointment_id,
     JSON.stringify({ consultation_id: consultationId }),
   );
-  const blocked = await api("DELETE", `/api/consultations/${consultationId}`, { token: doctorToken });
+  const blocked = await api("DELETE", `/api/consultations/${consultationId}`, {
+    token: adminToken,
+    body: { reason: "Rollback incomplete legacy reversal" },
+  });
   assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
   assert.equal(blocked.data.code, "LEGACY_REVERSAL_REQUIRES_CORRECTION");
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 2);

@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const {
+  billingItemsValidationError,
   calculateBillingTotal,
   getTodayLocal,
   normalizeBillingItems,
@@ -897,6 +898,22 @@ function createPostgresApp() {
     });
     if (validationError) return res.status(400).json({ error: validationError });
 
+    const nextConsultationDate = String(req.body.consultation_date).trim();
+    if (nextConsultationDate !== String(existing.rows[0].consultation_date || "").slice(0, 10)) {
+      const activeBill = await query(
+        "SELECT id, status FROM billing WHERE consultation_id = $1 ORDER BY CASE WHEN status = 'paid' THEN 0 ELSE 1 END, id LIMIT 1",
+        [consultationId],
+      );
+      if (activeBill.rowCount) {
+        return res.status(409).json({
+          error: "The consultation date is locked after billing begins. Use a documented financial correction instead of editing the visit.",
+          code: "BILLED_CONSULTATION_DIMENSIONS_LOCKED",
+          bill_id: Number(activeBill.rows[0].id),
+          bill_status: activeBill.rows[0].status,
+        });
+      }
+    }
+
     const updated = (
       await query(
         `
@@ -913,7 +930,7 @@ function createPostgresApp() {
             created_at::text AS created_at
         `,
         [
-          String(req.body.consultation_date).trim(),
+          nextConsultationDate,
           String(req.body.doctor_notes).trim(),
           consultationId,
         ],
@@ -1063,10 +1080,9 @@ function createPostgresApp() {
       });
     }
 
+    const itemValidationError = billingItemsValidationError(req.body.items);
+    if (itemValidationError) return res.status(400).json({ error: itemValidationError });
     const items = normalizeBillingItems(req.body.items);
-    if (!items.length) {
-      return res.status(400).json({ error: "At least one billing line item is required." });
-    }
 
     // The Vercel/Postgres build does NOT mirror the inventory tables, so a
     // bill that touches inventory_item_id would silently skip the doctor
@@ -1190,10 +1206,9 @@ function createPostgresApp() {
     const existing = await query("SELECT * FROM billing WHERE id = $1", [billId]);
     if (!existing.rowCount) return res.status(404).json({ error: "Bill not found." });
 
+    const itemValidationError = billingItemsValidationError(req.body.items);
+    if (itemValidationError) return res.status(400).json({ error: itemValidationError });
     const items = normalizeBillingItems(req.body.items);
-    if (!items.length) {
-      return res.status(400).json({ error: "At least one billing line item is required." });
-    }
 
     const status = String(req.body.status ?? existing.rows[0].status).trim();
     if (!["paid", "unpaid"].includes(status)) {

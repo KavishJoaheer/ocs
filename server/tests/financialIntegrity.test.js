@@ -87,9 +87,28 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   });
   assert.equal(issued.status,201,JSON.stringify(issued.data));
   assert.equal(issued.data.status,'unpaid'); assert.equal(issued.data.total_amount,2275); assert.equal(row(it.id).quantity,19);
+  assert.match(issued.data.invoice_number,/^OCS-INV-\d{8}$/);
+  assert.equal(issued.data.source_reference,'OCS pad #0142');
+  assert.equal(issued.data.issued_by_role,'operator');
+  assert.equal(issued.data.issued_by_name,'Integrity operator');
+  assert.equal(issued.data.patient_identifier_snapshot,'AUDIT-1');
+  assert.equal(issued.data.patient_name_snapshot,'Operator invoice Demo');
+  assert.equal(issued.data.doctor_id_snapshot,doctorId);
+  assert.equal(issued.data.consultation_type_snapshot,'Day Consultation');
+  assert.equal(issued.data.partner_category_snapshot,'Self-pay');
   assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(issued.data.updated_by_user_id).role,'operator');
   assert.ok((await api('GET','/billing','operator')).data.some(b=>b.id===issued.data.id));
   assert.equal(db.prepare("SELECT reason FROM billing_events WHERE bill_id=? AND event_type='created'").get(issued.data.id).reason,'Paper invoice: OCS pad #0142');
+
+  const duplicateReferenceCtx=context('Duplicate operator source');
+  const duplicateReference=await api('POST','/billing','operator',{
+    consultation_id:duplicateReferenceCtx.consultationId,
+    patient_id:duplicateReferenceCtx.patientId,
+    items:[standardFee()],status:'unpaid',source_reference:'  ocs   PAD #0142  ',
+  });
+  assert.equal(duplicateReference.status,409,JSON.stringify(duplicateReference.data));
+  assert.equal(duplicateReference.data.code,'DUPLICATE_SOURCE_REFERENCE');
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing WHERE consultation_id=?').get(duplicateReferenceCtx.consultationId).count,0);
 
   const paidCtx=context('Operator paid block');
   assert.equal((await api('POST','/billing','operator',{
@@ -155,21 +174,73 @@ test('inventory-linked edits preserve stock lines and allow unrelated fee change
   assert.equal(db.prepare('SELECT total_amount FROM billing WHERE id=?').get(original.data.id).total_amount,1250);
 });
 
-test('voiding reverses stock and excludes revenue, keeps audit details and blocks later payments', async () => {
-  const ctx=context('Void'); const it=item('Void medicine');
+test('paid consultations cannot be deleted or used to reverse recognised revenue and stock', async () => {
+  const ctx=context('Paid void protection'); const it=item('Paid void protection medicine');
   const original=await bill(ctx,[...fee(),stockLine(it)],{status:'paid',payment_method:'cash',payment_date:today});
   const before=await report();
-  const result=await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Incorrect visit entered during testing'});
+  const blocked=await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Incorrect visit entered during testing'});
+  assert.equal(blocked.status,409,JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code,'PAID_CONSULTATION_VOID_BLOCKED');
+  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'doctor',{reason:'Doctor cannot void paid visit'})).status,403);
+  assert.equal(row(it.id).quantity,18);
+  const after=await report(); assert.equal(after.revenueStatement.paidRevenue,before.revenueStatement.paidRevenue);
+  assert.ok(after.billingRevenueReport.rows.some(r=>r.bill_id===original.data.id));
+  const detail=await api('GET',`/billing/${original.data.id}`,'doctor'); assert.equal(detail.status,200);
+  assert.ok(!detail.data.history.some(e=>e.event_type==='voided'));
+  assert.equal(db.prepare('SELECT voided_at FROM consultations WHERE id=?').get(ctx.consultationId).voided_at,null);
+});
+
+test('an admin can void an unpaid consultation with a documented stock reversal', async () => {
+  const ctx=context('Unpaid void'); const it=item('Unpaid void medicine');
+  const original=await bill(ctx,[...fee(),stockLine(it)]);
+  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin')).status,400);
+  const result=await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Duplicate unpaid consultation entered'});
   assert.equal(result.status,204,JSON.stringify(result.data)); assert.equal(row(it.id).quantity,20);
-  const after=await report(); assert.equal(after.revenueStatement.paidRevenue,before.revenueStatement.paidRevenue-1050);
-  assert.ok(!after.billingRevenueReport.rows.some(r=>r.bill_id===original.data.id));
-  assert.ok(!(await api('GET','/billing')).data.some(r=>r.id===original.data.id));
   const detail=await api('GET',`/billing/${original.data.id}`,'doctor'); assert.equal(detail.status,200);
   assert.ok(detail.data.history.some(e=>e.event_type==='voided'));
-  const voidedList=await api('GET','/billing?status=voided','doctor');
-  assert.ok(voidedList.data.some(b=>b.id===original.data.id));
-  assert.equal((await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{payment_method:'cash',payment_date:today})).status,409);
-  assert.equal((await api('PUT',`/billing/${original.data.id}`,'admin',{items:original.data.items,correction_reason:'Should still be blocked'})).status,409);
+  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Duplicate unpaid consultation entered'})).status,204);
+});
+
+test('billing locks a consultation doctor and date while allowing note corrections', async () => {
+  const ctx=context('Locked visit dimensions');
+  const original=await bill(ctx,fee(900));
+  const changedDate='2026-08-30';
+  const dateAttempt=await api('PUT',`/consultations/${ctx.consultationId}`,'admin',{
+    doctor_id:doctorId,consultation_date:changedDate,doctor_notes:'Corrected note text',
+  });
+  assert.equal(dateAttempt.status,409,JSON.stringify(dateAttempt.data));
+  assert.equal(dateAttempt.data.code,'BILLED_CONSULTATION_DIMENSIONS_LOCKED');
+  const otherDoctor=Number(db.prepare("INSERT INTO doctors(full_name,specialization) VALUES ('Financial reassignment test','General Practice')").run().lastInsertRowid);
+  const doctorAttempt=await api('PUT',`/consultations/${ctx.consultationId}`,'admin',{
+    doctor_id:otherDoctor,consultation_date:today,doctor_notes:'Corrected note text',
+  });
+  assert.equal(doctorAttempt.status,409,JSON.stringify(doctorAttempt.data));
+  const noteOnly=await api('PUT',`/consultations/${ctx.consultationId}`,'doctor',{
+    consultation_date:today,doctor_notes:'Corrected note without changing financial dimensions',
+  });
+  assert.equal(noteOnly.status,200,JSON.stringify(noteOnly.data));
+  assert.equal(noteOnly.data.doctor_notes,'Corrected note without changing financial dimensions');
+  assert.equal(noteOnly.data.doctor_id,doctorId);
+  assert.equal(noteOnly.data.consultation_date,today);
+  assert.equal((await api('GET',`/billing/${original.data.id}`)).data.total_amount,900);
+});
+
+test('billing rejects negative, non-numeric, and fractional-cent amounts at API and database boundaries', async () => {
+  for (const amount of [-1, 10.001, 'not-money', '']) {
+    const ctx=context(`Invalid money ${String(amount)}`);
+    const response=await bill(ctx,[{description:'Invalid amount',type:'Sale',amount}],{operation_id:randomUUID()});
+    assert.equal(response.status,400,JSON.stringify(response.data));
+    assert.match(response.data.error,/amount/i);
+  }
+  const ctx=context('Invalid money update'); const original=await bill(ctx,fee(800));
+  assert.equal((await api('PUT',`/billing/${original.data.id}`,'admin',{
+    items:[{description:'Invalid correction',type:'Sale',amount:-0.01}],
+    correction_reason:'Invalid negative correction attempt',expected_version:original.data.row_version,
+  })).status,400);
+  assert.throws(()=>db.prepare(`INSERT INTO billing(consultation_id,patient_id,items,total_amount,status)
+    VALUES (?,?,?,-1,'unpaid')`).run(ctx.consultationId,ctx.patientId,JSON.stringify(fee(-1))),/non-negative currency/);
+  assert.throws(()=>db.prepare(`UPDATE billing SET items=?,total_amount=10.001 WHERE id=?`)
+    .run(JSON.stringify(fee(10.001)),original.data.id),/non-negative currency/);
 });
 
 test('archived patients retain historical billing and revenue with existing doctor access scope', async () => {
@@ -180,6 +251,39 @@ test('archived patients retain historical billing and revenue with existing doct
   assert.ok(detail.data.patient_archived_at);
   const list=await api('GET',`/billing?patientId=${ctx.patientId}`,'doctor'); assert.equal(list.data.length,1);
   const summary=await api('GET','/billing/patient-summary','doctor'); assert.ok(summary.data.some(r=>r.patient_id===ctx.patientId && r.paid_amount===700));
+});
+
+test('permanent deletion anonymizes a billed patient while preserving invoice and accounting snapshots', async () => {
+  const ctx=context('Permanent financial retention');
+  db.prepare("UPDATE patients SET insurance_provider='Corporate Partner', patient_id_number='ID-SECRET' WHERE id=?").run(ctx.patientId);
+  const original=await bill(ctx,[standardFee('Review Consultation',2000)]);
+  assert.equal(original.status,201,JSON.stringify(original.data));
+  const invoiceNumber=original.data.invoice_number;
+  const patientIdentifier=original.data.patient_identifier_snapshot;
+
+  const purged=await api('DELETE',`/patients/${ctx.patientId}/permanent`,'admin');
+  assert.equal(purged.status,200,JSON.stringify(purged.data));
+  assert.equal(purged.data.financial_records_retained,true);
+
+  const patient=db.prepare('SELECT * FROM patients WHERE id=?').get(ctx.patientId);
+  assert.ok(patient);
+  assert.ok(patient.deleted_at);
+  assert.equal(patient.full_name,`Deleted patient #${ctx.patientId}`);
+  assert.equal(patient.patient_identifier,`PURGED-${ctx.patientId}`);
+  assert.equal(patient.patient_id_number,'');
+  assert.equal(patient.contact_number,'');
+  assert.equal(db.prepare('SELECT doctor_notes FROM consultations WHERE id=?').get(ctx.consultationId).doctor_notes,'');
+
+  const retained=await api('GET',`/billing/${original.data.id}`,'admin');
+  assert.equal(retained.status,200,JSON.stringify(retained.data));
+  assert.equal(retained.data.invoice_number,invoiceNumber);
+  assert.equal(retained.data.patient_name,'Deleted patient');
+  assert.equal(retained.data.patient_identifier,patientIdentifier);
+  assert.equal(retained.data.doctor_name,original.data.doctor_name);
+  assert.equal(retained.data.consultation_date,original.data.consultation_date);
+  assert.equal(retained.data.consultation_type_snapshot,'Review Consultation');
+  assert.equal(retained.data.partner_category_snapshot,'Corporate Partner');
+  assert.equal(retained.data.total_amount,2000);
 });
 
 test('payments validate dates, retry harmlessly, and require documented admin correction', async () => {
@@ -259,11 +363,11 @@ test('transport counts each visit, not unique patients or invoices, and excludes
   const appointmentId=Number(db.prepare("INSERT INTO appointments(patient_id,doctor_id,appointment_date,appointment_time,status) VALUES (?,?,?,'17:00','completed')").run(ctx.patientId,doctorId,date).lastInsertRowid);
   const second=Number(db.prepare("INSERT INTO consultations(appointment_id,patient_id,doctor_id,consultation_date,doctor_notes) VALUES (?,?,?,?,'Review visit')").run(appointmentId,ctx.patientId,doctorId,date).lastInsertRowid);
   const a=await bill(ctx,fee(2000),{status:'paid',payment_method:'cash',payment_date:date}); assert.equal(a.status,201);
-  await bill({...ctx,consultationId:second},fee(2000),{status:'paid',payment_method:'cash',payment_date:date});
+  await bill({...ctx,consultationId:second},fee(2000));
   await bill(ctx,fee(100),{operation_id:randomUUID()});
   const r=await report(date); assert.equal(r.revenueStatement.transportVisitCount,2);
-  assert.equal(r.revenueStatement.transportBenefits,600); assert.equal(r.revenueStatement.doctorCommission,1600);
-  assert.equal(r.revenueStatement.doctorNetRevenue,2200);
+  assert.equal(r.revenueStatement.transportBenefits,600); assert.equal(r.revenueStatement.doctorCommission,800);
+  assert.equal(r.revenueStatement.doctorNetRevenue,1400);
   assert.equal(r.doctorReport.rows.find(row=>row.doctor_id===doctorId).transportBenefits,600);
   await api('DELETE',`/consultations/${second}`,'admin',{reason:'Duplicate review consultation entry'});
   assert.equal((await report(date)).revenueStatement.transportBenefits,300);
@@ -450,7 +554,9 @@ test('financial review catches duplicate lines and malformed history, and exclud
   let review=await api('GET','/billing/reconciliation');
   assert.equal(review.status,200);
   assert.ok(review.data.issues.some(i=>i.type==='duplicate_fee' && i.bill_ids.includes(b.data.id)));
+  db.exec('DROP TRIGGER billing_amount_guard_insert; DROP TRIGGER billing_amount_guard_update;');
   db.prepare('UPDATE billing SET items=? WHERE id=?').run('null',b.data.id);
+  require('../src/lib/financialIntegritySchema').ensureFinancialIntegritySchema(db);
   review=await api('GET','/billing/reconciliation');
   assert.equal(review.status,200);
   assert.ok(review.data.issues.some(i=>i.type==='invalid_bill' && i.bill_ids.includes(b.data.id)));

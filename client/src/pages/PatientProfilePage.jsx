@@ -1443,6 +1443,7 @@ function PatientProfilePage() {
   const [consultationComposerOpen, setConsultationComposerOpen] = useState(false);
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
   const [consultationToDelete, setConsultationToDelete] = useState(null);
+  const [consultationVoidReason, setConsultationVoidReason] = useState("");
   const [consultationNoteViewer, setConsultationNoteViewer] = useState(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [fabOpen, setFabOpen] = useState(false);
@@ -1843,12 +1844,15 @@ function PatientProfilePage() {
     }
 
     try {
-      await api.delete(`/consultations/${consultationToDelete.id}`);
+      await api.delete(`/consultations/${consultationToDelete.id}`, {
+        body: { reason: consultationVoidReason.trim() },
+      });
       if (consultationEditorId === consultationToDelete.id) {
         setConsultationEditorId(null);
         setConsultationDraft(getConsultationDraft());
       }
       setConsultationToDelete(null);
+      setConsultationVoidReason("");
       await reloadPatientProfile();
       toast.success("Consultation note deleted.");
     } catch (error) {
@@ -2503,10 +2507,13 @@ function PatientProfilePage() {
                                   View only
                                 </span>
                               ) : null}
-                              {user.role === "admin" && canEditRow ? (
+                              {user.role === "admin" && canEditRow && consultation.bill_status !== "paid" ? (
                                 <button
                                   type="button"
-                                  onClick={() => setConsultationToDelete(consultation)}
+                                  onClick={() => {
+                                    setConsultationVoidReason("");
+                                    setConsultationToDelete(consultation);
+                                  }}
                                   className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600"
                                   style={{ minHeight: 48 }}
                                 >
@@ -2992,10 +2999,13 @@ function PatientProfilePage() {
                                       View only
                                     </span>
                                   ) : null}
-                                  {user.role === "admin" && canEditRow ? (
+                                  {user.role === "admin" && canEditRow && consultation.bill_status !== "paid" ? (
                                     <button
                                       type="button"
-                                      onClick={() => setConsultationToDelete(consultation)}
+                                      onClick={() => {
+                                        setConsultationVoidReason("");
+                                        setConsultationToDelete(consultation);
+                                      }}
                                       className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
                                     >
                                       <Trash2 className="size-4" />
@@ -3406,18 +3416,35 @@ function PatientProfilePage() {
 
       <ConfirmDialog
         open={Boolean(consultationToDelete)}
-        onClose={() => setConsultationToDelete(null)}
+        onClose={() => {
+          setConsultationToDelete(null);
+          setConsultationVoidReason("");
+        }}
         onConfirm={handleDeleteConsultation}
         title="Delete consultation note?"
         description={
           consultationToDelete
-            ? `This will remove the consultation note dated ${formatDate(
+            ? `This will void the unpaid consultation dated ${formatDate(
                 consultationToDelete.consultation_date,
-              )}. Linked billing entries will be removed and linked Medical & Lab Reports will stay but become unlinked.`
+              )}. Its unpaid billing will be retained as voided history and linked supplies will be reversed.`
             : ""
         }
-        confirmLabel="Delete note"
-      />
+        confirmLabel="Void consultation"
+        confirmDisabled={consultationVoidReason.trim().length < 8}
+      >
+        <label className="block space-y-2 text-sm font-semibold text-ocs-slate">
+          Reason for voiding
+          <textarea
+            value={consultationVoidReason}
+            onChange={(event) => setConsultationVoidReason(event.target.value)}
+            rows={3}
+            maxLength={500}
+            placeholder="Explain why this unpaid consultation must be voided"
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none transition focus:border-ocs-teal focus:ring-2 focus:ring-ocs-teal/15"
+          />
+          <span className="block text-xs font-normal text-slate-500">Minimum 8 characters. This reason is retained in the audit history.</span>
+        </label>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -2111,6 +2111,7 @@ router.delete("/:id/permanent", (req, res) => {
       // Dependents are their own patient records, so they survive the purge with
       // the family link cleared. Report it so staff know to re-link them.
       detached_dependents: Number(removed.detached_dependents || 0),
+      financial_records_retained: Boolean(removed.financial_records_retained),
       patient: {
         id: removed.id,
         full_name: removed.full_name,

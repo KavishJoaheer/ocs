@@ -5,29 +5,44 @@ import { formatCurrency, formatDate } from "./format.js";
 function buildBillPdf(bill) {
   const doc = new jsPDF();
   let y = 20;
-  doc.setFontSize(16);
-  doc.text("OCS Medecins — Invoice", 14, y);
-  y += 10;
-  doc.setFontSize(11);
-  doc.text(`Invoice #${bill.id}`, 14, y);
-  y += 7;
-  doc.text(`Patient: ${bill.patient_name || ""}`, 14, y);
-  y += 7;
-  doc.text(`Consultation: ${formatDate(bill.consultation_date)}`, 14, y);
-  y += 7;
-  doc.text(`Total: ${formatCurrency(bill.total_amount)}`, 14, y);
-  y += 7;
-  doc.text(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : bill.status || ""}`, 14, y);
-  y += 10;
-  (bill.items || []).forEach((item) => {
-    const line = `${item.description || ""} — ${formatCurrency(item.amount)} (${item.type || "Sale"})`;
-    doc.text(line.slice(0, 95), 14, y);
-    y += 6;
-    if (y > 280) {
+  const writeLine = (text, { gap = 7, size = 10, bold = false } = {}) => {
+    if (y > 276) {
       doc.addPage();
       y = 20;
     }
+    doc.setFontSize(size);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.text(String(text || "").slice(0, 110), 14, y);
+    y += gap;
+  };
+  const invoiceNumber = bill.invoice_number || `OCS-INV-${String(bill.id || 0).padStart(8, "0")}`;
+
+  doc.setFontSize(16);
+  doc.text("OCS Medecins — Invoice", 14, y);
+  y += 10;
+  writeLine(`Invoice: ${invoiceNumber}`, { size: 11, bold: true });
+  writeLine(`Patient: ${bill.patient_name || bill.patient_name_snapshot || ""} (${bill.patient_identifier || bill.patient_identifier_snapshot || "No OCS number"})`);
+  writeLine(`Doctor: ${bill.doctor_name || bill.doctor_name_snapshot || ""}`);
+  writeLine(`Consultation: ${formatDate(bill.consultation_date || bill.consultation_date_snapshot)} · ${bill.consultation_type_snapshot || "Consultation"}`);
+  writeLine(`Category: ${bill.partner_category_snapshot || "Self-pay"}`);
+  writeLine(`Issued: ${formatDate(bill.issued_at || bill.created_at)} by ${bill.issued_by_name || "System"} (${bill.issued_by_role || "system"})`);
+  if (bill.source_reference) writeLine(`Source reference: ${bill.source_reference}`);
+  writeLine(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : bill.status || ""}`);
+  if (bill.status === "paid") {
+    writeLine(`Payment: ${bill.payment_method || ""} · ${formatDate(bill.payment_date)}`);
+  }
+  y += 3;
+  writeLine("Items", { size: 11, bold: true });
+  (bill.items || []).forEach((item) => {
+    const quantity = Math.max(1, Number(item.quantity || 1));
+    const unitPrice = Number.isFinite(Number(item.unit_price))
+      ? Number(item.unit_price)
+      : Number(item.amount || 0) / quantity;
+    writeLine(`${item.description || ""} · ${quantity} × ${formatCurrency(unitPrice)} = ${formatCurrency(item.amount)} (${item.type || "Sale"})`, { gap: 6 });
   });
+  y += 3;
+  writeLine(`Total: ${formatCurrency(bill.total_amount)}`, { size: 12, bold: true });
+  if (bill.void_reason) writeLine(`Void reason: ${bill.void_reason}`);
   return doc;
 }
 
@@ -39,7 +54,8 @@ function buildBillPdf(bill) {
 export async function shareOrDownloadBillPdf(bill) {
   const doc = buildBillPdf(bill);
   const blob = doc.output("blob");
-  const filename = `invoice-${bill.id}.pdf`;
+  const invoiceNumber = bill.invoice_number || `OCS-INV-${String(bill.id || 0).padStart(8, "0")}`;
+  const filename = `${invoiceNumber.replace(/[^a-z0-9_-]+/gi, "-")}.pdf`;
   const file = new File([blob], filename, { type: "application/pdf" });
 
   const canShare =
@@ -50,7 +66,7 @@ export async function shareOrDownloadBillPdf(bill) {
 
   if (canShare) {
     try {
-      await navigator.share({ files: [file], title: `Invoice #${bill.id}` });
+      await navigator.share({ files: [file], title: `Invoice ${invoiceNumber}` });
       return "share";
     } catch {
       // Sharing was dismissed or unavailable: fall back to preview/save below.

@@ -125,6 +125,48 @@ function unlinkSaleMovementsForBills(billingIds) {
   return relinked;
 }
 
+function unlinkSaleMovementsByIds(movementIds, { billingId, consultationId } = {}) {
+  const ids = [...new Set((movementIds || []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return [];
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT id, meta_json
+    FROM inventory_movements
+    WHERE id IN (${placeholders})
+      AND movement_type = 'out'
+      AND action_type = 'stock_out'
+      AND json_extract(meta_json, '$.stock_out_reason') = 'Sale'
+  `).all(...ids);
+  if (rows.length !== ids.length) {
+    throw linkageError("A dispensing movement linked to this submission is missing or invalid.");
+  }
+
+  const expectedBillingId = Number(billingId || 0);
+  const expectedConsultationId = Number(consultationId || 0);
+  for (const row of rows) {
+    const meta = parse(row.meta_json);
+    if (
+      meta.billing_status !== "Billed" ||
+      Number(meta.billing_id || 0) !== expectedBillingId ||
+      (expectedConsultationId && Number(meta.consultation_id || 0) !== expectedConsultationId)
+    ) {
+      throw linkageError("A dispensing movement is no longer linked to this bill submission. Reload billing before reversing it.");
+    }
+  }
+
+  const update = db.prepare("UPDATE inventory_movements SET meta_json = ? WHERE id = ?");
+  for (const row of rows) {
+    const meta = parse(row.meta_json);
+    meta.billing_status = "Pending Manual Entry";
+    delete meta.billing_id;
+    delete meta.billed_at;
+    update.run(JSON.stringify(meta), row.id);
+  }
+
+  return rows.map((row) => Number(row.id));
+}
+
 function roundCurrency(value) {
   return Number(Number(value || 0).toFixed(2));
 }
@@ -294,6 +336,7 @@ module.exports = {
   matchesVisit,
   findUnbilledSaleCredit,
   markSaleMovementsBilled,
+  unlinkSaleMovementsByIds,
   unlinkSaleMovementsForBills,
   findOpenBillForSale,
   attachSaleDeductToPatientBill,

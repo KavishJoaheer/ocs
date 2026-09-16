@@ -10,6 +10,19 @@ function ensureFinancialIntegritySchema(db) {
     add('billing', 'fee_review_required', 'INTEGER NOT NULL DEFAULT 0');
     add('billing', 'legacy_fee_review_required', 'INTEGER NOT NULL DEFAULT 0');
     add('billing', 'change_reason', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'invoice_number', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'source_reference', 'TEXT');
+    add('billing', 'issued_at', 'TEXT');
+    add('billing', 'issued_by_user_id', 'INTEGER');
+    add('billing', 'issued_by_name', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'issued_by_role', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'patient_identifier_snapshot', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'patient_name_snapshot', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'doctor_id_snapshot', 'INTEGER');
+    add('billing', 'doctor_name_snapshot', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'consultation_date_snapshot', 'TEXT');
+    add('billing', 'consultation_type_snapshot', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'partner_category_snapshot', "TEXT NOT NULL DEFAULT ''");
     add('inventory_movements', 'unit_cost_snapshot', 'REAL');
     add('inventory_movements', 'unit_price_snapshot', 'REAL');
     add('inventory_movements', 'valuation_basis', 'TEXT');
@@ -82,6 +95,201 @@ function ensureFinancialIntegritySchema(db) {
       CREATE TRIGGER IF NOT EXISTS billing_quick_events_no_delete
       BEFORE DELETE ON billing_quick_events BEGIN
         SELECT RAISE(ABORT, 'Quick billing history is append-only');
+      END;
+      DROP TRIGGER IF EXISTS billing_amount_guard_insert;
+      DROP TRIGGER IF EXISTS billing_amount_guard_update;
+      CREATE TRIGGER billing_amount_guard_insert
+      BEFORE INSERT ON billing
+      WHEN
+        typeof(NEW.total_amount) NOT IN ('integer', 'real')
+        OR NEW.total_amount < 0
+        OR abs(NEW.total_amount * 100 - round(NEW.total_amount * 100)) > 0.000001
+        OR json_valid(NEW.items) = 0
+        OR (
+          json_valid(NEW.items) = 1
+          AND EXISTS (
+            SELECT 1
+            FROM json_each(NEW.items) AS line
+            WHERE COALESCE(json_type(line.value, '$.amount'), '') NOT IN ('integer', 'real')
+              OR CAST(json_extract(line.value, '$.amount') AS REAL) < 0
+              OR abs(
+                CAST(json_extract(line.value, '$.amount') AS REAL) * 100
+                - round(CAST(json_extract(line.value, '$.amount') AS REAL) * 100)
+              ) > 0.000001
+              OR (
+                json_type(line.value, '$.unit_price') IS NOT NULL
+                AND (
+                  json_type(line.value, '$.unit_price') NOT IN ('integer', 'real')
+                  OR CAST(json_extract(line.value, '$.unit_price') AS REAL) < 0
+                  OR abs(
+                    CAST(json_extract(line.value, '$.unit_price') AS REAL) * 100
+                    - round(CAST(json_extract(line.value, '$.unit_price') AS REAL) * 100)
+                  ) > 0.000001
+                )
+              )
+          )
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'Billing amounts must be non-negative currency values with no more than two decimal places');
+      END;
+      CREATE TRIGGER billing_amount_guard_update
+      BEFORE UPDATE OF items, total_amount ON billing
+      WHEN
+        typeof(NEW.total_amount) NOT IN ('integer', 'real')
+        OR NEW.total_amount < 0
+        OR abs(NEW.total_amount * 100 - round(NEW.total_amount * 100)) > 0.000001
+        OR json_valid(NEW.items) = 0
+        OR (
+          json_valid(NEW.items) = 1
+          AND EXISTS (
+            SELECT 1
+            FROM json_each(NEW.items) AS line
+            WHERE COALESCE(json_type(line.value, '$.amount'), '') NOT IN ('integer', 'real')
+              OR CAST(json_extract(line.value, '$.amount') AS REAL) < 0
+              OR abs(
+                CAST(json_extract(line.value, '$.amount') AS REAL) * 100
+                - round(CAST(json_extract(line.value, '$.amount') AS REAL) * 100)
+              ) > 0.000001
+              OR (
+                json_type(line.value, '$.unit_price') IS NOT NULL
+                AND (
+                  json_type(line.value, '$.unit_price') NOT IN ('integer', 'real')
+                  OR CAST(json_extract(line.value, '$.unit_price') AS REAL) < 0
+                  OR abs(
+                    CAST(json_extract(line.value, '$.unit_price') AS REAL) * 100
+                    - round(CAST(json_extract(line.value, '$.unit_price') AS REAL) * 100)
+                  ) > 0.000001
+                )
+              )
+          )
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'Billing amounts must be non-negative currency values with no more than two decimal places');
+      END;
+    `);
+
+    // Invoice identifiers and party/category snapshots are accounting facts.
+    // Backfill them once from the linked records, then serve them instead of
+    // mutable patient/doctor directory values on historical invoices.
+    db.exec(`
+      UPDATE billing
+      SET invoice_number = printf('OCS-INV-%08d', id)
+      WHERE trim(COALESCE(invoice_number, '')) = '';
+
+      UPDATE billing
+      SET
+        issued_at = COALESCE(issued_at, created_at),
+        issued_by_user_id = COALESCE(issued_by_user_id, updated_by_user_id),
+        issued_by_name = CASE
+          WHEN trim(COALESCE(issued_by_name, '')) != '' THEN issued_by_name
+          ELSE COALESCE((SELECT full_name FROM users WHERE users.id = billing.updated_by_user_id), 'System')
+        END,
+        issued_by_role = CASE
+          WHEN trim(COALESCE(issued_by_role, '')) != '' THEN issued_by_role
+          ELSE COALESCE((SELECT role FROM users WHERE users.id = billing.updated_by_user_id), 'system')
+        END,
+        patient_identifier_snapshot = CASE
+          WHEN trim(COALESCE(patient_identifier_snapshot, '')) != '' THEN patient_identifier_snapshot
+          ELSE COALESCE((SELECT patient_identifier FROM patients WHERE patients.id = billing.patient_id), '')
+        END,
+        patient_name_snapshot = CASE
+          WHEN trim(COALESCE(patient_name_snapshot, '')) != '' THEN patient_name_snapshot
+          ELSE COALESCE((SELECT full_name FROM patients WHERE patients.id = billing.patient_id), '')
+        END,
+        doctor_id_snapshot = COALESCE(
+          doctor_id_snapshot,
+          (SELECT doctor_id FROM consultations WHERE consultations.id = billing.consultation_id)
+        ),
+        doctor_name_snapshot = CASE
+          WHEN trim(COALESCE(doctor_name_snapshot, '')) != '' THEN doctor_name_snapshot
+          ELSE COALESCE((
+            SELECT doctors.full_name
+            FROM consultations
+            JOIN doctors ON doctors.id = consultations.doctor_id
+            WHERE consultations.id = billing.consultation_id
+          ), '')
+        END,
+        consultation_date_snapshot = COALESCE(
+          consultation_date_snapshot,
+          (SELECT consultation_date FROM consultations WHERE consultations.id = billing.consultation_id)
+        ),
+        consultation_type_snapshot = CASE
+          WHEN trim(COALESCE(consultation_type_snapshot, '')) != '' THEN consultation_type_snapshot
+          ELSE COALESCE((
+            SELECT json_extract(line.value, '$.description')
+            FROM json_each(billing.items) AS line
+            WHERE COALESCE(json_extract(line.value, '$.is_consultation_fee'), 0) = 1
+            LIMIT 1
+          ), '')
+        END,
+        partner_category_snapshot = CASE
+          WHEN trim(COALESCE(partner_category_snapshot, '')) != '' THEN partner_category_snapshot
+          ELSE COALESCE(NULLIF(trim((
+            SELECT insurance_provider FROM patients WHERE patients.id = billing.patient_id
+          )), ''), 'Self-pay')
+        END;
+    `);
+
+    // Older operator invoices kept the paper reference inside change_reason.
+    // Recover only the first occurrence of each reference so a historical
+    // duplicate is visible without preventing startup of the stricter schema.
+    const seenSourceReferences = new Set(
+      db.prepare(`
+        SELECT source_reference
+        FROM billing
+        WHERE source_reference IS NOT NULL AND trim(source_reference) != ''
+      `).all().map((bill) => String(bill.source_reference).trim().replace(/\s+/g, ' ').toLocaleLowerCase()),
+    );
+    const historicalPaperBills = db.prepare(`
+      SELECT
+        b.id,
+        CASE
+          WHEN b.change_reason LIKE 'Paper invoice: %' THEN substr(b.change_reason, 16)
+          ELSE (
+            SELECT substr(e.reason, 16)
+            FROM billing_events e
+            WHERE e.bill_id = b.id AND e.reason LIKE 'Paper invoice: %'
+            ORDER BY e.id ASC
+            LIMIT 1
+          )
+        END AS source_reference
+      FROM billing b
+      WHERE b.source_reference IS NULL
+        AND (
+          b.change_reason LIKE 'Paper invoice: %'
+          OR EXISTS (
+            SELECT 1 FROM billing_events e
+            WHERE e.bill_id = b.id AND e.reason LIKE 'Paper invoice: %'
+          )
+        )
+      ORDER BY b.id ASC
+    `).all();
+    const restoreSourceReference = db.prepare(
+      'UPDATE billing SET source_reference = ? WHERE id = ?',
+    );
+    for (const bill of historicalPaperBills) {
+      const reference = String(bill.source_reference || '').trim().replace(/\s+/g, ' ');
+      const key = reference.toLocaleLowerCase();
+      if (!reference || seenSourceReferences.has(key)) continue;
+      seenSourceReferences.add(key);
+      restoreSourceReference.run(reference, bill.id);
+    }
+
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_invoice_number_unique
+        ON billing(invoice_number)
+        WHERE trim(invoice_number) != '';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_source_reference_unique
+        ON billing(lower(trim(source_reference)))
+        WHERE source_reference IS NOT NULL AND trim(source_reference) != '';
+      DROP TRIGGER IF EXISTS billing_invoice_number_after_insert;
+      CREATE TRIGGER billing_invoice_number_after_insert
+      AFTER INSERT ON billing
+      WHEN trim(COALESCE(NEW.invoice_number, '')) = ''
+      BEGIN
+        UPDATE billing
+        SET invoice_number = printf('OCS-INV-%08d', NEW.id)
+        WHERE id = NEW.id;
       END;
     `);
     add('billing_lite_submissions', 'workflow_status', "TEXT NOT NULL DEFAULT 'awaiting_operator'");

@@ -9,8 +9,6 @@ const router = express.Router();
 
 const UNAUTHORIZED_EDIT_MESSAGE =
   "Unauthorized: You can only edit your own consultation notes.";
-const UNAUTHORIZED_DELETE_MESSAGE =
-  "Unauthorized: You can only delete your own consultation notes.";
 
 function doctorMayModifyConsultation(auth, consultationDoctorId) {
   return (
@@ -326,6 +324,26 @@ router.put("/:id", (req, res) => {
 
   const nextConsultationDate = String(req.body.consultation_date).trim();
   const nextDoctorNotes = String(req.body.doctor_notes).trim();
+  const financialDimensionsChanged =
+    Number(nextDoctorId) !== Number(existing.doctor_id) ||
+    nextConsultationDate !== String(existing.consultation_date || "");
+  if (financialDimensionsChanged) {
+    const activeBill = db.prepare(`
+      SELECT id, status
+      FROM billing
+      WHERE consultation_id = ? AND voided_at IS NULL
+      ORDER BY CASE WHEN status = 'paid' THEN 0 ELSE 1 END, id
+      LIMIT 1
+    `).get(consultationId);
+    if (activeBill) {
+      return res.status(409).json({
+        error: "The doctor and consultation date are locked after billing begins. Use a documented financial correction instead of editing the visit.",
+        code: "BILLED_CONSULTATION_DIMENSIONS_LOCKED",
+        bill_id: Number(activeBill.id),
+        bill_status: activeBill.status,
+      });
+    }
+  }
 
   db.transaction(() => {
     db.prepare(`
@@ -357,21 +375,49 @@ router.put("/:id", (req, res) => {
 router.delete("/:id", (req, res) => {
   const consultationId = Number(req.params.id);
   const existing = db
-    .prepare("SELECT id, doctor_id, patient_id FROM consultations WHERE id = ?")
+    .prepare("SELECT id, doctor_id, patient_id, voided_at FROM consultations WHERE id = ?")
     .get(consultationId);
 
   if (!existing) {
     return res.status(404).json({ error: "Consultation not found." });
   }
 
-  if (req.auth?.role === "doctor" && !doctorMayModifyConsultation(req.auth, existing.doctor_id)) {
-    return res.status(403).json({ error: UNAUTHORIZED_DELETE_MESSAGE });
+  if (req.auth?.role !== "admin") {
+    return res.status(403).json({
+      error: "Only an administrator can void an unbilled or unpaid consultation with a documented reason.",
+    });
+  }
+
+  if (existing.voided_at) {
+    return res.status(204).send();
+  }
+
+  const activeBills = db.prepare(`
+    SELECT id, status
+    FROM billing
+    WHERE consultation_id = ? AND voided_at IS NULL
+    ORDER BY id
+  `).all(consultationId);
+  const paidBill = activeBills.find((bill) => bill.status === "paid");
+  if (paidBill) {
+    return res.status(409).json({
+      error: "This visit has a paid bill and cannot be deleted. Record a documented payment correction, refund, or credit note first.",
+      code: "PAID_CONSULTATION_VOID_BLOCKED",
+      bill_id: Number(paidBill.id),
+    });
+  }
+
+  const reason = String(req.body?.reason || req.query?.reason || "").trim();
+  if (reason.length < 8) {
+    return res.status(400).json({
+      error: "Enter a meaningful reason for voiding this consultation and its unpaid billing.",
+    });
   }
 
   try {
     db.transaction(() => {
     reverseInventoryForConsultation(consultationId, req.auth || {}, {
-      reason: String(req.body?.reason || req.query?.reason || "Consultation voided").trim(),
+      reason,
       confirmLegacyException: req.body?.confirm_legacy_exception === true,
     });
     db.prepare(`
@@ -383,7 +429,7 @@ router.delete("/:id", (req, res) => {
       WHERE consultation_id = ?
     `).run(
       req.auth?.id || null,
-      String(req.body?.reason || "Consultation voided").trim(),
+      reason,
       consultationId,
     );
     db.prepare(`
@@ -395,7 +441,7 @@ router.delete("/:id", (req, res) => {
       WHERE id = ?
     `).run(
       req.auth?.id || null,
-      String(req.body?.reason || "Consultation voided").trim(),
+      reason,
       consultationId,
     );
   }).immediate();

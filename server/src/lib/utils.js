@@ -26,24 +26,69 @@ function safeJsonParse(value, fallback = null) {
   }
 }
 
+function isValidCurrencyAmount(value) {
+  if (value === null || value === undefined || value === "") {
+    return false;
+  }
+
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return false;
+  }
+
+  const cents = amount * 100;
+  return Number.isSafeInteger(Math.round(cents)) && Math.abs(cents - Math.round(cents)) < 1e-8;
+}
+
+function billingItemsValidationError(items, { allowEmpty = false } = {}) {
+  const parsed = Array.isArray(items) ? items : safeJsonParse(items, null);
+  if (!Array.isArray(parsed)) {
+    return "Billing items must be supplied as a list.";
+  }
+  if (!allowEmpty && parsed.length === 0) {
+    return "At least one billing line item is required.";
+  }
+
+  for (let index = 0; index < parsed.length; index += 1) {
+    const item = parsed[index];
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return `Billing line ${index + 1} is invalid.`;
+    }
+    if (!isValidCurrencyAmount(item.amount)) {
+      return `Billing line ${index + 1} amount must be zero or more and use no more than two decimal places.`;
+    }
+  }
+
+  return null;
+}
+
 function normalizeBillingItems(items) {
   const parsed = Array.isArray(items) ? items : safeJsonParse(items, []);
 
   return parsed
-    .map((item) => ({
-      description: String(item?.description ?? "").trim(),
-      amount: toNumber(item?.amount, 0),
-      type: ["Sale", "Wastage", "Adjustment"].includes(String(item?.type || "").trim())
-        ? String(item.type).trim()
-        : "Sale",
-      quantity: Number.isInteger(Number(item?.quantity)) ? Number(item.quantity) : 0,
-      inventory_item_id: item?.inventory_item_id ? Number(item.inventory_item_id) : null,
-      emergency_override: Boolean(item?.emergency_override),
-      ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
-      ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
-      ...(Array.isArray(item?.inventory_movement_ids) ? {inventory_movement_ids: item.inventory_movement_ids.map(Number).filter(Boolean)} : {}),
-      appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,
-    }))
+    .map((item) => {
+      const amount = toNumber(item?.amount, 0);
+      const quantity = Number.isInteger(Number(item?.quantity)) ? Number(item.quantity) : 0;
+      const suppliedUnitPrice = isValidCurrencyAmount(item?.unit_price)
+        ? Number(item.unit_price)
+        : null;
+      const unitPrice = suppliedUnitPrice ?? Number((quantity > 0 ? amount / quantity : amount).toFixed(2));
+      return {
+        description: String(item?.description ?? "").trim(),
+        amount,
+        unit_price: unitPrice,
+        type: ["Sale", "Wastage", "Adjustment"].includes(String(item?.type || "").trim())
+          ? String(item.type).trim()
+          : "Sale",
+        quantity,
+        inventory_item_id: item?.inventory_item_id ? Number(item.inventory_item_id) : null,
+        emergency_override: Boolean(item?.emergency_override),
+        ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
+        ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
+        ...(Array.isArray(item?.inventory_movement_ids) ? {inventory_movement_ids: item.inventory_movement_ids.map(Number).filter(Boolean)} : {}),
+        appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,
+      };
+    })
     .filter((item) => item.description || item.amount);
 }
 
@@ -118,8 +163,10 @@ function serializePatientBillingRows(rows) {
 }
 
 module.exports = {
+  billingItemsValidationError,
   calculateBillingTotal,
   getTodayLocal,
+  isValidCurrencyAmount,
   normalizeBillingItems,
   offsetLocalDate,
   parseBillingRow,

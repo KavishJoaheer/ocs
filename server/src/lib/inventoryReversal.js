@@ -2,7 +2,7 @@
 
 const { db } = require("../db");
 const { publishInventoryChange } = require("./inventoryRealtime");
-const { unlinkSaleMovementsForBills } = require("./saleBillingLinkage");
+const { unlinkSaleMovementsByIds, unlinkSaleMovementsForBills } = require("./saleBillingLinkage");
 const { assertInventoryQuantityUpdate } = require("./inventoryQuantity");
 const {
   allocationsForMovement,
@@ -259,13 +259,15 @@ function reverseInventoryForConsultation(
 
 function reverseBillingSubmissionInventory({
   movementIds = [],
+  dispensingMovementIds = [],
   consultationId,
   billingId,
   actor = {},
   reason = "",
 }) {
   const ids = [...new Set((movementIds || []).map(Number).filter(Boolean))];
-  if (!ids.length) {
+  const linkedDispensingIds = [...new Set((dispensingMovementIds || []).map(Number).filter(Boolean))];
+  if (!ids.length && !linkedDispensingIds.length) {
     throw HttpError(
       409,
       "This submission predates exact movement tracking and cannot be safely reversed automatically. Use an authorised inventory correction.",
@@ -388,11 +390,19 @@ function reverseBillingSubmissionInventory({
     touchedItemIds.add(Number(item.id));
   }
 
+  const unlinkedDispensingIds = unlinkSaleMovementsByIds(linkedDispensingIds, {
+    billingId,
+    consultationId,
+  });
+
   return {
-    reversed: reversalIds.length,
+    reversed: reversalIds.length + unlinkedDispensingIds.length,
+    stockMovementsReversed: reversalIds.length,
+    dispensingLinksReopened: unlinkedDispensingIds.length,
     reversalIds,
+    unlinkedDispensingIds,
     touchedItemIds: [...touchedItemIds],
-    idempotent: reversalIds.length === 0,
+    idempotent: reversalIds.length === 0 && unlinkedDispensingIds.length === 0,
   };
 }
 

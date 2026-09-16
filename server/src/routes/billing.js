@@ -1,8 +1,10 @@
 const express = require("express");
 const { db } = require("../db");
 const {
+  billingItemsValidationError,
   calculateBillingTotal,
   getTodayLocal,
+  isValidCurrencyAmount,
   normalizeBillingItems,
   parseBillingRow,
 } = require("../lib/utils");
@@ -41,8 +43,8 @@ function validPaymentDate(value) {
 }
 function billingDateSql(req) {
   return req.query.dateBasis === "payment"
-    ? "CASE WHEN b.status = 'paid' THEN COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) ELSE date(c.consultation_date) END"
-    : "date(c.consultation_date)";
+    ? "CASE WHEN b.status = 'paid' THEN COALESCE(NULLIF(b.payment_date, ''), date(b.created_at, '+4 hours')) ELSE date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) END"
+    : "date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date))";
 }
 function inventorySignature(items) {
   return JSON.stringify(normalizeBillingItems(items).filter(i => i.inventory_item_id).map(i =>
@@ -106,6 +108,32 @@ function normalizePaymentMethod(value) {
   return normalized || null;
 }
 
+function normalizeSourceReference(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function consultationTypeFromItems(items) {
+  return String(normalizeBillingItems(items).find(isConsultationFee)?.description || "").trim();
+}
+
+function getBillingIssueSnapshot(consultation, items, actor) {
+  const user = actor?.id
+    ? db.prepare("SELECT full_name, role FROM users WHERE id = ?").get(actor.id)
+    : null;
+  return {
+    issuedByUserId: actor?.id || null,
+    issuedByName: String(actor?.full_name || user?.full_name || actor?.username || "System"),
+    issuedByRole: String(actor?.role || user?.role || "system"),
+    patientIdentifier: String(consultation?.patient_identifier || ""),
+    patientName: String(consultation?.patient_name || ""),
+    doctorId: Number(consultation?.doctor_id || 0) || null,
+    doctorName: String(consultation?.doctor_name || ""),
+    consultationDate: consultation?.consultation_date || null,
+    consultationType: consultationTypeFromItems(items),
+    partnerCategory: String(consultation?.insurance_provider || "").trim() || "Self-pay",
+  };
+}
+
 function buildDoctorAccessClause(auth) {
   if (auth?.role === "doctor") {
     const caseloadDoctorId = Number(auth.doctor_id || 0);
@@ -139,6 +167,8 @@ function getConsultationContext(consultationId) {
         c.consultation_date,
         c.voided_at,
         p.full_name AS patient_name,
+        p.patient_identifier,
+        p.insurance_provider,
         d.full_name AS doctor_name
       FROM consultations c
       JOIN patients p ON p.id = c.patient_id
@@ -645,13 +675,14 @@ function getJoinedBillById(billId) {
     .prepare(`
       SELECT
         b.*,
-        p.full_name AS patient_name,
+        COALESCE(NULLIF(b.patient_name_snapshot, ''), p.full_name) AS patient_name,
+        COALESCE(NULLIF(b.patient_identifier_snapshot, ''), p.patient_identifier) AS patient_identifier,
         p.deleted_at AS patient_archived_at,
         c.voided_at AS consultation_voided_at,
-        c.consultation_date,
+        COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date) AS consultation_date,
         c.appointment_id,
-        c.doctor_id,
-        d.full_name AS doctor_name,
+        COALESCE(b.doctor_id_snapshot, c.doctor_id) AS doctor_id,
+        COALESCE(NULLIF(b.doctor_name_snapshot, ''), d.full_name) AS doctor_name,
         u.full_name AS updated_by_name
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
@@ -709,8 +740,8 @@ router.get("/patient-summary", (req, res) => {
   const summary = db
     .prepare(`
       SELECT
-        p.id AS patient_id,
-        p.full_name AS patient_name,
+        b.patient_id AS patient_id,
+        COALESCE(NULLIF(MAX(b.patient_name_snapshot), ''), MAX(p.full_name)) AS patient_name,
         COUNT(b.id) AS bill_count,
         COALESCE(SUM(b.total_amount), 0) AS total_billed,
         COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.total_amount ELSE 0 END), 0) AS paid_amount,
@@ -723,7 +754,7 @@ router.get("/patient-summary", (req, res) => {
         AND (@dateTo = '' OR ${billingDateSql(req)} <= date(@dateTo))
         AND (@reportDoctorId IS NULL OR c.doctor_id = @reportDoctorId)
         ${doctorAccess.clause}
-      GROUP BY p.id
+      GROUP BY b.patient_id
       ORDER BY unpaid_amount DESC, total_billed DESC, patient_name ASC
     `)
     .all({
@@ -747,12 +778,13 @@ router.get("/", (req, res) => {
     .prepare(`
       SELECT
         b.*,
-        p.full_name AS patient_name,
+        COALESCE(NULLIF(b.patient_name_snapshot, ''), p.full_name) AS patient_name,
+        COALESCE(NULLIF(b.patient_identifier_snapshot, ''), p.patient_identifier) AS patient_identifier,
         p.deleted_at AS patient_archived_at,
         c.voided_at AS consultation_voided_at,
-        c.consultation_date,
-        c.doctor_id,
-        d.full_name AS doctor_name,
+        COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date) AS consultation_date,
+        COALESCE(b.doctor_id_snapshot, c.doctor_id) AS doctor_id,
+        COALESCE(NULLIF(b.doctor_name_snapshot, ''), d.full_name) AS doctor_name,
         u.full_name AS updated_by_name
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
@@ -1270,8 +1302,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   if (hasRequestedFee && !Object.prototype.hasOwnProperty.call(CONSULTATION_FEES, requestedFeeType)) {
     return res.status(400).json({ error: "Select Day, Night, or Review Consultation." });
   }
-  if (hasRequestedFee && (!Number.isFinite(requestedFeeAmount) || requestedFeeAmount < 0 || requestedFeeAmount > 100000)) {
-    return res.status(400).json({ error: "Enter a consultation price between Rs 0 and Rs 100,000." });
+  if (hasRequestedFee && (!isValidCurrencyAmount(req.body?.consultation_fee?.amount) || requestedFeeAmount > 100000)) {
+    return res.status(400).json({ error: "Enter a consultation price between Rs 0 and Rs 100,000 using no more than two decimal places." });
   }
 
   const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -1409,6 +1441,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             UPDATE billing
             SET items = ?,
                 total_amount = ?,
+                consultation_type_snapshot = ?,
                 updated_at = CURRENT_TIMESTAMP,
                 updated_by_user_id = ?,
                 change_reason = ?,
@@ -1421,6 +1454,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           .run(
             JSON.stringify(nextItems),
             calculateBillingTotal(nextItems),
+            consultationTypeFromItems(nextItems),
             req.auth.id,
             feeChanged && addedItems.length
               ? "Consultation fee adjusted and supplies captured in quick billing"
@@ -1565,7 +1599,8 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
 
       const submittedItems = normalizeBillingItems(fresh.items_json);
       const movementIds = submittedItems.flatMap((item) => item.inventory_movement_ids || []);
-      if (!movementIds.length) {
+      const dispensingMovementIds = submittedItems.flatMap((item) => item.dispensing_movement_ids || []);
+      if (!movementIds.length && !dispensingMovementIds.length) {
         throw Object.assign(new Error("This submission has no automatically reversible supply movements."), {
           status: 409,
           extra: { code: "SUBMISSION_REVERSAL_REQUIRES_CORRECTION" },
@@ -1573,6 +1608,7 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
       }
       const reversed = reverseBillingSubmissionInventory({
         movementIds,
+        dispensingMovementIds,
         consultationId: fresh.consultation_id,
         billingId: fresh.billing_id,
         actor: req.auth,
@@ -1581,9 +1617,12 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
       touchedItemIds = reversed.touchedItemIds;
 
       const bill = parseBillingRow(db.prepare("SELECT * FROM billing WHERE id = ?").get(fresh.billing_id));
-      const movementIdSet = new Set(movementIds.map(Number));
+      const movementIdSet = new Set([...movementIds, ...dispensingMovementIds].map(Number));
       const nextItems = (bill.items || []).filter(
-        (item) => !(item.inventory_movement_ids || []).some((id) => movementIdSet.has(Number(id))),
+        (item) => ![
+          ...(item.inventory_movement_ids || []),
+          ...(item.dispensing_movement_ids || []),
+        ].some((id) => movementIdSet.has(Number(id))),
       );
       if (nextItems.length === (bill.items || []).length) {
         throw Object.assign(new Error("The submitted supply lines no longer match the unpaid bill. Reopen the bill and use an authorised correction."), {
@@ -1624,9 +1663,20 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
         previousStatus: fresh.workflow_status,
         nextStatus: "reversed",
         reason,
-        details: { movement_ids: movementIds, reversal_movement_ids: reversed.reversalIds },
+        details: {
+          movement_ids: movementIds,
+          dispensing_movement_ids: dispensingMovementIds,
+          reversal_movement_ids: reversed.reversalIds,
+          reopened_dispensing_movement_ids: reversed.unlinkedDispensingIds,
+        },
       });
-      result = { submission_id: submissionId, reversed: reversed.reversed, already_reversed: false };
+      result = {
+        submission_id: submissionId,
+        reversed: reversed.reversed,
+        stock_movements_reversed: reversed.stockMovementsReversed,
+        dispensing_links_reopened: reversed.dispensingLinksReopened,
+        already_reversed: false,
+      };
       operation.save(result);
     }).immediate();
   } catch (error) {
@@ -1782,10 +1832,9 @@ router.post("/", (req, res) => {
     });
   }
 
+  const itemValidationError = billingItemsValidationError(req.body.items);
+  if (itemValidationError) return res.status(400).json({ error: itemValidationError });
   const items = normalizeBillingItems(req.body.items);
-  if (!items.length) {
-    return res.status(400).json({ error: "At least one billing line item is required." });
-  }
 
   const status = String(req.body.status ?? "unpaid")
     .trim()
@@ -1794,8 +1843,13 @@ router.post("/", (req, res) => {
     return res.status(400).json({ error: "Billing status is invalid." });
   }
 
+  const sourceReference = normalizeSourceReference(req.body.source_reference);
+  if (sourceReference && sourceReference.length < 3) {
+    return res.status(400).json({ error: "Enter a source reference with at least 3 characters." });
+  }
+
   if (req.auth.role === "operator") {
-    if (String(req.body.source_reference || "").trim().length < 3) {
+    if (sourceReference.length < 3) {
       return res.status(400).json({
         error: "Enter the OCS paper invoice number or photo reference before issuing this invoice.",
       });
@@ -1832,11 +1886,26 @@ router.post("/", (req, res) => {
       if (!current || current.voided_at) throw Object.assign(new Error("This consultation is no longer available for billing."), {status:409});
       const replay = operation.read();
       if (replay) { createdId = replay.billId; return; }
+      if (sourceReference) {
+        const duplicate = db.prepare(`
+          SELECT id, invoice_number
+          FROM billing
+          WHERE lower(trim(source_reference)) = lower(trim(?))
+          LIMIT 1
+        `).get(sourceReference);
+        if (duplicate) {
+          throw Object.assign(
+            new Error(`Source reference ${sourceReference} is already attached to ${duplicate.invoice_number || `bill #${duplicate.id}`}.`),
+            { status: 409, extra: { code: "DUPLICATE_SOURCE_REFERENCE", bill_id: duplicate.id } },
+          );
+        }
+      }
       assertSingleVisitFee(db, consultationId, items);
       // Insert a placeholder bill first so the linkage helper has a billing
       // id to stamp onto any matched Sale movements. Items + total are
       // computed inside the same transaction below so callers never observe
       // the empty row.
+      const snapshot = getBillingIssueSnapshot(current, items, req.auth);
       const inserted = db.prepare(`
         INSERT INTO billing (
           consultation_id,
@@ -1847,9 +1916,21 @@ router.post("/", (req, res) => {
           payment_method,
           payment_date,
           updated_by_user_id,
-          change_reason
+          change_reason,
+          source_reference,
+          issued_at,
+          issued_by_user_id,
+          issued_by_name,
+          issued_by_role,
+          patient_identifier_snapshot,
+          patient_name_snapshot,
+          doctor_id_snapshot,
+          doctor_name_snapshot,
+          consultation_date_snapshot,
+          consultation_type_snapshot,
+          partner_category_snapshot
         )
-        VALUES (?, ?, '[]', 0, ?, ?, ?, ?, ?)
+        VALUES (?, ?, '[]', 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         consultationId,
         patientId,
@@ -1858,8 +1939,19 @@ router.post("/", (req, res) => {
         paymentDate,
         req.auth.id,
         req.auth.role === "operator"
-          ? `Paper invoice: ${String(req.body.source_reference || "").trim()}`
+          ? `Paper invoice: ${sourceReference}`
           : "",
+        sourceReference || null,
+        snapshot.issuedByUserId,
+        snapshot.issuedByName,
+        snapshot.issuedByRole,
+        snapshot.patientIdentifier,
+        snapshot.patientName,
+        snapshot.doctorId,
+        snapshot.doctorName,
+        snapshot.consultationDate,
+        snapshot.consultationType,
+        snapshot.partnerCategory,
       );
       createdId = Number(inserted.lastInsertRowid);
 
@@ -1885,6 +1977,12 @@ router.post("/", (req, res) => {
       operation.save({ billId: createdId });
     }).immediate();
   } catch (error) {
+    if (String(error?.message || "").includes("idx_billing_source_reference_unique")) {
+      return res.status(409).json({
+        error: "That paper invoice or source reference has already been used.",
+        code: "DUPLICATE_SOURCE_REFERENCE",
+      });
+    }
     const status = Number(error?.status || 400);
     return res.status(status).json({
       error: error?.message || "Failed to create billing entry.",
@@ -1923,10 +2021,9 @@ router.put("/:id", (req, res) => {
     return res.status(accessError.status).json({ error: accessError.error });
   }
 
+  const itemValidationError = billingItemsValidationError(req.body.items);
+  if (itemValidationError) return res.status(400).json({ error: itemValidationError });
   const items = normalizeBillingItems(req.body.items);
-  if (!items.length) {
-    return res.status(400).json({ error: "At least one billing line item is required." });
-  }
   if (req.auth.role === "operator") {
     const requestedStatus = String(req.body.status ?? existing.status).trim().toLowerCase();
     if (requestedStatus !== existing.status) {
@@ -1996,6 +2093,7 @@ router.put("/:id", (req, res) => {
     SET
       items = ?,
       total_amount = ?,
+      consultation_type_snapshot = ?,
       status = ?,
       payment_method = ?,
       payment_date = ?,
@@ -2008,6 +2106,7 @@ router.put("/:id", (req, res) => {
   `).run(
     JSON.stringify(preservedItems),
     calculateBillingTotal(preservedItems),
+    consultationTypeFromItems(preservedItems),
     status,
     paymentMethod,
     paymentDate || null,

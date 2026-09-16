@@ -285,6 +285,105 @@ test("incorrect quick-billing supplies reverse stock and bill lines with an immu
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(itemId).count, 1);
 });
 
+test("a mixed reused and newly deducted supply line reverses completely without restoring dispensed stock", async () => {
+  const today = getTodayLocal();
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (
+      full_name, first_name, last_name, patient_identifier, age,
+      contact_number, patient_contact_number, address, assigned_doctor_id
+    ) VALUES (?, 'Mixed', 'Reversal', ?, 35, '57000001', '57000001', 'Test address', ?)
+  `).run(`Mixed reversal ${suffix}`, `OCS-MIX-${suffix}`, doctorId).lastInsertRowid);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '10:00', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const mixedConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Mixed reversal regression')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1").get().id);
+  const mixedItemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, owner_doctor_id, stock_scope, quantity,
+      minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, ?, ?, 'doctor', 5, 0, 'unit', 20, 50)
+  `).run(`Mixed reversal item ${suffix}`, folderId, doctorId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+    VALUES (?, 5, '2032-12-31', 20, 0, 'usable')
+  `).run(mixedItemId);
+
+  const fieldSale = await api("POST", `/inventory/items/${mixedItemId}/actions`, doctorToken, {
+    action_type: "stock_out",
+    reason: "Sale",
+    quantity: 2,
+    patient_id: patientId,
+    consultation_id: mixedConsultationId,
+    dispensed_on: today,
+    expected_version: db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(mixedItemId).row_version,
+    operation_id: randomUUID(),
+  });
+  assert.equal(fieldSale.status, 201, JSON.stringify(fieldSale.data));
+  const dispensing = db.prepare(`
+    SELECT * FROM inventory_movements
+    WHERE item_id = ? AND action_type = 'stock_out'
+    ORDER BY id DESC LIMIT 1
+  `).get(mixedItemId);
+  assert.ok(dispensing);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(mixedItemId).quantity, 3);
+  const feeItems = [{
+    description: "Day Consultation",
+    amount: 2000,
+    type: "Sale",
+    quantity: 1,
+    inventory_item_id: null,
+    is_consultation_fee: true,
+  }];
+  db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+    VALUES (?, ?, ?, 2000, 'unpaid')
+  `).run(mixedConsultationId, patientId, JSON.stringify(feeItems));
+
+  const captured = await api("POST", `/billing/quick/visits/${mixedConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    items: [{ inventory_item_id: mixedItemId, quantity: 3 }],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(mixedItemId).quantity, 2);
+  const submission = db.prepare("SELECT * FROM billing_lite_submissions WHERE id = ?").get(captured.data.submission.submission_id);
+  const submissionLine = JSON.parse(submission.items_json)[0];
+  assert.deepEqual(submissionLine.dispensing_movement_ids, [Number(dispensing.id)]);
+  assert.equal(submissionLine.inventory_movement_ids.length, 1);
+
+  const reversed = await api("POST", `/billing/quick/submissions/${submission.id}/reverse`, operatorToken, {
+    operation_id: randomUUID(),
+    reason: "Mixed supply quantity was entered incorrectly",
+  });
+  assert.equal(reversed.status, 200, JSON.stringify(reversed.data));
+  assert.equal(reversed.data.stock_movements_reversed, 1);
+  assert.equal(reversed.data.dispensing_links_reopened, 1);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(mixedItemId).quantity, 3);
+  const dispensingMeta = JSON.parse(db.prepare("SELECT meta_json FROM inventory_movements WHERE id = ?").get(dispensing.id).meta_json);
+  assert.equal(dispensingMeta.billing_status, "Pending Manual Entry");
+  assert.equal(Object.hasOwn(dispensingMeta, "billing_id"), false);
+  const bill = await api("GET", `/billing/${submission.billing_id}`, doctorToken);
+  assert.equal(bill.status, 200, JSON.stringify(bill.data));
+  assert.equal(bill.data.items.some((line) => Number(line.inventory_item_id) === mixedItemId), false);
+  assert.equal(bill.data.total_amount, 2000);
+});
+
+test("Billing Lite rejects consultation prices with fractional cents", async () => {
+  const result = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    consultation_fee: { type: "Day Consultation", amount: 2000.001 },
+    items: [],
+  });
+  assert.equal(result.status, 400, JSON.stringify(result.data));
+  assert.match(result.data.error, /two decimal places/i);
+});
+
 test("operators can report completed prior-day visits that still lack final billing", async () => {
   const today = new Date(`${getTodayLocal()}T12:00:00`);
   today.setDate(today.getDate() - 1);

@@ -53,6 +53,10 @@ function isVisitFee(line) {
     && (line.is_consultation_fee || /^(?:(?:day|night|review)\s+)?consultation(?:\s+(?:fee|charge))?$/i.test(String(line.description || '').trim()));
 }
 
+function billReference(bill) {
+  return bill?.invoice_number || `Bill #${bill?.id || ""}`;
+}
+
 function billingPageTodayInputValue() {
   const now = new Date();
   const offset = now.getTimezoneOffset();
@@ -527,7 +531,7 @@ function PaymentConfirmation({ bill, busy, onClose, onConfirm }) {
   const [method, setMethod] = useState('');
   const [date, setDate] = useState(billingPageTodayInputValue());
   const [confirmed, setConfirmed] = useState(false);
-  return <Modal open onClose={onClose} title={`Record payment · Bill #${bill.id}`} size="md">
+  return <Modal open onClose={onClose} title={`Record payment · ${billReference(bill)}`} size="md">
     <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (!busy && confirmed && method && date) onConfirm(method, date); }}>
       <p className="text-sm">{bill.patient_name} · {formatDate(bill.consultation_date)}</p>
       <p className="text-2xl font-bold">{formatCurrency(bill.total_amount)}</p>
@@ -657,6 +661,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
       items: items.map((item) => ({
         description: item.description,
         amount: Number(item.amount || 0),
+        unit_price: Number(item.amount || 0) / Math.max(1, Number(item.quantity || 1)),
         type: item.type || "Sale",
         quantity: Number(item.quantity || 0) || 0,
         inventory_item_id: item.inventory_item_id || null,
@@ -678,7 +683,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
     <Modal
       open={open}
       onClose={onClose}
-      title={`${readOnly ? "View" : "Edit"} bill #${bill.id}`}
+      title={`${readOnly ? "View" : "Edit"} ${billReference(bill)}`}
       description={
         readOnly
           ? "View the recorded bill and its change history."
@@ -699,6 +704,14 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
           <p className="text-lg font-semibold text-slate-950">{bill.patient_name}</p>
           <p className="mt-1 text-sm text-slate-600">
             {bill.doctor_name} - {formatDate(bill.consultation_date)}
+          </p>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            {billReference(bill)}
+            {bill.source_reference ? ` · Source ${bill.source_reference}` : ""}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Issued by {bill.issued_by_name || "System"} ({bill.issued_by_role || "system"})
+            {bill.partner_category_snapshot ? ` · ${bill.partner_category_snapshot}` : ""}
           </p>
         </div>
 
@@ -2478,6 +2491,9 @@ function BillingPage() {
     const idStr = String(bill.id ?? "");
     return (
       bill.patient_name?.toLowerCase().includes(query) ||
+      bill.patient_identifier?.toLowerCase().includes(query) ||
+      bill.invoice_number?.toLowerCase().includes(query) ||
+      bill.source_reference?.toLowerCase().includes(query) ||
       idStr.includes(query) ||
       idStr === searchText.trim()
     );
@@ -2982,7 +2998,7 @@ function BillingPage() {
                           <td className="max-w-[220px] px-5 py-3 text-sm text-slate-600">
                             <p className="truncate">{formatDate(bill.consultation_date)}</p>
                             <p className="mt-1 text-slate-500">
-                              Bill #{bill.id} - {bill.items.length} line item
+                              {billReference(bill)} - {bill.items.length} line item
                               {bill.items.length === 1 ? "" : "s"}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -3072,7 +3088,7 @@ function BillingPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-lg font-bold text-ocs-slate">{bill.patient_name}</p>
-                        <p className="mt-1 text-xs font-medium text-slate-500">Invoice #{bill.id}</p>
+                        <p className="mt-1 text-xs font-medium text-slate-500">{billReference(bill)}</p>
                       </div>
                       <button
                         type="button"

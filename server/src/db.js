@@ -2026,7 +2026,7 @@ function ensureUserColumns() {
 }
 
 function ensureBillingColumns() {
-  const columns = db
+  let columns = db
     .prepare("PRAGMA table_info(billing)")
     .all()
     .map((column) => column.name);
@@ -2043,58 +2043,60 @@ function ensureBillingColumns() {
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'billing'")
     .get()?.sql;
 
-  if (/consultation_id\s+INTEGER\s+NOT NULL\s+UNIQUE/i.test(billingTableSql || "")) {
+  if (/consultation_id\s+INTEGER\s+NOT\s+NULL\s+UNIQUE/i.test(billingTableSql || "")) {
+    const foreignKeysWereEnabled = db.pragma("foreign_keys", { simple: true }) === 1;
+    const schemaObjects = db.prepare(`
+      SELECT type, name, sql
+      FROM sqlite_master
+      WHERE tbl_name = 'billing'
+        AND type IN ('index', 'trigger')
+        AND sql IS NOT NULL
+      ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END, name
+    `).all().filter((row) => !(
+      row.type === "index" &&
+      /CREATE\s+UNIQUE\s+INDEX/i.test(row.sql || "") &&
+      /\bconsultation_id\b/i.test(row.sql || "")
+    ));
+    const sourceColumns = columns.slice();
+    const quotedColumns = sourceColumns
+      .map((name) => `"${String(name).replace(/"/g, '""')}"`)
+      .join(", ");
+    const rebuiltTableSql = String(billingTableSql || "")
+      .replace(
+        /^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"billing"|`billing`|\[billing\]|billing)/i,
+        "CREATE TABLE billing_rebuild",
+      )
+      .replace(/(\bconsultation_id\s+INTEGER\s+NOT\s+NULL)\s+UNIQUE\b/i, "$1")
+      .replace(/,\s*UNIQUE\s*\(\s*consultation_id\s*\)/i, "");
+
+    if (!/^CREATE\s+TABLE\s+billing_rebuild/i.test(rebuiltTableSql)) {
+      throw new Error("Unable to prepare the legacy billing migration without risking financial data.");
+    }
+
     db.pragma("foreign_keys = OFF");
     try {
       const migrate = db.transaction(() => {
-        db.exec("ALTER TABLE billing RENAME TO billing_legacy");
-        db.exec(`
-          CREATE TABLE billing (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            consultation_id INTEGER NOT NULL,
-            patient_id INTEGER NOT NULL,
-            items TEXT NOT NULL,
-            total_amount REAL NOT NULL DEFAULT 0,
-            status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),
-            payment_method TEXT
-              CHECK (payment_method IN ('cash', 'juice', 'card', 'ib') OR payment_method IS NULL),
-            payment_date TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE RESTRICT,
-            FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE RESTRICT
-          );
-        `);
-        db.exec(`
-          INSERT INTO billing (
-            id,
-            consultation_id,
-            patient_id,
-            items,
-            total_amount,
-            status,
-            payment_method,
-            payment_date,
-            created_at
-          )
-          SELECT
-            id,
-            consultation_id,
-            patient_id,
-            items,
-            total_amount,
-            status,
-            payment_method,
-            payment_date,
-            created_at
-          FROM billing_legacy
-        `);
-        db.exec("DROP TABLE billing_legacy");
+        db.exec("DROP TABLE IF EXISTS billing_rebuild");
+        db.exec(rebuiltTableSql);
+        db.exec(`INSERT INTO billing_rebuild (${quotedColumns}) SELECT ${quotedColumns} FROM billing`);
+        const sourceCount = Number(db.prepare("SELECT COUNT(*) AS count FROM billing").get()?.count || 0);
+        const copiedCount = Number(db.prepare("SELECT COUNT(*) AS count FROM billing_rebuild").get()?.count || 0);
+        if (copiedCount !== sourceCount) {
+          throw new Error(`Billing migration would discard rows (${sourceCount} -> ${copiedCount}).`);
+        }
+        db.exec("DROP TABLE billing");
+        db.exec("ALTER TABLE billing_rebuild RENAME TO billing");
+        for (const object of schemaObjects) {
+          db.exec(object.sql);
+        }
       });
 
-      migrate();
+      migrate.immediate();
     } finally {
-      db.pragma("foreign_keys = ON");
+      db.pragma(`foreign_keys = ${foreignKeysWereEnabled ? "ON" : "OFF"}`);
     }
+
+    columns = db.prepare("PRAGMA table_info(billing)").all().map((column) => column.name);
   }
 
   if (!columns.includes("linkham_claim_status")) {
@@ -3665,9 +3667,33 @@ function ensureBillingForConsultation(consultationId, patientId, actor = null, c
       },
     ]);
 
+    const context = db.prepare(`
+      SELECT
+        c.consultation_date,
+        c.doctor_id,
+        p.patient_identifier,
+        p.full_name AS patient_name,
+        p.insurance_provider,
+        d.full_name AS doctor_name
+      FROM consultations c
+      JOIN patients p ON p.id = c.patient_id
+      JOIN doctors d ON d.id = c.doctor_id
+      WHERE c.id = ?
+    `).get(consultationId);
+    const issuer = actor?.id
+      ? db.prepare("SELECT full_name, role FROM users WHERE id = ?").get(actor.id)
+      : null;
+
     const insert = db.prepare(`
-      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, updated_by_user_id, fee_review_required)
-      VALUES (?, ?, ?, ?, 'unpaid', NULL, ?, ?)
+      INSERT INTO billing (
+        consultation_id, patient_id, items, total_amount, status, payment_method,
+        updated_by_user_id, fee_review_required, issued_at, issued_by_user_id,
+        issued_by_name, issued_by_role, patient_identifier_snapshot,
+        patient_name_snapshot, doctor_id_snapshot, doctor_name_snapshot,
+        consultation_date_snapshot, consultation_type_snapshot,
+        partner_category_snapshot
+      )
+      VALUES (?, ?, ?, ?, 'unpaid', NULL, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = insert.run(
@@ -3677,6 +3703,16 @@ function ensureBillingForConsultation(consultationId, patientId, actor = null, c
       calculateBillingTotal(items),
       actor?.id || null,
       consultationType ? 0 : 1,
+      actor?.id || null,
+      String(actor?.full_name || issuer?.full_name || actor?.username || "System"),
+      String(actor?.role || issuer?.role || "system"),
+      String(context?.patient_identifier || ""),
+      String(context?.patient_name || ""),
+      Number(context?.doctor_id || 0) || null,
+      String(context?.doctor_name || ""),
+      context?.consultation_date || null,
+      feeType,
+      String(context?.insurance_provider || "").trim() || "Self-pay",
     );
     billId = result.lastInsertRowid;
   }
