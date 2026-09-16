@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -69,10 +69,10 @@ function formatSubmittedAt(value) {
   return parsed.isValid() ? parsed.format("D MMM, HH:mm") : value;
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, compact = false }) {
   const meta = STATUS_META[status] || STATUS_META.ready;
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold ring-1 ring-inset ${meta.className}`}>
+    <span className={`inline-flex items-center rounded-full font-bold ring-1 ring-inset ${compact ? "px-2.5 py-0.5 text-xs" : "px-3 py-1 text-sm"} ${meta.className}`}>
       {meta.label}
     </span>
   );
@@ -81,29 +81,29 @@ function StatusBadge({ status }) {
 function VisitCard({ visit, onSelect }) {
   const canOpen = Boolean(visit.can_submit);
   return (
-    <article className="overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-[0_16px_45px_rgba(23,77,80,0.08)]">
+    <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_10px_28px_rgba(23,77,80,0.07)]">
       <button
         type="button"
         disabled={!canOpen}
         onClick={() => canOpen && onSelect(visit)}
-        className="flex min-h-36 w-full items-stretch text-left disabled:cursor-default"
+        className="flex min-h-24 w-full items-stretch text-left disabled:cursor-default"
       >
-        <span className="flex w-20 shrink-0 flex-col items-center justify-center bg-[#e8f8f6] text-[#15666a]">
-          <span className="text-sm font-extrabold uppercase tracking-wide">{formatVisitDate(visit.visit_date).split(",")[0]}</span>
-          <span className="mt-1 text-xl font-black tabular-nums">{formatVisitTime(visit.visit_time)}</span>
+        <span className="flex w-16 shrink-0 flex-col items-center justify-center bg-[#e8f8f6] text-[#15666a]">
+          <span className="text-xs font-extrabold uppercase tracking-wide">{formatVisitDate(visit.visit_date).split(",")[0]}</span>
+          <span className="mt-0.5 text-lg font-black tabular-nums">{formatVisitTime(visit.visit_time)}</span>
         </span>
-        <span className="flex min-w-0 flex-1 items-center justify-between gap-3 px-5 py-4">
+        <span className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
           <span className="min-w-0">
-            <span className="block text-lg font-black text-[#173f47]">{visit.patient_name || visit.patient_masked_name}</span>
-            <span className="mt-1 block text-sm font-bold text-slate-500">
+            <span className="block truncate text-base font-black text-[#173f47]">{visit.patient_name || visit.patient_masked_name}</span>
+            <span className="mt-0.5 block truncate text-xs font-bold text-slate-500">
               {visit.patient_identifier} · {visit.visit_number}
             </span>
-            <span className="mt-3 inline-flex"><StatusBadge status={visit.submission_status} /></span>
+            <span className="mt-2 inline-flex"><StatusBadge status={visit.submission_status} compact /></span>
           </span>
           {canOpen ? (
-            <ChevronRight className="size-7 shrink-0 text-[#248f91]" aria-hidden="true" />
+            <ChevronRight className="size-5 shrink-0 text-[#248f91]" aria-hidden="true" />
           ) : (
-            <CheckCircle2 className="size-7 shrink-0 text-emerald-600" aria-hidden="true" />
+            <CheckCircle2 className="size-5 shrink-0 text-emerald-600" aria-hidden="true" />
           )}
         </span>
       </button>
@@ -139,6 +139,7 @@ function BillingLitePage({ onOpenHistory }) {
   const [patientOptions, setPatientOptions] = useState([]);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
+  const patientPickerRef = useRef(null);
   const [visitSearch, setVisitSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPickerVisitId, setSelectedPickerVisitId] = useState("");
@@ -222,6 +223,14 @@ function BillingLitePage({ onOpenHistory }) {
       JSON.stringify([...favorites]),
     );
   }, [favorites, user?.id]);
+
+  useEffect(() => {
+    if (!patientPickerOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      patientPickerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [patientPickerOpen]);
 
   const categories = useMemo(() => {
     const names = new Set(catalog.map((item) => item.subcategory || item.category).filter(Boolean));
@@ -591,8 +600,8 @@ function BillingLitePage({ onOpenHistory }) {
   ).length;
 
   return (
-    <div className="relative min-h-[70svh] overflow-hidden rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
-      <div className="absolute inset-x-0 top-0 z-0 h-72 bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
+    <div className="relative min-h-[70svh] rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
+      <div className="absolute inset-x-0 top-0 z-0 h-72 rounded-t-[2rem] bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
 
       <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-10 pt-5">
         {isLoading ? (
@@ -646,11 +655,11 @@ function BillingLitePage({ onOpenHistory }) {
               </div>
             ) : null}
 
-            <div className="relative z-10 mb-6 rounded-[2rem] border border-white/70 bg-white/95 p-5 shadow-[0_16px_45px_rgba(23,77,80,0.14)] md:p-6">
+            <div className="relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white/95 p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-black text-[#173f47]">Visits needing billing</h2>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">Today first, followed by overdue consultations.</p>
+                  <h2 className="text-lg font-black text-[#173f47]">Visits needing billing</h2>
+                  <p className="text-xs font-semibold text-slate-500">Today first, then overdue.</p>
                 </div>
                 <div className="flex gap-2 text-xs font-black">
                   <span className="rounded-full bg-[#e7f8f5] px-3 py-1.5 text-[#17666a]">Today {todayPriorityCount}</span>
@@ -660,19 +669,19 @@ function BillingLitePage({ onOpenHistory }) {
                 </div>
               </div>
               {priorityVisits.length ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {priorityVisits.slice(0, 6).map((visit) => (
+                <div className="mt-3 grid gap-2.5 md:grid-cols-2">
+                  {priorityVisits.slice(0, 4).map((visit) => (
                     <VisitCard key={visit.consultation_id} visit={visit} onSelect={chooseVisit} />
                   ))}
                 </div>
               ) : (
-                <div className="mt-4 rounded-2xl bg-[#eff8f7] px-4 py-5 text-center font-bold text-[#17666a]">
+                <div className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">
                   No completed visits are waiting for billing.
                 </div>
               )}
-              {priorityVisits.length > 6 ? (
-                <p className="mt-3 text-center text-sm font-bold text-slate-500">
-                  {priorityVisits.length - 6} more available in the patient and consultation picker below.
+              {priorityVisits.length > 4 ? (
+                <p className="mt-2.5 text-center text-xs font-bold text-slate-500">
+                  {priorityVisits.length - 4} more in the patient and consultation picker below.
                 </p>
               ) : null}
             </div>
@@ -693,7 +702,7 @@ function BillingLitePage({ onOpenHistory }) {
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                <div className="relative">
+                <div ref={patientPickerRef} className="relative z-50 scroll-mt-4">
                   <label className="text-sm font-black text-slate-700">1. Patient</label>
                   <button
                     type="button"
@@ -717,8 +726,8 @@ function BillingLitePage({ onOpenHistory }) {
                   </button>
 
                   {patientPickerOpen ? (
-                    <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,50,55,0.2)]">
-                      <div className="border-b border-slate-100 p-3">
+                    <div className="absolute inset-x-0 top-full z-[70] mt-2 flex max-h-[min(24rem,calc(100svh-6rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,50,55,0.2)]">
+                      <div className="shrink-0 border-b border-slate-100 p-3">
                         <div className="relative">
                           <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                           <input
@@ -729,8 +738,11 @@ function BillingLitePage({ onOpenHistory }) {
                             className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 font-semibold text-[#173f47] outline-none focus:border-[#2aa7a0] focus:bg-white"
                           />
                         </div>
+                        <p className="mt-2 px-1 text-xs font-bold text-slate-500">
+                          {filteredPatientOptions.length} {filteredPatientOptions.length === 1 ? "patient" : "patients"} from your billable visits
+                        </p>
                       </div>
-                      <div className="max-h-72 overflow-y-auto" role="listbox" aria-label="Patients with consultations ready to bill">
+                      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="listbox" aria-label="Patients with consultations ready to bill">
                         {filteredPatientOptions.length ? filteredPatientOptions.map((patient) => (
                           <button
                             key={patient.patient_id}
