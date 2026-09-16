@@ -438,6 +438,8 @@ router.get("/billing", (req, res) => {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
       WHERE b.patient_id = ?
+        AND b.voided_at IS NULL
+        AND c.voided_at IS NULL
       ORDER BY b.created_at DESC
     `)
     .all(patientId);
@@ -473,6 +475,8 @@ router.get("/billing/:id", (req, res) => {
         WHERE b.id = ?
           AND b.patient_id = ?
           AND p.deleted_at IS NULL
+          AND b.voided_at IS NULL
+          AND c.voided_at IS NULL
       `,
     )
     .get(billId, patientId);

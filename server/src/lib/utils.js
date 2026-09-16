@@ -57,6 +57,16 @@ function billingItemsValidationError(items, { allowEmpty = false } = {}) {
     if (!isValidCurrencyAmount(item.amount)) {
       return `Billing line ${index + 1} amount must be zero or more and use no more than two decimal places.`;
     }
+    if (item.inventory_item_id != null && item.inventory_item_id !== "") {
+      const inventoryItemId = Number(item.inventory_item_id);
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(inventoryItemId) || inventoryItemId <= 0) {
+        return `Billing line ${index + 1} has an invalid inventory item.`;
+      }
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        return `Billing line ${index + 1} inventory quantity must be a positive whole number.`;
+      }
+    }
     if (String(item.type || "").trim() === "Wastage") {
       if (String(item.wastage_reason || "").trim().length < 8) {
         return `Wastage line ${index + 1} needs a meaningful reason of at least 8 characters.`;

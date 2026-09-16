@@ -23,7 +23,7 @@ import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
-import { listOfflineMutations } from "../lib/offlineQueue.js";
+import { listOfflineMutations, removeOfflineMutation } from "../lib/offlineQueue.js";
 import { isBrowserOffline, isNetworkFailure } from "../lib/networkErrors.js";
 import {
   flushOfflineQueue,
@@ -139,6 +139,7 @@ function BillingLitePage({ onOpenHistory }) {
   const [patientOptions, setPatientOptions] = useState([]);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
+  const [visitSearch, setVisitSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPickerVisitId, setSelectedPickerVisitId] = useState("");
   const [consultationFees, setConsultationFees] = useState({});
@@ -150,6 +151,7 @@ function BillingLitePage({ onOpenHistory }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);
   const [offlineSubmissions, setOfflineSubmissions] = useState([]);
+  const [editingOfflineEntry, setEditingOfflineEntry] = useState(null);
   const [lastSubmissionOffline, setLastSubmissionOffline] = useState(false);
   const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
   const [favorites, setFavorites] = useState(() => {
@@ -287,6 +289,45 @@ function BillingLitePage({ onOpenHistory }) {
     [selectedPatient, selectedPickerVisitId],
   );
 
+  const filteredPickerVisits = useMemo(() => {
+    const needle = visitSearch.trim().toLowerCase();
+    const visits = selectedPatient?.visits || [];
+    if (!needle) return visits;
+    return visits.filter((visit) =>
+      [
+        visit.visit_number,
+        formatVisitDate(visit.visit_date),
+        formatVisitTime(visit.visit_time),
+        visit.doctor_name,
+      ].some((value) => String(value || "").toLowerCase().includes(needle)),
+    );
+  }, [selectedPatient, visitSearch]);
+
+  const priorityVisits = useMemo(() => {
+    const today = dayjs().startOf("day");
+    return patientOptions
+      .flatMap((patient) => (patient.visits || []).map((visit) => ({
+        ...visit,
+        patient_name: visit.patient_name || patient.patient_name,
+        patient_identifier: visit.patient_identifier || patient.patient_identifier,
+      })))
+      .filter((visit) =>
+        visit.can_submit &&
+        ["ready", "needs_doctor"].includes(visit.submission_status) &&
+        dayjs(visit.visit_date).isValid() &&
+        !dayjs(visit.visit_date).startOf("day").isAfter(today),
+      )
+      .sort((a, b) => {
+        const aToday = dayjs(a.visit_date).isSame(today, "day");
+        const bToday = dayjs(b.visit_date).isSame(today, "day");
+        if (aToday !== bToday) return aToday ? -1 : 1;
+        return dayjs(a.visit_date).valueOf() - dayjs(b.visit_date).valueOf();
+      });
+  }, [patientOptions]);
+
+  const todayPriorityCount = priorityVisits.filter((visit) => dayjs(visit.visit_date).isSame(dayjs(), "day")).length;
+  const overduePriorityCount = priorityVisits.length - todayPriorityCount;
+
   const supplyTotal = selectedItems.reduce(
     (sum, item) => sum + Number(item.selling_price || 0) * item.quantity,
     0,
@@ -309,18 +350,36 @@ function BillingLitePage({ onOpenHistory }) {
     setCatalog([]);
     setCatalogSearch("");
     setShowUnavailable(false);
-    setView("confirm");
+    await openCatalog(visit);
   }
 
   function choosePatient(patient) {
     setSelectedPatientId(String(patient.patient_id));
     setSelectedPickerVisitId(patient.visits?.length === 1 ? String(patient.visits[0].consultation_id) : "");
+    setVisitSearch("");
     setPatientPickerOpen(false);
     setPatientSearch("");
   }
 
-  async function openCatalog() {
-    if (!selectedVisit) return;
+  async function openCatalog(visit = selectedVisit) {
+    if (!visit) return;
+    setIsCatalogLoading(true);
+    try {
+      const payload = await api.get(`/billing/quick/catalog/${visit.consultation_id}`);
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setCatalog(items);
+      setSelectedVisit(payload.visit || visit);
+      const hasSavedFavourite = items.some((item) => favorites.has(item.id));
+      setCategory(hasSavedFavourite ? "Favourites" : "All supplies");
+      setView("catalog");
+    } catch (error) {
+      toast.error(error.message || "Supplies could not be loaded.");
+    } finally {
+      setIsCatalogLoading(false);
+    }
+  }
+
+  function reviewBilling() {
     const amount = Number(consultationPrice);
     if (!Object.hasOwn(consultationFees, consultationType)) {
       toast.error("Select a valid consultation type.");
@@ -330,20 +389,7 @@ function BillingLitePage({ onOpenHistory }) {
       toast.error("Enter a consultation price between Rs 0 and Rs 100,000.");
       return;
     }
-    setIsCatalogLoading(true);
-    try {
-      const payload = await api.get(`/billing/quick/catalog/${selectedVisit.consultation_id}`);
-      const items = Array.isArray(payload?.items) ? payload.items : [];
-      setCatalog(items);
-      setSelectedVisit(payload.visit || selectedVisit);
-      const hasSavedFavourite = items.some((item) => favorites.has(item.id));
-      setCategory(hasSavedFavourite ? "Favourites" : "All supplies");
-      setView("catalog");
-    } catch (error) {
-      toast.error(error.message || "Supplies could not be loaded.");
-    } finally {
-      setIsCatalogLoading(false);
-    }
+    setView("review");
   }
 
   function changeQuantity(item, delta) {
@@ -392,7 +438,7 @@ function BillingLitePage({ onOpenHistory }) {
     setIsSubmitting(true);
     const endpoint = `/billing/quick/visits/${selectedVisit.consultation_id}/capture`;
     const submissionPayload = {
-      operation_id: crypto.randomUUID(),
+      operation_id: editingOfflineEntry?.payload?.operation_id || crypto.randomUUID(),
       consultation_fee: {
         type: consultationType,
         amount: Number(consultationPrice),
@@ -404,6 +450,11 @@ function BillingLitePage({ onOpenHistory }) {
     };
     try {
       const payload = await api.post(endpoint, submissionPayload);
+      if (editingOfflineEntry?.id) {
+        await removeOfflineMutation(editingOfflineEntry.id);
+        setOfflineSubmissions((current) => current.filter((entry) => entry.id !== editingOfflineEntry.id));
+        setEditingOfflineEntry(null);
+      }
       setLastSubmissionOffline(false);
       setSelectedVisit(payload.visit || selectedVisit);
       setView("success");
@@ -413,6 +464,7 @@ function BillingLitePage({ onOpenHistory }) {
       if (isBrowserOffline() || isNetworkFailure(error)) {
         try {
           await queueQuickBillingMutation({
+            id: editingOfflineEntry?.id,
             endpoint,
             payload: submissionPayload,
             userId: user.id,
@@ -425,6 +477,7 @@ function BillingLitePage({ onOpenHistory }) {
             },
           });
           setLastSubmissionOffline(true);
+          setEditingOfflineEntry(null);
           setView("success");
           toast.success(OFFLINE_SAVED_TOAST, { duration: 6500 });
         } catch (queueError) {
@@ -461,6 +514,50 @@ function BillingLitePage({ onOpenHistory }) {
     }
   }
 
+  async function editOfflineSubmission(queueEntry) {
+    const consultationId = Number(queueEntry.payload?.consultation_id || queueEntry.meta?.consultationId || 0);
+    const visit = patientOptions
+      .flatMap((patient) => patient.visits || [])
+      .find((row) => Number(row.consultation_id) === consultationId);
+    if (!visit) {
+      toast.error("This visit is no longer billable. Discard the saved submission after confirming no further bill is needed.");
+      return;
+    }
+
+    const fee = queueEntry.payload?.consultation_fee || {};
+    setSelectedVisit(visit);
+    setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
+    setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
+    setIsCatalogLoading(true);
+    try {
+      const payload = await api.get(`/billing/quick/catalog/${consultationId}`);
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const nextCart = {};
+      for (const savedItem of queueEntry.payload?.items || []) {
+        if (items.some((item) => Number(item.id) === Number(savedItem.inventory_item_id))) {
+          nextCart[Number(savedItem.inventory_item_id)] = Number(savedItem.quantity || 0);
+        }
+      }
+      setCatalog(items);
+      setCart(nextCart);
+      setSelectedVisit(payload.visit || visit);
+      setEditingOfflineEntry(queueEntry);
+      setView("catalog");
+      toast.success("Saved submission opened for correction. Review it before submitting again.");
+    } catch (error) {
+      toast.error(error.message || "This saved submission could not be opened for editing.");
+    } finally {
+      setIsCatalogLoading(false);
+    }
+  }
+
+  async function discardOfflineSubmission(queueEntry) {
+    if (!window.confirm("Discard this saved offline billing submission? This does not change any server bill or stock.")) return;
+    await removeOfflineMutation(queueEntry.id);
+    setOfflineSubmissions((current) => current.filter((entry) => entry.id !== queueEntry.id));
+    toast.success("Saved offline submission discarded.");
+  }
+
   function resetFlow(destination = "today") {
     setSelectedVisit(null);
     setCatalog([]);
@@ -468,6 +565,7 @@ function BillingLitePage({ onOpenHistory }) {
     setLookupResults([]);
     setCatalogSearch("");
     setLastSubmissionOffline(false);
+    setEditingOfflineEntry(null);
     setView(destination);
   }
 
@@ -483,6 +581,7 @@ function BillingLitePage({ onOpenHistory }) {
       status: entry.sync_status === "needs_attention" ? "needs_attention" : "queued_offline",
       sync_error: entry.sync_error || "",
       offline: true,
+      queue_entry: entry,
     })),
     ...submissions,
   ];
@@ -538,6 +637,44 @@ function BillingLitePage({ onOpenHistory }) {
                   <RefreshCw className="size-5" aria-hidden="true" />
                 </button>
               </div>
+            </div>
+
+            {isCatalogLoading ? (
+              <div className="mb-4 flex items-center justify-center gap-2 rounded-2xl bg-white/95 px-4 py-3 font-black text-[#17666a] shadow-sm">
+                <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
+                Opening charges…
+              </div>
+            ) : null}
+
+            <div className="relative z-10 mb-6 rounded-[2rem] border border-white/70 bg-white/95 p-5 shadow-[0_16px_45px_rgba(23,77,80,0.14)] md:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black text-[#173f47]">Visits needing billing</h2>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">Today first, followed by overdue consultations.</p>
+                </div>
+                <div className="flex gap-2 text-xs font-black">
+                  <span className="rounded-full bg-[#e7f8f5] px-3 py-1.5 text-[#17666a]">Today {todayPriorityCount}</span>
+                  {overduePriorityCount ? (
+                    <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Overdue {overduePriorityCount}</span>
+                  ) : null}
+                </div>
+              </div>
+              {priorityVisits.length ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {priorityVisits.slice(0, 6).map((visit) => (
+                    <VisitCard key={visit.consultation_id} visit={visit} onSelect={chooseVisit} />
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl bg-[#eff8f7] px-4 py-5 text-center font-bold text-[#17666a]">
+                  No completed visits are waiting for billing.
+                </div>
+              )}
+              {priorityVisits.length > 6 ? (
+                <p className="mt-3 text-center text-sm font-bold text-slate-500">
+                  {priorityVisits.length - 6} more available in the patient and consultation picker below.
+                </p>
+              ) : null}
             </div>
 
             <div className="relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:p-6">
@@ -621,6 +758,20 @@ function BillingLitePage({ onOpenHistory }) {
 
                 <label className="block">
                   <span className="text-sm font-black text-slate-700">2. Consultation</span>
+                  {selectedPatient?.visits?.length > 4 ? (
+                    <div className="relative mt-2">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                      <input
+                        value={visitSearch}
+                        onChange={(event) => {
+                          setVisitSearch(event.target.value);
+                          setSelectedPickerVisitId("");
+                        }}
+                        placeholder="Search visit number or date"
+                        className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm font-semibold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                      />
+                    </div>
+                  ) : null}
                   <select
                     value={selectedPickerVisitId}
                     onChange={(event) => setSelectedPickerVisitId(event.target.value)}
@@ -628,7 +779,7 @@ function BillingLitePage({ onOpenHistory }) {
                     className="mt-2 min-h-16 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 font-black text-[#173f47] outline-none transition focus:border-[#2aa7a0] disabled:cursor-not-allowed disabled:text-slate-400"
                   >
                     <option value="">{selectedPatient ? "Select consultation" : "Select patient first"}</option>
-                    {(selectedPatient?.visits || []).map((visit) => (
+                    {filteredPickerVisits.map((visit) => (
                       <option key={visit.consultation_id} value={visit.consultation_id}>
                         {formatVisitDate(visit.visit_date)} · {formatVisitTime(visit.visit_time)} · {visit.visit_number}
                       </option>
@@ -702,95 +853,24 @@ function BillingLitePage({ onOpenHistory }) {
           </section>
         ) : null}
 
-        {!isLoading && view === "confirm" && selectedVisit ? (
-          <section className="mx-auto max-w-2xl">
-            <button
-              type="button"
-              onClick={() => resetFlow("today")}
-              className="mb-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
-            >
-              <ArrowLeft className="size-5" /> Back
-            </button>
-            <div className="rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_24px_65px_rgba(23,77,80,0.18)] md:p-7">
-              <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-[#248f91]">{selectedVisit.patient_identifier}</p>
-                  <h1 className="mt-1 break-words text-xl font-black leading-tight text-[#173f47] sm:text-2xl">{selectedVisit.patient_name || selectedVisit.patient_masked_name}</h1>
-                </div>
-                <div className="shrink-0 text-left sm:text-right">
-                  <p className="font-black text-[#173f47]">{formatVisitDate(selectedVisit.visit_date)}, {formatVisitTime(selectedVisit.visit_time)}</p>
-                  <p className="mt-1 text-sm font-bold text-slate-500">{selectedVisit.visit_number}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="text-sm font-black text-slate-700">Consultation type</span>
-                  <select
-                    value={consultationType}
-                    onChange={(event) => {
-                      const nextType = event.target.value;
-                      setConsultationType(nextType);
-                      setConsultationPrice(String(consultationFees[nextType] ?? 0));
-                    }}
-                    className="mt-2 min-h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 font-black text-[#173f47] outline-none transition focus:border-[#2aa7a0] focus:bg-white"
-                  >
-                    {Object.keys(consultationFees).map((type) => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-black text-slate-700">Price</span>
-                  <span className="relative mt-2 block">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-500">Rs</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      max="100000"
-                      step="0.01"
-                      value={consultationPrice}
-                      onChange={(event) => setConsultationPrice(event.target.value)}
-                      className="min-h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 pl-12 pr-4 text-lg font-black text-[#173f47] outline-none transition focus:border-[#2aa7a0] focus:bg-white"
-                    />
-                  </span>
-                </label>
-              </div>
-
-              <p className="mt-3 text-sm font-semibold text-slate-500">Any change from the current fee is saved in the bill audit history.</p>
-                <button
-                  type="button"
-                  onClick={openCatalog}
-                  disabled={isCatalogLoading}
-                  className="mt-2 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#f2b52b] px-6 text-lg font-black text-[#173f47] shadow-[0_14px_35px_rgba(242,181,43,0.3)] transition active:scale-[0.98] disabled:opacity-60"
-                >
-                  {isCatalogLoading ? <LoaderCircle className="size-6 animate-spin" /> : <ChevronRight className="size-6" />}
-                  Continue to supplies
-                </button>
-            </div>
-          </section>
-        ) : null}
-
         {!isLoading && view === "catalog" && selectedVisit ? (
           <section>
             <div className="mb-5 flex items-center justify-between gap-3 text-white">
               <button
                 type="button"
-                onClick={() => setView("confirm")}
+                onClick={() => resetFlow("today")}
                 className="flex size-12 items-center justify-center rounded-2xl bg-white/10 transition active:scale-95"
-                aria-label="Back to visit confirmation"
+                aria-label="Back to visits"
               >
                 <ArrowLeft className="size-6" />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white/70">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
-                <h1 className="truncate text-2xl font-black">Select supplies</h1>
+                <h1 className="truncate text-2xl font-black">Charges</h1>
               </div>
               <button
                 type="button"
-                onClick={() => setView("review")}
+                onClick={reviewBilling}
                 className="relative hidden min-h-12 items-center gap-2 rounded-2xl bg-[#f2b52b] px-4 font-black text-[#173f47] transition active:scale-95 md:flex"
               >
                 <ShoppingBasket className="size-5" />
@@ -799,6 +879,44 @@ function BillingLitePage({ onOpenHistory }) {
                   <span className="flex min-w-6 items-center justify-center rounded-full bg-[#173f47] px-1.5 py-0.5 text-sm text-white">{selectedUnitCount}</span>
                 ) : null}
               </button>
+            </div>
+
+            <div className="mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.12)]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label className="min-w-0 flex-1">
+                  <span className="text-sm font-black text-slate-700">Consultation</span>
+                  <select
+                    value={consultationType}
+                    onChange={(event) => {
+                      const nextType = event.target.value;
+                      setConsultationType(nextType);
+                      setConsultationPrice(String(consultationFees[nextType] ?? 0));
+                    }}
+                    className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                  >
+                    {Object.keys(consultationFees).map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="sm:w-44">
+                  <span className="text-sm font-black text-slate-700">Price</span>
+                  <span className="relative mt-2 block">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">Rs</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      max="100000"
+                      step="0.01"
+                      value={consultationPrice}
+                      onChange={(event) => setConsultationPrice(event.target.value)}
+                      className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-base font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                    />
+                  </span>
+                </label>
+              </div>
+              <p className="mt-2 text-xs font-semibold text-slate-500">Fee changes are retained in the bill audit history.</p>
             </div>
 
             <div className="sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
@@ -945,7 +1063,7 @@ function BillingLitePage({ onOpenHistory }) {
 
             <button
               type="button"
-              onClick={() => setView("review")}
+              onClick={reviewBilling}
               className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-16 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-[1.4rem] bg-[#f2b52b] px-6 text-[#173f47] shadow-[0_20px_50px_rgba(23,63,71,0.3)] transition active:scale-[0.98] md:hidden"
             >
               <span className="text-left">
@@ -964,7 +1082,7 @@ function BillingLitePage({ onOpenHistory }) {
               onClick={() => setView("catalog")}
               className="mb-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
             >
-              <ArrowLeft className="size-5" /> Edit supplies
+              <ArrowLeft className="size-5" /> Edit charges
             </button>
             <div className="overflow-hidden rounded-[2.25rem] border border-white/70 bg-white shadow-[0_24px_65px_rgba(23,77,80,0.18)]">
               <div className="bg-[#173f47] px-6 py-6 text-white">
@@ -1123,6 +1241,24 @@ function BillingLitePage({ onOpenHistory }) {
                       <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-800">
                         {submission.sync_error}
                       </p>
+                    ) : null}
+                    {submission.offline && submission.status === "needs_attention" ? (
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => editOfflineSubmission(submission.queue_entry)}
+                          className="min-h-11 rounded-2xl bg-[#17666a] px-4 text-sm font-black text-white"
+                        >
+                          Edit submission
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => discardOfflineSubmission(submission.queue_entry)}
+                          className="min-h-11 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-black text-rose-800"
+                        >
+                          Discard
+                        </button>
+                      </div>
                     ) : null}
                     {submission.items.length ? (
                       <p className="mt-4 line-clamp-2 text-sm font-semibold leading-6 text-slate-600">

@@ -1237,9 +1237,16 @@ router.get("/:id", (req, res) => {
           JOIN consultations c ON c.id = b.consultation_id
           JOIN doctors d ON d.id = c.doctor_id
           WHERE b.patient_id = @patientId
+            AND (
+              @billingDoctorId IS NULL
+              OR COALESCE(b.doctor_id_snapshot, c.doctor_id) = @billingDoctorId
+            )
           ORDER BY b.created_at DESC
         `)
-        .all({ patientId })
+        .all({
+          patientId,
+          billingDoctorId: req.auth.role === "doctor" ? Number(req.auth.doctor_id || 0) || -1 : null,
+        })
         .map(parseBillingRow)
     : [];
 

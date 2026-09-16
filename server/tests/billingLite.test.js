@@ -273,6 +273,14 @@ test("incorrect quick-billing supplies reverse stock and bill lines with an immu
   assert.equal(audit.reason, "Saline was entered twice");
   assert.equal(audit.actor_role, "operator");
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(itemId).count, 1);
+  const queueAfterReversal = await api("GET", "/billing/quick/operator-queue", operatorToken);
+  assert.equal(queueAfterReversal.status, 200, JSON.stringify(queueAfterReversal.data));
+  assert.equal(queueAfterReversal.data.submissions.some((row) => row.id === submission.id), false);
+  const pickerAfterReversal = await api("GET", "/billing/quick/picker-options", doctorToken);
+  const reopenedVisit = pickerAfterReversal.data.patients
+    .flatMap((patient) => patient.visits || [])
+    .find((visit) => visit.consultation_id === consultationId);
+  assert.equal(reopenedVisit?.submission_status, "ready");
 
   const retry = await api(
     "POST",

@@ -110,8 +110,9 @@ export async function queueInventoryMutation({
   return record;
 }
 
-export async function queueQuickBillingMutation({ endpoint, payload, meta = {}, userId = activeUserId }) {
+export async function queueQuickBillingMutation({ id, endpoint, payload, meta = {}, userId = activeUserId }) {
   const record = await enqueueOfflineMutation({
+    id,
     kind: "billing_quick_capture",
     method: "POST",
     endpoint,

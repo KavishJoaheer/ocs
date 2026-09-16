@@ -549,6 +549,7 @@ export default function LiveReportPage() {
   const volumeRows = report?.volumeReport?.rows || [];
   const locationRows = report?.locationReport?.rows || [];
   const revenueRows = report?.billingRevenueReport?.rows || [];
+  const creditNotes = report?.billingRevenueReport?.creditNotes || [];
   const patientsSeen = report?.patientsSeenReport?.rows || [];
   const doctorRows = report?.doctorReport?.rows || [];
   const visitCount = Number(report?.volumeReport?.visitCount ?? statement.visitCount ?? 0);
@@ -675,6 +676,27 @@ export default function LiveReportPage() {
         row.status,
         row.payment_method,
       ]);
+    }
+
+    if (creditNotes.length) {
+      rows.push([]);
+      rows.push(["Credit notes"]);
+      rows.push(["Credit note", "Invoice", "Patient", "Identifier", "Doctor", "Refund date", "Amount", "Method", "Reason", "Reference", "Issued by"]);
+      for (const note of creditNotes) {
+        rows.push([
+          note.credit_note_number,
+          note.invoice_number || note.billing_id,
+          note.patient_name || "",
+          note.patient_identifier || "",
+          note.doctor_name || "",
+          note.refund_date || "",
+          note.amount,
+          note.refund_method || "",
+          note.reason || "",
+          note.external_reference || "",
+          note.issued_by_name || "",
+        ]);
+      }
     }
 
     const stamp = `${period}-${anchorDate}`;

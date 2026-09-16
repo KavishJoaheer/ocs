@@ -38,7 +38,12 @@ function buildBillPdf(bill) {
     const unitPrice = Number.isFinite(Number(item.unit_price))
       ? Number(item.unit_price)
       : Number(item.amount || 0) / quantity;
-    writeLine(`${item.description || ""} · ${quantity} × ${formatCurrency(unitPrice)} = ${formatCurrency(item.amount)} (${item.type || "Sale"})`, { gap: 6 });
+    const lineAmount = Number(item.amount || 0);
+    const arithmeticMatches = Math.abs(quantity * unitPrice - lineAmount) < 0.005;
+    const priceText = arithmeticMatches
+      ? `${quantity} × ${formatCurrency(unitPrice)} = ${formatCurrency(lineAmount)}`
+      : `${quantity} unit${quantity === 1 ? "" : "s"} · blended total ${formatCurrency(lineAmount)}`;
+    writeLine(`${item.description || ""} · ${priceText} (${item.type || "Sale"})`, { gap: 6 });
   });
   y += 3;
   writeLine(`Total: ${formatCurrency(bill.total_amount)}`, { size: 12, bold: true });

@@ -190,7 +190,7 @@ function seedLinkhamVisitWithBill({ name, amount, status }) {
       ).lastInsertRowid,
   );
 
-  return { patientId, billingId };
+  return { patientId, consultationId, billingId };
 }
 
 describe("linkham portal", { concurrency: false }, () => {
@@ -393,5 +393,30 @@ test("staff payment of a Linkham bill becomes a claim, and a flag reason reaches
   assert.equal(staffBill.status, 200, JSON.stringify(staffBill.data));
   assert.equal(staffBill.data.dispute_status, "Flagged_Review");
   assert.match(staffBill.data.dispute_reason, /referral letter/);
+});
+
+test("claim eligibility is frozen on the invoice and voided visits stay off the insurer ledger", async () => {
+  const snapshotted = seedLinkhamVisitWithBill({
+    name: "Snapshot Cover",
+    amount: 3000,
+    status: "paid",
+  });
+  db.prepare("UPDATE billing SET partner_category_snapshot='Linkham' WHERE id=?").run(snapshotted.billingId);
+  db.prepare("UPDATE patients SET insurance_provider='Self-pay' WHERE id=?").run(snapshotted.patientId);
+
+  const afterPatientChange = await api("GET", "/api/linkham/claims?status=pending", { token: linkhamToken });
+  assert.equal(afterPatientChange.status, 200, JSON.stringify(afterPatientChange.data));
+  assert.ok(
+    (afterPatientChange.data.claims || []).some((claim) => claim.id === snapshotted.billingId),
+    "changing the patient's current insurer must not rewrite an issued claim",
+  );
+
+  db.prepare("UPDATE consultations SET voided_at=CURRENT_TIMESTAMP WHERE id=?").run(snapshotted.consultationId);
+  const afterVoid = await api("GET", "/api/linkham/claims?status=pending", { token: linkhamToken });
+  assert.equal(
+    (afterVoid.data.claims || []).some((claim) => claim.id === snapshotted.billingId),
+    false,
+    "voided visits must not remain claimable",
+  );
 });
 });

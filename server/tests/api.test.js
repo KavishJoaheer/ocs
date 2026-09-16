@@ -1241,6 +1241,16 @@ test("patient billing returns bills and summary totals", async () => {
     35,
   );
 
+  const voidedBillId = Number(db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+    VALUES (?, ?, ?, 500, 'unpaid')
+  `).run(
+    consultationId,
+    patientId,
+    JSON.stringify([{ description: "Voided duplicate", amount: 500 }]),
+  ).lastInsertRowid);
+  db.prepare("UPDATE billing SET voided_at=CURRENT_TIMESTAMP, void_reason='Duplicate entry' WHERE id=?").run(voidedBillId);
+
   const billing = await api("GET", "/api/patient-portal/billing", { token });
   assert.equal(billing.status, 200, JSON.stringify(billing.data));
   assert.equal(billing.data.bills.length, 2);
@@ -1255,6 +1265,8 @@ test("patient billing returns bills and summary totals", async () => {
   assert.equal(detail.data.bill.id, billId);
   assert.ok(Array.isArray(detail.data.bill.items));
   assert.ok(detail.data.bill.items.length >= 1);
+  const voidedDetail = await api("GET", `/api/patient-portal/billing/${voidedBillId}`, { token });
+  assert.equal(voidedDetail.status, 404, JSON.stringify(voidedDetail.data));
 
   const otherReg = await api("POST", "/api/patient-auth/register", {
     body: {
@@ -2564,7 +2576,7 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
   assert.equal(doctorProfile.data.labReports?.length > 0, true);
   assert.match(String(doctorProfile.data.labReports[0].report_details || ""), /Hb 13.2/i);
   assert.match(String(doctorProfile.data.patient.consultation_notes || ""), /Registration note/i);
-  assert.equal(doctorProfile.data.bills?.length > 0, true);
+  assert.equal(doctorProfile.data.bills?.length, 0, "another doctor's invoices must stay private");
 
   const operatorLogin = await api("POST", "/api/auth/login", {
     body: { username: "operator01", password: "Welcome@123" },

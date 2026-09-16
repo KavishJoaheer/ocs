@@ -232,6 +232,17 @@ test('billing rejects negative, non-numeric, and fractional-cent amounts at API 
     assert.equal(response.status,400,JSON.stringify(response.data));
     assert.match(response.data.error,/amount/i);
   }
+  const stockItem=item('Zero quantity bypass medicine');
+  for (const quantity of [0,-1,1.5,'not-a-quantity']) {
+    const ctx=context(`Invalid stock quantity ${String(quantity)}`);
+    const response=await bill(ctx,[{
+      description:'Zero quantity bypass medicine',type:'Sale',inventory_item_id:stockItem.id,
+      quantity,amount:25,
+    }],{operation_id:randomUUID()});
+    assert.equal(response.status,400,JSON.stringify(response.data));
+    assert.match(response.data.error,/quantity/i);
+  }
+  assert.equal(row(stockItem.id).quantity,20);
   const ctx=context('Invalid money update'); const original=await bill(ctx,fee(800));
   assert.equal((await api('PUT',`/billing/${original.data.id}`,'admin',{
     items:[{description:'Invalid correction',type:'Sale',amount:-0.01}],
@@ -251,6 +262,37 @@ test('archived patients retain historical billing and revenue with existing doct
   assert.ok(detail.data.patient_archived_at);
   const list=await api('GET',`/billing?patientId=${ctx.patientId}`,'doctor'); assert.equal(list.data.length,1);
   const summary=await api('GET','/billing/patient-summary','doctor'); assert.ok(summary.data.some(r=>r.patient_id===ctx.patientId && r.paid_amount===700));
+});
+
+test('service charges cannot impersonate a stocked supply and bypass inventory', async () => {
+  item('Protected saline ampoule');
+  const bypass=await bill(context('Manual stock bypass'),[{
+    description:'  protected   saline ampoule ',type:'Sale',amount:250,
+  }],{operation_id:randomUUID()});
+  assert.equal(bypass.status,409,JSON.stringify(bypass.data));
+  assert.equal(bypass.data.code,'STOCK_ITEM_REQUIRES_SELECTION');
+
+  const service=await bill(context('Legitimate non-stock service'),[{
+    description:'Home nursing coordination',type:'Sale',amount:250,
+  }],{operation_id:randomUUID()});
+  assert.equal(service.status,201,JSON.stringify(service.data));
+});
+
+test("doctors cannot read another doctor's invoices through a shared patient", async () => {
+  const ctx=context('Shared patient invoice privacy');
+  const otherDoctor=Number(db.prepare("INSERT INTO doctors(full_name,specialization) VALUES ('Other invoice doctor','General Practice')").run().lastInsertRowid);
+  const appointmentId=Number(db.prepare("INSERT INTO appointments(patient_id,doctor_id,appointment_date,appointment_time,status) VALUES (?,?,?,'14:00','completed')").run(ctx.patientId,otherDoctor,today).lastInsertRowid);
+  const consultationId=Number(db.prepare("INSERT INTO consultations(appointment_id,patient_id,doctor_id,consultation_date,doctor_notes) VALUES (?,?,?,?, 'Other doctor visit')").run(appointmentId,ctx.patientId,otherDoctor,today).lastInsertRowid);
+  const foreignBillId=Number(db.prepare(`
+    INSERT INTO billing(consultation_id,patient_id,items,total_amount,status,doctor_id_snapshot,doctor_name_snapshot)
+    VALUES (?,?,?,?, 'unpaid',?, 'Other invoice doctor')
+  `).run(consultationId,ctx.patientId,JSON.stringify(fee(650)),650,otherDoctor).lastInsertRowid);
+
+  const denied=await api('GET',`/billing/${foreignBillId}`,'doctor');
+  assert.equal(denied.status,403,JSON.stringify(denied.data));
+  const visible=await api('GET',`/billing?patientId=${ctx.patientId}`,'doctor');
+  assert.equal(visible.data.some((entry)=>entry.id===foreignBillId),false);
+  assert.equal((await api('GET',`/billing/${foreignBillId}`,'admin')).status,200);
 });
 
 test('permanent deletion anonymizes a billed patient while preserving invoice and accounting snapshots', async () => {
@@ -345,6 +387,27 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
   assert.equal(replay.status,201,JSON.stringify(replay.data));
   assert.equal(replay.data.credit_note.id,issued.data.credit_note.id);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(original.data.id).count,1);
+  const lostResponseRetry=await api('POST',`/billing/${original.data.id}/refunds`,'admin',{
+    ...payload,operation_id:randomUUID(),
+  });
+  assert.equal(lostResponseRetry.status,201,JSON.stringify(lostResponseRetry.data));
+  assert.equal(lostResponseRetry.data.credit_note.id,issued.data.credit_note.id);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(original.data.id).count,1);
+  const downgrade=await api('PUT',`/billing/${original.data.id}`,'admin',{
+    items:issued.data.bill.items,status:'unpaid',expected_version:issued.data.bill.row_version,
+    correction_reason:'Attempt to reopen a refunded paid invoice',
+  });
+  assert.equal(downgrade.status,409,JSON.stringify(downgrade.data));
+  const reducedItems=issued.data.bill.items.map((line,index)=>index===0?{...line,amount:100}:line);
+  const reduced=await api('PUT',`/billing/${original.data.id}`,'admin',{
+    items:reducedItems,status:'paid',payment_method:'card',payment_date:today,
+    expected_version:issued.data.bill.row_version,correction_reason:'Attempt to reduce a refunded invoice',
+  });
+  assert.equal(reduced.status,409,JSON.stringify(reduced.data));
+  assert.throws(
+    ()=>db.prepare("UPDATE billing SET status='unpaid' WHERE id=?").run(original.data.id),
+    /Paid invoice financial lines are immutable/,
+  );
   assert.equal((await api('POST',`/billing/${original.data.id}/refunds`,'admin',{
     ...payload,amount:1600,external_reference:'SECOND-OVER-REFUND',operation_id:randomUUID(),
   })).status,409);
@@ -365,6 +428,7 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
 test('billing wastage requires an explicit reason and consumes only the confirmed batch', async () => {
   const ctx=context('Traced billing wastage');
   const it=item('Traced wastage medicine',10);
+  db.prepare('UPDATE inventory_batches SET unit_cost=7 WHERE id=?').run(it.batchId);
   const otherBatchId=Number(db.prepare("INSERT INTO inventory_batches (item_id,quantity_remaining,expiry_date,unit_cost,is_non_expiring,status) VALUES (?,?, '2030-06-30',10,0,'usable')").run(it.id,3).lastInsertRowid);
   db.prepare('UPDATE inventory SET quantity=13 WHERE id=?').run(it.id);
   const options=await api('GET',`/billing/inventory-options/by-consultation/${ctx.consultationId}`,'doctor');
@@ -387,7 +451,7 @@ test('billing wastage requires an explicit reason and consumes only the confirme
   }],{operation_id:randomUUID()});
   assert.equal(recorded.status,201,JSON.stringify(recorded.data));
   assert.equal(recorded.data.total_amount,0,'wastage must not be charged to the patient');
-  assert.equal(recorded.data.items[0].amount,20,'wastage cost remains available for loss accounting');
+  assert.equal(recorded.data.items[0].amount,14,'wastage uses the confirmed batch cost, not the mutable catalogue cost');
   assert.equal(row(it.id).quantity,11);
   assert.equal(db.prepare('SELECT quantity_remaining FROM inventory_batches WHERE id=?').get(it.batchId).quantity_remaining,8);
   assert.equal(db.prepare('SELECT quantity_remaining FROM inventory_batches WHERE id=?').get(otherBatchId).quantity_remaining,3);
@@ -420,6 +484,13 @@ test('payment-date reporting posts a credit note on its refund date without rewr
   const juice=todayAfter.revenueStatement.paymentMethodBreakdown.find(row=>row.method==='juice');
   const juiceBefore=todayBefore.revenueStatement.paymentMethodBreakdown.find(row=>row.method==='juice');
   assert.equal(juice.amount,juiceBefore.amount-600);
+  const refundDoctor=todayAfter.doctorReport.rows.find(row=>row.doctor_id===doctorId);
+  assert.ok(refundDoctor,'a refund-only period must retain the responsible doctor row');
+  const refundDoctorBefore=todayBefore.doctorReport.rows.find(row=>row.doctor_id===doctorId);
+  assert.equal(refundDoctor.paid,Number(refundDoctorBefore?.paid || 0)-600);
+  const creditNote=todayAfter.billingRevenueReport.creditNotes.find(row=>row.billing_id===original.data.id);
+  assert.ok(creditNote,'payment-period exports need the underlying credit-note detail');
+  assert.equal(creditNote.reason,'Partial refund agreed after finance review');
 });
 
 test('historical movement prices and allocation costs remain stable after catalogue edits', async () => {

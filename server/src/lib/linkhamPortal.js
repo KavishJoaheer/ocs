@@ -5,6 +5,16 @@ const { buildInsurerTreatmentSummaries } = require("./insurerClinicalSummary");
 const { getTodayLocal, offsetLocalDate } = require("./utils");
 
 const LINKHAM_PATIENT_SQL = "lower(trim(p.insurance_provider)) = 'linkham'";
+const LINKHAM_CLAIM_SQL = `
+  lower(trim(COALESCE(NULLIF(b.partner_category_snapshot, ''), p.insurance_provider))) = 'linkham'
+  AND b.voided_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM consultations claim_consultation
+    WHERE claim_consultation.id = b.consultation_id
+      AND claim_consultation.voided_at IS NULL
+  )
+`;
 const LINKHAM_MONTHLY_BUDGET_THRESHOLD = Number(process.env.LINKHAM_MONTHLY_BUDGET_THRESHOLD || 200000);
 
 const MAURITIUS_REGIONS = [
@@ -237,7 +247,7 @@ function getLinkhamBudgetExposure() {
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         JOIN consultations c ON c.id = b.consultation_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND c.consultation_date >= date(?)
       `)
@@ -668,7 +678,7 @@ function getLinkhamClaimsVolume(period, range) {
         JOIN consultations c ON c.id = b.consultation_id
         JOIN patients p ON p.id = b.patient_id
         WHERE p.deleted_at IS NULL
-          AND ${LINKHAM_PATIENT_SQL}
+          AND ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND c.consultation_date BETWEEN @startDate AND @endDate
         GROUP BY slot_month
@@ -698,7 +708,7 @@ function getLinkhamClaimsVolume(period, range) {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       WHERE p.deleted_at IS NULL
-        AND ${LINKHAM_PATIENT_SQL}
+        AND ${LINKHAM_CLAIM_SQL}
         AND b.status = 'paid'
         AND c.consultation_date BETWEEN @startDate AND @endDate
       GROUP BY c.consultation_date
@@ -753,7 +763,7 @@ function getLinkhamDashboardMetrics() {
         SELECT COUNT(*) AS count
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
       `)
@@ -777,7 +787,7 @@ function getLinkhamDashboardMetrics() {
         SELECT COUNT(*) AS count
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
           AND COALESCE(b.dispute_status, 'Clean') = 'Clean'
@@ -791,7 +801,7 @@ function getLinkhamDashboardMetrics() {
         SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND b.linkham_claim_status = 'approved'
           AND date(COALESCE(b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) >= date(?)
@@ -805,7 +815,7 @@ function getLinkhamDashboardMetrics() {
         SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND b.linkham_claim_status IN ('approved', 'settled')
           AND date(COALESCE(b.linkham_claim_reviewed_at, b.payment_date, b.created_at)) >= date(?)
@@ -819,7 +829,7 @@ function getLinkhamDashboardMetrics() {
         SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
       `)
@@ -832,7 +842,7 @@ function getLinkhamDashboardMetrics() {
         SELECT COALESCE(SUM(${LINKHAM_NET_AMOUNT_SQL} * 0.8), 0) AS total
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
-        WHERE ${LINKHAM_PATIENT_SQL}
+        WHERE ${LINKHAM_CLAIM_SQL}
           AND b.status = 'paid'
           AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
           AND COALESCE(b.dispute_status, 'Clean') = 'Clean'
@@ -853,7 +863,7 @@ function getLinkhamDashboardMetrics() {
           SELECT COUNT(*) AS count
           FROM billing b
           JOIN patients p ON p.id = b.patient_id
-          WHERE ${LINKHAM_PATIENT_SQL}
+          WHERE ${LINKHAM_CLAIM_SQL}
             AND b.status = 'paid'
             AND COALESCE(b.linkham_claim_status, 'pending') = 'pending'
             AND COALESCE(b.dispute_status, 'Clean') = 'Flagged_Review'
@@ -968,7 +978,7 @@ function getLinkhamPatientFinancing(patientId) {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       WHERE b.patient_id = ?
-        AND ${LINKHAM_PATIENT_SQL}
+        AND ${LINKHAM_CLAIM_SQL}
       ORDER BY c.consultation_date DESC, b.id DESC
     `)
     .all(Number(patientId));
@@ -1090,7 +1100,7 @@ function buildClaimQueryFilters({ status = "all", month = "", search = "" } = {}
   const statusFilter = normalizeClaimStatusFilter(status);
   const monthBounds = parseYearMonth(month);
   const term = normalizeSearchTerm(search);
-  const clauses = [LINKHAM_PATIENT_SQL, `b.status = 'paid'`];
+  const clauses = [LINKHAM_CLAIM_SQL, `b.status = 'paid'`];
   const params = {};
 
   clauses.push(...claimStatusClauses(statusFilter));
@@ -1159,7 +1169,7 @@ function getLinkhamClaimById(claimId) {
       SELECT ${LINKHAM_CLAIM_SELECT}
       ${LINKHAM_CLAIM_FROM}
       WHERE b.id = ?
-        AND ${LINKHAM_PATIENT_SQL}
+        AND ${LINKHAM_CLAIM_SQL}
     `)
     .get(Number(claimId || 0));
 

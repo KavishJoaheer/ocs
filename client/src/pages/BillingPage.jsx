@@ -199,6 +199,20 @@ function createEmptyLineItem() {
   return { description: "", amount: "0", type: "Sale" };
 }
 
+function rankInventoryMatches(rows, needle) {
+  const query = String(needle || "").trim().toLowerCase();
+  return [...rows].sort((left, right) => {
+    const leftName = String(left.item_name || "").toLowerCase();
+    const rightName = String(right.item_name || "").toLowerCase();
+    const score = (item, name) => {
+      const available = Number(item.available_to_promise ?? item.quantity ?? 0) > 0 ? 100 : 0;
+      const match = name === query ? 30 : name.startsWith(query) ? 20 : 10;
+      return available + match;
+    };
+    return score(right, rightName) - score(left, leftName) || leftName.localeCompare(rightName);
+  });
+}
+
 function InventoryItemDescriptionField({
   value,
   onChange,
@@ -219,8 +233,10 @@ function InventoryItemDescriptionField({
       return [];
     }
 
-    return inventoryOptions
-      .filter((item) => String(item.item_name || "").toLowerCase().includes(needle))
+    return rankInventoryMatches(
+      inventoryOptions.filter((item) => String(item.item_name || "").toLowerCase().includes(needle)),
+      needle,
+    )
       .slice(0, 8);
   }, [inventoryOptions, value]);
 
@@ -1030,13 +1046,10 @@ function DescriptionList({
               return (
                 <div key={`manual-${index}`}>
                   <div className={`${gridCols} hidden px-4 py-3 text-sm md:grid`}>
-                    <InventoryItemDescriptionField
+                    <input
                       value={item.description}
-                      onChange={(nextDescription) => onUpdateManual(index, { description: nextDescription })}
-                      onPickItem={(stockItem) => onPickManualInventory?.(index, stockItem)}
-                      inventoryOptions={inventoryOptions}
-                      inventoryLoading={inventoryLoading}
-                      placeholder="Search your stock or type custom item"
+                      onChange={(event) => onUpdateManual(index, { description: event.target.value })}
+                      placeholder="Service or non-stock charge"
                       className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#4FB8B3]"
                     />
                     <input
@@ -1055,15 +1068,8 @@ function DescriptionList({
                       onChange={(event) => onUpdateManual(index, { unit_price: event.target.value })}
                       className="min-h-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-700 outline-none focus:border-[#4FB8B3]"
                     />
-                    <select
-                      value={item.type}
-                      onChange={(event) => onUpdateManual(index, { type: event.target.value })}
-                      className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-[#4FB8B3]"
-                    >
-                      <option value="Sale">Sale</option>
-                      <option value="Wastage">Wastage</option>
-                    </select>
-                    <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                    <span className="self-center text-xs font-semibold text-slate-500">Non-stock</span>
+                    <p className="text-right font-semibold text-slate-900">
                       {formatCurrency(subtotal)}
                     </p>
                     <button
@@ -1077,13 +1083,10 @@ function DescriptionList({
                   </div>
                   {compactMobile ? (
                     <div className="md:hidden space-y-3 px-4 py-3">
-                      <InventoryItemDescriptionField
+                      <input
                         value={item.description}
-                        onChange={(nextDescription) => onUpdateManual(index, { description: nextDescription })}
-                        onPickItem={(stockItem) => onPickManualInventory?.(index, stockItem)}
-                        inventoryOptions={inventoryOptions}
-                        inventoryLoading={inventoryLoading}
-                        placeholder="Search your stock or type custom item"
+                        onChange={(event) => onUpdateManual(index, { description: event.target.value })}
+                        placeholder="Service or non-stock charge"
                         className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#4FB8B3]"
                       />
                       <div className="grid grid-cols-2 gap-2">
@@ -1111,15 +1114,8 @@ function DescriptionList({
                         </label>
                       </div>
                       <div className="flex min-h-12 items-center justify-between gap-2">
-                        <select
-                          value={item.type}
-                          onChange={(event) => onUpdateManual(index, { type: event.target.value })}
-                          className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 outline-none focus:border-[#4FB8B3]"
-                        >
-                          <option value="Sale">Sale</option>
-                          <option value="Wastage">Wastage</option>
-                        </select>
-                        <p className={`text-sm font-bold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                        <span className="text-sm font-semibold text-slate-500">Non-stock charge</span>
+                        <p className="text-sm font-bold text-slate-900">
                           {formatCurrency(subtotal)}
                         </p>
                         <button
@@ -1133,11 +1129,6 @@ function DescriptionList({
                       </div>
                     </div>
                   ) : null}
-                  <WastageTraceabilityFields
-                    item={item}
-                    inventoryOptions={inventoryOptions}
-                    onChange={(patch) => onUpdateManual(index, patch)}
-                  />
                 </div>
               );
             }
@@ -1150,17 +1141,6 @@ function DescriptionList({
                     <p className="text-xs text-slate-500">
                       {item.folder_name || "Inventory"} · Available: {available}
                     </p>
-                    {needsOverride && allowEmergencyOverride ? (
-                      <label className="mt-1 inline-flex items-center gap-2 text-xs font-semibold text-rose-700">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(item.emergency_override)}
-                          onChange={(event) => onToggleOverride(index, event.target.checked)}
-                        />
-                        <AlertTriangle className="size-3.5" />
-                        Emergency override
-                      </label>
-                    ) : null}
                   </div>
                   <p className="text-right text-slate-700">{qty}</p>
                   <p className="text-right text-slate-700">{formatCurrency(unitPrice)}</p>
@@ -1190,9 +1170,7 @@ function DescriptionList({
                         ) : needsOverride ? (
                           <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
                             <AlertTriangle className="size-3.5" />
-                            {allowEmergencyOverride
-                              ? "Above on-hand stock — billing uses emergency override"
-                              : "Quantity exceeds available stock"}
+                            Quantity exceeds available stock
                           </p>
                         ) : null}
                       </div>
@@ -1251,7 +1229,7 @@ function DescriptionList({
         ) : (
           <div className="px-4 py-5 text-center text-sm text-slate-400 md:py-4">
             <span className="hidden md:inline">No line items yet.</span>
-            <span className="md:hidden">Use Select from Inventory or Add manual item.</span>
+            <span className="md:hidden">Select stock or add a service/non-stock charge.</span>
           </div>
         )}
       </div>
@@ -1264,7 +1242,7 @@ function DescriptionList({
           className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#4FB8B3]/40 bg-white px-4 py-3 text-sm font-semibold text-[#1f7f7b] transition hover:bg-[#4FB8B3]/10 md:min-h-0 md:px-3 md:py-2 md:text-xs"
         >
           <Plus className="size-4 md:size-3.5" />
-          Add manual item
+          Add service / non-stock charge
         </button>
       </div>
       ) : null}
@@ -1280,6 +1258,7 @@ function CreateBillingModal({
   patients,
   consultations,
   preselectedPatientId,
+  preselectedConsultationId,
   onOpenExisting,
 }) {
   const { user: authUser } = useAuth();
@@ -1304,6 +1283,7 @@ function CreateBillingModal({
   const isMobile = useIsMobile();
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
+  const [consultationSearchQuery, setConsultationSearchQuery] = useState("");
   const [inventoryOverlayOpen, setInventoryOverlayOpen] = useState(false);
   const [inventoryOverlayQuery, setInventoryOverlayQuery] = useState("");
   const [inventoryCategory, setInventoryCategory] = useState("All");
@@ -1311,6 +1291,7 @@ function CreateBillingModal({
   const [consultationPriceEditable, setConsultationPriceEditable] = useState(false);
   const [visitBilling, setVisitBilling] = useState(null);
   const [visitBillingLoading, setVisitBillingLoading] = useState(false);
+  const [step, setStep] = useState(1);
   const includeFee = Boolean(visitBilling && !visitBilling.bills.some(b=>b.items.some(i=>isVisitFee(i))));
   useEffect(() => {
     if (!open || !consultationId) { setVisitBilling(null); return; }
@@ -1327,7 +1308,7 @@ function CreateBillingModal({
     }
 
     setPatientId(preselectedPatientId || "");
-    setConsultationId("");
+    setConsultationId(preselectedConsultationId ? String(preselectedConsultationId) : "");
     setStatus("unpaid");
     setPaymentMethod("");
     setPaymentDate("");
@@ -1343,12 +1324,14 @@ function CreateBillingModal({
     setHighlightIndex(0);
     setPatientPickerOpen(false);
     setPatientSearchQuery("");
+    setConsultationSearchQuery("");
     setInventoryOverlayOpen(false);
     setInventoryOverlayQuery("");
     setInventoryCategory("All");
     setConsultationPriceEditable(false);
     setConsultationFees({});
-  }, [open, preselectedPatientId]);
+    setStep(1);
+  }, [open, preselectedPatientId, preselectedConsultationId]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1380,6 +1363,16 @@ function CreateBillingModal({
     [consultations, patientId],
   );
 
+  const filteredPatientConsultations = useMemo(() => {
+    const needle = consultationSearchQuery.trim().toLowerCase().replace(/^#/, "");
+    if (!needle) return patientConsultations;
+    return patientConsultations.filter((consultation) => {
+      const visitNumber = `v-${String(consultation.id).padStart(6, "0")}`;
+      return visitNumber.includes(needle) || String(consultation.consultation_date || "").includes(needle) ||
+        String(consultation.doctor_name || "").toLowerCase().includes(needle);
+    });
+  }, [consultationSearchQuery, patientConsultations]);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -1401,7 +1394,10 @@ function CreateBillingModal({
   const filteredSuggestions = useMemo(() => {
     const needle = String(itemQuery || "").trim().toLowerCase();
     if (!needle) return [];
-    return inventoryOptions.filter((item) => String(item.item_name || "").toLowerCase().includes(needle));
+    return rankInventoryMatches(
+      inventoryOptions.filter((item) => String(item.item_name || "").toLowerCase().includes(needle)),
+      needle,
+    ).slice(0, 10);
   }, [inventoryOptions, itemQuery]);
 
   const filteredPatientsForPicker = useMemo(() => {
@@ -1440,12 +1436,12 @@ function CreateBillingModal({
       );
     }
     const needle = String(inventoryOverlayQuery || "").trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((item) => {
+    if (!needle) return rankInventoryMatches(rows, "");
+    return rankInventoryMatches(rows.filter((item) => {
       const name = String(item.item_name || "").toLowerCase();
       const folder = String(item.folder_name || "").toLowerCase();
       return name.includes(needle) || folder.includes(needle);
-    });
+    }), needle);
   }, [inventoryOptions, inventoryOverlayQuery, inventoryCategory]);
 
   function handleConsultationTypeChange(nextType) {
@@ -1542,7 +1538,7 @@ function CreateBillingModal({
       return;
     }
 
-    if (operatorIssueOnly && items.some((item) => item.emergency_override)) {
+    if (items.some((item) => item.inventory_item_id && Number(item.quantity || 0) > Number(item.available || 0))) {
       toast.error("Reduce the quantity to available stock before issuing this invoice.");
       return;
     }
@@ -1561,7 +1557,7 @@ function CreateBillingModal({
       (item) => item.is_manual && !String(item.description || "").trim(),
     );
     if (invalidManual) {
-      toast.error("Manual items need a description.");
+      toast.error("Service and non-stock charges need a description.");
       return;
     }
 
@@ -1634,8 +1630,12 @@ function CreateBillingModal({
       return;
     }
     const available = Number(selected.quantity || 0);
-    if (operatorIssueOnly && (type !== "Sale" || qty > available)) {
-      toast.error("Operators can add available catalogue items only.");
+    if (qty > available) {
+      toast.error(`Only ${available} unit${available === 1 ? "" : "s"} available.`);
+      return;
+    }
+    if (operatorIssueOnly && type !== "Sale") {
+      toast.error("Operators can add catalogue sales only.");
       return;
     }
     const sellingPrice = getSellingPriceFromDoctorStock(selected.id);
@@ -1652,7 +1652,7 @@ function CreateBillingModal({
         inventory_item_id: selected.id,
         available,
         folder_name: selected.folder_name || "",
-        emergency_override: qty > available,
+        emergency_override: false,
         batches: selected.batches || [],
         batch_id: type === "Wastage" ? "" : null,
         wastage_reason: type === "Wastage" ? "" : undefined,
@@ -1672,7 +1672,7 @@ function CreateBillingModal({
     }
     const qty = 1;
     const available = Number(selected.quantity || 0);
-    if (operatorIssueOnly && available < 1) {
+    if (available < 1) {
       toast.error("This item has no available stock.");
       return;
     }
@@ -1688,7 +1688,7 @@ function CreateBillingModal({
         inventory_item_id: selected.id,
         available,
         folder_name: selected.folder_name || "",
-        emergency_override: qty > available,
+        emergency_override: false,
         batches: selected.batches || [],
       },
     ]);
@@ -1700,18 +1700,19 @@ function CreateBillingModal({
     setItems((current) =>
       current.map((row, idx) => {
         if (idx !== index || row.is_manual || row.dispensing_movement_ids?.length) return row;
-        const qty = Math.max(1, Math.floor(Number(patch.quantity !== undefined ? patch.quantity : row.quantity || 1)));
+        const available = Number(row.available || 0);
+        const requestedQty = Math.max(1, Math.floor(Number(patch.quantity !== undefined ? patch.quantity : row.quantity || 1)));
+        const qty = Math.min(Math.max(1, available), requestedQty);
         const unitPrice = Number(row.unit_price || 0);
         const itemType = String(patch.type ?? row.type ?? "Sale");
         const amount =
           itemType === "Wastage" ? Number(row.unit_price || 0) * qty : itemType === "Adjustment" ? 0 : unitPrice * qty;
-        const available = Number(row.available || 0);
         return {
           ...row,
           ...patch,
           quantity: qty,
           amount,
-          emergency_override: qty > available,
+          emergency_override: false,
         };
       }),
     );
@@ -1749,6 +1750,10 @@ function CreateBillingModal({
     const sellingPrice = Number(stockItem.selling_price || 0);
     const qty = 1;
     const available = Number(stockItem.quantity || 0);
+    if (available < 1) {
+      toast.error("This item has no available stock.");
+      return;
+    }
     updateManualLine(index, {
       description: stockItem.item_name || "",
       unit_price: sellingPrice,
@@ -1756,7 +1761,7 @@ function CreateBillingModal({
       inventory_item_id: stockItem.id,
       folder_name: stockItem.folder_name || "",
       available,
-      emergency_override: qty > available,
+      emergency_override: false,
       batches: stockItem.batches || [],
       batch_id: "",
       wastage_reason: "",
@@ -1807,6 +1812,27 @@ function CreateBillingModal({
               : "contents",
           )}
         >
+        <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1.5">
+          {["Visit", "Charges", "Review"].map((label, index) => {
+            const value = index + 1;
+            return (
+              <button
+                key={label}
+                type="button"
+                disabled={value > step}
+                onClick={() => value < step && setStep(value)}
+                className={cx(
+                  "min-h-10 rounded-xl px-2 text-xs font-bold transition md:text-sm",
+                  step === value ? "bg-white text-[#17666a] ring-1 ring-slate-200" : "text-slate-500",
+                  value > step && "cursor-default opacity-60",
+                )}
+              >
+                {value}. {label}
+              </button>
+            );
+          })}
+        </div>
+        {step === 1 ? <div className="space-y-3">
         <div className="hidden min-w-0 gap-3 md:grid md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Patient</span>
@@ -1815,28 +1841,34 @@ function CreateBillingModal({
                 No patients currently assigned to you.
               </div>
             ) : (
-              <select
-                required
+              <button
+                type="button"
                 disabled={patientLocked}
-                value={patientId}
-                onChange={(event) => setPatientId(event.target.value)}
+                onClick={() => {
+                  setPatientSearchQuery("");
+                  setPatientPickerOpen(true);
+                }}
                 className={cx(
                   BILLING_FIELD,
+                  "flex items-center justify-between gap-3 text-left",
                   patientLocked && "cursor-not-allowed bg-slate-100",
                 )}
               >
-                <option value="">Select patient</option>
-                {patients.map((patient) => (
-                  <option key={patient.id} value={patient.id}>
-                    {patient.full_name} - {patient.patient_identifier || patient.patient_id_number}
-                  </option>
-                ))}
-              </select>
+                <span className={patientId ? "text-slate-900" : "text-slate-400"}>{patientId ? selectedPatientLabel : "Search by patient name or OCS number"}</span>
+                <Search className="size-4 shrink-0 text-slate-400" />
+              </button>
             )}
           </label>
 
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation</span>
+            <input
+              value={consultationSearchQuery}
+              onChange={(event) => setConsultationSearchQuery(event.target.value)}
+              disabled={!patientId}
+              placeholder="Search visit number, date or doctor"
+              className={cx(BILLING_FIELD, "mb-2 disabled:bg-slate-100")}
+            />
             <select
               required
               disabled={!patientId || !patientConsultations.length}
@@ -1851,7 +1883,7 @@ function CreateBillingModal({
                     ? "Select consultation"
                     : "No consultations available"}
               </option>
-              {patientConsultations.map((consultation) => (
+              {filteredPatientConsultations.map((consultation) => (
                 <option key={consultation.id} value={consultation.id}>
                   V-{String(consultation.id).padStart(6, "0")} · {formatDate(consultation.consultation_date)} · {consultation.doctor_name}
                 </option>
@@ -1898,6 +1930,13 @@ function CreateBillingModal({
           </div>
           <label className="block min-w-0 space-y-2">
             <span className="text-sm font-semibold text-slate-700">Consultation</span>
+            <input
+              value={consultationSearchQuery}
+              onChange={(event) => setConsultationSearchQuery(event.target.value)}
+              disabled={!patientId}
+              placeholder="Search visit number, date or doctor"
+              className={cx(BILLING_FIELD, "min-h-12 disabled:bg-slate-100")}
+            />
             <select
               required
               disabled={!patientId || !patientConsultations.length}
@@ -1912,7 +1951,7 @@ function CreateBillingModal({
                     ? "Select consultation"
                     : "No consultations available"}
               </option>
-              {patientConsultations.map((consultation) => (
+              {filteredPatientConsultations.map((consultation) => (
                 <option key={consultation.id} value={consultation.id}>
                   V-{String(consultation.id).padStart(6, "0")} · {formatDate(consultation.consultation_date)} · {consultation.doctor_name}
                 </option>
@@ -1991,7 +2030,9 @@ function CreateBillingModal({
           </label>
         </div>
         </>}
+        </div> : null}
 
+        {step === 2 ? <div className="space-y-3">
         <div className="hidden rounded-[24px] border border-slate-200 bg-slate-50/60 p-3 md:block">
           <div className="flex flex-row flex-wrap items-center gap-3">
             <div className="relative min-w-0 flex-1 basis-[min(100%,220px)]">
@@ -2146,9 +2187,26 @@ function CreateBillingModal({
           inventoryLoading={inventoryLoading}
           onPickManualInventory={pickManualInventoryItem}
           allowManualItems
-          allowEmergencyOverride={!operatorIssueOnly}
+          allowEmergencyOverride={false}
         />
+        </div> : null}
 
+        {step === 3 ? <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-bold text-slate-950">{selectedPatientLabel}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {selectedConsultation ? `V-${String(selectedConsultation.id).padStart(6, "0")} · ${formatDate(selectedConsultation.consultation_date)}` : "Visit not selected"}
+              </p>
+            </div>
+            <p className="text-lg font-black text-[#17666a]">{formatCurrency(total)}</p>
+          </div>
+          <div className="mt-3 space-y-1 border-t border-slate-200 pt-3 text-sm text-slate-600">
+            {includeFee ? <p>{consultationType} · {formatCurrency(consultationPriceNumber)}</p> : null}
+            <p>{items.length} additional line{items.length === 1 ? "" : "s"}</p>
+          </div>
+        </div>
         {operatorIssueOnly ? (
           <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
             <label className="block font-semibold">
@@ -2178,6 +2236,7 @@ function CreateBillingModal({
           total={total}
         />
         )}
+        </div> : null}
         </div>
 
         {isMobile ? (
@@ -2188,40 +2247,54 @@ function CreateBillingModal({
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => step === 1 ? onClose() : setStep((current) => current - 1)}
                 className="min-h-12 flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
               >
-                Cancel
+                {step === 1 ? "Cancel" : "Back"}
               </button>
               <button
-                type="submit"
-                disabled={isSaving || doctorHasNoAssignedPatients}
+                type={step === 3 ? "submit" : "button"}
+                onClick={step === 3 ? undefined : () => {
+                  if (step === 1 && (!patientId || !consultationId)) {
+                    toast.error("Select a patient and consultation first.");
+                    return;
+                  }
+                  setStep((current) => Math.min(3, current + 1));
+                }}
+                disabled={isSaving || doctorHasNoAssignedPatients || (step === 1 && (!patientId || !consultationId))}
                 className="min-h-12 flex-1 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {isSaving ? "Saving…" : operatorIssueOnly ? "Issue invoice" : "Save invoice"}
+                {isSaving ? "Saving…" : step === 1 ? "Continue to charges" : step === 2 ? "Review bill" : operatorIssueOnly ? "Issue invoice" : "Save invoice"}
               </button>
             </div>
           </div>
         ) : (
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
+              <button
+                type="button"
+                onClick={() => step === 1 ? onClose() : setStep((current) => current - 1)}
               className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
             >
-              Cancel
+              {step === 1 ? "Cancel" : "Back"}
             </button>
             <button
-              type="submit"
-              disabled={isSaving || doctorHasNoAssignedPatients}
+              type={step === 3 ? "submit" : "button"}
+              onClick={step === 3 ? undefined : () => {
+                if (step === 1 && (!patientId || !consultationId)) {
+                  toast.error("Select a patient and consultation first.");
+                  return;
+                }
+                setStep((current) => Math.min(3, current + 1));
+              }}
+              disabled={isSaving || doctorHasNoAssignedPatients || (step === 1 && (!patientId || !consultationId))}
               className="rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:opacity-60"
             >
-              {isSaving ? "Saving…" : operatorIssueOnly ? "Issue invoice" : "Create bill"}
+              {isSaving ? "Saving…" : step === 1 ? "Continue to charges" : step === 2 ? "Review bill" : operatorIssueOnly ? "Issue invoice" : "Create bill"}
             </button>
           </div>
         )}
       </form>
-      {isMobile && open && typeof document !== "undefined"
+      {open && typeof document !== "undefined"
         ? createPortal(
             <>
               {patientPickerOpen ? (
@@ -2415,11 +2488,12 @@ function BillingPage() {
   const [paymentBill, setPaymentBill] = useState(null);
   const [refundBill, setRefundBill] = useState(null);
   const [creatorOpen, setCreatorOpen] = useState(false);
+  const [creatorVisit, setCreatorVisit] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [patientOptions, setPatientOptions] = useState([]);
   const [consultationOptions, setConsultationOptions] = useState([]);
   const canCreateBills =
-    user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
+    user?.role === "admin" || user?.role === "doctor" || user?.role === "operator";
   const canMarkPaid =
     user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const canIssueCreditNotes = user?.role === "admin" || user?.role === "accountant";
@@ -2784,6 +2858,7 @@ function BillingPage() {
       sessionStorage.removeItem(key);
       toast.success("Bill saved and dispensing linked.");
       setCreatorOpen(false);
+      setCreatorVisit(null);
       await loadData();
     } catch (error) {
       toast.error(error.message);
@@ -2824,10 +2899,21 @@ function BillingPage() {
   async function recordRefund(bill, payload) {
     setIsSaving(true);
     try {
+      const hashBytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(JSON.stringify({ bill_id: bill.id, ...payload })),
+      );
+      const fingerprint = Array.from(new Uint8Array(hashBytes), (value) =>
+        value.toString(16).padStart(2, "0"),
+      ).join("");
+      const key = `ocs-refund-operation:${user.id}:${fingerprint}`;
+      const operationId = sessionStorage.getItem(key) || crypto.randomUUID();
+      sessionStorage.setItem(key, operationId);
       const result = await api.post(`/billing/${bill.id}/refunds`, {
         ...payload,
-        operation_id: crypto.randomUUID(),
+        operation_id: operationId,
       });
+      sessionStorage.removeItem(key);
       toast.success(`${result.credit_note.credit_note_number} issued. Inventory was not changed.`);
       setRefundBill(null);
       await loadData();
@@ -2867,8 +2953,8 @@ function BillingPage() {
       )}
     >
       <PageHeader
-        eyebrow="Revenue"
-        title="Billing"
+        eyebrow={user?.role === "operator" ? "Work queue" : user?.role === "accountant" ? "Finance" : "Revenue"}
+        title={user?.role === "operator" ? "Billing work queue" : user?.role === "accountant" ? "Billing & reconciliation" : user?.role === "admin" ? "Billing oversight" : "Billing"}
         actions={
           <>
             {user?.role === "admin" ? (
@@ -2932,11 +3018,16 @@ function BillingPage() {
                     </div>
                     <button
                       type="button"
-                      disabled={!visit.bill_id}
-                      onClick={() => openQuickReview(visit)}
+                      onClick={() => {
+                        if (visit.bill_id) openQuickReview(visit);
+                        else {
+                          setCreatorVisit(visit);
+                          setCreatorOpen(true);
+                        }
+                      }}
                       className="mt-3 min-h-11 w-full rounded-2xl bg-amber-500 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {visit.bill_id ? "Open and finish billing" : "Bill record needs administrator"}
+                      {visit.bill_id ? "Open and finish billing" : "Start billing"}
                     </button>
                   </article>
                 ))}
@@ -3424,13 +3515,14 @@ function BillingPage() {
 
       <CreateBillingModal
         open={creatorOpen}
-        onClose={() => setCreatorOpen(false)}
+        onClose={() => { setCreatorOpen(false); setCreatorVisit(null); }}
         onSubmit={handleCreate}
         isSaving={isSaving}
         patients={patientOptions}
         consultations={consultationOptions}
-        preselectedPatientId={patientIdFilter}
-        onOpenExisting={bill=>{setCreatorOpen(false);setEditor({bill});}}
+        preselectedPatientId={creatorVisit?.patient_id || patientIdFilter}
+        preselectedConsultationId={creatorVisit?.consultation_id || ""}
+        onOpenExisting={bill=>{setCreatorOpen(false);setCreatorVisit(null);setEditor({bill});}}
       />
     </div>
   );

@@ -20,7 +20,6 @@ const {
   pendingSales,
   matchesVisit,
 } = require("../lib/saleBillingLinkage");
-const { doctorCanAccessPatient, doctorPatientAccessError, getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 const { decorateInventoryItems } = require("../lib/inventoryStockState");
 const {
   consumeAvailableBatch,
@@ -120,6 +119,31 @@ function consultationTypeFromItems(items) {
   return String(normalizeBillingItems(items).find(isConsultationFee)?.description || "").trim();
 }
 
+function assertNoManualInventoryBypass(consultation, items) {
+  const normalizeName = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const manualSales = normalizeBillingItems(items).filter(
+    (item) => !item.inventory_item_id && item.type === "Sale" && !isConsultationFee(item) && item.description,
+  );
+  if (!manualSales.length) return;
+
+  const catalogueNames = new Set(
+    db.prepare(`
+      SELECT item_name
+      FROM inventory
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id = ?
+        AND archived_at IS NULL
+    `).all(Number(consultation.doctor_id)).map((row) => normalizeName(row.item_name)),
+  );
+  const bypass = manualSales.find((item) => catalogueNames.has(normalizeName(item.description)));
+  if (bypass) {
+    throw Object.assign(
+      new Error(`${bypass.description} is a stocked supply. Select it from inventory so stock and cost records stay complete.`),
+      { status: 409, extra: { code: "STOCK_ITEM_REQUIRES_SELECTION" } },
+    );
+  }
+}
+
 function getBillingIssueSnapshot(consultation, items, actor) {
   const user = actor?.id
     ? db.prepare("SELECT full_name, role FROM users WHERE id = ?").get(actor.id)
@@ -140,8 +164,8 @@ function getBillingIssueSnapshot(consultation, items, actor) {
 
 function buildDoctorAccessClause(auth) {
   if (auth?.role === "doctor") {
-    const caseloadDoctorId = Number(auth.doctor_id || 0);
-    if (!caseloadDoctorId) {
+    const accessDoctorId = Number(auth.doctor_id || 0);
+    if (!accessDoctorId) {
       return {
         clause: "AND 1 = 0",
         params: {},
@@ -149,8 +173,8 @@ function buildDoctorAccessClause(auth) {
     }
 
     return {
-      clause: getDoctorCaseloadFilterSql("p"),
-      params: { caseloadDoctorId },
+      clause: "AND COALESCE(b.doctor_id_snapshot, c.doctor_id) = @accessDoctorId",
+      params: { accessDoctorId },
     };
   }
 
@@ -271,6 +295,7 @@ function serializeQuickVisit(row) {
       SELECT id, item_count, amount_added, workflow_status, workflow_note, workflow_updated_at, created_at
       FROM billing_lite_submissions
       WHERE consultation_id = ?
+        AND reversed_at IS NULL
       ORDER BY id DESC
     `)
     .all(row.consultation_id);
@@ -645,13 +670,21 @@ function applyInventoryTransactions({
 
     touchedItemIds.add(Number(stockItem.id));
 
+    const computedAmount =
+      line.type === "Wastage"
+        ? roundCurrency(allocations.reduce(
+            (sum, allocation) => sum + Number(allocation.quantity || 0) * Number(allocation.unit_cost || 0),
+            0,
+          ))
+        : line.type === "Adjustment"
+          ? roundCurrency(Number(stockItem.cost_price || 0) * qty)
+          : roundCurrency(recordedSaleAmount + Number(stockItem.selling_price || 0) * qtyToDecrement);
+
     processed.push({
       ...line,
       description: line.description || stockItem.item_name,
-      amount:
-        line.type === "Wastage" || line.type === "Adjustment"
-          ? roundCurrency(Number(stockItem.cost_price || 0) * qty)
-          : roundCurrency(recordedSaleAmount + Number(stockItem.selling_price || 0) * qtyToDecrement),
+      amount: computedAmount,
+      unit_price: qty > 0 ? roundCurrency(computedAmount / qty) : computedAmount,
       inventory_item_id: Number(stockItem.id),
       linked_sale_movement_ids: linkedSaleMovementIds,
       dispensing_movement_ids: linkedSaleMovementIds,
@@ -743,11 +776,8 @@ function ensureBillAccess(req, bill, { write = false } = {}) {
     return null;
   }
 
-  const patient = db
-    .prepare("SELECT * FROM patients WHERE id = ?")
-    .get(bill.patient_id);
-  if (!doctorCanAccessPatient(patient, req.auth)) {
-    return { status: 403, error: doctorPatientAccessError(req.auth) };
+  if (!req.auth.doctor_id || Number(bill.doctor_id) !== Number(req.auth.doctor_id)) {
+    return { status: 403, error: "You can only view billing linked to your own consultations." };
   }
 
   return null;
@@ -1137,6 +1167,7 @@ router.get("/quick/operator-queue", (req, res) => {
           SELECT latest.id
           FROM billing_lite_submissions latest
           WHERE latest.consultation_id = s.consultation_id
+            AND latest.reversed_at IS NULL
           ORDER BY latest.id DESC
           LIMIT 1
         ) AS latest_submission_id,
@@ -1144,6 +1175,7 @@ router.get("/quick/operator-queue", (req, res) => {
           SELECT latest.workflow_status
           FROM billing_lite_submissions latest
           WHERE latest.consultation_id = s.consultation_id
+            AND latest.reversed_at IS NULL
           ORDER BY latest.id DESC
           LIMIT 1
         ) AS workflow_status,
@@ -1151,6 +1183,7 @@ router.get("/quick/operator-queue", (req, res) => {
           SELECT latest.workflow_note
           FROM billing_lite_submissions latest
           WHERE latest.consultation_id = s.consultation_id
+            AND latest.reversed_at IS NULL
           ORDER BY latest.id DESC
           LIMIT 1
         ) AS workflow_note
@@ -1162,6 +1195,7 @@ router.get("/quick/operator-queue", (req, res) => {
       JOIN billing b ON b.id = s.billing_id
       WHERE c.voided_at IS NULL
         AND b.voided_at IS NULL
+        AND s.reversed_at IS NULL
       GROUP BY
         s.consultation_id, s.billing_id, p.full_name, p.patient_identifier,
         d.full_name, a.appointment_date, a.appointment_time,
@@ -1778,6 +1812,41 @@ router.post("/:id/refunds", (req, res) => {
       if (bill.status !== "paid" || bill.voided_at || bill.consultation_voided_at) {
         throw Object.assign(new Error("Credit notes can only be issued against an active paid invoice."), { status: 409 });
       }
+      // Recover safely when the first response was lost and a client retries with
+      // a newly generated operation id. Exact, same-actor duplicates in this
+      // short window are treated as the original credit note, not new money.
+      const recentDuplicate = db.prepare(`
+        SELECT *
+        FROM billing_refunds
+        WHERE billing_id = ?
+          AND amount = ?
+          AND refund_method = ?
+          AND refund_date = ?
+          AND lower(trim(reason)) = lower(trim(?))
+          AND COALESCE(lower(trim(external_reference)), '') = COALESCE(lower(trim(?)), '')
+          AND issued_by_user_id = ?
+          AND created_at >= datetime('now', '-15 minutes')
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(
+        billId,
+        roundCurrency(amount),
+        refundMethod,
+        refundDate,
+        reason,
+        externalReference || null,
+        req.auth.id || null,
+      );
+      if (recentDuplicate) {
+        creditNote = {
+          ...recentDuplicate,
+          amount: roundCurrency(recentDuplicate.amount),
+          inventory_restored: false,
+          accounting_note: "This credit note changes net collections only. Stock is not returned automatically.",
+        };
+        operation.save(creditNote);
+        return;
+      }
       const alreadyRefunded = roundCurrency(db.prepare(`
         SELECT COALESCE(SUM(amount), 0) AS amount
         FROM billing_refunds
@@ -1967,6 +2036,9 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
 
 router.post("/", (req, res) => {
   try {
+  if (req.auth?.role === "accountant") {
+    return res.status(403).json({ error: "Accountants can reconcile payments and issue credit notes, but invoices must be issued by a doctor, operator, or administrator." });
+  }
   const consultationId = Number(req.body.consultation_id);
   const patientId = Number(req.body.patient_id);
   const consultation = getConsultationContext(consultationId);
@@ -2000,6 +2072,11 @@ router.post("/", (req, res) => {
   const itemValidationError = billingItemsValidationError(req.body.items);
   if (itemValidationError) return res.status(400).json({ error: itemValidationError });
   const items = normalizeBillingItems(req.body.items);
+  try {
+    assertNoManualInventoryBypass(consultation, items);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
 
   const status = String(req.body.status ?? "unpaid")
     .trim()
@@ -2099,9 +2176,9 @@ router.post("/", (req, res) => {
       `).run(
         consultationId,
         patientId,
-        status,
-        paymentMethod,
-        paymentDate,
+        "unpaid",
+        null,
+        null,
         req.auth.id,
         req.auth.role === "operator"
           ? `Paper invoice: ${sourceReference}`
@@ -2129,16 +2206,19 @@ router.post("/", (req, res) => {
       });
       touchedItemIds = itemIds;
 
+      if (status === "paid") assertVisitReadyForPayment(db, consultationId);
       db.prepare(`
         UPDATE billing
-        SET items = ?, total_amount = ?
+        SET items = ?, total_amount = ?, status = ?, payment_method = ?, payment_date = ?
         WHERE id = ?
       `).run(
         JSON.stringify(computedItems),
         calculateBillingTotal(computedItems),
+        status,
+        paymentMethod,
+        paymentDate,
         createdId,
       );
-      if (status === 'paid') assertVisitReadyForPayment(db, consultationId);
       operation.save({ billId: createdId });
     }).immediate();
   } catch (error) {
@@ -2224,8 +2304,22 @@ router.put("/:id", (req, res) => {
   if (existing.status === "paid" && (req.auth.role !== "admin" || correctionReason.length < 8)) {
     return res.status(409).json({ error: "Paid bills require an admin correction with a meaningful reason." });
   }
+  const requestedStatus = String(req.body.status ?? existing.status).trim().toLowerCase();
+  if (existing.status === "paid") {
+    if (requestedStatus !== "paid") {
+      return res.status(409).json({ error: "A paid invoice cannot be changed back to unpaid. Issue a credit note for money returned." });
+    }
+    if (JSON.stringify(normalizeBillingItems(items)) !== JSON.stringify(normalizeBillingItems(existing.items))) {
+      return res.status(409).json({ error: "Paid invoice lines are immutable. Use a credit note and a separate adjustment invoice." });
+    }
+  }
+  try {
+    assertNoManualInventoryBypass(existing, items);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
   const preservedItems = items.filter(i => !i.inventory_item_id).concat(existing.items.filter(i => i.inventory_item_id));
-  const status = String(req.body.status ?? existing.status).trim().toLowerCase();
+  const status = requestedStatus;
   if (!["paid", "unpaid"].includes(status)) {
     return res.status(400).json({ error: "Billing status is invalid." });
   }

@@ -389,8 +389,20 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
 
   if (dateBasis === "payment") {
     for (const refund of refundRows) {
-      const entry = byId.get(Number(refund.doctor_id));
-      if (entry) entry.paid -= toNumber(refund.amount, 0);
+      const doctorId = Number(refund.doctor_id);
+      if (!doctorId) continue;
+      if (!byId.has(doctorId)) {
+        byId.set(doctorId, {
+          doctor_id: doctorId,
+          doctor_name: refund.doctor_name || "Doctor",
+          visit_count: 0,
+          unique_patient_count: 0,
+          billed: 0,
+          paid: 0,
+          unpaid: 0,
+        });
+      }
+      byId.get(doctorId).paid -= toNumber(refund.amount, 0);
     }
   }
 
@@ -1596,10 +1608,26 @@ router.get("/live-report", (req, res) => {
     });
 
   const refundRows = db.prepare(`
-    SELECT r.amount, r.refund_method, r.refund_date, c.doctor_id
+    SELECT
+      r.id,
+      r.credit_note_number,
+      r.billing_id,
+      r.amount,
+      r.refund_method,
+      r.refund_date,
+      r.reason,
+      r.external_reference,
+      r.issued_by_name,
+      b.invoice_number,
+      p.full_name AS patient_name,
+      p.patient_identifier,
+      c.doctor_id,
+      d.full_name AS doctor_name
     FROM billing_refunds r
     JOIN billing b ON b.id = r.billing_id
     JOIN consultations c ON c.id = b.consultation_id
+    JOIN patients p ON p.id = b.patient_id
+    LEFT JOIN doctors d ON d.id = c.doctor_id
     WHERE r.refund_date BETWEEN @startDate AND @endDate
       AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
   `).all({
@@ -1718,6 +1746,7 @@ router.get("/live-report", (req, res) => {
     },
     billingRevenueReport: {
       rows: revenueRows,
+      creditNotes: dateBasis === "payment" ? refundRows : [],
       period: doctorRange.period,
       rangeLabel: doctorRange.label,
       dateBasis,

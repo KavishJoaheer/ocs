@@ -120,6 +120,18 @@ function ensureFinancialIntegritySchema(db) {
       BEFORE DELETE ON billing_refunds BEGIN
         SELECT RAISE(ABORT, 'Credit notes are immutable; record a compensating accounting entry');
       END;
+      DROP TRIGGER IF EXISTS billing_paid_financial_guard;
+      CREATE TRIGGER billing_paid_financial_guard
+      BEFORE UPDATE ON billing
+      WHEN OLD.status = 'paid' AND (
+        NEW.status != OLD.status
+        OR NEW.items != OLD.items
+        OR NEW.total_amount != OLD.total_amount
+        OR NEW.voided_at IS NOT OLD.voided_at
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'Paid invoice financial lines are immutable; use a credit note and adjustment invoice');
+      END;
       CREATE TABLE IF NOT EXISTS billing_events (
         id INTEGER PRIMARY KEY, bill_id INTEGER NOT NULL, actor_id INTEGER,
         event_type TEXT NOT NULL, before_json TEXT, after_json TEXT NOT NULL,
