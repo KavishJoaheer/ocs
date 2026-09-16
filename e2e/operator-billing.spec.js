@@ -31,12 +31,16 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   const visit = visits[0];
   const dialog = page.getByRole("dialog");
 
+  const doctorSelect = dialog.locator("select:visible").first();
+  await expect(doctorSelect).toBeEnabled();
+  await doctorSelect.selectOption(String(visit.doctor_id));
+
   await dialog.locator("button:visible").filter({ hasText: /Search.*patient/i }).click();
   await page
     .getByRole("button", { name: new RegExp(escapeRegExp(visit.patient_name), "i") })
     .click();
 
-  const consultationSelect = dialog.locator("select:visible").first();
+  const consultationSelect = dialog.locator("select:visible").nth(1);
   await expect(consultationSelect).toBeEnabled();
   await consultationSelect.selectOption(String(visit.id));
   await dialog.getByRole("button", { name: "Continue to charges", exact: true }).click();
