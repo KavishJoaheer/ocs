@@ -17,6 +17,35 @@ async function injectStaffSession(page, token) {
   }, token);
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function advanceOperatorInvoiceToReview(page, request, token) {
+  const response = await request.get(`${API_BASE}/billing/consultation-options`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const visits = await response.json();
+  expect(visits.length).toBeGreaterThan(0);
+  const visit = visits[0];
+  const dialog = page.getByRole("dialog");
+
+  await dialog.locator("button:visible").filter({ hasText: /Search.*patient/i }).click();
+  await page
+    .getByRole("button", { name: new RegExp(escapeRegExp(visit.patient_name), "i") })
+    .click();
+
+  const consultationSelect = dialog.locator("select:visible").first();
+  await expect(consultationSelect).toBeEnabled();
+  await consultationSelect.selectOption(String(visit.id));
+  await dialog.getByRole("button", { name: "Continue to charges", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Add service / non-stock charge", exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Review bill", exact: true }).click();
+}
+
 test.describe("operator billing", () => {
   test("desktop exposes paper-invoice transcription without admin controls", async ({ page, request }) => {
     const operator = await loginOperator(request);
@@ -32,9 +61,9 @@ test.describe("operator billing", () => {
 
     await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "Issue invoice" })).toBeVisible();
+    await advanceOperatorInvoiceToReview(page, request, operator.token);
     await expect(page.getByText("Issued as unpaid", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Paper invoice reference")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Add manual item/i })).toBeVisible();
   });
 
   test("mobile has a tailored billing destination and protected invoice form", async ({ page, request }) => {
@@ -52,6 +81,7 @@ test.describe("operator billing", () => {
 
     await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "Issue invoice" })).toBeVisible();
+    await advanceOperatorInvoiceToReview(page, request, operator.token);
     await expect(page.getByText("Issued as unpaid", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Paper invoice reference")).toBeVisible();
     await expect(page.getByText(/use Record payment to confirm/i)).toBeVisible();
