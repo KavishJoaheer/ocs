@@ -26,6 +26,7 @@ function FinancialDayClose({ refreshToken }) {
     METHODS.map(({ id }) => [id, { amount: "0", reference: "" }]),
   ));
   const [notes, setNotes] = useState("");
+  const [outstanding, setOutstanding] = useState({ count: 0, dates: [] });
   const [busy, setBusy] = useState(false);
   const [showCorrection, setShowCorrection] = useState(false);
   const [correction, setCorrection] = useState(() => ({
@@ -47,9 +48,18 @@ function FinancialDayClose({ refreshToken }) {
     }
   }, [date]);
 
+  const loadOutstanding = useCallback(async () => {
+    const payload = await api.get("/billing/day-close/outstanding");
+    setOutstanding({
+      count: Number(payload?.count || 0),
+      dates: Array.isArray(payload?.dates) ? payload.dates : [],
+    });
+  }, []);
+
   useEffect(() => {
     load().catch((error) => toast.error(error.message || "Could not load day closing."));
-  }, [load, refreshToken]);
+    loadOutstanding().catch((error) => toast.error(error.message || "Could not load overdue day-close reminders."));
+  }, [load, loadOutstanding, refreshToken]);
 
   const expected = useMemo(() => data?.expected_totals || {}, [data?.expected_totals]);
   const variance = useMemo(() => {
@@ -80,7 +90,7 @@ function FinancialDayClose({ refreshToken }) {
       });
       sessionStorage.removeItem(key);
       toast.success("Day closing recorded and locked.");
-      await load();
+      await Promise.all([load(), loadOutstanding()]);
     } catch (error) {
       toast.error(error.message || "Could not record day closing.");
     } finally {
@@ -118,13 +128,31 @@ function FinancialDayClose({ refreshToken }) {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
         <div>
           <p className="font-bold text-slate-950">Daily settlement close</p>
-          <p className="mt-1 text-sm text-slate-500">Match cash and provider settlements to recorded payments.</p>
+          <p className="mt-1 text-sm text-slate-500">Finance must match cash and provider settlements after the final collection each business day.</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-bold ${closing ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
           {closing ? "Closed" : "Open"}
         </span>
       </summary>
       <div className="border-t border-slate-100 p-5">
+        {outstanding.count ? (
+          <div role="alert" className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-bold">{outstanding.count} overdue day close{outstanding.count === 1 ? "" : "s"} require attention</p>
+            <p className="mt-1">Financial activity exists on these dates, but no locked daily settlement has been recorded.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {outstanding.dates.map((entry) => (
+                <button
+                  key={entry.business_date}
+                  type="button"
+                  onClick={() => setDate(entry.business_date)}
+                  className="min-h-11 rounded-xl border border-amber-300 bg-white px-3 font-bold"
+                >
+                  {entry.business_date} · {money(entry.expected_total)}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="block max-w-xs text-sm font-semibold text-slate-700">
           Business date
           <input type="date" max={todayInputValue()} value={date} onChange={(event) => setDate(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 px-3" />

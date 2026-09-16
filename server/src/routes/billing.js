@@ -35,6 +35,7 @@ const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 const { operationFor } = require("../lib/operationReceipts");
 const {
   CONSULTATION_FEES,
+  MAX_CONSULTATION_FEE,
   isConsultationFee,
   assertSingleVisitFee,
   assertVisitReadyForPayment,
@@ -551,6 +552,7 @@ function serializeQuickVisit(row) {
   const submitted = submissions.length > 0 || inventoryItemCount > 0;
   const latestWorkflowStatus = submissions[0]?.workflow_status || "awaiting_operator";
   const submissionStatus = completed ? "completed" : submitted ? latestWorkflowStatus : "ready";
+  const correctionRequested = latestWorkflowStatus === "needs_doctor";
 
   return {
     consultation_id: Number(row.consultation_id),
@@ -580,8 +582,17 @@ function serializeQuickVisit(row) {
     workflow_note: submissions[0]?.workflow_note || "",
     workflow_updated_at: submissions[0]?.workflow_updated_at || null,
     last_submitted_at: submissions[0]?.created_at || null,
-    can_submit: Boolean(activeBill && activeBill.status === "unpaid"),
+    can_submit: Boolean(
+      activeBill &&
+      activeBill.status === "unpaid" &&
+      (!submissions.length || correctionRequested)
+    ),
   };
+}
+
+function canActorSubmitQuickVisit(visit, role) {
+  if (!visit?.can_submit) return false;
+  return role === "doctor" || visit.submission_status === "ready";
 }
 
 function getQuickVisit(consultationId, doctorId) {
@@ -820,6 +831,13 @@ function applyInventoryTransactions({
         linkedSaleMovementIds = markSaleMovementsBilled(matched, billingId);
         qtyToDecrement = qty - consumedQty;
       }
+    }
+
+    if (isSellLine && qtyToDecrement > 0 && Number(stockItem.cost_price || 0) <= 0) {
+      throw Object.assign(
+        new Error(`${stockItem.item_name} has no cost price. Finance or inventory must record its supplier cost before it can be billed.`),
+        { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
+      );
     }
 
     const decorated = decorateInventoryItems([stockItem])[0] || stockItem;
@@ -1212,7 +1230,7 @@ router.get("/quick/picker-options", (req, res) => {
   const patientMap = new Map();
   const visits = quickVisitBaseRows(doctorId)
     .map((row) => ({ row, visit: serializeQuickVisit(row) }))
-    .filter(({ visit }) => visit.can_submit);
+    .filter(({ visit }) => canActorSubmitQuickVisit(visit, req.auth?.role));
 
   for (const { row, visit } of visits) {
     const patientId = Number(row.patient_id);
@@ -1253,8 +1271,9 @@ router.get("/quick/lookup", (req, res) => {
     consultationId,
     patientIdentifier,
   })
-    .slice(0, 6)
-    .map(serializeQuickVisit);
+    .map(serializeQuickVisit)
+    .filter((visit) => canActorSubmitQuickVisit(visit, req.auth?.role))
+    .slice(0, 6);
 
   if (!matches.length) {
     return res.status(404).json({
@@ -1281,7 +1300,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
   if (!visit) {
     return res.status(404).json({ error: "This visit was not found in your doctor workspace." });
   }
-  if (!visit.can_submit) {
+  if (!canActorSubmitQuickVisit(visit, req.auth?.role)) {
     return res.status(409).json({ error: "This visit no longer has an unpaid bill that can receive supplies." });
   }
 
@@ -1310,6 +1329,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     category: String(item.parent_folder_name || item.folder_name || "Other supplies"),
     subcategory: String(item.parent_folder_name ? item.folder_name : ""),
     unit: String(item.unit || "unit"),
+    cost_price_ready: Number(item.cost_price || 0) > 0,
     selling_price: roundCurrency(item.selling_price),
     available_to_use: Number(item.available_to_promise ?? item.available_to_use ?? 0),
   }));
@@ -1582,6 +1602,48 @@ router.get("/quick/submissions", (req, res) => {
     return res.status(403).json({ error: "You do not have access to billing submissions." });
   }
 
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const status = String(req.query.status || "").trim();
+  const allowedStatuses = new Set(["", "awaiting_operator", "needs_doctor", "ready_for_payment", "completed", "reversed", "superseded"]);
+  if (!allowedStatuses.has(status)) {
+    return res.status(400).json({ error: "Select a valid billing update status." });
+  }
+  const limit = Math.min(50, Math.max(10, Number.parseInt(req.query.limit, 10) || 20));
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+  const params = {
+    doctorId,
+    search,
+    pattern: `%${search.toLowerCase()}%`,
+    status,
+    limit,
+    offset,
+  };
+  const where = `
+      WHERE (@doctorId IS NULL OR s.doctor_id = @doctorId)
+        AND (
+          @search = ''
+          OR lower(p.full_name) LIKE @pattern
+          OR lower(p.patient_identifier) LIKE @pattern
+          OR lower(printf('V-%06d', s.consultation_id)) LIKE @pattern
+        )
+        AND (
+          @status = ''
+          OR CASE
+            WHEN b.status = 'paid' THEN 'completed'
+            WHEN s.reversed_at IS NOT NULL THEN 'reversed'
+            ELSE COALESCE(s.workflow_status, 'awaiting_operator')
+          END = @status
+        )
+  `;
+  const total = Number(db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM billing_lite_submissions s
+    JOIN consultations c ON c.id = s.consultation_id
+    JOIN appointments a ON a.id = c.appointment_id
+    JOIN patients p ON p.id = c.patient_id
+    JOIN billing b ON b.id = s.billing_id
+    ${where}
+  `).get(params)?.count || 0);
   const rows = db
     .prepare(`
       SELECT
@@ -1596,11 +1658,11 @@ router.get("/quick/submissions", (req, res) => {
       JOIN appointments a ON a.id = c.appointment_id
       JOIN patients p ON p.id = c.patient_id
       JOIN billing b ON b.id = s.billing_id
-      WHERE (? IS NULL OR s.doctor_id = ?)
+      ${where}
       ORDER BY s.id DESC
-      LIMIT 60
+      LIMIT @limit OFFSET @offset
     `)
-    .all(doctorId, doctorId)
+    .all(params)
     .map((row) => ({
       id: Number(row.id),
       consultation_id: Number(row.consultation_id),
@@ -1624,7 +1686,7 @@ router.get("/quick/submissions", (req, res) => {
       reversal_reason: row.reversal_reason || "",
     }));
 
-  res.json({ submissions: rows });
+  res.json({ submissions: rows, total, limit, offset });
 });
 
 router.post("/quick/visits/:consultationId/capture", (req, res) => {
@@ -1653,11 +1715,20 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   const hasRequestedFee = Boolean(req.body?.consultation_fee && typeof req.body.consultation_fee === "object");
   const requestedFeeType = String(req.body?.consultation_fee?.type || "").trim();
   const requestedFeeAmount = Number(req.body?.consultation_fee?.amount);
+  const requestedFeeReason = String(req.body?.consultation_fee?.adjustment_reason || "").trim().slice(0, 500);
   if (hasRequestedFee && !Object.prototype.hasOwnProperty.call(CONSULTATION_FEES, requestedFeeType)) {
     return res.status(400).json({ error: "Select Day, Night, or Review Consultation." });
   }
-  if (hasRequestedFee && (!isValidCurrencyAmount(req.body?.consultation_fee?.amount) || requestedFeeAmount > 100000)) {
-    return res.status(400).json({ error: "Enter a consultation price between Rs 0 and Rs 100,000 using no more than two decimal places." });
+  if (hasRequestedFee && (!isValidCurrencyAmount(req.body?.consultation_fee?.amount) || requestedFeeAmount <= 0 || requestedFeeAmount > MAX_CONSULTATION_FEE)) {
+    return res.status(400).json({ error: `Enter a consultation price between Rs 0.01 and Rs ${MAX_CONSULTATION_FEE.toLocaleString("en-MU")} using no more than two decimal places.` });
+  }
+  const configuredFee = hasRequestedFee ? roundCurrency(CONSULTATION_FEES[requestedFeeType]) : null;
+  const requestedFeeDiffers = hasRequestedFee && roundCurrency(requestedFeeAmount) !== configuredFee;
+  if (requestedFeeDiffers && requestedFeeReason.length < 8) {
+    return res.status(400).json({
+      error: "Explain why this consultation price differs from the configured tariff (at least 8 characters).",
+      code: "CONSULTATION_FEE_REASON_REQUIRED",
+    });
   }
 
   const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -1714,6 +1785,22 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         throw Object.assign(new Error("This visit no longer has an unpaid bill that can receive supplies."), { status: 409 });
       }
       const bill = parseBillingRow(billRow);
+      const latestSubmission = db.prepare(`
+        SELECT id, workflow_status
+        FROM billing_lite_submissions
+        WHERE consultation_id = ? AND reversed_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(consultationId);
+      if (latestSubmission) {
+        const isDoctorCorrection = req.auth?.role === "doctor" && latestSubmission.workflow_status === "needs_doctor";
+        if (!isDoctorCorrection) {
+          throw Object.assign(
+            new Error("This billing submission has already been issued or is awaiting review. Use the audited correction or reversal action instead of submitting it again."),
+            { status: 409, extra: { code: "QUICK_BILLING_ALREADY_SUBMITTED", submission_id: latestSubmission.id } },
+          );
+        }
+      }
       if (sourceReference) {
         const existingReference = normalizeSourceReference(bill.source_reference);
         if (existingReference && existingReference.toLowerCase() !== sourceReference.toLowerCase()) {
@@ -1838,9 +1925,9 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             consultationTypeFromItems(nextItems),
             req.auth.id,
             feeChanged && addedItems.length
-              ? "Consultation fee adjusted and supplies captured in quick billing"
+              ? `Consultation fee adjusted and supplies captured in quick billing: ${requestedFeeReason || "configured tariff selected"}`
               : feeChanged
-                ? "Consultation fee adjusted in quick billing"
+                ? `Consultation fee adjusted in quick billing: ${requestedFeeReason || "configured tariff selected"}`
                 : feeConfirmed
                   ? "Consultation fee confirmed in quick billing"
                   : "Supplies captured in quick billing",
@@ -1934,6 +2021,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             amount: consultationFeeAmount,
             changed: feeChanged,
             confirmed: feeConfirmed,
+            adjustment_reason: feeChanged ? requestedFeeReason : "",
           },
         },
       });
@@ -2340,6 +2428,44 @@ function serializeDayClosing(row) {
   };
 }
 
+router.get('/day-close/outstanding', (req, res) => {
+  if (!['admin', 'accountant'].includes(req.auth?.role)) {
+    return res.status(403).json({ error: 'Day-close reminders are restricted to administrators and finance.' });
+  }
+  const dates = db.prepare(`
+    WITH financial_activity(business_date) AS (
+      SELECT payment_date
+      FROM billing_payment_transactions
+      WHERE payment_date >= date('now', '+4 hours', '-30 days')
+        AND payment_date < date('now', '+4 hours')
+      UNION
+      SELECT refund_date
+      FROM billing_refunds
+      WHERE refund_date >= date('now', '+4 hours', '-30 days')
+        AND refund_date < date('now', '+4 hours')
+    )
+    SELECT activity.business_date
+    FROM financial_activity activity
+    LEFT JOIN financial_day_closings closing
+      ON closing.business_date = activity.business_date
+    WHERE closing.id IS NULL
+    ORDER BY activity.business_date ASC
+    LIMIT 31
+  `).all();
+  const outstanding = dates.map(({ business_date: businessDate }) => {
+    const totals = paymentTotalsForDate(businessDate);
+    return {
+      business_date: businessDate,
+      expected_total: roundCurrency(Object.values(totals).reduce(
+        (sum, entry) => sum + Number(entry.expected || 0),
+        0,
+      )),
+      expected_totals: totals,
+    };
+  });
+  return res.json({ count: outstanding.length, dates: outstanding });
+});
+
 router.get('/day-close', (req, res) => {
   if (!['admin', 'accountant'].includes(req.auth?.role)) {
     return res.status(403).json({ error: 'Day closing is restricted to administrators and finance.' });
@@ -2645,7 +2771,7 @@ router.get("/inventory-options/by-consultation/:consultationId", (req, res) => {
   }
 });
 
-router.post("/", (req, res) => {
+function createBillingFixtureForTests(req, res) {
   try {
   if (req.auth?.role === "accountant") {
     return res.status(403).json({ error: "Accountants can reconcile payments and issue credit notes, but invoices must be issued by a doctor, operator, or administrator." });
@@ -2873,11 +2999,26 @@ router.post("/", (req, res) => {
 
   res.status(201).json(getJoinedBillById(createdId));
   } catch (error) {
-    console.error("[billing][POST /]", error);
+    console.error("[billing][test fixture create]", error);
     return res.status(error.status || 500).json({
       error: error?.message || "Failed to create billing entry.",
     });
   }
+}
+
+// Routine invoice creation is deliberately restricted to the audited quick
+// workflow. Keep the former handler available only to integration tests that
+// exercise historical accounting migrations and corrections; it is never
+// registered in a deployed runtime.
+if (process.env.NODE_ENV === "test") {
+  router.post("/test-support/create", createBillingFixtureForTests);
+}
+
+router.post("/", (_req, res) => {
+  return res.status(410).json({
+    error: "This invoice-creation route has been retired. Use the visit-based quick billing workflow.",
+    code: "LEGACY_BILLING_CREATE_RETIRED",
+  });
 });
 
 router.put("/:id", (req, res) => {

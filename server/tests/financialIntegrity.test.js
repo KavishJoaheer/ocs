@@ -61,7 +61,7 @@ async function bill(ctx, lines, extra = {}) {
   if (payload.status==='paid' && payload.payment_method && payload.payment_method!=='cash' && !payload.payment_reference) {
     payload.payment_reference=`TEST-${payload.payment_method}-${fixtureIndex}-${randomUUID()}`;
   }
-  return api('POST','/billing','doctor',payload);
+  return api('POST','/billing/test-support/create','doctor',payload);
 }
 function stockLine(it,qty=2) {return {description:'Audit medicine',type:'Sale',inventory_item_id:it.id,quantity:qty,amount:25*qty};}
 function fee(amount=1000) {return [{description:'Consultation fee',type:'Sale',amount}];}
@@ -78,21 +78,21 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   const option=options.data.find(row=>row.id===ctx.consultationId);
   assert.ok(option); assert.equal(Object.hasOwn(option,'doctor_notes'),false);
 
-  const missingDoctor=await api('POST','/billing','operator',{
+  const missingDoctor=await api('POST','/billing/test-support/create','operator',{
     consultation_id:ctx.consultationId,patient_id:ctx.patientId,items:[standardFee()],status:'unpaid',
     source_reference:'OCS pad #doctor-required',
   });
   assert.equal(missingDoctor.status,400);
   assert.equal(missingDoctor.data.code,'BILLING_DOCTOR_REQUIRED');
   const otherDoctorId=Number(db.prepare('SELECT id FROM doctors WHERE id != ? ORDER BY id LIMIT 1').get(doctorId).id);
-  const mismatchedDoctor=await api('POST','/billing','operator',{
+  const mismatchedDoctor=await api('POST','/billing/test-support/create','operator',{
     consultation_id:ctx.consultationId,patient_id:ctx.patientId,doctor_id:otherDoctorId,
     items:[standardFee()],status:'unpaid',source_reference:'OCS pad #doctor-mismatch',
   });
   assert.equal(mismatchedDoctor.status,409);
   assert.equal(mismatchedDoctor.data.code,'BILLING_DOCTOR_MISMATCH');
 
-  const issued=await api('POST','/billing','operator',{
+  const issued=await api('POST','/billing/test-support/create','operator',{
     consultation_id:ctx.consultationId,
     patient_id:ctx.patientId,
     doctor_id:doctorId,
@@ -116,7 +116,7 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   assert.equal(db.prepare("SELECT reason FROM billing_events WHERE bill_id=? AND event_type='created'").get(issued.data.id).reason,'Paper invoice: OCS pad #0142');
 
   const duplicateReferenceCtx=context('Duplicate operator source');
-  const duplicateReference=await api('POST','/billing','operator',{
+  const duplicateReference=await api('POST','/billing/test-support/create','operator',{
     consultation_id:duplicateReferenceCtx.consultationId,
     patient_id:duplicateReferenceCtx.patientId,
     doctor_id:doctorId,
@@ -127,12 +127,12 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing WHERE consultation_id=?').get(duplicateReferenceCtx.consultationId).count,0);
 
   const paidCtx=context('Operator paid block');
-  assert.equal((await api('POST','/billing','operator',{
+  assert.equal((await api('POST','/billing/test-support/create','operator',{
     consultation_id:paidCtx.consultationId,patient_id:paidCtx.patientId,doctor_id:doctorId,items:[standardFee()],
     status:'paid',payment_method:'cash',payment_date:today,source_reference:'OCS pad #0143',
   })).status,403);
   const manualCtx=context('Operator manual line');
-  const manual=await api('POST','/billing','operator',{
+  const manual=await api('POST','/billing/test-support/create','operator',{
     consultation_id:manualCtx.consultationId,patient_id:manualCtx.patientId,doctor_id:doctorId,
     items:[standardFee(),{description:'Doctor-written dressing charge',type:'Sale',amount:500,quantity:1,is_service_charge:true}],
     status:'unpaid',source_reference:'OCS pad #0144',
@@ -337,7 +337,7 @@ test("doctors cannot read another doctor's invoices through a shared patient", a
 
   const denied=await api('GET',`/billing/${foreignBillId}`,'doctor');
   assert.equal(denied.status,403,JSON.stringify(denied.data));
-  const deniedCreate=await api('POST','/billing','doctor',{
+  const deniedCreate=await api('POST','/billing/test-support/create','doctor',{
     consultation_id:consultationId,patient_id:ctx.patientId,items:[standardFee()],status:'unpaid',
   });
   assert.equal(deniedCreate.status,403,JSON.stringify(deniedCreate.data));
@@ -1018,6 +1018,29 @@ test('future financial dates and zero-priced supply sales are blocked without si
   assert.equal(zeroBill.status,409,JSON.stringify(zeroBill.data));
   assert.equal(zeroBill.data.code,'SUPPLY_PRICE_REQUIRED');
   assert.equal(row(zero.id).quantity,20);
+
+  const noCost=item('Missing cost price item');
+  db.prepare('UPDATE inventory SET cost_price=0 WHERE id=?').run(noCost.id);
+  const noCostCtx=context('Missing cost block');
+  const noCostBill=await bill(noCostCtx,[stockLine(noCost,1)],{operation_id:randomUUID()});
+  assert.equal(noCostBill.status,409,JSON.stringify(noCostBill.data));
+  assert.equal(noCostBill.data.code,'SUPPLY_COST_REQUIRED');
+  assert.equal(row(noCost.id).quantity,20);
+});
+
+test('finance receives reminders for prior financial days that have not been closed', async () => {
+  const yesterday=offsetLocalDate(-1);
+  const reminderCtx=context('Outstanding day close',yesterday);
+  const paid=await bill(reminderCtx,[standardFee()],{
+    status:'paid',payment_method:'cash',payment_date:yesterday,operation_id:randomUUID(),
+  });
+  assert.equal(paid.status,201,JSON.stringify(paid.data));
+  assert.equal((await api('GET','/billing/day-close/outstanding','doctor')).status,403);
+  const outstanding=await api('GET','/billing/day-close/outstanding','accountant');
+  assert.equal(outstanding.status,200,JSON.stringify(outstanding.data));
+  const reminder=outstanding.data.dates.find(entry=>entry.business_date===yesterday);
+  assert.ok(reminder,JSON.stringify(outstanding.data));
+  assert.ok(reminder.expected_total>=2000);
 });
 
 test('finance can close a day once and closed dates reject later payments and refunds', async () => {

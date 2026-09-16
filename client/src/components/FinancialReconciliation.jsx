@@ -17,7 +17,13 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
   },[report,refreshKey,refreshToken,user?.id]);
   const result=report || data;
   if (!result && !error) return null;
-  return <details className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-700">
+  const stockNeedsAttention = Boolean(result?.stock_readiness && (
+    result.stock_readiness.unpriced_products ||
+    result.stock_readiness.zero_sale_price_products ||
+    result.stock_readiness.expiry_unverified_products ||
+    result.stock_readiness.unfinished_counts
+  ));
+  return <details open={Boolean(error || result?.issue_count || stockNeedsAttention)} className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-700">
     <summary className="min-h-11 cursor-pointer text-sm font-semibold">Financial review {result ? `· ${result.issue_count} record${result.issue_count===1?'':'s'} to review` : ''}</summary>
     {error && <p role="alert" className="mt-2 text-sm text-amber-800">{error}</p>}
     {result && <div className="mt-3 space-y-4">
@@ -33,8 +39,8 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
       {Boolean(result.legacy_estimate_count) && <p className="text-sm">{result.legacy_estimate_count} older stock movements use estimated historical prices. Verify source records before treating these valuations as exact.</p>}
       {result.stock_readiness && user?.role!=='doctor' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
         <p className="font-semibold">Stock verification · all stock locations</p>
-        <p>{result.stock_readiness.unpriced_products} unpriced products · {result.stock_readiness.expiry_unverified_products} products with unverified expiry · {result.stock_readiness.unfinished_counts} unfinished stock counts</p>
-        <a href="/inventory" className="inline-flex min-h-11 items-center font-semibold text-teal-800">Open inventory: pricing, expiry filters and stock counts →</a>
+        <p>{result.stock_readiness.unpriced_products} missing cost price · {result.stock_readiness.zero_sale_price_products} missing sale price · {result.stock_readiness.expiry_unverified_products} products with unverified expiry · {result.stock_readiness.unfinished_counts} unfinished stock counts</p>
+        {user?.role === 'admin' ? <a href="/inventory" className="inline-flex min-h-11 items-center font-semibold text-teal-800">Open inventory: pricing, expiry filters and stock counts →</a> : <p className="mt-2 font-semibold text-amber-900">Ask an inventory administrator to resolve these from supplier records and physical stock.</p>}
         <p className="text-xs">Resolve these from supplier records and physical counts. A recorded zero is not evidence that unknown stock values or losses are zero.</p>
       </div>}
       {result.stock && user?.role!=='doctor' && <div className="grid gap-3 sm:grid-cols-3 text-sm">

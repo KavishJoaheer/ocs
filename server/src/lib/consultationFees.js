@@ -3,6 +3,7 @@ const CONSULTATION_FEES = Object.freeze({
   'Night Consultation': 3000,
   'Review Consultation': 2000,
 });
+const MAX_CONSULTATION_FEE = 4500;
 function isConsultationFee(line) {
   return Boolean(line) && !line.inventory_item_id && line.type !== 'Wastage' && line.type !== 'Adjustment'
     && (line.is_consultation_fee === true || /^(?:(?:day|night|review)\s+)?consultation(?:\s+(?:fee|charge))?$/i.test(String(line.description || '').trim()));
@@ -43,4 +44,10 @@ function assertVisitReadyForPayment(db, consultationId) {
   const review = bills.find(b => b.fee_review_required);
   if (review) throw Object.assign(new Error(`Payment blocked: confirm the consultation fee on bill #${review.id} first.`), {status:409, extra:{code:'FEE_REVIEW_REQUIRED', existing_bill_id:review.id}});
 }
-module.exports = { CONSULTATION_FEES, isConsultationFee, assertSingleVisitFee, assertVisitReadyForPayment };
+module.exports = {
+  CONSULTATION_FEES,
+  MAX_CONSULTATION_FEE,
+  isConsultationFee,
+  assertSingleVisitFee,
+  assertVisitReadyForPayment,
+};

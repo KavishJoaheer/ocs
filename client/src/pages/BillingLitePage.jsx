@@ -45,6 +45,9 @@ const STATUS_META = {
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
 
+const MAX_CONSULTATION_FEE = 4500;
+const SUBMISSION_PAGE_SIZE = 20;
+
 function formatRupees(value) {
   return `Rs ${Number(value || 0).toLocaleString("en-MU", {
     minimumFractionDigits: 0,
@@ -130,6 +133,11 @@ function BillingLitePage() {
   const operatorIssueOnly = user?.role === "operator";
   const [view, setView] = useState("today");
   const [submissions, setSubmissions] = useState([]);
+  const [submissionTotal, setSubmissionTotal] = useState(0);
+  const [submissionSearch, setSubmissionSearch] = useState("");
+  const [submissionStatus, setSubmissionStatus] = useState("");
+  const [submissionPage, setSubmissionPage] = useState(0);
+  const [submissionRefreshToken, setSubmissionRefreshToken] = useState(0);
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [cart, setCart] = useState({});
@@ -151,6 +159,7 @@ function BillingLitePage() {
   const [consultationFees, setConsultationFees] = useState({});
   const [consultationType, setConsultationType] = useState("Day Consultation");
   const [consultationPrice, setConsultationPrice] = useState("2000");
+  const [consultationAdjustmentReason, setConsultationAdjustmentReason] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -185,11 +194,13 @@ function BillingLitePage() {
         ? `?doctorId=${encodeURIComponent(billingDoctorId)}`
         : "";
       const [submissionPayload, pickerPayload, feePayload] = await Promise.all([
-        api.get("/billing/quick/submissions"),
+        api.get(`/billing/quick/submissions?limit=${SUBMISSION_PAGE_SIZE}&offset=0`),
         api.get(`/billing/quick/picker-options${pickerQuery}`),
         api.get("/billing/consultation-fees"),
       ]);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
+      setSubmissionTotal(Number(submissionPayload?.total || 0));
+      setSubmissionPage(0);
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
       setConsultationFees(feePayload || {});
@@ -203,6 +214,26 @@ function BillingLitePage() {
   useEffect(() => {
     void loadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (view !== "status") return undefined;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({
+          limit: String(SUBMISSION_PAGE_SIZE),
+          offset: String(submissionPage * SUBMISSION_PAGE_SIZE),
+        });
+        if (submissionSearch.trim()) query.set("search", submissionSearch.trim());
+        if (submissionStatus) query.set("status", submissionStatus);
+        const payload = await api.get(`/billing/quick/submissions?${query.toString()}`);
+        setSubmissions(Array.isArray(payload?.submissions) ? payload.submissions : []);
+        setSubmissionTotal(Number(payload?.total || 0));
+      } catch (error) {
+        toast.error(error.message || "Billing updates could not be loaded.");
+      }
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [submissionPage, submissionRefreshToken, submissionSearch, submissionStatus, view]);
 
   async function selectBillingDoctor(doctorId) {
     setBillingDoctorId(doctorId);
@@ -286,15 +317,15 @@ function BillingLitePage() {
 
   const visibleCatalog = useMemo(() => {
     return matchingCatalog
-      .filter((item) => showUnavailable || (Number(item.available_to_use || 0) > 0 && Number(item.selling_price || 0) > 0))
+      .filter((item) => showUnavailable || (Number(item.available_to_use || 0) > 0 && item.cost_price_ready && Number(item.selling_price || 0) > 0))
       .sort((a, b) => {
-        const availabilityDifference = Number(Number(b.available_to_use || 0) > 0 && Number(b.selling_price || 0) > 0) - Number(Number(a.available_to_use || 0) > 0 && Number(a.selling_price || 0) > 0);
+        const availabilityDifference = Number(Number(b.available_to_use || 0) > 0 && b.cost_price_ready && Number(b.selling_price || 0) > 0) - Number(Number(a.available_to_use || 0) > 0 && a.cost_price_ready && Number(a.selling_price || 0) > 0);
         return availabilityDifference || a.item_name.localeCompare(b.item_name);
       });
   }, [matchingCatalog, showUnavailable]);
 
   const unavailableCount = useMemo(
-    () => matchingCatalog.filter((item) => Number(item.available_to_use || 0) < 1 || Number(item.selling_price || 0) <= 0).length,
+    () => matchingCatalog.filter((item) => Number(item.available_to_use || 0) < 1 || !item.cost_price_ready || Number(item.selling_price || 0) <= 0).length,
     [matchingCatalog],
   );
 
@@ -384,6 +415,7 @@ function BillingLitePage() {
     const nextAmount = Number(visit.consultation_fee?.amount ?? consultationFees[nextType] ?? 0);
     setConsultationType(nextType);
     setConsultationPrice(String(nextAmount));
+    setConsultationAdjustmentReason("");
     setCart({});
     setCatalog([]);
     setCatalogSearch("");
@@ -426,8 +458,13 @@ function BillingLitePage() {
       toast.error("Select a valid consultation type.");
       return;
     }
-    if (!Number.isFinite(amount) || amount < 0 || amount > 100000) {
-      toast.error("Enter a consultation price between Rs 0 and Rs 100,000.");
+    if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_CONSULTATION_FEE) {
+      toast.error(`Enter a consultation price above Rs 0 and no more than Rs ${MAX_CONSULTATION_FEE.toLocaleString("en-MU")}.`);
+      return;
+    }
+    const configuredAmount = Number(consultationFees[consultationType] || 0);
+    if (Math.abs(amount - configuredAmount) >= 0.005 && consultationAdjustmentReason.trim().length < 8) {
+      toast.error("Explain the consultation price adjustment in at least 8 characters.");
       return;
     }
     if (operatorIssueOnly && !billingDoctorId) {
@@ -498,6 +535,7 @@ function BillingLitePage() {
       consultation_fee: {
         type: consultationType,
         amount: Number(consultationPrice),
+        adjustment_reason: consultationAdjustmentReason.trim() || undefined,
       },
       items: selectedItems.map((item) => ({
         inventory_item_id: item.id,
@@ -586,6 +624,7 @@ function BillingLitePage() {
     setSelectedVisit(visit);
     setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
     setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
+    setConsultationAdjustmentReason(String(fee.adjustment_reason || ""));
     setIsCatalogLoading(true);
     try {
       const doctorQuery = operatorIssueOnly
@@ -628,11 +667,13 @@ function BillingLitePage() {
     setLastSubmissionOffline(false);
     setEditingOfflineEntry(null);
     setSourceReference("");
+    setConsultationAdjustmentReason("");
     setView(destination);
   }
 
+  const showOfflineSubmissions = submissionPage === 0 && !submissionSearch.trim() && !submissionStatus;
   const displayedSubmissions = [
-    ...offlineSubmissions.map((entry) => ({
+    ...(showOfflineSubmissions ? offlineSubmissions : []).map((entry) => ({
       id: `offline-${entry.id}`,
       patient_name: entry.meta?.patientName || "Saved securely on this device",
       patient_identifier: entry.meta?.visitNumber || "Pending visit",
@@ -976,6 +1017,7 @@ function BillingLitePage() {
                       const nextType = event.target.value;
                       setConsultationType(nextType);
                       setConsultationPrice(String(consultationFees[nextType] ?? 0));
+                      setConsultationAdjustmentReason("");
                     }}
                     className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
                   >
@@ -991,8 +1033,8 @@ function BillingLitePage() {
                     <input
                       type="number"
                       inputMode="decimal"
-                      min="0"
-                      max="100000"
+                      min="0.01"
+                      max={MAX_CONSULTATION_FEE}
                       step="0.01"
                       value={consultationPrice}
                       onChange={(event) => setConsultationPrice(event.target.value)}
@@ -1001,7 +1043,21 @@ function BillingLitePage() {
                   </span>
                 </label>
               </div>
-              <p className="mt-2 text-xs font-semibold text-slate-500">Fee changes are retained in the bill audit history.</p>
+              {Math.abs(Number(consultationPrice || 0) - Number(consultationFees[consultationType] || 0)) >= 0.005 ? (
+                <label className="mt-3 block">
+                  <span className="text-sm font-black text-amber-900">Reason for price adjustment</span>
+                  <textarea
+                    required
+                    minLength={8}
+                    rows={2}
+                    value={consultationAdjustmentReason}
+                    onChange={(event) => setConsultationAdjustmentReason(event.target.value)}
+                    placeholder="Explain why the standard consultation price was changed."
+                    className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold outline-none focus:border-amber-500"
+                  />
+                </label>
+              ) : null}
+              <p className="mt-2 text-xs font-semibold text-slate-500">Maximum Rs 4,500. Adjustments require a reason and are retained in the audit history.</p>
             </div>
 
             <div className="sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
@@ -1055,7 +1111,7 @@ function BillingLitePage() {
                 {visibleCatalog.map((item) => {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
-                  const priceMissing = Number(item.selling_price || 0) <= 0;
+                  const priceMissing = !item.cost_price_ready || Number(item.selling_price || 0) <= 0;
                   const isUnavailable = available < 1 || priceMissing;
                   const isFavorite = favorites.has(item.id);
                   return (
@@ -1083,7 +1139,7 @@ function BillingLitePage() {
                         <div className="min-w-0">
                           <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {priceMissing ? "Price required" : isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
+                            {priceMissing ? "Pricing required" : isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
                           </p>
                         </div>
                         {quantity > 0 ? (
@@ -1220,7 +1276,7 @@ function BillingLitePage() {
 
                 <div className="mt-2 flex items-center justify-between rounded-2xl bg-[#fff5cf] px-5 py-5">
                   <div>
-                    <p className="text-sm font-bold text-slate-600">Provisional total</p>
+                    <p className="text-sm font-bold text-slate-600">{operatorIssueOnly ? "Invoice total" : "Provisional total"}</p>
                     <p className="text-sm font-semibold text-slate-500">
                       {operatorIssueOnly ? "Issued unpaid and ready for payment recording" : "Operator completes payment details"}
                     </p>
@@ -1290,12 +1346,41 @@ function BillingLitePage() {
               </div>
               <button
                 type="button"
-                onClick={() => loadDashboard()}
+                onClick={() => setSubmissionRefreshToken((current) => current + 1)}
                 className="flex size-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 transition active:scale-95"
                 aria-label="Refresh submission status"
               >
                 <RefreshCw className="size-5" />
               </button>
+            </div>
+            <div className="mb-5 grid gap-3 rounded-2xl border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.12)] sm:grid-cols-[1fr_14rem]">
+              <label>
+                <span className="sr-only">Search billing updates</span>
+                <span className="relative block">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={submissionSearch}
+                    onChange={(event) => { setSubmissionSearch(event.target.value); setSubmissionPage(0); }}
+                    placeholder="Search patient, OCS or visit number"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 font-semibold outline-none focus:border-[#2aa7a0]"
+                  />
+                </span>
+              </label>
+              <label>
+                <span className="sr-only">Filter billing updates by status</span>
+                <select
+                  value={submissionStatus}
+                  onChange={(event) => { setSubmissionStatus(event.target.value); setSubmissionPage(0); }}
+                  className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 font-semibold outline-none focus:border-[#2aa7a0]"
+                >
+                  <option value="">All statuses</option>
+                  <option value="awaiting_operator">Awaiting operator</option>
+                  <option value="needs_doctor">Needs clarification</option>
+                  <option value="ready_for_payment">Ready for payment</option>
+                  <option value="completed">Completed</option>
+                  <option value="reversed">Reversed</option>
+                </select>
+              </label>
             </div>
             {offlineSubmissions.length ? (
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
@@ -1317,6 +1402,7 @@ function BillingLitePage() {
               </div>
             ) : null}
             {displayedSubmissions.length ? (
+              <>
               <div className="grid gap-4 md:grid-cols-2">
                 {displayedSubmissions.map((submission) => (
                   <article key={submission.id} className="rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(23,77,80,0.08)]">
@@ -1385,6 +1471,14 @@ function BillingLitePage() {
                   </article>
                 ))}
               </div>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white/90 px-4 py-3 text-sm font-bold text-slate-600">
+                <span>{submissionTotal} server submission{submissionTotal === 1 ? "" : "s"}</span>
+                <div className="flex gap-2">
+                  <button type="button" disabled={submissionPage === 0} onClick={() => setSubmissionPage((current) => Math.max(0, current - 1))} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 disabled:opacity-40">Previous</button>
+                  <button type="button" disabled={(submissionPage + 1) * SUBMISSION_PAGE_SIZE >= submissionTotal} onClick={() => setSubmissionPage((current) => current + 1)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 disabled:opacity-40">Next</button>
+                </div>
+              </div>
+              </>
             ) : (
               <EmptyState
                 icon={ReceiptText}

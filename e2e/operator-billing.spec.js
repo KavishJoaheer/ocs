@@ -95,4 +95,18 @@ test.describe("operator billing", () => {
     await expect(page.getByLabel("Paper invoice or photo reference")).toBeVisible();
     await expect(page.getByText(/ready for payment recording/i)).toBeVisible();
   });
+
+  test("pending-payment workspace opens the audited payment transaction form", async ({ page, request }) => {
+    const operator = await loginOperator(request);
+    await injectStaffSession(page, operator.token);
+    await page.goto(`${STAFF_BASE}/operator/pending-payment`);
+
+    const recordPayment = page.getByRole("button", { name: "Record payment" }).first();
+    await expect(recordPayment).toBeVisible({ timeout: 20_000 });
+    await recordPayment.click();
+    await expect(page.getByRole("heading", { name: /Record payment/i })).toBeVisible();
+    await expect(page.getByLabel("Amount received")).toBeVisible();
+    await expect(page.getByLabel("Payment method")).toBeVisible();
+    await expect(page.getByText(/immutable payment transaction/i)).toBeVisible();
+  });
 });

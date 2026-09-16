@@ -222,6 +222,32 @@ test("operator quick billing requires the matching consultation doctor and paper
   const bill = db.prepare("SELECT source_reference, issued_by_role FROM billing WHERE consultation_id = ?").get(operatorConsultationId);
   assert.equal(bill.source_reference, "PAPER-QB-1");
   assert.equal(bill.issued_by_role, "operator");
+
+  const repeatedIssue = await api(
+    "POST",
+    `/billing/quick/visits/${operatorConsultationId}/capture`,
+    operatorToken,
+    {
+      operation_id: randomUUID(),
+      doctor_id: doctorId,
+      source_reference: "PAPER-QB-2",
+      consultation_fee: { type: "Day Consultation", amount: 2000 },
+      items: [],
+    },
+  );
+  assert.equal(repeatedIssue.status, 409, JSON.stringify(repeatedIssue.data));
+  assert.equal(repeatedIssue.data.code, "QUICK_BILLING_ALREADY_SUBMITTED");
+  const pickerAfterIssue = await api(
+    "GET",
+    `/billing/quick/picker-options?doctorId=${doctorId}`,
+    operatorToken,
+  );
+  assert.equal(pickerAfterIssue.status, 200, JSON.stringify(pickerAfterIssue.data));
+  assert.equal(
+    pickerAfterIssue.data.patients.flatMap((entry) => entry.visits || [])
+      .some((visit) => visit.consultation_id === operatorConsultationId),
+    false,
+  );
 });
 
 test("Billing Lite atomically appends supplies, deducts stock, and prevents retry duplication", async () => {
@@ -232,7 +258,11 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   const operationId = randomUUID();
   const body = {
     operation_id: operationId,
-    consultation_fee: { type: "Review Consultation", amount: 1750 },
+    consultation_fee: {
+      type: "Review Consultation",
+      amount: 1750,
+      adjustment_reason: "Reduced review tariff approved for this visit",
+    },
     items: [{ inventory_item_id: itemId, quantity: 2 }],
   };
   const captured = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, body);
@@ -260,6 +290,24 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
     db.prepare("SELECT COUNT(*) AS count FROM billing_lite_submissions WHERE consultation_id = ?").get(consultationId).count,
     1,
   );
+
+  const filteredUpdates = await api(
+    "GET",
+    `/billing/quick/submissions?search=${encodeURIComponent(patientIdentifier)}&status=awaiting_operator&limit=10&offset=0`,
+    doctorToken,
+  );
+  assert.equal(filteredUpdates.status, 200, JSON.stringify(filteredUpdates.data));
+  assert.ok(filteredUpdates.data.total >= 1);
+  assert.ok(filteredUpdates.data.submissions.every((entry) => entry.status === "awaiting_operator"));
+  assert.ok(filteredUpdates.data.submissions.some((entry) => entry.consultation_id === consultationId));
+
+  const duplicateOperation = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+    ...body,
+    operation_id: randomUUID(),
+  });
+  assert.equal(duplicateOperation.status, 409, JSON.stringify(duplicateOperation.data));
+  assert.equal(duplicateOperation.data.code, "QUICK_BILLING_ALREADY_SUBMITTED");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
 });
 
 test("operator review status is independent from paid or unpaid bill status", async () => {
@@ -378,7 +426,7 @@ test("a corrected doctor submission supersedes and clears an older clarification
     INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
     VALUES (?, ?, ?, ?, 'Clarification correction test')
   `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
-  const baseInvoice = await api("POST", "/billing", doctorToken, {
+  const baseInvoice = await api("POST", "/billing/test-support/create", doctorToken, {
     consultation_id: correctedConsultationId,
     patient_id: patientId,
     items: [{ description: "Day Consultation", type: "Sale", amount: 2000, quantity: 1, is_consultation_fee: true }],
@@ -510,6 +558,53 @@ test("Billing Lite rejects consultation prices with fractional cents", async () 
   });
   assert.equal(result.status, 400, JSON.stringify(result.data));
   assert.match(result.data.error, /two decimal places/i);
+});
+
+test("quick billing requires an audited reason for overrides and caps consultation fees at Rs 4,500", async () => {
+  const today = getTodayLocal();
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (full_name, first_name, last_name, patient_identifier, age, contact_number, patient_contact_number, address, assigned_doctor_id)
+    VALUES ('Fee Control', 'Fee', 'Control', ?, 40, '57111112', '57111112', 'Test address', ?)
+  `).run(`OCS-FEE-${Date.now()}`, doctorId).lastInsertRowid);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '14:15', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const controlledConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Fee control test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(controlledConsultationId, patientId, null, "Day Consultation");
+
+  const missingReason = await api("POST", `/billing/quick/visits/${controlledConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(), consultation_fee: { type: "Day Consultation", amount: 2500 }, items: [],
+  });
+  assert.equal(missingReason.status, 400, JSON.stringify(missingReason.data));
+  assert.equal(missingReason.data.code, "CONSULTATION_FEE_REASON_REQUIRED");
+
+  const overCap = await api("POST", `/billing/quick/visits/${controlledConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(), consultation_fee: {
+      type: "Day Consultation", amount: 4500.01, adjustment_reason: "Approved exceptional consultation fee",
+    }, items: [],
+  });
+  assert.equal(overCap.status, 400, JSON.stringify(overCap.data));
+
+  const accepted = await api("POST", `/billing/quick/visits/${controlledConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(), consultation_fee: {
+      type: "Day Consultation", amount: 4500, adjustment_reason: "Extended emergency consultation approved",
+    }, items: [],
+  });
+  assert.equal(accepted.status, 201, JSON.stringify(accepted.data));
+  assert.equal(accepted.data.visit.consultation_fee.amount, 4500);
+  const event = db.prepare("SELECT details_json FROM billing_quick_events WHERE submission_id = ? AND event_type = 'submitted'")
+    .get(accepted.data.submission.submission_id);
+  assert.equal(JSON.parse(event.details_json).consultation_fee.adjustment_reason, "Extended emergency consultation approved");
+});
+
+test("the legacy invoice creation endpoint is retired", async () => {
+  const result = await api("POST", "/billing", operatorToken, {});
+  assert.equal(result.status, 410, JSON.stringify(result.data));
+  assert.equal(result.data.code, "LEGACY_BILLING_CREATE_RETIRED");
 });
 
 test("operators can report completed prior-day visits that still lack final billing", async () => {

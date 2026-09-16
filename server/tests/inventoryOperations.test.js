@@ -2677,7 +2677,7 @@ test("billing rejects expired quarantined and insufficient ATP stock without mut
      VALUES (?, 2, '2029-01-01', 8, 0)`,
   ).run(onHandOnly.itemId);
 
-  const expiredBill = await api("POST", "/api/billing", {
+  const expiredBill = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2687,7 +2687,7 @@ test("billing rejects expired quarantined and insufficient ATP stock without mut
   });
   assert.equal(expiredBill.status, 409, JSON.stringify(expiredBill.data));
 
-  const mixedBill = await api("POST", "/api/billing", {
+  const mixedBill = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2696,7 +2696,7 @@ test("billing rejects expired quarantined and insufficient ATP stock without mut
     },
   });
   assert.equal(mixedBill.status, 409, JSON.stringify(mixedBill.data));
-  const mixedOk = await api("POST", "/api/billing", {
+  const mixedOk = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2727,7 +2727,7 @@ test("billing rejects expired quarantined and insufficient ATP stock without mut
   );
   assert.equal(allocSum, 3);
 
-  const quarantinedBill = await api("POST", "/api/billing", {
+  const quarantinedBill = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2737,7 +2737,7 @@ test("billing rejects expired quarantined and insufficient ATP stock without mut
   });
   assert.equal(quarantinedBill.status, 409, JSON.stringify(quarantinedBill.data));
 
-  const reservedBill = await api("POST", "/api/billing", {
+  const reservedBill = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2758,7 +2758,7 @@ test("consultation reversal keeps original movements and restores original batch
       { qty: 2, expiry: "2030-01-01" },
     ],
   });
-  const billed = await api("POST", "/api/billing", {
+  const billed = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2907,7 +2907,7 @@ test("billing rolls back the first line when a later line cannot be allocated", 
     name: `Bill Rollback Bad ${Date.now()}`,
     batches: [{ qty: 4, expiry: "2020-01-01" }],
   });
-  const billed = await api("POST", "/api/billing", {
+  const billed = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,
@@ -2941,8 +2941,8 @@ test("concurrent billing cannot oversell the same doctor batch", async () => {
     },
   });
   const [a, b] = await Promise.all([
-    api("POST", "/api/billing", payload(first.consultationId, first.patientId)),
-    api("POST", "/api/billing", payload(second.consultationId, second.patientId)),
+    api("POST", "/api/billing/test-support/create", payload(first.consultationId, first.patientId)),
+    api("POST", "/api/billing/test-support/create", payload(second.consultationId, second.patientId)),
   ]);
   const statuses = [a.status, b.status].sort();
   assert.deepEqual(statuses, [201, 409]);
@@ -2961,7 +2961,7 @@ test("consultation reversal rolls back when a later movement cannot be restored"
     name: `Reverse Rollback ${Date.now()}`,
     batches: [{ qty: 3, expiry: "2029-05-01" }],
   });
-  const billed = await api("POST", "/api/billing", {
+  const billed = await api("POST", "/api/billing/test-support/create", {
     token: doctorToken,
     body: {
       consultation_id: consultationId,

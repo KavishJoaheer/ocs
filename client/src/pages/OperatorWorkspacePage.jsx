@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -201,7 +202,85 @@ function AppointmentQueueList({ appointments, emptyTitle, emptyDescription }) {
   );
 }
 
-function PendingPaymentsList({ bills }) {
+function todayInputValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function OperatorPaymentModal({ bill, busy, onClose, onConfirm }) {
+  const balance = Math.max(0, Number(bill?.payment_balance_amount ?? bill?.total_amount ?? 0));
+  const [amount, setAmount] = useState(balance ? balance.toFixed(2) : "");
+  const [method, setMethod] = useState("");
+  const [paymentDate, setPaymentDate] = useState(todayInputValue);
+  const [reference, setReference] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [operationId] = useState(() => crypto.randomUUID());
+  const amountNumber = Number(amount || 0);
+  const valid = amountNumber > 0 && amountNumber <= balance && method && paymentDate &&
+    (method === "cash" || reference.trim().length >= 3) && confirmed;
+
+  return (
+    <Modal open onClose={onClose} title={`Record payment · ${bill.invoice_number || `Bill #${bill.id}`}`} size="md">
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy && valid) {
+            onConfirm({
+              amount: amountNumber,
+              payment_method: method,
+              payment_date: paymentDate,
+              external_reference: reference.trim() || null,
+              operation_id: operationId,
+              expected_version: bill.row_version,
+            });
+          }
+        }}
+      >
+        <div className="rounded-2xl bg-slate-50 p-4">
+          <p className="font-bold text-slate-950">{bill.patient_name}</p>
+          <p className="mt-1 text-sm text-slate-500">{bill.doctor_name} · {formatDate(bill.consultation_date)}</p>
+          <p className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Outstanding balance</p>
+          <p className="mt-1 text-2xl font-black text-slate-950">{formatCurrency(balance)}</p>
+        </div>
+        <label className="block text-sm font-semibold text-slate-700">
+          Amount received
+          <input required type="number" min="0.01" max={balance} step="0.01" value={amount} onChange={(event) => { setAmount(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">
+          Payment method
+          <select required value={method} onChange={(event) => { setMethod(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4">
+            <option value="">Select method</option>
+            <option value="cash">Cash</option>
+            <option value="juice">Juice</option>
+            <option value="card">Card</option>
+            <option value="ib">IB / bank</option>
+          </select>
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">
+          Payment date
+          <input required type="date" max={todayInputValue()} value={paymentDate} onChange={(event) => { setPaymentDate(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">
+          Transaction reference {method === "cash" ? <span className="font-normal text-slate-500">(optional)</span> : null}
+          <input required={method !== "cash"} minLength={method === "cash" ? undefined : 3} value={reference} onChange={(event) => { setReference(event.target.value); setConfirmed(false); }} placeholder={method === "cash" ? "Receipt or cash reference" : "Provider transaction reference"} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
+        </label>
+        <label className="flex min-h-11 items-start gap-3 text-sm text-slate-700">
+          <input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>I confirm that this amount was received using this method on this date.</span>
+        </label>
+        <p className="text-xs text-slate-500">This creates an immutable payment transaction. A partial payment leaves the remaining balance open.</p>
+        <div className="flex flex-wrap justify-end gap-3">
+          <button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-xl border border-slate-200 px-4 font-semibold">Cancel</button>
+          <button disabled={busy || !valid} className="min-h-11 rounded-xl bg-[#17666a] px-4 font-bold text-white disabled:opacity-50">{busy ? "Recording…" : amountNumber < balance ? "Record partial payment" : "Confirm payment"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PendingPaymentsList({ bills, onRecordPayment }) {
   if (!bills.length) {
     return (
       <EmptyState
@@ -233,8 +312,13 @@ function PendingPaymentsList({ bills }) {
                   Unpaid amount
                 </p>
                 <p className="mt-2 text-3xl font-bold text-slate-950">
-                  {formatCurrency(bill.total_amount)}
+                  {formatCurrency(bill.payment_balance_amount ?? bill.total_amount)}
                 </p>
+                {Number(bill.payment_received_amount || 0) > 0 ? (
+                  <p className="mt-1 text-xs font-semibold text-emerald-700">
+                    {formatCurrency(bill.payment_received_amount)} already received
+                  </p>
+                ) : null}
                 <p className="mt-2 text-sm text-[#4f6f7a]">
                   {bill.items.length} billing item{bill.items.length === 1 ? "" : "s"}
                 </p>
@@ -247,6 +331,13 @@ function PendingPaymentsList({ bills }) {
                 >
                   Open patient
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => onRecordPayment(bill)}
+                  className="min-h-11 rounded-2xl bg-[#17666a] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#12575a]"
+                >
+                  Record payment
+                </button>
               </div>
             </div>
           </div>
@@ -259,6 +350,9 @@ function PendingPaymentsList({ bills }) {
 function OperatorWorkspacePage({ workspaceKey }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [paymentBill, setPaymentBill] = useState(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
 
   const meta = workspaceMeta[workspaceKey];
   const refreshKey = useLiveRefreshKey();
@@ -288,7 +382,22 @@ function OperatorWorkspacePage({ workspaceKey }) {
     return () => {
       ignore = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, reloadToken]);
+
+  async function recordPayment(payload) {
+    if (!paymentBill || paymentBusy) return;
+    setPaymentBusy(true);
+    try {
+      await api.patch(`/billing/${paymentBill.id}/pay`, payload);
+      toast.success("Payment recorded in the transaction ledger.");
+      setPaymentBill(null);
+      setReloadToken((value) => value + 1);
+    } catch (error) {
+      toast.error(error.message || "Payment could not be recorded.");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
 
   const title = useMemo(() => (meta ? meta.title(data) : "Operator workspace"), [data, meta]);
 
@@ -507,7 +616,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
         subtitle="All unpaid consultation billing entries that still need follow-up."
         title="Pending payment queue"
       >
-        <PendingPaymentsList bills={data.pendingPayments} />
+        <PendingPaymentsList bills={data.pendingPayments} onRecordPayment={setPaymentBill} />
       </SectionCard>
     );
   }
@@ -536,6 +645,14 @@ function OperatorWorkspacePage({ workspaceKey }) {
       ) : null}
 
       {content}
+      {paymentBill ? (
+        <OperatorPaymentModal
+          bill={paymentBill}
+          busy={paymentBusy}
+          onClose={() => !paymentBusy && setPaymentBill(null)}
+          onConfirm={recordPayment}
+        />
+      ) : null}
     </div>
   );
 }

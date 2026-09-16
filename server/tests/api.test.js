@@ -2109,7 +2109,7 @@ test("emergency override never drives recorded stock negative", async () => {
      VALUES (?, 2, '2029-06-01', 10, 0)`,
   ).run(itemId);
 
-  const created = await api("POST", "/api/billing", {
+  const created = await api("POST", "/api/billing/test-support/create", {
     token: adminToken,
     body: {
       consultation_id: consultationId,
