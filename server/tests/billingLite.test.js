@@ -16,7 +16,6 @@ const { createApp } = require("../src/app");
 const { db, ensureBillingForConsultation } = require("../src/db");
 const { hashPassword } = require("../src/lib/security");
 const { getTodayLocal } = require("../src/lib/utils");
-const { saveUserPushSubscription } = require("../src/lib/push");
 
 let server;
 let baseUrl;
@@ -29,6 +28,16 @@ let otherDoctorId;
 let consultationId;
 let patientIdentifier;
 let itemId;
+let quickIssueSequence = 0;
+
+function quickIssueFields(prefix = "QB") {
+  quickIssueSequence += 1;
+  return {
+    source_reference: `${prefix}-${quickIssueSequence}`,
+    payment_method: "cash",
+    payment_date: getTodayLocal(),
+  };
+}
 
 async function api(method, route, token = doctorToken, body) {
   const response = await fetch(`${baseUrl}/api${route}`, {
@@ -186,6 +195,7 @@ test("a reviewed quick bill stops when a supply price changed before sync", asyn
   const beforeQuantity = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   const denied = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
+    ...quickIssueFields("PRICE-CHANGE"),
     consultation_fee: { type: "Night Consultation", amount: 3000 },
     items: [{ inventory_item_id: itemId, quantity: 1, unit_price: 70 }],
   });
@@ -194,6 +204,40 @@ test("a reviewed quick bill stops when a supply price changed before sync", asyn
   assert.equal(denied.data.changed_prices[0].reviewed_price, 70);
   assert.equal(denied.data.changed_prices[0].current_price, 75);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, beforeQuantity);
+});
+
+test("doctor quick billing requires the receipt and payment details before issue", async () => {
+  const today = getTodayLocal();
+  const missingReceipt = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    payment_method: "cash",
+    payment_date: today,
+    consultation_fee: { type: "Day Consultation", amount: 2000 },
+    items: [],
+  });
+  assert.equal(missingReceipt.status, 400, JSON.stringify(missingReceipt.data));
+  assert.equal(missingReceipt.data.code, "BILLING_SOURCE_REFERENCE_REQUIRED");
+
+  const missingMethod = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    source_reference: "RECEIPT-REQUIRED-1",
+    payment_date: today,
+    consultation_fee: { type: "Day Consultation", amount: 2000 },
+    items: [],
+  });
+  assert.equal(missingMethod.status, 400, JSON.stringify(missingMethod.data));
+  assert.equal(missingMethod.data.code, "BILLING_PAYMENT_METHOD_REQUIRED");
+
+  const missingProviderReference = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    source_reference: "RECEIPT-REQUIRED-2",
+    payment_method: "juice",
+    payment_date: today,
+    consultation_fee: { type: "Day Consultation", amount: 2000 },
+    items: [],
+  });
+  assert.equal(missingProviderReference.status, 400, JSON.stringify(missingProviderReference.data));
+  assert.equal(missingProviderReference.data.code, "BILLING_PAYMENT_REFERENCE_REQUIRED");
 });
 
 test("operator quick billing requires the matching consultation doctor and paper reference", async () => {
@@ -213,7 +257,7 @@ test("operator quick billing requires the matching consultation doctor and paper
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), source_reference: "PAPER-QB-1", items: [] },
+    { operation_id: randomUUID(), source_reference: "PAPER-QB-1", payment_method: "cash", payment_date: today, raised_by_doctor: true, items: [] },
   );
   assert.equal(missingDoctor.status, 400);
   assert.equal(missingDoctor.data.code, "BILLING_DOCTOR_REQUIRED");
@@ -222,7 +266,7 @@ test("operator quick billing requires the matching consultation doctor and paper
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), doctor_id: otherDoctorId, source_reference: "PAPER-QB-1", items: [] },
+    { operation_id: randomUUID(), doctor_id: otherDoctorId, source_reference: "PAPER-QB-1", payment_method: "cash", payment_date: today, raised_by_doctor: true, items: [] },
   );
   assert.equal(wrongDoctor.status, 409);
   assert.equal(wrongDoctor.data.code, "BILLING_DOCTOR_MISMATCH");
@@ -231,9 +275,25 @@ test("operator quick billing requires the matching consultation doctor and paper
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), doctor_id: doctorId, items: [] },
+    { operation_id: randomUUID(), doctor_id: doctorId, payment_method: "cash", payment_date: today, raised_by_doctor: true, items: [] },
   );
   assert.equal(missingReference.status, 400);
+
+  const missingDoctorConfirmation = await api(
+    "POST",
+    `/billing/quick/visits/${operatorConsultationId}/capture`,
+    operatorToken,
+    {
+      operation_id: randomUUID(),
+      doctor_id: doctorId,
+      source_reference: "PAPER-QB-1",
+      payment_method: "cash",
+      payment_date: today,
+      items: [],
+    },
+  );
+  assert.equal(missingDoctorConfirmation.status, 400);
+  assert.equal(missingDoctorConfirmation.data.code, "OPERATOR_DOCTOR_CONFIRMATION_REQUIRED");
 
   const issued = await api(
     "POST",
@@ -243,15 +303,22 @@ test("operator quick billing requires the matching consultation doctor and paper
       operation_id: randomUUID(),
       doctor_id: doctorId,
       source_reference: "PAPER-QB-1",
+      payment_method: "cash",
+      payment_date: today,
+      raised_by_doctor: true,
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
     },
   );
   assert.equal(issued.status, 201, JSON.stringify(issued.data));
-  assert.equal(issued.data.visit.submission_status, "ready_for_payment");
-  const bill = db.prepare("SELECT source_reference, issued_by_role FROM billing WHERE consultation_id = ?").get(operatorConsultationId);
+  assert.equal(issued.data.visit.submission_status, "completed");
+  const bill = db.prepare("SELECT source_reference, issued_by_role, status, payment_method FROM billing WHERE consultation_id = ?").get(operatorConsultationId);
   assert.equal(bill.source_reference, "PAPER-QB-1");
   assert.equal(bill.issued_by_role, "operator");
+  assert.equal(bill.status, "paid");
+  assert.equal(bill.payment_method, "cash");
+  assert.equal(issued.data.submission.workflow_status, "completed");
+  assert.equal(issued.data.submission.payment.state, "paid");
 
   const repeatedIssue = await api(
     "POST",
@@ -261,6 +328,9 @@ test("operator quick billing requires the matching consultation doctor and paper
       operation_id: randomUUID(),
       doctor_id: doctorId,
       source_reference: "PAPER-QB-2",
+      payment_method: "cash",
+      payment_date: today,
+      raised_by_doctor: true,
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
     },
@@ -288,6 +358,7 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   const operationId = randomUUID();
   const body = {
     operation_id: operationId,
+    ...quickIssueFields("DOCTOR-DIRECT"),
     consultation_fee: {
       type: "Review Consultation",
       amount: 1750,
@@ -305,9 +376,25 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   assert.equal(captured.data.visit.consultation_fee.type, "Review Consultation");
   assert.equal(captured.data.visit.consultation_fee.amount, 1750);
   assert.equal(captured.data.visit.bill_total, 1900);
-  assert.equal(captured.data.visit.submission_status, "awaiting_operator");
+  assert.equal(captured.data.visit.submission_status, "completed");
+  assert.equal(captured.data.submission.workflow_status, "completed");
+  assert.equal(captured.data.submission.payment.state, "paid");
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
-  const billEvent = db.prepare("SELECT reason FROM billing_events WHERE bill_id = ? ORDER BY id DESC LIMIT 1").get(captured.data.submission.bill_id);
+  const paidBill = db.prepare("SELECT status, payment_method, source_reference FROM billing WHERE id = ?").get(captured.data.submission.bill_id);
+  assert.deepEqual(paidBill, {
+    status: "paid",
+    payment_method: "cash",
+    source_reference: body.source_reference,
+  });
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM billing_payment_transactions WHERE billing_id = ?").get(captured.data.submission.bill_id).count,
+    1,
+  );
+  const billEvent = db.prepare(`
+    SELECT reason FROM billing_events
+    WHERE bill_id = ? AND reason LIKE 'Consultation fee adjusted%'
+    ORDER BY id DESC LIMIT 1
+  `).get(captured.data.submission.bill_id);
   assert.match(billEvent.reason, /Consultation fee adjusted/);
   const quickEvent = db.prepare("SELECT details_json FROM billing_quick_events WHERE submission_id = ? AND event_type = 'submitted'").get(captured.data.submission.submission_id);
   assert.equal(JSON.parse(quickEvent.details_json).consultation_fee.amount, 1750);
@@ -323,12 +410,12 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
 
   const filteredUpdates = await api(
     "GET",
-    `/billing/quick/submissions?search=${encodeURIComponent(patientIdentifier)}&status=awaiting_operator&limit=10&offset=0`,
+    `/billing/quick/submissions?search=${encodeURIComponent(patientIdentifier)}&status=completed&limit=10&offset=0`,
     doctorToken,
   );
   assert.equal(filteredUpdates.status, 200, JSON.stringify(filteredUpdates.data));
   assert.ok(filteredUpdates.data.total >= 1);
-  assert.ok(filteredUpdates.data.submissions.every((entry) => entry.status === "awaiting_operator"));
+  assert.ok(filteredUpdates.data.submissions.every((entry) => entry.status === "completed"));
   assert.ok(filteredUpdates.data.submissions.some((entry) => entry.consultation_id === consultationId));
 
   const duplicateOperation = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
@@ -340,80 +427,37 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
 });
 
-test("operator review status is independent from paid or unpaid bill status", async () => {
-  const queue = await api("GET", "/billing/quick/operator-queue", operatorToken);
+test("doctor-issued invoices complete without operator acknowledgement", async () => {
+  const queue = await api("GET", "/billing/quick/operator-queue?status=actionable", operatorToken);
   assert.equal(queue.status, 200, JSON.stringify(queue.data));
   const submission = queue.data.submissions.find((row) => row.consultation_id === consultationId);
-  assert.ok(submission);
-  assert.equal(submission.bill_status, "unpaid");
-  assert.equal(submission.workflow_status, "awaiting_operator");
-
-  const webpush = require("web-push");
-  const originalSend = webpush.sendNotification;
-  const notifications = [];
-  const doctorUserId = db.prepare("SELECT id FROM users WHERE username = 'billing.lite.doctor'").get().id;
-  saveUserPushSubscription(doctorUserId, {
-    endpoint: "https://example.invalid/billing-doctor",
-    keys: { p256dh: "test", auth: "test" },
-  });
-  webpush.sendNotification = async (_subscription, payload) => {
-    notifications.push(JSON.parse(payload));
-    return { statusCode: 201 };
-  };
-
-  try {
-    const needsDoctor = await api(
-      "PATCH",
-      `/billing/quick/operator-queue/${consultationId}/status`,
-      operatorToken,
-      {
-        submission_id: submission.submission_id,
-        expected_workflow_status: "awaiting_operator",
-        status: "needs_doctor",
-        note: "Confirm the saline quantity",
-      },
-    );
-    assert.equal(needsDoctor.status, 200, JSON.stringify(needsDoctor.data));
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(notifications.length, 1);
-    assert.equal(notifications[0].title, "Billing clarification needed");
-    assert.match(notifications[0].body, /Confirm the saline quantity/);
-  } finally {
-    webpush.sendNotification = originalSend;
-  }
-
-  const visits = await api("GET", "/billing/quick/visits", doctorToken);
-  const visit = visits.data.visits.find((row) => row.consultation_id === consultationId);
-  assert.equal(visit.submission_status, "needs_doctor");
-  assert.equal(visit.workflow_note, "Confirm the saline quantity");
-
-  const ready = await api(
-    "PATCH",
-    `/billing/quick/operator-queue/${consultationId}/status`,
-    operatorToken,
-    {
-      submission_id: submission.submission_id,
-      expected_workflow_status: "needs_doctor",
-      status: "ready_for_payment",
-    },
-  );
-  assert.equal(ready.status, 200, JSON.stringify(ready.data));
-
-  const forbidden = await api(
-    "PATCH",
-    `/billing/quick/operator-queue/${consultationId}/status`,
-    otherDoctorToken,
-    {
-      submission_id: submission.submission_id,
-      expected_workflow_status: "ready_for_payment",
-      status: "ready_for_payment",
-    },
-  );
-  assert.equal(forbidden.status, 403);
+  assert.equal(submission, undefined);
+  const stored = db.prepare("SELECT workflow_status FROM billing_lite_submissions WHERE consultation_id = ? ORDER BY id DESC LIMIT 1").get(consultationId);
+  assert.equal(stored.workflow_status, "completed");
+  const bill = db.prepare("SELECT status, finalized_at FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(consultationId);
+  assert.equal(bill.status, "paid");
+  assert.ok(bill.finalized_at);
 });
 
 test("incorrect quick-billing supplies reverse stock and bill lines with an immutable audit trail", async () => {
   const submission = db.prepare("SELECT * FROM billing_lite_submissions WHERE consultation_id = ? ORDER BY id DESC LIMIT 1").get(consultationId);
+  const payment = db.prepare(`
+    SELECT id FROM billing_payment_transactions
+    WHERE billing_id = ? ORDER BY id DESC LIMIT 1
+  `).get(submission.billing_id);
+  const paymentReversal = await api(
+    "POST",
+    `/billing/${submission.billing_id}/payments/${payment.id}/reverse`,
+    operatorToken,
+    {
+      operation_id: randomUUID(),
+      reversal_date: getTodayLocal(),
+      reason: "Reverse receipt before correcting duplicated supplies",
+    },
+  );
+  assert.equal(paymentReversal.status, 201, JSON.stringify(paymentReversal.data));
+  assert.equal(paymentReversal.data.bill.payment_state, "unpaid");
+
   const operationId = randomUUID();
   const reversed = await api(
     "POST",
@@ -452,7 +496,7 @@ test("incorrect quick-billing supplies reverse stock and bill lines with an immu
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE action_type = 'reversal' AND item_id = ?").get(itemId).count, 1);
 });
 
-test("a corrected doctor submission supersedes and clears an older clarification", async () => {
+test("completed doctor invoices bypass the obsolete operator acknowledgement workflow", async () => {
   const today = getTodayLocal();
   const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const patientId = Number(db.prepare(`
@@ -480,55 +524,40 @@ test("a corrected doctor submission supersedes and clears an older clarification
 
   const first = await api("POST", `/billing/quick/visits/${correctedConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
+    ...quickIssueFields("DIRECT-NO-ACK"),
     consultation_fee: { type: "Day Consultation", amount: 2000 },
-    items: [{ inventory_item_id: itemId, quantity: 1 }],
+    items: [],
   });
   assert.equal(first.status, 201, JSON.stringify(first.data));
-  const requested = await api(
+  assert.equal(first.data.submission.workflow_status, "completed");
+  assert.equal(first.data.submission.payment.state, "paid");
+
+  const queue = await api(
+    "GET",
+    `/billing/quick/operator-queue?status=actionable&search=${encodeURIComponent(`OCS-CLAR-${suffix}`)}`,
+    operatorToken,
+  );
+  assert.equal(queue.status, 200, JSON.stringify(queue.data));
+  assert.equal(queue.data.total, 0);
+
+  const obsoleteAcknowledgement = await api(
     "PATCH",
     `/billing/quick/operator-queue/${correctedConsultationId}/status`,
     operatorToken,
     {
       submission_id: first.data.submission.submission_id,
-      expected_workflow_status: "awaiting_operator",
+      expected_workflow_status: "completed",
       status: "needs_doctor",
       note: "Confirm the corrected supply quantity",
     },
   );
-  assert.equal(requested.status, 200, JSON.stringify(requested.data));
-  const corrected = await api("POST", `/billing/quick/visits/${correctedConsultationId}/capture`, doctorToken, {
-    operation_id: randomUUID(),
-    consultation_fee: { type: "Day Consultation", amount: 2000 },
-    items: [],
-  });
-  assert.equal(corrected.status, 201, JSON.stringify(corrected.data));
-  assert.notEqual(corrected.data.submission.submission_id, first.data.submission.submission_id);
-  const staleApproval = await api(
-    "PATCH",
-    `/billing/quick/operator-queue/${correctedConsultationId}/status`,
-    operatorToken,
-    {
-      submission_id: first.data.submission.submission_id,
-      expected_workflow_status: "needs_doctor",
-      status: "ready_for_payment",
-    },
-  );
-  assert.equal(staleApproval.status, 409, JSON.stringify(staleApproval.data));
-  assert.equal(staleApproval.data.code, "STALE_BILLING_SUBMISSION");
-  assert.equal(staleApproval.data.latest_submission_id, corrected.data.submission.submission_id);
-  assert.equal(
-    db.prepare("SELECT workflow_status FROM billing_lite_submissions WHERE id = ?").get(corrected.data.submission.submission_id).workflow_status,
-    "awaiting_operator",
-  );
-  const superseded = db.prepare("SELECT workflow_status, workflow_note, reversed_at FROM billing_lite_submissions WHERE id = ?").get(first.data.submission.submission_id);
-  assert.equal(superseded.workflow_status, "superseded");
-  assert.equal(superseded.workflow_note, "");
-  assert.ok(superseded.reversed_at);
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
-  const correctedBill = db.prepare("SELECT items, total_amount FROM billing WHERE id = ?").get(baseInvoice.data.id);
-  assert.equal(JSON.parse(correctedBill.items).filter((item) => Number(item.inventory_item_id) === itemId).length, 0);
-  assert.equal(correctedBill.total_amount, 2000);
-  assert.ok(db.prepare("SELECT 1 FROM billing_quick_events WHERE submission_id = ? AND event_type = 'clarification_superseded'").get(first.data.submission.submission_id));
+  assert.equal(obsoleteAcknowledgement.status, 400, JSON.stringify(obsoleteAcknowledgement.data));
+  const stored = db.prepare("SELECT workflow_status, reversed_at FROM billing_lite_submissions WHERE id = ?")
+    .get(first.data.submission.submission_id);
+  assert.equal(stored.workflow_status, "completed");
+  assert.equal(stored.reversed_at, null);
+  const issuedBill = db.prepare("SELECT status FROM billing WHERE id = ?").get(baseInvoice.data.id);
+  assert.equal(issuedBill.status, "paid");
 });
 
 test("a mixed reused and newly deducted supply line reverses completely without restoring dispensed stock", async () => {
@@ -594,6 +623,7 @@ test("a mixed reused and newly deducted supply line reverses completely without 
 
   const captured = await api("POST", `/billing/quick/visits/${mixedConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
+    ...quickIssueFields("MIXED-REVERSAL"),
     items: [{ inventory_item_id: mixedItemId, quantity: 3 }],
   });
   assert.equal(captured.status, 201, JSON.stringify(captured.data));
@@ -602,6 +632,23 @@ test("a mixed reused and newly deducted supply line reverses completely without 
   const submissionLine = JSON.parse(submission.items_json)[0];
   assert.deepEqual(submissionLine.dispensing_movement_ids, [Number(dispensing.id)]);
   assert.equal(submissionLine.inventory_movement_ids.length, 1);
+
+  const payment = db.prepare(`
+    SELECT id FROM billing_payment_transactions
+    WHERE billing_id = ? ORDER BY id DESC LIMIT 1
+  `).get(submission.billing_id);
+  const paymentReversal = await api(
+    "POST",
+    `/billing/${submission.billing_id}/payments/${payment.id}/reverse`,
+    operatorToken,
+    {
+      operation_id: randomUUID(),
+      reversal_date: today,
+      reason: "Reverse receipt before correcting mixed supply quantity",
+    },
+  );
+  assert.equal(paymentReversal.status, 201, JSON.stringify(paymentReversal.data));
+  assert.equal(paymentReversal.data.bill.payment_state, "unpaid");
 
   const reversed = await api("POST", `/billing/quick/submissions/${submission.id}/reverse`, operatorToken, {
     operation_id: randomUUID(),
@@ -623,6 +670,7 @@ test("a mixed reused and newly deducted supply line reverses completely without 
 test("Billing Lite rejects consultation prices with fractional cents", async () => {
   const result = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
+    ...quickIssueFields("FRACTIONAL-FEE"),
     consultation_fee: { type: "Day Consultation", amount: 2000.001 },
     items: [],
   });
@@ -647,20 +695,20 @@ test("quick billing requires an audited reason for overrides and caps consultati
   ensureBillingForConsultation(controlledConsultationId, patientId, null, "Day Consultation");
 
   const missingReason = await api("POST", `/billing/quick/visits/${controlledConsultationId}/capture`, doctorToken, {
-    operation_id: randomUUID(), consultation_fee: { type: "Day Consultation", amount: 2500 }, items: [],
+    operation_id: randomUUID(), ...quickIssueFields("FEE-REASON"), consultation_fee: { type: "Day Consultation", amount: 2500 }, items: [],
   });
   assert.equal(missingReason.status, 400, JSON.stringify(missingReason.data));
   assert.equal(missingReason.data.code, "CONSULTATION_FEE_REASON_REQUIRED");
 
   const overCap = await api("POST", `/billing/quick/visits/${controlledConsultationId}/capture`, doctorToken, {
-    operation_id: randomUUID(), consultation_fee: {
+    operation_id: randomUUID(), ...quickIssueFields("FEE-CAP"), consultation_fee: {
       type: "Day Consultation", amount: 4500.01, adjustment_reason: "Approved exceptional consultation fee",
     }, items: [],
   });
   assert.equal(overCap.status, 400, JSON.stringify(overCap.data));
 
   const accepted = await api("POST", `/billing/quick/visits/${controlledConsultationId}/capture`, doctorToken, {
-    operation_id: randomUUID(), consultation_fee: {
+    operation_id: randomUUID(), ...quickIssueFields("FEE-ACCEPTED"), consultation_fee: {
       type: "Day Consultation", amount: 4500, adjustment_reason: "Extended emergency consultation approved",
     }, items: [],
   });
@@ -780,6 +828,7 @@ test("patient picker and capture remain available when a reset cutover is stored
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 0);
     const captured = await api("POST", `/billing/quick/visits/${futureConsultationId}/capture`, doctorToken, {
       operation_id: randomUUID(),
+      ...quickIssueFields("CUTOVER"),
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
     });
@@ -801,7 +850,7 @@ test("patient picker and capture remain available when a reset cutover is stored
   }
 });
 
-test("operator action queue is searchable and reports stable pagination totals", async () => {
+test("directly issued invoices appear in searchable history and not the operator action queue", async () => {
   const today = getTodayLocal();
   const identifier = `OCS-QUEUE-${Date.now()}`;
   const patientId = Number(db.prepare(`
@@ -819,6 +868,7 @@ test("operator action queue is searchable and reports stable pagination totals",
   ensureBillingForConsultation(queueConsultationId, patientId, null, "Day Consultation");
   const captured = await api("POST", `/billing/quick/visits/${queueConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
+    ...quickIssueFields("HISTORY"),
     consultation_fee: { type: "Day Consultation", amount: 2000 },
     items: [],
   });
@@ -830,34 +880,26 @@ test("operator action queue is searchable and reports stable pagination totals",
     operatorToken,
   );
   assert.equal(queue.status, 200, JSON.stringify(queue.data));
-  assert.equal(queue.data.total, 1);
+  assert.equal(queue.data.total, 0);
   assert.equal(queue.data.has_more, false);
-  assert.equal(queue.data.submissions[0].consultation_id, queueConsultationId);
-  const invoiceNumber = db.prepare("SELECT invoice_number FROM billing WHERE id = ?").get(captured.data.submission.bill_id).invoice_number;
-  const invoiceSearch = await api(
-    "GET",
-    `/billing/quick/operator-queue?status=actionable&search=${encodeURIComponent(invoiceNumber)}&limit=10&offset=0`,
-    operatorToken,
-  );
-  assert.equal(invoiceSearch.status, 200, JSON.stringify(invoiceSearch.data));
-  assert.equal(invoiceSearch.data.total, 1);
-  assert.equal(invoiceSearch.data.submissions[0].invoice_number, invoiceNumber);
 
-  const approved = await api(
-    "PATCH",
-    `/billing/quick/operator-queue/${queueConsultationId}/status`,
+  const history = await api(
+    "GET",
+    `/billing/quick/submissions?status=completed&search=${encodeURIComponent(identifier)}&limit=10&offset=0`,
     operatorToken,
-    {
-      submission_id: queue.data.submissions[0].submission_id,
-      expected_workflow_status: queue.data.submissions[0].workflow_status,
-      status: "ready_for_payment",
-      note: "Charges verified for collection",
-    },
   );
-  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  assert.equal(history.status, 200, JSON.stringify(history.data));
+  assert.equal(history.data.total, 1);
+  assert.equal(history.data.has_more, false);
+  assert.equal(history.data.submissions[0].consultation_id, queueConsultationId);
+  assert.equal(history.data.submissions[0].status, "completed");
+
   const workspace = await api("GET", "/dashboard/operator-workspace", operatorToken);
   assert.equal(workspace.status, 200, JSON.stringify(workspace.data));
-  assert.ok(workspace.data.pendingPayments.some((bill) => Number(bill.id) === Number(captured.data.submission.bill_id)));
+  assert.equal(
+    workspace.data.pendingPayments.some((bill) => Number(bill.id) === Number(captured.data.submission.bill_id)),
+    false,
+  );
 
   const empty = await api(
     "GET",

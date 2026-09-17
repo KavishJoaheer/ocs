@@ -25,6 +25,7 @@ const tokens = {};
 const doctorId = db.prepare('SELECT id FROM doctors ORDER BY id LIMIT 1').get().id;
 const folderId = db.prepare('SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1').get().id;
 let base, server, fixtureIndex = 0;
+let quickIssueIndex = 0;
 before(async () => {
   server = await new Promise(resolve => { const running = app.listen(0, '127.0.0.1', () => resolve(running)); });
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -73,6 +74,14 @@ async function bill(ctx, lines, extra = {}) {
 function stockLine(it,qty=2) {return {description:'Audit medicine',type:'Sale',inventory_item_id:it.id,quantity:qty,amount:25*qty};}
 function fee(amount=1000) {return [{description:'Consultation fee',type:'Sale',amount}];}
 function standardFee(type='Day Consultation', amount=2000) {return {description:type,type:'Sale',amount,quantity:1,is_consultation_fee:true};}
+function quickIssueFields(prefix='AUDIT-RECEIPT') {
+  quickIssueIndex += 1;
+  return {
+    source_reference:`${prefix}-${quickIssueIndex}`,
+    payment_method:'cash',
+    payment_date:today,
+  };
+}
 async function report(date=today,basis='visit',selectedDoctorId=null) {
   const doctorScope=selectedDoctorId ? `&doctorId=${selectedDoctorId}` : '';
   return (await api('GET',`/dashboard/live-report?doctorPeriod=daily&doctorDate=${date}&locationPeriod=daily&locationDate=${date}&revenueDate=${date}&dateBasis=${basis}${doctorScope}`)).data;
@@ -90,25 +99,6 @@ function completedQuickSubmission({bill,ctx,items}) {
   );
   return Number(inserted.lastInsertRowid);
 }
-async function markReadyForPayment(consultationId) {
-  const submission = db.prepare(`
-    SELECT id, workflow_status
-    FROM billing_lite_submissions
-    WHERE consultation_id = ?
-    ORDER BY id DESC
-    LIMIT 1
-  `).get(consultationId);
-  assert.ok(submission, "a billing submission is required before operator approval");
-  const reviewed = await api('PATCH',`/billing/quick/operator-queue/${consultationId}/status`,'operator',{
-    submission_id:submission.id,
-    expected_workflow_status:submission.workflow_status,
-    status:'ready_for_payment',
-    note:'Reviewed against the consultation and charge record',
-  });
-  assert.equal(reviewed.status,200,JSON.stringify(reviewed.data));
-  return reviewed.data;
-}
-
 test('operators transcribe paper invoices, correct unpaid bills and record payment with an audit trail', async () => {
   const ctx=context('Operator invoice'); const it=item('Operator invoice medicine');
   const options=await api('GET','/billing/consultation-options','operator');
@@ -780,19 +770,16 @@ test('current tariffs migrate once without repricing bills, and automatic fees r
   const items=original.items.map(i=>({...i,description:'Night Consultation',amount:3000}));
   const confirmed=await api('PUT',`/billing/${original.id}`,'doctor',{items,status:'unpaid',confirm_consultation_fee:true,expected_version:original.row_version});
   assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));assert.equal(confirmed.data.total_amount,3000);assert.equal(confirmed.data.fee_review_required,0);
-  const finalized=await api('POST',`/billing/quick/visits/${created.data.id}/capture`,'doctor',{operation_id:randomUUID(),consultation_fee:{type:'Night Consultation',amount:3000},items:[]});
+  const finalized=await api('POST',`/billing/quick/visits/${created.data.id}/capture`,'doctor',{
+    operation_id:randomUUID(),...quickIssueFields('TARIFF'),consultation_fee:{type:'Night Consultation',amount:3000},items:[],
+  });
   assert.equal(finalized.status,201,JSON.stringify(finalized.data));
   const finalBill=(await api('GET',`/billing/${original.id}`,'doctor')).data;
-  const blockedForReview=await api('PATCH',`/billing/${original.id}/pay`,'doctor',{...pay,expected_version:finalBill.row_version,operation_id:randomUUID()});
-  assert.equal(blockedForReview.status,409,JSON.stringify(blockedForReview.data));
-  assert.equal(blockedForReview.data.code,'BILLING_REVIEW_REQUIRED');
-  const beforeReviewQueue=await api('GET','/dashboard/operator-workspace','operator');
-  assert.equal(beforeReviewQueue.data.pendingPayments.some(entry=>entry.id===original.id),false);
-  await markReadyForPayment(created.data.id);
-  const afterReviewQueue=await api('GET','/dashboard/operator-workspace','operator');
-  assert.equal(afterReviewQueue.data.pendingPayments.some(entry=>entry.id===original.id),true);
-  const completed=await api('PATCH',`/billing/${original.id}/pay`,'doctor',{...pay,expected_version:finalBill.row_version,operation_id:randomUUID()});
-  assert.equal(completed.status,200,JSON.stringify(completed.data));assert.equal(completed.data.status,'paid');
+  assert.equal(finalBill.status,'paid');
+  assert.equal(finalBill.payment_received_amount,3000);
+  assert.equal(finalBill.payment_balance_amount,0);
+  const actionQueue=await api('GET','/billing/quick/operator-queue?status=actionable','operator');
+  assert.equal(actionQueue.data.submissions.some(entry=>entry.bill_id===original.id),false);
   const duplicate=await bill({...ctx,consultationId:created.data.id},fee(2000),{operation_id:randomUUID()});
   assert.equal(duplicate.status,409);assert.equal(duplicate.data.existing_bill_id,original.id);
   const additional=await bill({...ctx,consultationId:created.data.id},[{description:'Additional procedure',type:'Sale',amount:100,is_service_charge:true}],{operation_id:randomUUID()});assert.equal(additional.status,201);
@@ -1144,15 +1131,20 @@ test('partially paid supply corrections become usable after the immutable receip
   const ctx=context('Partial supply correction');
   const it=item('Partial correction supply',20);
   const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const originalIssueFields=quickIssueFields('PARTIAL-CORRECTION');
   const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    operation_id:randomUUID(),...originalIssueFields,consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
   });
   assert.equal(captured.status,201,JSON.stringify(captured.data));
-  await markReadyForPayment(ctx.consultationId);
-  const payable=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
+  const issued=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
+  const issuedReceipt=issued.payments.find(entry=>entry.entry_type==='payment');
+  const issuedReversal=await api('POST',`/billing/${draft.data.id}/payments/${issuedReceipt.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,reason:'Reopen the paid invoice to test a partial receipt correction',operation_id:randomUUID(),
+  });
+  assert.equal(issuedReversal.status,201,JSON.stringify(issuedReversal.data));
   const part=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
-    amount:500,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
+    amount:500,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:issuedReversal.data.bill.row_version,
   });
   assert.equal(part.status,200,JSON.stringify(part.data));
   const blocked=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/reverse`,'operator',{
@@ -1160,7 +1152,7 @@ test('partially paid supply corrections become usable after the immutable receip
   });
   assert.equal(blocked.status,409,JSON.stringify(blocked.data));
   assert.equal(blocked.data.code,'PARTIAL_PAYMENT_REVERSAL_REQUIRED');
-  const receipt=part.data.payments.find(entry=>entry.entry_type==='payment');
+  const receipt=part.data.payments.find(entry=>entry.entry_type==='payment' && entry.amount===500);
   const receiptReversal=await api('POST',`/billing/${draft.data.id}/payments/${receipt.payment_transaction_id}/reverse`,'accountant',{
     reversal_date:today,reason:'Receipt reversed before correcting the supply line',operation_id:randomUUID(),
   });
@@ -1171,16 +1163,13 @@ test('partially paid supply corrections become usable after the immutable receip
   assert.equal(corrected.status,200,JSON.stringify(corrected.data));
   assert.equal(row(it.id).quantity,20);
   const reissued=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},items:[],
+    operation_id:randomUUID(),...originalIssueFields,consultation_fee:{type:'Day Consultation',amount:2000},items:[],
   });
   assert.equal(reissued.status,201,JSON.stringify(reissued.data));
-  await markReadyForPayment(ctx.consultationId);
   const reopened=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
-  const reposted=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
-    amount:500,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:reopened.row_version,
-  });
-  assert.equal(reposted.status,200,JSON.stringify(reposted.data));
-  assert.equal(reposted.data.payment_balance_amount,1500);
+  assert.equal(reopened.status,'paid');
+  assert.equal(reopened.payment_received_amount,2000);
+  assert.equal(reopened.payment_balance_amount,0);
 });
 
 test('paid supply corrections issue a credit note and restore only confirmed returned stock', async () => {
@@ -1190,17 +1179,15 @@ test('paid supply corrections issue a credit note and restore only confirmed ret
   assert.equal(draft.status,201,JSON.stringify(draft.data));
   const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
     operation_id:randomUUID(),
+    ...quickIssueFields('PAID-RETURN'),
     consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:it.id,quantity:1}],
   });
   assert.equal(captured.status,201,JSON.stringify(captured.data));
-  await markReadyForPayment(ctx.consultationId);
   assert.equal(row(it.id).quantity,19);
-  const payable=(await api('GET',`/billing/${draft.data.id}`,'doctor')).data;
-  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'doctor',{
-    amount:2025,payment_method:'cash',payment_date:today,expected_version:payable.row_version,operation_id:randomUUID(),
-  });
-  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  const paid=(await api('GET',`/billing/${draft.data.id}`,'doctor')).data;
+  assert.equal(paid.status,'paid');
+  assert.equal(paid.payment_received_amount,2025);
   const serviceRefund=await api('POST',`/billing/${draft.data.id}/refunds`,'accountant',{
     amount:100,refund_method:'cash',refund_date:today,
     reason:'Consultation service goodwill credit approved by finance',operation_id:randomUUID(),
@@ -1232,16 +1219,11 @@ test('active paid legacy submissions are derived as completed and remain correct
   const it=item('Legacy paid submission supply',20);
   const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
   const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    operation_id:randomUUID(),...quickIssueFields('LEGACY-PAID'),consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
   });
   assert.equal(captured.status,201,JSON.stringify(captured.data));
-  await markReadyForPayment(ctx.consultationId);
-  const payable=(await api('GET',`/billing/${draft.data.id}`,'accountant')).data;
-  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'accountant',{
-    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
-  });
-  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  assert.equal((await api('GET',`/billing/${draft.data.id}`,'accountant')).data.status,'paid');
   db.prepare("UPDATE billing_lite_submissions SET workflow_status='awaiting_operator' WHERE id=?").run(captured.data.submission.submission_id);
   const legacyDetail=(await api('GET',`/billing/${draft.data.id}`,'accountant')).data;
   assert.equal(legacyDetail.quick_submissions.find(entry=>entry.id===captured.data.submission.submission_id).workflow_status,'completed');
@@ -1258,16 +1240,11 @@ test('consumed paid-supply corrections reclassify the sale as wastage without re
   const it=item('Consumed paid supply',20);
   const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
   const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    operation_id:randomUUID(),...quickIssueFields('CONSUMED-CORRECTION'),consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
   });
   assert.equal(captured.status,201,JSON.stringify(captured.data));
-  await markReadyForPayment(ctx.consultationId);
-  const payable=(await api('GET',`/billing/${draft.data.id}`,'doctor')).data;
-  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
-    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
-  });
-  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  assert.equal((await api('GET',`/billing/${draft.data.id}`,'doctor')).data.status,'paid');
   const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',{
     disposition:'consumed_or_wasted',refund_method:'cash',refund_date:today,
     reason:'Supply charge refunded because the consumed item was not billable',operation_id:randomUUID(),
@@ -1288,26 +1265,28 @@ test('paid corrections reject reversed submissions after a replacement has been 
   const ctx=context('Superseded paid correction');
   const it=item('Superseded paid correction supply',20);
   const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const originalIssueFields=quickIssueFields('SUPERSEDED');
   const first=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    operation_id:randomUUID(),...originalIssueFields,consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
   });
   assert.equal(first.status,201,JSON.stringify(first.data));
+  const firstBill=(await api('GET',`/billing/${draft.data.id}`,'accountant')).data;
+  const firstPayment=firstBill.payments.find(entry=>entry.entry_type==='payment');
+  const firstPaymentReversal=await api('POST',`/billing/${draft.data.id}/payments/${firstPayment.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,reason:'Reverse receipt before replacing the supply submission',operation_id:randomUUID(),
+  });
+  assert.equal(firstPaymentReversal.status,201,JSON.stringify(firstPaymentReversal.data));
   const reversed=await api('POST',`/billing/quick/submissions/${first.data.submission.submission_id}/reverse`,'operator',{
     operation_id:randomUUID(),reason:'The original supply selection was entered incorrectly',
   });
   assert.equal(reversed.status,200,JSON.stringify(reversed.data));
   const replacement=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    operation_id:randomUUID(),...originalIssueFields,consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
   });
   assert.equal(replacement.status,201,JSON.stringify(replacement.data));
-  await markReadyForPayment(ctx.consultationId);
-  const payable=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
-  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
-    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
-  });
-  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  assert.equal((await api('GET',`/billing/${draft.data.id}`,'operator')).data.status,'paid');
   const beforeRefunds=db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(draft.data.id).count;
   const staleCorrection=await api('POST',`/billing/quick/submissions/${first.data.submission.submission_id}/paid-correction`,'accountant',{
     disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
@@ -1466,17 +1445,12 @@ test('accounting invariant matrix stays balanced through billing, payment, refun
   const stockItem=item('Invariant corrected supply',20);
   const stockDraft=await bill(stockCtx,[standardFee()],{operation_id:randomUUID()});
   const stockCapture=await api('POST',`/billing/quick/visits/${stockCtx.consultationId}/capture`,'doctor',{
-    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    operation_id:randomUUID(),...quickIssueFields('INVARIANT-STOCK'),consultation_fee:{type:'Day Consultation',amount:2000},
     items:[{inventory_item_id:stockItem.id,quantity:1,unit_price:25}],
   });
   assert.equal(stockCapture.status,201,JSON.stringify(stockCapture.data));
-  await markReadyForPayment(stockCtx.consultationId);
   billIds.push(stockDraft.data.id);
-  const stockPayable=(await api('GET',`/billing/${stockDraft.data.id}`,'accountant')).data;
-  const stockPaid=await api('PATCH',`/billing/${stockDraft.data.id}/pay`,'accountant',{
-    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:stockPayable.row_version,
-  });
-  assert.equal(stockPaid.status,200,JSON.stringify(stockPaid.data));
+  assert.equal((await api('GET',`/billing/${stockDraft.data.id}`,'accountant')).data.status,'paid');
   const stockCorrection=await api('POST',`/billing/quick/submissions/${stockCapture.data.submission.submission_id}/paid-correction`,'accountant',{
     disposition:'consumed_or_wasted',refund_method:'cash',refund_date:today,
     reason:'Invariant matrix non-billable consumed supply',operation_id:randomUUID(),

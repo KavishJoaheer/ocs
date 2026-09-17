@@ -2089,7 +2089,7 @@ router.get("/quick/submissions", (req, res) => {
       reversal_reason: row.reversal_reason || "",
     }));
 
-  res.json({ submissions: rows, total, limit, offset });
+  res.json({ submissions: rows, total, limit, offset, has_more: offset + rows.length < total });
 });
 
 router.post("/quick/visits/:consultationId/capture", (req, res) => {
@@ -2115,9 +2115,35 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
     return res.status(400).json({ error: "A unique submission reference is required." });
   }
   const sourceReference = normalizeSourceReference(req.body?.source_reference);
-  if (req.auth?.role === "operator" && sourceReference.length < 3) {
+  if (sourceReference.length < 3) {
     return res.status(400).json({
-      error: "Enter the OCS paper invoice number or photo reference before issuing this invoice.",
+      error: "Enter the manual invoice receipt reference before issuing this invoice.",
+      code: "BILLING_SOURCE_REFERENCE_REQUIRED",
+    });
+  }
+  const paymentMethod = normalizePaymentMethod(req.body?.payment_method);
+  const paymentDate = String(req.body?.payment_date || "").trim();
+  const paymentReference = normalizeSourceReference(req.body?.payment_reference);
+  if (!PAYMENT_METHODS.has(paymentMethod)) {
+    return res.status(400).json({
+      error: "Select a valid payment method: cash, juice, card, or IB.",
+      code: "BILLING_PAYMENT_METHOD_REQUIRED",
+    });
+  }
+  if (!validPaymentDate(paymentDate)) {
+    return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
+  }
+  if (paymentMethod !== "cash" && paymentReference.length < 3) {
+    return res.status(400).json({
+      error: "Enter the Juice, card, or IB transaction reference.",
+      code: "BILLING_PAYMENT_REFERENCE_REQUIRED",
+    });
+  }
+  const raisedByDoctor = req.body?.raised_by_doctor === true;
+  if (req.auth?.role === "operator" && !raisedByDoctor) {
+    return res.status(400).json({
+      error: 'Select "Raise invoice by Doctor" before issuing this invoice.',
+      code: "OPERATOR_DOCTOR_CONFIRMATION_REQUIRED",
     });
   }
 
@@ -2176,6 +2202,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   let result = null;
   let touchedItemIds = [];
   let patientId = null;
+  let issuedPaymentSummary = null;
+  let issuedPaymentTransaction = null;
   try {
     db.transaction(() => {
       const replay = operation.read();
@@ -2189,6 +2217,23 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         throw Object.assign(new Error("This visit does not belong to your doctor account."), { status: 403 });
       }
       patientId = Number(consultation.patient_id);
+
+      const latestSubmission = db.prepare(`
+        SELECT *
+        FROM billing_lite_submissions
+        WHERE consultation_id = ? AND reversed_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(consultationId);
+      if (latestSubmission) {
+        const isDoctorCorrection = req.auth?.role === "doctor" && latestSubmission.workflow_status === "needs_doctor";
+        if (!isDoctorCorrection) {
+          throw Object.assign(
+            new Error("This billing submission has already been issued. Use the audited correction or reversal action instead of submitting it again."),
+            { status: 409, extra: { code: "QUICK_BILLING_ALREADY_SUBMITTED", submission_id: latestSubmission.id } },
+          );
+        }
+      }
 
       let billRow = db
         .prepare(`
@@ -2224,22 +2269,6 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         throw Object.assign(new Error("This visit no longer has an unpaid bill that can receive supplies."), { status: 409 });
       }
       const bill = parseBillingRow(billRow);
-      const latestSubmission = db.prepare(`
-        SELECT *
-        FROM billing_lite_submissions
-        WHERE consultation_id = ? AND reversed_at IS NULL
-        ORDER BY id DESC
-        LIMIT 1
-      `).get(consultationId);
-      if (latestSubmission) {
-        const isDoctorCorrection = req.auth?.role === "doctor" && latestSubmission.workflow_status === "needs_doctor";
-        if (!isDoctorCorrection) {
-          throw Object.assign(
-            new Error("This billing submission has already been issued or is awaiting review. Use the audited correction or reversal action instead of submitting it again."),
-            { status: 409, extra: { code: "QUICK_BILLING_ALREADY_SUBMITTED", submission_id: latestSubmission.id } },
-          );
-        }
-      }
       if (sourceReference) {
         const existingReference = normalizeSourceReference(bill.source_reference);
         if (existingReference && existingReference.toLowerCase() !== sourceReference.toLowerCase()) {
@@ -2458,7 +2487,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           JSON.stringify(addedItems),
           amountAdded,
-          req.auth?.role === "operator" ? "ready_for_payment" : "awaiting_operator",
+          "completed",
         );
 
       db.prepare(`
@@ -2475,6 +2504,31 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         String(req.auth.role || ""),
         bill.id,
       );
+
+      const issuedBill = parseBillingRow(
+        db.prepare("SELECT * FROM billing WHERE id = ? AND voided_at IS NULL").get(bill.id),
+      );
+      assertBillFinalized(issuedBill);
+      issuedPaymentTransaction = recordPaymentTransaction({
+        bill: issuedBill,
+        amount: issuedBill.total_amount,
+        paymentMethod,
+        paymentDate,
+        externalReference: paymentReference,
+        operationId: `quick-issue-payment:${operationId}`,
+        actor: req.auth,
+      });
+      issuedPaymentSummary = syncBillingPaymentSummary(
+        bill.id,
+        req.auth,
+        `Payment recorded while issuing invoice ${sourceReference}`,
+      );
+      if (issuedPaymentSummary.payment_state !== "paid") {
+        throw Object.assign(new Error("The invoice payment could not be completed atomically."), {
+          status: 409,
+          extra: { code: "QUICK_BILLING_PAYMENT_INCOMPLETE" },
+        });
+      }
 
       const supersededClarifications = db.prepare(`
         SELECT id, workflow_note
@@ -2527,7 +2581,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         billingId: bill.id,
         actor: req.auth,
         eventType: "submitted",
-        nextStatus: req.auth?.role === "operator" ? "ready_for_payment" : "awaiting_operator",
+        nextStatus: "completed",
         details: {
           item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           amount_added: amountAdded,
@@ -2540,6 +2594,20 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             confirmed: feeConfirmed,
             adjustment_reason: feeChanged ? requestedFeeReason : "",
           },
+          source_reference: sourceReference,
+          payment: {
+            transaction_id: Number(issuedPaymentTransaction?.id || 0) || null,
+            method: paymentMethod,
+            date: paymentDate,
+            external_reference: paymentReference || null,
+            amount: roundCurrency(issuedBill.total_amount),
+          },
+          issued_on_behalf_of_doctor: req.auth?.role === "operator",
+          raised_by_doctor_confirmation: req.auth?.role === "operator" ? raisedByDoctor : null,
+          consultation_doctor_id: doctorId,
+          consultation_doctor_name: String(consultation.doctor_name || ""),
+          issued_by_user_id: Number(req.auth?.id || 0) || null,
+          issued_by_role: String(req.auth?.role || ""),
         },
       });
 
@@ -2549,6 +2617,16 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         amount_added: amountAdded,
         item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
         consultation_fee: { type: consultationFeeType, amount: consultationFeeAmount, changed: feeChanged },
+        source_reference: sourceReference,
+        workflow_status: "completed",
+        payment: {
+          transaction_id: Number(issuedPaymentTransaction?.id || 0) || null,
+          method: paymentMethod,
+          date: paymentDate,
+          external_reference: paymentReference || null,
+          amount: roundCurrency(issuedBill.total_amount),
+          state: issuedPaymentSummary.payment_state,
+        },
       };
       operation.save(result);
     }).immediate();

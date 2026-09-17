@@ -265,6 +265,10 @@ function BillingLitePage() {
   const [billingDoctorId, setBillingDoctorId] = useState("");
   const billingDoctorIdRef = useRef("");
   const [sourceReference, setSourceReference] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentDate, setPaymentDate] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const [operatorDoctorConfirmation, setOperatorDoctorConfirmation] = useState(false);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState(null);
@@ -451,6 +455,10 @@ function BillingLitePage() {
     setSelectedPickerVisitId("");
     setSelectedVisit(null);
     setSourceReference("");
+    setPaymentMethod("");
+    setPaymentReference("");
+    setPaymentDate(dayjs().format("YYYY-MM-DD"));
+    setOperatorDoctorConfirmation(false);
     if (!doctorId) return;
     setIsCatalogLoading(true);
     try {
@@ -663,6 +671,11 @@ function BillingLitePage() {
     setConsultationType(nextType);
     setConsultationPrice(String(nextAmount));
     setConsultationAdjustmentReason("");
+    setSourceReference("");
+    setPaymentMethod("");
+    setPaymentReference("");
+    setPaymentDate(dayjs().format("YYYY-MM-DD"));
+    setOperatorDoctorConfirmation(false);
     setCart({});
     setCatalog([]);
     setCatalogSearch("");
@@ -811,8 +824,24 @@ function BillingLitePage() {
 
   async function submitBilling() {
     if (!selectedVisit || isSubmitting) return;
-    if (operatorIssueOnly && sourceReference.trim().length < 3) {
-      toast.error("Enter the paper invoice number or photo reference.");
+    if (sourceReference.trim().length < 3) {
+      toast.error("Enter the manual invoice receipt reference.");
+      return;
+    }
+    if (!["cash", "juice", "card", "ib"].includes(paymentMethod)) {
+      toast.error("Select the payment method.");
+      return;
+    }
+    if (!paymentDate || dayjs(paymentDate).isAfter(dayjs(), "day")) {
+      toast.error("Select a valid payment date that is not in the future.");
+      return;
+    }
+    if (paymentMethod !== "cash" && paymentReference.trim().length < 3) {
+      toast.error("Enter the Juice, card, or IB transaction reference.");
+      return;
+    }
+    if (operatorIssueOnly && !operatorDoctorConfirmation) {
+      toast.error('Select "Raise invoice by Doctor" before issuing.');
       return;
     }
     setIsSubmitting(true);
@@ -820,7 +849,11 @@ function BillingLitePage() {
     const submissionPayload = {
       operation_id: editingOfflineEntry?.payload?.operation_id || crypto.randomUUID(),
       doctor_id: operatorIssueOnly ? Number(billingDoctorId) : undefined,
-      source_reference: operatorIssueOnly ? sourceReference.trim() : undefined,
+      source_reference: sourceReference.trim(),
+      payment_method: paymentMethod,
+      payment_date: paymentDate,
+      payment_reference: paymentReference.trim() || undefined,
+      raised_by_doctor: operatorIssueOnly ? operatorDoctorConfirmation : undefined,
       consultation_fee: {
         type: consultationType,
         amount: Number(consultationPrice),
@@ -843,9 +876,7 @@ function BillingLitePage() {
       setSelectedVisit(payload.visit || selectedVisit);
       setView("success");
       await loadDashboard({ silent: true });
-      toast.success(operatorIssueOnly
-        ? "Invoice issued and ready for payment."
-        : selectedItems.length ? "Billing sent to the operator." : "Consultation-only billing submitted.");
+      toast.success("Invoice issued and payment recorded.");
     } catch (error) {
       if (isBrowserOffline() || isNetworkFailure(error)) {
         try {
@@ -862,6 +893,8 @@ function BillingLitePage() {
               patientName: selectedVisit.patient_name || selectedVisit.patient_masked_name,
               patientIdentifier: selectedVisit.patient_identifier || "",
               sourceReference: sourceReference.trim() || "",
+              paymentMethod,
+              paymentDate,
               itemCount: selectedUnitCount,
             },
           });
@@ -999,8 +1032,12 @@ function BillingLitePage() {
       setConsultationAdjustmentReason(String(fee.adjustment_reason || ""));
       if (operatorIssueOnly) {
         setBillingDoctorId(String(queuedDoctorId || visit.doctor_id || ""));
-        setSourceReference(String(queueEntry.payload?.source_reference || queueEntry.meta?.sourceReference || ""));
       }
+      setSourceReference(String(queueEntry.payload?.source_reference || queueEntry.meta?.sourceReference || ""));
+      setPaymentMethod(String(queueEntry.payload?.payment_method || queueEntry.meta?.paymentMethod || ""));
+      setPaymentReference(String(queueEntry.payload?.payment_reference || ""));
+      setPaymentDate(String(queueEntry.payload?.payment_date || queueEntry.meta?.paymentDate || dayjs().format("YYYY-MM-DD")));
+      setOperatorDoctorConfirmation(Boolean(queueEntry.payload?.raised_by_doctor));
       setEditingOfflineEntry(queueEntry);
       setView("catalog");
       toast.success("Saved submission opened for correction. Review it before submitting again.");
@@ -1027,6 +1064,10 @@ function BillingLitePage() {
     setLastSubmissionOffline(false);
     setEditingOfflineEntry(null);
     setSourceReference("");
+    setPaymentMethod("");
+    setPaymentReference("");
+    setPaymentDate(dayjs().format("YYYY-MM-DD"));
+    setOperatorDoctorConfirmation(false);
     setConsultationAdjustmentReason("");
     setView(destination);
   }
@@ -1700,26 +1741,85 @@ function BillingLitePage() {
                   </div>
                 )}
 
-                {operatorIssueOnly ? (
-                  <label className="mt-5 block rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <span className="text-sm font-black text-slate-700">Paper invoice or photo reference</span>
+                <div className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="block">
+                    <span className="text-sm font-black text-slate-700">Manual invoice receipt reference</span>
                     <input
                       value={sourceReference}
                       onChange={(event) => setSourceReference(event.target.value)}
-                      placeholder="Example: PAPER-1042"
+                      placeholder="Example: RECEIPT-1042"
                       className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
                     />
                     <span className="mt-2 block text-xs font-semibold text-slate-500">
-                      Required for audit and duplicate protection.
+                      Required for audit and duplicate-invoice protection.
                     </span>
                   </label>
-                ) : null}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-sm font-black text-slate-700">Payment method</span>
+                      <select
+                        value={paymentMethod}
+                        onChange={(event) => {
+                          setPaymentMethod(event.target.value);
+                          if (event.target.value === "cash") setPaymentReference("");
+                        }}
+                        className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                      >
+                        <option value="">Select method</option>
+                        <option value="cash">Cash</option>
+                        <option value="juice">Juice</option>
+                        <option value="card">Card</option>
+                        <option value="ib">Internet Banking</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-black text-slate-700">Payment date</span>
+                      <input
+                        type="date"
+                        max={dayjs().format("YYYY-MM-DD")}
+                        value={paymentDate}
+                        onChange={(event) => setPaymentDate(event.target.value)}
+                        className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                      />
+                    </label>
+                  </div>
+
+                  {paymentMethod && paymentMethod !== "cash" ? (
+                    <label className="block">
+                      <span className="text-sm font-black text-slate-700">Payment transaction reference</span>
+                      <input
+                        value={paymentReference}
+                        onChange={(event) => setPaymentReference(event.target.value)}
+                        placeholder={paymentMethod === "juice" ? "Juice transaction reference" : paymentMethod === "card" ? "Card transaction reference" : "Bank transfer reference"}
+                        className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                      />
+                    </label>
+                  ) : null}
+
+                  {operatorIssueOnly ? (
+                    <label className="flex items-start gap-3 rounded-xl border border-[#b9e3df] bg-[#edf8f6] px-4 py-3 text-sm font-bold text-[#173f47]">
+                      <input
+                        type="checkbox"
+                        checked={operatorDoctorConfirmation}
+                        onChange={(event) => setOperatorDoctorConfirmation(event.target.checked)}
+                        className="mt-1 size-4"
+                      />
+                      <span>
+                        Raise invoice by Doctor
+                        <span className="mt-1 block text-xs font-semibold text-slate-600">
+                          I confirm this invoice is being raised on behalf of {selectedVisit.doctor_name || "the selected consultation doctor"}.
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
 
                 <div className="mt-2 flex items-center justify-between rounded-2xl bg-[#fff5cf] px-5 py-5">
                   <div>
-                    <p className="text-sm font-bold text-slate-600">{operatorIssueOnly ? "Invoice total" : "Provisional total"}</p>
+                    <p className="text-sm font-bold text-slate-600">Invoice total</p>
                     <p className="text-sm font-semibold text-slate-500">
-                      {operatorIssueOnly ? "Issued unpaid and ready for payment recording" : "Operator completes payment details"}
+                      Payment is recorded when the invoice is issued
                     </p>
                   </div>
                   <p className="text-2xl font-black text-[#173f47]">{formatRupees(grandTotal)}</p>
@@ -1732,7 +1832,7 @@ function BillingLitePage() {
                   className="mt-6 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#17666a] px-6 text-lg font-black text-white shadow-[0_15px_35px_rgba(23,102,106,0.25)] transition active:scale-[0.98] disabled:opacity-60"
                 >
                   {isSubmitting ? <LoaderCircle className="size-6 animate-spin" /> : <Send className="size-6" />}
-                  {isSubmitting ? "Submitting…" : operatorIssueOnly ? "Issue invoice" : "Submit to operator"}
+                  {isSubmitting ? "Issuing…" : "Issue invoice"}
                 </button>
               </div>
             </div>
@@ -1751,7 +1851,7 @@ function BillingLitePage() {
               <h1 className="mt-2 text-3xl font-black text-[#173f47]">
                 {lastSubmissionOffline
                   ? "Will send when online"
-                  : operatorIssueOnly ? "Invoice issued" : "Sent to the operator"}
+                  : "Invoice issued"}
               </h1>
               <p className="mt-3 text-base font-semibold leading-7 text-slate-600">
                 {selectedVisit.visit_number} · {selectedVisit.patient_identifier}<br />
@@ -1759,7 +1859,7 @@ function BillingLitePage() {
               </p>
               <div className="mt-7 rounded-2xl bg-[#edf8f6] px-5 py-4 text-left">
                 <p className="text-sm font-bold text-slate-500">Current status</p>
-                <div className="mt-2"><StatusBadge status={lastSubmissionOffline ? "queued_offline" : operatorIssueOnly ? "ready_for_payment" : "awaiting_operator"} /></div>
+                <div className="mt-2"><StatusBadge status={lastSubmissionOffline ? "queued_offline" : "completed"} /></div>
               </div>
               <button
                 type="button"
