@@ -747,23 +747,23 @@ test("patient picker search runs on the server before result limiting", async ()
   assert.ok(searched.data.patients[0].visits.some(visit=>visit.consultation_id===target.nextConsultationId));
 });
 
-test("patient picker reports the billing cutover instead of presenting an unexplained empty list", async () => {
+test("patient picker and capture remain available when a reset cutover is stored as audit metadata", async () => {
   const previous = db.prepare("SELECT * FROM billing_system_settings WHERE id = 1").get();
   try {
     db.prepare("DELETE FROM billing_system_settings WHERE id = 1").run();
+    const today = getTodayLocal();
     const futurePatientId = Number(db.prepare(`
       INSERT INTO patients (full_name, first_name, last_name, patient_identifier, age, contact_number, patient_contact_number, address, assigned_doctor_id)
       VALUES ('Future Cutover Patient', 'Future', 'Patient', ?, 40, '57000000', '57000000', 'Future test address', ?)
     `).run(`OCS-FUTURE-${Date.now()}`, doctorId).lastInsertRowid);
     const futureAppointmentId = Number(db.prepare(`
       INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
-      VALUES (?, ?, '2099-01-01', '10:00', 'completed')
-    `).run(futurePatientId, doctorId).lastInsertRowid);
+      VALUES (?, ?, ?, '10:00', 'completed')
+    `).run(futurePatientId, doctorId, today).lastInsertRowid);
     const futureConsultationId = Number(db.prepare(`
       INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
-      VALUES (?, ?, ?, '2099-01-01', 'Future-dated cutover regression')
-    `).run(futureAppointmentId, futurePatientId, doctorId).lastInsertRowid);
-    ensureBillingForConsultation(futureConsultationId, futurePatientId, null, "Day Consultation");
+      VALUES (?, ?, ?, ?, 'Cutover metadata regression')
+    `).run(futureAppointmentId, futurePatientId, doctorId, today).lastInsertRowid);
     db.prepare(`
       INSERT INTO billing_system_settings (id, cutover_date, reset_at, reset_reason)
       VALUES (1, '2099-01-01', CURRENT_TIMESTAMP, 'Picker cutover regression test')
@@ -772,20 +772,19 @@ test("patient picker reports the billing cutover instead of presenting an unexpl
         reset_at = excluded.reset_at,
         reset_reason = excluded.reset_reason
     `).run();
-    const picker = await api("GET", "/billing/quick/picker-options?limit=20", doctorToken);
+    const picker = await api("GET", `/billing/quick/picker-options?search=${encodeURIComponent(`OCS-FUTURE-`)}&limit=20`, doctorToken);
     assert.equal(picker.status, 200, JSON.stringify(picker.data));
-    assert.equal(picker.data.cutover_date, "2099-01-01");
-    assert.equal(picker.data.billing_active, false);
-    assert.deepEqual(picker.data.patients, []);
-    assert.equal(picker.data.next_offset, 0);
-    assert.equal(picker.data.has_more, false);
-    const blocked = await api("POST", `/billing/quick/visits/${futureConsultationId}/capture`, doctorToken, {
+    assert.equal(picker.data.cutover_date, null);
+    assert.equal(picker.data.billing_active, true);
+    assert.ok(picker.data.patients.some((patient) => patient.patient_id === futurePatientId));
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 0);
+    const captured = await api("POST", `/billing/quick/visits/${futureConsultationId}/capture`, doctorToken, {
       operation_id: randomUUID(),
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
     });
-    assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
-    assert.equal(blocked.data.code, "BILLING_CUTOVER_NOT_ACTIVE");
+    assert.equal(captured.status, 201, JSON.stringify(captured.data));
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 1);
   } finally {
     if (previous) {
       db.prepare(`

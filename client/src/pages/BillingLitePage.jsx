@@ -273,8 +273,6 @@ function BillingLitePage() {
   const [patientSearchHasMore, setPatientSearchHasMore] = useState(false);
   const [patientOptionsOffset, setPatientOptionsOffset] = useState(0);
   const [patientSearchOffset, setPatientSearchOffset] = useState(0);
-  const [billingCutoverDate, setBillingCutoverDate] = useState("");
-  const [billingActive, setBillingActive] = useState(true);
   const [patientPageLoading, setPatientPageLoading] = useState(false);
   const patientPickerRef = useRef(null);
   const [visitSearch, setVisitSearch] = useState("");
@@ -356,8 +354,6 @@ function BillingLitePage() {
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
       setPatientOptionsHasMore(Boolean(pickerPayload?.has_more));
       setPatientOptionsOffset(Number(pickerPayload?.next_offset || 0));
-      setBillingCutoverDate(String(pickerPayload?.cutover_date || ""));
-      setBillingActive(pickerPayload?.billing_active !== false);
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
       setConsultationFees(feePayload || {});
       setOperatorPayments(Array.isArray(operatorPayload?.pendingPayments) ? operatorPayload.pendingPayments : []);
@@ -463,8 +459,6 @@ function BillingLitePage() {
       setPatientOptions(Array.isArray(payload?.patients) ? payload.patients : []);
       setPatientOptionsHasMore(Boolean(payload?.has_more));
       setPatientOptionsOffset(Number(payload?.next_offset || 0));
-      setBillingCutoverDate(String(payload?.cutover_date || ""));
-      setBillingActive(payload?.billing_active !== false);
       if (Array.isArray(payload?.doctors)) setDoctorOptions(payload.doctors);
     } catch (error) {
       toast.error(error.message || "This doctor’s billable visits could not be loaded.");
@@ -1140,13 +1134,6 @@ function BillingLitePage() {
               </div>
             ) : null}
 
-            {!billingActive && billingCutoverDate ? (
-              <div className="relative z-10 mb-4 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-amber-950">
-                <p className="font-black">Live billing begins {dayjs(billingCutoverDate).format("D MMMM YYYY")}</p>
-                <p className="mt-1 text-sm font-semibold">Visits before this cutover are intentionally excluded because the earlier billing records were trial data. New completed consultations will appear here from the cutover date.</p>
-              </div>
-            ) : null}
-
             {operatorIssueOnly ? (
               <div className="relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1215,9 +1202,7 @@ function BillingLitePage() {
                 </div>
               ) : (
                 <div className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">
-                  {!billingActive && billingCutoverDate
-                    ? `No visits can be billed before ${dayjs(billingCutoverDate).format("D MMMM YYYY")}.`
-                    : "No completed visits are waiting for billing."}
+                  No completed visits are waiting for billing.
                 </div>
               )}
               {priorityVisits.length > 4 ? (
@@ -1309,9 +1294,7 @@ function BillingLitePage() {
                           </button>
                         )) : (
                           <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
-                            {!billingActive && billingCutoverDate
-                              ? `Billing is intentionally closed for visits before ${dayjs(billingCutoverDate).format("D MMMM YYYY")}.`
-                              : "No matching patient with a completed billable consultation."}
+                            No matching patient with a completed billable consultation.
                           </p>
                         )}
                         {(patientSearch.trim().length >= 2 && patientSearchResults !== null ? patientSearchHasMore : patientOptionsHasMore) ? (

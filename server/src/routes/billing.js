@@ -1,5 +1,5 @@
 const express = require("express");
-const { db } = require("../db");
+const { db, ensureBillingForConsultation } = require("../db");
 const {
   billingItemsValidationError,
   calculateBillingTotal,
@@ -34,7 +34,6 @@ const {
   reverseBillingSubmissionInventory,
 } = require("../lib/inventoryReversal");
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
-const { getBillingCutoverDate } = require("../lib/billingCutover");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -498,7 +497,6 @@ function resolveQuickBillingDoctor(req, res, submittedDoctorId, { required = tru
 }
 
 function quickBillingDoctorOptions() {
-  const cutoverDate = getBillingCutoverDate(db);
   return db.prepare(`
     SELECT DISTINCT d.id, d.full_name
     FROM doctors d
@@ -506,34 +504,12 @@ function quickBillingDoctorOptions() {
     JOIN patients p ON p.id = c.patient_id AND p.deleted_at IS NULL
     WHERE d.is_active = 1
       AND d.deleted_at IS NULL
-      AND (? = '' OR date(c.consultation_date) >= date(?))
     ORDER BY d.full_name COLLATE NOCASE ASC
-  `).all(cutoverDate, cutoverDate).map((doctor) => ({ id: Number(doctor.id), full_name: String(doctor.full_name || "") }));
+  `).all().map((doctor) => ({ id: Number(doctor.id), full_name: String(doctor.full_name || "") }));
 }
 
 function formatVisitNumber(consultationId) {
   return `V-${String(Number(consultationId || 0)).padStart(6, "0")}`;
-}
-
-function assertQuickBillingCutoverOpen(consultation) {
-  const cutoverDate = getBillingCutoverDate(db);
-  if (!cutoverDate) return;
-  const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
-  if (localDate < cutoverDate) {
-    throw Object.assign(
-      new Error(`Live billing begins ${cutoverDate}. Submissions cannot be posted before the cutover.`),
-      { status: 409, extra: { code: "BILLING_CUTOVER_NOT_ACTIVE", cutover_date: cutoverDate, local_date: localDate } },
-    );
-  }
-  const consultationDate = String(
-    consultation?.appointment_date || consultation?.consultation_date || "",
-  ).slice(0, 10);
-  if (consultationDate && consultationDate < cutoverDate) {
-    throw Object.assign(
-      new Error(`This visit is dated before the ${cutoverDate} billing cutover and cannot receive a live invoice.`),
-      { status: 409, extra: { code: "VISIT_BEFORE_BILLING_CUTOVER", cutover_date: cutoverDate } },
-    );
-  }
 }
 
 function maskPatientName(fullName) {
@@ -569,7 +545,6 @@ function quickVisitBaseRows(doctorId, {
   const safeLimit = Math.min(250, Math.max(1, Number.parseInt(limit, 10) || 100));
   const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
   const normalizedSearch = String(search || "").trim().toLowerCase().slice(0, 100);
-  const cutoverDate = getBillingCutoverDate(db);
   return db
     .prepare(`
       SELECT
@@ -594,10 +569,6 @@ function quickVisitBaseRows(doctorId, {
         AND (@consultationId IS NULL OR c.id = @consultationId)
         AND (@patientIdentifier = '' OR UPPER(p.patient_identifier) = @patientIdentifier)
         AND (
-          @cutoverDate = ''
-          OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) >= date(@cutoverDate)
-        )
-        AND (
           @search = ''
           OR lower(p.full_name) LIKE @searchPattern
           OR lower(p.patient_identifier) LIKE @searchPattern
@@ -612,12 +583,20 @@ function quickVisitBaseRows(doctorId, {
         AND (
           @billableRole = ''
           OR (
-            EXISTS (
-              SELECT 1
-              FROM billing billable_bill
-              WHERE billable_bill.consultation_id = c.id
-                AND billable_bill.status = 'unpaid'
-                AND billable_bill.voided_at IS NULL
+            (
+              EXISTS (
+                SELECT 1
+                FROM billing billable_bill
+                WHERE billable_bill.consultation_id = c.id
+                  AND billable_bill.status = 'unpaid'
+                  AND billable_bill.voided_at IS NULL
+              )
+              OR NOT EXISTS (
+                SELECT 1
+                FROM billing active_bill
+                WHERE active_bill.consultation_id = c.id
+                  AND active_bill.voided_at IS NULL
+              )
             )
             AND (
               (
@@ -665,7 +644,6 @@ function quickVisitBaseRows(doctorId, {
       search: normalizedSearch,
       searchPattern: `%${normalizedSearch}%`,
       billableRole: String(billableRole || ""),
-      cutoverDate,
       limit: safeLimit,
       offset: safeOffset,
     });
@@ -740,9 +718,8 @@ function serializeQuickVisit(row) {
     workflow_updated_at: submissions[0]?.workflow_updated_at || null,
     last_submitted_at: submissions[0]?.created_at || null,
     can_submit: Boolean(
-      activeBill &&
-      activeBill.status === "unpaid" &&
-      (!submissions.length || correctionRequested)
+      ((!activeBill && bills.length === 0) || activeBill?.status === "unpaid")
+      && (!submissions.length || correctionRequested)
     ),
   };
 }
@@ -1530,17 +1507,12 @@ router.get("/consultation-options", (req, res) => {
       WHERE p.deleted_at IS NULL
         AND c.voided_at IS NULL
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
-        AND (
-          @cutoverDate = ''
-          OR date(c.consultation_date) >= date(@cutoverDate)
-        )
       GROUP BY c.id, p.full_name, d.full_name
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
     .all({
       doctorId:
         doctorId,
-      cutoverDate: getBillingCutoverDate(db),
     })
     .map((row) => ({ ...row, bill_count: Number(row.bill_count || 0) }));
 
@@ -1563,29 +1535,15 @@ router.get("/quick/picker-options", (req, res) => {
   const doctorId = resolveQuickBillingDoctor(req, res, req.query.doctorId, { required: false });
   if (!doctorId && res.headersSent) return;
   const doctors = ["operator", "admin"].includes(req.auth?.role) ? quickBillingDoctorOptions() : [];
-  const cutoverDate = getBillingCutoverDate(db);
   const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
-  const billingActive = !cutoverDate || localDate >= cutoverDate;
   if (!doctorId) return res.json({
     doctors,
     patients: [],
-    cutover_date: cutoverDate || null,
+    cutover_date: null,
     local_date: localDate,
-    billing_active: billingActive,
+    billing_active: true,
     next_offset: 0,
     has_more: false,
-  });
-  if (!billingActive) return res.json({
-    doctors,
-    patients: [],
-    search: String(req.query.search || "").trim().slice(0, 100),
-    limit: Math.min(200, Math.max(20, Number.parseInt(req.query.limit, 10) || 100)),
-    offset: Math.max(0, Number.parseInt(req.query.offset, 10) || 0),
-    next_offset: 0,
-    has_more: false,
-    cutover_date: cutoverDate,
-    local_date: localDate,
-    billing_active: false,
   });
 
   const search = String(req.query.search || "").trim().slice(0, 100);
@@ -1627,9 +1585,9 @@ router.get("/quick/picker-options", (req, res) => {
     offset,
     next_offset: offset + visits.length,
     has_more: hasMore,
-    cutover_date: cutoverDate || null,
+    cutover_date: null,
     local_date: localDate,
-    billing_active: billingActive,
+    billing_active: true,
   });
 });
 
@@ -1734,8 +1692,7 @@ router.get("/quick/unbilled-report", (req, res) => {
   `).get();
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   const requestedDateFrom = datePattern.test(String(req.query.dateFrom || "")) ? String(req.query.dateFrom) : sqlDates.default_from;
-  const cutoverDate = getBillingCutoverDate(db);
-  const dateFrom = cutoverDate && requestedDateFrom < cutoverDate ? cutoverDate : requestedDateFrom;
+  const dateFrom = requestedDateFrom;
   const dateTo = datePattern.test(String(req.query.dateTo || "")) ? String(req.query.dateTo) : sqlDates.default_to;
   if (dateFrom > dateTo) {
     return res.json({ date_from: dateFrom, date_to: dateTo, count: 0, visits: [] });
@@ -2149,7 +2106,6 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   }
   try {
     assertBillingActorConsultationAccess(req.auth, requestedConsultation, req.body?.doctor_id);
-    assertQuickBillingCutoverOpen(requestedConsultation);
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
   }
@@ -2232,10 +2188,9 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       if (!consultation || consultation.voided_at || Number(consultation.doctor_id) !== doctorId) {
         throw Object.assign(new Error("This visit does not belong to your doctor account."), { status: 403 });
       }
-      assertQuickBillingCutoverOpen(consultation);
       patientId = Number(consultation.patient_id);
 
-      const billRow = db
+      let billRow = db
         .prepare(`
           SELECT *
           FROM billing
@@ -2246,6 +2201,25 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           LIMIT 1
         `)
         .get(consultationId);
+      if (!billRow) {
+        ensureBillingForConsultation(
+          consultationId,
+          patientId,
+          req.auth,
+          hasRequestedFee ? requestedFeeType : null,
+        );
+        billRow = db
+          .prepare(`
+            SELECT *
+            FROM billing
+            WHERE consultation_id = ?
+              AND status = 'unpaid'
+              AND voided_at IS NULL
+            ORDER BY id ASC
+            LIMIT 1
+          `)
+          .get(consultationId);
+      }
       if (!billRow) {
         throw Object.assign(new Error("This visit no longer has an unpaid bill that can receive supplies."), { status: 409 });
       }

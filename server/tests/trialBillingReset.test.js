@@ -182,11 +182,13 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
   ]) {
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger), trigger);
   }
-  const blockedOldVisit = createVisit("2026-09-30", "BLOCKED");
-  assert.equal(
-    ensureBillingForConsultation(blockedOldVisit.consultationId, blockedOldVisit.patientId, { id: userId }),
-    null,
-  );
+  const trialVisit = createVisit("2026-09-30", "TRIAL");
+  const trialBillId = Number(ensureBillingForConsultation(
+    trialVisit.consultationId,
+    trialVisit.patientId,
+    { id: userId },
+  ));
+  assert.equal(trialBillId, 1);
 
   const launchVisit = createVisit("2026-10-01", "LAUNCH");
   const firstLiveBillId = Number(ensureBillingForConsultation(
@@ -194,7 +196,7 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     launchVisit.patientId,
     { id: userId },
   ));
-  assert.equal(firstLiveBillId, 1);
+  assert.equal(firstLiveBillId, 2);
 });
 
 test("trial billing reset rolls back every deletion when integrity guards cannot be recreated", () => {
