@@ -447,8 +447,11 @@ router.get("/billing", (req, res) => {
         ), 0)) AS payment_balance_amount,
         c.consultation_date,
         c.doctor_notes,
-        d.full_name AS doctor_name
+        COALESCE(NULLIF(b.patient_name_snapshot, ''), p.full_name) AS patient_name,
+        COALESCE(NULLIF(b.patient_identifier_snapshot, ''), p.patient_identifier) AS patient_identifier,
+        COALESCE(NULLIF(b.doctor_name_snapshot, ''), d.full_name) AS doctor_name
       FROM billing b
+      JOIN patients p ON p.id = b.patient_id
       JOIN consultations c ON c.id = b.consultation_id
       JOIN doctors d ON d.id = c.doctor_id
       WHERE b.patient_id = ?
@@ -481,9 +484,10 @@ router.get("/billing/:id", (req, res) => {
           b.*,
           COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id=b.id),0) AS refunded_amount,
           COALESCE((SELECT SUM(payment.amount) FROM billing_payment_ledger payment WHERE payment.billing_id=b.id),0) AS payment_received_amount,
-          p.full_name AS patient_name,
+          COALESCE(NULLIF(b.patient_name_snapshot, ''), p.full_name) AS patient_name,
+          COALESCE(NULLIF(b.patient_identifier_snapshot, ''), p.patient_identifier) AS patient_identifier,
           c.consultation_date,
-          d.full_name AS doctor_name
+          COALESCE(NULLIF(b.doctor_name_snapshot, ''), d.full_name) AS doctor_name
         FROM billing b
         JOIN patients p ON p.id = b.patient_id
         JOIN consultations c ON c.id = b.consultation_id
@@ -504,13 +508,26 @@ router.get("/billing/:id", (req, res) => {
 
   const bill = parseBillingRow(row);
   const creditNotes = db.prepare(`
-    SELECT credit_note_number, amount, refund_method, refund_date, reason
-    FROM billing_refunds WHERE billing_id=? ORDER BY id DESC
+    SELECT refund.credit_note_number, refund.amount, refund.refund_method,
+      refund.refund_date, refund.reason, refund.external_reference,
+      correction.disposition
+    FROM billing_refunds refund
+    LEFT JOIN billing_supply_corrections correction ON correction.refund_id = refund.id
+    WHERE refund.billing_id=? ORDER BY refund.id ASC
+  `).all(bill.id);
+  const paymentTransactions = db.prepare(`
+    SELECT ledger_id AS id, entry_type, amount, payment_method,
+      transaction_date AS payment_date, external_reference, reason
+    FROM billing_payment_ledger
+    WHERE billing_id = ?
+    ORDER BY created_at ASC, id ASC
   `).all(bill.id);
   return res.json({
     bill: {
       id: bill.id,
+      invoice_number: bill.invoice_number || `OCS-INV-${String(bill.id).padStart(8, "0")}`,
       patient_name: bill.patient_name,
+      patient_identifier: bill.patient_identifier || null,
       consultation_date: bill.consultation_date,
       total_amount: bill.total_amount,
       refunded_amount: toNumber(bill.refunded_amount, 0),
@@ -520,6 +537,7 @@ router.get("/billing/:id", (req, res) => {
       status: bill.status,
       items: bill.items,
       doctor_name: bill.doctor_name || null,
+      payment_transactions: paymentTransactions,
       linkham_claim_status: bill.linkham_claim_status || null,
       credit_notes: creditNotes,
     },

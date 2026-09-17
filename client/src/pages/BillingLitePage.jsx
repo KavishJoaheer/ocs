@@ -132,7 +132,7 @@ function EmptyState({ icon: Icon = CalendarDays, title, description, action }) {
   );
 }
 
-function OperatorPaymentModal({ bill, busy, onClose, onConfirm }) {
+function OperatorPaymentModal({ bill, busy, onClose, onConfirm, onReverse }) {
   const balance = Math.max(0, Number(bill?.payment_balance_amount ?? bill?.total_amount ?? 0));
   const [amount, setAmount] = useState(balance ? balance.toFixed(2) : "");
   const [method, setMethod] = useState("");
@@ -140,6 +140,11 @@ function OperatorPaymentModal({ bill, busy, onClose, onConfirm }) {
   const [reference, setReference] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [operationId] = useState(() => crypto.randomUUID());
+  const [reversalPayment, setReversalPayment] = useState(null);
+  const [reversalReason, setReversalReason] = useState("");
+  const [reversalDate, setReversalDate] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const [reversalReference, setReversalReference] = useState("");
+  const reversedPaymentIds = new Set((bill.payments || []).filter((entry) => entry.entry_type === "reversal").map((entry) => Number(entry.payment_transaction_id)));
   const amountNumber = Number(amount || 0);
   const valid = amountNumber > 0 && amountNumber <= balance && method && paymentDate &&
     (method === "cash" || reference.trim().length >= 3) && confirmed;
@@ -159,6 +164,34 @@ function OperatorPaymentModal({ bill, busy, onClose, onConfirm }) {
           <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Outstanding</p>
           <p className="mt-1 text-2xl font-black">{formatRupees(balance)}</p>
         </div>
+        {(bill.payments || []).some((payment) => payment.entry_type === "payment" && !reversedPaymentIds.has(Number(payment.payment_transaction_id))) ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-black text-amber-950">Recorded receipts</p>
+            <p className="mt-1 text-xs font-semibold text-amber-800">Reverse an incorrect receipt before correcting supplies on a partially paid invoice.</p>
+            <div className="mt-3 space-y-2">
+              {(bill.payments || []).filter((payment) => payment.entry_type === "payment" && !reversedPaymentIds.has(Number(payment.payment_transaction_id))).map((payment) => (
+                <button key={payment.id} type="button" onClick={() => { setReversalPayment(payment); setReversalReason(""); setReversalReference(""); }} className="flex min-h-11 w-full items-center justify-between rounded-xl border border-amber-200 bg-white px-3 text-left text-sm font-bold text-amber-950">
+                  <span>{formatVisitDate(payment.payment_date)} · {payment.payment_method}</span><span>{formatRupees(payment.amount)} · Reverse</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {reversalPayment ? (
+          <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <p className="font-black text-rose-950">Reverse {formatRupees(reversalPayment.amount)} receipt</p>
+            <label className="block text-sm font-bold">Reason
+              <textarea minLength={8} value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-rose-200 bg-white p-3" />
+            </label>
+            <label className="block text-sm font-bold">Reversal date
+              <input type="date" max={dayjs().format("YYYY-MM-DD")} value={reversalDate} onChange={(event) => setReversalDate(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-200 bg-white px-3" />
+            </label>
+            {reversalPayment.payment_method !== "cash" ? <label className="block text-sm font-bold">Provider reversal reference
+              <input minLength={3} value={reversalReference} onChange={(event) => setReversalReference(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-200 bg-white px-3" />
+            </label> : null}
+            <div className="flex justify-end gap-2"><button type="button" onClick={() => setReversalPayment(null)} className="min-h-10 rounded-xl border border-rose-200 bg-white px-3 font-bold">Cancel</button><button type="button" disabled={busy || reversalReason.trim().length < 8 || (reversalPayment.payment_method !== "cash" && reversalReference.trim().length < 3)} onClick={() => onReverse(reversalPayment, { reversal_date: reversalDate, reason: reversalReason.trim(), external_reference: reversalReference.trim() || null, operation_id: crypto.randomUUID() })} className="min-h-10 rounded-xl bg-rose-700 px-3 font-black text-white disabled:opacity-50">Confirm reversal</button></div>
+          </div>
+        ) : null}
         <label className="block text-sm font-bold">Amount received
           <input required type="number" min="0.01" max={balance} step="0.01" value={amount} onChange={(event) => { setAmount(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
         </label>
@@ -498,8 +531,18 @@ function BillingLitePage() {
         : "";
       const payload = await api.get(`/billing/quick/catalog/${visit.consultation_id}${doctorQuery}`);
       const items = Array.isArray(payload?.items) ? payload.items : [];
+      const resolvedVisit = payload.visit || visit;
+      const clarificationCart = {};
+      if (resolvedVisit.submission_status === "needs_doctor") {
+        for (const previousItem of resolvedVisit.clarification_items || []) {
+          if (items.some((item) => Number(item.id) === Number(previousItem.inventory_item_id))) {
+            clarificationCart[Number(previousItem.inventory_item_id)] = Number(previousItem.quantity || 0);
+          }
+        }
+      }
       setCatalog(items);
-      setSelectedVisit(payload.visit || visit);
+      setCart(clarificationCart);
+      setSelectedVisit(resolvedVisit);
       const hasSavedFavourite = items.some((item) => favorites.has(item.id));
       setCategory(hasSavedFavourite ? "Favourites" : "All supplies");
       setView("catalog");
@@ -598,6 +641,7 @@ function BillingLitePage() {
       items: selectedItems.map((item) => ({
         inventory_item_id: item.id,
         quantity: item.quantity,
+        unit_price: Number(item.selling_price || 0),
       })),
     };
     try {
@@ -695,6 +739,33 @@ function BillingLitePage() {
       toast.success("Payment recorded in the transaction ledger.");
     } catch (error) {
       toast.error(error.message || "Payment could not be recorded.");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
+
+  async function openOperatorPaymentBill(bill) {
+    setPaymentBusy(true);
+    try {
+      const detail = await api.get(`/billing/${bill.id}`);
+      setPaymentBill(detail);
+    } catch (error) {
+      toast.error(error.message || "The invoice ledger could not be opened.");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
+
+  async function reverseOperatorPayment(payment, payload) {
+    if (!paymentBill || paymentBusy) return;
+    setPaymentBusy(true);
+    try {
+      const result = await api.post(`/billing/${paymentBill.id}/payments/${payment.payment_transaction_id}/reverse`, payload);
+      setPaymentBill(result.bill);
+      await loadDashboard({ silent: true });
+      toast.success("Receipt reversed. Correct the supplies, then re-record the correct payment.");
+    } catch (error) {
+      toast.error(error.message || "The receipt could not be reversed.");
     } finally {
       setPaymentBusy(false);
     }
@@ -895,7 +966,7 @@ function BillingLitePage() {
                       <article key={`payment-${bill.id}`} className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4">
                         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black">{bill.patient_name}</p><p className="mt-1 text-xs font-bold text-slate-500">{bill.patient_identifier} · {bill.invoice_number}</p><p className="mt-1 text-xs font-semibold text-slate-500">{bill.doctor_name}</p></div><StatusBadge status={Number(bill.payment_received_amount || 0) > 0 ? "partial" : "ready_for_payment"} compact /></div>
                         <div className="mt-3 flex items-center justify-between rounded-xl bg-white px-3 py-2"><span className="text-xs font-bold text-slate-500">Outstanding</span><span className="font-black">{formatRupees(bill.payment_balance_amount)}</span></div>
-                        <button type="button" onClick={() => setPaymentBill(bill)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#17666a] px-3 text-sm font-black text-white"><CreditCard className="size-4" />Record payment</button>
+                        <button type="button" onClick={() => void openOperatorPaymentBill(bill)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#17666a] px-3 text-sm font-black text-white"><CreditCard className="size-4" />{Number(bill.payment_received_amount || 0) > 0 ? "Open payment ledger" : "Record payment"}</button>
                       </article>
                     ))}
                   </div>
@@ -1148,6 +1219,14 @@ function BillingLitePage() {
                 ) : null}
               </button>
             </div>
+
+            {selectedVisit.submission_status === "needs_doctor" ? (
+              <div className="mb-4 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <p className="font-black">Replace the earlier submission</p>
+                <p className="mt-1 text-sm font-semibold">{selectedVisit.workflow_note || "Review the previously submitted supplies and send the complete corrected list."}</p>
+                <p className="mt-2 text-xs font-bold text-amber-800">The previous quantities are preloaded. On submission, the earlier stock movements and charge lines are reversed before this corrected list is applied.</p>
+              </div>
+            ) : null}
 
             <div className="mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.12)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -1632,7 +1711,7 @@ function BillingLitePage() {
         ) : null}
       </main>
       {paymentBill ? (
-        <OperatorPaymentModal bill={paymentBill} busy={paymentBusy} onClose={() => !paymentBusy && setPaymentBill(null)} onConfirm={recordOperatorPayment} />
+        <OperatorPaymentModal bill={paymentBill} busy={paymentBusy} onClose={() => !paymentBusy && setPaymentBill(null)} onConfirm={recordOperatorPayment} onReverse={reverseOperatorPayment} />
       ) : null}
     </div>
   );

@@ -23,6 +23,7 @@ let baseUrl;
 let doctorToken;
 let otherDoctorToken;
 let operatorToken;
+let accountantToken;
 let doctorId;
 let otherDoctorId;
 let consultationId;
@@ -67,6 +68,8 @@ before(async () => {
   otherDoctorId = createDoctor("billing.lite.other", "Other Clinician");
   db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'operator')")
     .run("billing.lite.operator", "Billing Operator", hashPassword("BillingLite!2026"));
+  db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'accountant')")
+    .run("billing.lite.accountant", "Billing Accountant", hashPassword("BillingLite!2026"));
 
   const today = getTodayLocal();
   patientIdentifier = `OCS-${800000 + Math.floor(Math.random() * 10000)}`;
@@ -106,6 +109,7 @@ before(async () => {
   doctorToken = await login("billing.lite.doctor");
   otherDoctorToken = await login("billing.lite.other");
   operatorToken = await login("billing.lite.operator");
+  accountantToken = await login("billing.lite.accountant");
 });
 
 after(async () => {
@@ -164,6 +168,32 @@ test("Billing Lite offers a patient-first picker scoped to the signed-in doctor'
   );
   assert.equal(operatorDoctor.status, 200, JSON.stringify(operatorDoctor.data));
   assert.ok(operatorDoctor.data.patients.some((row) => row.patient_identifier === patientIdentifier));
+});
+
+test("finance roles cannot issue quick billing or deduct doctor stock", async () => {
+  const beforeQuantity = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  const denied = await api("POST", `/billing/quick/visits/${consultationId}/capture`, accountantToken, {
+    operation_id: randomUUID(),
+    consultation_fee: { type: "Night Consultation", amount: 3000 },
+    items: [{ inventory_item_id: itemId, quantity: 1, unit_price: 75 }],
+  });
+  assert.equal(denied.status, 403, JSON.stringify(denied.data));
+  assert.equal(denied.data.code, "QUICK_BILLING_ROLE_FORBIDDEN");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, beforeQuantity);
+});
+
+test("a reviewed quick bill stops when a supply price changed before sync", async () => {
+  const beforeQuantity = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  const denied = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    consultation_fee: { type: "Night Consultation", amount: 3000 },
+    items: [{ inventory_item_id: itemId, quantity: 1, unit_price: 70 }],
+  });
+  assert.equal(denied.status, 409, JSON.stringify(denied.data));
+  assert.equal(denied.data.code, "BILLING_PRICE_CHANGED");
+  assert.equal(denied.data.changed_prices[0].reviewed_price, 70);
+  assert.equal(denied.data.changed_prices[0].current_price, 75);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, beforeQuantity);
 });
 
 test("operator quick billing requires the matching consultation doctor and paper reference", async () => {
@@ -455,9 +485,14 @@ test("a corrected doctor submission supersedes and clears an older clarification
   });
   assert.equal(corrected.status, 201, JSON.stringify(corrected.data));
   assert.notEqual(corrected.data.submission.submission_id, first.data.submission.submission_id);
-  const superseded = db.prepare("SELECT workflow_status, workflow_note FROM billing_lite_submissions WHERE id = ?").get(first.data.submission.submission_id);
+  const superseded = db.prepare("SELECT workflow_status, workflow_note, reversed_at FROM billing_lite_submissions WHERE id = ?").get(first.data.submission.submission_id);
   assert.equal(superseded.workflow_status, "superseded");
   assert.equal(superseded.workflow_note, "");
+  assert.ok(superseded.reversed_at);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
+  const correctedBill = db.prepare("SELECT items, total_amount FROM billing WHERE id = ?").get(baseInvoice.data.id);
+  assert.equal(JSON.parse(correctedBill.items).filter((item) => Number(item.inventory_item_id) === itemId).length, 0);
+  assert.equal(correctedBill.total_amount, 2000);
   assert.ok(db.prepare("SELECT 1 FROM billing_quick_events WHERE submission_id = ? AND event_type = 'clarification_superseded'").get(first.data.submission.submission_id));
 });
 

@@ -29,7 +29,10 @@ const {
 } = require("../lib/restockFulfilment");
 const { assertInventoryQuantityUpdate, InventoryVersionConflictError } = require("../lib/inventoryQuantity");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
-const { reverseBillingSubmissionInventory } = require("../lib/inventoryReversal");
+const {
+  reclassifyBillingSubmissionInventoryAsWastage,
+  reverseBillingSubmissionInventory,
+} = require("../lib/inventoryReversal");
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 
 const { operationFor } = require("../lib/operationReceipts");
@@ -455,7 +458,9 @@ function assertBillingActorConsultationAccess(auth, consultation, submittedDocto
         { status: 409, extra: { code: "BILLING_DOCTOR_MISMATCH" } },
       );
     }
+    return;
   }
+
 }
 
 function requireQuickBillingDoctor(req, res) {
@@ -584,7 +589,7 @@ function serializeQuickVisit(row) {
     .map((bill) => ({ ...bill, ...paymentSummaryForBill(bill.id, bill.total_amount) }));
   const submissions = db
     .prepare(`
-      SELECT id, item_count, amount_added, workflow_status, workflow_note, workflow_updated_at, created_at
+      SELECT id, item_count, items_json, amount_added, workflow_status, workflow_note, workflow_updated_at, created_at
       FROM billing_lite_submissions
       WHERE consultation_id = ?
         AND reversed_at IS NULL
@@ -629,6 +634,13 @@ function serializeQuickVisit(row) {
     submission_count: submissions.length,
     submission_status: submissionStatus,
     workflow_note: submissions[0]?.workflow_note || "",
+    clarification_items: correctionRequested
+      ? normalizeBillingItems(submissions[0]?.items_json).map((item) => ({
+          inventory_item_id: Number(item.inventory_item_id || 0),
+          quantity: Number(item.quantity || 0),
+          unit_price: roundCurrency(item.unit_price),
+        })).filter((item) => item.inventory_item_id > 0 && item.quantity > 0)
+      : [],
     workflow_updated_at: submissions[0]?.workflow_updated_at || null,
     last_submitted_at: submissions[0]?.created_at || null,
     can_submit: Boolean(
@@ -1065,10 +1077,11 @@ function getJoinedBillById(billId) {
   if (!bill) return null;
   const parsed = withPaymentReview([parseBillingRow(bill)])[0];
   const refunds = db.prepare(`
-    SELECT *
-    FROM billing_refunds
-    WHERE billing_id = ?
-    ORDER BY id DESC
+    SELECT refund.*, correction.disposition
+    FROM billing_refunds refund
+    LEFT JOIN billing_supply_corrections correction ON correction.refund_id = refund.id
+    WHERE refund.billing_id = ?
+    ORDER BY refund.id DESC
   `).all(billId).map((refund) => ({ ...refund, amount: roundCurrency(refund.amount) }));
   const refundedAmount = roundCurrency(refunds.reduce((sum, refund) => sum + refund.amount, 0));
   const paymentSummary = paymentSummaryForBill(billId, parsed.total_amount);
@@ -1854,6 +1867,12 @@ router.get("/quick/submissions", (req, res) => {
 });
 
 router.post("/quick/visits/:consultationId/capture", (req, res) => {
+  if (!["doctor", "operator"].includes(req.auth?.role)) {
+    return res.status(403).json({
+      error: "Quick billing can only be issued by the consultation doctor or an operator acting for that doctor.",
+      code: "QUICK_BILLING_ROLE_FORBIDDEN",
+    });
+  }
   const consultationId = Number(req.params.consultationId || 0);
   const requestedConsultation = getConsultationContext(consultationId);
   if (!requestedConsultation || requestedConsultation.voided_at) {
@@ -1901,11 +1920,22 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   }
 
   const mergedQuantities = new Map();
+  const reviewedUnitPrices = new Map();
   for (const item of rawItems) {
     const itemId = Number(item?.inventory_item_id || 0);
     const quantity = Number(item?.quantity || 0);
     if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
       return res.status(400).json({ error: "Every selected supply needs a valid whole-number quantity." });
+    }
+    if (item?.unit_price !== undefined && item?.unit_price !== null && item?.unit_price !== "") {
+      if (!isValidCurrencyAmount(item.unit_price) || Number(item.unit_price) <= 0) {
+        return res.status(400).json({ error: "Every reviewed supply price must be a positive currency amount." });
+      }
+      const reviewedPrice = roundCurrency(item.unit_price);
+      if (reviewedUnitPrices.has(itemId) && reviewedUnitPrices.get(itemId) !== reviewedPrice) {
+        return res.status(400).json({ error: "A supply cannot contain conflicting reviewed prices." });
+      }
+      reviewedUnitPrices.set(itemId, reviewedPrice);
     }
     mergedQuantities.set(itemId, (mergedQuantities.get(itemId) || 0) + quantity);
   }
@@ -1950,7 +1980,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       }
       const bill = parseBillingRow(billRow);
       const latestSubmission = db.prepare(`
-        SELECT id, workflow_status
+        SELECT *
         FROM billing_lite_submissions
         WHERE consultation_id = ? AND reversed_at IS NULL
         ORDER BY id DESC
@@ -2006,8 +2036,43 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         String(previousFee.description || "") !== consultationFeeType ||
         roundCurrency(previousFee.amount) !== consultationFeeAmount;
       const feeConfirmed = hasRequestedFee && Boolean(bill.fee_review_required);
-      const baseItems = (bill.items || []).map((item, index) =>
-        index === feeIndex
+      let correctionReversal = { reversalIds: [], touchedItemIds: [] };
+      let correctionMovementIds = [];
+      if (latestSubmission?.workflow_status === "needs_doctor") {
+        const priorItems = normalizeBillingItems(latestSubmission.items_json);
+        const stockMovementIds = priorItems.flatMap((item) => item.inventory_movement_ids || []).map(Number).filter(Boolean);
+        const dispensingMovementIds = priorItems.flatMap((item) => item.dispensing_movement_ids || []).map(Number).filter(Boolean);
+        correctionMovementIds = [...new Set([...stockMovementIds, ...dispensingMovementIds])];
+        if (Number(latestSubmission.item_count || 0) > 0 && correctionMovementIds.length === 0) {
+          throw Object.assign(
+            new Error("The earlier submission predates exact stock tracking and cannot be replaced automatically. Ask an operator to use the audited reversal workflow."),
+            { status: 409, extra: { code: "CLARIFICATION_REPLACEMENT_REQUIRES_REVERSAL" } },
+          );
+        }
+        if (correctionMovementIds.length) {
+          correctionReversal = reverseBillingSubmissionInventory({
+            movementIds: stockMovementIds,
+            dispensingMovementIds,
+            consultationId,
+            billingId: bill.id,
+            actor: req.auth,
+            reason: `Replaced after billing clarification: ${String(latestSubmission.workflow_note || "corrected submission")}`,
+          });
+        }
+      }
+      const correctionMovementIdSet = new Set(correctionMovementIds);
+      const billItemsForReplacement = latestSubmission?.workflow_status === "needs_doctor"
+        ? (bill.items || []).filter((item) => ![
+            ...(item.inventory_movement_ids || []),
+            ...(item.dispensing_movement_ids || []),
+          ].some((id) => correctionMovementIdSet.has(Number(id))))
+        : (bill.items || []);
+      const replacementFeeIndex = billItemsForReplacement.findIndex(isConsultationFee);
+      if (replacementFeeIndex < 0) {
+        throw Object.assign(new Error("The consultation fee could not be preserved while replacing the clarified supplies."), { status: 409 });
+      }
+      const baseItems = billItemsForReplacement.map((item, index) =>
+        index === replacementFeeIndex
           ? {
               ...item,
               description: consultationFeeType,
@@ -2038,6 +2103,19 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           throw Object.assign(new Error("One or more selected supplies are no longer available in your bag."), { status: 409 });
         }
         const stockById = new Map(stockRows.map((item) => [Number(item.id), item]));
+        const changedPrices = requestedIds.flatMap((itemId) => {
+          const reviewedPrice = reviewedUnitPrices.get(itemId);
+          const currentPrice = roundCurrency(stockById.get(itemId)?.selling_price);
+          return reviewedPrice !== undefined && Math.abs(reviewedPrice - currentPrice) >= 0.005
+            ? [{ inventory_item_id: itemId, item_name: stockById.get(itemId)?.item_name || "Supply", reviewed_price: reviewedPrice, current_price: currentPrice }]
+            : [];
+        });
+        if (changedPrices.length) {
+          throw Object.assign(
+            new Error("One or more supply prices changed after this bill was reviewed. Reopen the saved bill and confirm the updated total."),
+            { status: 409, extra: { code: "BILLING_PRICE_CHANGED", changed_prices: changedPrices } },
+          );
+        }
         chargeLines = requestedIds.map((itemId) => {
           const item = stockById.get(itemId);
           const quantity = mergedQuantities.get(itemId);
@@ -2058,10 +2136,13 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         actor: req.auth,
         billingId: bill.id,
       });
-      touchedItemIds = applied.touchedItemIds;
+      touchedItemIds = [...new Set([
+        ...(correctionReversal.touchedItemIds || []),
+        ...(applied.touchedItemIds || []),
+      ])];
       const addedItems = normalizeBillingItems(applied.items);
 
-      if (addedItems.length || feeChanged || feeConfirmed || sourceReference) {
+      if (addedItems.length || feeChanged || feeConfirmed || sourceReference || latestSubmission?.workflow_status === "needs_doctor") {
         const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);
         const updated = db
           .prepare(`
@@ -2162,12 +2243,21 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         db.prepare(`
           UPDATE billing_lite_submissions
           SET workflow_status = 'superseded', workflow_note = '',
+              reversed_at = CURRENT_TIMESTAMP, reversed_by_user_id = ?,
+              reversal_reason = ?, reversal_operation_id = ?,
               workflow_updated_by_user_id = ?, workflow_updated_at = CURRENT_TIMESTAMP
           WHERE consultation_id = ?
             AND id != ?
             AND workflow_status = 'needs_doctor'
             AND reversed_at IS NULL
-        `).run(req.auth.id, consultationId, Number(inserted.lastInsertRowid));
+        `).run(
+          req.auth.id,
+          "Replaced after operator clarification",
+          operationId,
+          req.auth.id,
+          consultationId,
+          Number(inserted.lastInsertRowid),
+        );
         for (const previous of supersededClarifications) {
           recordQuickBillingEvent({
             submissionId: previous.id,
@@ -2178,7 +2268,10 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             previousStatus: "needs_doctor",
             nextStatus: "superseded",
             reason: "Doctor submitted a corrected billing entry.",
-            details: { replacement_submission_id: Number(inserted.lastInsertRowid) },
+            details: {
+              replacement_submission_id: Number(inserted.lastInsertRowid),
+              reversal_movement_ids: correctionReversal.reversalIds || [],
+            },
           });
         }
       }
@@ -2247,7 +2340,8 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
   }
 
   const submission = db.prepare(`
-    SELECT s.*, c.patient_id, c.doctor_id AS consultation_doctor_id, b.status AS bill_status, b.row_version
+    SELECT s.*, c.patient_id, c.doctor_id AS consultation_doctor_id,
+      b.status AS bill_status, b.total_amount, b.row_version
     FROM billing_lite_submissions s
     JOIN consultations c ON c.id = s.consultation_id
     JOIN billing b ON b.id = s.billing_id
@@ -2263,6 +2357,14 @@ router.post("/quick/submissions/:submissionId/reverse", (req, res) => {
   }
   if (submission.bill_status === "paid") {
     return res.status(409).json({ error: "A paid bill requires the documented admin correction process before stock can be reversed." });
+  }
+  const activePayment = paymentSummaryForBill(submission.billing_id, submission.total_amount);
+  if (activePayment.payment_received_amount > 0.000001) {
+    return res.status(409).json({
+      error: "Finance must reverse the active receipt before supplies on a partially paid invoice can be corrected. Retry this reversal after the receipt balance is zero, then re-record the correct payment.",
+      code: "PARTIAL_PAYMENT_REVERSAL_REQUIRED",
+      payment_received_amount: activePayment.payment_received_amount,
+    });
   }
 
   let operation;
@@ -2462,6 +2564,16 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
           reason,
         });
         touchedItemIds = reversal.touchedItemIds || [];
+      } else {
+        const reclassified = reclassifyBillingSubmissionInventoryAsWastage({
+          movementIds: [...new Set([...movementIds, ...dispensingMovementIds])],
+          consultationId: submission.consultation_id,
+          billingId: submission.billing_id,
+          actor: req.auth,
+          reason,
+        });
+        reversal = { reversalIds: reclassified.movementIds || [], touchedItemIds: reclassified.touchedItemIds || [] };
+        touchedItemIds = reversal.touchedItemIds;
       }
       const nextRefundId = Number(db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM billing_refunds").get().id);
       const creditNoteNumber = `OCS-CN-${String(nextRefundId).padStart(8, "0")}`;

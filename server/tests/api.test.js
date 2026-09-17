@@ -5,6 +5,7 @@
 const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
+const { randomUUID } = require("node:crypto");
 
 const TMP_DB = path.join(
   os.tmpdir(),
@@ -1221,7 +1222,7 @@ test("patient billing returns bills and summary totals", async () => {
     `)
     .run(appointmentId, patientId, doctorId).lastInsertRowid;
 
-  db.prepare(`
+  const paidPortalBillId = Number(db.prepare(`
     INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, payment_date, finalized_at)
     VALUES (?, ?, ?, ?, 'paid', 'cash', date('now', '-2 day'), CURRENT_TIMESTAMP)
   `).run(
@@ -1229,7 +1230,20 @@ test("patient billing returns bills and summary totals", async () => {
     patientId,
     JSON.stringify([{ description: "General Consultation", amount: 95 }]),
     95,
-  );
+  ).lastInsertRowid);
+  db.prepare(`
+    UPDATE billing
+    SET patient_name_snapshot = 'Historic Patient Name',
+        patient_identifier_snapshot = 'HISTORIC-OCS',
+        doctor_name_snapshot = 'Historic Doctor Name'
+    WHERE id = ?
+  `).run(paidPortalBillId);
+  db.prepare(`
+    INSERT INTO billing_payment_transactions (
+      billing_id, amount, payment_method, payment_date, operation_id,
+      recorded_by_name, recorded_by_role, source
+    ) VALUES (?, 95, 'cash', date('now', '-2 day'), ?, 'Portal fixture', 'admin', 'recorded')
+  `).run(paidPortalBillId, randomUUID());
 
   db.prepare(`
     INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, finalized_at)
@@ -1259,12 +1273,17 @@ test("patient billing returns bills and summary totals", async () => {
   assert.equal(billing.data.summary.outstanding, 35);
   assert.match(billing.data.bills[0].items_summary, /Consultation|Lab/i);
 
-  const billId = billing.data.bills[0].id;
+  const billId = billing.data.bills.find((bill) => Number(bill.amount) === 95).id;
   const detail = await api("GET", `/api/patient-portal/billing/${billId}`, { token });
   assert.equal(detail.status, 200, JSON.stringify(detail.data));
   assert.equal(detail.data.bill.id, billId);
   assert.ok(Array.isArray(detail.data.bill.items));
   assert.ok(detail.data.bill.items.length >= 1);
+  assert.equal(detail.data.bill.patient_name, "Historic Patient Name");
+  assert.equal(detail.data.bill.patient_identifier, "HISTORIC-OCS");
+  assert.equal(detail.data.bill.doctor_name, "Historic Doctor Name");
+  assert.equal(detail.data.bill.payment_transactions.length, 1);
+  assert.equal(detail.data.bill.payment_transactions[0].amount, 95);
   const voidedDetail = await api("GET", `/api/patient-portal/billing/${voidedBillId}`, { token });
   assert.equal(voidedDetail.status, 404, JSON.stringify(voidedDetail.data));
 

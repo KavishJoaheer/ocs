@@ -107,6 +107,11 @@ export async function shareOrDownloadCreditNotePdf(creditNote, bill) {
   const doc = new jsPDF();
   const creditNumber = creditNote.credit_note_number || `OCS-CN-${String(creditNote.id || 0).padStart(8, "0")}`;
   const invoiceNumber = bill.invoice_number || `OCS-INV-${String(bill.id || 0).padStart(8, "0")}`;
+  const inventoryTreatment = creditNote.disposition === "returned_to_stock"
+    ? "Inventory treatment: the linked sale movement was reversed and the confirmed stock was restored."
+    : creditNote.disposition === "consumed_or_wasted"
+      ? "Inventory treatment: stock was not restored; the linked sale was reclassified as consumed/wasted."
+      : "Inventory treatment: financial credit only; no inventory movement is linked to this credit note.";
   const rows = [
     ["OCS Medecins — Credit Note", 16, true],
     [`Credit note: ${creditNumber}`, 11, true],
@@ -118,7 +123,7 @@ export async function shareOrDownloadCreditNotePdf(creditNote, bill) {
     [`Reason: ${creditNote.reason || ""}`, 10, false],
     ...(creditNote.external_reference ? [[`External reference: ${creditNote.external_reference}`, 10, false]] : []),
     [`Issued by: ${creditNote.issued_by_name || "System"} (${creditNote.issued_by_role || "system"})`, 10, false],
-    ["This credit note adjusts net collections only. Inventory is not restored automatically.", 9, false],
+    [inventoryTreatment, 9, false],
   ];
   let y = 20;
   for (const [line, size, bold] of rows) {

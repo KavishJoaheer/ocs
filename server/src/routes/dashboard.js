@@ -395,10 +395,8 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
     entry.unpaid += dateBasis === "payment"
       ? 0
       : toNumber(bill.payment_balance_amount, bill.status === "paid" ? 0 : amount);
-    if (netPaid > 0) {
-      entry.doctor_commission += netPaid * toNumber(bill.doctor_commission_rate_snapshot, DOCTOR_COMMISSION_RATE);
-      entry.ocs_commission += netPaid * toNumber(bill.ocs_commission_rate_snapshot, OCS_COMMISSION_RATE);
-    }
+    entry.doctor_commission += netPaid * toNumber(bill.doctor_commission_rate_snapshot, DOCTOR_COMMISSION_RATE);
+    entry.ocs_commission += netPaid * toNumber(bill.ocs_commission_rate_snapshot, OCS_COMMISSION_RATE);
   }
 
   if (dateBasis === "payment") {
@@ -1822,17 +1820,25 @@ router.get("/live-report", (req, res) => {
 
   const paymentBasisActivityRows = dateBasis === "payment" ? db.prepare(`
     SELECT d.id AS doctor_id, d.full_name AS doctor_name,
-      COUNT(DISTINCT c.id) AS visit_count,
-      COUNT(DISTINCT c.patient_id) AS patient_count,
-      COALESCE(SUM(c.transport_benefit_snapshot), 0) AS transport_benefits
-    FROM billing b
-    JOIN consultations c ON c.id = b.consultation_id
-    JOIN doctors d ON d.id = c.doctor_id
-    WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
-      AND b.status = 'paid'
-      AND (SELECT MAX(payment.payment_date) FROM billing_payment_transactions payment WHERE payment.billing_id = b.id)
-        BETWEEN @startDate AND @endDate
-      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      COUNT(activity.consultation_id) AS visit_count,
+      COUNT(DISTINCT activity.patient_id) AS patient_count,
+      COALESCE(SUM(activity.transport_benefit_snapshot), 0) AS transport_benefits
+    FROM (
+      SELECT DISTINCT c.id AS consultation_id, c.patient_id, c.doctor_id,
+        c.transport_benefit_snapshot
+      FROM billing b
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+        AND b.status = 'paid'
+        AND EXISTS (
+          SELECT 1
+          FROM billing_payment_ledger payment
+          WHERE payment.billing_id = b.id
+            AND payment.payment_date BETWEEN @startDate AND @endDate
+        )
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    ) activity
+    JOIN doctors d ON d.id = activity.doctor_id
     GROUP BY d.id, d.full_name
   `).all({ startDate: doctorRange.start, endDate: doctorRange.end, doctorId: selectedDoctorId }) : doctorRows;
 

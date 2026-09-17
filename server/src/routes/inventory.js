@@ -22,7 +22,7 @@ const {
   publishPatientDataChange,
 } = require("../lib/inventoryRealtime");
 const { db } = require("../db");
-const { toNumber } = require("../lib/utils");
+const { isValidCurrencyAmount, toNumber } = require("../lib/utils");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
   applyStocktakeSession,
@@ -2008,6 +2008,12 @@ router.post("/items", (req, res) => {
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
+  if (
+    (Object.prototype.hasOwnProperty.call(req.body || {}, "cost_price") && !isValidCurrencyAmount(req.body.cost_price)) ||
+    (Object.prototype.hasOwnProperty.call(req.body || {}, "selling_price") && !isValidCurrencyAmount(req.body.selling_price))
+  ) {
+    return res.status(400).json({ error: "Cost and selling prices must be zero or more and use no more than two decimal places." });
+  }
   if (quantity !== 0) {
     return res.status(400).json({
       error: "Catalogue items start at zero on-hand. Receive stock after the item is created.",
@@ -2124,6 +2130,12 @@ router.put("/items/:id", (req, res) => {
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
+  if (
+    (Object.prototype.hasOwnProperty.call(req.body || {}, "cost_price") && !isValidCurrencyAmount(req.body.cost_price)) ||
+    (Object.prototype.hasOwnProperty.call(req.body || {}, "selling_price") && !isValidCurrencyAmount(req.body.selling_price))
+  ) {
+    return res.status(400).json({ error: "Cost and selling prices must be zero or more and use no more than two decimal places." });
+  }
   if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ error: "Quantity must be zero or more." });
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });

@@ -189,7 +189,8 @@ function ensureFinancialIntegritySchema(db) {
       BEGIN
         SELECT RAISE(ABORT, 'Payments require a valid non-future date, operation reference, and provider reference for non-cash methods');
       END;
-      CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_balance_guard
+      DROP TRIGGER IF EXISTS billing_payment_transactions_balance_guard;
+      CREATE TRIGGER billing_payment_transactions_balance_guard
       BEFORE INSERT ON billing_payment_transactions
       WHEN NOT EXISTS (
         SELECT 1
@@ -218,6 +219,32 @@ function ensureFinancialIntegritySchema(db) {
       CREATE TRIGGER IF NOT EXISTS billing_payment_transactions_no_delete
       BEFORE DELETE ON billing_payment_transactions BEGIN
         SELECT RAISE(ABORT, 'Payment transactions are immutable; record a compensating transaction');
+      END;
+      DROP TRIGGER IF EXISTS inventory_money_nonnegative_insert;
+      CREATE TRIGGER inventory_money_nonnegative_insert
+      BEFORE INSERT ON inventory
+      WHEN
+        typeof(NEW.cost_price) NOT IN ('integer', 'real')
+        OR typeof(NEW.selling_price) NOT IN ('integer', 'real')
+        OR NEW.cost_price < 0
+        OR NEW.selling_price < 0
+        OR abs(NEW.cost_price * 100 - round(NEW.cost_price * 100)) > 0.000001
+        OR abs(NEW.selling_price * 100 - round(NEW.selling_price * 100)) > 0.000001
+      BEGIN
+        SELECT RAISE(ABORT, 'Inventory prices must be non-negative currency values with no more than two decimal places');
+      END;
+      DROP TRIGGER IF EXISTS inventory_money_nonnegative_update;
+      CREATE TRIGGER inventory_money_nonnegative_update
+      BEFORE UPDATE OF cost_price, selling_price ON inventory
+      WHEN
+        typeof(NEW.cost_price) NOT IN ('integer', 'real')
+        OR typeof(NEW.selling_price) NOT IN ('integer', 'real')
+        OR NEW.cost_price < 0
+        OR NEW.selling_price < 0
+        OR abs(NEW.cost_price * 100 - round(NEW.cost_price * 100)) > 0.000001
+        OR abs(NEW.selling_price * 100 - round(NEW.selling_price * 100)) > 0.000001
+      BEGIN
+        SELECT RAISE(ABORT, 'Inventory prices must be non-negative currency values with no more than two decimal places');
       END;
       CREATE TABLE IF NOT EXISTS billing_payment_reversals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -448,14 +475,18 @@ function ensureFinancialIntegritySchema(db) {
       DROP TRIGGER IF EXISTS billing_part_paid_financial_guard;
       CREATE TRIGGER billing_part_paid_financial_guard
       BEFORE UPDATE ON billing
-      WHEN EXISTS (SELECT 1 FROM billing_payment_transactions p WHERE p.billing_id = OLD.id)
+      WHEN COALESCE((
+          SELECT SUM(ledger.amount)
+          FROM billing_payment_ledger ledger
+          WHERE ledger.billing_id = OLD.id
+        ), 0) > 0.000001
         AND (
           NEW.items != OLD.items
           OR NEW.total_amount != OLD.total_amount
           OR NEW.voided_at IS NOT OLD.voided_at
         )
       BEGIN
-        SELECT RAISE(ABORT, 'Invoices with payment transactions cannot change financial lines; use a credit note or adjustment invoice');
+        SELECT RAISE(ABORT, 'Invoices with an active payment balance cannot change financial lines; reverse the receipt before correcting the invoice');
       END;
       CREATE TABLE IF NOT EXISTS billing_events (
         id INTEGER PRIMARY KEY, bill_id INTEGER NOT NULL, actor_id INTEGER,

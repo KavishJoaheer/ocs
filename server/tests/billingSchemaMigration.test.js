@@ -176,4 +176,29 @@ test("legacy unique-consultation migration preserves every billing column and ro
     ORDER BY id
   `).all();
   assert.deepEqual(legacyReferences.map((row) => row.source_reference), ["LEGACY-DUPLICATE-7", null]);
+
+  db.exec(`
+    DROP TRIGGER billing_payment_transactions_balance_guard;
+    CREATE TRIGGER billing_payment_transactions_balance_guard
+    BEFORE INSERT ON billing_payment_transactions
+    BEGIN
+      SELECT CASE WHEN NEW.amount > (SELECT total_amount FROM billing WHERE id = NEW.billing_id)
+        THEN RAISE(ABORT, 'stale payment balance trigger') END;
+    END;
+  `);
+  const { ensureFinancialIntegritySchema: upgradeFinancialSchema } = require("../src/lib/financialIntegritySchema");
+  upgradeFinancialSchema(db);
+  const upgradedTrigger = db.prepare(`
+    SELECT sql FROM sqlite_master
+    WHERE type = 'trigger' AND name = 'billing_payment_transactions_balance_guard'
+  `).get();
+  assert.match(upgradedTrigger.sql, /billing_payment_reversals/);
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders ORDER BY id LIMIT 1").get().id);
+  assert.throws(
+    () => db.prepare(`
+      INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+      VALUES ('Invalid negative catalogue value', ?, 0, 0, 'unit', -1, 2, 'ocs')
+    `).run(folderId),
+    /non-negative currency values/,
+  );
 });

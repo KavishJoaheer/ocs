@@ -13,6 +13,7 @@ const app = createApp();
 const { db } = require('../src/db');
 const { hashPassword } = require('../src/lib/security');
 const { getTodayLocal, offsetLocalDate } = require('../src/lib/utils');
+const { stockFinancials } = require('../src/lib/inventoryFinancials');
 const today = getTodayLocal();
 const tokens = {};
 const doctorId = db.prepare('SELECT id FROM doctors ORDER BY id LIMIT 1').get().id;
@@ -1017,6 +1018,52 @@ test('payment corrections use an immutable compensating reversal and reopen the 
   });
   assert.equal(replay.status,201);assert.equal(replay.data.reversal_id,reversed.data.reversal_id);
   assert.throws(()=>db.prepare('UPDATE billing_payment_reversals SET reason=? WHERE id=?').run('Changed',reversed.data.reversal_id),/immutable/);
+  const replacement=await api('PATCH',`/billing/${original.data.id}/pay`,'accountant',{
+    amount:2000,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:reversed.data.bill.row_version,
+  });
+  assert.equal(replacement.status,200,JSON.stringify(replacement.data));
+  assert.equal(replacement.data.payment_received_amount,2000);
+});
+
+test('partially paid supply corrections become usable after the immutable receipt reversal', async () => {
+  const ctx=context('Partial supply correction');
+  const it=item('Partial correction supply',20);
+  const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
+  });
+  assert.equal(captured.status,201,JSON.stringify(captured.data));
+  const payable=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
+  const part=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
+    amount:500,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
+  });
+  assert.equal(part.status,200,JSON.stringify(part.data));
+  const blocked=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/reverse`,'operator',{
+    operation_id:randomUUID(),reason:'Supply quantity was entered incorrectly',
+  });
+  assert.equal(blocked.status,409,JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code,'PARTIAL_PAYMENT_REVERSAL_REQUIRED');
+  const receipt=part.data.payments.find(entry=>entry.entry_type==='payment');
+  const receiptReversal=await api('POST',`/billing/${draft.data.id}/payments/${receipt.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,reason:'Receipt reversed before correcting the supply line',operation_id:randomUUID(),
+  });
+  assert.equal(receiptReversal.status,201,JSON.stringify(receiptReversal.data));
+  const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/reverse`,'operator',{
+    operation_id:randomUUID(),reason:'Supply quantity was entered incorrectly',
+  });
+  assert.equal(corrected.status,200,JSON.stringify(corrected.data));
+  assert.equal(row(it.id).quantity,20);
+  const reissued=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},items:[],
+  });
+  assert.equal(reissued.status,201,JSON.stringify(reissued.data));
+  const reopened=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
+  const reposted=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
+    amount:500,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:reopened.row_version,
+  });
+  assert.equal(reposted.status,200,JSON.stringify(reposted.data));
+  assert.equal(reposted.data.payment_balance_amount,1500);
 });
 
 test('paid supply corrections issue a credit note and restore only confirmed returned stock', async () => {
@@ -1045,6 +1092,64 @@ test('paid supply corrections issue a credit note and restore only confirmed ret
   assert.equal(corrected.data.stock_restored,true);
   assert.equal(row(it.id).quantity,20);
   assert.equal(db.prepare('SELECT disposition FROM billing_supply_corrections WHERE id=?').get(corrected.data.correction_id).disposition,'returned_to_stock');
+});
+
+test('consumed paid-supply corrections reclassify the sale as wastage without restoring stock', async () => {
+  const ctx=context('Consumed paid supply correction');
+  const it=item('Consumed paid supply',20);
+  const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
+  });
+  assert.equal(captured.status,201,JSON.stringify(captured.data));
+  const payable=(await api('GET',`/billing/${draft.data.id}`,'doctor')).data;
+  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
+    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',{
+    disposition:'consumed_or_wasted',refund_method:'cash',refund_date:today,
+    reason:'Supply charge refunded because the consumed item was not billable',operation_id:randomUUID(),
+  });
+  assert.equal(corrected.status,201,JSON.stringify(corrected.data));
+  assert.equal(corrected.data.stock_restored,false);
+  assert.equal(row(it.id).quantity,19);
+  const movements=db.prepare('SELECT * FROM inventory_movements WHERE item_id=? ORDER BY id').all(it.id);
+  assert.deepEqual(movements.map(entry=>entry.action_type),['sell','reversal','wastage']);
+  const totals=stockFinancials(movements);
+  assert.equal(totals.net_sales_rs,0);
+  assert.equal(totals.sales_cost_rs,0);
+  assert.equal(totals.wastage_value_rs,10);
+  assert.equal(totals.total_value_cost_rs,10);
+});
+
+test('payment reversals reduce commission and multiple invoices count transport once', async () => {
+  const before=await report(today,'payment');
+  const beforeDoctor=before.doctorReport.rows.find(row=>row.doctor_id===doctorId) || {};
+  const reversalCtx=context('Commission reversal report');
+  const paid=await bill(reversalCtx,fee(1000),{status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID()});
+  assert.equal(paid.status,201,JSON.stringify(paid.data));
+  const receipt=paid.data.payments.find(entry=>entry.entry_type==='payment');
+  const reversed=await api('POST',`/billing/${paid.data.id}/payments/${receipt.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,reason:'Reverse the receipt to verify commission reporting',operation_id:randomUUID(),
+  });
+  assert.equal(reversed.status,201,JSON.stringify(reversed.data));
+  const afterReversal=await report(today,'payment');
+  const reversedDoctor=afterReversal.doctorReport.rows.find(row=>row.doctor_id===doctorId) || {};
+  assert.equal(Number((Number(reversedDoctor.doctorCommission||0)-Number(beforeDoctor.doctorCommission||0)).toFixed(2)),0);
+  assert.equal(Number((Number(reversedDoctor.ocsCommission||0)-Number(beforeDoctor.ocsCommission||0)).toFixed(2)),0);
+
+  const transportBefore=Number(reversedDoctor.transportBenefits||0);
+  const transportCtx=context('Transport once for two invoices');
+  db.prepare('UPDATE consultations SET transport_benefit_snapshot=123 WHERE id=?').run(transportCtx.consultationId);
+  const first=await bill(transportCtx,fee(500),{status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID()});
+  const second=await bill(transportCtx,[{description:'Additional clinical service',type:'Sale',amount:700,quantity:1,is_service_charge:true}],{status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID()});
+  assert.equal(first.status,201,JSON.stringify(first.data));
+  assert.equal(second.status,201,JSON.stringify(second.data));
+  const afterTransport=await report(today,'payment');
+  const transportDoctor=afterTransport.doctorReport.rows.find(row=>row.doctor_id===doctorId);
+  assert.equal(Number((transportDoctor.transportBenefits-transportBefore).toFixed(2)),123);
 });
 
 test('future financial dates and zero-priced supply sales are blocked without side effects', async () => {

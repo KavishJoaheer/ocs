@@ -992,7 +992,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
             <div className="mt-2 space-y-2">
               {creditNotes.map((note) => (
                 <div key={note.id} className="flex flex-wrap items-start justify-between gap-2 text-sm text-rose-950">
-                  <div><span className="font-bold">{note.credit_note_number}</span> · {formatDate(note.refund_date)}<p className="text-xs text-rose-800">{note.reason} · {formatPaymentMethod(note.refund_method)}</p></div>
+                  <div><span className="font-bold">{note.credit_note_number}</span> · {formatDate(note.refund_date)}<p className="text-xs text-rose-800">{note.reason} · {formatPaymentMethod(note.refund_method)}{note.disposition === "returned_to_stock" ? " · Stock restored" : note.disposition === "consumed_or_wasted" ? " · Reclassified as consumed/wasted" : " · Financial credit only"}</p></div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold">−{formatCurrency(note.amount)}</span>
                     <button type="button" className="min-h-9 rounded-xl border border-rose-300 bg-white px-3 text-xs font-bold" onClick={() => shareOrDownloadCreditNotePdf(note, bill).catch((error) => toast.error(error.message || "Could not create credit note PDF."))}>PDF</button>
@@ -1000,7 +1000,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
                 </div>
               ))}
             </div>
-            <p className="mt-3 border-t border-rose-200 pt-2 text-xs font-semibold text-rose-900">Credit notes change net collections only; inventory is not restored automatically.</p>
+            <p className="mt-3 border-t border-rose-200 pt-2 text-xs font-semibold text-rose-900">Inventory treatment is shown separately for each credit note and is backed by its linked correction record.</p>
           </div>
         ) : null}
         {bill.status === "paid" && (correctableSupplySubmissions.length || supplyCorrections.length) ? (

@@ -406,7 +406,127 @@ function reverseBillingSubmissionInventory({
   };
 }
 
+function reclassifyBillingSubmissionInventoryAsWastage({
+  movementIds = [],
+  consultationId,
+  billingId,
+  actor = {},
+  reason = "",
+}) {
+  const ids = [...new Set((movementIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) {
+    throw HttpError(409, "This submission has no traceable stock movements to reclassify.", {
+      code: "SUBMISSION_RECLASSIFICATION_REQUIRES_CORRECTION",
+    });
+  }
+  const actorName = resolveAuditActor({
+    displayName: actor.full_name || actor.username,
+    userId: actor.id,
+    required: true,
+  });
+  const createdMovementIds = [];
+  const touchedItemIds = new Set();
+
+  for (const movementId of ids) {
+    const existing = db.prepare(`
+      SELECT id FROM inventory_movements
+      WHERE action_type = 'wastage'
+        AND CAST(json_extract(meta_json, '$.reclassified_movement_id') AS INTEGER) = ?
+      LIMIT 1
+    `).get(movementId);
+    if (existing) continue;
+
+    const movement = db.prepare("SELECT * FROM inventory_movements WHERE id = ?").get(movementId);
+    if (!movement || movement.action_type !== "sell") {
+      throw HttpError(409, "A linked sale movement is missing or cannot be reclassified.", {
+        code: "SUBMISSION_MOVEMENT_INVALID",
+        movement_id: movementId,
+      });
+    }
+    let movementMeta = {};
+    try { movementMeta = JSON.parse(movement.meta_json || "{}"); } catch { movementMeta = {}; }
+    if (
+      Number(movementMeta.consultation_id || 0) !== Number(consultationId) ||
+      Number(movementMeta.billing_id || 0) !== Number(billingId)
+    ) {
+      throw HttpError(409, "A linked sale movement does not belong to this invoice.", {
+        code: "SUBMISSION_MOVEMENT_MISMATCH",
+        movement_id: movementId,
+      });
+    }
+    const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(movement.item_id);
+    const quantity = Number(movement.quantity || 0);
+    if (!item || !Number.isInteger(quantity) || quantity <= 0) {
+      throw HttpError(409, "The linked stock movement cannot be reclassified safely.", {
+        code: "SUBMISSION_MOVEMENT_UNRESTORABLE",
+        movement_id: movementId,
+      });
+    }
+    const currentQuantity = Number(item.quantity || 0);
+    const sharedMeta = {
+      consultation_id: Number(consultationId),
+      billing_id: Number(billingId),
+      reclassified_movement_id: movementId,
+      performed_by_user_id: actor.id || null,
+      performed_by_role: actor.role || "",
+      performed_by_name: actorName,
+      reason: String(reason || "").trim(),
+      no_stock_quantity_change: true,
+    };
+
+    const offsetMeta = { ...sharedMeta, reversed_movement_id: movementId, original_action_type: "sell", reclassification_scope: "paid_supply_correction" };
+    db.prepare(`
+      INSERT INTO inventory_movements (
+        item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+        recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+        unit_cost_snapshot, unit_price_snapshot, valuation_basis
+      ) VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, 'reversal', 'consultation', ?, ?, ?, ?, ?)
+    `).run(
+      item.id, quantity, currentQuantity, currentQuantity, item.owner_doctor_id || null,
+      actor.id || null, `Reclassified paid supply sale for consultation #${consultationId}.`,
+      Number(consultationId), JSON.stringify(offsetMeta), movement.unit_cost_snapshot,
+      movement.unit_price_snapshot, movement.valuation_basis,
+    );
+    const offsetId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+
+    const wastageMeta = { ...sharedMeta, original_action_type: "sell", disposition: "consumed_or_wasted" };
+    db.prepare(`
+      INSERT INTO inventory_movements (
+        item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+        recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+        unit_cost_snapshot, unit_price_snapshot, valuation_basis
+      ) VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, 'wastage', 'consultation', ?, ?, ?, ?, ?)
+    `).run(
+      item.id, quantity, currentQuantity, currentQuantity, item.owner_doctor_id || null,
+      actor.id || null, `Consumed or wasted supply correction for consultation #${consultationId}.`,
+      Number(consultationId), JSON.stringify(wastageMeta), movement.unit_cost_snapshot,
+      0, movement.valuation_basis,
+    );
+    const wastageId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+
+    for (const [newMovementId, actionType, note] of [
+      [offsetId, "reversal", "Sale classification reversed without restoring stock"],
+      [wastageId, "wastage", "Consumed or wasted after paid supply correction"],
+    ]) {
+      db.prepare(`
+        INSERT INTO inventory_activity_history (
+          movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
+          quantity, direction, source_text, destination_text, meta_json
+        ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, 'adjustment', 'Patient Bill', 'Wastage', ?)
+      `).run(
+        newMovementId, actor.id || null, actorName, actor.role || "", actionType,
+        item.item_name || "", quantity, JSON.stringify({ ...sharedMeta, note }),
+      );
+    }
+    createdMovementIds.push(offsetId, wastageId);
+    touchedItemIds.add(Number(item.id));
+  }
+
+  return { movementIds: createdMovementIds, touchedItemIds: [...touchedItemIds] };
+}
+
 module.exports = {
+  reclassifyBillingSubmissionInventoryAsWastage,
   reverseBillingSubmissionInventory,
   reverseInventoryForConsultation,
 };
