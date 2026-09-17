@@ -182,7 +182,10 @@ function AppShell() {
   const isAppointments = location.pathname === "/appointments";
   const isHcmNews = location.pathname === "/hcm-news";
   const isBilling =
-    location.pathname === "/billing" || location.pathname === "/admin/finance";
+    location.pathname === "/billing" ||
+    location.pathname === "/admin/finance" ||
+    location.pathname === "/operator/pending-payment" ||
+    location.pathname === "/operator/billing-status";
   const isLiveReport = location.pathname === "/live-report";
   const isVisitRequests = location.pathname === "/visit-requests";
   const inventoryDoctorMobile = isMobile && isInventory && userRole === "doctor";

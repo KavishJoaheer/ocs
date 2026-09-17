@@ -21,6 +21,7 @@ const SupplyRequestsPage = lazy(() => import("./pages/SupplyRequestsPage.jsx"));
 const LabWorkspacePage = lazy(() => import("./pages/LabWorkspacePage.jsx"));
 const LiveReportPage = lazy(() => import("./pages/LiveReportPage.jsx"));
 const OperatorWorkspacePage = lazy(() => import("./pages/OperatorWorkspacePage.jsx"));
+const OperatorBillingStatusPage = lazy(() => import("./pages/OperatorBillingStatusPage.jsx"));
 const LongTermReviewQueuePage = lazy(() => import("./pages/LongTermReviewQueuePage.jsx"));
 const PatientProfilePage = lazy(() => import("./pages/PatientProfilePage.jsx"));
 const PatientAddPage = lazy(() => import("./pages/PatientAddPage.jsx"));
@@ -126,7 +127,7 @@ function App() {
           <Route element={<ProtectedRoute roles={["operator"]} />}>
             <Route
               path="/operator/billing-status"
-              element={<Navigate to="/billing" replace />}
+              element={<Navigate to="/operator/pending-payment" replace />}
             />
             <Route
               path="/operator/current-week-roster"
@@ -146,7 +147,7 @@ function App() {
             />
             <Route
               path="/operator/pending-payment"
-              element={<Navigate to="/billing" replace />}
+              element={<OperatorBillingStatusPage />}
             />
             <Route path="/operator/long-term-review" element={<LongTermReviewQueuePage />} />
           </Route>

@@ -1595,6 +1595,10 @@ test('legacy credit notes must be classified and finance lists remain searchable
   assert.equal(bills.status,200,JSON.stringify(bills.data));
   assert.equal(bills.data.total,1);
   assert.equal(bills.data.bills[0].id,original.data.id);
+  const doctorName=db.prepare('SELECT full_name FROM doctors WHERE id=?').get(doctorId).full_name;
+  const billsByDoctor=await api('GET',`/billing?paginated=1&search=${encodeURIComponent(doctorName)}&limit=100&offset=0`,'accountant');
+  assert.equal(billsByDoctor.status,200,JSON.stringify(billsByDoctor.data));
+  assert.ok(billsByDoctor.data.bills.some(entry=>entry.id===original.data.id));
   const patients=await api('GET',`/billing/patient-summary?paginated=1&search=${encodeURIComponent('Legacy allocation search')}&limit=10&offset=0`,'accountant');
   assert.equal(patients.status,200,JSON.stringify(patients.data));
   assert.equal(patients.data.total,1);

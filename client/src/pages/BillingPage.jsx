@@ -2901,6 +2901,11 @@ function BillingPage() {
   const [adminBillingAnchorDate, setAdminBillingAnchorDate] = useState(
     () => searchParams.get("date") || billingPageTodayInputValue(),
   );
+  const isFinanceWorkspace = ["admin", "accountant"].includes(user?.role);
+  const [financeSection, setFinanceSection] = useState("overview");
+  const showFinanceOverview = !isFinanceWorkspace || financeSection === "overview";
+  const showFinanceInvoices = !isFinanceWorkspace || financeSection === "invoices";
+  const showFinanceControls = isFinanceWorkspace && financeSection === "controls";
 
   const adminBillingDateRange = useMemo(() => {
     if (user?.role !== "admin") {
@@ -3301,7 +3306,8 @@ function BillingPage() {
     >
       <PageHeader
         eyebrow={user?.role === "operator" ? "Work queue" : user?.role === "accountant" ? "Finance" : "Revenue"}
-        title={user?.role === "operator" ? "Billing work queue" : user?.role === "accountant" ? "Billing & reconciliation" : user?.role === "admin" ? "Billing oversight" : "Billing"}
+        title={isFinanceWorkspace ? "Finance" : user?.role === "operator" ? "Billing work queue" : "Billing"}
+        description={isFinanceWorkspace ? "See what needs attention, manage invoices, and complete financial controls one section at a time." : undefined}
         actions={
           <>
             {user?.role === "admin" ? (
@@ -3315,6 +3321,30 @@ function BillingPage() {
           </>
         }
       />
+
+      {isFinanceWorkspace ? (
+        <nav aria-label="Finance workspace" className="flex overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1">
+          {[
+            ["overview", "Overview"],
+            ["invoices", "Invoices & payments"],
+            ["controls", "Reconciliation & day close"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFinanceSection(value)}
+              className={cx(
+                "min-h-11 flex-1 whitespace-nowrap rounded-xl px-4 text-sm font-bold transition",
+                financeSection === value
+                  ? "bg-white text-[#17666a] shadow-sm"
+                  : "text-slate-500 hover:text-slate-800",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
 
       {user?.role !== "doctor" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -3336,7 +3366,39 @@ function BillingPage() {
         </div>
       ) : null}
 
-      {["admin", "operator"].includes(user?.role) ? (
+      {isFinanceWorkspace && showFinanceOverview ? (
+        <div className="grid gap-3 lg:grid-cols-3">
+          <button
+            type="button"
+            onClick={() => { setStatusFilter("unpaid"); setFinanceSection("invoices"); }}
+            className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left transition hover:border-amber-300 hover:bg-amber-100/70"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Collect</p>
+            <p className="mt-2 text-lg font-black text-slate-950">Open unpaid invoices</p>
+            <p className="mt-1 text-sm font-semibold text-slate-600">Review balances and record incoming payments.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStatusFilter(""); setFinanceSection("invoices"); }}
+            className="rounded-2xl border border-sky-200 bg-sky-50 p-5 text-left transition hover:border-sky-300 hover:bg-sky-100/70"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Track</p>
+            <p className="mt-2 text-lg font-black text-slate-950">Find an invoice</p>
+            <p className="mt-1 text-sm font-semibold text-slate-600">Search, view, correct, refund, or export issued records.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFinanceSection("controls")}
+            className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:border-emerald-300 hover:bg-emerald-100/70"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Verify</p>
+            <p className="mt-2 text-lg font-black text-slate-950">Reconcile and close the day</p>
+            <p className="mt-1 text-sm font-semibold text-slate-600">Run integrity checks before completing the finance day.</p>
+          </button>
+        </div>
+      ) : null}
+
+      {showFinanceOverview && ["admin", "operator"].includes(user?.role) ? (
         <SectionCard
           title={`Visits missing final billing (${unbilledReport.count})`}
           className={unbilledReport.count ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60"}
@@ -3385,7 +3447,7 @@ function BillingPage() {
         </SectionCard>
       ) : null}
 
-      {["admin", "operator"].includes(user?.role) && pendingQuickReviews.length ? (
+      {showFinanceOverview && ["admin", "operator"].includes(user?.role) && pendingQuickReviews.length ? (
         <SectionCard
           title={`Doctor billing review queue (${pendingQuickReviews.length})`}
           className="border-[#9fdad4] bg-[#effaf8]"
@@ -3480,7 +3542,7 @@ function BillingPage() {
         </SectionCard>
       ) : null}
 
-      {user?.role !== "admin" && linkedDateRange ? (
+      {showFinanceInvoices && user?.role !== "admin" && linkedDateRange ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">Period filter from Revenue Report</p>
@@ -3498,7 +3560,7 @@ function BillingPage() {
         </div>
       ) : null}
 
-      {patientIdFilter ? (
+      {showFinanceInvoices && patientIdFilter ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-sky-100 bg-sky-50/80 px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">Patient billing filter active</p>
@@ -3516,10 +3578,18 @@ function BillingPage() {
         </div>
       ) : null}
 
-      {user?.role !== "operator" ? <FinancialReconciliation refreshToken={bills} /> : null}
-      {["admin", "accountant"].includes(user?.role) ? <FinancialDayClose refreshToken={bills} /> : null}
+      {showFinanceControls ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+          <p className="font-bold text-slate-950">Financial controls</p>
+          <p className="mt-1 text-sm font-semibold text-slate-600">
+            Resolve reconciliation exceptions first, then complete day close. These controls do not change invoices silently.
+          </p>
+        </div>
+      ) : null}
+      {showFinanceControls ? <FinancialReconciliation refreshToken={bills} /> : null}
+      {showFinanceControls ? <FinancialDayClose refreshToken={bills} /> : null}
 
-      <div
+      {showFinanceInvoices ? <div
         className={cx(
           "grid gap-6",
           !isMobile && "xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start",
@@ -3837,7 +3907,7 @@ function BillingPage() {
             />
           )}
         </SectionCard>
-      </div>
+      </div> : null}
 
       {paymentBill && <PaymentConfirmation key={paymentBill.id} bill={paymentBill} busy={isSaving}
         onClose={() => { if (!isSaving) setPaymentBill(null); }}

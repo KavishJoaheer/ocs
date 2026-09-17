@@ -1428,6 +1428,7 @@ router.get("/", (req, res) => {
           OR lower(COALESCE(NULLIF(b.patient_identifier_snapshot, ''), p.patient_identifier)) LIKE @searchPattern
           OR lower(COALESCE(b.invoice_number, '')) LIKE @searchPattern
           OR lower(COALESCE(b.source_reference, '')) LIKE @searchPattern
+          OR lower(COALESCE(d.full_name, '')) LIKE @searchPattern
           OR CAST(b.id AS TEXT) LIKE @searchPattern
         )
         ${doctorAccess.clause}
