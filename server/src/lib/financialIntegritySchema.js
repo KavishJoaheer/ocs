@@ -40,6 +40,12 @@ function ensureFinancialIntegritySchema(db) {
     add('inventory_movements', 'valuation_basis', 'TEXT');
     db.exec(`
       CREATE TABLE IF NOT EXISTS financial_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE IF NOT EXISTS billing_system_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        cutover_date TEXT,
+        reset_at TEXT,
+        reset_reason TEXT NOT NULL DEFAULT ''
+      );
       CREATE TABLE IF NOT EXISTS financial_day_closings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         business_date TEXT NOT NULL UNIQUE,

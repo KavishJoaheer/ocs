@@ -29,6 +29,7 @@
     "audit:smoke": "node src/scripts/smokeApiAudit.js",
     "smoke:production-flows": "node src/scripts/productionFlowSmoke.js",
     "backup:clinic": "node src/scripts/backupClinicData.js",
+    "reset:trial-billing": "node src/scripts/resetTrialBilling.js",
     "audit:push-audience": "node src/scripts/validatePushAudienceRouting.js",
     "audit:inventory-realtime": "node src/scripts/validateInventoryRealtimeRouting.js",
     "audit:sale-billing-linkage": "node src/scripts/validateSaleBillingLinkage.js",

@@ -3648,7 +3648,15 @@ function getDefaultConsultationFeeAmount(type = "Day Consultation") {
 
 function ensureBillingForConsultation(consultationId, patientId, actor = null, consultationType = null) {
   const { CONSULTATION_FEES } = require("./lib/consultationFees");
+  const { getBillingCutoverDate } = require("./lib/billingCutover");
   if (consultationType && !Object.hasOwn(CONSULTATION_FEES, consultationType)) throw Object.assign(new Error("Select Day, Night or Review Consultation."), {status:400});
+  const cutoverDate = getBillingCutoverDate(db);
+  if (cutoverDate) {
+    const visit = db.prepare("SELECT date(consultation_date) AS consultation_date FROM consultations WHERE id = ?").get(consultationId);
+    if (visit?.consultation_date && visit.consultation_date < cutoverDate) {
+      return null;
+    }
+  }
   const existingBill = db
     .prepare("SELECT id FROM billing WHERE consultation_id = ? AND voided_at IS NULL ORDER BY id LIMIT 1")
     .get(consultationId);

@@ -34,6 +34,7 @@ const {
   reverseBillingSubmissionInventory,
 } = require("../lib/inventoryReversal");
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
+const { getBillingCutoverDate } = require("../lib/billingCutover");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -497,6 +498,7 @@ function resolveQuickBillingDoctor(req, res, submittedDoctorId, { required = tru
 }
 
 function quickBillingDoctorOptions() {
+  const cutoverDate = getBillingCutoverDate(db);
   return db.prepare(`
     SELECT DISTINCT d.id, d.full_name
     FROM doctors d
@@ -504,8 +506,9 @@ function quickBillingDoctorOptions() {
     JOIN patients p ON p.id = c.patient_id AND p.deleted_at IS NULL
     WHERE d.is_active = 1
       AND d.deleted_at IS NULL
+      AND (? = '' OR date(c.consultation_date) >= date(?))
     ORDER BY d.full_name COLLATE NOCASE ASC
-  `).all().map((doctor) => ({ id: Number(doctor.id), full_name: String(doctor.full_name || "") }));
+  `).all(cutoverDate, cutoverDate).map((doctor) => ({ id: Number(doctor.id), full_name: String(doctor.full_name || "") }));
 }
 
 function formatVisitNumber(consultationId) {
@@ -544,6 +547,7 @@ function quickVisitBaseRows(doctorId, {
   const safeLimit = Math.min(250, Math.max(1, Number.parseInt(limit, 10) || 100));
   const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
   const normalizedSearch = String(search || "").trim().toLowerCase().slice(0, 100);
+  const cutoverDate = getBillingCutoverDate(db);
   return db
     .prepare(`
       SELECT
@@ -567,6 +571,10 @@ function quickVisitBaseRows(doctorId, {
         AND p.deleted_at IS NULL
         AND (@consultationId IS NULL OR c.id = @consultationId)
         AND (@patientIdentifier = '' OR UPPER(p.patient_identifier) = @patientIdentifier)
+        AND (
+          @cutoverDate = ''
+          OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) >= date(@cutoverDate)
+        )
         AND (
           @search = ''
           OR lower(p.full_name) LIKE @searchPattern
@@ -592,6 +600,7 @@ function quickVisitBaseRows(doctorId, {
       todayOnly: todayOnly ? 1 : 0,
       search: normalizedSearch,
       searchPattern: `%${normalizedSearch}%`,
+      cutoverDate,
       limit: safeLimit,
       offset: safeOffset,
     });
@@ -1413,12 +1422,17 @@ router.get("/consultation-options", (req, res) => {
       WHERE p.deleted_at IS NULL
         AND c.voided_at IS NULL
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+        AND (
+          @cutoverDate = ''
+          OR date(c.consultation_date) >= date(@cutoverDate)
+        )
       GROUP BY c.id, p.full_name, d.full_name
       ORDER BY c.consultation_date DESC, c.created_at DESC
     `)
     .all({
       doctorId:
         doctorId,
+      cutoverDate: getBillingCutoverDate(db),
     })
     .map((row) => ({ ...row, bill_count: Number(row.bill_count || 0) }));
 
@@ -1573,9 +1587,14 @@ router.get("/quick/unbilled-report", (req, res) => {
       date('now', '+4 hours') AS today
   `).get();
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  const dateFrom = datePattern.test(String(req.query.dateFrom || "")) ? String(req.query.dateFrom) : sqlDates.default_from;
+  const requestedDateFrom = datePattern.test(String(req.query.dateFrom || "")) ? String(req.query.dateFrom) : sqlDates.default_from;
+  const cutoverDate = getBillingCutoverDate(db);
+  const dateFrom = cutoverDate && requestedDateFrom < cutoverDate ? cutoverDate : requestedDateFrom;
   const dateTo = datePattern.test(String(req.query.dateTo || "")) ? String(req.query.dateTo) : sqlDates.default_to;
-  if (dateFrom > dateTo || dateTo >= sqlDates.today) {
+  if (dateFrom > dateTo) {
+    return res.json({ date_from: dateFrom, date_to: dateTo, count: 0, visits: [] });
+  }
+  if (dateTo >= sqlDates.today) {
     return res.status(400).json({ error: "Missing-billing reports must cover completed days before today." });
   }
 

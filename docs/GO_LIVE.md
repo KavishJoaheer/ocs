@@ -87,6 +87,27 @@ Expected:
 
 ---
 
+### One-time trial billing reset for 1 October 2026
+
+After the image containing `resetTrialBilling.js` is running, inspect the reset plan first. The dry run does not change the database:
+
+```bash
+docker exec clinicflow-app node src/scripts/resetTrialBilling.js --dry-run
+```
+
+Run the destructive reset only after the dry-run inventory restoration plan is valid:
+
+```bash
+docker exec \
+  -e ALLOW_DB_PURGE=true \
+  -e BILLING_RESET_CONFIRM=RESET_TRIAL_BILLING_2026_10_01 \
+  clinicflow-app node src/scripts/resetTrialBilling.js
+```
+
+This removes trial invoices, receipts, reversals, refunds, supply corrections, quick-billing history, day closes, and billing idempotency receipts. It restores stock and batch quantities for billing-linked trial movements, preserves patients and consultations, resets document sequences, and excludes visits before `2026-10-01` from billing.
+
+---
+
 ## 4. One-time warehouse reset (sandbox → live catalog)
 
 Run **only** when you want a clean OCS master warehouse (removes test items, activity logs, then loads `ocsMasterStockData.js`).
