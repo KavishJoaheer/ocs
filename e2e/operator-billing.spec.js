@@ -86,7 +86,7 @@ function prepareCurrentTariffForE2e(visit) {
 }
 
 test.describe("operator billing", () => {
-  test("desktop exposes paper-invoice transcription without admin controls", async ({ page, request }) => {
+  test("desktop lets an operator issue an invoice with the required payment evidence", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -98,7 +98,10 @@ test.describe("operator billing", () => {
     await expect(page.getByLabel("Consultation doctor")).toBeVisible();
     await expect(page.getByText("Financial reconciliation", { exact: true })).toHaveCount(0);
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByLabel("Paper invoice or photo reference")).toBeVisible();
+    await expect(page.getByLabel("Manual invoice receipt reference")).toBeVisible();
+    await expect(page.getByLabel("Payment method")).toBeVisible();
+    await expect(page.getByLabel("Payment date")).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: /Raise invoice by Doctor/i })).toBeVisible();
     await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
   });
 
@@ -116,36 +119,22 @@ test.describe("operator billing", () => {
     await expect(bottomNav.getByRole("link", { name: "Inventory", exact: true })).toBeVisible();
 
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByLabel("Paper invoice or photo reference")).toBeVisible();
-    await expect(page.getByText(/ready for payment recording/i)).toBeVisible();
+    await expect(page.getByLabel("Manual invoice receipt reference")).toBeVisible();
+    await expect(page.getByLabel("Payment method")).toBeVisible();
+    await expect(page.getByText(/Payment is recorded when the invoice is issued/i)).toBeVisible();
   });
 
-  test("pending-payment workspace opens the audited payment transaction form", async ({ page, request }) => {
+  test("operator confirmation issues the invoice and records the payment", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.goto(`${STAFF_BASE}/billing`);
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
-    const workspaceResponse = await request.get(`${API_BASE}/dashboard/operator-workspace`, {
-      headers: { Authorization: `Bearer ${operator.token}` },
-    });
-    expect(workspaceResponse.ok(), await workspaceResponse.text()).toBeTruthy();
-    const workspace = await workspaceResponse.json();
-    if (!(workspace.pendingPayments || []).length) {
-      await advanceOperatorInvoiceToReview(page, request, operator.token);
-      await page.getByLabel("Paper invoice or photo reference").fill(`E2E-PAY-${Date.now()}`);
-      await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Invoice issued" })).toBeVisible({ timeout: 20_000 });
-    }
-
-    await page.goto(`${STAFF_BASE}/operator/pending-payment`);
-    await expect(page).toHaveURL(/\/billing$/);
-
-    const recordPayment = page.getByRole("button", { name: "Record payment" }).first();
-    await expect(recordPayment).toBeVisible({ timeout: 20_000 });
-    await recordPayment.click();
-    await expect(page.getByRole("heading", { name: /Record payment/i })).toBeVisible();
-    await expect(page.getByLabel("Amount received")).toBeVisible();
-    await expect(page.getByLabel("Payment method")).toBeVisible();
-    await expect(page.getByText(/immutable ledger/i)).toBeVisible();
+    await advanceOperatorInvoiceToReview(page, request, operator.token);
+    await page.getByLabel("Manual invoice receipt reference").fill(`E2E-PAY-${Date.now()}`);
+    await page.getByLabel("Payment method").selectOption("cash");
+    await page.getByRole("checkbox", { name: /Raise invoice by Doctor/i }).check();
+    await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Invoice issued" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
   });
 });
