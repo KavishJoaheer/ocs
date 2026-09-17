@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openE2eDb } from "./e2eDb.cjs";
 
 const STAFF_BASE = `http://127.0.0.1:${process.env.E2E_STAFF_PORT || "4173"}`;
 const API_BASE = `http://127.0.0.1:${process.env.E2E_API_PORT || "3001"}/api`;
@@ -45,6 +46,7 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
     }
   }
   expect(doctor).toBeTruthy();
+  prepareCurrentTariffForE2e(visit);
 
   await page.getByLabel("Consultation doctor").selectOption(String(doctor.id));
   await page.getByRole("button", { name: /Select patient/i }).click();
@@ -59,6 +61,28 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
   await page.getByRole("button").filter({ hasText: /Review/ }).click();
   await expect(page.getByRole("heading", { name: "Review billing" })).toBeVisible();
+  return { doctor, patient, visit };
+}
+
+function prepareCurrentTariffForE2e(visit) {
+  const db = openE2eDb();
+  try {
+    db.prepare(`
+      UPDATE billing
+      SET items = ?, total_amount = 2000, fee_review_required = 0,
+          legacy_fee_review_required = 0, change_reason = 'E2E current tariff fixture'
+      WHERE id = ?
+    `).run(JSON.stringify([{
+      description: "Day Consultation",
+      amount: 2000,
+      type: "Sale",
+      quantity: 1,
+      inventory_item_id: null,
+      is_consultation_fee: true,
+    }]), visit.bill_id);
+  } finally {
+    db.close();
+  }
 }
 
 test.describe("operator billing", () => {
@@ -99,7 +123,22 @@ test.describe("operator billing", () => {
   test("pending-payment workspace opens the audited payment transaction form", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
+    await page.goto(`${STAFF_BASE}/billing`);
+    await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
+    const workspaceResponse = await request.get(`${API_BASE}/dashboard/operator-workspace`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    expect(workspaceResponse.ok(), await workspaceResponse.text()).toBeTruthy();
+    const workspace = await workspaceResponse.json();
+    if (!(workspace.pendingPayments || []).length) {
+      await advanceOperatorInvoiceToReview(page, request, operator.token);
+      await page.getByLabel("Paper invoice or photo reference").fill(`E2E-PAY-${Date.now()}`);
+      await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Invoice issued" })).toBeVisible({ timeout: 20_000 });
+    }
+
     await page.goto(`${STAFF_BASE}/operator/pending-payment`);
+    await expect(page).toHaveURL(/\/billing$/);
 
     const recordPayment = page.getByRole("button", { name: "Record payment" }).first();
     await expect(recordPayment).toBeVisible({ timeout: 20_000 });
@@ -107,6 +146,6 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("heading", { name: /Record payment/i })).toBeVisible();
     await expect(page.getByLabel("Amount received")).toBeVisible();
     await expect(page.getByLabel("Payment method")).toBeVisible();
-    await expect(page.getByText(/immutable payment transaction/i)).toBeVisible();
+    await expect(page.getByText(/immutable ledger/i)).toBeVisible();
   });
 });
