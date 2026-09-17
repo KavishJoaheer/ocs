@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import { openInlinePreviewTab, presentFileBlob } from "./fileBlobViewer.js";
 import { formatCurrency, formatDate } from "./format.js";
 
-function buildBillPdf(bill) {
+export function buildBillPdf(bill) {
   const doc = new jsPDF();
   let y = 20;
   const writeLine = (text, { gap = 7, size = 10, bold = false } = {}) => {
@@ -57,7 +57,7 @@ function buildBillPdf(bill) {
       const reason = payment.reason ? ` · ${payment.reason}` : "";
       writeLine(`${kind}: ${formatCurrency(payment.amount)} · ${payment.payment_method || ""} · ${formatDate(payment.payment_date)}${reference}${reason}`, { gap: 6 });
     });
-    writeLine(`Received: ${formatCurrency(bill.payment_received_amount || 0)} · Balance: ${formatCurrency(bill.payment_balance_amount || 0)}`, { bold: true });
+    writeLine(`Payments received: ${formatCurrency(bill.payment_received_amount || 0)}`, { bold: true });
   }
   if (Array.isArray(bill.refunds) && bill.refunds.length) {
     y += 2;
@@ -66,6 +66,13 @@ function buildBillPdf(bill) {
       writeLine(`${refund.credit_note_number || "Credit note"}: -${formatCurrency(refund.amount)} · ${refund.refund_method || ""} · ${formatDate(refund.refund_date)}`, { gap: 6 });
     });
   }
+  const refundedAmount = Number(bill.refunded_amount || 0);
+  const netCollectedAmount = Number.isFinite(Number(bill.net_paid_amount))
+    ? Number(bill.net_paid_amount)
+    : Math.max(0, Number(bill.payment_received_amount || 0) - refundedAmount);
+  writeLine(`Credit notes/refunds: ${formatCurrency(refundedAmount)}`, { bold: true });
+  writeLine(`Outstanding balance: ${formatCurrency(bill.payment_balance_amount || 0)}`, { bold: true });
+  writeLine(`Net collected: ${formatCurrency(netCollectedAmount)}`, { bold: true });
   if (bill.void_reason) writeLine(`Void reason: ${bill.void_reason}`);
   return doc;
 }
@@ -113,7 +120,9 @@ export async function shareOrDownloadCreditNotePdf(creditNote, bill) {
     ? "Inventory treatment: the linked sale movement was reversed and the confirmed stock was restored."
     : creditNote.disposition === "consumed_or_wasted"
       ? "Inventory treatment: stock was not restored; the linked sale was reclassified as consumed/wasted."
-      : "Inventory treatment: financial credit only; no inventory movement is linked to this credit note.";
+      : creditNote.allocation_type === "service_non_stock"
+        ? "Allocation: consultation or non-stock service charge. No inventory movement is linked to this credit note."
+        : "Inventory treatment: financial credit only; no inventory movement is linked to this credit note.";
   const rows = [
     ["OCS Medecins — Credit Note", 16, true],
     [`Credit note: ${creditNumber}`, 11, true],
@@ -122,6 +131,10 @@ export async function shareOrDownloadCreditNotePdf(creditNote, bill) {
     [`Refund date: ${formatDate(creditNote.refund_date)}`, 10, false],
     [`Refund method: ${creditNote.refund_method || ""}`, 10, false],
     [`Amount credited: ${formatCurrency(creditNote.amount)}`, 12, true],
+    [`Original invoice total: ${formatCurrency(bill.total_amount)}`, 10, false],
+    [`Payments received: ${formatCurrency(bill.payment_received_amount || 0)}`, 10, false],
+    [`Total credit notes: ${formatCurrency(bill.refunded_amount || creditNote.amount || 0)}`, 10, false],
+    [`Net collected after credits: ${formatCurrency(bill.net_paid_amount || 0)}`, 11, true],
     [`Reason: ${creditNote.reason || ""}`, 10, false],
     ...(creditNote.external_reference ? [[`External reference: ${creditNote.external_reference}`, 10, false]] : []),
     [`Issued by: ${creditNote.issued_by_name || "System"} (${creditNote.issued_by_role || "system"})`, 10, false],

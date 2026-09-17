@@ -42,6 +42,7 @@ test("legacy unique-consultation migration preserves every billing column and ro
   db.exec(`
     DROP VIEW IF EXISTS billing_payment_ledger;
     DROP TABLE billing_supply_corrections;
+    DROP TABLE billing_refund_allocations;
     DROP TABLE billing_payment_reversals;
     DROP TABLE billing_payment_transactions;
     DROP TABLE billing_refunds;

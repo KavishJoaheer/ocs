@@ -3056,6 +3056,8 @@ function BillingPage() {
 
     try {
       await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, {
+        submission_id: submission.submission_id,
+        expected_workflow_status: submission.workflow_status,
         status,
         note,
       });

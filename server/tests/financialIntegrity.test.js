@@ -91,7 +91,17 @@ function completedQuickSubmission({bill,ctx,items}) {
   return Number(inserted.lastInsertRowid);
 }
 async function markReadyForPayment(consultationId) {
+  const submission = db.prepare(`
+    SELECT id, workflow_status
+    FROM billing_lite_submissions
+    WHERE consultation_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(consultationId);
+  assert.ok(submission, "a billing submission is required before operator approval");
   const reviewed = await api('PATCH',`/billing/quick/operator-queue/${consultationId}/status`,'operator',{
+    submission_id:submission.id,
+    expected_workflow_status:submission.workflow_status,
     status:'ready_for_payment',
     note:'Reviewed against the consultation and charge record',
   });
@@ -478,11 +488,16 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
   const issued=await api('POST',`/billing/${original.data.id}/refunds`,'admin',payload);
   assert.equal(issued.status,201,JSON.stringify(issued.data));
   assert.match(issued.data.credit_note.credit_note_number,/^OCS-CN-\d{8}$/);
+  assert.equal(issued.data.credit_note.allocation_type,'service_non_stock');
   assert.equal(issued.data.credit_note.inventory_restored,false);
   assert.equal(issued.data.bill.total_amount,2025);
   assert.equal(issued.data.bill.refunded_amount,500);
   assert.equal(issued.data.bill.net_paid_amount,1525);
   assert.equal(row(it.id).quantity,19,'a financial refund must not invent a stock return');
+  const firstAllocation=db.prepare('SELECT * FROM billing_refund_allocations WHERE refund_id=?').get(issued.data.credit_note.id);
+  assert.equal(firstAllocation.allocation_type,'service_non_stock');
+  assert.equal(firstAllocation.submission_id,null);
+  assert.equal(firstAllocation.amount,500);
 
   const replay=await api('POST',`/billing/${original.data.id}/refunds`,'admin',payload);
   assert.equal(replay.status,201,JSON.stringify(replay.data));
@@ -499,6 +514,7 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
   assert.equal(legitimateSecondRefund.status,201,JSON.stringify(legitimateSecondRefund.data));
   assert.notEqual(legitimateSecondRefund.data.credit_note.id,issued.data.credit_note.id);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(original.data.id).count,2);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refund_allocations WHERE billing_id=? AND allocation_type=?').get(original.data.id,'service_non_stock').count,2);
   const downgrade=await api('PUT',`/billing/${original.data.id}`,'admin',{
     items:issued.data.bill.items,status:'unpaid',expected_version:issued.data.bill.row_version,
     correction_reason:'Attempt to reopen a refunded paid invoice',
@@ -529,6 +545,8 @@ test('credit notes are immutable, idempotent, balance-limited and reduce net col
   assert.equal(after.revenueStatement.refundedRevenue,before.revenueStatement.refundedRevenue+1000);
   assert.throws(()=>db.prepare('UPDATE billing_refunds SET reason=? WHERE id=?').run('Changed later',issued.data.credit_note.id),/immutable/);
   assert.throws(()=>db.prepare('DELETE FROM billing_refunds WHERE id=?').run(issued.data.credit_note.id),/immutable/);
+  assert.throws(()=>db.prepare('UPDATE billing_refund_allocations SET amount=1 WHERE refund_id=?').run(issued.data.credit_note.id),/immutable/);
+  assert.throws(()=>db.prepare('DELETE FROM billing_refund_allocations WHERE refund_id=?').run(issued.data.credit_note.id),/immutable/);
 });
 
 test('billing wastage requires an explicit reason and consumes only the confirmed batch', async () => {
@@ -664,6 +682,21 @@ test('payment-date drilldown and summary retain date basis and doctor scope', as
   assert.ok(list.data.some(b=>b.id===original.data.id));
   const summary=await api('GET','/billing/patient-summary?'+qs); assert.ok(summary.data.some(p=>p.patient_id===ctx.patientId && p.paid_amount===900));
   assert.equal((await api('GET',`/billing?${qs}&status=unpaid`)).data.length,0);
+  const beforePartial=await report('2026-09-09','payment',doctorId);
+  const payment=original.data.payments.find(entry=>entry.entry_type==='payment');
+  const reversed=await api('POST',`/billing/${original.data.id}/payments/${payment.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:'2026-09-09',reason:'Reopen the invoice to verify payment-basis outstanding reporting',operation_id:randomUUID(),
+  });
+  assert.equal(reversed.status,201,JSON.stringify(reversed.data));
+  const partial=await api('PATCH',`/billing/${original.data.id}/pay`,'accountant',{
+    amount:300,payment_method:'cash',payment_date:'2026-09-09',operation_id:randomUUID(),expected_version:reversed.data.bill.row_version,
+  });
+  assert.equal(partial.status,200,JSON.stringify(partial.data));
+  assert.equal(partial.data.payment_balance_amount,600);
+  const unpaidList=await api('GET',`/billing?${qs}&status=unpaid`);
+  assert.ok(unpaidList.data.some(entry=>entry.id===original.data.id));
+  const afterPartial=await report('2026-09-09','payment',doctorId);
+  assert.equal(afterPartial.revenueStatement.unpaidRevenue,beforePartial.revenueStatement.unpaidRevenue+600);
 });
 
 test('transport counts each visit, not unique patients or invoices, and excludes voided consultations', async () => {
@@ -1168,6 +1201,11 @@ test('paid supply corrections issue a credit note and restore only confirmed ret
     amount:2025,payment_method:'cash',payment_date:today,expected_version:payable.row_version,operation_id:randomUUID(),
   });
   assert.equal(paid.status,200,JSON.stringify(paid.data));
+  const serviceRefund=await api('POST',`/billing/${draft.data.id}/refunds`,'accountant',{
+    amount:100,refund_method:'cash',refund_date:today,
+    reason:'Consultation service goodwill credit approved by finance',operation_id:randomUUID(),
+  });
+  assert.equal(serviceRefund.status,201,JSON.stringify(serviceRefund.data));
   const correctionPayload={
     disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
     reason:'Supply was billed but returned unopened to the doctor bag',operation_id:randomUUID(),
@@ -1175,13 +1213,18 @@ test('paid supply corrections issue a credit note and restore only confirmed ret
   const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',correctionPayload);
   assert.equal(corrected.status,201,JSON.stringify(corrected.data));
   assert.equal(corrected.data.credit_note.amount,25);
+  assert.equal(corrected.data.credit_note.allocation_type,'supply_submission');
   assert.equal(corrected.data.stock_restored,true);
   assert.equal(row(it.id).quantity,20);
   assert.equal(db.prepare('SELECT disposition FROM billing_supply_corrections WHERE id=?').get(corrected.data.correction_id).disposition,'returned_to_stock');
+  const supplyAllocation=db.prepare('SELECT * FROM billing_refund_allocations WHERE refund_id=?').get(corrected.data.credit_note.id);
+  assert.equal(supplyAllocation.allocation_type,'supply_submission');
+  assert.equal(supplyAllocation.submission_id,captured.data.submission.submission_id);
+  assert.equal(supplyAllocation.amount,25);
   const replay=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',correctionPayload);
   assert.equal(replay.status,201,JSON.stringify(replay.data));
   assert.equal(replay.data.correction_id,corrected.data.correction_id);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(draft.data.id).count,1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(draft.data.id).count,2);
 });
 
 test('active paid legacy submissions are derived as completed and remain correctable', async () => {

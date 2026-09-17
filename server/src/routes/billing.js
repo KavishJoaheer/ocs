@@ -541,6 +541,7 @@ function quickVisitBaseRows(doctorId, {
   patientIdentifier = "",
   todayOnly = false,
   search = "",
+  billableRole = "",
   limit = 100,
   offset = 0,
 } = {}) {
@@ -587,6 +588,48 @@ function quickVisitBaseRows(doctorId, {
           @todayOnly = 0
           OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) = date('now', '+4 hours')
         )
+        AND (
+          @billableRole = ''
+          OR (
+            EXISTS (
+              SELECT 1
+              FROM billing billable_bill
+              WHERE billable_bill.consultation_id = c.id
+                AND billable_bill.status = 'unpaid'
+                AND billable_bill.voided_at IS NULL
+            )
+            AND (
+              (
+                @billableRole = 'doctor'
+                AND (
+                  NOT EXISTS (
+                    SELECT 1
+                    FROM billing_lite_submissions active_submission
+                    WHERE active_submission.consultation_id = c.id
+                      AND active_submission.reversed_at IS NULL
+                  )
+                  OR (
+                    SELECT latest_submission.workflow_status
+                    FROM billing_lite_submissions latest_submission
+                    WHERE latest_submission.consultation_id = c.id
+                      AND latest_submission.reversed_at IS NULL
+                    ORDER BY latest_submission.id DESC
+                    LIMIT 1
+                  ) = 'needs_doctor'
+                )
+              )
+              OR (
+                @billableRole != 'doctor'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM billing_lite_submissions active_submission
+                  WHERE active_submission.consultation_id = c.id
+                    AND active_submission.reversed_at IS NULL
+                )
+              )
+            )
+          )
+        )
       ORDER BY
         CASE WHEN date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) = date('now', '+4 hours') THEN 0 ELSE 1 END,
         COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date || ' ' || a.appointment_time) DESC,
@@ -600,6 +643,7 @@ function quickVisitBaseRows(doctorId, {
       todayOnly: todayOnly ? 1 : 0,
       search: normalizedSearch,
       searchPattern: `%${normalizedSearch}%`,
+      billableRole: String(billableRole || ""),
       cutoverDate,
       limit: safeLimit,
       offset: safeOffset,
@@ -1108,9 +1152,10 @@ function getJoinedBillById(billId) {
   if (!bill) return null;
   const parsed = withPaymentReview([parseBillingRow(bill)])[0];
   const refunds = db.prepare(`
-    SELECT refund.*, correction.disposition
+    SELECT refund.*, correction.disposition, allocation.allocation_type, allocation.submission_id
     FROM billing_refunds refund
     LEFT JOIN billing_supply_corrections correction ON correction.refund_id = refund.id
+    LEFT JOIN billing_refund_allocations allocation ON allocation.refund_id = refund.id
     WHERE refund.billing_id = ?
     ORDER BY refund.id DESC
   `).all(billId).map((refund) => ({ ...refund, amount: roundCurrency(refund.amount) }));
@@ -1461,11 +1506,15 @@ router.get("/quick/picker-options", (req, res) => {
   const limit = Math.min(200, Math.max(20, Number.parseInt(req.query.limit, 10) || 100));
   const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const patientMap = new Map();
-  const visitRows = quickVisitBaseRows(doctorId, { search, limit: limit + 1, offset });
+  const visitRows = quickVisitBaseRows(doctorId, {
+    search,
+    billableRole: req.auth?.role,
+    limit: limit + 1,
+    offset,
+  });
   const hasMore = visitRows.length > limit;
   const visits = visitRows.slice(0, limit)
-    .map((row) => ({ row, visit: serializeQuickVisit(row) }))
-    .filter(({ visit }) => canActorSubmitQuickVisit(visit, req.auth?.role));
+    .map((row) => ({ row, visit: serializeQuickVisit(row) }));
 
   for (const { row, visit } of visits) {
     const patientId = Number(row.patient_id);
@@ -1770,51 +1819,73 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
   }
 
   const consultationId = Number(req.params.consultationId || 0);
+  const submissionId = Number(req.body?.submission_id || 0);
+  const expectedWorkflowStatus = String(req.body?.expected_workflow_status || "").trim();
   const status = String(req.body?.status || "").trim();
   const note = String(req.body?.note || "").trim().slice(0, 500);
   const allowed = new Set(["awaiting_operator", "needs_doctor", "ready_for_payment"]);
-  if (!Number.isInteger(consultationId) || consultationId <= 0 || !allowed.has(status)) {
+  if (
+    !Number.isInteger(consultationId) || consultationId <= 0
+    || !Number.isInteger(submissionId) || submissionId <= 0
+    || !allowed.has(status) || !allowed.has(expectedWorkflowStatus)
+  ) {
     return res.status(400).json({ error: "Select a valid doctor billing workflow status." });
   }
   if (status === "needs_doctor" && note.length < 3) {
     return res.status(400).json({ error: "Add a short note explaining what the doctor should clarify." });
   }
 
-  const submission = db.prepare(`
-    SELECT *
-    FROM billing_lite_submissions
-    WHERE consultation_id = ?
-    ORDER BY id DESC
-    LIMIT 1
-  `).get(consultationId);
-  if (!submission) {
-    return res.status(404).json({ error: "Doctor billing submission not found." });
-  }
-
-  if (submission.reversed_at) {
-    return res.status(409).json({ error: "This submission has already been reversed." });
-  }
-
-  db.transaction(() => {
-    db.prepare(`
+  let submission;
+  try {
+    db.transaction(() => {
+      const latest = db.prepare(`
+        SELECT *
+        FROM billing_lite_submissions
+        WHERE consultation_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(consultationId);
+      if (!latest) {
+        throw Object.assign(new Error("Doctor billing submission not found."), { status: 404 });
+      }
+      if (Number(latest.id) !== submissionId || latest.workflow_status !== expectedWorkflowStatus) {
+        throw Object.assign(
+          new Error("This billing submission was updated elsewhere. Reload the queue before reviewing it."),
+          { status: 409, extra: { code: "STALE_BILLING_SUBMISSION", latest_submission_id: Number(latest.id), latest_workflow_status: latest.workflow_status } },
+        );
+      }
+      if (latest.reversed_at) {
+        throw Object.assign(new Error("This submission has already been reversed."), { status: 409 });
+      }
+      submission = latest;
+      const updated = db.prepare(`
       UPDATE billing_lite_submissions
       SET workflow_status = ?,
           workflow_note = ?,
           workflow_updated_by_user_id = ?,
           workflow_updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(status, note, req.auth.id, submission.id);
-    recordQuickBillingEvent({
-      submissionId: submission.id,
-      consultationId,
-      billingId: submission.billing_id,
-      actor: req.auth,
-      eventType: status === "needs_doctor" ? "clarification_requested" : "workflow_status_changed",
-      previousStatus: submission.workflow_status,
-      nextStatus: status,
-      reason: note,
-    });
-  }).immediate();
+      WHERE id = ? AND workflow_status = ? AND reversed_at IS NULL
+      `).run(status, note, req.auth.id, submission.id, expectedWorkflowStatus);
+      if (updated.changes !== 1) {
+        throw Object.assign(
+          new Error("This billing submission was updated elsewhere. Reload the queue before reviewing it."),
+          { status: 409, extra: { code: "STALE_BILLING_SUBMISSION" } },
+        );
+      }
+      recordQuickBillingEvent({
+        submissionId: submission.id,
+        consultationId,
+        billingId: submission.billing_id,
+        actor: req.auth,
+        eventType: status === "needs_doctor" ? "clarification_requested" : "workflow_status_changed",
+        previousStatus: submission.workflow_status,
+        nextStatus: status,
+        reason: note,
+      });
+    }).immediate();
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
 
   if (status === "needs_doctor") {
     const doctorUserId = getDoctorUserId(submission.doctor_id);
@@ -1832,7 +1903,7 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
     }
   }
 
-  res.json({ consultation_id: consultationId, workflow_status: status, workflow_note: note });
+  res.json({ submission_id: submissionId, consultation_id: consultationId, workflow_status: status, workflow_note: note });
 });
 
 router.get("/quick/submissions", (req, res) => {
@@ -2634,8 +2705,38 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
       if (db.prepare("SELECT id FROM billing_supply_corrections WHERE submission_id = ?").get(submissionId)) {
         throw Object.assign(new Error("This paid supply submission has already been corrected."), { status: 409, extra: { code: "SUPPLY_ALREADY_CORRECTED" } });
       }
-      const alreadyRefunded = roundCurrency(db.prepare("SELECT COALESCE(SUM(amount), 0) AS amount FROM billing_refunds WHERE billing_id = ?").get(submission.billing_id)?.amount || 0);
-      const refundable = roundCurrency(Number(submission.total_amount || 0) - alreadyRefunded);
+      const unallocatedCredit = db.prepare(`
+        SELECT COUNT(*) AS count, COALESCE(SUM(refund.amount), 0) AS amount
+        FROM billing_refunds refund
+        WHERE refund.billing_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM billing_refund_allocations allocation
+            WHERE allocation.refund_id = refund.id
+          )
+      `).get(submission.billing_id);
+      if (Number(unallocatedCredit?.count || 0) > 0) {
+        throw Object.assign(
+          new Error("This invoice has an older unallocated credit note. Finance must reconcile that credit before correcting a paid supply."),
+          { status: 409, extra: { code: "REFUND_ALLOCATION_REQUIRED", unallocated_amount: roundCurrency(unallocatedCredit.amount) } },
+        );
+      }
+      const alreadySupplyRefunded = roundCurrency(db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) AS amount
+        FROM billing_refund_allocations
+        WHERE billing_id = ?
+          AND allocation_type = 'supply_submission'
+          AND submission_id = ?
+      `).get(submission.billing_id, submissionId)?.amount || 0);
+      const invoiceRefundState = db.prepare(`
+        SELECT bill.total_amount, COALESCE(SUM(refund.amount), 0) AS refunded_amount
+        FROM billing bill
+        LEFT JOIN billing_refunds refund ON refund.billing_id = bill.id
+        WHERE bill.id = ?
+        GROUP BY bill.id
+      `).get(submission.billing_id);
+      const submissionRefundable = roundCurrency(Number(submission.total_amount || 0) - alreadySupplyRefunded);
+      const invoiceRefundable = roundCurrency(Number(invoiceRefundState?.total_amount || 0) - Number(invoiceRefundState?.refunded_amount || 0));
+      const refundable = Math.max(0, Math.min(submissionRefundable, invoiceRefundable));
       if (amount > refundable + 0.000001) {
         throw Object.assign(new Error(`Only Rs ${refundable.toFixed(2)} remains refundable on this invoice.`), { status: 409, extra: { code: "REFUND_EXCEEDS_BALANCE" } });
       }
@@ -2696,6 +2797,11 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
         String(req.auth.full_name || req.auth.username || ""), String(req.auth.role || ""),
         String(req.body?.operation_id || ""),
       );
+      db.prepare(`
+        INSERT INTO billing_refund_allocations (
+          refund_id, billing_id, allocation_type, submission_id, amount
+        ) VALUES (?, ?, 'supply_submission', ?, ?)
+      `).run(nextRefundId, submission.billing_id, submissionId, amount);
       const correction = db.prepare(`
         INSERT INTO billing_supply_corrections (
           billing_id, submission_id, refund_id, amount, disposition,
@@ -2732,7 +2838,12 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
       });
       result = {
         correction_id: Number(correction.lastInsertRowid),
-        credit_note: db.prepare("SELECT * FROM billing_refunds WHERE id = ?").get(nextRefundId),
+        credit_note: db.prepare(`
+          SELECT refund.*, allocation.allocation_type, allocation.submission_id
+          FROM billing_refunds refund
+          JOIN billing_refund_allocations allocation ON allocation.refund_id = refund.id
+          WHERE refund.id = ?
+        `).get(nextRefundId),
         disposition,
         stock_restored: disposition === "returned_to_stock"
           && reversal.reversalIds.length === submissionMovementIds.length,
@@ -2820,6 +2931,36 @@ router.post("/:id/refunds", (req, res) => {
           { status: 409, extra: { code: "REFUND_EXCEEDS_BALANCE", refundable_amount: refundable } },
         );
       }
+      const parsedBill = parseBillingRow(bill);
+      const serviceChargeTotal = roundCurrency((parsedBill.items || []).reduce((sum, item) => {
+        if (Number(item.inventory_item_id || 0) > 0 || item.type === "Wastage") return sum;
+        return sum + Number(item.amount || 0);
+      }, 0));
+      const allocatedService = roundCurrency(db.prepare(`
+        SELECT
+          COALESCE((
+            SELECT SUM(allocation.amount)
+            FROM billing_refund_allocations allocation
+            WHERE allocation.billing_id = ?
+              AND allocation.allocation_type = 'service_non_stock'
+          ), 0)
+          + COALESCE((
+            SELECT SUM(refund.amount)
+            FROM billing_refunds refund
+            WHERE refund.billing_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM billing_refund_allocations allocation
+                WHERE allocation.refund_id = refund.id
+              )
+          ), 0) AS amount
+      `).get(billId, billId)?.amount || 0);
+      const serviceRefundable = roundCurrency(Math.max(0, serviceChargeTotal - allocatedService));
+      if (amount > serviceRefundable + 0.000001) {
+        throw Object.assign(
+          new Error(`Only Rs ${serviceRefundable.toFixed(2)} remains refundable for consultation and non-stock charges. Use the paid-supply correction workflow for medicines or consumables.`),
+          { status: 409, extra: { code: "REFUND_REQUIRES_SUPPLY_CORRECTION", refundable_service_amount: serviceRefundable } },
+        );
+      }
       if (externalReference) {
         const duplicate = db.prepare(`
           SELECT id, credit_note_number
@@ -2856,12 +2997,18 @@ router.post("/:id/refunds", (req, res) => {
         String(req.auth.role || ""),
         String(req.body.operation_id || ""),
       );
+      db.prepare(`
+        INSERT INTO billing_refund_allocations (
+          refund_id, billing_id, allocation_type, submission_id, amount
+        ) VALUES (?, ?, 'service_non_stock', NULL, ?)
+      `).run(nextId, billId, roundCurrency(amount));
       creditNote = db.prepare("SELECT * FROM billing_refunds WHERE id = ?").get(nextId);
       creditNote = {
         ...creditNote,
         amount: roundCurrency(creditNote.amount),
+        allocation_type: "service_non_stock",
         inventory_restored: false,
-        accounting_note: "This credit note changes net collections only. Stock is not returned automatically.",
+        accounting_note: "This credit note applies only to consultation or non-stock charges and changes net collections. Medicines and consumables must use the paid-supply correction workflow.",
       };
       operation.save(creditNote);
     }).immediate();

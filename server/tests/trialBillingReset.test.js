@@ -10,6 +10,7 @@ process.env.NODE_ENV = "test";
 
 const { db, ensureBillingForConsultation, initializeDatabase } = require("../src/db");
 const { getBillingCutoverDate } = require("../src/lib/billingCutover");
+const { ensureFinancialIntegritySchema } = require("../src/lib/financialIntegritySchema");
 const { resetTrialBilling } = require("../src/lib/trialBillingReset");
 
 initializeDatabase();
@@ -122,12 +123,16 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
   `).run(billId, userId);
   db.prepare("UPDATE billing SET status = 'paid', payment_method = 'cash', payment_date = '2026-09-16' WHERE id = ?")
     .run(billId);
-  db.prepare(`
+  const refundId = Number(db.prepare(`
     INSERT INTO billing_refunds (
       credit_note_number, billing_id, amount, refund_method, refund_date, reason,
       issued_by_user_id, issued_by_name, issued_by_role, operation_id
     ) VALUES ('OCS-CN-00000001', ?, 25, 'cash', '2026-09-16', 'Trial refund', ?, 'Trial User', 'operator', 'trial-refund')
-  `).run(billId, userId);
+  `).run(billId, userId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO billing_refund_allocations (refund_id, billing_id, allocation_type, amount)
+    VALUES (?, ?, 'service_non_stock', 25)
+  `).run(refundId, billId);
   db.prepare(`
     INSERT INTO financial_day_closings (
       business_date, expected_totals_json, counted_cash, settlement_totals_json,
@@ -153,6 +158,7 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     "billing_quick_events",
     "billing_payment_transactions",
     "billing_refunds",
+    "billing_refund_allocations",
     "financial_day_closings",
   ]) {
     assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0, table);
@@ -163,6 +169,19 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(movementId).count, 0);
   assert.equal(db.prepare("SELECT doctor_notes FROM consultations WHERE id = ?").get(visit.consultationId).doctor_notes, "Preserved consultation note");
   assert.equal(getBillingCutoverDate(db), "2026-10-01");
+  for (const trigger of [
+    "billing_events_no_delete",
+    "billing_quick_events_no_delete",
+    "billing_payment_transactions_no_delete",
+    "billing_payment_reversals_no_delete",
+    "billing_refunds_no_delete",
+    "billing_refund_allocations_no_delete",
+    "billing_supply_corrections_no_delete",
+    "financial_day_closings_no_delete",
+    "financial_day_close_settlements_no_delete",
+  ]) {
+    assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger), trigger);
+  }
   const blockedOldVisit = createVisit("2026-09-30", "BLOCKED");
   assert.equal(
     ensureBillingForConsultation(blockedOldVisit.consultationId, blockedOldVisit.patientId, { id: userId }),
@@ -176,4 +195,17 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     { id: userId },
   ));
   assert.equal(firstLiveBillId, 1);
+});
+
+test("trial billing reset rolls back every deletion when integrity guards cannot be recreated", () => {
+  const billBefore = db.prepare("SELECT COUNT(*) AS count FROM billing").get().count;
+  assert.ok(billBefore > 0);
+  db.exec("DROP TABLE billing_refund_allocations; CREATE TABLE billing_refund_allocations (id INTEGER PRIMARY KEY)");
+  assert.throws(
+    () => resetTrialBilling(db, { cutoverDate: "2026-10-01", reason: "Atomic failure test" }),
+    /billing_id|no such column/i,
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing").get().count, billBefore);
+  db.exec("DROP TABLE billing_refund_allocations");
+  ensureFinancialIntegritySchema(db);
 });

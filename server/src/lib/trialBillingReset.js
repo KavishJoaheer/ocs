@@ -12,6 +12,7 @@ const RESETTABLE_TABLES = [
   "billing_payment_transactions",
   "billing_payment_reversals",
   "billing_refunds",
+  "billing_refund_allocations",
   "billing_supply_corrections",
   "financial_day_closings",
   "financial_day_close_settlements",
@@ -25,6 +26,7 @@ const DELETE_GUARD_TRIGGERS = [
   "billing_payment_transactions_no_delete",
   "billing_payment_reversals_no_delete",
   "billing_refunds_no_delete",
+  "billing_refund_allocations_no_delete",
   "billing_supply_corrections_no_delete",
   "financial_day_closings_no_delete",
   "financial_day_close_settlements_no_delete",
@@ -249,6 +251,7 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
   };
   if (dryRun) return { dryRun: true, ...plan };
 
+  let after;
   db.transaction(() => {
     for (const trigger of DELETE_GUARD_TRIGGERS) {
       db.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
@@ -285,6 +288,7 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
       "financial_day_close_settlements",
       "financial_day_closings",
       "billing_supply_corrections",
+      "billing_refund_allocations",
       "billing_quick_events",
       "billing_payment_reversals",
       "billing_payment_transactions",
@@ -305,14 +309,19 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
       db.prepare(`DELETE FROM sqlite_sequence WHERE name IN (${placeholders})`).run(...sequenceTables);
     }
     setBillingCutoverDate(db, normalizedCutoverDate, reason);
+    ensureFinancialIntegritySchema(db);
+    after = Object.fromEntries(RESETTABLE_TABLES.map((table) => [table, countRows(db, table)]));
+    const nonEmpty = Object.entries(after).filter(([, count]) => count !== 0);
+    if (nonEmpty.length) {
+      throw new Error(`Billing reset verification failed: ${nonEmpty.map(([name, count]) => `${name}=${count}`).join(", ")}`);
+    }
+    const missingGuards = DELETE_GUARD_TRIGGERS.filter((trigger) => !db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+    ).get(trigger));
+    if (missingGuards.length) {
+      throw new Error(`Billing reset guard verification failed: ${missingGuards.join(", ")}`);
+    }
   }).immediate();
-
-  ensureFinancialIntegritySchema(db);
-  const after = Object.fromEntries(RESETTABLE_TABLES.map((table) => [table, countRows(db, table)]));
-  const nonEmpty = Object.entries(after).filter(([, count]) => count !== 0);
-  if (nonEmpty.length) {
-    throw new Error(`Billing reset verification failed: ${nonEmpty.map(([name, count]) => `${name}=${count}`).join(", ")}`);
-  }
   return { dryRun: false, ...plan, after };
 }
 

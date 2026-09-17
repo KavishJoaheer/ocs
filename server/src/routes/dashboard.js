@@ -1758,7 +1758,12 @@ router.get("/live-report", (req, res) => {
     JOIN consultations c ON c.id = b.consultation_id
     LEFT JOIN doctors d ON d.id = c.doctor_id
     WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
-      AND date(c.consultation_date) BETWEEN @startDate AND @endDate
+      AND EXISTS (
+        SELECT 1
+        FROM billing_payment_ledger period_ledger
+        WHERE period_ledger.billing_id = b.id
+          AND period_ledger.transaction_date BETWEEN @startDate AND @endDate
+      )
       AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       AND MAX(0, b.total_amount - COALESCE((
         SELECT SUM(ledger.amount) FROM billing_payment_ledger ledger WHERE ledger.billing_id = b.id

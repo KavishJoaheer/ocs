@@ -51,6 +51,30 @@ const STATUS_META = {
 
 const MAX_CONSULTATION_FEE = 4500;
 const SUBMISSION_PAGE_SIZE = 20;
+const PATIENT_PICKER_PAGE_SIZE = 60;
+
+function countPatientVisits(patients) {
+  return (patients || []).reduce((total, patient) => total + (patient.visits?.length || 0), 0);
+}
+
+function mergePatientOptions(current, incoming) {
+  const patients = new Map((current || []).map((patient) => [String(patient.patient_id), {
+    ...patient,
+    visits: [...(patient.visits || [])],
+  }]));
+  for (const patient of incoming || []) {
+    const key = String(patient.patient_id);
+    const existing = patients.get(key);
+    if (!existing) {
+      patients.set(key, { ...patient, visits: [...(patient.visits || [])] });
+      continue;
+    }
+    const visits = new Map((existing.visits || []).map((visit) => [String(visit.consultation_id), visit]));
+    for (const visit of patient.visits || []) visits.set(String(visit.consultation_id), visit);
+    patients.set(key, { ...existing, ...patient, visits: [...visits.values()] });
+  }
+  return [...patients.values()].sort((a, b) => String(a.patient_name || "").localeCompare(String(b.patient_name || ""), undefined, { sensitivity: "base" }));
+}
 
 function formatRupees(value) {
   return `Rs ${Number(value || 0).toLocaleString("en-MU", {
@@ -239,6 +263,9 @@ function BillingLitePage() {
   const [patientSearch, setPatientSearch] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState(null);
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
+  const [patientOptionsHasMore, setPatientOptionsHasMore] = useState(false);
+  const [patientSearchHasMore, setPatientSearchHasMore] = useState(false);
+  const [patientPageLoading, setPatientPageLoading] = useState(false);
   const patientPickerRef = useRef(null);
   const [visitSearch, setVisitSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -256,6 +283,7 @@ function BillingLitePage() {
   const [editingOfflineEntry, setEditingOfflineEntry] = useState(null);
   const [lastSubmissionOffline, setLastSubmissionOffline] = useState(false);
   const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
+  const [workflowDialog, setWorkflowDialog] = useState(null);
   const [operatorPayments, setOperatorPayments] = useState([]);
   const [operatorQueueSearch, setOperatorQueueSearch] = useState("");
   const [paymentBill, setPaymentBill] = useState(null);
@@ -281,12 +309,11 @@ function BillingLitePage() {
   async function loadDashboard({ silent = false } = {}) {
     if (!silent) setIsLoading(true);
     try {
-      const pickerQuery = operatorIssueOnly && billingDoctorId
-        ? `?doctorId=${encodeURIComponent(billingDoctorId)}`
-        : "";
+      const pickerQuery = new URLSearchParams({ limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
+      if (operatorIssueOnly && billingDoctorId) pickerQuery.set("doctorId", billingDoctorId);
       const [submissionPayload, pickerPayload, feePayload, operatorPayload] = await Promise.all([
         api.get(`/billing/quick/submissions?limit=${SUBMISSION_PAGE_SIZE}&offset=0`),
-        api.get(`/billing/quick/picker-options${pickerQuery}`),
+        api.get(`/billing/quick/picker-options?${pickerQuery.toString()}`),
         api.get("/billing/consultation-fees"),
         operatorIssueOnly ? api.get("/dashboard/operator-workspace") : Promise.resolve(null),
       ]);
@@ -294,6 +321,7 @@ function BillingLitePage() {
       setSubmissionTotal(Number(submissionPayload?.total || 0));
       setSubmissionPage(0);
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
+      setPatientOptionsHasMore(Boolean(pickerPayload?.has_more));
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
       setConsultationFees(feePayload || {});
       setOperatorPayments(Array.isArray(operatorPayload?.pendingPayments) ? operatorPayload.pendingPayments : []);
@@ -331,6 +359,9 @@ function BillingLitePage() {
   async function selectBillingDoctor(doctorId) {
     setBillingDoctorId(doctorId);
     setPatientOptions([]);
+    setPatientOptionsHasMore(false);
+    setPatientSearchResults(null);
+    setPatientSearchHasMore(false);
     setSelectedPatientId("");
     setSelectedPickerVisitId("");
     setSelectedVisit(null);
@@ -338,8 +369,10 @@ function BillingLitePage() {
     if (!doctorId) return;
     setIsCatalogLoading(true);
     try {
-      const payload = await api.get(`/billing/quick/picker-options?doctorId=${encodeURIComponent(doctorId)}`);
+      const query = new URLSearchParams({ doctorId, limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
+      const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
       setPatientOptions(Array.isArray(payload?.patients) ? payload.patients : []);
+      setPatientOptionsHasMore(Boolean(payload?.has_more));
       if (Array.isArray(payload?.doctors)) setDoctorOptions(payload.doctors);
     } catch (error) {
       toast.error(error.message || "This doctor’s billable visits could not be loaded.");
@@ -389,6 +422,7 @@ function BillingLitePage() {
     const needle = patientSearch.trim();
     if (!patientPickerOpen || needle.length < 2 || (operatorIssueOnly && !billingDoctorId)) {
       setPatientSearchResults(null);
+      setPatientSearchHasMore(false);
       setPatientSearchLoading(false);
       return undefined;
     }
@@ -397,10 +431,13 @@ function BillingLitePage() {
     setPatientSearchResults([]);
     const timeout = window.setTimeout(async () => {
       try {
-        const query = new URLSearchParams({ search: needle, limit: "100" });
+        const query = new URLSearchParams({ search: needle, limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
         if (operatorIssueOnly) query.set("doctorId", billingDoctorId);
         const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
-        if (!ignore) setPatientSearchResults(Array.isArray(payload?.patients) ? payload.patients : []);
+        if (!ignore) {
+          setPatientSearchResults(Array.isArray(payload?.patients) ? payload.patients : []);
+          setPatientSearchHasMore(Boolean(payload?.has_more));
+        }
       } catch (error) {
         if (!ignore) toast.error(error.message || "Patient search could not be completed.");
       } finally {
@@ -546,12 +583,42 @@ function BillingLitePage() {
   }
 
   function choosePatient(patient) {
+    setPatientOptions((current) => mergePatientOptions(current, [patient]));
     setSelectedPatientId(String(patient.patient_id));
     setSelectedPickerVisitId(patient.visits?.length === 1 ? String(patient.visits[0].consultation_id) : "");
     setVisitSearch("");
     setPatientPickerOpen(false);
     setPatientSearch("");
     setPatientSearchResults(null);
+  }
+
+  async function loadMorePatients() {
+    if (patientPageLoading || (operatorIssueOnly && !billingDoctorId)) return;
+    const search = patientSearch.trim();
+    const searching = search.length >= 2 && patientSearchResults !== null;
+    const current = searching ? patientSearchResults : patientOptions;
+    setPatientPageLoading(true);
+    try {
+      const query = new URLSearchParams({
+        limit: String(PATIENT_PICKER_PAGE_SIZE),
+        offset: String(countPatientVisits(current)),
+      });
+      if (searching) query.set("search", search);
+      if (operatorIssueOnly) query.set("doctorId", billingDoctorId);
+      const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
+      const incoming = Array.isArray(payload?.patients) ? payload.patients : [];
+      if (searching) {
+        setPatientSearchResults((existing) => mergePatientOptions(existing || [], incoming));
+        setPatientSearchHasMore(Boolean(payload?.has_more));
+      } else {
+        setPatientOptions((existing) => mergePatientOptions(existing, incoming));
+        setPatientOptionsHasMore(Boolean(payload?.has_more));
+      }
+    } catch (error) {
+      toast.error(error.message || "More billable visits could not be loaded.");
+    } finally {
+      setPatientPageLoading(false);
+    }
   }
 
   async function openCatalog(visit = selectedVisit) {
@@ -721,10 +788,8 @@ function BillingLitePage() {
     }
   }
 
-  async function reverseSubmission(submission) {
-    const response = window.prompt("Why are these submitted supplies being reversed?");
-    if (response === null) return;
-    const reason = response.trim();
+  async function reverseSubmission(submission, reasonInput) {
+    const reason = String(reasonInput || "").trim();
     if (reason.length < 5) {
       toast.error("Enter a clear reason for the reversal.");
       return;
@@ -735,6 +800,7 @@ function BillingLitePage() {
         operation_id: crypto.randomUUID(),
         reason,
       });
+      setWorkflowDialog(null);
       await loadDashboard({ silent: true });
       toast.success("Supplies reversed. The stock and bill audit trails were updated.");
     } catch (error) {
@@ -744,20 +810,27 @@ function BillingLitePage() {
     }
   }
 
-  async function updateOperatorWorkflow(submission, status) {
-    let note = "";
-    if (status === "needs_doctor") {
-      const response = window.prompt("What should the doctor clarify?");
-      if (response === null) return;
-      note = response.trim();
-      if (note.length < 3) return toast.error("Add a short clarification note for the doctor.");
-    }
+  async function updateOperatorWorkflow(submission, status, noteInput = "") {
+    const note = String(noteInput || "").trim();
+    if (status === "needs_doctor" && note.length < 3) return toast.error("Add a short clarification note for the doctor.");
     try {
-      await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, { status, note });
+      await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, {
+        submission_id: submission.id,
+        expected_workflow_status: submission.status || submission.workflow_status,
+        status,
+        note,
+      });
+      setWorkflowDialog(null);
       await loadDashboard({ silent: true });
       toast.success(status === "needs_doctor" ? "Clarification sent to the doctor." : "Bill is ready for payment.");
     } catch (error) {
-      toast.error(error.message || "The billing workflow could not be updated.");
+      if (error.data?.code === "STALE_BILLING_SUBMISSION") {
+        setWorkflowDialog(null);
+        await loadDashboard({ silent: true });
+        toast.error("This submission changed elsewhere. The queue has been refreshed.");
+      } else {
+        toast.error(error.message || "The billing workflow could not be updated.");
+      }
     }
   }
 
@@ -989,8 +1062,8 @@ function BillingLitePage() {
                         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black">{submission.patient_name}</p><p className="mt-1 text-xs font-bold text-slate-500">{submission.patient_identifier} · {submission.visit_number}</p></div><StatusBadge status={submission.status} compact /></div>
                         {submission.workflow_note ? <p className="mt-3 text-sm font-semibold text-rose-800">{submission.workflow_note}</p> : null}
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                          <button type="button" onClick={() => updateOperatorWorkflow(submission, "needs_doctor")} className="min-h-11 rounded-xl border border-rose-200 bg-white px-3 text-sm font-black text-rose-800">Ask doctor</button>
-                          <button type="button" onClick={() => updateOperatorWorkflow(submission, "ready_for_payment")} className="min-h-11 rounded-xl bg-violet-600 px-3 text-sm font-black text-white">Ready for payment</button>
+                          <button type="button" onClick={() => setWorkflowDialog({ kind: "clarification", submission, reason: "" })} className="min-h-11 rounded-xl border border-rose-200 bg-white px-3 text-sm font-black text-rose-800">Ask doctor</button>
+                          <button type="button" onClick={() => void updateOperatorWorkflow(submission, "ready_for_payment")} className="min-h-11 rounded-xl bg-violet-600 px-3 text-sm font-black text-white">Ready for payment</button>
                         </div>
                       </article>
                     ))}
@@ -1126,6 +1199,19 @@ function BillingLitePage() {
                         )) : (
                           <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No matching patient.</p>
                         )}
+                        {(patientSearch.trim().length >= 2 && patientSearchResults !== null ? patientSearchHasMore : patientOptionsHasMore) ? (
+                          <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 p-3 backdrop-blur">
+                            <button
+                              type="button"
+                              disabled={patientPageLoading}
+                              onClick={() => void loadMorePatients()}
+                              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#eff8f7] px-4 text-sm font-black text-[#17666a] disabled:opacity-50"
+                            >
+                              {patientPageLoading ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
+                              {patientPageLoading ? "Loading…" : "Load more billable visits"}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
@@ -1719,7 +1805,7 @@ function BillingLitePage() {
                       <button
                         type="button"
                         disabled={reversingSubmissionId === submission.id}
-                        onClick={() => reverseSubmission(submission)}
+                        onClick={() => setWorkflowDialog({ kind: "reversal", submission, reason: "" })}
                         className="mt-4 min-h-11 w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-black text-rose-800 transition hover:bg-rose-100 disabled:opacity-50"
                       >
                         {reversingSubmissionId === submission.id ? "Reversing…" : "Reverse incorrect supplies"}
@@ -1746,6 +1832,66 @@ function BillingLitePage() {
           </section>
         ) : null}
       </main>
+      {workflowDialog ? (
+        <Modal
+          open
+          onClose={() => !reversingSubmissionId && setWorkflowDialog(null)}
+          title={workflowDialog.kind === "reversal" ? "Reverse incorrect supplies" : "Request doctor clarification"}
+          size="md"
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (workflowDialog.kind === "reversal") {
+                void reverseSubmission(workflowDialog.submission, workflowDialog.reason);
+              } else {
+                void updateOperatorWorkflow(workflowDialog.submission, "needs_doctor", workflowDialog.reason);
+              }
+            }}
+          >
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="font-black text-slate-950">{workflowDialog.submission.patient_name}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                {workflowDialog.submission.patient_identifier} · {workflowDialog.submission.visit_number}
+              </p>
+              {workflowDialog.kind === "reversal" ? (
+                <p className="mt-3 text-sm font-bold text-slate-700">
+                  {workflowDialog.submission.item_count || 0} supplied item{Number(workflowDialog.submission.item_count || 0) === 1 ? "" : "s"} · {formatRupees(workflowDialog.submission.amount_added)}
+                </p>
+              ) : null}
+            </div>
+            <div className={`rounded-2xl border p-4 text-sm font-semibold leading-6 ${workflowDialog.kind === "reversal" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+              {workflowDialog.kind === "reversal"
+                ? "This restores eligible stock, removes the supply charges, and records an immutable reversal event. It does not erase the original submission."
+                : "The bill will leave the payment queue and return to the doctor for a corrected submission. No payment or stock entry is changed by this request."}
+            </div>
+            <label className="block text-sm font-black text-slate-800">
+              {workflowDialog.kind === "reversal" ? "Reason for reversal" : "What should the doctor clarify?"}
+              <textarea
+                autoFocus
+                required
+                minLength={workflowDialog.kind === "reversal" ? 5 : 3}
+                rows={3}
+                value={workflowDialog.reason}
+                onChange={(event) => setWorkflowDialog((current) => ({ ...current, reason: event.target.value }))}
+                placeholder={workflowDialog.kind === "reversal" ? "Describe the incorrect supply entry." : "Describe the quantity or charge that needs review."}
+                className="mt-2 w-full rounded-xl border border-slate-200 p-3 font-semibold outline-none focus:border-[#2aa7a0]"
+              />
+            </label>
+            <div className="flex justify-end gap-3">
+              <button type="button" disabled={Boolean(reversingSubmissionId)} onClick={() => setWorkflowDialog(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 font-bold">Cancel</button>
+              <button
+                type="submit"
+                disabled={Boolean(reversingSubmissionId) || workflowDialog.reason.trim().length < (workflowDialog.kind === "reversal" ? 5 : 3)}
+                className={`min-h-11 rounded-xl px-4 font-black text-white disabled:opacity-50 ${workflowDialog.kind === "reversal" ? "bg-rose-700" : "bg-[#17666a]"}`}
+              >
+                {reversingSubmissionId ? "Reversing…" : workflowDialog.kind === "reversal" ? "Confirm reversal" : "Send clarification"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
       {paymentBill ? (
         <OperatorPaymentModal bill={paymentBill} busy={paymentBusy} onClose={() => !paymentBusy && setPaymentBill(null)} onConfirm={recordOperatorPayment} onReverse={reverseOperatorPayment} />
       ) : null}

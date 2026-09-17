@@ -366,7 +366,12 @@ test("operator review status is independent from paid or unpaid bill status", as
       "PATCH",
       `/billing/quick/operator-queue/${consultationId}/status`,
       operatorToken,
-      { status: "needs_doctor", note: "Confirm the saline quantity" },
+      {
+        submission_id: submission.submission_id,
+        expected_workflow_status: "awaiting_operator",
+        status: "needs_doctor",
+        note: "Confirm the saline quantity",
+      },
     );
     assert.equal(needsDoctor.status, 200, JSON.stringify(needsDoctor.data));
     await new Promise((resolve) => setImmediate(resolve));
@@ -386,7 +391,11 @@ test("operator review status is independent from paid or unpaid bill status", as
     "PATCH",
     `/billing/quick/operator-queue/${consultationId}/status`,
     operatorToken,
-    { status: "ready_for_payment" },
+    {
+      submission_id: submission.submission_id,
+      expected_workflow_status: "needs_doctor",
+      status: "ready_for_payment",
+    },
   );
   assert.equal(ready.status, 200, JSON.stringify(ready.data));
 
@@ -394,7 +403,11 @@ test("operator review status is independent from paid or unpaid bill status", as
     "PATCH",
     `/billing/quick/operator-queue/${consultationId}/status`,
     otherDoctorToken,
-    { status: "ready_for_payment" },
+    {
+      submission_id: submission.submission_id,
+      expected_workflow_status: "ready_for_payment",
+      status: "ready_for_payment",
+    },
   );
   assert.equal(forbidden.status, 403);
 });
@@ -475,7 +488,12 @@ test("a corrected doctor submission supersedes and clears an older clarification
     "PATCH",
     `/billing/quick/operator-queue/${correctedConsultationId}/status`,
     operatorToken,
-    { status: "needs_doctor", note: "Confirm the corrected supply quantity" },
+    {
+      submission_id: first.data.submission.submission_id,
+      expected_workflow_status: "awaiting_operator",
+      status: "needs_doctor",
+      note: "Confirm the corrected supply quantity",
+    },
   );
   assert.equal(requested.status, 200, JSON.stringify(requested.data));
   const corrected = await api("POST", `/billing/quick/visits/${correctedConsultationId}/capture`, doctorToken, {
@@ -485,6 +503,23 @@ test("a corrected doctor submission supersedes and clears an older clarification
   });
   assert.equal(corrected.status, 201, JSON.stringify(corrected.data));
   assert.notEqual(corrected.data.submission.submission_id, first.data.submission.submission_id);
+  const staleApproval = await api(
+    "PATCH",
+    `/billing/quick/operator-queue/${correctedConsultationId}/status`,
+    operatorToken,
+    {
+      submission_id: first.data.submission.submission_id,
+      expected_workflow_status: "needs_doctor",
+      status: "ready_for_payment",
+    },
+  );
+  assert.equal(staleApproval.status, 409, JSON.stringify(staleApproval.data));
+  assert.equal(staleApproval.data.code, "STALE_BILLING_SUBMISSION");
+  assert.equal(staleApproval.data.latest_submission_id, corrected.data.submission.submission_id);
+  assert.equal(
+    db.prepare("SELECT workflow_status FROM billing_lite_submissions WHERE id = ?").get(corrected.data.submission.submission_id).workflow_status,
+    "awaiting_operator",
+  );
   const superseded = db.prepare("SELECT workflow_status, workflow_note, reversed_at FROM billing_lite_submissions WHERE id = ?").get(first.data.submission.submission_id);
   assert.equal(superseded.workflow_status, "superseded");
   assert.equal(superseded.workflow_note, "");
@@ -696,7 +731,14 @@ test("patient picker search runs on the server before result limiting", async ()
 
   const defaultPicker=await api('GET','/billing/quick/picker-options?limit=100',doctorToken);
   assert.equal(defaultPicker.status,200,JSON.stringify(defaultPicker.data));
+  assert.equal(defaultPicker.data.has_more,true);
   assert.equal(defaultPicker.data.patients.some(patient=>patient.patient_id===target.patientId),false);
+  const nextPicker=await api('GET','/billing/quick/picker-options?limit=100&offset=100',doctorToken);
+  assert.equal(nextPicker.status,200,JSON.stringify(nextPicker.data));
+  assert.equal(nextPicker.data.has_more,false);
+  assert.equal(nextPicker.data.patients.some(patient=>patient.patient_id===target.patientId),true);
+  const firstVisitIds=new Set(defaultPicker.data.patients.flatMap(patient=>patient.visits).map(visit=>visit.consultation_id));
+  assert.equal(nextPicker.data.patients.flatMap(patient=>patient.visits).some(visit=>firstVisitIds.has(visit.consultation_id)),false);
 
   const searched=await api('GET',`/billing/quick/picker-options?search=${encodeURIComponent(targetIdentifier)}&limit=20`,doctorToken);
   assert.equal(searched.status,200,JSON.stringify(searched.data));

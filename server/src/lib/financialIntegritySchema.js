@@ -384,6 +384,52 @@ function ensureFinancialIntegritySchema(db) {
       BEGIN
         SELECT RAISE(ABORT, 'Credit notes require a valid non-future date, operation reference, documented reason, and provider reference for non-cash refunds');
       END;
+      CREATE TABLE IF NOT EXISTS billing_refund_allocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        refund_id INTEGER NOT NULL UNIQUE,
+        billing_id INTEGER NOT NULL,
+        allocation_type TEXT NOT NULL CHECK (allocation_type IN ('service_non_stock', 'supply_submission')),
+        submission_id INTEGER,
+        amount REAL NOT NULL CHECK (amount > 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (refund_id) REFERENCES billing_refunds(id) ON DELETE RESTRICT,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (submission_id) REFERENCES billing_lite_submissions(id) ON DELETE RESTRICT,
+        CHECK (
+          (allocation_type = 'service_non_stock' AND submission_id IS NULL)
+          OR (allocation_type = 'supply_submission' AND submission_id IS NOT NULL)
+        )
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_refund_allocations_bill
+        ON billing_refund_allocations(billing_id, allocation_type, id);
+      CREATE TRIGGER IF NOT EXISTS billing_refund_allocations_guard
+      BEFORE INSERT ON billing_refund_allocations
+      WHEN NOT EXISTS (
+        SELECT 1
+        FROM billing_refunds refund
+        WHERE refund.id = NEW.refund_id
+          AND refund.billing_id = NEW.billing_id
+          AND abs(refund.amount - NEW.amount) <= 0.000001
+      ) OR (
+        NEW.allocation_type = 'supply_submission'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM billing_lite_submissions submission
+          WHERE submission.id = NEW.submission_id
+            AND submission.billing_id = NEW.billing_id
+        )
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'Credit note allocation must match its invoice, amount, and supply submission');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_refund_allocations_no_update
+      BEFORE UPDATE ON billing_refund_allocations BEGIN
+        SELECT RAISE(ABORT, 'Credit note allocations are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_refund_allocations_no_delete
+      BEFORE DELETE ON billing_refund_allocations BEGIN
+        SELECT RAISE(ABORT, 'Credit note allocations are immutable');
+      END;
       CREATE TABLE IF NOT EXISTS billing_supply_corrections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         billing_id INTEGER NOT NULL,

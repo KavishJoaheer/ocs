@@ -846,7 +846,7 @@ export default function LiveReportPage() {
               </div>
               <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
                 <StatementStat label="Paid" value={formatCurrency(collected)} />
-                <StatementStat label="Unpaid" value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} />
+                <StatementStat label={dateBasis === "payment" ? "Outstanding" : "Unpaid"} value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} hint={dateBasis === "payment" ? "Invoices with payment activity in this period" : undefined} />
                 <StatementStat label="Visits" value={visitCount} />
                 <StatementStat label="Patients" value={uniquePatientCount} />
               </div>
@@ -874,7 +874,7 @@ export default function LiveReportPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <StatTile label="Unpaid" value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} />
+              <StatTile label={dateBasis === "payment" ? "Outstanding" : "Unpaid"} value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} hint={dateBasis === "payment" ? "Invoices with payment activity in this period" : undefined} />
               <StatTile
                 label="Doctor net"
                 value={formatCurrency(doctorNet)}
@@ -911,7 +911,7 @@ export default function LiveReportPage() {
                 {refunded > 0 ? <p className="mt-1 text-xs font-semibold text-rose-700">After {formatCurrency(refunded)} in credit notes</p> : null}
               </div>
               <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
-                <StatementStat label="Unpaid" value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} />
+                <StatementStat label={dateBasis === "payment" ? "Outstanding" : "Unpaid"} value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} hint={dateBasis === "payment" ? "Invoices with payment activity in this period" : undefined} />
                 <StatementStat
                   label="Doctor net"
                   value={formatCurrency(doctorNet)}
