@@ -1,16 +1,12 @@
-function getTodayLocal() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  const local = new Date(now.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
+const MAURITIUS_OFFSET_MS = 4 * 60 * 60 * 1000;
+
+function getTodayLocal(now = new Date()) {
+  return new Date(now.getTime() + MAURITIUS_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 function offsetLocalDate(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
+  const [year, month, day] = getTodayLocal().split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + Number(days || 0))).toISOString().slice(0, 10);
 }
 
 function toNumber(value, fallback = 0) {

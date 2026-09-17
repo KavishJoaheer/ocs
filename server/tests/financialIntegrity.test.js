@@ -26,6 +26,11 @@ const doctorId = db.prepare('SELECT id FROM doctors ORDER BY id LIMIT 1').get().
 const folderId = db.prepare('SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1').get().id;
 let base, server, fixtureIndex = 0;
 let quickIssueIndex = 0;
+
+test('Mauritius financial dates do not depend on the server host timezone', () => {
+  assert.equal(getTodayLocal(new Date('2026-09-17T20:15:00.000Z')), '2026-09-18');
+  assert.equal(getTodayLocal(new Date('2026-09-17T19:59:59.999Z')), '2026-09-17');
+});
 before(async () => {
   server = await new Promise(resolve => { const running = app.listen(0, '127.0.0.1', () => resolve(running)); });
   base = `http://127.0.0.1:${server.address().port}/api`;

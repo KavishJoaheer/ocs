@@ -17,6 +17,7 @@ const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
 const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
+const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
 
 test("inventory cadence summaries remain flexible and use recorded activity", () => {
   const now = Date.parse("2026-09-14T12:00:00.000Z");
@@ -1034,34 +1035,21 @@ test("operator can inspect, accept and reject amendments from the changes workfl
   );
 });
 
-function todayLocalIso() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-function offsetIso(days) {
-  const now = new Date();
-  now.setDate(now.getDate() + days);
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
 test("past expiry receipt is rejected and future or non-expiring receipts are accepted", async () => {
   const itemId = insertOcsItem({ name: `Recv ${Date.now()}`, qty: 2 });
   const past = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
     token: operatorToken,
-    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetIso(-1) },
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetLocalDate(-1) },
   });
   assert.equal(past.status, 400, JSON.stringify(past.data));
   const future = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
     token: operatorToken,
-    body: { action_type: "stock_in", quantity: 2, expiry_date: offsetIso(14) },
+    body: { action_type: "stock_in", quantity: 2, expiry_date: offsetLocalDate(14) },
   });
   assert.equal(future.status, 201, JSON.stringify(future.data));
   const today = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
     token: operatorToken,
-    body: { action_type: "stock_in", quantity: 1, expiry_date: todayLocalIso() },
+    body: { action_type: "stock_in", quantity: 1, expiry_date: getTodayLocal() },
   });
   assert.equal(today.status, 201, JSON.stringify(today.data));
   const nonExpiring = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
@@ -1077,7 +1065,7 @@ test("admin cannot receive stock without an operational override", async () => {
   const itemId = insertOcsItem({ name: `Perm ${Date.now()}`, qty: 2 });
   const adminReceive = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
     token: adminToken,
-    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetIso(30) },
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetLocalDate(30) },
   });
   assert.equal(adminReceive.status, 403, JSON.stringify(adminReceive.data));
   const adminOverride = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
@@ -1085,7 +1073,7 @@ test("admin cannot receive stock without an operational override", async () => {
     body: {
       action_type: "stock_in",
       quantity: 1,
-      expiry_date: offsetIso(30),
+      expiry_date: offsetLocalDate(30),
       operational_override: true,
       override_reason: "Emergency weekend receiving while no operator is on duty",
     },
@@ -1093,7 +1081,7 @@ test("admin cannot receive stock without an operational override", async () => {
   assert.equal(adminOverride.status, 201, JSON.stringify(adminOverride.data));
   const doctorReceive = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
     token: doctorToken,
-    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetIso(30) },
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetLocalDate(30) },
   });
   assert.equal(doctorReceive.status, 403);
 });
