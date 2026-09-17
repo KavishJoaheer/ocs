@@ -75,6 +75,332 @@ function ensureFinancialIntegritySchema(db) {
       BEFORE DELETE ON billing_follow_ups BEGIN
         SELECT RAISE(ABORT, 'Billing follow-up history is append-only');
       END;
+      CREATE TABLE IF NOT EXISTS finance_expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        expense_date TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN (
+          'salary', 'doctor_commission', 'transport_benefit', 'fuel', 'rent',
+          'utilities', 'bank_card_fee', 'marketing', 'professional_fee',
+          'wastage', 'equipment', 'miscellaneous'
+        )),
+        payee TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        amount REAL NOT NULL CHECK (amount > 0),
+        external_reference TEXT,
+        receipt_stored_name TEXT,
+        receipt_original_name TEXT,
+        receipt_mime_type TEXT,
+        receipt_size INTEGER,
+        operation_id TEXT NOT NULL UNIQUE,
+        created_by_user_id INTEGER,
+        created_by_name TEXT NOT NULL DEFAULT '',
+        created_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_finance_expenses_date ON finance_expenses(expense_date, category);
+      CREATE TABLE IF NOT EXISTS finance_expense_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        expense_id INTEGER NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('submitted', 'approved', 'rejected')),
+        note TEXT NOT NULL DEFAULT '',
+        operation_id TEXT NOT NULL UNIQUE,
+        actor_user_id INTEGER,
+        actor_name TEXT NOT NULL DEFAULT '',
+        actor_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (expense_id) REFERENCES finance_expenses(id) ON DELETE RESTRICT,
+        FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_finance_expense_events_expense ON finance_expense_events(expense_id, id DESC);
+      CREATE TABLE IF NOT EXISTS finance_expense_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        expense_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        payment_date TEXT NOT NULL,
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'juice', 'card', 'ib', 'bank_transfer', 'cheque')),
+        external_reference TEXT,
+        operation_id TEXT NOT NULL UNIQUE,
+        recorded_by_user_id INTEGER,
+        recorded_by_name TEXT NOT NULL DEFAULT '',
+        recorded_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (expense_id) REFERENCES finance_expenses(id) ON DELETE RESTRICT,
+        FOREIGN KEY (recorded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_finance_expense_payments_date ON finance_expense_payments(payment_date, payment_method);
+      CREATE TABLE IF NOT EXISTS finance_expense_payment_reversals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        payment_id INTEGER NOT NULL UNIQUE,
+        reversal_date TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        operation_id TEXT NOT NULL UNIQUE,
+        reversed_by_user_id INTEGER,
+        reversed_by_name TEXT NOT NULL DEFAULT '',
+        reversed_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (payment_id) REFERENCES finance_expense_payments(id) ON DELETE RESTRICT,
+        FOREIGN KEY (reversed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE TABLE IF NOT EXISTS finance_supplier_invoices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_name TEXT NOT NULL,
+        invoice_number TEXT NOT NULL,
+        invoice_date TEXT NOT NULL,
+        due_date TEXT,
+        delivery_note TEXT NOT NULL DEFAULT '',
+        shipment_id INTEGER,
+        other_amount REAL NOT NULL DEFAULT 0 CHECK (other_amount >= 0),
+        document_stored_name TEXT,
+        document_original_name TEXT,
+        document_mime_type TEXT,
+        document_size INTEGER,
+        operation_id TEXT NOT NULL UNIQUE,
+        created_by_user_id INTEGER,
+        created_by_name TEXT NOT NULL DEFAULT '',
+        created_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (shipment_id) REFERENCES inventory_shipments(id) ON DELETE RESTRICT,
+        FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE (supplier_name, invoice_number)
+      );
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoices_date ON finance_supplier_invoices(invoice_date, due_date);
+      CREATE TABLE IF NOT EXISTS finance_supplier_invoice_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_invoice_id INTEGER NOT NULL,
+        inventory_item_id INTEGER,
+        batch_id INTEGER,
+        description TEXT NOT NULL,
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        unit_cost REAL NOT NULL CHECK (unit_cost >= 0),
+        previous_inventory_cost REAL,
+        previous_batch_cost REAL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_invoice_id) REFERENCES finance_supplier_invoices(id) ON DELETE RESTRICT,
+        FOREIGN KEY (inventory_item_id) REFERENCES inventory(id) ON DELETE RESTRICT,
+        FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
+      );
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoice_lines_invoice ON finance_supplier_invoice_lines(supplier_invoice_id, id);
+      CREATE TABLE IF NOT EXISTS finance_supplier_invoice_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_invoice_id INTEGER NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('submitted', 'approved', 'rejected')),
+        note TEXT NOT NULL DEFAULT '',
+        operation_id TEXT NOT NULL UNIQUE,
+        actor_user_id INTEGER,
+        actor_name TEXT NOT NULL DEFAULT '',
+        actor_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_invoice_id) REFERENCES finance_supplier_invoices(id) ON DELETE RESTRICT,
+        FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoice_events_invoice ON finance_supplier_invoice_events(supplier_invoice_id, id DESC);
+      CREATE TABLE IF NOT EXISTS finance_supplier_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_invoice_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        payment_date TEXT NOT NULL,
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'juice', 'card', 'ib', 'bank_transfer', 'cheque')),
+        external_reference TEXT,
+        operation_id TEXT NOT NULL UNIQUE,
+        recorded_by_user_id INTEGER,
+        recorded_by_name TEXT NOT NULL DEFAULT '',
+        recorded_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_invoice_id) REFERENCES finance_supplier_invoices(id) ON DELETE RESTRICT,
+        FOREIGN KEY (recorded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_supplier_payments_date ON finance_supplier_payments(payment_date, payment_method);
+      CREATE TABLE IF NOT EXISTS finance_supplier_payment_reversals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        payment_id INTEGER NOT NULL UNIQUE,
+        reversal_date TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        operation_id TEXT NOT NULL UNIQUE,
+        reversed_by_user_id INTEGER,
+        reversed_by_name TEXT NOT NULL DEFAULT '',
+        reversed_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (payment_id) REFERENCES finance_supplier_payments(id) ON DELETE RESTRICT,
+        FOREIGN KEY (reversed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE TABLE IF NOT EXISTS finance_monthly_closings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        month_key TEXT NOT NULL UNIQUE,
+        readiness_snapshot_json TEXT NOT NULL,
+        notes TEXT NOT NULL DEFAULT '',
+        operation_id TEXT NOT NULL UNIQUE,
+        closed_by_user_id INTEGER,
+        closed_by_name TEXT NOT NULL DEFAULT '',
+        closed_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (closed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE TRIGGER IF NOT EXISTS finance_expenses_document_guard BEFORE INSERT ON finance_expenses BEGIN
+        SELECT CASE WHEN date(NEW.expense_date) IS NULL OR date(NEW.expense_date) != NEW.expense_date
+          OR NEW.expense_date > date('now','+4 hours')
+          OR abs(NEW.amount*100-round(NEW.amount*100)) > 0.0001
+          OR trim(NEW.payee) = '' OR trim(NEW.operation_id) = ''
+        THEN RAISE(ABORT, 'Invalid expense document') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_events_transition_guard BEFORE INSERT ON finance_expense_events BEGIN
+        SELECT CASE
+          WHEN trim(NEW.operation_id) = '' THEN RAISE(ABORT, 'Expense event requires operation reference')
+          WHEN NEW.action = 'submitted' AND EXISTS (
+            SELECT 1 FROM finance_expense_events WHERE expense_id=NEW.expense_id
+          ) THEN RAISE(ABORT, 'Expense is already submitted')
+          WHEN NEW.action IN ('approved','rejected') AND (
+            NOT EXISTS (SELECT 1 FROM finance_expense_events WHERE expense_id=NEW.expense_id AND action='submitted')
+            OR EXISTS (SELECT 1 FROM finance_expense_events WHERE expense_id=NEW.expense_id AND action IN ('approved','rejected'))
+          ) THEN RAISE(ABORT, 'Expense decision is not allowed')
+        END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_payments_document_guard BEFORE INSERT ON finance_expense_payments BEGIN
+        SELECT CASE WHEN date(NEW.payment_date) IS NULL OR date(NEW.payment_date) != NEW.payment_date
+          OR NEW.payment_date > date('now','+4 hours')
+          OR abs(NEW.amount*100-round(NEW.amount*100)) > 0.0001
+          OR trim(NEW.operation_id) = ''
+          OR (NEW.payment_method != 'cash' AND length(trim(COALESCE(NEW.external_reference,''))) < 3)
+        THEN RAISE(ABORT, 'Invalid expense payment') END;
+        SELECT CASE WHEN COALESCE((
+          SELECT action FROM finance_expense_events WHERE expense_id=NEW.expense_id ORDER BY id DESC LIMIT 1
+        ),'submitted') != 'approved' THEN RAISE(ABORT, 'Expense is not approved') END;
+        SELECT CASE WHEN NEW.amount
+          + COALESCE((SELECT SUM(amount) FROM finance_expense_payments WHERE expense_id=NEW.expense_id),0)
+          - COALESCE((SELECT SUM(payment.amount) FROM finance_expense_payments payment
+            JOIN finance_expense_payment_reversals reversal ON reversal.payment_id=payment.id
+            WHERE payment.expense_id=NEW.expense_id),0)
+          > (SELECT amount FROM finance_expenses WHERE id=NEW.expense_id) + 0.004
+        THEN RAISE(ABORT, 'Expense payment exceeds outstanding balance') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_payment_reversals_document_guard BEFORE INSERT ON finance_expense_payment_reversals BEGIN
+        SELECT CASE WHEN date(NEW.reversal_date) IS NULL OR date(NEW.reversal_date) != NEW.reversal_date
+          OR NEW.reversal_date > date('now','+4 hours') OR length(trim(NEW.reason)) < 10
+          OR trim(NEW.operation_id) = ''
+        THEN RAISE(ABORT, 'Invalid expense payment reversal') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_invoices_document_guard BEFORE INSERT ON finance_supplier_invoices BEGIN
+        SELECT CASE WHEN date(NEW.invoice_date) IS NULL OR date(NEW.invoice_date) != NEW.invoice_date
+          OR NEW.invoice_date > date('now','+4 hours')
+          OR (NEW.due_date IS NOT NULL AND (date(NEW.due_date) IS NULL OR date(NEW.due_date) != NEW.due_date))
+          OR abs(NEW.other_amount*100-round(NEW.other_amount*100)) > 0.0001
+          OR trim(NEW.supplier_name) = '' OR trim(NEW.invoice_number) = '' OR trim(NEW.operation_id) = ''
+        THEN RAISE(ABORT, 'Invalid supplier invoice') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_lines_document_guard BEFORE INSERT ON finance_supplier_invoice_lines BEGIN
+        SELECT CASE WHEN trim(NEW.description) = ''
+          OR abs(NEW.unit_cost*100-round(NEW.unit_cost*100)) > 0.0001
+          OR (NEW.batch_id IS NOT NULL AND (
+            NEW.inventory_item_id IS NULL OR NOT EXISTS (
+              SELECT 1 FROM inventory_batches WHERE id=NEW.batch_id AND item_id=NEW.inventory_item_id
+            )
+          ))
+        THEN RAISE(ABORT, 'Invalid supplier invoice line') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_events_transition_guard BEFORE INSERT ON finance_supplier_invoice_events BEGIN
+        SELECT CASE
+          WHEN trim(NEW.operation_id) = '' THEN RAISE(ABORT, 'Supplier event requires operation reference')
+          WHEN NEW.action = 'submitted' AND EXISTS (
+            SELECT 1 FROM finance_supplier_invoice_events WHERE supplier_invoice_id=NEW.supplier_invoice_id
+          ) THEN RAISE(ABORT, 'Supplier invoice is already submitted')
+          WHEN NEW.action IN ('approved','rejected') AND (
+            NOT EXISTS (SELECT 1 FROM finance_supplier_invoice_events WHERE supplier_invoice_id=NEW.supplier_invoice_id AND action='submitted')
+            OR EXISTS (SELECT 1 FROM finance_supplier_invoice_events WHERE supplier_invoice_id=NEW.supplier_invoice_id AND action IN ('approved','rejected'))
+          ) THEN RAISE(ABORT, 'Supplier invoice decision is not allowed')
+        END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_payments_document_guard BEFORE INSERT ON finance_supplier_payments BEGIN
+        SELECT CASE WHEN date(NEW.payment_date) IS NULL OR date(NEW.payment_date) != NEW.payment_date
+          OR NEW.payment_date > date('now','+4 hours')
+          OR abs(NEW.amount*100-round(NEW.amount*100)) > 0.0001
+          OR trim(NEW.operation_id) = ''
+          OR (NEW.payment_method != 'cash' AND length(trim(COALESCE(NEW.external_reference,''))) < 3)
+        THEN RAISE(ABORT, 'Invalid supplier payment') END;
+        SELECT CASE WHEN COALESCE((
+          SELECT action FROM finance_supplier_invoice_events WHERE supplier_invoice_id=NEW.supplier_invoice_id ORDER BY id DESC LIMIT 1
+        ),'submitted') != 'approved' THEN RAISE(ABORT, 'Supplier invoice is not approved') END;
+        SELECT CASE WHEN NEW.amount
+          + COALESCE((SELECT SUM(amount) FROM finance_supplier_payments WHERE supplier_invoice_id=NEW.supplier_invoice_id),0)
+          - COALESCE((SELECT SUM(payment.amount) FROM finance_supplier_payments payment
+            JOIN finance_supplier_payment_reversals reversal ON reversal.payment_id=payment.id
+            WHERE payment.supplier_invoice_id=NEW.supplier_invoice_id),0)
+          > (
+          SELECT other_amount + COALESCE((SELECT SUM(quantity*unit_cost) FROM finance_supplier_invoice_lines WHERE supplier_invoice_id=NEW.supplier_invoice_id),0)
+          FROM finance_supplier_invoices WHERE id=NEW.supplier_invoice_id
+        ) + 0.004 THEN RAISE(ABORT, 'Supplier payment exceeds outstanding balance') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_payment_reversals_document_guard BEFORE INSERT ON finance_supplier_payment_reversals BEGIN
+        SELECT CASE WHEN date(NEW.reversal_date) IS NULL OR date(NEW.reversal_date) != NEW.reversal_date
+          OR NEW.reversal_date > date('now','+4 hours') OR length(trim(NEW.reason)) < 10
+          OR trim(NEW.operation_id) = ''
+        THEN RAISE(ABORT, 'Invalid supplier payment reversal') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_monthly_closings_document_guard BEFORE INSERT ON finance_monthly_closings BEGIN
+        SELECT CASE WHEN NEW.month_key NOT GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'
+          OR NEW.month_key >= strftime('%Y-%m','now','+4 hours')
+          OR trim(NEW.operation_id) = '' OR length(trim(NEW.notes)) < 10
+        THEN RAISE(ABORT, 'Invalid monthly close') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expenses_no_update BEFORE UPDATE ON finance_expenses BEGIN
+        SELECT RAISE(ABORT, 'Expense documents are immutable; add an approval or compensating entry');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expenses_no_delete BEFORE DELETE ON finance_expenses BEGIN
+        SELECT RAISE(ABORT, 'Expense documents are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_events_no_update BEFORE UPDATE ON finance_expense_events BEGIN
+        SELECT RAISE(ABORT, 'Expense approval history is immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_events_no_delete BEFORE DELETE ON finance_expense_events BEGIN
+        SELECT RAISE(ABORT, 'Expense approval history is immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_payments_no_update BEFORE UPDATE ON finance_expense_payments BEGIN
+        SELECT RAISE(ABORT, 'Expense payments are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_payments_no_delete BEFORE DELETE ON finance_expense_payments BEGIN
+        SELECT RAISE(ABORT, 'Expense payments are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_payment_reversals_no_update BEFORE UPDATE ON finance_expense_payment_reversals BEGIN
+        SELECT RAISE(ABORT, 'Expense payment reversals are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_expense_payment_reversals_no_delete BEFORE DELETE ON finance_expense_payment_reversals BEGIN
+        SELECT RAISE(ABORT, 'Expense payment reversals are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_invoices_no_update BEFORE UPDATE ON finance_supplier_invoices BEGIN
+        SELECT RAISE(ABORT, 'Supplier invoices are immutable; add an approval or compensating document');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_invoices_no_delete BEFORE DELETE ON finance_supplier_invoices BEGIN
+        SELECT RAISE(ABORT, 'Supplier invoices are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_lines_no_update BEFORE UPDATE ON finance_supplier_invoice_lines BEGIN
+        SELECT RAISE(ABORT, 'Supplier invoice lines are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_lines_no_delete BEFORE DELETE ON finance_supplier_invoice_lines BEGIN
+        SELECT RAISE(ABORT, 'Supplier invoice lines are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_events_no_update BEFORE UPDATE ON finance_supplier_invoice_events BEGIN
+        SELECT RAISE(ABORT, 'Supplier approval history is immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_events_no_delete BEFORE DELETE ON finance_supplier_invoice_events BEGIN
+        SELECT RAISE(ABORT, 'Supplier approval history is immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_payments_no_update BEFORE UPDATE ON finance_supplier_payments BEGIN
+        SELECT RAISE(ABORT, 'Supplier payments are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_payments_no_delete BEFORE DELETE ON finance_supplier_payments BEGIN
+        SELECT RAISE(ABORT, 'Supplier payments are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_payment_reversals_no_update BEFORE UPDATE ON finance_supplier_payment_reversals BEGIN
+        SELECT RAISE(ABORT, 'Supplier payment reversals are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_payment_reversals_no_delete BEFORE DELETE ON finance_supplier_payment_reversals BEGIN
+        SELECT RAISE(ABORT, 'Supplier payment reversals are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_monthly_closings_no_update BEFORE UPDATE ON finance_monthly_closings BEGIN
+        SELECT RAISE(ABORT, 'Monthly closings are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_monthly_closings_no_delete BEFORE DELETE ON finance_monthly_closings BEGIN
+        SELECT RAISE(ABORT, 'Monthly closings are immutable');
+      END;
       CREATE TABLE IF NOT EXISTS financial_day_closings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         business_date TEXT NOT NULL UNIQUE,
@@ -729,6 +1055,8 @@ function ensureFinancialIntegritySchema(db) {
     // Invoice identifiers and party/category snapshots are accounting facts.
     // Backfill them once from the linked records, then serve them instead of
     // mutable patient/doctor directory values on historical invoices.
+    add('finance_supplier_invoice_lines', 'previous_inventory_cost', 'REAL');
+    add('finance_supplier_invoice_lines', 'previous_batch_cost', 'REAL');
     db.exec(`
       UPDATE billing
       SET doctor_commission_rate_snapshot = COALESCE(doctor_commission_rate_snapshot, ${Number(DOCTOR_COMMISSION_RATE)}),

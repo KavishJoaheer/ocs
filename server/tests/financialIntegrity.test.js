@@ -49,9 +49,10 @@ after(async () => {
   fs.rmSync(tempDir,{recursive:true,force:true});
 });
 async function api(method, route, role = 'admin', body) {
+  const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
   const res = await fetch(base + route, {
-    method, headers: { 'Content-Type':'application/json', ...(tokens[role] ? {Authorization:'Bearer ' + tokens[role]} : {}) },
-    ...(body === undefined ? {} : {body:JSON.stringify(body)}),
+    method, headers: { ...(multipart ? {} : {'Content-Type':'application/json'}), ...(tokens[role] ? {Authorization:'Bearer ' + tokens[role]} : {}) },
+    ...(body === undefined ? {} : {body:multipart ? body : JSON.stringify(body)}),
   });
   const raw = await res.text();
   let data; try { data = JSON.parse(raw); } catch { data = raw; }
@@ -275,6 +276,122 @@ test('finance summary separates invoice status, consultation sales, supply sales
 
   const denied = await api('GET', route, 'doctor');
   assert.equal(denied.status, 403);
+});
+
+test('expense, supplier payable, cash/accrual and approval ledgers remain auditable', async () => {
+  const beforeAccrual = await api('GET', `/finance/summary?dateFrom=${today}&dateTo=${today}&basis=accrual`, 'accountant');
+  const beforeCash = await api('GET', `/finance/summary?dateFrom=${today}&dateTo=${today}&basis=cash`, 'accountant');
+  const expenseOperation = randomUUID();
+  const expenseDocument = new FormData();
+  Object.entries({ expense_date: today, category: 'fuel', payee: 'Audit Fuel Station',
+    description: 'Home visit fuel expense', amount: '600', external_reference: 'FUEL-TEST-001',
+    operation_id: expenseOperation }).forEach(([key,value]) => expenseDocument.append(key,value));
+  expenseDocument.append('receipt', new Blob(['audit receipt'], {type:'application/pdf'}), 'fuel-receipt.pdf');
+  const submittedExpense = await api('POST', '/finance/expenses', 'accountant', expenseDocument);
+  assert.equal(submittedExpense.status, 201, JSON.stringify(submittedExpense.data));
+  assert.equal(submittedExpense.data.approval_status, 'submitted');
+  assert.equal((await api('POST', `/finance/expenses/${submittedExpense.data.id}/decision`, 'accountant', {
+    action: 'approved', note: 'Accountant cannot self-approve this expense.', operation_id: randomUUID(),
+  })).status, 403);
+  const approvedExpense = await api('POST', `/finance/expenses/${submittedExpense.data.id}/decision`, 'admin', {
+    action: 'approved', note: 'Fuel receipt and visit log reviewed.', operation_id: randomUUID(),
+  });
+  assert.equal(approvedExpense.status, 200, JSON.stringify(approvedExpense.data));
+  assert.equal(approvedExpense.data.approval_status, 'approved');
+  const expensePayment = await api('POST', `/finance/expenses/${submittedExpense.data.id}/payments`, 'accountant', {
+    amount: 400, payment_date: today, payment_method: 'card', external_reference: 'CARD-FUEL-001', operation_id: randomUUID(),
+  });
+  assert.equal(expensePayment.status, 201, JSON.stringify(expensePayment.data));
+  assert.equal(expensePayment.data.outstanding_amount, 200);
+
+  const stock = item('Supplier costing medicine', 12, 'ocs');
+  const supplierInvoice = await api('POST', '/finance/supplier-invoices', 'accountant', {
+    supplier_name: 'Audit Medical Supplier', invoice_number: `SUP-${fixtureIndex}-${randomUUID()}`,
+    invoice_date: today, due_date: today, delivery_note: 'DN-AUDIT-001', other_amount: 50,
+    operation_id: randomUUID(),
+    lines: [{ inventory_item_id: stock.id, batch_id: stock.batchId, description: 'Supplier costing medicine', quantity: 12, unit_cost: 17.5 }],
+  });
+  assert.equal(supplierInvoice.status, 201, JSON.stringify(supplierInvoice.data));
+  assert.equal(supplierInvoice.data.total_amount, 260);
+  const approvedSupplier = await api('POST', `/finance/supplier-invoices/${supplierInvoice.data.id}/decision`, 'admin', {
+    action: 'approved', note: 'Invoice matched to delivery and stock batch.', operation_id: randomUUID(),
+  });
+  assert.equal(approvedSupplier.status, 200, JSON.stringify(approvedSupplier.data));
+  assert.equal(db.prepare('SELECT unit_cost FROM inventory_batches WHERE id=?').get(stock.batchId).unit_cost, 17.5);
+  assert.equal(db.prepare('SELECT cost_price FROM inventory WHERE id=?').get(stock.id).cost_price, 17.5);
+  const supplierPayment = await api('POST', `/finance/supplier-invoices/${supplierInvoice.data.id}/payments`, 'accountant', {
+    amount: 160, payment_date: today, payment_method: 'bank_transfer', external_reference: 'BANK-SUP-001', operation_id: randomUUID(),
+  });
+  assert.equal(supplierPayment.status, 201, JSON.stringify(supplierPayment.data));
+  assert.equal(supplierPayment.data.outstanding_amount, 100);
+
+  const accrual = await api('GET', `/finance/summary?dateFrom=${today}&dateTo=${today}&basis=accrual`, 'accountant');
+  const cash = await api('GET', `/finance/summary?dateFrom=${today}&dateTo=${today}&basis=cash`, 'accountant');
+  assert.equal(accrual.status, 200, JSON.stringify(accrual.data));
+  assert.equal(cash.status, 200, JSON.stringify(cash.data));
+  assert.equal(accrual.data.accrued_expense_amount - beforeAccrual.data.accrued_expense_amount, 600);
+  assert.equal(cash.data.paid_expense_amount - beforeCash.data.paid_expense_amount, 400);
+  assert.equal(cash.data.supplier_payment_amount - beforeCash.data.supplier_payment_amount, 160);
+  assert.equal(accrual.data.revenue_label, 'Net sales');
+  assert.equal(accrual.data.revenue_amount, accrual.data.net_sales_amount);
+  assert.equal(accrual.data.gross_result_amount, accrual.data.gross_profit_amount);
+  assert.equal(cash.data.revenue_label, 'Net collections');
+  assert.equal(cash.data.revenue_amount, cash.data.collected_cash_amount);
+  assert.equal(cash.data.gross_result_amount, cash.data.collected_cash_amount - cash.data.supplier_payment_amount);
+  assert.equal(accrual.data.net_result_label, 'Net profit');
+  assert.equal(cash.data.net_result_label, 'Net cash result');
+  assert.throws(() => db.prepare('UPDATE finance_expenses SET amount=1 WHERE id=?').run(submittedExpense.data.id), /immutable/);
+  assert.throws(() => db.prepare('DELETE FROM finance_supplier_payments WHERE supplier_invoice_id=?').run(supplierInvoice.data.id), /immutable/);
+
+  const expensePaymentId = expensePayment.data.payments[0].id;
+  assert.equal((await api('POST', `/finance/expenses/${submittedExpense.data.id}/payments/${expensePaymentId}/reversal`, 'accountant', {
+    reversal_date: today, reason: 'Accountant cannot reverse without administrator approval.', operation_id: randomUUID(),
+  })).status, 403);
+  const expenseReversal = await api('POST', `/finance/expenses/${submittedExpense.data.id}/payments/${expensePaymentId}/reversal`, 'admin', {
+    reversal_date: today, reason: 'Correcting the test payment reference safely.', operation_id: randomUUID(),
+  });
+  assert.equal(expenseReversal.status, 201, JSON.stringify(expenseReversal.data));
+  assert.equal(expenseReversal.data.outstanding_amount, 600);
+  assert.throws(() => db.prepare('DELETE FROM finance_expense_payment_reversals WHERE payment_id=?').run(expensePaymentId), /immutable/);
+  const expenseRepayment = await api('POST', `/finance/expenses/${submittedExpense.data.id}/payments`, 'accountant', {
+    amount: 400, payment_date: today, payment_method: 'card', external_reference: 'CARD-FUEL-002', operation_id: randomUUID(),
+  });
+  assert.equal(expenseRepayment.status, 201, JSON.stringify(expenseRepayment.data));
+  assert.equal(expenseRepayment.data.outstanding_amount, 200);
+
+  const supplierPaymentId = supplierPayment.data.payments[0].id;
+  const supplierReversal = await api('POST', `/finance/supplier-invoices/${supplierInvoice.data.id}/payments/${supplierPaymentId}/reversal`, 'admin', {
+    reversal_date: today, reason: 'Correcting the supplier bank reference safely.', operation_id: randomUUID(),
+  });
+  assert.equal(supplierReversal.status, 201, JSON.stringify(supplierReversal.data));
+  assert.equal(supplierReversal.data.outstanding_amount, 260);
+  const supplierRepayment = await api('POST', `/finance/supplier-invoices/${supplierInvoice.data.id}/payments`, 'accountant', {
+    amount: 160, payment_date: today, payment_method: 'bank_transfer', external_reference: 'BANK-SUP-002', operation_id: randomUUID(),
+  });
+  assert.equal(supplierRepayment.status, 201, JSON.stringify(supplierRepayment.data));
+  assert.equal(supplierRepayment.data.outstanding_amount, 100);
+
+  const close = await api('GET', `/finance/monthly-close?month=${today.slice(0, 7)}`, 'accountant');
+  assert.equal(close.status, 200, JSON.stringify(close.data));
+  assert.equal(close.data.readiness.ready, false);
+  assert.ok(close.data.readiness.blockers.length > 0);
+  const statement = await api('GET', `/finance/statement.csv?dateFrom=${today}&dateTo=${today}&basis=accrual`, 'accountant');
+  assert.equal(statement.status, 200);
+  assert.match(statement.data, /Gross profit/);
+
+  const historicClose = await api('GET', '/finance/monthly-close?month=2000-01', 'admin');
+  assert.equal(historicClose.status, 200, JSON.stringify(historicClose.data));
+  assert.equal(historicClose.data.readiness.ready, true, JSON.stringify(historicClose.data));
+  const signed = await api('POST', '/finance/monthly-close', 'admin', {
+    month: '2000-01', notes: 'Verified empty historical finance period.', operation_id: randomUUID(),
+  });
+  assert.equal(signed.status, 201, JSON.stringify(signed.data));
+  const lockedDocument = new FormData();
+  Object.entries({ expense_date: '2000-01-15', category: 'miscellaneous', payee: 'Locked period test',
+    description: 'Must not enter a signed month', amount: '1', operation_id: randomUUID() })
+    .forEach(([key,value]) => lockedDocument.append(key,value));
+  lockedDocument.append('receipt', new Blob(['locked'], {type:'application/pdf'}), 'locked.pdf');
+  assert.equal((await api('POST', '/finance/expenses', 'accountant', lockedDocument)).status, 409);
 });
 
 test('receivables ageing and append-only follow-up ownership support collection accountability', async () => {
@@ -1858,6 +1975,8 @@ test('finance can close a day once and closed dates reject later payments and re
   const preview=await api('GET',`/billing/day-close?date=${today}`,'accountant');
   assert.equal(preview.status,200,JSON.stringify(preview.data));
   assert.equal(preview.data.closing,null);
+  assert.ok(preview.data.expected_totals.card.outflow >= 400, JSON.stringify(preview.data.expected_totals));
+  assert.ok(preview.data.expected_totals.ib.outflow >= 160, JSON.stringify(preview.data.expected_totals));
   const operationId=randomUUID();
   const settlements=Object.fromEntries(['juice','card','ib'].map(method=>[method,{
     amount:preview.data.expected_totals[method].expected,

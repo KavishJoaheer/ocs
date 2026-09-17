@@ -1,5 +1,6 @@
 import FinancialReconciliation from "../components/FinancialReconciliation.jsx";
 import FinancialDayClose from "../components/FinancialDayClose.jsx";
+import FinanceLedgerSections from "../components/FinanceLedgerSections.jsx";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
@@ -2812,7 +2813,8 @@ function BillingPage() {
     searchParams.get("status") === "paid" ? "paid" : "pending",
   );
   const isFinanceWorkspace = ["admin", "accountant"].includes(user?.role);
-  const [financeSection, setFinanceSection] = useState("invoices");
+  const [financeSection, setFinanceSection] = useState("overview");
+  const [financeBasis, setFinanceBasis] = useState("accrual");
   const [financeAgeBucket, setFinanceAgeBucket] = useState("");
   const [followUpBill, setFollowUpBill] = useState(null);
   const [followUpForm, setFollowUpForm] = useState({ assigned_to_user_id: "", note: "", last_contact_date: "", next_follow_up_date: "", status: "open" });
@@ -2825,9 +2827,13 @@ function BillingPage() {
   const [financeDoctorId, setFinanceDoctorId] = useState(() => searchParams.get("doctorId") || "");
   const [financeSummary, setFinanceSummary] = useState(null);
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
-  const showFinanceInvoices = !isFinanceWorkspace || financeSection === "invoices";
+  const showFinanceOverview = isFinanceWorkspace && financeSection === "overview";
+  const showFinanceInvoices = !isFinanceWorkspace || financeSection === "receivables";
   const showFinanceSales = isFinanceWorkspace && financeSection === "sales";
+  const showFinanceExpenses = isFinanceWorkspace && financeSection === "expenses";
   const showFinanceCash = isFinanceWorkspace && financeSection === "cash";
+  const showFinanceSuppliers = isFinanceWorkspace && financeSection === "suppliers";
+  const showFinanceStatements = isFinanceWorkspace && financeSection === "statements";
   const showFinanceControls = isFinanceWorkspace && financeSection === "controls";
 
   const linkedDateRange = useMemo(() => {
@@ -3317,7 +3323,7 @@ function BillingPage() {
 
       {isFinanceWorkspace ? (
         <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="grid gap-4 lg:grid-cols-[minmax(15rem,1.15fr)_minmax(13rem,1fr)_minmax(10rem,.75fr)_minmax(10rem,.75fr)]">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <label className="grid gap-1.5 text-sm font-bold text-slate-700">
               Report
               <select
@@ -3325,27 +3331,41 @@ function BillingPage() {
                 onChange={(event) => setFinanceSection(event.target.value)}
                 className={BILLING_FIELD}
               >
-                <option value="invoices">Invoice tracking</option>
-                <option value="sales">Sales breakdown</option>
-                <option value="cash">Cash activity & day close</option>
-                <option value="controls">Exceptions & financial controls</option>
+                <option value="overview">Overview</option>
+                <option value="sales">Sales & profit</option>
+                <option value="expenses">Expenses</option>
+                <option value="receivables">Receivables</option>
+                <option value="cash">Cash & bank</option>
+                <option value="suppliers">Suppliers</option>
+                <option value="statements">Statements</option>
+                <option value="controls">Controls</option>
               </select>
             </label>
             {financeSection !== "controls" ? (
               <>
-                <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-                  Doctor
-                  <select
-                    value={financeDoctorId}
-                    onChange={(event) => setFinanceDoctorId(event.target.value)}
-                    className={BILLING_FIELD}
-                  >
-                    <option value="">All doctors</option>
-                    {(financeSummary?.doctors || []).map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
-                    ))}
-                  </select>
-                </label>
+                {["overview", "expenses", "suppliers", "statements"].includes(financeSection) ? (
+                  <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+                    Accounting basis
+                    <select value={financeBasis} onChange={(event) => setFinanceBasis(event.target.value)} className={BILLING_FIELD}>
+                      <option value="accrual">Sales / expense date</option>
+                      <option value="cash">Payment date</option>
+                    </select>
+                  </label>
+                ) : (
+                  <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+                    Doctor
+                    <select
+                      value={financeDoctorId}
+                      onChange={(event) => setFinanceDoctorId(event.target.value)}
+                      className={BILLING_FIELD}
+                    >
+                      <option value="">All doctors</option>
+                      {(financeSummary?.doctors || []).map((doctor) => (
+                        <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="grid gap-1.5 text-sm font-bold text-slate-700">
                   From
                   <input
@@ -3369,8 +3389,8 @@ function BillingPage() {
                 </label>
               </>
             ) : (
-              <p className="self-end pb-3 text-sm font-semibold text-slate-500 lg:col-span-3">
-                Reconciliation, unbilled visits, and day close stay here without crowding daily reports.
+              <p className="self-end pb-3 text-sm font-semibold text-slate-500 md:col-span-2 xl:col-span-4">
+                Monthly sign-off, reconciliation, and unresolved exceptions stay here without crowding daily reports.
               </p>
             )}
           </div>
@@ -3382,11 +3402,15 @@ function BillingPage() {
               <p className="text-xs font-semibold text-slate-500">
                 {showFinanceCash
                   ? "Cash activity uses payment, reversal, and refund transaction dates."
-                  : "Invoice and sales reports use the consultation date. Only finalized, non-voided invoices are included."}
+                  : [showFinanceOverview, showFinanceExpenses, showFinanceSuppliers, showFinanceStatements].some(Boolean)
+                    ? financeBasis === "cash" ? "Payment-date view shows actual cash movement." : "Sales and expense-date view shows operational performance."
+                    : "Invoice and sales reports use the consultation date. Only finalized, non-voided invoices are included."}
               </p>
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={exportFinanceCsv} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:border-[#62bdb7] hover:text-[#17666a]">Export CSV</button>
-                <button type="button" onClick={exportFinancePdf} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:border-[#62bdb7] hover:text-[#17666a]">Export PDF</button>
+                {["sales", "receivables", "cash"].includes(financeSection) ? <>
+                  <button type="button" onClick={exportFinanceCsv} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:border-[#62bdb7] hover:text-[#17666a]">Export CSV</button>
+                  <button type="button" onClick={exportFinancePdf} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:border-[#62bdb7] hover:text-[#17666a]">Export PDF</button>
+                </> : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -3412,6 +3436,16 @@ function BillingPage() {
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {isFinanceWorkspace && ["overview", "expenses", "suppliers", "statements", "controls"].includes(financeSection) ? (
+        <FinanceLedgerSections
+          section={financeSection}
+          dateFrom={financeDateFrom}
+          dateTo={financeDateTo}
+          basis={financeBasis}
+          user={user}
+        />
       ) : null}
 
       {isFinanceWorkspace && showFinanceInvoices ? (

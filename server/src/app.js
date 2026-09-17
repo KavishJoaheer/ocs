@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const { db, dbPath, initializeDatabase, labReportAttachmentsDir } = require("./db");
+const { db, dbPath, financeAttachmentsDir, initializeDatabase, labReportAttachmentsDir } = require("./db");
 const authRouter = require("./routes/auth");
 const dashboardRouter = require("./routes/dashboard");
 const operatorRouter = require("./routes/operator");
@@ -16,6 +16,7 @@ const linkhamRouter = require("./routes/linkham");
 const appointmentsRouter = require("./routes/appointments");
 const consultationsRouter = require("./routes/consultations");
 const billingRouter = require("./routes/billing");
+const financeRouter = require("./routes/finance");
 const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
@@ -217,6 +218,7 @@ function createApp() {
       db.prepare("SELECT 1 AS ok").get();
       fs.accessSync(path.dirname(dbPath), fs.constants.R_OK | fs.constants.W_OK);
       fs.accessSync(labReportAttachmentsDir, fs.constants.R_OK | fs.constants.W_OK);
+      fs.accessSync(financeAttachmentsDir, fs.constants.R_OK | fs.constants.W_OK);
       const storage = fs.statfsSync(path.dirname(dbPath));
       const freeBytes = Number(storage.bavail) * Number(storage.bsize);
       const configuredMinimumFreeBytes = Number(process.env.MIN_FREE_DISK_BYTES);
@@ -348,6 +350,12 @@ function createApp() {
       PATCH: ["admin", "accountant", "doctor", "operator"],
     }),
     billingRouter,
+  );
+  app.use(
+    "/api/finance",
+    requireAuth,
+    authorizeRoles("admin", "accountant"),
+    financeRouter,
   );
   app.use(
     "/api/lab-reports",

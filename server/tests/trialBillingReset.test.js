@@ -144,6 +144,30 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     INSERT INTO operation_receipts (actor_id, scope, operation_id, request_hash, result_json)
     VALUES (?, 'billing:quick-capture:1', 'trial-operation', 'hash', '{}')
   `).run(userId);
+  const supplierInvoiceId = Number(db.prepare(`
+    INSERT INTO finance_supplier_invoices (
+      supplier_name,invoice_number,invoice_date,delivery_note,operation_id,
+      created_by_user_id,created_by_name,created_by_role
+    ) VALUES ('Trial Supplier','TRIAL-SUP-1','2026-09-16','TRIAL-DN-1','trial-supplier-invoice',?,'Trial User','admin')
+  `).run(userId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO finance_supplier_invoice_lines (
+      supplier_invoice_id,inventory_item_id,batch_id,description,quantity,unit_cost,
+      previous_inventory_cost,previous_batch_cost
+    ) VALUES (?,?,?,?,5,17,10,10)
+  `).run(supplierInvoiceId,itemId,batchId,'Reset medicine');
+  db.prepare(`
+    INSERT INTO finance_supplier_invoice_events (
+      supplier_invoice_id,action,note,operation_id,actor_user_id,actor_name,actor_role
+    ) VALUES (?,'submitted','Submitted for trial','trial-supplier-submitted',?,'Trial User','admin')
+  `).run(supplierInvoiceId,userId);
+  db.prepare(`
+    INSERT INTO finance_supplier_invoice_events (
+      supplier_invoice_id,action,note,operation_id,actor_user_id,actor_name,actor_role
+    ) VALUES (?,'approved','Approved trial supplier cost','trial-supplier-approved',?,'Trial User','admin')
+  `).run(supplierInvoiceId,userId);
+  db.prepare("UPDATE inventory SET cost_price=17 WHERE id=?").run(itemId);
+  db.prepare("UPDATE inventory_batches SET unit_cost=17 WHERE id=?").run(batchId);
 
   const result = resetTrialBilling(db, {
     cutoverDate: "2026-10-01",
@@ -160,12 +184,17 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     "billing_refunds",
     "billing_refund_allocations",
     "financial_day_closings",
+    "finance_supplier_invoice_events",
+    "finance_supplier_invoice_lines",
+    "finance_supplier_invoices",
   ]) {
     assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0, table);
   }
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM operation_receipts WHERE scope LIKE 'billing:%'").get().count, 0);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 10);
   assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, 10);
+  assert.equal(db.prepare("SELECT cost_price FROM inventory WHERE id = ?").get(itemId).cost_price, 10);
+  assert.equal(db.prepare("SELECT unit_cost FROM inventory_batches WHERE id = ?").get(batchId).unit_cost, 10);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(movementId).count, 0);
   assert.equal(db.prepare("SELECT doctor_notes FROM consultations WHERE id = ?").get(visit.consultationId).doctor_notes, "Preserved consultation note");
   assert.equal(getBillingCutoverDate(db), "2026-10-01");
@@ -179,6 +208,9 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     "billing_supply_corrections_no_delete",
     "financial_day_closings_no_delete",
     "financial_day_close_settlements_no_delete",
+    "finance_supplier_events_no_delete",
+    "finance_supplier_lines_no_delete",
+    "finance_supplier_invoices_no_delete",
   ]) {
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger), trigger);
   }

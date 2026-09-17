@@ -3887,18 +3887,51 @@ function paymentTotalsForDate(businessDate) {
       FROM billing_refunds r
       WHERE r.refund_date = ?
       GROUP BY r.refund_method
+    ), outflows AS (
+      SELECT method, SUM(amount) AS amount FROM (
+        SELECT CASE WHEN payment.payment_method IN ('bank_transfer','cheque') THEN 'ib' ELSE payment.payment_method END AS method, payment.amount
+        FROM finance_expense_payments payment
+        WHERE payment.payment_date = ?
+          AND payment.expense_id IN (
+            SELECT event.expense_id FROM finance_expense_events event
+            WHERE event.id=(SELECT MAX(latest.id) FROM finance_expense_events latest WHERE latest.expense_id=event.expense_id)
+              AND event.action='approved'
+          )
+        UNION ALL
+        SELECT CASE WHEN payment.payment_method IN ('bank_transfer','cheque') THEN 'ib' ELSE payment.payment_method END AS method, -payment.amount
+        FROM finance_expense_payment_reversals reversal
+        JOIN finance_expense_payments payment ON payment.id=reversal.payment_id
+        WHERE reversal.reversal_date = ?
+        UNION ALL
+        SELECT CASE WHEN payment.payment_method IN ('bank_transfer','cheque') THEN 'ib' ELSE payment.payment_method END AS method, payment.amount
+        FROM finance_supplier_payments payment
+        WHERE payment.payment_date = ?
+          AND payment.supplier_invoice_id IN (
+            SELECT event.supplier_invoice_id FROM finance_supplier_invoice_events event
+            WHERE event.id=(SELECT MAX(latest.id) FROM finance_supplier_invoice_events latest WHERE latest.supplier_invoice_id=event.supplier_invoice_id)
+              AND event.action='approved'
+          )
+        UNION ALL
+        SELECT CASE WHEN payment.payment_method IN ('bank_transfer','cheque') THEN 'ib' ELSE payment.payment_method END AS method, -payment.amount
+        FROM finance_supplier_payment_reversals reversal
+        JOIN finance_supplier_payments payment ON payment.id=reversal.payment_id
+        WHERE reversal.reversal_date = ?
+      ) GROUP BY method
     )
     SELECT methods.method,
       COALESCE(payments.amount, 0) AS collected,
       COALESCE(refunds.amount, 0) AS refunded,
-      COALESCE(payments.amount, 0) - COALESCE(refunds.amount, 0) AS expected
+      COALESCE(outflows.amount, 0) AS outflow,
+      COALESCE(payments.amount, 0) - COALESCE(refunds.amount, 0) - COALESCE(outflows.amount, 0) AS expected
     FROM methods
     LEFT JOIN payments ON payments.method = methods.method
     LEFT JOIN refunds ON refunds.method = methods.method
-  `).all(businessDate, businessDate);
+    LEFT JOIN outflows ON outflows.method = methods.method
+  `).all(businessDate, businessDate, businessDate, businessDate, businessDate, businessDate);
   return Object.fromEntries(rows.map((row) => [row.method, {
     collected: roundCurrency(row.collected),
     refunded: roundCurrency(row.refunded),
+    outflow: roundCurrency(row.outflow),
     expected: roundCurrency(row.expected),
   }]));
 }
@@ -3965,6 +3998,22 @@ router.get('/day-close/outstanding', (req, res) => {
       SELECT refund_date
       FROM billing_refunds
       WHERE refund_date < date('now', '+4 hours')
+      UNION
+      SELECT payment_date
+      FROM finance_expense_payments
+      WHERE payment_date < date('now', '+4 hours')
+      UNION
+      SELECT payment_date
+      FROM finance_supplier_payments
+      WHERE payment_date < date('now', '+4 hours')
+      UNION
+      SELECT reversal_date
+      FROM finance_expense_payment_reversals
+      WHERE reversal_date < date('now', '+4 hours')
+      UNION
+      SELECT reversal_date
+      FROM finance_supplier_payment_reversals
+      WHERE reversal_date < date('now', '+4 hours')
     )
     SELECT activity.business_date
     FROM financial_activity activity

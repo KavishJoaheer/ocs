@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const Database = require("better-sqlite3");
 
-const { db, dbPath, initializeDatabase, labReportAttachmentsDir, rosterDir } = require("../db");
+const { db, dbPath, financeAttachmentsDir, initializeDatabase, labReportAttachmentsDir, rosterDir } = require("../db");
 
 function timestampForPath(date = new Date()) {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -146,6 +146,31 @@ async function createVerifiedBackup({
       );
     }
 
+    const financeAttachmentRows = snapshotDb.prepare(`
+      SELECT 'expense' AS record_type,id,receipt_stored_name AS stored_name
+      FROM finance_expenses WHERE receipt_stored_name IS NOT NULL
+      UNION ALL
+      SELECT 'supplier_invoice' AS record_type,id,document_stored_name AS stored_name
+      FROM finance_supplier_invoices WHERE document_stored_name IS NOT NULL
+      ORDER BY record_type,id
+    `).all();
+    for (const attachment of financeAttachmentRows) {
+      const storedName = String(attachment.stored_name || "").trim();
+      const sourcePath = path.resolve(financeAttachmentsDir, storedName);
+      if (!storedName || !isWithin(financeAttachmentsDir, sourcePath)) {
+        throw new Error(`Unsafe finance attachment path in ${attachment.record_type} ${attachment.id}.`);
+      }
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(`Finance attachment for ${attachment.record_type} ${attachment.id} is missing: ${storedName}`);
+      }
+      copyVerifiedFile(
+        sourcePath,
+        path.join(partialDir, "finance-attachments", storedName),
+        path.join("finance-attachments", storedName),
+        files,
+      );
+    }
+
     copyDirectory(rosterDir, path.join(partialDir, "roster"), "roster", files);
     snapshotDb.close();
     snapshotDb = null;
@@ -157,6 +182,7 @@ async function createVerifiedBackup({
       sqlite_quick_check: "ok",
       foreign_key_violations: 0,
       attachment_records: attachmentRows.length,
+      finance_attachment_records: financeAttachmentRows.length,
       files,
     };
     fs.writeFileSync(

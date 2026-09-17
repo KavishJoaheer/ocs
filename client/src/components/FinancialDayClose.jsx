@@ -196,13 +196,13 @@ function FinancialDayClose({ refreshToken, initialDate }) {
             <div className="grid gap-3 md:grid-cols-4">
               <label className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-700">
                 Cash counted
-                <span className="mt-1 block text-xs font-medium text-slate-500">Expected {money(expected.cash?.expected)}</span>
+                <span className="mt-1 block text-xs font-medium text-slate-500">Expected {money(expected.cash?.expected)} · collected {money(expected.cash?.collected)} · refunds/outflows {money(Number(expected.cash?.refunded || 0) + Number(expected.cash?.outflow || 0))}</span>
                 <input required type="number" min="0" step="0.01" value={countedCash} onChange={(event) => setCountedCash(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3" />
               </label>
               {METHODS.map(({ id, label }) => (
                 <div key={id} className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-slate-700">{label} settled</p>
-                  <p className="mt-1 text-xs text-slate-500">Expected {money(expected[id]?.expected)}</p>
+                  <p className="mt-1 text-xs text-slate-500">Expected {money(expected[id]?.expected)} · collected {money(expected[id]?.collected)} · refunds/outflows {money(Number(expected[id]?.refunded || 0) + Number(expected[id]?.outflow || 0))}</p>
                   <input required aria-label={`${label} settled amount`} type="number" step="0.01" value={settlements[id]?.amount || ""} onChange={(event) => setSettlements((current) => ({ ...current, [id]: { ...current[id], amount: event.target.value } }))} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3" />
                   <input aria-label={`${label} settlement reference`} value={settlements[id]?.reference || ""} onChange={(event) => setSettlements((current) => ({ ...current, [id]: { ...current[id], reference: event.target.value } }))} placeholder="Settlement reference" className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" />
                 </div>

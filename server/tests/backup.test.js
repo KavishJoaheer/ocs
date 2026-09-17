@@ -14,7 +14,7 @@ process.env.NODE_ENV = "test";
 const { after, test } = require("node:test");
 const assert = require("node:assert/strict");
 const Database = require("better-sqlite3");
-const { db, initializeDatabase, labReportAttachmentsDir } = require("../src/db");
+const { db, financeAttachmentsDir, initializeDatabase, labReportAttachmentsDir } = require("../src/db");
 const { createVerifiedBackup, sha256File } = require("../src/scripts/backupClinicData");
 
 after(() => {
@@ -41,14 +41,33 @@ test("creates a verified SQLite snapshot with referenced attachments and checksu
     ) VALUES (?, ?, 'report.pdf', ?, 'application/pdf', 20, ?)
   `).run(reportId, patientId, storedName, storedName);
 
+  fs.mkdirSync(financeAttachmentsDir, { recursive: true });
+  const financeStoredName = "backup-test-expense.pdf";
+  fs.writeFileSync(path.join(financeAttachmentsDir, financeStoredName), "%PDF-1.4 expense backup test");
+  const userId = db.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get().id;
+  const expenseId = db.prepare(`
+    INSERT INTO finance_expenses (
+      expense_date,category,payee,description,amount,receipt_stored_name,
+      receipt_original_name,receipt_mime_type,receipt_size,operation_id,
+      created_by_user_id,created_by_name,created_by_role
+    ) VALUES (date('now','+4 hours'),'utilities','Backup supplier','Backup evidence',100,?,
+      'expense.pdf','application/pdf',30,'backup-expense-operation',?,'Backup user','admin')
+  `).run(financeStoredName, userId).lastInsertRowid;
+  db.prepare(`INSERT INTO finance_expense_events (
+    expense_id,action,note,operation_id,actor_user_id,actor_name,actor_role
+  ) VALUES (?,'submitted','Submitted for backup','backup-expense-event',?,'Backup user','admin')`).run(expenseId, userId);
+
   const result = await createVerifiedBackup({ backupRoot, backupName: "test-backup" });
   const snapshotPath = path.join(result.backupDir, "clinic.db");
   const attachmentPath = path.join(result.backupDir, "lab-report-attachments", storedName);
+  const financeAttachmentPath = path.join(result.backupDir, "finance-attachments", financeStoredName);
   assert.equal(fs.existsSync(snapshotPath), true);
   assert.equal(fs.existsSync(attachmentPath), true);
+  assert.equal(fs.existsSync(financeAttachmentPath), true);
   assert.equal(result.manifest.sqlite_quick_check, "ok");
   assert.equal(result.manifest.foreign_key_violations, 0);
   assert.equal(result.manifest.attachment_records, 1);
+  assert.equal(result.manifest.finance_attachment_records, 1);
   assert.equal(result.manifest.files.find((file) => file.path === "clinic.db").sha256, sha256File(snapshotPath));
 
   const snapshot = new Database(snapshotPath, { readonly: true });

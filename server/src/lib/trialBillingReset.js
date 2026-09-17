@@ -19,6 +19,16 @@ const RESETTABLE_TABLES = [
   "financial_day_close_settlements",
   "financial_day_close_adjustments",
   "financial_day_close_adjustment_references",
+  "finance_expense_payments",
+  "finance_expense_payment_reversals",
+  "finance_expense_events",
+  "finance_expenses",
+  "finance_supplier_payments",
+  "finance_supplier_payment_reversals",
+  "finance_supplier_invoice_events",
+  "finance_supplier_invoice_lines",
+  "finance_supplier_invoices",
+  "finance_monthly_closings",
 ];
 
 const DELETE_GUARD_TRIGGERS = [
@@ -34,6 +44,16 @@ const DELETE_GUARD_TRIGGERS = [
   "financial_day_close_settlements_no_delete",
   "financial_day_close_adjustments_no_delete",
   "financial_day_close_adjustment_references_no_delete",
+  "finance_expense_payments_no_delete",
+  "finance_expense_payment_reversals_no_delete",
+  "finance_expense_events_no_delete",
+  "finance_expenses_no_delete",
+  "finance_supplier_payments_no_delete",
+  "finance_supplier_payment_reversals_no_delete",
+  "finance_supplier_events_no_delete",
+  "finance_supplier_lines_no_delete",
+  "finance_supplier_invoices_no_delete",
+  "finance_monthly_closings_no_delete",
 ];
 
 function tableExists(db, name) {
@@ -271,6 +291,31 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
       `).run(row.nextQuantity, row.itemId);
     }
 
+    if (tableExists(db, "finance_supplier_invoice_lines")) {
+      const costingLines = db.prepare(`
+        SELECT line.*,
+          (SELECT event.id FROM finance_supplier_invoice_events event
+           WHERE event.supplier_invoice_id=line.supplier_invoice_id AND event.action='approved'
+           ORDER BY event.id DESC LIMIT 1) AS approval_event_id
+        FROM finance_supplier_invoice_lines line
+        WHERE EXISTS (
+          SELECT 1 FROM finance_supplier_invoice_events event
+          WHERE event.supplier_invoice_id=line.supplier_invoice_id AND event.action='approved'
+        )
+        ORDER BY approval_event_id DESC,line.id DESC
+      `).all();
+      for (const line of costingLines) {
+        if (line.batch_id && line.previous_batch_cost != null) {
+          db.prepare("UPDATE inventory_batches SET unit_cost=? WHERE id=?")
+            .run(line.previous_batch_cost, line.batch_id);
+        }
+        if (line.inventory_item_id && line.previous_inventory_cost != null) {
+          db.prepare("UPDATE inventory SET cost_price=?,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            .run(line.previous_inventory_cost, line.inventory_item_id);
+        }
+      }
+    }
+
     if (inventoryPlan.ids.length) {
       const placeholders = inventoryPlan.ids.map(() => "?").join(",");
       if (tableExists(db, "inventory_activity_history")) {
@@ -285,6 +330,16 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
     }
 
     const orderedDeletes = [
+      "finance_monthly_closings",
+      "finance_expense_payment_reversals",
+      "finance_expense_payments",
+      "finance_expense_events",
+      "finance_expenses",
+      "finance_supplier_payment_reversals",
+      "finance_supplier_payments",
+      "finance_supplier_invoice_events",
+      "finance_supplier_invoice_lines",
+      "finance_supplier_invoices",
       "financial_day_close_adjustment_references",
       "financial_day_close_adjustments",
       "financial_day_close_settlements",
