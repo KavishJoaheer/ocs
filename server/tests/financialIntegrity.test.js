@@ -228,6 +228,14 @@ test('finance summary separates invoice status, consultation sales, supply sales
   assert.equal(after.data.total_sales_amount - before.data.total_sales_amount, 2125);
   assert.equal(after.data.net_sales_amount - before.data.net_sales_amount, 2125);
   assert.equal(after.data.supply_gross_margin_amount - before.data.supply_gross_margin_amount, 15);
+  const afterCash = after.data.cash_activity.by_method.find((entry) => entry.payment_method === 'cash');
+  const beforeCash = before.data.cash_activity.by_method.find((entry) => entry.payment_method === 'cash');
+  assert.equal(afterCash.collected_amount - beforeCash.collected_amount, 2125);
+  assert.equal(after.data.cash_activity.collected_amount - before.data.cash_activity.collected_amount, 2125);
+  assert.equal(after.data.cash_activity.net_amount - before.data.cash_activity.net_amount, 2125);
+  assert.equal(after.data.receivables_aging.reduce((sum, entry) => sum + entry.invoice_count, 0), after.data.pending_invoice_count);
+  assert.equal(typeof after.data.cost_quality.margin_is_complete, 'boolean');
+  assert.ok(after.data.follow_up_assignees.some((entry) => entry.role === 'accountant'));
   assert.ok(after.data.doctors.some((doctor) => doctor.id === doctorId));
   assert.ok(after.data.by_doctor.some((doctor) => doctor.doctor_id === doctorId));
 
@@ -244,9 +252,45 @@ test('finance summary separates invoice status, consultation sales, supply sales
   assert.equal(afterCredit.data.net_collected_amount - before.data.net_collected_amount, 2025);
   assert.equal(afterCredit.data.total_sales_amount - before.data.total_sales_amount, 2125);
   assert.equal(afterCredit.data.net_sales_amount - before.data.net_sales_amount, 2025);
+  assert.equal(afterCredit.data.cash_activity.refunded_amount - before.data.cash_activity.refunded_amount, 100);
+  assert.equal(afterCredit.data.cash_activity.net_amount - before.data.cash_activity.net_amount, 2025);
+
+  const statement = await api('GET', `/billing/finance-statement?dateFrom=${today}&dateTo=${today}&doctorId=${doctorId}`, 'accountant');
+  assert.equal(statement.status, 200, JSON.stringify(statement.data));
+  const statementRow = statement.data.rows.find((row) => row.invoice_number === issued.data.invoice_number);
+  assert.equal(statementRow.invoice_total, 2125);
+  assert.equal(statementRow.payment_received_amount, 2125);
+  assert.equal(statementRow.credit_note_amount, 100);
+  assert.equal(statementRow.supply_cost_amount, 10);
+  assert.match(statementRow.payment_details, /cash/);
+  const csv = await api('GET', `/billing/finance-statement.csv?dateFrom=${today}&dateTo=${today}&doctorId=${doctorId}`, 'accountant');
+  assert.equal(csv.status, 200);
+  assert.match(csv.data, /invoice_number/);
+  assert.match(csv.data, new RegExp(issued.data.invoice_number));
 
   const denied = await api('GET', route, 'doctor');
   assert.equal(denied.status, 403);
+});
+
+test('receivables ageing and append-only follow-up ownership support collection accountability', async () => {
+  const ctx=context('Follow-up accountability');
+  const invoice=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  assert.equal(invoice.status,201,JSON.stringify(invoice.data));
+  const summary=await api('GET',`/billing/finance-summary?dateFrom=${today}&dateTo=${today}&doctorId=${doctorId}`,'accountant');
+  const todayBucket=summary.data.receivables_aging.find((entry)=>entry.key==='today');
+  assert.ok(todayBucket.invoice_count>=1,JSON.stringify(summary.data.receivables_aging));
+  const assignee=summary.data.follow_up_assignees.find((entry)=>entry.role==='operator');
+  const followUp=await api('POST',`/billing/${invoice.data.id}/follow-ups`,'accountant',{
+    assigned_to_user_id:assignee.id,note:'Called patient and requested payment confirmation.',
+    last_contact_date:today,next_follow_up_date:today,status:'open',
+  });
+  assert.equal(followUp.status,201,JSON.stringify(followUp.data));
+  assert.equal(followUp.data.assigned_to_user_id,assignee.id);
+  assert.throws(()=>db.prepare('UPDATE billing_follow_ups SET note=? WHERE id=?').run('Changed later',followUp.data.id),/append-only/);
+  const list=await api('GET',`/billing?paginated=1&ageBucket=today&status=unpaid&search=${encodeURIComponent(invoice.data.invoice_number)}`,'accountant');
+  assert.equal(list.status,200,JSON.stringify(list.data));
+  assert.equal(list.data.bills[0].follow_up_assigned_to_user_id,assignee.id);
+  assert.equal(list.data.bills[0].follow_up_next_date,today);
 });
 
 
@@ -1765,6 +1809,34 @@ test('finance receives reminders for prior financial days that have not been clo
   const reminder=outstanding.data.dates.find(entry=>entry.business_date===yesterday);
   assert.ok(reminder,JSON.stringify(outstanding.data));
   assert.ok(reminder.expected_total>=2000);
+
+  db.prepare(`INSERT INTO billing_system_settings(id,cutover_date,reset_reason)
+    VALUES (1,?,'Financial day close gate test')
+    ON CONFLICT(id) DO UPDATE SET cutover_date=excluded.cutover_date,reset_reason=excluded.reset_reason`).run(yesterday);
+  const nextCtx=context('Mandatory prior close gate');
+  const nextInvoice=await bill(nextCtx,[standardFee()],{operation_id:randomUUID()});
+  const blocked=await api('PATCH',`/billing/${nextInvoice.data.id}/pay`,'accountant',{
+    amount:2000,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:nextInvoice.data.row_version,
+  });
+  assert.equal(blocked.status,409,JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code,'PRIOR_DAY_CLOSE_REQUIRED');
+  assert.equal(blocked.data.business_date,yesterday);
+
+  const preview=await api('GET',`/billing/day-close?date=${yesterday}`,'accountant');
+  const settlements=Object.fromEntries(['juice','card','ib'].map(method=>[method,{
+    amount:preview.data.expected_totals[method].expected,
+    reference:Math.abs(Number(preview.data.expected_totals[method].expected||0))>=0.005 ? `GATE-${method}-${fixtureIndex}` : '',
+  }]));
+  const closed=await api('POST','/billing/day-close','accountant',{
+    business_date:yesterday,counted_cash:preview.data.expected_totals.cash.expected,settlements,
+    notes:'Named finance sign-off before the next business day.',operation_id:randomUUID(),
+  });
+  assert.equal(closed.status,201,JSON.stringify(closed.data));
+  const permitted=await api('PATCH',`/billing/${nextInvoice.data.id}/pay`,'accountant',{
+    amount:2000,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:nextInvoice.data.row_version,
+  });
+  assert.equal(permitted.status,200,JSON.stringify(permitted.data));
+  db.prepare("UPDATE billing_system_settings SET cutover_date=NULL WHERE id=1").run();
 });
 
 test('finance can close a day once and closed dates reject later payments and refunds', async () => {

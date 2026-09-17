@@ -34,7 +34,7 @@ const {
   reverseBillingSubmissionInventory,
 } = require("../lib/inventoryReversal");
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
-const { stockFinancials } = require("../lib/inventoryFinancials");
+const { financialAction, stockFinancials } = require("../lib/inventoryFinancials");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -73,6 +73,32 @@ function assertNotFutureBusinessDate(value, label = "Transaction") {
     throw Object.assign(
       new Error(`${label} date cannot be later than today in Mauritius.`),
       { status: 400, extra: { code: "FUTURE_FINANCIAL_DATE" } },
+    );
+  }
+}
+function assertPriorFinancialActivityClosed(transactionDate) {
+  const settings = db.prepare("SELECT cutover_date FROM billing_system_settings WHERE id = 1").get();
+  const cutoverDate = String(settings?.cutover_date || "").trim();
+  if (!validPaymentDate(cutoverDate) || transactionDate <= cutoverDate) return;
+  const overdue = db.prepare(`
+    WITH activity(business_date) AS (
+      SELECT transaction_date FROM billing_payment_ledger
+      WHERE transaction_date >= ? AND transaction_date < ?
+      UNION
+      SELECT refund_date FROM billing_refunds
+      WHERE refund_date >= ? AND refund_date < ?
+    )
+    SELECT activity.business_date
+    FROM activity
+    LEFT JOIN financial_day_closings closing ON closing.business_date = activity.business_date
+    WHERE closing.id IS NULL
+    ORDER BY activity.business_date ASC
+    LIMIT 1
+  `).get(cutoverDate, transactionDate, cutoverDate, transactionDate);
+  if (overdue?.business_date) {
+    throw Object.assign(
+      new Error(`Complete and sign off the finance day for ${overdue.business_date} before posting new financial activity.`),
+      { status: 409, extra: { code: "PRIOR_DAY_CLOSE_REQUIRED", business_date: overdue.business_date } },
     );
   }
 }
@@ -160,6 +186,7 @@ function recordPaymentTransaction({ bill, amount, paymentMethod, paymentDate, ex
     if (!same) throw Object.assign(new Error("That payment operation reference was already used for different details."), { status: 409 });
     return existing;
   }
+  assertPriorFinancialActivityClosed(paymentDate);
   const summary = paymentSummaryForBill(bill.id, bill.total_amount);
   if (roundedAmount > summary.payment_balance_amount + 0.000001) {
     throw Object.assign(new Error(`Payment exceeds the outstanding balance of Rs ${summary.payment_balance_amount.toFixed(2)}.`), { status: 409 });
@@ -1252,6 +1279,7 @@ router.get("/finance-summary", (req, res) => {
       b.total_amount,
       b.status,
       b.items,
+      date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) AS consultation_date,
       c.doctor_id,
       d.full_name AS doctor_name,
       COALESCE((
@@ -1406,6 +1434,76 @@ router.get("/finance-summary", (req, res) => {
     ORDER BY full_name COLLATE NOCASE
   `).all().map((doctor) => ({ id: Number(doctor.id), full_name: doctor.full_name }));
 
+  const methodRows = db.prepare(`
+    WITH methods(method) AS (VALUES ('cash'), ('juice'), ('card'), ('ib')),
+    payments AS (
+      SELECT ledger.payment_method AS method,
+        SUM(CASE WHEN ledger.amount > 0 THEN ledger.amount ELSE 0 END) AS collected,
+        ABS(SUM(CASE WHEN ledger.amount < 0 THEN ledger.amount ELSE 0 END)) AS reversed
+      FROM billing_payment_ledger ledger
+      JOIN billing b ON b.id = ledger.billing_id
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+        AND ledger.transaction_date BETWEEN date(@dateFrom) AND date(@dateTo)
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      GROUP BY ledger.payment_method
+    ), refunds AS (
+      SELECT refund.refund_method AS method, SUM(refund.amount) AS refunded
+      FROM billing_refunds refund
+      JOIN billing b ON b.id = refund.billing_id
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+        AND refund.refund_date BETWEEN date(@dateFrom) AND date(@dateTo)
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      GROUP BY refund.refund_method
+    )
+    SELECT methods.method, COALESCE(payments.collected, 0) AS collected,
+      COALESCE(payments.reversed, 0) AS reversed, COALESCE(refunds.refunded, 0) AS refunded
+    FROM methods
+    LEFT JOIN payments ON payments.method = methods.method
+    LEFT JOIN refunds ON refunds.method = methods.method
+  `).all({ dateFrom, dateTo, doctorId }).map((row) => ({
+    payment_method: row.method,
+    collected_amount: roundCurrency(row.collected),
+    reversed_amount: roundCurrency(row.reversed),
+    refunded_amount: roundCurrency(row.refunded),
+    net_amount: roundCurrency(Number(row.collected || 0) - Number(row.reversed || 0) - Number(row.refunded || 0)),
+  }));
+  const cashActivity = methodRows.reduce((totals, row) => ({
+    collected_amount: roundCurrency(totals.collected_amount + row.collected_amount),
+    reversed_amount: roundCurrency(totals.reversed_amount + row.reversed_amount),
+    refunded_amount: roundCurrency(totals.refunded_amount + row.refunded_amount),
+    net_amount: roundCurrency(totals.net_amount + row.net_amount),
+  }), { collected_amount: 0, reversed_amount: 0, refunded_amount: 0, net_amount: 0 });
+
+  const today = new Date(`${getTodayLocal()}T00:00:00Z`);
+  const agingBuckets = {
+    today: { key: "today", label: "Today", invoice_count: 0, outstanding_amount: 0 },
+    days_1_7: { key: "days_1_7", label: "1–7 days", invoice_count: 0, outstanding_amount: 0 },
+    days_8_30: { key: "days_8_30", label: "8–30 days", invoice_count: 0, outstanding_amount: 0 },
+    over_30: { key: "over_30", label: "Over 30 days", invoice_count: 0, outstanding_amount: 0 },
+  };
+  for (const bill of bills.filter((row) => Number(row.outstanding_amount || 0) > 0.004)) {
+    const age = Math.max(0, Math.floor((today - new Date(`${bill.consultation_date}T00:00:00Z`)) / 86400000));
+    const bucket = age === 0 ? agingBuckets.today : age <= 7 ? agingBuckets.days_1_7
+      : age <= 30 ? agingBuckets.days_8_30 : agingBuckets.over_30;
+    bucket.invoice_count += 1;
+    bucket.outstanding_amount = roundCurrency(bucket.outstanding_amount + Number(bill.outstanding_amount || 0));
+  }
+
+  const saleMovements = movements.filter((movement) => financialAction(movement) === "sell");
+  const missingCostMovementCount = saleMovements.filter((movement) =>
+    movement.unit_cost_snapshot === null || Number(movement.unit_cost_snapshot) <= 0,
+  ).length;
+  const estimatedCostMovementCount = saleMovements.filter((movement) =>
+    String(movement.valuation_basis || "") === "legacy_estimate",
+  ).length;
+  const followUpAssignees = db.prepare(`
+    SELECT id, full_name, role FROM users
+    WHERE is_active = 1 AND role IN ('admin', 'accountant', 'operator')
+    ORDER BY full_name COLLATE NOCASE
+  `).all().map((row) => ({ id: Number(row.id), full_name: row.full_name, role: row.role }));
+
   return res.json({
     date_from: dateFrom,
     date_to: dateTo,
@@ -1433,8 +1531,120 @@ router.get("/finance-summary", (req, res) => {
     supply_gross_margin_amount: roundCurrency(
       supplySoldAmount - supplyCreditNoteAmount - movementTotals.sales_cost_rs,
     ),
+    cash_activity: { ...cashActivity, by_method: methodRows },
+    receivables_aging: Object.values(agingBuckets),
+    cost_quality: {
+      missing_cost_movement_count: missingCostMovementCount,
+      estimated_cost_movement_count: estimatedCostMovementCount,
+      margin_is_complete: missingCostMovementCount === 0 && estimatedCostMovementCount === 0,
+    },
+    follow_up_assignees: followUpAssignees,
     by_doctor: [...doctorRows.values()].sort((a, b) => a.doctor_name.localeCompare(b.doctor_name)),
   });
+});
+
+function financeStatement(req) {
+  const dateFrom = String(req.query.dateFrom || "").trim();
+  const dateTo = String(req.query.dateTo || "").trim();
+  const doctorId = req.query.doctorId ? Number(req.query.doctorId) : null;
+  const dateBasis = req.query.dateBasis === "transaction" ? "transaction" : "consultation";
+  if (!validPaymentDate(dateFrom) || !validPaymentDate(dateTo) || dateFrom > dateTo) {
+    throw Object.assign(new Error("Select a valid finance date range."), { status: 400 });
+  }
+  if (doctorId !== null && (!Number.isInteger(doctorId) || doctorId <= 0)) {
+    throw Object.assign(new Error("Select a valid doctor."), { status: 400 });
+  }
+  const ids = db.prepare(`
+    SELECT b.id
+    FROM billing b JOIN consultations c ON c.id = b.consultation_id
+    WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+      AND (
+        (@dateBasis = 'consultation' AND date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN date(@dateFrom) AND date(@dateTo))
+        OR (@dateBasis = 'transaction' AND (
+          EXISTS (SELECT 1 FROM billing_payment_ledger ledger WHERE ledger.billing_id = b.id AND ledger.transaction_date BETWEEN date(@dateFrom) AND date(@dateTo))
+          OR EXISTS (SELECT 1 FROM billing_refunds refund WHERE refund.billing_id = b.id AND refund.refund_date BETWEEN date(@dateFrom) AND date(@dateTo))
+        ))
+      )
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    ORDER BY date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)), b.id
+  `).all({ dateFrom, dateTo, doctorId, dateBasis });
+  const rows = ids.map(({ id }) => {
+    const bill = getJoinedBillById(id);
+    const movements = db.prepare(`
+      SELECT * FROM inventory_movements
+      WHERE CAST(json_extract(meta_json, '$.billing_id') AS INTEGER) = ?
+    `).all(id);
+    const financials = stockFinancials(movements);
+    const saleMovements = movements.filter((movement) => financialAction(movement) === "sell");
+    const missingCost = saleMovements.filter((movement) => movement.unit_cost_snapshot === null || Number(movement.unit_cost_snapshot) <= 0).length;
+    const estimatedCost = saleMovements.filter((movement) => movement.valuation_basis === "legacy_estimate").length;
+    let consultationAmount = 0;
+    let supplyAmount = 0;
+    let otherAmount = 0;
+    const supplyLines = [];
+    for (const item of bill.items || []) {
+      if (item.type !== "Sale") continue;
+      if (isConsultationFee(item)) consultationAmount += Number(item.amount || 0);
+      else if (Number(item.inventory_item_id || 0) > 0) {
+        supplyAmount += Number(item.amount || 0);
+        supplyLines.push(`${item.description} x${Number(item.quantity || 1)} = ${roundCurrency(item.amount)}`);
+      } else otherAmount += Number(item.amount || 0);
+    }
+    return {
+      invoice_number: bill.invoice_number,
+      consultation_date: bill.consultation_date,
+      issued_at: bill.issued_at || bill.finalized_at,
+      patient_identifier: bill.patient_identifier,
+      patient_name: bill.patient_name,
+      doctor_name: bill.doctor_name,
+      consultation_type: bill.consultation_type_snapshot || "Consultation",
+      invoice_status: bill.payment_state,
+      consultation_amount: roundCurrency(consultationAmount),
+      supply_sales_amount: roundCurrency(supplyAmount),
+      other_charge_amount: roundCurrency(otherAmount),
+      invoice_total: roundCurrency(bill.total_amount),
+      payment_received_amount: roundCurrency(bill.payment_received_amount),
+      outstanding_amount: roundCurrency(bill.payment_balance_amount),
+      credit_note_amount: roundCurrency(bill.refunded_amount),
+      net_collected_amount: roundCurrency(bill.net_paid_amount),
+      supply_cost_amount: roundCurrency(financials.sales_cost_rs),
+      supply_margin_amount: roundCurrency(supplyAmount - financials.sales_cost_rs),
+      cost_quality: missingCost ? "missing" : estimatedCost ? "estimated" : "recorded",
+      supply_details: supplyLines.join(" | "),
+      payment_details: (bill.payments || []).filter((entry) => dateBasis === "consultation" || (entry.payment_date >= dateFrom && entry.payment_date <= dateTo)).map((entry) => `${entry.payment_date} ${entry.payment_method} ${roundCurrency(entry.amount)} ${entry.external_reference || ""}`.trim()).join(" | "),
+      credit_details: (bill.refunds || []).filter((entry) => dateBasis === "consultation" || (entry.refund_date >= dateFrom && entry.refund_date <= dateTo)).map((entry) => `${entry.credit_note_number} ${entry.refund_date} ${entry.refund_method} ${roundCurrency(entry.amount)}`).join(" | "),
+    };
+  });
+  const totals = rows.reduce((acc, row) => {
+    for (const key of ["consultation_amount", "supply_sales_amount", "other_charge_amount", "invoice_total", "payment_received_amount", "outstanding_amount", "credit_note_amount", "net_collected_amount", "supply_cost_amount", "supply_margin_amount"]) {
+      acc[key] = roundCurrency((acc[key] || 0) + Number(row[key] || 0));
+    }
+    return acc;
+  }, {});
+  return { date_from: dateFrom, date_to: dateTo, date_basis: dateBasis, doctor_id: doctorId, generated_at: new Date().toISOString(), rows, totals };
+}
+
+router.get("/finance-statement", (req, res) => {
+  if (!["admin", "accountant"].includes(req.auth?.role)) return res.status(403).json({ error: "Finance exports are restricted to administrators and finance." });
+  try { return res.json(financeStatement(req)); }
+  catch (error) { return res.status(error.status || 500).json({ error: error.message }); }
+});
+
+router.get("/finance-statement.csv", (req, res) => {
+  if (!["admin", "accountant"].includes(req.auth?.role)) return res.status(403).json({ error: "Finance exports are restricted to administrators and finance." });
+  try {
+    const statement = financeStatement(req);
+    const columns = ["invoice_number", "consultation_date", "issued_at", "patient_identifier", "patient_name", "doctor_name", "consultation_type", "invoice_status", "consultation_amount", "supply_sales_amount", "other_charge_amount", "invoice_total", "payment_received_amount", "outstanding_amount", "credit_note_amount", "net_collected_amount", "supply_cost_amount", "supply_margin_amount", "cost_quality", "supply_details", "payment_details", "credit_details"];
+    const csv = [columns, ...statement.rows.map((row) => columns.map((column) => row[column] ?? ""))]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n");
+    const filename = `ocs-finance-${statement.date_from}-to-${statement.date_to}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("X-File-Name", filename);
+    return res.send(`\ufeff${csv}`);
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 router.get("/patient-summary", (req, res) => {
@@ -1579,6 +1789,8 @@ router.get("/", (req, res) => {
   const dateBasis = req.query.dateBasis === "payment" ? "payment" : "visit";
   const paginated = String(req.query.paginated || "") === "1";
   const search = String(req.query.search || "").trim().toLowerCase().replace(/^#/, "").slice(0, 100);
+  const ageBucket = ["today", "days_1_7", "days_8_30", "over_30"].includes(req.query.ageBucket)
+    ? req.query.ageBucket : "";
   const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit, 10) || 40));
   const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const doctorAccess = buildDoctorAccessClause(req.auth);
@@ -1607,6 +1819,12 @@ router.get("/", (req, res) => {
           SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
         ), 0)) AS net_paid_amount,
         u.full_name AS updated_by_name,
+        (SELECT f.assigned_to_user_id FROM billing_follow_ups f WHERE f.billing_id = b.id ORDER BY f.id DESC LIMIT 1) AS follow_up_assigned_to_user_id,
+        (SELECT f.assigned_to_name FROM billing_follow_ups f WHERE f.billing_id = b.id ORDER BY f.id DESC LIMIT 1) AS follow_up_assigned_to_name,
+        (SELECT f.status FROM billing_follow_ups f WHERE f.billing_id = b.id ORDER BY f.id DESC LIMIT 1) AS follow_up_status,
+        (SELECT f.note FROM billing_follow_ups f WHERE f.billing_id = b.id ORDER BY f.id DESC LIMIT 1) AS follow_up_note,
+        (SELECT f.last_contact_date FROM billing_follow_ups f WHERE f.billing_id = b.id ORDER BY f.id DESC LIMIT 1) AS follow_up_last_contact_date,
+        (SELECT f.next_follow_up_date FROM billing_follow_ups f WHERE f.billing_id = b.id ORDER BY f.id DESC LIMIT 1) AS follow_up_next_date,
         COUNT(*) OVER() AS total_count
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
@@ -1617,6 +1835,16 @@ router.get("/", (req, res) => {
         OR (@status != 'voided' AND b.voided_at IS NULL AND c.voided_at IS NULL
           AND b.finalized_at IS NOT NULL AND (@status = '' OR b.status = @status)))
         AND (@patientId = '' OR CAST(b.patient_id AS TEXT) = @patientId)
+        AND (@ageBucket = '' OR (
+          b.status = 'unpaid'
+          AND MAX(0, b.total_amount - COALESCE((SELECT SUM(l.amount) FROM billing_payment_ledger l WHERE l.billing_id = b.id), 0)) > 0.004
+          AND (
+            (@ageBucket = 'today' AND CAST(julianday(date('now', '+4 hours')) - julianday(date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date))) AS INTEGER) <= 0)
+            OR (@ageBucket = 'days_1_7' AND CAST(julianday(date('now', '+4 hours')) - julianday(date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date))) AS INTEGER) BETWEEN 1 AND 7)
+            OR (@ageBucket = 'days_8_30' AND CAST(julianday(date('now', '+4 hours')) - julianday(date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date))) AS INTEGER) BETWEEN 8 AND 30)
+            OR (@ageBucket = 'over_30' AND CAST(julianday(date('now', '+4 hours')) - julianday(date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date))) AS INTEGER) > 30)
+          )
+        ))
         AND (
           (@dateBasis = 'payment' AND EXISTS (
             SELECT 1 FROM billing_payment_ledger period_ledger
@@ -1650,6 +1878,7 @@ router.get("/", (req, res) => {
       dateBasis,
       reportDoctorId: req.query.doctorId ? Number(req.query.doctorId) : null,
       search,
+      ageBucket,
       searchPattern: `%${search}%`,
       limit: paginated ? limit : -1,
       offset: paginated ? offset : 0,
@@ -3051,6 +3280,7 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
   try {
     assertNotFutureBusinessDate(refundDate, "Refund");
     assertBusinessDateOpen(refundDate);
+    assertPriorFinancialActivityClosed(refundDate);
   } catch (error) {
     return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
   }
@@ -3306,6 +3536,7 @@ router.post("/:id/refunds", (req, res) => {
         return;
       }
       assertBusinessDateOpen(refundDate);
+      assertPriorFinancialActivityClosed(refundDate);
       const bill = db.prepare(`
         SELECT b.*, c.voided_at AS consultation_voided_at
         FROM billing b
@@ -3999,6 +4230,55 @@ router.get('/visit/:consultationId', (req,res) => {
   res.json({bills,pending_sales:pending});
 });
 
+router.post("/:id/follow-ups", (req, res) => {
+  if (!["admin", "accountant", "operator"].includes(req.auth?.role)) {
+    return res.status(403).json({ error: "Invoice follow-up is restricted to finance and operators." });
+  }
+  const billId = Number(req.params.id || 0);
+  const assignedToUserId = Number(req.body?.assigned_to_user_id || 0);
+  const note = String(req.body?.note || "").trim();
+  const status = req.body?.status === "resolved" ? "resolved" : "open";
+  const lastContactDate = String(req.body?.last_contact_date || "").trim();
+  const nextFollowUpDate = String(req.body?.next_follow_up_date || "").trim();
+  if (!Number.isInteger(billId) || billId <= 0) return res.status(400).json({ error: "Select a valid invoice." });
+  if (!Number.isInteger(assignedToUserId) || assignedToUserId <= 0) return res.status(400).json({ error: "Assign this follow-up to a staff member." });
+  if (note.length < 8 || note.length > 500) return res.status(400).json({ error: "Enter a follow-up note between 8 and 500 characters." });
+  if (lastContactDate && (!validPaymentDate(lastContactDate) || lastContactDate > getTodayLocal())) {
+    return res.status(400).json({ error: "Last contact must be a valid, non-future date." });
+  }
+  if (nextFollowUpDate && !validPaymentDate(nextFollowUpDate)) {
+    return res.status(400).json({ error: "Next follow-up must be a valid date." });
+  }
+  const bill = db.prepare(`
+    SELECT b.*, c.voided_at AS consultation_voided_at,
+      MAX(0, b.total_amount - COALESCE((SELECT SUM(l.amount) FROM billing_payment_ledger l WHERE l.billing_id = b.id), 0)) AS outstanding_amount
+    FROM billing b JOIN consultations c ON c.id = b.consultation_id WHERE b.id = ?
+  `).get(billId);
+  if (!bill || bill.voided_at || bill.consultation_voided_at || !bill.finalized_at) {
+    return res.status(409).json({ error: "Follow-up can only be recorded on an active issued invoice." });
+  }
+  if (status === "open" && Number(bill.outstanding_amount || 0) <= 0.004) {
+    return res.status(409).json({ error: "This invoice has no outstanding balance." });
+  }
+  const assignee = db.prepare(`
+    SELECT id, full_name, role FROM users
+    WHERE id = ? AND is_active = 1 AND role IN ('admin', 'accountant', 'operator')
+  `).get(assignedToUserId);
+  if (!assignee) return res.status(400).json({ error: "Select an active finance or operator account." });
+  const result = db.prepare(`
+    INSERT INTO billing_follow_ups (
+      billing_id, assigned_to_user_id, assigned_to_name, status, note,
+      last_contact_date, next_follow_up_date, created_by_user_id,
+      created_by_name, created_by_role
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    billId, assignee.id, assignee.full_name, status, note,
+    lastContactDate || null, nextFollowUpDate || null, req.auth.id || null,
+    String(req.auth.full_name || req.auth.username || ""), String(req.auth.role || ""),
+  );
+  return res.status(201).json(db.prepare("SELECT * FROM billing_follow_ups WHERE id = ?").get(result.lastInsertRowid));
+});
+
 router.get("/:id", (req, res) => {
   const billId = Number(req.params.id);
   const bill = getJoinedBillById(billId);
@@ -4632,9 +4912,16 @@ router.post("/:id/payments/:paymentId/reverse", (req, res) => {
   const externalReference = normalizeSourceReference(req.body?.external_reference);
   if (reason.length < 8) return res.status(400).json({ error: "Document why this payment transaction is being reversed." });
   if (!validPaymentDate(reversalDate)) return res.status(400).json({ error: "Enter a valid reversal date (YYYY-MM-DD)." });
+  let operation;
+  try {
+    operation = operationFor(req, `billing:payment-reversal:${billId}:${paymentId}`);
+    const replay = operation.read();
+    if (replay) return res.status(201).json(replay);
+  } catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
   try {
     assertNotFutureBusinessDate(reversalDate, "Payment reversal");
     assertBusinessDateOpen(reversalDate);
+    assertPriorFinancialActivityClosed(reversalDate);
   } catch (error) {
     return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
   }
@@ -4643,10 +4930,6 @@ router.post("/:id/payments/:paymentId/reverse", (req, res) => {
   if (payment.payment_method !== "cash" && externalReference.length < 3) {
     return res.status(400).json({ error: "Enter the provider reversal reference for this non-cash payment." });
   }
-  let operation;
-  try { operation = operationFor(req, `billing:payment-reversal:${billId}:${paymentId}`); }
-  catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
-
   let result;
   try {
     db.transaction(() => {

@@ -46,6 +46,35 @@ function ensureFinancialIntegritySchema(db) {
         reset_at TEXT,
         reset_reason TEXT NOT NULL DEFAULT ''
       );
+      CREATE TABLE IF NOT EXISTS billing_follow_ups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        billing_id INTEGER NOT NULL,
+        assigned_to_user_id INTEGER,
+        assigned_to_name TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+        note TEXT NOT NULL,
+        last_contact_date TEXT,
+        next_follow_up_date TEXT,
+        created_by_user_id INTEGER,
+        created_by_name TEXT NOT NULL DEFAULT '',
+        created_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (assigned_to_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_follow_ups_bill
+        ON billing_follow_ups(billing_id, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_billing_follow_ups_due
+        ON billing_follow_ups(status, next_follow_up_date, assigned_to_user_id);
+      CREATE TRIGGER IF NOT EXISTS billing_follow_ups_no_update
+      BEFORE UPDATE ON billing_follow_ups BEGIN
+        SELECT RAISE(ABORT, 'Billing follow-up history is append-only');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_follow_ups_no_delete
+      BEFORE DELETE ON billing_follow_ups BEGIN
+        SELECT RAISE(ABORT, 'Billing follow-up history is append-only');
+      END;
       CREATE TABLE IF NOT EXISTS financial_day_closings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         business_date TEXT NOT NULL UNIQUE,

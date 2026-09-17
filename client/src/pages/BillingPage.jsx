@@ -2813,6 +2813,9 @@ function BillingPage() {
   );
   const isFinanceWorkspace = ["admin", "accountant"].includes(user?.role);
   const [financeSection, setFinanceSection] = useState("invoices");
+  const [financeAgeBucket, setFinanceAgeBucket] = useState("");
+  const [followUpBill, setFollowUpBill] = useState(null);
+  const [followUpForm, setFollowUpForm] = useState({ assigned_to_user_id: "", note: "", last_contact_date: "", next_follow_up_date: "", status: "open" });
   const [financeDateFrom, setFinanceDateFrom] = useState(
     () => searchParams.get("dateFrom") || dayjs().startOf("month").format("YYYY-MM-DD"),
   );
@@ -2824,6 +2827,7 @@ function BillingPage() {
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
   const showFinanceInvoices = !isFinanceWorkspace || financeSection === "invoices";
   const showFinanceSales = isFinanceWorkspace && financeSection === "sales";
+  const showFinanceCash = isFinanceWorkspace && financeSection === "cash";
   const showFinanceControls = isFinanceWorkspace && financeSection === "controls";
 
   const linkedDateRange = useMemo(() => {
@@ -2845,6 +2849,7 @@ function BillingPage() {
         offset: String(billPage * FINANCE_PAGE_SIZE),
       });
       if (searchText.trim()) filterQuery.set("search", searchText.trim());
+      if (financeAgeBucket && isFinanceWorkspace) filterQuery.set("ageBucket", financeAgeBucket);
       const selectedDoctorId = isFinanceWorkspace ? financeDoctorId : reportDoctorId;
       if (selectedDoctorId) filterQuery.set("doctorId", selectedDoctorId);
 
@@ -2980,12 +2985,12 @@ function BillingPage() {
 
   useEffect(() => {
     if (!isFinanceWorkspace || financeDateRangeValid) loadData();
-  }, [statusFilter, patientIdFilter, isMobile, user?.role, isFinanceWorkspace, financeDateRangeValid, financeDoctorId, financeDateFrom, financeDateTo, linkedDateRange, dateBasis, reportDoctorId, refreshKey, billPage, summaryPage, searchText]);
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, isFinanceWorkspace, financeDateRangeValid, financeDoctorId, financeDateFrom, financeDateTo, financeAgeBucket, linkedDateRange, dateBasis, reportDoctorId, refreshKey, billPage, summaryPage, searchText]);
 
   useEffect(() => {
     setBillPage(0);
     setSummaryPage(0);
-  }, [statusFilter, patientIdFilter, financeDoctorId, financeDateFrom, financeDateTo, linkedDateRange, dateBasis, reportDoctorId, searchText]);
+  }, [statusFilter, patientIdFilter, financeDoctorId, financeDateFrom, financeDateTo, financeAgeBucket, linkedDateRange, dateBasis, reportDoctorId, searchText]);
 
   useEffect(() => {
     const billId = Number(searchParams.get("billId") || 0);
@@ -3212,6 +3217,71 @@ function BillingPage() {
     }
   }
 
+  function financeExportQuery() {
+    const params = new URLSearchParams({ dateFrom: financeDateFrom, dateTo: financeDateTo });
+    if (financeDoctorId) params.set("doctorId", financeDoctorId);
+    if (showFinanceCash) params.set("dateBasis", "transaction");
+    return params.toString();
+  }
+
+  async function exportFinanceCsv() {
+    try {
+      const result = await api.getBlob(`/billing/finance-statement.csv?${financeExportQuery()}`);
+      const url = URL.createObjectURL(result.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = result.filename || "ocs-finance-statement.csv";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      toast.error(error.message || "Could not export the finance CSV.");
+    }
+  }
+
+  async function exportFinancePdf() {
+    try {
+      const statement = await api.get(`/billing/finance-statement?${financeExportQuery()}`);
+      const { presentFinanceStatementPdf } = await import("../lib/financeStatementPdf.js");
+      await presentFinanceStatementPdf(statement);
+    } catch (error) {
+      toast.error(error.message || "Could not create the finance PDF.");
+    }
+  }
+
+  async function saveFollowUp(event) {
+    event.preventDefault();
+    if (!followUpBill) return;
+    setIsSaving(true);
+    try {
+      await api.post(`/billing/${followUpBill.id}/follow-ups`, {
+        ...followUpForm,
+        assigned_to_user_id: Number(followUpForm.assigned_to_user_id),
+      });
+      toast.success("Invoice follow-up recorded in the audit trail.");
+      setFollowUpBill(null);
+      await loadData();
+    } catch (error) {
+      toast.error(error.message || "Could not save the follow-up.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function openFollowUp(bill) {
+    const defaultAssignee = bill.follow_up_assigned_to_user_id
+      || financeSummary?.follow_up_assignees?.find((entry) => Number(entry.id) === Number(user?.id))?.id
+      || financeSummary?.follow_up_assignees?.[0]?.id
+      || "";
+    setFollowUpForm({
+      assigned_to_user_id: String(defaultAssignee),
+      note: bill.follow_up_note || "",
+      last_contact_date: bill.follow_up_last_contact_date || "",
+      next_follow_up_date: bill.follow_up_next_date || "",
+      status: "open",
+    });
+    setFollowUpBill(bill);
+  }
+
   function clearPatientFilter() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("patientId");
@@ -3257,6 +3327,7 @@ function BillingPage() {
               >
                 <option value="invoices">Invoice tracking</option>
                 <option value="sales">Sales breakdown</option>
+                <option value="cash">Cash activity & day close</option>
                 <option value="controls">Exceptions & financial controls</option>
               </select>
             </label>
@@ -3309,9 +3380,13 @@ function BillingPage() {
           {financeSection !== "controls" ? (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
               <p className="text-xs font-semibold text-slate-500">
-                Date filters use the consultation date. Only finalized, non-voided invoices are included.
+                {showFinanceCash
+                  ? "Cash activity uses payment, reversal, and refund transaction dates."
+                  : "Invoice and sales reports use the consultation date. Only finalized, non-voided invoices are included."}
               </p>
               <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={exportFinanceCsv} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:border-[#62bdb7] hover:text-[#17666a]">Export CSV</button>
+                <button type="button" onClick={exportFinancePdf} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:border-[#62bdb7] hover:text-[#17666a]">Export PDF</button>
                 <button
                   type="button"
                   onClick={() => {
@@ -3340,6 +3415,7 @@ function BillingPage() {
       ) : null}
 
       {isFinanceWorkspace && showFinanceInvoices ? (
+        <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <BillingStat
             icon={ReceiptText}
@@ -3366,6 +3442,22 @@ function BillingPage() {
             value={formatRupees(financeSummary?.net_collected_amount || 0)}
           />
         </div>
+        <section className="rounded-[24px] border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><p className="font-bold text-slate-950">Receivables ageing</p><p className="text-sm text-slate-500">Outstanding balances grouped by consultation date.</p></div>
+            {financeAgeBucket ? <button type="button" onClick={() => { setFinanceAgeBucket(""); setStatusFilter(""); }} className="rounded-xl border px-3 py-2 text-xs font-bold">Clear ageing filter</button> : null}
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {(financeSummary?.receivables_aging || []).map((bucket) => (
+              <button key={bucket.key} type="button" onClick={() => { setFinanceAgeBucket(bucket.key); setStatusFilter("unpaid"); }} className={cx("rounded-2xl border p-3 text-left", financeAgeBucket === bucket.key ? "border-[#17666a] bg-teal-50" : "border-slate-200 bg-slate-50")}>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{bucket.label}</p>
+                <p className="mt-1 text-lg font-black text-slate-950">{formatRupees(bucket.outstanding_amount)}</p>
+                <p className="text-xs font-semibold text-slate-500">{bucket.invoice_count} invoice{bucket.invoice_count === 1 ? "" : "s"}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+        </div>
       ) : !isFinanceWorkspace && user?.role !== "doctor" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <BillingStat
@@ -3384,6 +3476,29 @@ function BillingPage() {
             value={formatRupees(billingDashboardTotals.outstanding)}
           />
         </div>
+      ) : null}
+
+      {showFinanceCash ? (
+        <section className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <BillingStat icon={DollarSign} label="Collected by transaction date" value={formatRupees(financeSummary?.cash_activity?.collected_amount || 0)} />
+            <BillingStat icon={ReceiptText} label="Payment reversals" value={formatRupees(financeSummary?.cash_activity?.reversed_amount || 0)} />
+            <BillingStat icon={CreditCard} label="Refunded" value={formatRupees(financeSummary?.cash_activity?.refunded_amount || 0)} />
+            <BillingStat icon={DollarSign} label="Net cash activity" value={formatRupees(financeSummary?.cash_activity?.net_amount || 0)} />
+          </div>
+          <SectionCard title="Payment-method reconciliation" actions={financeSummaryLoading ? <span className="text-sm font-semibold text-slate-500">Updating…</span> : null}>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {(financeSummary?.cash_activity?.by_method || []).map((method) => (
+                <div key={method.payment_method} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{formatPaymentMethod(method.payment_method)}</p>
+                  <p className="mt-2 text-xl font-black text-slate-950">{formatRupees(method.net_amount)}</p>
+                  <p className="mt-2 text-xs text-slate-500">Collected {formatRupees(method.collected_amount)} · Reversed {formatRupees(method.reversed_amount)} · Refunded {formatRupees(method.refunded_amount)}</p>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+          <FinancialDayClose refreshToken={bills} initialDate={financeDateFrom === financeDateTo ? financeDateTo : undefined} />
+        </section>
       ) : null}
 
       {showFinanceControls && ["admin", "operator"].includes(user?.role) ? (
@@ -3541,6 +3656,12 @@ function BillingPage() {
 
       {showFinanceSales ? (
         <section className="space-y-4" aria-busy={financeSummaryLoading}>
+          {!financeSummary?.cost_quality?.margin_is_complete ? (
+            <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-black">Supply margin needs cost review</p>
+              <p className="mt-1">{financeSummary?.cost_quality?.missing_cost_movement_count || 0} sale movement(s) have no usable cost and {financeSummary?.cost_quality?.estimated_cost_movement_count || 0} use legacy estimated cost. Sales remain correct; margin is flagged until inventory costs are verified.</p>
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <BillingStat
               icon={Stethoscope}
@@ -3669,7 +3790,6 @@ function BillingPage() {
         </div>
       ) : null}
       {showFinanceControls ? <FinancialReconciliation refreshToken={bills} /> : null}
-      {showFinanceControls ? <FinancialDayClose refreshToken={bills} /> : null}
 
       {showFinanceInvoices ? <div
         className={cx(
@@ -3812,6 +3932,7 @@ function BillingPage() {
                                 {bill.updated_at ? ` · ${formatDate(bill.updated_at)}` : ""}
                               </span>
                             ) : null}
+                            {bill.follow_up_status ? <span className="mt-1 block text-xs font-semibold text-amber-700">Follow-up: {bill.follow_up_assigned_to_name || "Unassigned"}{bill.follow_up_next_date ? ` · next ${formatDate(bill.follow_up_next_date)}` : ""}</span> : null}
                           </td>
                           <td className="sticky right-0 z-[1] bg-white px-5 py-3 shadow-[-2px_0_0_rgba(241,245,249,0.95)] group-hover:bg-slate-50/70">
                             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
@@ -3824,6 +3945,9 @@ function BillingPage() {
                                 >
                                   {bill.fee_review_required ? "Review consultation fee" : bill.payment_block ? "Review visit" : "Record payment"}
                                 </button>
+                              ) : null}
+                              {isFinanceWorkspace && !bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" ? (
+                                <button type="button" onClick={() => openFollowUp(bill)} className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900">Follow up</button>
                               ) : null}
                               {!bill.voided_at && !bill.consultation_voided_at && bill.status === "paid" && canIssueCreditNotes && Number(bill.total_amount || 0) > Number(bill.refunded_amount || 0) ? (
                                 <button
@@ -3901,6 +4025,7 @@ function BillingPage() {
                           {bill.fee_review_required ? "Review consultation fee" : bill.payment_block ? "Review visit" : "Record payment"}
                         </button>
                       ) : null}
+                      {isFinanceWorkspace && !bill.voided_at && !bill.consultation_voided_at && bill.status === "unpaid" ? <button type="button" onClick={() => openFollowUp(bill)} className="min-h-12 w-full rounded-2xl border border-amber-200 bg-amber-50 text-sm font-bold text-amber-900">Record follow-up</button> : null}
                       {!bill.voided_at && !bill.consultation_voided_at && bill.status === "paid" && canIssueCreditNotes && Number(bill.total_amount || 0) > Number(bill.refunded_amount || 0) ? (
                         <button
                           type="button"
@@ -3998,6 +4123,32 @@ function BillingPage() {
         onClose={() => { if (!isSaving) setRefundBill(null); }}
         onConfirm={(payload) => recordRefund(refundBill, payload)} />}
       {quickActionDialog ? <QuickActionConfirmation action={quickActionDialog} busy={isSaving} onClose={() => !isSaving && setQuickActionDialog(null)} onConfirm={(reason) => quickActionDialog.kind === "reversal" ? reverseQuickSubmission(quickActionDialog.submission, reason) : updateQuickWorkflow(quickActionDialog.submission, "needs_doctor", reason)} /> : null}
+      {followUpBill ? <Modal open onClose={() => !isSaving && setFollowUpBill(null)} title={`Payment follow-up · ${billReference(followUpBill)}`} size="md">
+        <form onSubmit={saveFollowUp} className="space-y-4">
+          <p className="text-sm font-semibold text-slate-600">{followUpBill.patient_name} · outstanding {formatCurrency(followUpBill.payment_balance_amount)}</p>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">Assigned to
+            <select required value={followUpForm.assigned_to_user_id} onChange={(event) => setFollowUpForm((current) => ({ ...current, assigned_to_user_id: event.target.value }))} className={BILLING_FIELD}>
+              <option value="">Select responsible staff</option>
+              {(financeSummary?.follow_up_assignees || []).map((entry) => <option key={entry.id} value={entry.id}>{entry.full_name} · {entry.role}</option>)}
+            </select>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-bold text-slate-700">Last contact
+              <input type="date" max={billingPageTodayInputValue()} value={followUpForm.last_contact_date} onChange={(event) => setFollowUpForm((current) => ({ ...current, last_contact_date: event.target.value }))} className={BILLING_FIELD} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-bold text-slate-700">Next follow-up
+              <input type="date" value={followUpForm.next_follow_up_date} onChange={(event) => setFollowUpForm((current) => ({ ...current, next_follow_up_date: event.target.value }))} className={BILLING_FIELD} />
+            </label>
+          </div>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">Note
+            <textarea required minLength={8} maxLength={500} rows={3} value={followUpForm.note} onChange={(event) => setFollowUpForm((current) => ({ ...current, note: event.target.value }))} className={BILLING_FIELD} placeholder="What was discussed, promised, or needs to happen next?" />
+          </label>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">Follow-up status
+            <select value={followUpForm.status} onChange={(event) => setFollowUpForm((current) => ({ ...current, status: event.target.value }))} className={BILLING_FIELD}><option value="open">Open</option><option value="resolved">Resolved</option></select>
+          </label>
+          <div className="flex justify-end gap-2"><button type="button" disabled={isSaving} onClick={() => setFollowUpBill(null)} className="min-h-11 rounded-xl border px-4">Cancel</button><button disabled={isSaving || followUpForm.note.trim().length < 8 || !followUpForm.assigned_to_user_id} className="min-h-11 rounded-xl bg-[#17666a] px-4 font-bold text-white disabled:opacity-50">{isSaving ? "Saving…" : "Save follow-up"}</button></div>
+        </form>
+      </Modal> : null}
       <EditBillingModal
         open={Boolean(editor)}
         bill={editor?.bill}

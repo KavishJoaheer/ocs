@@ -18,8 +18,8 @@ function money(value) {
   return `Rs ${Number(value || 0).toLocaleString("en-MU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function FinancialDayClose({ refreshToken }) {
-  const [date, setDate] = useState(todayInputValue);
+function FinancialDayClose({ refreshToken, initialDate }) {
+  const [date, setDate] = useState(() => initialDate || todayInputValue());
   const [data, setData] = useState(null);
   const [countedCash, setCountedCash] = useState("0");
   const [settlements, setSettlements] = useState(() => Object.fromEntries(
@@ -34,6 +34,10 @@ function FinancialDayClose({ refreshToken }) {
     reason: "",
     settlements: Object.fromEntries(METHODS.map(({ id }) => [id, { delta: "0", reference: "" }])),
   }));
+
+  useEffect(() => {
+    if (initialDate) setDate(initialDate);
+  }, [initialDate]);
 
   const load = useCallback(async () => {
     const payload = await api.get(`/billing/day-close?date=${encodeURIComponent(date)}`);
