@@ -3,10 +3,8 @@ import FinancialDayClose from "../components/FinancialDayClose.jsx";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
-import isoWeek from "dayjs/plugin/isoWeek";
 import {
   AlertTriangle,
-  Calendar,
   CreditCard,
   DollarSign,
   Eye,
@@ -22,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 
-dayjs.extend(isoWeek);
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -45,7 +42,6 @@ import { cx, formControlClass, pageContainerClass } from "../lib/utils.js";
 import {
   getPeriodRange,
   normalizeReportPeriod,
-  periodToBillingPreset,
 } from "../lib/reportPeriod.js";
 
 function isVisitFee(line) {
@@ -74,12 +70,6 @@ function billingPageTodayInputValue() {
   return local.toISOString().slice(0, 10);
 }
 
-const ADMIN_BILLING_PRESETS = [
-  { id: "yearly", label: "Yearly" },
-  { id: "monthly", label: "Monthly" },
-  { id: "weekly", label: "Weekly" },
-];
-
 const QUICK_WORKFLOW_META = {
   awaiting_operator: {
     label: "Awaiting operator",
@@ -100,89 +90,6 @@ const QUICK_WORKFLOW_META = {
 };
 
 const FINANCE_PAGE_SIZE = 40;
-
-function getAdminBillingDateRange(preset, anchorDateStr) {
-  const anchor = dayjs(anchorDateStr || billingPageTodayInputValue());
-  if (!anchor.isValid()) {
-    const today = billingPageTodayInputValue();
-    return { from: today, to: today };
-  }
-  switch (preset) {
-    case "yearly":
-      return {
-        from: anchor.startOf("year").format("YYYY-MM-DD"),
-        to: anchor.endOf("year").format("YYYY-MM-DD"),
-      };
-    case "monthly":
-      return {
-        from: anchor.startOf("month").format("YYYY-MM-DD"),
-        to: anchor.endOf("month").format("YYYY-MM-DD"),
-      };
-    case "weekly":
-      return {
-        from: anchor.startOf("isoWeek").format("YYYY-MM-DD"),
-        to: anchor.endOf("isoWeek").format("YYYY-MM-DD"),
-      };
-    case "specific":
-      return {
-        from: anchorDateStr,
-        to: anchorDateStr,
-      };
-    default:
-      return {
-        from: anchor.startOf("month").format("YYYY-MM-DD"),
-        to: anchor.endOf("month").format("YYYY-MM-DD"),
-      };
-  }
-}
-
-function AdminBillingDateRangeFilter({ preset, anchorDate, onPresetChange, onAnchorDateChange }) {
-  return (
-    <div
-      className="inline-flex max-w-full flex-wrap items-center justify-end gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm"
-      role="group"
-      aria-label="Billing period"
-    >
-      {ADMIN_BILLING_PRESETS.map((opt) => (
-        <button
-          key={opt.id}
-          type="button"
-          onClick={() => onPresetChange(opt.id)}
-          className={cx(
-            "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
-            preset === opt.id
-              ? "bg-[#2d8f98] text-white shadow-sm"
-              : "border border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900",
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
-      <label
-        title="Specific date"
-        className={cx(
-          "flex cursor-pointer items-center gap-1 rounded-xl border bg-white px-2 py-1 transition",
-          preset === "specific"
-            ? "border-[#2d8f98] bg-[#ecf8f7] ring-1 ring-[#2d8f98]/30"
-            : "border-slate-200 hover:border-slate-300",
-        )}
-      >
-        <Calendar className="size-3.5 shrink-0 text-[#2d8f98]" />
-        <span className="sr-only">Specific date</span>
-        <input
-          type="date"
-          max={billingPageTodayInputValue()}
-          value={anchorDate}
-          onChange={(event) => {
-            onAnchorDateChange(event.target.value);
-            onPresetChange("specific");
-          }}
-          className="max-w-[10rem] cursor-pointer border-0 bg-transparent py-0.5 text-xs font-semibold text-slate-800 outline-none"
-        />
-      </label>
-    </div>
-  );
-}
 
 const BILLING_FIELD = cx(
   formControlClass,
@@ -360,9 +267,18 @@ function InventoryItemDescriptionField({
   );
 }
 
-function BillingStat({ icon: Icon, label, value }) {
+function BillingStat({ icon: Icon, label, value, onClick, active = false }) {
+  const Component = onClick ? "button" : "div";
   return (
-    <div className="rounded-[28px] border border-white/80 bg-white/90 p-5 shadow-[0_25px_70px_rgba(15,23,42,0.08)]">
+    <Component
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cx(
+        "w-full rounded-[28px] border bg-white/90 p-5 text-left shadow-[0_25px_70px_rgba(15,23,42,0.08)]",
+        onClick && "transition hover:-translate-y-0.5 hover:border-[#62bdb7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d8f98]",
+        active ? "border-[#2d8f98] ring-2 ring-[#2d8f98]/15" : "border-white/80",
+      )}
+    >
       <div className="flex items-center gap-4">
         <div className="rounded-2xl bg-teal-50 p-3 text-teal-700">
           <Icon className="size-5" />
@@ -374,7 +290,7 @@ function BillingStat({ icon: Icon, label, value }) {
           <p className="mt-1 text-2xl font-bold text-slate-950">{value}</p>
         </div>
       </div>
-    </div>
+    </Component>
   );
 }
 
@@ -2895,24 +2811,20 @@ function BillingPage() {
   const [mobileBillTab, setMobileBillTab] = useState(() =>
     searchParams.get("status") === "paid" ? "paid" : "pending",
   );
-  const [adminBillingPreset, setAdminBillingPreset] = useState(() =>
-    periodToBillingPreset(searchParams.get("period") || "monthly"),
-  );
-  const [adminBillingAnchorDate, setAdminBillingAnchorDate] = useState(
-    () => searchParams.get("date") || billingPageTodayInputValue(),
-  );
   const isFinanceWorkspace = ["admin", "accountant"].includes(user?.role);
-  const [financeSection, setFinanceSection] = useState("overview");
-  const showFinanceOverview = !isFinanceWorkspace || financeSection === "overview";
+  const [financeSection, setFinanceSection] = useState("invoices");
+  const [financeDateFrom, setFinanceDateFrom] = useState(
+    () => searchParams.get("dateFrom") || dayjs().startOf("month").format("YYYY-MM-DD"),
+  );
+  const [financeDateTo, setFinanceDateTo] = useState(
+    () => searchParams.get("dateTo") || billingPageTodayInputValue(),
+  );
+  const [financeDoctorId, setFinanceDoctorId] = useState(() => searchParams.get("doctorId") || "");
+  const [financeSummary, setFinanceSummary] = useState(null);
+  const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
   const showFinanceInvoices = !isFinanceWorkspace || financeSection === "invoices";
+  const showFinanceSales = isFinanceWorkspace && financeSection === "sales";
   const showFinanceControls = isFinanceWorkspace && financeSection === "controls";
-
-  const adminBillingDateRange = useMemo(() => {
-    if (user?.role !== "admin") {
-      return null;
-    }
-    return getAdminBillingDateRange(adminBillingPreset, adminBillingAnchorDate);
-  }, [user?.role, adminBillingPreset, adminBillingAnchorDate]);
 
   const linkedDateRange = useMemo(() => {
     const dateFrom = searchParams.get("dateFrom");
@@ -2924,13 +2836,6 @@ function BillingPage() {
     return null;
   }, [searchParams]);
 
-  function handleAdminBillingPresetChange(next) {
-    setAdminBillingPreset(next);
-    if (next !== "specific") {
-      setAdminBillingAnchorDate(billingPageTodayInputValue());
-    }
-  }
-
   async function loadData() {
     try {
       const filterQuery = new URLSearchParams({
@@ -2940,7 +2845,8 @@ function BillingPage() {
         offset: String(billPage * FINANCE_PAGE_SIZE),
       });
       if (searchText.trim()) filterQuery.set("search", searchText.trim());
-      if (reportDoctorId) filterQuery.set("doctorId", reportDoctorId);
+      const selectedDoctorId = isFinanceWorkspace ? financeDoctorId : reportDoctorId;
+      if (selectedDoctorId) filterQuery.set("doctorId", selectedDoctorId);
 
       if (statusFilter && (!isMobile || statusFilter === "voided")) {
         filterQuery.set("status", statusFilter);
@@ -2950,9 +2856,9 @@ function BillingPage() {
         filterQuery.set("patientId", patientIdFilter);
       }
 
-      if (user?.role === "admin" && adminBillingDateRange) {
-        filterQuery.set("dateFrom", adminBillingDateRange.from);
-        filterQuery.set("dateTo", adminBillingDateRange.to);
+      if (isFinanceWorkspace) {
+        filterQuery.set("dateFrom", financeDateFrom);
+        filterQuery.set("dateTo", financeDateTo);
       } else if (linkedDateRange) {
         filterQuery.set("dateFrom", linkedDateRange.from);
         filterQuery.set("dateTo", linkedDateRange.to);
@@ -2966,10 +2872,10 @@ function BillingPage() {
         offset: String(summaryPage * FINANCE_PAGE_SIZE),
       });
       if (searchText.trim()) summaryQuery.set("search", searchText.trim());
-      if (reportDoctorId) summaryQuery.set("doctorId", reportDoctorId);
-      if (user?.role === "admin" && adminBillingDateRange) {
-        summaryQuery.set("dateFrom", adminBillingDateRange.from);
-        summaryQuery.set("dateTo", adminBillingDateRange.to);
+      if (selectedDoctorId) summaryQuery.set("doctorId", selectedDoctorId);
+      if (isFinanceWorkspace) {
+        summaryQuery.set("dateFrom", financeDateFrom);
+        summaryQuery.set("dateTo", financeDateTo);
       } else if (linkedDateRange) {
         summaryQuery.set("dateFrom", linkedDateRange.from);
         summaryQuery.set("dateTo", linkedDateRange.to);
@@ -3042,15 +2948,44 @@ function BillingPage() {
   }, [searchParams]);
 
   const refreshKey = useLiveRefreshKey();
+  const financeDateRangeValid = Boolean(
+    financeDateFrom && financeDateTo && financeDateFrom <= financeDateTo,
+  );
 
   useEffect(() => {
-    loadData();
-  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, dateBasis, reportDoctorId, refreshKey, billPage, summaryPage, searchText]);
+    if (!isFinanceWorkspace) return undefined;
+    if (!financeDateRangeValid) {
+      setFinanceSummary(null);
+      setFinanceSummaryLoading(false);
+      return undefined;
+    }
+    let ignore = false;
+    const params = new URLSearchParams({ dateFrom: financeDateFrom, dateTo: financeDateTo });
+    if (financeDoctorId) params.set("doctorId", financeDoctorId);
+    setFinanceSummaryLoading(true);
+    api.get(`/billing/finance-summary?${params.toString()}`)
+      .then((data) => {
+        if (!ignore) setFinanceSummary(data);
+      })
+      .catch((error) => {
+        if (!ignore) toast.error(error.message || "Finance totals could not be loaded.");
+      })
+      .finally(() => {
+        if (!ignore) setFinanceSummaryLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [isFinanceWorkspace, financeDateRangeValid, financeDateFrom, financeDateTo, financeDoctorId, refreshKey]);
+
+  useEffect(() => {
+    if (!isFinanceWorkspace || financeDateRangeValid) loadData();
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, isFinanceWorkspace, financeDateRangeValid, financeDoctorId, financeDateFrom, financeDateTo, linkedDateRange, dateBasis, reportDoctorId, refreshKey, billPage, summaryPage, searchText]);
 
   useEffect(() => {
     setBillPage(0);
     setSummaryPage(0);
-  }, [statusFilter, patientIdFilter, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, dateBasis, reportDoctorId, searchText]);
+  }, [statusFilter, patientIdFilter, financeDoctorId, financeDateFrom, financeDateTo, linkedDateRange, dateBasis, reportDoctorId, searchText]);
 
   useEffect(() => {
     const billId = Number(searchParams.get("billId") || 0);
@@ -3307,46 +3242,131 @@ function BillingPage() {
       <PageHeader
         eyebrow={user?.role === "operator" ? "Work queue" : user?.role === "accountant" ? "Finance" : "Revenue"}
         title={isFinanceWorkspace ? "Finance" : user?.role === "operator" ? "Billing work queue" : "Billing"}
-        description={isFinanceWorkspace ? "See what needs attention, manage invoices, and complete financial controls one section at a time." : undefined}
-        actions={
-          <>
-            {user?.role === "admin" ? (
-              <AdminBillingDateRangeFilter
-                anchorDate={adminBillingAnchorDate}
-                preset={adminBillingPreset}
-                onAnchorDateChange={setAdminBillingAnchorDate}
-                onPresetChange={handleAdminBillingPresetChange}
-              />
-            ) : null}
-          </>
-        }
+        description={isFinanceWorkspace ? "Choose one report, apply filters, and focus only on the figures you need." : undefined}
       />
 
       {isFinanceWorkspace ? (
-        <nav aria-label="Finance workspace" className="flex overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1">
-          {[
-            ["overview", "Overview"],
-            ["invoices", "Invoices & payments"],
-            ["controls", "Reconciliation & day close"],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setFinanceSection(value)}
-              className={cx(
-                "min-h-11 flex-1 whitespace-nowrap rounded-xl px-4 text-sm font-bold transition",
-                financeSection === value
-                  ? "bg-white text-[#17666a] shadow-sm"
-                  : "text-slate-500 hover:text-slate-800",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="grid gap-4 lg:grid-cols-[minmax(15rem,1.15fr)_minmax(13rem,1fr)_minmax(10rem,.75fr)_minmax(10rem,.75fr)]">
+            <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+              Report
+              <select
+                value={financeSection}
+                onChange={(event) => setFinanceSection(event.target.value)}
+                className={BILLING_FIELD}
+              >
+                <option value="invoices">Invoice tracking</option>
+                <option value="sales">Sales breakdown</option>
+                <option value="controls">Exceptions & financial controls</option>
+              </select>
+            </label>
+            {financeSection !== "controls" ? (
+              <>
+                <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+                  Doctor
+                  <select
+                    value={financeDoctorId}
+                    onChange={(event) => setFinanceDoctorId(event.target.value)}
+                    className={BILLING_FIELD}
+                  >
+                    <option value="">All doctors</option>
+                    {(financeSummary?.doctors || []).map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+                  From
+                  <input
+                    type="date"
+                    max={financeDateTo || billingPageTodayInputValue()}
+                    value={financeDateFrom}
+                    onChange={(event) => setFinanceDateFrom(event.target.value)}
+                    className={BILLING_FIELD}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+                  To
+                  <input
+                    type="date"
+                    min={financeDateFrom}
+                    max={billingPageTodayInputValue()}
+                    value={financeDateTo}
+                    onChange={(event) => setFinanceDateTo(event.target.value)}
+                    className={BILLING_FIELD}
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="self-end pb-3 text-sm font-semibold text-slate-500 lg:col-span-3">
+                Reconciliation, unbilled visits, and day close stay here without crowding daily reports.
+              </p>
+            )}
+          </div>
+          {!financeDateRangeValid && financeSection !== "controls" ? (
+            <p className="mt-3 text-sm font-bold text-rose-700">The start date must be on or before the end date.</p>
+          ) : null}
+          {financeSection !== "controls" ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-500">
+                Date filters use the consultation date. Only finalized, non-voided invoices are included.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = billingPageTodayInputValue();
+                    setFinanceDateFrom(today);
+                    setFinanceDateTo(today);
+                  }}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:border-[#62bdb7] hover:text-[#17666a]"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFinanceDateFrom(dayjs().startOf("month").format("YYYY-MM-DD"));
+                    setFinanceDateTo(billingPageTodayInputValue());
+                  }}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:border-[#62bdb7] hover:text-[#17666a]"
+                >
+                  This month
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
-      {user?.role !== "doctor" ? (
+      {isFinanceWorkspace && showFinanceInvoices ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <BillingStat
+            icon={ReceiptText}
+            label={`${financeSummary?.pending_invoice_count || 0} pending invoice${Number(financeSummary?.pending_invoice_count || 0) === 1 ? "" : "s"}`}
+            value={formatRupees(financeSummary?.pending_invoice_amount || 0)}
+            active={statusFilter === "unpaid"}
+            onClick={() => setStatusFilter((current) => current === "unpaid" ? "" : "unpaid")}
+          />
+          <BillingStat
+            icon={CreditCard}
+            label={`${financeSummary?.paid_invoice_count || 0} paid invoice${Number(financeSummary?.paid_invoice_count || 0) === 1 ? "" : "s"}`}
+            value={formatRupees(financeSummary?.paid_invoice_amount || 0)}
+            active={statusFilter === "paid"}
+            onClick={() => setStatusFilter((current) => current === "paid" ? "" : "paid")}
+          />
+          <BillingStat
+            icon={DollarSign}
+            label={`${financeSummary?.invoice_count || 0} issued invoice${Number(financeSummary?.invoice_count || 0) === 1 ? "" : "s"}`}
+            value={formatRupees(financeSummary?.issued_invoice_amount || 0)}
+          />
+          <BillingStat
+            icon={DollarSign}
+            label="Net collected after credits"
+            value={formatRupees(financeSummary?.net_collected_amount || 0)}
+          />
+        </div>
+      ) : !isFinanceWorkspace && user?.role !== "doctor" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <BillingStat
             icon={DollarSign}
@@ -3366,43 +3386,16 @@ function BillingPage() {
         </div>
       ) : null}
 
-      {isFinanceWorkspace && showFinanceOverview ? (
-        <div className="grid gap-3 lg:grid-cols-3">
-          <button
-            type="button"
-            onClick={() => { setStatusFilter("unpaid"); setFinanceSection("invoices"); }}
-            className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left transition hover:border-amber-300 hover:bg-amber-100/70"
-          >
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Collect</p>
-            <p className="mt-2 text-lg font-black text-slate-950">Open unpaid invoices</p>
-            <p className="mt-1 text-sm font-semibold text-slate-600">Review balances and record incoming payments.</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setStatusFilter(""); setFinanceSection("invoices"); }}
-            className="rounded-2xl border border-sky-200 bg-sky-50 p-5 text-left transition hover:border-sky-300 hover:bg-sky-100/70"
-          >
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Track</p>
-            <p className="mt-2 text-lg font-black text-slate-950">Find an invoice</p>
-            <p className="mt-1 text-sm font-semibold text-slate-600">Search, view, correct, refund, or export issued records.</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setFinanceSection("controls")}
-            className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:border-emerald-300 hover:bg-emerald-100/70"
-          >
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Verify</p>
-            <p className="mt-2 text-lg font-black text-slate-950">Reconcile and close the day</p>
-            <p className="mt-1 text-sm font-semibold text-slate-600">Run integrity checks before completing the finance day.</p>
-          </button>
-        </div>
-      ) : null}
-
-      {showFinanceOverview && ["admin", "operator"].includes(user?.role) ? (
-        <SectionCard
-          title={`Visits missing final billing (${unbilledReport.count})`}
-          className={unbilledReport.count ? "border-amber-200 bg-amber-50/70" : "border-emerald-200 bg-emerald-50/60"}
-        >
+      {showFinanceControls && ["admin", "operator"].includes(user?.role) ? (
+        <details className={cx(
+          "overflow-hidden rounded-[24px] border bg-white shadow-sm",
+          unbilledReport.count ? "border-amber-200" : "border-emerald-200",
+        )}>
+          <summary className="cursor-pointer list-none px-5 py-4 font-bold text-slate-950 marker:hidden">
+            Visits missing final billing ({unbilledReport.count})
+            <span className="ml-2 text-sm font-semibold text-slate-500">Open list</span>
+          </summary>
+          <div className="border-t border-slate-100 p-5">
           {unbilledReport.count ? (
             <div>
               <p className="mb-4 text-sm font-semibold text-slate-600">
@@ -3444,14 +3437,17 @@ function BillingPage() {
           ) : (
             <p className="text-sm font-semibold text-emerald-800">No completed visit is missing final billing in the last 14 completed days.</p>
           )}
-        </SectionCard>
+          </div>
+        </details>
       ) : null}
 
-      {showFinanceOverview && ["admin", "operator"].includes(user?.role) && pendingQuickReviews.length ? (
-        <SectionCard
-          title={`Doctor billing review queue (${pendingQuickReviews.length})`}
-          className="border-[#9fdad4] bg-[#effaf8]"
-        >
+      {showFinanceControls && ["admin", "operator"].includes(user?.role) && pendingQuickReviews.length ? (
+        <details className="overflow-hidden rounded-[24px] border border-[#9fdad4] bg-white shadow-sm">
+          <summary className="cursor-pointer list-none px-5 py-4 font-bold text-slate-950 marker:hidden">
+            Billing exceptions ({pendingQuickReviews.length})
+            <span className="ml-2 text-sm font-semibold text-slate-500">Open list</span>
+          </summary>
+          <div className="border-t border-slate-100 p-5">
           <div className="grid gap-3 lg:grid-cols-2">
             {pendingQuickReviews.map((submission) => {
               const workflow = QUICK_WORKFLOW_META[submission.workflow_status] || QUICK_WORKFLOW_META.awaiting_operator;
@@ -3539,7 +3535,93 @@ function BillingPage() {
               );
             })}
           </div>
-        </SectionCard>
+          </div>
+        </details>
+      ) : null}
+
+      {showFinanceSales ? (
+        <section className="space-y-4" aria-busy={financeSummaryLoading}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <BillingStat
+              icon={Stethoscope}
+              label="Consultation sales"
+              value={formatRupees(financeSummary?.consultation_amount || 0)}
+            />
+            <BillingStat
+              icon={Package}
+              label="Supply sales"
+              value={formatRupees(financeSummary?.supply_sold_amount || 0)}
+            />
+            <BillingStat
+              icon={ReceiptText}
+              label="Cost of supplies sold"
+              value={formatRupees(financeSummary?.supply_cost_sold_amount || 0)}
+            />
+            <BillingStat
+              icon={DollarSign}
+              label="Supply gross margin"
+              value={formatRupees(financeSummary?.supply_gross_margin_amount || 0)}
+            />
+          </div>
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Other service charges</p>
+              <p className="mt-1 text-lg font-black text-slate-950">{formatRupees(financeSummary?.service_non_stock_amount || 0)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Gross issued sales</p>
+              <p className="mt-1 text-lg font-black text-slate-950">{formatRupees(financeSummary?.total_sales_amount || 0)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Credit notes</p>
+              <p className="mt-1 text-lg font-black text-rose-700">{formatRupees(financeSummary?.credit_note_amount || 0)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Net sales after credits</p>
+              <p className="mt-1 text-lg font-black text-[#17666a]">{formatRupees(financeSummary?.net_sales_amount || 0)}</p>
+            </div>
+          </div>
+          <SectionCard
+            title={financeDoctorId ? "Selected doctor" : "Sales by doctor"}
+            actions={financeSummaryLoading ? <span className="text-sm font-semibold text-slate-500">Updating…</span> : null}
+          >
+            {(financeSummary?.by_doctor || []).length ? (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <table className="min-w-[860px] w-full bg-white text-left">
+                  <thead className="bg-slate-50 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Doctor</th>
+                      <th className="px-4 py-3 text-right">Invoices</th>
+                      <th className="px-4 py-3 text-right">Consultations</th>
+                      <th className="px-4 py-3 text-right">Supply sales</th>
+                      <th className="px-4 py-3 text-right">Supply cost</th>
+                      <th className="px-4 py-3 text-right">Other charges</th>
+                      <th className="px-4 py-3 text-right">Total sales</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {financeSummary.by_doctor.map((doctor) => (
+                      <tr key={doctor.doctor_id} className="border-t border-slate-100 text-sm font-semibold text-slate-700">
+                        <td className="px-4 py-3 font-bold text-slate-950">{doctor.doctor_name}</td>
+                        <td className="px-4 py-3 text-right">{doctor.invoice_count}</td>
+                        <td className="px-4 py-3 text-right">{formatRupees(doctor.consultation_amount)}</td>
+                        <td className="px-4 py-3 text-right">{formatRupees(doctor.supply_sold_amount)}</td>
+                        <td className="px-4 py-3 text-right">{formatRupees(doctor.supply_cost_sold_amount)}</td>
+                        <td className="px-4 py-3 text-right">{formatRupees(doctor.service_non_stock_amount)}</td>
+                        <td className="px-4 py-3 text-right font-black text-slate-950">{formatRupees(doctor.total_sales_amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                title="No issued sales in this period"
+                description="Change the doctor or date filters to view another period."
+              />
+            )}
+          </SectionCard>
+        </section>
       ) : null}
 
       {showFinanceInvoices && user?.role !== "admin" && linkedDateRange ? (
@@ -3592,18 +3674,18 @@ function BillingPage() {
       {showFinanceInvoices ? <div
         className={cx(
           "grid gap-6",
-          !isMobile && "xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start",
+          !isMobile && !isFinanceWorkspace && "xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start",
         )}
       >
         <SectionCard
           className="min-w-0"
-          title="Bills"
+          title={`Invoices (${billTotal})`}
           actions={
             isMobile ? (
               <input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Filter by patient or invoice ID…"
+                placeholder="Search patient, OCS or invoice number…"
                 className="min-h-12 w-full min-w-0 flex-1 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-ocs-teal focus:bg-white"
               />
             ) : null
@@ -3614,7 +3696,7 @@ function BillingPage() {
               <input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Search patient or invoice ID…"
+                placeholder="Search patient, OCS or invoice number…"
                 className="min-w-0 max-w-md flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 outline-none transition focus:border-sky-400 focus:bg-white"
               />
               <select
@@ -3861,7 +3943,7 @@ function BillingPage() {
           )}
         </SectionCard>
 
-        <SectionCard
+        {!isFinanceWorkspace ? <SectionCard
           className="min-w-0 w-full"
           title="Pending payments from unpaid patients"
         >
@@ -3906,7 +3988,7 @@ function BillingPage() {
               description="All tracked bills are currently paid for the selected filters."
             />
           )}
-        </SectionCard>
+        </SectionCard> : null}
       </div> : null}
 
       {paymentBill && <PaymentConfirmation key={paymentBill.id} bill={paymentBill} busy={isSaving}

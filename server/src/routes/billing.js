@@ -34,6 +34,7 @@ const {
   reverseBillingSubmissionInventory,
 } = require("../lib/inventoryReversal");
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
+const { stockFinancials } = require("../lib/inventoryFinancials");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -1229,6 +1230,212 @@ function ensureBillAccess(req, bill, { write = false } = {}) {
 
   return null;
 }
+
+router.get("/finance-summary", (req, res) => {
+  if (!["admin", "accountant"].includes(req.auth?.role)) {
+    return res.status(403).json({ error: "Finance reporting is available to admin and accountant accounts only." });
+  }
+
+  const dateFrom = String(req.query.dateFrom || "").trim();
+  const dateTo = String(req.query.dateTo || "").trim();
+  const doctorId = req.query.doctorId ? Number(req.query.doctorId) : null;
+  if (!validPaymentDate(dateFrom) || !validPaymentDate(dateTo) || dateFrom > dateTo) {
+    return res.status(400).json({ error: "Select a valid finance date range." });
+  }
+  if (doctorId !== null && (!Number.isInteger(doctorId) || doctorId <= 0)) {
+    return res.status(400).json({ error: "Select a valid doctor." });
+  }
+
+  const bills = db.prepare(`
+    SELECT
+      b.id,
+      b.total_amount,
+      b.status,
+      b.items,
+      c.doctor_id,
+      d.full_name AS doctor_name,
+      COALESCE((
+        SELECT SUM(ledger.amount)
+        FROM billing_payment_ledger ledger
+        WHERE ledger.billing_id = b.id
+      ), 0) AS collected_amount,
+      COALESCE((
+        SELECT SUM(refund.amount)
+        FROM billing_refunds refund
+        WHERE refund.billing_id = b.id
+      ), 0) AS credit_note_amount,
+      MAX(0, b.total_amount - COALESCE((
+        SELECT SUM(ledger.amount)
+        FROM billing_payment_ledger ledger
+        WHERE ledger.billing_id = b.id
+      ), 0)) AS outstanding_amount
+    FROM billing b
+    JOIN consultations c ON c.id = b.consultation_id
+    JOIN doctors d ON d.id = c.doctor_id
+    WHERE b.voided_at IS NULL
+      AND c.voided_at IS NULL
+      AND b.finalized_at IS NOT NULL
+      AND date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN date(@dateFrom) AND date(@dateTo)
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    ORDER BY d.full_name COLLATE NOCASE, b.id
+  `).all({ dateFrom, dateTo, doctorId });
+
+  const movements = db.prepare(`
+    SELECT m.*, c.doctor_id
+    FROM inventory_movements m
+    JOIN billing b ON b.id = CAST(json_extract(m.meta_json, '$.billing_id') AS INTEGER)
+    JOIN consultations c ON c.id = b.consultation_id
+    WHERE b.voided_at IS NULL
+      AND c.voided_at IS NULL
+      AND b.finalized_at IS NOT NULL
+      AND date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN date(@dateFrom) AND date(@dateTo)
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+  `).all({ dateFrom, dateTo, doctorId });
+
+  const creditAllocations = db.prepare(`
+    SELECT c.doctor_id, allocation.allocation_type, SUM(allocation.amount) AS amount
+    FROM billing_refund_allocations allocation
+    JOIN billing b ON b.id = allocation.billing_id
+    JOIN consultations c ON c.id = b.consultation_id
+    WHERE b.voided_at IS NULL
+      AND c.voided_at IS NULL
+      AND b.finalized_at IS NOT NULL
+      AND date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN date(@dateFrom) AND date(@dateTo)
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    GROUP BY c.doctor_id, allocation.allocation_type
+  `).all({ dateFrom, dateTo, doctorId });
+
+  const doctorRows = new Map();
+  const ensureDoctorRow = (row) => {
+    const key = Number(row.doctor_id);
+    if (!doctorRows.has(key)) {
+      doctorRows.set(key, {
+        doctor_id: key,
+        doctor_name: row.doctor_name || "Doctor",
+        invoice_count: 0,
+        pending_invoice_count: 0,
+        paid_invoice_count: 0,
+        consultation_amount: 0,
+        supply_sold_amount: 0,
+        service_non_stock_amount: 0,
+        credit_note_amount: 0,
+        supply_credit_note_amount: 0,
+        supply_cost_sold_amount: 0,
+        total_sales_amount: 0,
+      });
+    }
+    return doctorRows.get(key);
+  };
+
+  let consultationAmount = 0;
+  let supplySoldAmount = 0;
+  let serviceNonStockAmount = 0;
+  let issuedInvoiceAmount = 0;
+  let collectedAmount = 0;
+  let creditNoteAmount = 0;
+  let paidInvoiceAmount = 0;
+  let pendingInvoiceAmount = 0;
+  let paidInvoiceCount = 0;
+  let pendingInvoiceCount = 0;
+
+  for (const bill of bills) {
+    const doctor = ensureDoctorRow(bill);
+    doctor.invoice_count += 1;
+    issuedInvoiceAmount += Number(bill.total_amount || 0);
+    collectedAmount += Number(bill.collected_amount || 0);
+    creditNoteAmount += Number(bill.credit_note_amount || 0);
+    if (bill.status === "paid") {
+      paidInvoiceCount += 1;
+      paidInvoiceAmount += Number(bill.total_amount || 0);
+      doctor.paid_invoice_count += 1;
+    } else {
+      pendingInvoiceCount += 1;
+      pendingInvoiceAmount += Number(bill.outstanding_amount || 0);
+      doctor.pending_invoice_count += 1;
+    }
+    for (const item of normalizeBillingItems(bill.items)) {
+      const amount = Number(item.amount || 0);
+      if (isConsultationFee(item)) {
+        consultationAmount += amount;
+        doctor.consultation_amount += amount;
+      } else if (item.type === "Sale" && Number(item.inventory_item_id || 0) > 0) {
+        supplySoldAmount += amount;
+        doctor.supply_sold_amount += amount;
+      } else if (item.type === "Sale") {
+        serviceNonStockAmount += amount;
+        doctor.service_non_stock_amount += amount;
+      }
+    }
+  }
+
+  const movementTotals = stockFinancials(movements);
+  let supplyCreditNoteAmount = 0;
+  for (const allocation of creditAllocations) {
+    const doctor = doctorRows.get(Number(allocation.doctor_id));
+    const amount = Number(allocation.amount || 0);
+    if (doctor) doctor.credit_note_amount += amount;
+    if (allocation.allocation_type === "supply_submission") {
+      supplyCreditNoteAmount += amount;
+      if (doctor) doctor.supply_credit_note_amount += amount;
+    }
+  }
+  for (const [rowDoctorId, doctor] of doctorRows) {
+    doctor.supply_cost_sold_amount = stockFinancials(
+      movements.filter((movement) => Number(movement.doctor_id) === rowDoctorId),
+    ).sales_cost_rs;
+    doctor.consultation_amount = roundCurrency(doctor.consultation_amount);
+    doctor.supply_sold_amount = roundCurrency(doctor.supply_sold_amount);
+    doctor.service_non_stock_amount = roundCurrency(doctor.service_non_stock_amount);
+    doctor.credit_note_amount = roundCurrency(doctor.credit_note_amount);
+    doctor.supply_credit_note_amount = roundCurrency(doctor.supply_credit_note_amount);
+    doctor.net_supply_sales_amount = roundCurrency(
+      doctor.supply_sold_amount - doctor.supply_credit_note_amount,
+    );
+    doctor.supply_gross_margin_amount = roundCurrency(
+      doctor.net_supply_sales_amount - doctor.supply_cost_sold_amount,
+    );
+    doctor.total_sales_amount = roundCurrency(
+      doctor.consultation_amount + doctor.supply_sold_amount + doctor.service_non_stock_amount,
+    );
+  }
+
+  const doctors = db.prepare(`
+    SELECT id, full_name
+    FROM doctors
+    WHERE is_active = 1 AND deleted_at IS NULL
+    ORDER BY full_name COLLATE NOCASE
+  `).all().map((doctor) => ({ id: Number(doctor.id), full_name: doctor.full_name }));
+
+  return res.json({
+    date_from: dateFrom,
+    date_to: dateTo,
+    doctor_id: doctorId,
+    doctors,
+    invoice_count: bills.length,
+    pending_invoice_count: pendingInvoiceCount,
+    pending_invoice_amount: roundCurrency(pendingInvoiceAmount),
+    paid_invoice_count: paidInvoiceCount,
+    paid_invoice_amount: roundCurrency(paidInvoiceAmount),
+    issued_invoice_amount: roundCurrency(issuedInvoiceAmount),
+    collected_amount: roundCurrency(collectedAmount),
+    credit_note_amount: roundCurrency(creditNoteAmount),
+    net_collected_amount: roundCurrency(collectedAmount - creditNoteAmount),
+    consultation_amount: roundCurrency(consultationAmount),
+    supply_sold_amount: roundCurrency(supplySoldAmount),
+    supply_credit_note_amount: roundCurrency(supplyCreditNoteAmount),
+    net_supply_sales_amount: roundCurrency(supplySoldAmount - supplyCreditNoteAmount),
+    service_non_stock_amount: roundCurrency(serviceNonStockAmount),
+    supply_cost_sold_amount: roundCurrency(movementTotals.sales_cost_rs),
+    total_sales_amount: roundCurrency(consultationAmount + supplySoldAmount + serviceNonStockAmount),
+    net_sales_amount: roundCurrency(
+      consultationAmount + supplySoldAmount + serviceNonStockAmount - creditNoteAmount,
+    ),
+    supply_gross_margin_amount: roundCurrency(
+      supplySoldAmount - supplyCreditNoteAmount - movementTotals.sales_cost_rs,
+    ),
+    by_doctor: [...doctorRows.values()].sort((a, b) => a.doctor_name.localeCompare(b.doctor_name)),
+  });
+});
 
 router.get("/patient-summary", (req, res) => {
   const doctorAccess = buildDoctorAccessClause(req.auth);

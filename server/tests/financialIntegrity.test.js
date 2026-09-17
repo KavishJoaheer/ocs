@@ -194,6 +194,61 @@ test('operators transcribe paper invoices, correct unpaid bills and record payme
   assert.equal((await api('POST',`/billing/${issued.data.id}/void`,'operator',{reason:'Operator cannot void'})).status,403);
 });
 
+test('finance summary separates invoice status, consultation sales, supply sales and supply cost', async () => {
+  const route = `/billing/finance-summary?dateFrom=${today}&dateTo=${today}&doctorId=${doctorId}`;
+  const before = await api('GET', route, 'accountant');
+  assert.equal(before.status, 200, JSON.stringify(before.data));
+
+  const ctx = context('Finance summary');
+  const stockedItem = item('Finance summary medicine');
+  const issued = await bill(ctx, [
+    standardFee(),
+    stockLine(stockedItem, 1),
+    { description: 'ECG interpretation', type: 'Sale', amount: 100, quantity: 1, is_service_charge: true },
+  ], {
+    status: 'paid',
+    payment_method: 'cash',
+    payment_date: today,
+    operation_id: randomUUID(),
+  });
+  assert.equal(issued.status, 201, JSON.stringify(issued.data));
+
+  const after = await api('GET', route, 'accountant');
+  assert.equal(after.status, 200, JSON.stringify(after.data));
+  assert.equal(after.data.invoice_count - before.data.invoice_count, 1);
+  assert.equal(after.data.paid_invoice_count - before.data.paid_invoice_count, 1);
+  assert.equal(after.data.paid_invoice_amount - before.data.paid_invoice_amount, 2125);
+  assert.equal(after.data.issued_invoice_amount - before.data.issued_invoice_amount, 2125);
+  assert.equal(after.data.collected_amount - before.data.collected_amount, 2125);
+  assert.equal(after.data.net_collected_amount - before.data.net_collected_amount, 2125);
+  assert.equal(after.data.consultation_amount - before.data.consultation_amount, 2000);
+  assert.equal(after.data.supply_sold_amount - before.data.supply_sold_amount, 25);
+  assert.equal(after.data.service_non_stock_amount - before.data.service_non_stock_amount, 100);
+  assert.equal(after.data.supply_cost_sold_amount - before.data.supply_cost_sold_amount, 10);
+  assert.equal(after.data.total_sales_amount - before.data.total_sales_amount, 2125);
+  assert.equal(after.data.net_sales_amount - before.data.net_sales_amount, 2125);
+  assert.equal(after.data.supply_gross_margin_amount - before.data.supply_gross_margin_amount, 15);
+  assert.ok(after.data.doctors.some((doctor) => doctor.id === doctorId));
+  assert.ok(after.data.by_doctor.some((doctor) => doctor.doctor_id === doctorId));
+
+  const credit = await api('POST', `/billing/${issued.data.id}/refunds`, 'accountant', {
+    amount: 100,
+    refund_method: 'cash',
+    refund_date: today,
+    reason: 'Reverse the ECG interpretation service charge',
+    operation_id: randomUUID(),
+  });
+  assert.equal(credit.status, 201, JSON.stringify(credit.data));
+  const afterCredit = await api('GET', route, 'accountant');
+  assert.equal(afterCredit.data.credit_note_amount - before.data.credit_note_amount, 100);
+  assert.equal(afterCredit.data.net_collected_amount - before.data.net_collected_amount, 2025);
+  assert.equal(afterCredit.data.total_sales_amount - before.data.total_sales_amount, 2125);
+  assert.equal(afterCredit.data.net_sales_amount - before.data.net_sales_amount, 2025);
+
+  const denied = await api('GET', route, 'doctor');
+  assert.equal(denied.status, 403);
+});
+
 
 test('invoice retries have one financial and stock effect, including concurrent and legacy clients', async () => {
   const ctx=context('Retry'); const it=item('Retry medicine'); const id=randomUUID();
