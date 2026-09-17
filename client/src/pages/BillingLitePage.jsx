@@ -52,10 +52,7 @@ const STATUS_META = {
 const MAX_CONSULTATION_FEE = 4500;
 const SUBMISSION_PAGE_SIZE = 20;
 const PATIENT_PICKER_PAGE_SIZE = 60;
-
-function countPatientVisits(patients) {
-  return (patients || []).reduce((total, patient) => total + (patient.visits?.length || 0), 0);
-}
+const OPERATOR_QUEUE_PAGE_SIZE = 50;
 
 function mergePatientOptions(current, incoming) {
   const patients = new Map((current || []).map((patient) => [String(patient.patient_id), {
@@ -74,6 +71,14 @@ function mergePatientOptions(current, incoming) {
     patients.set(key, { ...existing, ...patient, visits: [...visits.values()] });
   }
   return [...patients.values()].sort((a, b) => String(a.patient_name || "").localeCompare(String(b.patient_name || ""), undefined, { sensitivity: "base" }));
+}
+
+function normalizeOperatorActions(rows) {
+  return (rows || []).map((row) => ({
+    ...row,
+    id: Number(row.submission_id || row.id),
+    status: row.workflow_status || row.status || "awaiting_operator",
+  }));
 }
 
 function formatRupees(value) {
@@ -258,6 +263,7 @@ function BillingLitePage() {
   const [patientOptions, setPatientOptions] = useState([]);
   const [doctorOptions, setDoctorOptions] = useState([]);
   const [billingDoctorId, setBillingDoctorId] = useState("");
+  const billingDoctorIdRef = useRef("");
   const [sourceReference, setSourceReference] = useState("");
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
@@ -265,6 +271,10 @@ function BillingLitePage() {
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
   const [patientOptionsHasMore, setPatientOptionsHasMore] = useState(false);
   const [patientSearchHasMore, setPatientSearchHasMore] = useState(false);
+  const [patientOptionsOffset, setPatientOptionsOffset] = useState(0);
+  const [patientSearchOffset, setPatientSearchOffset] = useState(0);
+  const [billingCutoverDate, setBillingCutoverDate] = useState("");
+  const [billingActive, setBillingActive] = useState(true);
   const [patientPageLoading, setPatientPageLoading] = useState(false);
   const patientPickerRef = useRef(null);
   const [visitSearch, setVisitSearch] = useState("");
@@ -285,7 +295,11 @@ function BillingLitePage() {
   const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
   const [workflowDialog, setWorkflowDialog] = useState(null);
   const [operatorPayments, setOperatorPayments] = useState([]);
+  const [operatorActions, setOperatorActions] = useState([]);
+  const [operatorActionTotal, setOperatorActionTotal] = useState(0);
+  const [operatorQueueLoading, setOperatorQueueLoading] = useState(false);
   const [operatorQueueSearch, setOperatorQueueSearch] = useState("");
+  const operatorQueueSearchRef = useRef("");
   const [paymentBill, setPaymentBill] = useState(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [favorites, setFavorites] = useState(() => {
@@ -295,6 +309,14 @@ function BillingLitePage() {
   useEffect(() => {
     document.title = "Billing · OCS Médecins";
   }, []);
+
+  useEffect(() => {
+    operatorQueueSearchRef.current = operatorQueueSearch;
+  }, [operatorQueueSearch]);
+
+  useEffect(() => {
+    billingDoctorIdRef.current = billingDoctorId;
+  }, [billingDoctorId]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -310,21 +332,37 @@ function BillingLitePage() {
     if (!silent) setIsLoading(true);
     try {
       const pickerQuery = new URLSearchParams({ limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
-      if (operatorIssueOnly && billingDoctorId) pickerQuery.set("doctorId", billingDoctorId);
-      const [submissionPayload, pickerPayload, feePayload, operatorPayload] = await Promise.all([
+      const activeBillingDoctorId = billingDoctorIdRef.current;
+      if (operatorIssueOnly && activeBillingDoctorId) pickerQuery.set("doctorId", activeBillingDoctorId);
+      const operatorActionQuery = new URLSearchParams({
+        status: "actionable",
+        limit: String(OPERATOR_QUEUE_PAGE_SIZE),
+        offset: "0",
+      });
+      const activeOperatorSearch = operatorQueueSearchRef.current.trim();
+      if (activeOperatorSearch) operatorActionQuery.set("search", activeOperatorSearch);
+      const [submissionPayload, pickerPayload, feePayload, operatorPayload, operatorQueuePayload] = await Promise.all([
         api.get(`/billing/quick/submissions?limit=${SUBMISSION_PAGE_SIZE}&offset=0`),
         api.get(`/billing/quick/picker-options?${pickerQuery.toString()}`),
         api.get("/billing/consultation-fees"),
         operatorIssueOnly ? api.get("/dashboard/operator-workspace") : Promise.resolve(null),
+        operatorIssueOnly
+          ? api.get(`/billing/quick/operator-queue?${operatorActionQuery.toString()}`)
+          : Promise.resolve({ submissions: [], total: 0 }),
       ]);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
       setSubmissionTotal(Number(submissionPayload?.total || 0));
       setSubmissionPage(0);
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
       setPatientOptionsHasMore(Boolean(pickerPayload?.has_more));
+      setPatientOptionsOffset(Number(pickerPayload?.next_offset || 0));
+      setBillingCutoverDate(String(pickerPayload?.cutover_date || ""));
+      setBillingActive(pickerPayload?.billing_active !== false);
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
       setConsultationFees(feePayload || {});
       setOperatorPayments(Array.isArray(operatorPayload?.pendingPayments) ? operatorPayload.pendingPayments : []);
+      setOperatorActions(normalizeOperatorActions(operatorQueuePayload?.submissions));
+      setOperatorActionTotal(Number(operatorQueuePayload?.total || 0));
     } catch (error) {
       toast.error(error.message || "Quick billing could not be loaded.");
     } finally {
@@ -356,12 +394,63 @@ function BillingLitePage() {
     return () => window.clearTimeout(timeout);
   }, [submissionPage, submissionRefreshToken, submissionSearch, submissionStatus, view]);
 
+  useEffect(() => {
+    if (!operatorIssueOnly) return undefined;
+    let ignore = false;
+    const timeout = window.setTimeout(async () => {
+      setOperatorQueueLoading(true);
+      try {
+        const query = new URLSearchParams({
+          status: "actionable",
+          limit: String(OPERATOR_QUEUE_PAGE_SIZE),
+          offset: "0",
+        });
+        if (operatorQueueSearch.trim()) query.set("search", operatorQueueSearch.trim());
+        const payload = await api.get(`/billing/quick/operator-queue?${query.toString()}`);
+        if (!ignore) {
+          setOperatorActions(normalizeOperatorActions(payload?.submissions));
+          setOperatorActionTotal(Number(payload?.total || 0));
+        }
+      } catch (error) {
+        if (!ignore) toast.error(error.message || "The operator billing queue could not be loaded.");
+      } finally {
+        if (!ignore) setOperatorQueueLoading(false);
+      }
+    }, 250);
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeout);
+    };
+  }, [operatorIssueOnly, operatorQueueSearch, submissionRefreshToken]);
+
+  async function loadMoreOperatorActions() {
+    if (operatorQueueLoading || operatorActions.length >= operatorActionTotal) return;
+    setOperatorQueueLoading(true);
+    try {
+      const query = new URLSearchParams({
+        status: "actionable",
+        limit: String(OPERATOR_QUEUE_PAGE_SIZE),
+        offset: String(operatorActions.length),
+      });
+      if (operatorQueueSearch.trim()) query.set("search", operatorQueueSearch.trim());
+      const payload = await api.get(`/billing/quick/operator-queue?${query.toString()}`);
+      setOperatorActions((current) => [...current, ...normalizeOperatorActions(payload?.submissions)]);
+      setOperatorActionTotal(Number(payload?.total || 0));
+    } catch (error) {
+      toast.error(error.message || "More operator actions could not be loaded.");
+    } finally {
+      setOperatorQueueLoading(false);
+    }
+  }
+
   async function selectBillingDoctor(doctorId) {
     setBillingDoctorId(doctorId);
     setPatientOptions([]);
     setPatientOptionsHasMore(false);
+    setPatientOptionsOffset(0);
     setPatientSearchResults(null);
     setPatientSearchHasMore(false);
+    setPatientSearchOffset(0);
     setSelectedPatientId("");
     setSelectedPickerVisitId("");
     setSelectedVisit(null);
@@ -373,6 +462,9 @@ function BillingLitePage() {
       const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
       setPatientOptions(Array.isArray(payload?.patients) ? payload.patients : []);
       setPatientOptionsHasMore(Boolean(payload?.has_more));
+      setPatientOptionsOffset(Number(payload?.next_offset || 0));
+      setBillingCutoverDate(String(payload?.cutover_date || ""));
+      setBillingActive(payload?.billing_active !== false);
       if (Array.isArray(payload?.doctors)) setDoctorOptions(payload.doctors);
     } catch (error) {
       toast.error(error.message || "This doctor’s billable visits could not be loaded.");
@@ -423,6 +515,7 @@ function BillingLitePage() {
     if (!patientPickerOpen || needle.length < 2 || (operatorIssueOnly && !billingDoctorId)) {
       setPatientSearchResults(null);
       setPatientSearchHasMore(false);
+      setPatientSearchOffset(0);
       setPatientSearchLoading(false);
       return undefined;
     }
@@ -437,6 +530,7 @@ function BillingLitePage() {
         if (!ignore) {
           setPatientSearchResults(Array.isArray(payload?.patients) ? payload.patients : []);
           setPatientSearchHasMore(Boolean(payload?.has_more));
+          setPatientSearchOffset(Number(payload?.next_offset || 0));
         }
       } catch (error) {
         if (!ignore) toast.error(error.message || "Patient search could not be completed.");
@@ -596,12 +690,11 @@ function BillingLitePage() {
     if (patientPageLoading || (operatorIssueOnly && !billingDoctorId)) return;
     const search = patientSearch.trim();
     const searching = search.length >= 2 && patientSearchResults !== null;
-    const current = searching ? patientSearchResults : patientOptions;
     setPatientPageLoading(true);
     try {
       const query = new URLSearchParams({
         limit: String(PATIENT_PICKER_PAGE_SIZE),
-        offset: String(countPatientVisits(current)),
+        offset: String(searching ? patientSearchOffset : patientOptionsOffset),
       });
       if (searching) query.set("search", search);
       if (operatorIssueOnly) query.set("doctorId", billingDoctorId);
@@ -610,9 +703,11 @@ function BillingLitePage() {
       if (searching) {
         setPatientSearchResults((existing) => mergePatientOptions(existing || [], incoming));
         setPatientSearchHasMore(Boolean(payload?.has_more));
+        setPatientSearchOffset(Number(payload?.next_offset || patientSearchOffset));
       } else {
         setPatientOptions((existing) => mergePatientOptions(existing, incoming));
         setPatientOptionsHasMore(Boolean(payload?.has_more));
+        setPatientOptionsOffset(Number(payload?.next_offset || patientOptionsOffset));
       }
     } catch (error) {
       toast.error(error.message || "More billable visits could not be loaded.");
@@ -768,8 +863,11 @@ function BillingLitePage() {
             meta: {
               label: `Billing ${selectedVisit.visit_number}`,
               consultationId: selectedVisit.consultation_id,
+              doctorId: Number(selectedVisit.doctor_id || billingDoctorId || 0) || null,
               visitNumber: selectedVisit.visit_number,
               patientName: selectedVisit.patient_name || selectedVisit.patient_masked_name,
+              patientIdentifier: selectedVisit.patient_identifier || "",
+              sourceReference: sourceReference.trim() || "",
               itemCount: selectedUnitCount,
             },
           });
@@ -878,26 +976,21 @@ function BillingLitePage() {
 
   async function editOfflineSubmission(queueEntry) {
     const consultationId = Number(queueEntry.payload?.consultation_id || queueEntry.meta?.consultationId || 0);
-    const visit = patientOptions
-      .flatMap((patient) => patient.visits || [])
-      .find((row) => Number(row.consultation_id) === consultationId);
-    if (!visit) {
-      toast.error("This visit is no longer billable. Discard the saved submission after confirming no further bill is needed.");
+    const queuedDoctorId = Number(queueEntry.payload?.doctor_id || queueEntry.meta?.doctorId || 0);
+    if (!Number.isInteger(consultationId) || consultationId <= 0) {
+      toast.error("This saved submission is missing its consultation reference and cannot be edited safely.");
       return;
     }
-
-    const fee = queueEntry.payload?.consultation_fee || {};
-    setSelectedVisit(visit);
-    setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
-    setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
-    setConsultationAdjustmentReason(String(fee.adjustment_reason || ""));
     setIsCatalogLoading(true);
     try {
       const doctorQuery = operatorIssueOnly
-        ? `?doctorId=${encodeURIComponent(billingDoctorId || visit.doctor_id || "")}`
+        ? `?doctorId=${encodeURIComponent(queuedDoctorId || billingDoctorId || "")}`
         : "";
       const payload = await api.get(`/billing/quick/catalog/${consultationId}${doctorQuery}`);
       const items = Array.isArray(payload?.items) ? payload.items : [];
+      const visit = payload?.visit;
+      if (!visit) throw new Error("The saved consultation could not be loaded.");
+      const fee = queueEntry.payload?.consultation_fee || {};
       const nextCart = {};
       for (const savedItem of queueEntry.payload?.items || []) {
         if (items.some((item) => Number(item.id) === Number(savedItem.inventory_item_id))) {
@@ -906,12 +999,19 @@ function BillingLitePage() {
       }
       setCatalog(items);
       setCart(nextCart);
-      setSelectedVisit(payload.visit || visit);
+      setSelectedVisit(visit);
+      setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
+      setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
+      setConsultationAdjustmentReason(String(fee.adjustment_reason || ""));
+      if (operatorIssueOnly) {
+        setBillingDoctorId(String(queuedDoctorId || visit.doctor_id || ""));
+        setSourceReference(String(queueEntry.payload?.source_reference || queueEntry.meta?.sourceReference || ""));
+      }
       setEditingOfflineEntry(queueEntry);
       setView("catalog");
       toast.success("Saved submission opened for correction. Review it before submitting again.");
     } catch (error) {
-      toast.error(error.message || "This saved submission could not be opened for editing.");
+      toast.error(error.message || "This saved submission could not be opened. Retry after checking the consultation or discard it if no bill is required.");
     } finally {
       setIsCatalogLoading(false);
     }
@@ -959,16 +1059,13 @@ function BillingLitePage() {
     ["needs_doctor", "needs_attention", "queued_offline"].includes(submission.status),
   ).length;
 
-  const operatorActionSubmissions = operatorIssueOnly
-    ? submissions.filter((submission) => ["awaiting_operator", "needs_doctor"].includes(submission.status))
-    : [];
   const operatorQueueNeedle = operatorQueueSearch.trim().toLowerCase();
   const matchesOperatorQueue = (entry) => !operatorQueueNeedle || [
     entry.patient_name, entry.patient_identifier, entry.visit_number,
     entry.invoice_number, entry.doctor_name,
   ].some((value) => String(value || "").toLowerCase().includes(operatorQueueNeedle));
-  const visibleOperatorSubmissions = operatorActionSubmissions.filter(matchesOperatorQueue);
-  const actionBillIds = new Set(operatorActionSubmissions.map((submission) => Number(submission.bill_id || 0)).filter(Boolean));
+  const visibleOperatorSubmissions = operatorActions.filter((submission) => submission.status !== "ready_for_payment");
+  const actionBillIds = new Set(visibleOperatorSubmissions.map((submission) => Number(submission.bill_id || 0)).filter(Boolean));
   const visibleOperatorPayments = operatorPayments
     .filter((bill) => !actionBillIds.has(Number(bill.id || 0)))
     .filter(matchesOperatorQueue);
@@ -1043,6 +1140,13 @@ function BillingLitePage() {
               </div>
             ) : null}
 
+            {!billingActive && billingCutoverDate ? (
+              <div className="relative z-10 mb-4 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <p className="font-black">Live billing begins {dayjs(billingCutoverDate).format("D MMMM YYYY")}</p>
+                <p className="mt-1 text-sm font-semibold">Visits before this cutover are intentionally excluded because the earlier billing records were trial data. New completed consultations will appear here from the cutover date.</p>
+              </div>
+            ) : null}
+
             {operatorIssueOnly ? (
               <div className="relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1074,9 +1178,14 @@ function BillingLitePage() {
                         <button type="button" onClick={() => void openOperatorPaymentBill(bill)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#17666a] px-3 text-sm font-black text-white"><CreditCard className="size-4" />{Number(bill.payment_received_amount || 0) > 0 ? "Open payment ledger" : "Record payment"}</button>
                       </article>
                     ))}
+                    {operatorActions.length < operatorActionTotal ? (
+                      <button type="button" disabled={operatorQueueLoading} onClick={() => void loadMoreOperatorActions()} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-[#17666a] disabled:opacity-50 md:col-span-2">
+                        {operatorQueueLoading ? "Loading…" : `Load ${operatorActionTotal - operatorActions.length} more billing action${operatorActionTotal - operatorActions.length === 1 ? "" : "s"}`}
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
-                  <p className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">No matching operator actions.</p>
+                  <p className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">{operatorQueueLoading ? "Loading operator actions…" : "No matching operator actions."}</p>
                 )}
               </div>
             ) : null}
@@ -1106,7 +1215,9 @@ function BillingLitePage() {
                 </div>
               ) : (
                 <div className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">
-                  No completed visits are waiting for billing.
+                  {!billingActive && billingCutoverDate
+                    ? `No visits can be billed before ${dayjs(billingCutoverDate).format("D MMMM YYYY")}.`
+                    : "No completed visits are waiting for billing."}
                 </div>
               )}
               {priorityVisits.length > 4 ? (
@@ -1197,7 +1308,11 @@ function BillingLitePage() {
                             </span>
                           </button>
                         )) : (
-                          <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No matching patient.</p>
+                          <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                            {!billingActive && billingCutoverDate
+                              ? `Billing is intentionally closed for visits before ${dayjs(billingCutoverDate).format("D MMMM YYYY")}.`
+                              : "No matching patient with a completed billable consultation."}
+                          </p>
                         )}
                         {(patientSearch.trim().length >= 2 && patientSearchResults !== null ? patientSearchHasMore : patientOptionsHasMore) ? (
                           <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 p-3 backdrop-blur">

@@ -7,7 +7,9 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
     SELECT b.*, c.doctor_id, c.consultation_date, c.voided_at AS consultation_voided_at
     FROM billing b JOIN consultations c ON c.id = b.consultation_id
     WHERE (? IS NULL OR c.doctor_id = ?)
-  `).all(doctorId, doctorId);
+      AND (? IS NULL OR date(c.consultation_date) >= date(?))
+      AND (? IS NULL OR date(c.consultation_date) <= date(?))
+  `).all(doctorId, doctorId, from, from, to, to);
   const active = bills.filter(b => !b.voided_at && !b.consultation_voided_at);
   const issues = [];
   const feeGroups = new Map();
@@ -53,10 +55,15 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
     issues.push({ type: 'fee_review', label: `Bill #${bill.id}: ${bill.legacy_fee_review_required ? 'admin must verify the historical fee against source records' : 'confirm consultation type and fee'}`, bill_ids: [bill.id], amount: bill.total_amount });
   }
   const paymentTotals = new Map(db.prepare(`
-    SELECT billing_id, SUM(amount) AS amount
-    FROM billing_payment_ledger
-    GROUP BY billing_id
-  `).all().map((row) => [Number(row.billing_id), Number(row.amount || 0)]));
+    SELECT ledger.billing_id, SUM(ledger.amount) AS amount
+    FROM billing_payment_ledger ledger
+    JOIN billing bill ON bill.id = ledger.billing_id
+    JOIN consultations consultation ON consultation.id = bill.consultation_id
+    WHERE (? IS NULL OR consultation.doctor_id = ?)
+      AND (? IS NULL OR date(consultation.consultation_date) >= date(?))
+      AND (? IS NULL OR date(consultation.consultation_date) <= date(?))
+    GROUP BY ledger.billing_id
+  `).all(doctorId, doctorId, from, from, to, to).map((row) => [Number(row.billing_id), Number(row.amount || 0)]));
   for (const bill of active) {
     const received = paymentTotals.get(Number(bill.id)) || 0;
     const total = Number(bill.total_amount || 0);
@@ -80,10 +87,16 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
     }
   }
   const undocumentedRefunds = db.prepare(`
-    SELECT id, billing_id, amount, refund_method
-    FROM billing_refunds
-    WHERE refund_method != 'cash' AND length(trim(COALESCE(external_reference, ''))) < 3
-  `).all();
+    SELECT refund.id, refund.billing_id, refund.amount, refund.refund_method
+    FROM billing_refunds refund
+    JOIN billing bill ON bill.id = refund.billing_id
+    JOIN consultations consultation ON consultation.id = bill.consultation_id
+    WHERE refund.refund_method != 'cash'
+      AND length(trim(COALESCE(refund.external_reference, ''))) < 3
+      AND (? IS NULL OR consultation.doctor_id = ?)
+      AND (? IS NULL OR date(consultation.consultation_date) >= date(?))
+      AND (? IS NULL OR date(consultation.consultation_date) <= date(?))
+  `).all(doctorId, doctorId, from, from, to, to);
   for (const refund of undocumentedRefunds) {
     issues.push({
       type: 'refund_reference_missing',
@@ -91,10 +104,64 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       bill_ids: [refund.billing_id], amount: Number(refund.amount || 0), refund_id: refund.id,
     });
   }
+  const refundAllocationIssues = db.prepare(`
+    SELECT
+      refund.id,
+      refund.billing_id,
+      refund.amount AS refund_amount,
+      allocation.id AS allocation_id,
+      allocation.amount AS allocation_amount
+    FROM billing_refunds refund
+    JOIN billing bill ON bill.id = refund.billing_id
+    JOIN consultations consultation ON consultation.id = bill.consultation_id
+    LEFT JOIN billing_refund_allocations allocation ON allocation.refund_id = refund.id
+    WHERE (allocation.id IS NULL OR abs(refund.amount - allocation.amount) >= 0.005)
+      AND (? IS NULL OR consultation.doctor_id = ?)
+      AND (? IS NULL OR date(consultation.consultation_date) >= date(?))
+      AND (? IS NULL OR date(consultation.consultation_date) <= date(?))
+    ORDER BY refund.id ASC
+  `).all(doctorId, doctorId, from, from, to, to);
+  for (const refund of refundAllocationIssues) {
+    const missing = !refund.allocation_id;
+    issues.push({
+      type: missing ? 'refund_allocation_missing' : 'refund_allocation_mismatch',
+      label: missing
+        ? `Credit note #${refund.id}: classify the refund before further supply corrections`
+        : `Credit note #${refund.id}: allocated amount does not match the immutable credit note`,
+      bill_ids: [refund.billing_id],
+      amount: Number(refund.refund_amount || 0),
+      refund_id: Number(refund.id),
+      allocated_amount: Number(refund.allocation_amount || 0),
+    });
+  }
+  const supplyAllocationIssues = db.prepare(`
+    SELECT refund.id, refund.billing_id, refund.amount, allocation.submission_id
+    FROM billing_refund_allocations allocation
+    JOIN billing_refunds refund ON refund.id = allocation.refund_id
+    JOIN billing bill ON bill.id = refund.billing_id
+    JOIN consultations consultation ON consultation.id = bill.consultation_id
+    LEFT JOIN billing_supply_corrections correction ON correction.refund_id = refund.id
+    WHERE allocation.allocation_type = 'supply_submission'
+      AND correction.id IS NULL
+      AND (? IS NULL OR consultation.doctor_id = ?)
+      AND (? IS NULL OR date(consultation.consultation_date) >= date(?))
+      AND (? IS NULL OR date(consultation.consultation_date) <= date(?))
+    ORDER BY refund.id ASC
+  `).all(doctorId, doctorId, from, from, to, to);
+  for (const refund of supplyAllocationIssues) {
+    issues.push({
+      type: 'supply_refund_correction_missing',
+      label: `Credit note #${refund.id}: supply credit has no documented physical stock outcome`,
+      bill_ids: [refund.billing_id],
+      amount: Number(refund.amount || 0),
+      refund_id: Number(refund.id),
+      submission_id: Number(refund.submission_id || 0),
+    });
+  }
   for (const bill of bills.filter(b => (b.voided_at || b.consultation_voided_at) && b.status === 'paid')) {
     issues.push({ type: 'voided_payment', label: `Voided bill #${bill.id}: verify the collected money and any refund`, bill_ids: [bill.id], amount: bill.total_amount });
   }
-  const movements = movementRows(db, { doctorId });
+  const movements = movementRows(db, { doctorId, from, to });
   const metadata = new Map();
   for (const movement of movements) {
     try {
@@ -215,7 +282,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       });
     }
   }
-  const unclosedDates = db.prepare(`
+  const unclosedDates = doctorId == null ? db.prepare(`
     WITH financial_activity(business_date) AS (
       SELECT transaction_date FROM billing_payment_ledger
       UNION
@@ -224,9 +291,12 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
     SELECT activity.business_date
     FROM financial_activity activity
     LEFT JOIN financial_day_closings closing ON closing.business_date = activity.business_date
-    WHERE closing.id IS NULL AND activity.business_date < date('now', '+4 hours')
+    WHERE closing.id IS NULL
+      AND activity.business_date < date('now', '+4 hours')
+      AND (? IS NULL OR activity.business_date >= date(?))
+      AND (? IS NULL OR activity.business_date <= date(?))
     ORDER BY activity.business_date ASC
-  `).all();
+  `).all(from, from, to, to) : [];
   for (const row of unclosedDates) {
     issues.push({
       type: 'day_close_missing',
@@ -256,7 +326,9 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
         OR i.quantity > COALESCE((SELECT SUM(b.quantity_remaining) FROM inventory_batches b WHERE b.item_id=i.id),0))`).get().n,
       unfinished_counts: db.prepare("SELECT COUNT(*) AS n FROM inventory_stocktake_sessions WHERE status IN ('draft','in_progress','recount_required','submitted','approved')").get().n,
     } : null,
-    scope: 'Unresolved records are checked across all dates. Stock measures follow the selected movement dates.',
+    scope: from || to
+      ? 'Invoice and stock exceptions follow the selected date range and doctor scope.'
+      : 'Unresolved records are checked across all dates and respect the selected doctor scope.',
     accounting_note: 'OCS remainder is collected revenue less doctor commission and transport. It excludes operating expenses and is not net profit. Voided paid bills require a separate cash/refund review.',
   };
 }

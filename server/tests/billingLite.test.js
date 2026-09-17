@@ -746,3 +746,126 @@ test("patient picker search runs on the server before result limiting", async ()
   assert.equal(searched.data.patients[0].patient_id,target.patientId);
   assert.ok(searched.data.patients[0].visits.some(visit=>visit.consultation_id===target.nextConsultationId));
 });
+
+test("patient picker reports the billing cutover instead of presenting an unexplained empty list", async () => {
+  const previous = db.prepare("SELECT * FROM billing_system_settings WHERE id = 1").get();
+  try {
+    db.prepare("DELETE FROM billing_system_settings WHERE id = 1").run();
+    const futurePatientId = Number(db.prepare(`
+      INSERT INTO patients (full_name, first_name, last_name, patient_identifier, age, contact_number, patient_contact_number, address, assigned_doctor_id)
+      VALUES ('Future Cutover Patient', 'Future', 'Patient', ?, 40, '57000000', '57000000', 'Future test address', ?)
+    `).run(`OCS-FUTURE-${Date.now()}`, doctorId).lastInsertRowid);
+    const futureAppointmentId = Number(db.prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, '2099-01-01', '10:00', 'completed')
+    `).run(futurePatientId, doctorId).lastInsertRowid);
+    const futureConsultationId = Number(db.prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, '2099-01-01', 'Future-dated cutover regression')
+    `).run(futureAppointmentId, futurePatientId, doctorId).lastInsertRowid);
+    ensureBillingForConsultation(futureConsultationId, futurePatientId, null, "Day Consultation");
+    db.prepare(`
+      INSERT INTO billing_system_settings (id, cutover_date, reset_at, reset_reason)
+      VALUES (1, '2099-01-01', CURRENT_TIMESTAMP, 'Picker cutover regression test')
+      ON CONFLICT(id) DO UPDATE SET
+        cutover_date = excluded.cutover_date,
+        reset_at = excluded.reset_at,
+        reset_reason = excluded.reset_reason
+    `).run();
+    const picker = await api("GET", "/billing/quick/picker-options?limit=20", doctorToken);
+    assert.equal(picker.status, 200, JSON.stringify(picker.data));
+    assert.equal(picker.data.cutover_date, "2099-01-01");
+    assert.equal(picker.data.billing_active, false);
+    assert.deepEqual(picker.data.patients, []);
+    assert.equal(picker.data.next_offset, 0);
+    assert.equal(picker.data.has_more, false);
+    const blocked = await api("POST", `/billing/quick/visits/${futureConsultationId}/capture`, doctorToken, {
+      operation_id: randomUUID(),
+      consultation_fee: { type: "Day Consultation", amount: 2000 },
+      items: [],
+    });
+    assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+    assert.equal(blocked.data.code, "BILLING_CUTOVER_NOT_ACTIVE");
+  } finally {
+    if (previous) {
+      db.prepare(`
+        INSERT INTO billing_system_settings (id, cutover_date, reset_at, reset_reason)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          cutover_date = excluded.cutover_date,
+          reset_at = excluded.reset_at,
+          reset_reason = excluded.reset_reason
+      `).run(previous.cutover_date, previous.reset_at, previous.reset_reason);
+    } else {
+      db.prepare("DELETE FROM billing_system_settings WHERE id = 1").run();
+    }
+  }
+});
+
+test("operator action queue is searchable and reports stable pagination totals", async () => {
+  const today = getTodayLocal();
+  const identifier = `OCS-QUEUE-${Date.now()}`;
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (full_name, first_name, last_name, patient_identifier, age, contact_number, patient_contact_number, address, assigned_doctor_id)
+    VALUES ('Queue Search Patient', 'Queue', 'Patient', ?, 40, '57000000', '57000000', 'Queue test address', ?)
+  `).run(identifier, doctorId).lastInsertRowid);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '11:45', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const queueConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Operator queue pagination test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(queueConsultationId, patientId, null, "Day Consultation");
+  const captured = await api("POST", `/billing/quick/visits/${queueConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    consultation_fee: { type: "Day Consultation", amount: 2000 },
+    items: [],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+
+  const queue = await api(
+    "GET",
+    `/billing/quick/operator-queue?status=actionable&search=${encodeURIComponent(identifier)}&limit=10&offset=0`,
+    operatorToken,
+  );
+  assert.equal(queue.status, 200, JSON.stringify(queue.data));
+  assert.equal(queue.data.total, 1);
+  assert.equal(queue.data.has_more, false);
+  assert.equal(queue.data.submissions[0].consultation_id, queueConsultationId);
+  const invoiceNumber = db.prepare("SELECT invoice_number FROM billing WHERE id = ?").get(captured.data.submission.bill_id).invoice_number;
+  const invoiceSearch = await api(
+    "GET",
+    `/billing/quick/operator-queue?status=actionable&search=${encodeURIComponent(invoiceNumber)}&limit=10&offset=0`,
+    operatorToken,
+  );
+  assert.equal(invoiceSearch.status, 200, JSON.stringify(invoiceSearch.data));
+  assert.equal(invoiceSearch.data.total, 1);
+  assert.equal(invoiceSearch.data.submissions[0].invoice_number, invoiceNumber);
+
+  const approved = await api(
+    "PATCH",
+    `/billing/quick/operator-queue/${queueConsultationId}/status`,
+    operatorToken,
+    {
+      submission_id: queue.data.submissions[0].submission_id,
+      expected_workflow_status: queue.data.submissions[0].workflow_status,
+      status: "ready_for_payment",
+      note: "Charges verified for collection",
+    },
+  );
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  const workspace = await api("GET", "/dashboard/operator-workspace", operatorToken);
+  assert.equal(workspace.status, 200, JSON.stringify(workspace.data));
+  assert.ok(workspace.data.pendingPayments.some((bill) => Number(bill.id) === Number(captured.data.submission.bill_id)));
+
+  const empty = await api(
+    "GET",
+    "/billing/quick/operator-queue?status=actionable&search=OCS-NOT-PRESENT&limit=10&offset=0",
+    operatorToken,
+  );
+  assert.equal(empty.status, 200, JSON.stringify(empty.data));
+  assert.equal(empty.data.total, 0);
+  assert.deepEqual(empty.data.submissions, []);
+});

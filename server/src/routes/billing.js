@@ -515,6 +515,27 @@ function formatVisitNumber(consultationId) {
   return `V-${String(Number(consultationId || 0)).padStart(6, "0")}`;
 }
 
+function assertQuickBillingCutoverOpen(consultation) {
+  const cutoverDate = getBillingCutoverDate(db);
+  if (!cutoverDate) return;
+  const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
+  if (localDate < cutoverDate) {
+    throw Object.assign(
+      new Error(`Live billing begins ${cutoverDate}. Submissions cannot be posted before the cutover.`),
+      { status: 409, extra: { code: "BILLING_CUTOVER_NOT_ACTIVE", cutover_date: cutoverDate, local_date: localDate } },
+    );
+  }
+  const consultationDate = String(
+    consultation?.appointment_date || consultation?.consultation_date || "",
+  ).slice(0, 10);
+  if (consultationDate && consultationDate < cutoverDate) {
+    throw Object.assign(
+      new Error(`This visit is dated before the ${cutoverDate} billing cutover and cannot receive a live invoice.`),
+      { status: 409, extra: { code: "VISIT_BEFORE_BILLING_CUTOVER", cutover_date: cutoverDate } },
+    );
+  }
+}
+
 function maskPatientName(fullName) {
   return String(fullName || "")
     .trim()
@@ -1237,6 +1258,23 @@ router.get("/patient-summary", (req, res) => {
   const dateFrom = String(req.query.dateFrom ?? "").trim();
   const dateTo = String(req.query.dateTo ?? "").trim();
   const dateBasis = req.query.dateBasis === "payment" ? "payment" : "visit";
+  const paginated = String(req.query.paginated || "") === "1";
+  const search = String(req.query.search || "").trim().toLowerCase().slice(0, 100);
+  const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit, 10) || 40));
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+  const respond = (rows) => {
+    if (!paginated) return res.json(rows);
+    const filtered = search
+      ? rows.filter((row) => String(row.patient_name || "").toLowerCase().includes(search))
+      : rows;
+    const totals = filtered.reduce((acc, row) => ({
+      total_billed: roundCurrency(acc.total_billed + Number(row.total_billed || 0)),
+      paid_amount: roundCurrency(acc.paid_amount + Number(row.paid_amount || 0)),
+      unpaid_amount: roundCurrency(acc.unpaid_amount + Number(row.unpaid_amount || 0)),
+      refunded_amount: roundCurrency(acc.refunded_amount + Number(row.refunded_amount || 0)),
+    }), { total_billed: 0, paid_amount: 0, unpaid_amount: 0, refunded_amount: 0 });
+    return res.json({ patients: filtered.slice(offset, offset + limit), total: filtered.length, limit, offset, totals });
+  };
 
   if (dateBasis === "payment") {
     const summary = db.prepare(`
@@ -1306,7 +1344,7 @@ router.get("/patient-summary", (req, res) => {
       reportDoctorId: req.query.doctorId ? Number(req.query.doctorId) : null,
       ...doctorAccess.params,
     });
-    return res.json(summary);
+    return respond(summary);
   }
 
   const summary = db
@@ -1346,7 +1384,7 @@ router.get("/patient-summary", (req, res) => {
       ...doctorAccess.params,
     });
 
-  res.json(summary);
+  return respond(summary);
 });
 
 router.get("/", (req, res) => {
@@ -1355,6 +1393,10 @@ router.get("/", (req, res) => {
   const dateFrom = String(req.query.dateFrom ?? "").trim();
   const dateTo = String(req.query.dateTo ?? "").trim();
   const dateBasis = req.query.dateBasis === "payment" ? "payment" : "visit";
+  const paginated = String(req.query.paginated || "") === "1";
+  const search = String(req.query.search || "").trim().toLowerCase().replace(/^#/, "").slice(0, 100);
+  const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit, 10) || 40));
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const doctorAccess = buildDoctorAccessClause(req.auth);
 
   const bills = db
@@ -1380,7 +1422,8 @@ router.get("/", (req, res) => {
         ), 0) - COALESCE((
           SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
         ), 0)) AS net_paid_amount,
-        u.full_name AS updated_by_name
+        u.full_name AS updated_by_name,
+        COUNT(*) OVER() AS total_count
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
       JOIN consultations c ON c.id = b.consultation_id
@@ -1402,8 +1445,17 @@ router.get("/", (req, res) => {
             AND (@dateTo = '' OR date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) <= date(@dateTo)))
         )
         AND (@reportDoctorId IS NULL OR c.doctor_id = @reportDoctorId)
+        AND (
+          @search = ''
+          OR lower(COALESCE(NULLIF(b.patient_name_snapshot, ''), p.full_name)) LIKE @searchPattern
+          OR lower(COALESCE(NULLIF(b.patient_identifier_snapshot, ''), p.patient_identifier)) LIKE @searchPattern
+          OR lower(COALESCE(b.invoice_number, '')) LIKE @searchPattern
+          OR lower(COALESCE(b.source_reference, '')) LIKE @searchPattern
+          OR CAST(b.id AS TEXT) LIKE @searchPattern
+        )
         ${doctorAccess.clause}
       ORDER BY c.consultation_date DESC, b.created_at DESC
+      LIMIT @limit OFFSET @offset
     `)
     .all({
       status,
@@ -1412,11 +1464,22 @@ router.get("/", (req, res) => {
       dateTo,
       dateBasis,
       reportDoctorId: req.query.doctorId ? Number(req.query.doctorId) : null,
+      search,
+      searchPattern: `%${search}%`,
+      limit: paginated ? limit : -1,
+      offset: paginated ? offset : 0,
       ...doctorAccess.params,
     })
     .map(parseBillingRow);
 
-  res.json(withPaymentReview(bills));
+  const reviewed = withPaymentReview(bills);
+  if (!paginated) return res.json(reviewed);
+  return res.json({
+    bills: reviewed,
+    total: Number(reviewed[0]?.total_count || 0),
+    limit,
+    offset,
+  });
 });
 
 router.get("/consultation-fees", (req, res) => {
@@ -1500,7 +1563,30 @@ router.get("/quick/picker-options", (req, res) => {
   const doctorId = resolveQuickBillingDoctor(req, res, req.query.doctorId, { required: false });
   if (!doctorId && res.headersSent) return;
   const doctors = ["operator", "admin"].includes(req.auth?.role) ? quickBillingDoctorOptions() : [];
-  if (!doctorId) return res.json({ doctors, patients: [] });
+  const cutoverDate = getBillingCutoverDate(db);
+  const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
+  const billingActive = !cutoverDate || localDate >= cutoverDate;
+  if (!doctorId) return res.json({
+    doctors,
+    patients: [],
+    cutover_date: cutoverDate || null,
+    local_date: localDate,
+    billing_active: billingActive,
+    next_offset: 0,
+    has_more: false,
+  });
+  if (!billingActive) return res.json({
+    doctors,
+    patients: [],
+    search: String(req.query.search || "").trim().slice(0, 100),
+    limit: Math.min(200, Math.max(20, Number.parseInt(req.query.limit, 10) || 100)),
+    offset: Math.max(0, Number.parseInt(req.query.offset, 10) || 0),
+    next_offset: 0,
+    has_more: false,
+    cutover_date: cutoverDate,
+    local_date: localDate,
+    billing_active: false,
+  });
 
   const search = String(req.query.search || "").trim().slice(0, 100);
   const limit = Math.min(200, Math.max(20, Number.parseInt(req.query.limit, 10) || 100));
@@ -1533,7 +1619,18 @@ router.get("/quick/picker-options", (req, res) => {
     a.patient_name.localeCompare(b.patient_name, undefined, { sensitivity: "base" }),
   );
 
-  res.json({ doctors, patients, search, limit, offset, has_more: hasMore });
+  res.json({
+    doctors,
+    patients,
+    search,
+    limit,
+    offset,
+    next_offset: offset + visits.length,
+    has_more: hasMore,
+    cutover_date: cutoverDate || null,
+    local_date: localDate,
+    billing_active: billingActive,
+  });
 });
 
 router.get("/quick/lookup", (req, res) => {
@@ -1729,71 +1826,107 @@ router.get("/quick/operator-queue", (req, res) => {
     return res.status(403).json({ error: "The doctor billing review queue is restricted to operators and administrators." });
   }
 
+  const search = String(req.query.search || "").trim().toLowerCase().slice(0, 100);
+  const status = String(req.query.status || "").trim();
+  const allowedStatuses = new Set(["", "actionable", "awaiting_operator", "needs_doctor", "ready_for_payment", "completed"]);
+  if (!allowedStatuses.has(status)) {
+    return res.status(400).json({ error: "Select a valid operator queue status." });
+  }
+  const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit, 10) || 50));
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const rows = db
     .prepare(`
-      SELECT
-        s.consultation_id,
-        s.billing_id,
-        p.full_name AS patient_name,
-        p.patient_identifier,
-        d.full_name AS doctor_name,
-        a.appointment_date,
-        a.appointment_time,
-        b.total_amount,
-        b.status AS bill_status,
-        b.fee_review_required,
-        SUM(CASE WHEN s.reversed_at IS NULL THEN s.item_count ELSE 0 END) AS supply_item_count,
-        SUM(CASE WHEN s.reversed_at IS NULL THEN s.amount_added ELSE 0 END) AS supply_amount,
-        MAX(s.created_at) AS submitted_at,
-        COUNT(s.id) AS submission_count,
-        (
-          SELECT latest.id
-          FROM billing_lite_submissions latest
-          WHERE latest.consultation_id = s.consultation_id
-            AND latest.reversed_at IS NULL
-          ORDER BY latest.id DESC
-          LIMIT 1
-        ) AS latest_submission_id,
-        (
-          SELECT latest.workflow_status
-          FROM billing_lite_submissions latest
-          WHERE latest.consultation_id = s.consultation_id
-            AND latest.reversed_at IS NULL
-          ORDER BY latest.id DESC
-          LIMIT 1
-        ) AS workflow_status,
-        (
-          SELECT latest.workflow_note
-          FROM billing_lite_submissions latest
-          WHERE latest.consultation_id = s.consultation_id
-            AND latest.reversed_at IS NULL
-          ORDER BY latest.id DESC
-          LIMIT 1
-        ) AS workflow_note
-      FROM billing_lite_submissions s
-      JOIN consultations c ON c.id = s.consultation_id
-      JOIN appointments a ON a.id = c.appointment_id
-      JOIN patients p ON p.id = c.patient_id
-      JOIN doctors d ON d.id = c.doctor_id
-      JOIN billing b ON b.id = s.billing_id
-      WHERE c.voided_at IS NULL
-        AND b.voided_at IS NULL
-        AND s.reversed_at IS NULL
-      GROUP BY
-        s.consultation_id, s.billing_id, p.full_name, p.patient_identifier,
-        d.full_name, a.appointment_date, a.appointment_time,
-        b.total_amount, b.status, b.fee_review_required
+      WITH queue_rows AS (
+        SELECT
+          s.consultation_id,
+          s.billing_id,
+          b.invoice_number,
+          p.full_name AS patient_name,
+          p.patient_identifier,
+          d.full_name AS doctor_name,
+          a.appointment_date,
+          a.appointment_time,
+          b.total_amount,
+          b.status AS bill_status,
+          b.fee_review_required,
+          SUM(CASE WHEN s.reversed_at IS NULL THEN s.item_count ELSE 0 END) AS supply_item_count,
+          SUM(CASE WHEN s.reversed_at IS NULL THEN s.amount_added ELSE 0 END) AS supply_amount,
+          MAX(s.created_at) AS submitted_at,
+          COUNT(s.id) AS submission_count,
+          (
+            SELECT latest.id
+            FROM billing_lite_submissions latest
+            WHERE latest.consultation_id = s.consultation_id
+              AND latest.reversed_at IS NULL
+            ORDER BY latest.id DESC
+            LIMIT 1
+          ) AS latest_submission_id,
+          (
+            SELECT latest.workflow_status
+            FROM billing_lite_submissions latest
+            WHERE latest.consultation_id = s.consultation_id
+              AND latest.reversed_at IS NULL
+            ORDER BY latest.id DESC
+            LIMIT 1
+          ) AS workflow_status,
+          (
+            SELECT latest.workflow_note
+            FROM billing_lite_submissions latest
+            WHERE latest.consultation_id = s.consultation_id
+              AND latest.reversed_at IS NULL
+            ORDER BY latest.id DESC
+            LIMIT 1
+          ) AS workflow_note
+        FROM billing_lite_submissions s
+        JOIN consultations c ON c.id = s.consultation_id
+        JOIN appointments a ON a.id = c.appointment_id
+        JOIN patients p ON p.id = c.patient_id
+        JOIN doctors d ON d.id = c.doctor_id
+        JOIN billing b ON b.id = s.billing_id
+        WHERE c.voided_at IS NULL
+          AND b.voided_at IS NULL
+          AND s.reversed_at IS NULL
+        GROUP BY
+          s.consultation_id, s.billing_id, b.invoice_number, p.full_name, p.patient_identifier,
+          d.full_name, a.appointment_date, a.appointment_time,
+          b.total_amount, b.status, b.fee_review_required
+      ), filtered_queue AS (
+        SELECT *,
+          CASE WHEN bill_status = 'paid' THEN 'completed' ELSE COALESCE(workflow_status, 'awaiting_operator') END AS effective_status
+        FROM queue_rows
+        WHERE (
+          @search = ''
+          OR lower(patient_name) LIKE @pattern
+          OR lower(patient_identifier) LIKE @pattern
+          OR lower(doctor_name) LIKE @pattern
+          OR lower(COALESCE(invoice_number, '')) LIKE @pattern
+          OR lower(printf('V-%06d', consultation_id)) LIKE @pattern
+        )
+      )
+      SELECT *, COUNT(*) OVER() AS total_count
+      FROM filtered_queue
+      WHERE (
+        @status = ''
+        OR (@status = 'actionable' AND effective_status IN ('awaiting_operator', 'needs_doctor', 'ready_for_payment'))
+        OR effective_status = @status
+      )
       ORDER BY
-        CASE WHEN b.status = 'unpaid' THEN 0 ELSE 1 END,
-        MAX(s.created_at) DESC
-      LIMIT 60
+        CASE effective_status
+          WHEN 'needs_doctor' THEN 0
+          WHEN 'awaiting_operator' THEN 1
+          WHEN 'ready_for_payment' THEN 2
+          ELSE 3
+        END,
+        submitted_at ASC
+      LIMIT @limit OFFSET @offset
     `)
-    .all()
+    .all({ search, pattern: `%${search}%`, status, limit, offset })
     .map((row) => ({
       consultation_id: Number(row.consultation_id),
       submission_id: Number(row.latest_submission_id),
       visit_number: formatVisitNumber(row.consultation_id),
       bill_id: Number(row.billing_id),
+      invoice_number: row.invoice_number || "",
       patient_name: row.patient_name,
       patient_identifier: row.patient_identifier,
       doctor_name: row.doctor_name,
@@ -1808,9 +1941,11 @@ router.get("/quick/operator-queue", (req, res) => {
       submitted_at: row.submitted_at,
       workflow_status: row.bill_status === "paid" ? "completed" : row.workflow_status || "awaiting_operator",
       workflow_note: row.workflow_note || "",
+      total_count: Number(row.total_count || 0),
     }));
 
-  res.json({ submissions: rows });
+  const total = Number(rows[0]?.total_count || 0);
+  res.json({ submissions: rows, total, limit, offset, has_more: offset + rows.length < total });
 });
 
 router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
@@ -2014,6 +2149,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   }
   try {
     assertBillingActorConsultationAccess(req.auth, requestedConsultation, req.body?.doctor_id);
+    assertQuickBillingCutoverOpen(requestedConsultation);
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
   }
@@ -2096,6 +2232,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       if (!consultation || consultation.voided_at || Number(consultation.doctor_id) !== doctorId) {
         throw Object.assign(new Error("This visit does not belong to your doctor account."), { status: 403 });
       }
+      assertQuickBillingCutoverOpen(consultation);
       patientId = Number(consultation.patient_id);
 
       const billRow = db
@@ -3024,6 +3161,210 @@ router.post("/:id/refunds", (req, res) => {
   publishPatientDataChange(bill.patient_id, { reason: "billing" });
   notifyLinkhamBillingIfNeeded(bill.patient_id, req.auth?.id);
   return res.status(201).json({ credit_note: creditNote, bill });
+});
+
+router.post("/refunds/:refundId/allocation", (req, res) => {
+  if (!["admin", "accountant"].includes(req.auth?.role)) {
+    return res.status(403).json({ error: "Only administrators and accountants can reconcile historical credit notes." });
+  }
+  const refundId = Number(req.params.refundId || 0);
+  const allocationType = String(req.body?.allocation_type || "").trim();
+  const submissionId = Number(req.body?.submission_id || 0);
+  const disposition = String(req.body?.disposition || "").trim();
+  const operationId = String(req.body?.operation_id || "").trim();
+  const reason = String(req.body?.reason || "").trim().slice(0, 500);
+  if (!Number.isInteger(refundId) || refundId <= 0) {
+    return res.status(400).json({ error: "Select a valid credit note." });
+  }
+  if (!["service_non_stock", "supply_submission"].includes(allocationType)) {
+    return res.status(400).json({ error: "Classify the credit as a consultation/service refund or a supply refund." });
+  }
+  if (allocationType === "supply_submission" && (!Number.isInteger(submissionId) || submissionId <= 0)) {
+    return res.status(400).json({ error: "Select the supply submission covered by this credit note." });
+  }
+  if (allocationType === "supply_submission" && !["returned_to_stock", "consumed_or_wasted"].includes(disposition)) {
+    return res.status(400).json({ error: "Confirm whether the credited supplies were returned to stock or consumed/wasted." });
+  }
+  if (allocationType === "supply_submission" && !operationId) {
+    return res.status(400).json({ error: "A unique stock-correction reference is required." });
+  }
+  if (reason.length < 8) {
+    return res.status(400).json({ error: "Document how the historical credit note was verified." });
+  }
+
+  let allocation;
+  let billId;
+  let patientId;
+  let correction = null;
+  let touchedItemIds = [];
+  try {
+    db.transaction(() => {
+      const refund = db.prepare(`
+        SELECT refund.*, bill.items, bill.status AS bill_status, bill.voided_at,
+          consultation.id AS consultation_id, consultation.patient_id,
+          consultation.voided_at AS consultation_voided_at
+        FROM billing_refunds refund
+        JOIN billing bill ON bill.id = refund.billing_id
+        JOIN consultations consultation ON consultation.id = bill.consultation_id
+        WHERE refund.id = ?
+      `).get(refundId);
+      if (!refund) throw Object.assign(new Error("Credit note not found."), { status: 404 });
+      billId = Number(refund.billing_id);
+      patientId = Number(refund.patient_id);
+      if (db.prepare("SELECT id FROM billing_refund_allocations WHERE refund_id = ?").get(refundId)) {
+        throw Object.assign(new Error("This credit note has already been classified."), { status: 409, extra: { code: "REFUND_ALREADY_ALLOCATED" } });
+      }
+
+      let verifiedSubmissionId = null;
+      if (allocationType === "service_non_stock") {
+        const items = normalizeBillingItems(refund.items);
+        const serviceTotal = roundCurrency(items.reduce((sum, item) => {
+          if (Number(item.inventory_item_id || 0) > 0 || item.type === "Wastage") return sum;
+          return sum + Number(item.amount || 0);
+        }, 0));
+        const alreadyAllocated = roundCurrency(db.prepare(`
+          SELECT COALESCE(SUM(amount), 0) AS amount
+          FROM billing_refund_allocations
+          WHERE billing_id = ? AND allocation_type = 'service_non_stock'
+        `).get(billId)?.amount || 0);
+        if (alreadyAllocated + Number(refund.amount || 0) > serviceTotal + 0.000001) {
+          throw Object.assign(
+            new Error("This credit exceeds the remaining consultation and service charges. Classify it against the matching supply submission."),
+            { status: 409, extra: { code: "REFUND_SERVICE_ALLOCATION_EXCEEDS_CHARGES" } },
+          );
+        }
+      } else {
+        const submission = db.prepare(`
+          SELECT *
+          FROM billing_lite_submissions
+          WHERE id = ? AND billing_id = ?
+        `).get(submissionId, billId);
+        if (!submission) {
+          throw Object.assign(new Error("That supply submission does not belong to this invoice."), { status: 409 });
+        }
+        if (refund.bill_status !== "paid" || refund.voided_at || refund.consultation_voided_at) {
+          throw Object.assign(new Error("A supply credit can only be reconciled against an active paid invoice."), { status: 409 });
+        }
+        if (submission.reversed_at || ["corrected", "reversed", "superseded"].includes(submission.workflow_status)) {
+          throw Object.assign(new Error("Select the active supply submission. Reversed or superseded submissions cannot receive a historical credit."), { status: 409, extra: { code: "SUBMISSION_NOT_ACTIVE" } });
+        }
+        const newerActive = db.prepare(`
+          SELECT id FROM billing_lite_submissions
+          WHERE billing_id = ? AND id > ? AND reversed_at IS NULL
+          ORDER BY id DESC LIMIT 1
+        `).get(billId, submissionId);
+        if (newerActive) {
+          throw Object.assign(new Error("A newer active supply submission exists for this invoice."), { status: 409, extra: { code: "SUBMISSION_NOT_ACTIVE", active_submission_id: Number(newerActive.id) } });
+        }
+        if (db.prepare("SELECT id FROM billing_supply_corrections WHERE submission_id = ?").get(submissionId)) {
+          throw Object.assign(new Error("This supply submission already has a documented stock correction."), { status: 409, extra: { code: "SUPPLY_ALREADY_CORRECTED" } });
+        }
+        if (Math.abs(Number(refund.amount || 0) - Number(submission.amount_added || 0)) >= 0.005) {
+          throw Object.assign(
+            new Error("Historical supply reconciliation requires a single active submission whose value exactly matches the credit note."),
+            { status: 409, extra: { code: "REFUND_SUPPLY_ALLOCATION_AMOUNT_MISMATCH" } },
+          );
+        }
+        const submittedItems = normalizeBillingItems(submission.items_json);
+        const movementIds = submittedItems.flatMap((item) => item.inventory_movement_ids || []).map(Number).filter(Boolean);
+        const dispensingMovementIds = submittedItems.flatMap((item) => item.dispensing_movement_ids || []).map(Number).filter(Boolean);
+        const originalMovementIds = [...new Set([...movementIds, ...dispensingMovementIds])];
+        const billMovementIds = new Set(normalizeBillingItems(refund.items).flatMap((item) => [
+          ...(item.inventory_movement_ids || []),
+          ...(item.dispensing_movement_ids || []),
+        ]).map(Number).filter(Boolean));
+        if (!originalMovementIds.length || originalMovementIds.some((id) => !billMovementIds.has(id))) {
+          throw Object.assign(new Error("The selected submission no longer matches the active invoice stock lines."), { status: 409, extra: { code: "SUBMISSION_NOT_ACTIVE" } });
+        }
+        let inventoryResolution;
+        if (disposition === "returned_to_stock") {
+          inventoryResolution = reverseBillingSubmissionInventory({
+            movementIds,
+            dispensingMovementIds,
+            consultationId: refund.consultation_id,
+            billingId: billId,
+            actor: req.auth,
+            reason,
+            restoreDispensing: true,
+            reversalScope: "historical_paid_supply_correction",
+          });
+        } else {
+          const reclassified = reclassifyBillingSubmissionInventoryAsWastage({
+            movementIds: originalMovementIds,
+            consultationId: refund.consultation_id,
+            billingId: billId,
+            actor: req.auth,
+            reason,
+          });
+          inventoryResolution = { reversalIds: reclassified.movementIds || [], touchedItemIds: reclassified.touchedItemIds || [] };
+        }
+        touchedItemIds = inventoryResolution.touchedItemIds || [];
+        verifiedSubmissionId = Number(submission.id);
+
+        const correctionInsert = db.prepare(`
+          INSERT INTO billing_supply_corrections (
+            billing_id, submission_id, refund_id, amount, disposition,
+            original_movement_ids_json, reversal_movement_ids_json, reason,
+            operation_id, corrected_by_user_id, corrected_by_name, corrected_by_role
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          billId, verifiedSubmissionId, refundId, roundCurrency(refund.amount), disposition,
+          JSON.stringify(originalMovementIds), JSON.stringify(inventoryResolution.reversalIds || []), reason,
+          operationId, req.auth.id || null, String(req.auth.full_name || req.auth.username || ""), String(req.auth.role || ""),
+        );
+        correction = db.prepare("SELECT * FROM billing_supply_corrections WHERE id = ?").get(correctionInsert.lastInsertRowid);
+        db.prepare(`
+          UPDATE billing_lite_submissions
+          SET workflow_status = 'corrected', workflow_note = ?, reversed_at = CURRENT_TIMESTAMP,
+              reversed_by_user_id = ?, reversal_reason = ?, reversal_operation_id = ?,
+              workflow_updated_by_user_id = ?, workflow_updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND reversed_at IS NULL
+        `).run(reason, req.auth.id || null, reason, operationId, req.auth.id || null, verifiedSubmissionId);
+        recordQuickBillingEvent({
+          submissionId: verifiedSubmissionId,
+          consultationId: refund.consultation_id,
+          billingId: billId,
+          actor: req.auth,
+          eventType: "historical_supply_credit_reconciled",
+          previousStatus: submission.workflow_status,
+          nextStatus: "corrected",
+          reason,
+          details: {
+            refund_id: refundId,
+            correction_id: Number(correctionInsert.lastInsertRowid),
+            disposition,
+            original_movement_ids: originalMovementIds,
+            reversal_movement_ids: inventoryResolution.reversalIds || [],
+          },
+        });
+      }
+
+      const inserted = db.prepare(`
+        INSERT INTO billing_refund_allocations (
+          refund_id, billing_id, allocation_type, submission_id, amount
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(refundId, billId, allocationType, verifiedSubmissionId, roundCurrency(refund.amount));
+      allocation = db.prepare("SELECT * FROM billing_refund_allocations WHERE id = ?").get(inserted.lastInsertRowid);
+      db.prepare(`
+        INSERT INTO billing_events (
+          bill_id, actor_id, actor_name, actor_role, event_type, after_json, reason
+        ) VALUES (?, ?, ?, ?, 'refund_allocation_reconciled', ?, ?)
+      `).run(
+        billId,
+        req.auth.id || null,
+        String(req.auth.full_name || req.auth.username || ""),
+        String(req.auth.role || ""),
+        JSON.stringify({ refund_id: refundId, allocation_type: allocationType, submission_id: verifiedSubmissionId, disposition: allocationType === "supply_submission" ? disposition : null, amount: roundCurrency(refund.amount) }),
+        reason,
+      );
+    }).immediate();
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
+
+  for (const itemId of touchedItemIds) publishInventoryChange({ itemId, changedByUserId: req.auth.id });
+  if (patientId) publishPatientDataChange(patientId, { reason: "billing" });
+  return res.status(201).json({ allocation, correction, bill: getJoinedBillById(billId) });
 });
 
 router.get('/reconciliation', (req,res) => {

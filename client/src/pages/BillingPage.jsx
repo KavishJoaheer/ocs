@@ -35,7 +35,6 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
-import { shareOrDownloadBillPdf, shareOrDownloadCreditNotePdf } from "../lib/billPdf.js";
 import {
   formatCurrency,
   formatDate,
@@ -56,6 +55,16 @@ function isVisitFee(line) {
 
 function billReference(bill) {
   return bill?.invoice_number || `Bill #${bill?.id || ""}`;
+}
+
+async function shareBillPdf(bill) {
+  const { shareOrDownloadBillPdf } = await import("../lib/billPdf.js");
+  return shareOrDownloadBillPdf(bill);
+}
+
+async function shareCreditNotePdf(creditNote, bill) {
+  const { shareOrDownloadCreditNotePdf } = await import("../lib/billPdf.js");
+  return shareOrDownloadCreditNotePdf(creditNote, bill);
 }
 
 function billingPageTodayInputValue() {
@@ -89,6 +98,8 @@ const QUICK_WORKFLOW_META = {
     className: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   },
 };
+
+const FINANCE_PAGE_SIZE = 40;
 
 function getAdminBillingDateRange(preset, anchorDateStr) {
   const anchor = dayjs(anchorDateStr || billingPageTodayInputValue());
@@ -733,6 +744,98 @@ function PaidSupplyCorrectionConfirmation({ submission, busy, onClose, onConfirm
   );
 }
 
+function RefundAllocationConfirmation({ refund, submissions, busy, onClose, onConfirm }) {
+  const supplySubmissions = (submissions || []).filter((submission) =>
+    Number(submission.amount_added || 0) > 0
+      && Math.abs(Number(submission.amount_added || 0) - Number(refund.amount || 0)) < 0.005
+      && !submission.reversed_at
+      && !["corrected", "reversed", "superseded"].includes(submission.workflow_status),
+  );
+  const [allocationType, setAllocationType] = useState("service_non_stock");
+  const [submissionId, setSubmissionId] = useState("");
+  const [disposition, setDisposition] = useState("");
+  const [reason, setReason] = useState("");
+  const valid = reason.trim().length >= 8
+    && (allocationType === "service_non_stock" || (Number(submissionId) > 0 && Boolean(disposition)));
+  return (
+    <Modal open onClose={onClose} title={`Classify historical credit · ${refund.credit_note_number}`} size="md">
+      <form className="space-y-4" onSubmit={(event) => {
+        event.preventDefault();
+        if (!busy && valid) onConfirm({
+          allocation_type: allocationType,
+          submission_id: allocationType === "supply_submission" ? Number(submissionId) : null,
+          disposition: allocationType === "supply_submission" ? disposition : null,
+          reason: reason.trim(),
+          operation_id: crypto.randomUUID(),
+        });
+      }}>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-bold">{formatCurrency(refund.amount)} credit issued {formatDate(refund.refund_date)}</p>
+          <p className="mt-1">Classify the original credit from its supporting record. Supply credits also require the physical stock outcome, so accounting and inventory remain aligned.</p>
+        </div>
+        <label className="block text-sm font-semibold">Credit applies to
+          <select value={allocationType} onChange={(event) => { setAllocationType(event.target.value); setSubmissionId(""); setDisposition(""); }} className={BILLING_FIELD}>
+            <option value="service_non_stock">Consultation or service/non-stock charge</option>
+            <option value="supply_submission">Medicines or consumables</option>
+          </select>
+        </label>
+        {allocationType === "supply_submission" ? (
+          <div className="space-y-4">
+            <label className="block text-sm font-semibold">Original supply submission
+              <select required value={submissionId} onChange={(event) => setSubmissionId(event.target.value)} className={BILLING_FIELD}>
+                <option value="">Select an active submission matching the credit amount</option>
+                {supplySubmissions.map((submission) => (
+                  <option key={submission.id} value={submission.id}>
+                    Submission #{submission.id} · {formatCurrency(submission.amount_added)} · {formatDate(submission.created_at)}
+                  </option>
+                ))}
+              </select>
+              {!supplySubmissions.length ? <span className="mt-1 block text-xs text-rose-700">No active supply submission exactly matches this credit. Keep it unresolved and investigate the source documents.</span> : null}
+            </label>
+            <label className="block text-sm font-semibold">What happened to the supplies?
+              <select required value={disposition} onChange={(event) => setDisposition(event.target.value)} className={BILLING_FIELD}>
+                <option value="">Select physical outcome</option>
+                <option value="returned_to_stock">Returned unopened to stock</option>
+                <option value="consumed_or_wasted">Consumed or wasted — do not restore stock</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
+        <label className="block text-sm font-semibold">Verification note
+          <textarea required minLength={8} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} className={cx(BILLING_FIELD, "resize-y")} placeholder="State which source record was checked." />
+        </label>
+        <div className="flex justify-end gap-3">
+          <button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-xl border px-4 font-semibold">Cancel</button>
+          <button disabled={busy || !valid} className="min-h-11 rounded-xl bg-amber-700 px-4 font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : "Save classification"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function QuickActionConfirmation({ action, busy, onClose, onConfirm }) {
+  const reversal = action.kind === "reversal";
+  const minimum = reversal ? 5 : 3;
+  const [reason, setReason] = useState("");
+  return (
+    <Modal open onClose={onClose} title={reversal ? "Reverse submitted supplies" : "Request doctor clarification"} size="md">
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!busy && reason.trim().length >= minimum) onConfirm(reason.trim()); }}>
+        <div className={cx("rounded-2xl border p-4 text-sm", reversal ? "border-rose-200 bg-rose-50 text-rose-950" : "border-amber-200 bg-amber-50 text-amber-950")}>
+          <p className="font-bold">{action.submission.patient_name} · {action.submission.visit_number}</p>
+          <p className="mt-1">{reversal ? "Eligible stock will be restored and the original submission will remain in the audit trail." : "The invoice leaves the payment queue until the doctor submits a correction."}</p>
+        </div>
+        <label className="block text-sm font-semibold">{reversal ? "Reason for reversal" : "What should the doctor clarify?"}
+          <textarea autoFocus required minLength={minimum} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} className={cx(BILLING_FIELD, "resize-y")} />
+        </label>
+        <div className="flex justify-end gap-3">
+          <button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-xl border px-4 font-semibold">Cancel</button>
+          <button disabled={busy || reason.trim().length < minimum} className={cx("min-h-11 rounded-xl px-4 font-semibold text-white disabled:opacity-50", reversal ? "bg-rose-700" : "bg-amber-700")}>{busy ? "Saving…" : reversal ? "Confirm reversal" : "Send clarification"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid, onChanged, isSaving }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -747,6 +850,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   const [supplyCorrections, setSupplyCorrections] = useState([]);
   const [reversalPayment, setReversalPayment] = useState(null);
   const [correctionSubmission, setCorrectionSubmission] = useState(null);
+  const [allocationRefund, setAllocationRefund] = useState(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || ((bill?.status === "paid" || bill?.legacy_fee_review_required) && user?.role !== "admin"));
   const operatorEditing = user?.role === "operator" && !readOnly;
@@ -865,6 +969,20 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
       toast.success(`${result.credit_note.credit_note_number} issued${result.stock_restored ? " and stock restored" : "; stock left unchanged"}.`);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
+  async function reconcileRefundAllocation(payload) {
+    setCorrectionBusy(true);
+    try {
+      await api.post(`/billing/refunds/${allocationRefund.id}/allocation`, payload);
+      setAllocationRefund(null);
+      await refreshFinancialDetail();
+      toast.success("Historical credit note classified and added to the audit trail.");
+    } catch (error) {
+      toast.error(error.message || "The credit note could not be classified.");
     } finally {
       setCorrectionBusy(false);
     }
@@ -998,7 +1116,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
                   <div><span className="font-bold">{note.credit_note_number}</span> · {formatDate(note.refund_date)}<p className="text-xs text-rose-800">{note.reason} · {formatPaymentMethod(note.refund_method)}{note.disposition === "returned_to_stock" ? " · Stock restored" : note.disposition === "consumed_or_wasted" ? " · Reclassified as consumed/wasted" : " · Financial credit only"}</p></div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold">−{formatCurrency(note.amount)}</span>
-                    <button type="button" className="min-h-9 rounded-xl border border-rose-300 bg-white px-3 text-xs font-bold" onClick={() => shareOrDownloadCreditNotePdf(note, bill).catch((error) => toast.error(error.message || "Could not create credit note PDF."))}>PDF</button>
+                    {!note.allocation_type && canPostFinancialCorrection ? <button type="button" className="min-h-9 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900" onClick={() => setAllocationRefund(note)}>Classify</button> : null}
+                    <button type="button" className="min-h-9 rounded-xl border border-rose-300 bg-white px-3 text-xs font-bold" onClick={() => shareCreditNotePdf(note, bill).catch((error) => toast.error(error.message || "Could not create credit note PDF."))}>PDF</button>
                   </div>
                 </div>
               ))}
@@ -1092,6 +1211,7 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
       </form>
       {reversalPayment ? <PaymentReversalConfirmation payment={reversalPayment} busy={correctionBusy} onClose={() => { if (!correctionBusy) setReversalPayment(null); }} onConfirm={reversePayment} /> : null}
       {correctionSubmission ? <PaidSupplyCorrectionConfirmation submission={correctionSubmission} busy={correctionBusy} onClose={() => { if (!correctionBusy) setCorrectionSubmission(null); }} onConfirm={correctPaidSupplies} /> : null}
+      {allocationRefund ? <RefundAllocationConfirmation refund={allocationRefund} submissions={quickSubmissions} busy={correctionBusy} onClose={() => { if (!correctionBusy) setAllocationRefund(null); }} onConfirm={reconcileRefundAllocation} /> : null}
     </Modal>
   );
 }
@@ -1433,6 +1553,7 @@ function DescriptionList({
   );
 }
 
+// Retained temporarily for historical invoice inspection tests; deployed finance routes never render it.
 function CreateBillingModal({
   open,
   onClose,
@@ -2750,26 +2871,23 @@ function BillingPage() {
   const patientIdFilter = searchParams.get("patientId") || "";
   const dateBasis = searchParams.get("dateBasis") === "payment" ? "payment" : "visit";
   const reportDoctorId = searchParams.get("doctorId") || "";
-  const createInFlight = useRef(false);
-  const openCreateInvoice = searchParams.get("create") === "1";
   const [statusFilter, setStatusFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [bills, setBills] = useState([]);
+  const [billPage, setBillPage] = useState(0);
+  const [billTotal, setBillTotal] = useState(0);
   const [patientSummary, setPatientSummary] = useState([]);
+  const [summaryPage, setSummaryPage] = useState(0);
+  const [summaryTotal, setSummaryTotal] = useState(0);
+  const [summaryTotals, setSummaryTotals] = useState({ total_billed: 0, paid_amount: 0, unpaid_amount: 0 });
   const [quickReviewQueue, setQuickReviewQueue] = useState([]);
   const [unbilledReport, setUnbilledReport] = useState({ count: 0, visits: [], date_from: "", date_to: "" });
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
   const [paymentBill, setPaymentBill] = useState(null);
   const [refundBill, setRefundBill] = useState(null);
-  const [creatorOpen, setCreatorOpen] = useState(false);
-  const [creatorVisit, setCreatorVisit] = useState(null);
+  const [quickActionDialog, setQuickActionDialog] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [patientOptions, setPatientOptions] = useState([]);
-  const [consultationOptions, setConsultationOptions] = useState([]);
-  // Routine invoice creation lives exclusively in the quick billing workspace.
-  // This page remains a finance/reconciliation ledger for admin and accounting roles.
-  const canCreateBills = false;
   const canMarkPaid =
     user?.role === "admin" || user?.role === "doctor" || user?.role === "operator" || user?.role === "accountant";
   const canIssueCreditNotes = user?.role === "admin" || user?.role === "accountant";
@@ -2810,7 +2928,13 @@ function BillingPage() {
 
   async function loadData() {
     try {
-      const filterQuery = new URLSearchParams({ dateBasis });
+      const filterQuery = new URLSearchParams({
+        dateBasis,
+        paginated: "1",
+        limit: String(FINANCE_PAGE_SIZE),
+        offset: String(billPage * FINANCE_PAGE_SIZE),
+      });
+      if (searchText.trim()) filterQuery.set("search", searchText.trim());
       if (reportDoctorId) filterQuery.set("doctorId", reportDoctorId);
 
       if (statusFilter && (!isMobile || statusFilter === "voided")) {
@@ -2830,7 +2954,13 @@ function BillingPage() {
       }
 
       const queryString = filterQuery.toString();
-      const summaryQuery = new URLSearchParams({ dateBasis });
+      const summaryQuery = new URLSearchParams({
+        dateBasis,
+        paginated: "1",
+        limit: String(FINANCE_PAGE_SIZE),
+        offset: String(summaryPage * FINANCE_PAGE_SIZE),
+      });
+      if (searchText.trim()) summaryQuery.set("search", searchText.trim());
       if (reportDoctorId) summaryQuery.set("doctorId", reportDoctorId);
       if (user?.role === "admin" && adminBillingDateRange) {
         summaryQuery.set("dateFrom", adminBillingDateRange.from);
@@ -2845,15 +2975,26 @@ function BillingPage() {
         api.get(`/billing${queryString ? `?${queryString}` : ""}`),
         api.get(`/billing/patient-summary${summaryQueryString ? `?${summaryQueryString}` : ""}`),
         ["admin", "operator"].includes(user?.role)
-          ? api.get("/billing/quick/operator-queue")
+          ? api.get("/billing/quick/operator-queue?status=actionable&limit=100&offset=0")
           : Promise.resolve({ submissions: [] }),
         ["admin", "operator"].includes(user?.role)
           ? api.get("/billing/quick/unbilled-report")
           : Promise.resolve({ count: 0, visits: [], date_from: "", date_to: "" }),
       ]);
 
-      setBills(billingData);
-      setPatientSummary(summaryData);
+      const billingRows = Array.isArray(billingData) ? billingData : (billingData?.bills || []);
+      const summaryRows = Array.isArray(summaryData) ? summaryData : (summaryData?.patients || []);
+      setBills(billingRows);
+      setBillTotal(Array.isArray(billingData) ? billingRows.length : Number(billingData?.total || 0));
+      setPatientSummary(summaryRows);
+      setSummaryTotal(Array.isArray(summaryData) ? summaryRows.length : Number(summaryData?.total || 0));
+      setSummaryTotals(Array.isArray(summaryData)
+        ? summaryRows.reduce((acc, row) => ({
+            total_billed: acc.total_billed + Number(row.total_billed || 0),
+            paid_amount: acc.paid_amount + Number(row.paid_amount || 0),
+            unpaid_amount: acc.unpaid_amount + Number(row.unpaid_amount || 0),
+          }), { total_billed: 0, paid_amount: 0, unpaid_amount: 0 })
+        : (summaryData?.totals || { total_billed: 0, paid_amount: 0, unpaid_amount: 0 }));
       setQuickReviewQueue(
         Array.isArray(quickQueueData?.submissions) ? quickQueueData.submissions : [],
       );
@@ -2865,7 +3006,7 @@ function BillingPage() {
       });
       setEditor((current) => {
         if (!current?.bill) return current;
-        const rows = Array.isArray(billingData) ? billingData : [];
+        const rows = billingRows;
         const fresh = rows.find((row) => Number(row.id) === Number(current.bill.id));
         if (!fresh) return current;
         const changedElsewhere =
@@ -2878,27 +3019,6 @@ function BillingPage() {
       toast.error(error.message);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadReferenceData() {
-    if (!user) {
-      return;
-    }
-    if (!(user.role === "admin" || user.role === "doctor" || user.role === "operator" || user.role === "accountant")) {
-      return;
-    }
-
-    try {
-      const [patients, consultations] = await Promise.all([
-        api.get("/patients/options"),
-        api.get("/billing/consultation-options"),
-      ]);
-
-      setPatientOptions(patients);
-      setConsultationOptions(consultations);
-    } catch (error) {
-      toast.error(error.message);
     }
   }
 
@@ -2920,11 +3040,12 @@ function BillingPage() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, dateBasis, reportDoctorId, refreshKey]);
+  }, [statusFilter, patientIdFilter, isMobile, user?.role, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, dateBasis, reportDoctorId, refreshKey, billPage, summaryPage, searchText]);
 
   useEffect(() => {
-    loadReferenceData();
-  }, [user?.id, user?.doctor_id, user?.role]);
+    setBillPage(0);
+    setSummaryPage(0);
+  }, [statusFilter, patientIdFilter, adminBillingPreset, adminBillingAnchorDate, linkedDateRange, dateBasis, reportDoctorId, searchText]);
 
   useEffect(() => {
     const billId = Number(searchParams.get("billId") || 0);
@@ -2961,45 +3082,12 @@ function BillingPage() {
     };
   }, [bills, loading, searchParams, setSearchParams]);
 
-  useEffect(() => {
-    if (!openCreateInvoice || !patientIdFilter || !canCreateBills) {
-      return;
-    }
-
-    if (["doctor", "admin", "operator", "accountant"].includes(user?.role)) {
-      if (!patientOptions.length) {
-        return;
-      }
-    }
-
-    setCreatorOpen(true);
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("create");
-    setSearchParams(nextParams, { replace: true });
-  }, [
-    openCreateInvoice,
-    patientIdFilter,
-    canCreateBills,
-    patientOptions.length,
-    user?.role,
-    searchParams,
-    setSearchParams,
-  ]);
-
   /** The summary endpoint applies one basis consistently: visit-basis invoice totals, or payment-basis transaction activity and the current outstanding snapshot for those invoices. */
-  const billingDashboardTotals = useMemo(
-    () =>
-      patientSummary.reduce(
-        (acc, p) => ({
-          totalBilled: acc.totalBilled + Number(p.total_billed || 0),
-          collected: acc.collected + Number(p.paid_amount || 0),
-          outstanding: acc.outstanding + Number(p.unpaid_amount || 0),
-        }),
-        { totalBilled: 0, collected: 0, outstanding: 0 },
-      ),
-    [patientSummary],
-  );
+  const billingDashboardTotals = useMemo(() => ({
+    totalBilled: Number(summaryTotals.total_billed || 0),
+    collected: Number(summaryTotals.paid_amount || 0),
+    outstanding: Number(summaryTotals.unpaid_amount || 0),
+  }), [summaryTotals]);
 
   const filteredBills = bills.filter((bill) => {
     if (!searchText.trim()) return true;
@@ -3042,18 +3130,14 @@ function BillingPage() {
     }
   }
 
-  async function updateQuickWorkflow(submission, status) {
-    let note = "";
-    if (status === "needs_doctor") {
-      const response = window.prompt("What should the doctor clarify?");
-      if (response === null) return;
-      note = response.trim();
-      if (note.length < 3) {
-        toast.error("Add a short clarification note for the doctor.");
-        return;
-      }
+  async function updateQuickWorkflow(submission, status, noteInput = "") {
+    const note = String(noteInput || "").trim();
+    if (status === "needs_doctor" && note.length < 3) {
+      toast.error("Add a short clarification note for the doctor.");
+      return;
     }
 
+    setIsSaving(true);
     try {
       await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, {
         submission_id: submission.submission_id,
@@ -3062,6 +3146,7 @@ function BillingPage() {
         note,
       });
       await loadData();
+      setQuickActionDialog(null);
       toast.success(
         status === "needs_doctor"
           ? "Sent back to the doctor for clarification."
@@ -3071,32 +3156,36 @@ function BillingPage() {
       );
     } catch (error) {
       toast.error(error.message || "The billing workflow could not be updated.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
-  async function reverseQuickSubmission(submission) {
-    const response = window.prompt("Why are these submitted supplies being reversed?");
-    if (response === null) return;
-    const reason = response.trim();
+  async function reverseQuickSubmission(submission, reasonInput) {
+    const reason = String(reasonInput || "").trim();
     if (reason.length < 5) {
       toast.error("Enter a clear reason for the reversal.");
       return;
     }
+    setIsSaving(true);
     try {
       await api.post(`/billing/quick/submissions/${submission.submission_id}/reverse`, {
         operation_id: crypto.randomUUID(),
         reason,
       });
       await loadData();
+      setQuickActionDialog(null);
       toast.success("Supplies reversed with stock and billing audit records.");
     } catch (error) {
       toast.error(error.message || "The submitted supplies could not be reversed.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
   async function handleShareBillPdf(bill) {
     try {
-      await shareOrDownloadBillPdf(bill);
+      await shareBillPdf(bill);
     } catch (error) {
       toast.error(error.message || "Could not create PDF.");
     }
@@ -3117,31 +3206,6 @@ function BillingPage() {
     } catch (error) {
       toast.error(error.message);
     } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function handleCreate(payload) {
-    if (createInFlight.current) return;
-    createInFlight.current = true;
-    setIsSaving(true);
-
-    try {
-      const hashBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload)));
-      const fingerprint = Array.from(new Uint8Array(hashBytes), n => n.toString(16).padStart(2, "0")).join("");
-      const key = `ocs-bill-operation:${user.id}:${fingerprint}`;
-      const operationId = sessionStorage.getItem(key) || crypto.randomUUID();
-      sessionStorage.setItem(key, operationId);
-      await api.post("/billing", { ...payload, operation_id: operationId });
-      sessionStorage.removeItem(key);
-      toast.success("Bill saved and dispensing linked.");
-      setCreatorOpen(false);
-      setCreatorVisit(null);
-      await loadData();
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      createInFlight.current = false;
       setIsSaving(false);
     }
   }
@@ -3233,7 +3297,6 @@ function BillingPage() {
         pageContainerClass,
         "space-y-6",
         isMobile && "mx-auto max-w-md",
-        isMobile && canCreateBills && "pb-28",
       )}
     >
       <PageHeader
@@ -3248,16 +3311,6 @@ function BillingPage() {
                 onAnchorDateChange={setAdminBillingAnchorDate}
                 onPresetChange={handleAdminBillingPresetChange}
               />
-            ) : null}
-            {!isMobile && canCreateBills ? (
-              <button
-                type="button"
-                onClick={() => setCreatorOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
-              >
-                <Plus className="size-4" />
-                {user?.role === "operator" ? "Issue invoice" : "Add bill"}
-              </button>
             ) : null}
           </>
         }
@@ -3316,14 +3369,11 @@ function BillingPage() {
                       type="button"
                       onClick={() => {
                         if (visit.bill_id) openQuickReview(visit);
-                        else {
-                          setCreatorVisit(visit);
-                          setCreatorOpen(true);
-                        }
+                        else toast.error("This visit must be billed by its doctor or an operator from Quick Billing.");
                       }}
                       className="mt-3 min-h-11 w-full rounded-2xl bg-amber-500 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {visit.bill_id ? "Open and finish billing" : "Start billing"}
+                      {visit.bill_id ? "Open billing review" : "Awaiting doctor or operator"}
                     </button>
                   </article>
                 ))}
@@ -3409,7 +3459,7 @@ function BillingPage() {
                   )}
                   <button
                     type="button"
-                    onClick={() => updateQuickWorkflow(submission, "needs_doctor")}
+                    onClick={() => setQuickActionDialog({ kind: "clarification", submission })}
                     className="min-h-11 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-800 transition hover:bg-rose-100"
                   >
                     Ask doctor to clarify
@@ -3417,7 +3467,7 @@ function BillingPage() {
                   <button
                     type="button"
                     disabled={!submission.supply_item_count}
-                    onClick={() => reverseQuickSubmission(submission)}
+                    onClick={() => setQuickActionDialog({ kind: "reversal", submission })}
                     className="min-h-11 rounded-2xl border border-slate-300 bg-slate-50 px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Reverse supplies
@@ -3723,6 +3773,15 @@ function BillingPage() {
                   </div>
                 ))}
               </div>
+              {billTotal > FINANCE_PAGE_SIZE ? (
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm font-semibold text-slate-600">
+                  <span>{billPage * FINANCE_PAGE_SIZE + 1}–{Math.min(billTotal, (billPage + 1) * FINANCE_PAGE_SIZE)} of {billTotal} bills</span>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={billPage === 0} onClick={() => setBillPage((page) => Math.max(0, page - 1))} className="min-h-10 rounded-xl border border-slate-200 px-3 disabled:opacity-40">Previous</button>
+                    <button type="button" disabled={(billPage + 1) * FINANCE_PAGE_SIZE >= billTotal} onClick={() => setBillPage((page) => page + 1)} className="min-h-10 rounded-xl border border-slate-200 px-3 disabled:opacity-40">Next</button>
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <EmptyState
@@ -3761,6 +3820,15 @@ function BillingPage() {
                   </div>
                 </div>
               ))}
+              {summaryTotal > FINANCE_PAGE_SIZE ? (
+                <div className="flex items-center justify-between gap-2 border-t border-rose-100 pt-3 text-xs font-semibold text-slate-600">
+                  <span>Page {summaryPage + 1} · {summaryTotal} patients</span>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={summaryPage === 0} onClick={() => setSummaryPage((page) => Math.max(0, page - 1))} className="min-h-9 rounded-xl border border-slate-200 bg-white px-3 disabled:opacity-40">Previous</button>
+                    <button type="button" disabled={(summaryPage + 1) * FINANCE_PAGE_SIZE >= summaryTotal} onClick={() => setSummaryPage((page) => page + 1)} className="min-h-9 rounded-xl border border-slate-200 bg-white px-3 disabled:opacity-40">Next</button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <EmptyState
@@ -3771,24 +3839,13 @@ function BillingPage() {
         </SectionCard>
       </div>
 
-      {canCreateBills && isMobile ? (
-        <button
-          type="button"
-          aria-label={user?.role === "operator" ? "Issue invoice" : "Create new invoice"}
-          onClick={() => setCreatorOpen(true)}
-          className="fixed right-6 z-[45] grid size-14 place-items-center rounded-full bg-ocs-teal text-white shadow-lg shadow-ocs-teal/25 md:hidden"
-          style={{ bottom: "max(1.5rem, var(--sab))" }}
-        >
-          <Plus className="size-7 stroke-[2.5]" />
-        </button>
-      ) : null}
-
       {paymentBill && <PaymentConfirmation key={paymentBill.id} bill={paymentBill} busy={isSaving}
         onClose={() => { if (!isSaving) setPaymentBill(null); }}
         onConfirm={(payload) => recordPayment(paymentBill, payload)} />}
       {refundBill && <RefundConfirmation key={refundBill.id} bill={refundBill} busy={isSaving}
         onClose={() => { if (!isSaving) setRefundBill(null); }}
         onConfirm={(payload) => recordRefund(refundBill, payload)} />}
+      {quickActionDialog ? <QuickActionConfirmation action={quickActionDialog} busy={isSaving} onClose={() => !isSaving && setQuickActionDialog(null)} onConfirm={(reason) => quickActionDialog.kind === "reversal" ? reverseQuickSubmission(quickActionDialog.submission, reason) : updateQuickWorkflow(quickActionDialog.submission, "needs_doctor", reason)} /> : null}
       <EditBillingModal
         open={Boolean(editor)}
         bill={editor?.bill}
@@ -3800,18 +3857,6 @@ function BillingPage() {
         isSaving={isSaving}
       />
 
-      <CreateBillingModal
-        open={creatorOpen}
-        onClose={() => { setCreatorOpen(false); setCreatorVisit(null); }}
-        onSubmit={handleCreate}
-        isSaving={isSaving}
-        patients={patientOptions}
-        consultations={consultationOptions}
-        preselectedPatientId={creatorVisit?.patient_id || patientIdFilter}
-        preselectedConsultationId={creatorVisit?.consultation_id || ""}
-        preselectedDoctorId={creatorVisit?.doctor_id || ""}
-        onOpenExisting={bill=>{setCreatorOpen(false);setCreatorVisit(null);setEditor({bill});}}
-      />
     </div>
   );
 }

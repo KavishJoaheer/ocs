@@ -1577,6 +1577,148 @@ test('future financial dates and zero-priced supply sales are blocked without si
   assert.equal(row(noCost.id).quantity,20);
 });
 
+test('legacy credit notes must be classified and finance lists remain searchable and paginated', async () => {
+  const ctx=context('Legacy allocation search target');
+  const original=await bill(ctx,[standardFee()],{
+    status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(original.status,201,JSON.stringify(original.data));
+
+  const refundId=Number(db.prepare(`
+    INSERT INTO billing_refunds (
+      credit_note_number,billing_id,amount,refund_method,refund_date,reason,
+      external_reference,issued_by_user_id,issued_by_name,issued_by_role,operation_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    `OCS-CN-LEGACY-${fixtureIndex}`,original.data.id,125,'cash',today,
+    'Imported historical credit before allocation controls',null,null,'Legacy import','admin',randomUUID(),
+  ).lastInsertRowid);
+
+  const before=await api('GET','/billing/reconciliation','accountant');
+  assert.equal(before.status,200,JSON.stringify(before.data));
+  assert.ok(before.data.issues.some(issue=>issue.type==='refund_allocation_missing' && issue.refund_id===refundId));
+
+  const classified=await api('POST',`/billing/refunds/${refundId}/allocation`,'accountant',{
+    allocation_type:'service_non_stock',
+    reason:'Verified against the signed historical consultation credit note',
+  });
+  assert.equal(classified.status,201,JSON.stringify(classified.data));
+  assert.equal(classified.data.allocation.refund_id,refundId);
+  assert.equal(classified.data.allocation.amount,125);
+  assert.equal(classified.data.allocation.allocation_type,'service_non_stock');
+  assert.equal((await api('POST',`/billing/refunds/${refundId}/allocation`,'accountant',{
+    allocation_type:'service_non_stock',reason:'Attempted duplicate historical classification',
+  })).status,409);
+  const event=db.prepare("SELECT * FROM billing_events WHERE bill_id=? AND event_type='refund_allocation_reconciled'").get(original.data.id);
+  assert.ok(event);
+  assert.match(event.reason,/signed historical consultation/i);
+
+  const after=await api('GET','/billing/reconciliation','accountant');
+  assert.equal(after.status,200,JSON.stringify(after.data));
+  assert.equal(after.data.issues.some(issue=>issue.type==='refund_allocation_missing' && issue.refund_id===refundId),false);
+
+  const bills=await api('GET',`/billing?paginated=1&search=${encodeURIComponent('Legacy allocation search')}&limit=10&offset=0`,'accountant');
+  assert.equal(bills.status,200,JSON.stringify(bills.data));
+  assert.equal(bills.data.total,1);
+  assert.equal(bills.data.bills[0].id,original.data.id);
+  const patients=await api('GET',`/billing/patient-summary?paginated=1&search=${encodeURIComponent('Legacy allocation search')}&limit=10&offset=0`,'accountant');
+  assert.equal(patients.status,200,JSON.stringify(patients.data));
+  assert.equal(patients.data.total,1);
+  assert.equal(patients.data.patients[0].patient_id,ctx.patientId);
+  assert.equal(patients.data.totals.total_billed,2000);
+  assert.equal(patients.data.totals.refunded_amount,125);
+});
+
+test('historical supply credits require and record the physical stock outcome', async () => {
+  const ctx=context('Legacy supply credit');
+  const stock=item('Legacy credited supply',20);
+  const original=await bill(ctx,[standardFee(),stockLine(stock,1)],{
+    status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(original.status,201,JSON.stringify(original.data));
+  assert.equal(row(stock.id).quantity,19);
+  const submittedItems=original.data.items.filter(line=>Number(line.inventory_item_id||0)===stock.id);
+  const submissionId=completedQuickSubmission({bill:original.data,ctx,items:submittedItems});
+  const refundId=Number(db.prepare(`
+    INSERT INTO billing_refunds (
+      credit_note_number,billing_id,amount,refund_method,refund_date,reason,
+      external_reference,issued_by_user_id,issued_by_name,issued_by_role,operation_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    `OCS-CN-LEGACY-SUPPLY-${fixtureIndex}`,original.data.id,25,'cash',today,
+    'Imported historical supply credit note',null,null,'Legacy import','admin',randomUUID(),
+  ).lastInsertRowid);
+
+  const missingDisposition=await api('POST',`/billing/refunds/${refundId}/allocation`,'accountant',{
+    allocation_type:'supply_submission',submission_id:submissionId,
+    reason:'Verified against the historical supply return record',operation_id:randomUUID(),
+  });
+  assert.equal(missingDisposition.status,400,JSON.stringify(missingDisposition.data));
+  assert.equal(row(stock.id).quantity,19);
+
+  const classified=await api('POST',`/billing/refunds/${refundId}/allocation`,'accountant',{
+    allocation_type:'supply_submission',submission_id:submissionId,
+    disposition:'returned_to_stock',
+    reason:'Verified unopened return against the historical stock sheet',operation_id:randomUUID(),
+  });
+  assert.equal(classified.status,201,JSON.stringify(classified.data));
+  assert.equal(classified.data.allocation.submission_id,submissionId);
+  assert.equal(classified.data.correction.disposition,'returned_to_stock');
+  assert.equal(row(stock.id).quantity,20);
+  const correction=db.prepare('SELECT * FROM billing_supply_corrections WHERE refund_id=?').get(refundId);
+  assert.ok(correction);
+  assert.deepEqual(JSON.parse(correction.original_movement_ids_json),submittedItems.flatMap(line=>line.inventory_movement_ids));
+  assert.ok(JSON.parse(correction.reversal_movement_ids_json).length>0);
+  const reconciled=await api('GET','/billing/reconciliation','accountant');
+  assert.equal(reconciled.status,200,JSON.stringify(reconciled.data));
+  assert.equal(reconciled.data.issues.some(issue=>issue.refund_id===refundId),false);
+});
+
+test('doctor reconciliation never exposes another doctor credit note', async () => {
+  const otherDoctorId=Number(db.prepare('SELECT id FROM doctors WHERE id != ? ORDER BY id LIMIT 1').get(doctorId).id);
+  const patientId=Number(db.prepare("INSERT INTO patients (full_name,first_name,last_name,patient_identifier,age,contact_number,patient_contact_number,address,assigned_doctor_id) VALUES ('Scoped Other Doctor','Scoped','Doctor',?,40,'57000000','57000000','Scope test',?)")
+    .run(`AUDIT-OTHER-${++fixtureIndex}`,otherDoctorId).lastInsertRowid);
+  const appointmentId=Number(db.prepare("INSERT INTO appointments (patient_id,doctor_id,appointment_date,appointment_time,status) VALUES (?,?,?,'09:30','completed')")
+    .run(patientId,otherDoctorId,today).lastInsertRowid);
+  const consultationId=Number(db.prepare("INSERT INTO consultations (appointment_id,patient_id,doctor_id,consultation_date,doctor_notes) VALUES (?,?,?,?, 'Other doctor scope')")
+    .run(appointmentId,patientId,otherDoctorId,today).lastInsertRowid);
+  const otherBill=await api('POST','/billing/test-support/create','admin',{
+    consultation_id:consultationId,patient_id:patientId,items:[standardFee()],status:'paid',
+    payment_method:'cash',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(otherBill.status,201,JSON.stringify(otherBill.data));
+  const refundId=Number(db.prepare(`
+    INSERT INTO billing_refunds (
+      credit_note_number,billing_id,amount,refund_method,refund_date,reason,
+      external_reference,issued_by_user_id,issued_by_name,issued_by_role,operation_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    `OCS-CN-OTHER-${fixtureIndex}`,otherBill.data.id,100,'cash',today,
+    'Other doctor historical credit note',null,null,'Legacy import','admin',randomUUID(),
+  ).lastInsertRowid);
+
+  const doctorReview=await api('GET','/billing/reconciliation','doctor');
+  assert.equal(doctorReview.status,200,JSON.stringify(doctorReview.data));
+  assert.equal(doctorReview.data.issues.some(issue=>issue.refund_id===refundId),false);
+  assert.equal(doctorReview.data.issues.some(issue=>issue.type==='day_close_missing'),false);
+  const financeReview=await api('GET','/billing/reconciliation','accountant');
+  assert.ok(financeReview.data.issues.some(issue=>issue.refund_id===refundId && issue.type==='refund_allocation_missing'));
+  const classified=await api('POST',`/billing/refunds/${refundId}/allocation`,'accountant',{
+    allocation_type:'service_non_stock',reason:'Verified other doctor historical consultation credit',
+  });
+  assert.equal(classified.status,201,JSON.stringify(classified.data));
+
+  const priorDate=offsetLocalDate(-2);
+  const priorCtx=context('Scoped reconciliation prior day',priorDate);
+  const priorBill=await bill(priorCtx,[standardFee()],{
+    status:'paid',payment_method:'cash',payment_date:priorDate,operation_id:randomUUID(),
+  });
+  assert.equal(priorBill.status,201,JSON.stringify(priorBill.data));
+  const todayOnly=await api('GET',`/billing/reconciliation?dateFrom=${today}&dateTo=${today}`,'accountant');
+  assert.equal(todayOnly.status,200,JSON.stringify(todayOnly.data));
+  assert.equal(todayOnly.data.issues.some(issue=>issue.type==='day_close_missing' && issue.business_date===priorDate),false);
+});
+
 test('finance receives reminders for prior financial days that have not been closed', async () => {
   const yesterday=offsetLocalDate(-1);
   const reminderCtx=context('Outstanding day close',yesterday);
