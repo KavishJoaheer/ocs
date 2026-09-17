@@ -27,10 +27,8 @@ function buildBillPdf(bill) {
   writeLine(`Category: ${bill.partner_category_snapshot || "Self-pay"}`);
   writeLine(`Issued: ${formatDate(bill.issued_at || bill.created_at)} by ${bill.issued_by_name || "System"} (${bill.issued_by_role || "system"})`);
   if (bill.source_reference) writeLine(`Source reference: ${bill.source_reference}`);
-  writeLine(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : bill.status || ""}`);
-  if (bill.status === "paid") {
-    writeLine(`Payment: ${bill.payment_method || ""} · ${formatDate(bill.payment_date)}`);
-  }
+  const paymentState = bill.payment_state || bill.status || "unpaid";
+  writeLine(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : paymentState}`);
   y += 3;
   writeLine("Items", { size: 11, bold: true });
   (bill.items || []).forEach((item) => {
@@ -47,6 +45,25 @@ function buildBillPdf(bill) {
   });
   y += 3;
   writeLine(`Total: ${formatCurrency(bill.total_amount)}`, { size: 12, bold: true });
+  const paymentEntries = Array.isArray(bill.payments) ? bill.payments : [];
+  if (paymentEntries.length) {
+    y += 3;
+    writeLine("Payment ledger", { size: 11, bold: true });
+    paymentEntries.forEach((payment) => {
+      const kind = payment.entry_type === "reversal" ? "Reversal" : "Payment";
+      const reference = payment.external_reference ? ` · Ref ${payment.external_reference}` : "";
+      const reason = payment.reason ? ` · ${payment.reason}` : "";
+      writeLine(`${kind}: ${formatCurrency(payment.amount)} · ${payment.payment_method || ""} · ${formatDate(payment.payment_date)}${reference}${reason}`, { gap: 6 });
+    });
+    writeLine(`Received: ${formatCurrency(bill.payment_received_amount || 0)} · Balance: ${formatCurrency(bill.payment_balance_amount || 0)}`, { bold: true });
+  }
+  if (Array.isArray(bill.refunds) && bill.refunds.length) {
+    y += 2;
+    writeLine("Credit notes", { size: 11, bold: true });
+    bill.refunds.forEach((refund) => {
+      writeLine(`${refund.credit_note_number || "Credit note"}: -${formatCurrency(refund.amount)} · ${refund.refund_method || ""} · ${formatDate(refund.refund_date)}`, { gap: 6 });
+    });
+  }
   if (bill.void_reason) writeLine(`Void reason: ${bill.void_reason}`);
   return doc;
 }

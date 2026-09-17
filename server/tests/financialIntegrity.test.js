@@ -182,7 +182,7 @@ test('invoice retries have one financial and stock effect, including concurrent 
 test('inventory-linked edits preserve stock lines and allow unrelated fee changes', async () => {
   const ctx=context('Edit'); const it=item('Edit medicine'); const original=await bill(ctx,[...fee(),stockLine(it)]);
   const items=original.data.items.map(i=>i.inventory_item_id?i:{...i,amount:1200});
-  const edited=await api('PUT',`/billing/${original.data.id}`,'doctor',{items,expected_version:original.data.row_version});
+  const edited=await api('PUT',`/billing/${original.data.id}`,'doctor',{items,correction_reason:'Adjusted consultation fee after source review',expected_version:original.data.row_version});
   assert.equal(edited.status,200,JSON.stringify(edited.data)); assert.equal(edited.data.total_amount,1250);
   assert.equal(row(it.id).quantity,18);
   const stripped=await api('PUT',`/billing/${original.data.id}`,'doctor',{items:fee()}); assert.equal(stripped.status,400);
@@ -530,7 +530,7 @@ test('payment-date reporting posts a credit note on its refund date without rewr
   const todayBefore=await report(today,'payment');
   const credited=await api('POST',`/billing/${original.data.id}/refunds`,'accountant',{
     amount:600,refund_method:'juice',refund_date:today,
-    reason:'Partial refund agreed after finance review',operation_id:randomUUID(),
+    reason:'Partial refund agreed after finance review',external_reference:`JUICE-REFUND-${fixtureIndex}`,operation_id:randomUUID(),
   });
   assert.equal(credited.status,201,JSON.stringify(credited.data));
   const yesterdayAfter=await report(yesterday,'payment');
@@ -678,7 +678,10 @@ test('current tariffs migrate once without repricing bills, and automatic fees r
   const items=original.items.map(i=>({...i,description:'Night Consultation',amount:3000}));
   const confirmed=await api('PUT',`/billing/${original.id}`,'doctor',{items,status:'unpaid',confirm_consultation_fee:true,expected_version:original.row_version});
   assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));assert.equal(confirmed.data.total_amount,3000);assert.equal(confirmed.data.fee_review_required,0);
-  const completed=await api('PATCH',`/billing/${original.id}/pay`,'doctor',{...pay,expected_version:confirmed.data.row_version,operation_id:randomUUID()});
+  const finalized=await api('POST',`/billing/quick/visits/${created.data.id}/capture`,'doctor',{operation_id:randomUUID(),consultation_fee:{type:'Night Consultation',amount:3000},items:[]});
+  assert.equal(finalized.status,201,JSON.stringify(finalized.data));
+  const finalBill=(await api('GET',`/billing/${original.id}`,'doctor')).data;
+  const completed=await api('PATCH',`/billing/${original.id}/pay`,'doctor',{...pay,expected_version:finalBill.row_version,operation_id:randomUUID()});
   assert.equal(completed.status,200,JSON.stringify(completed.data));assert.equal(completed.data.status,'paid');
   const duplicate=await bill({...ctx,consultationId:created.data.id},fee(2000),{operation_id:randomUUID()});
   assert.equal(duplicate.status,409);assert.equal(duplicate.data.existing_bill_id,original.id);
@@ -877,7 +880,7 @@ test('payment shortcut requires explicit method and date and retains version pro
   const ctx=context('Explicit payment'); const original=await bill(ctx,fee());
   assert.equal((await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{})).status,400);
   assert.equal((await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{payment_method:'cash'})).status,400);
-  const edited=await api('PUT',`/billing/${original.data.id}`,'admin',{items:fee(2000),expected_version:original.data.row_version});
+  const edited=await api('PUT',`/billing/${original.data.id}`,'admin',{items:fee(2000),correction_reason:'Adjusted consultation fee after source review',expected_version:original.data.row_version});
   assert.equal(edited.status,200);
   const stale=await api('PATCH',`/billing/${original.data.id}/pay`,'admin',{payment_method:'cash',payment_date:today,expected_version:original.data.row_version});
   assert.equal(stale.status,409);
@@ -989,6 +992,59 @@ test('payment ledger supports partial and split receipts without allowing invoic
   assert.equal(second.data.status,'paid');assert.equal(second.data.payment_state,'paid');
   assert.equal(second.data.payment_count,2);assert.equal(second.data.payment_balance_amount,0);
   assert.deepEqual(second.data.payments.map((payment)=>payment.amount),[500,1500]);
+});
+
+test('payment corrections use an immutable compensating reversal and reopen the balance', async () => {
+  const ctx=context('Payment reversal');
+  const original=await bill(ctx,[standardFee()],{status:'paid',payment_method:'card',payment_date:today,operation_id:randomUUID()});
+  assert.equal(original.status,201,JSON.stringify(original.data));
+  const payment=original.data.payments.find(entry=>entry.entry_type==='payment');
+  assert.ok(payment);
+  const operationId=randomUUID();
+  const reversed=await api('POST',`/billing/${original.data.id}/payments/${payment.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,
+    reason:'Card receipt was entered against the wrong invoice',
+    external_reference:`CARD-REV-${fixtureIndex}`,
+    operation_id:operationId,
+  });
+  assert.equal(reversed.status,201,JSON.stringify(reversed.data));
+  assert.equal(reversed.data.bill.status,'unpaid');
+  assert.equal(reversed.data.bill.payment_received_amount,0);
+  assert.equal(reversed.data.bill.payment_balance_amount,2000);
+  assert.deepEqual(reversed.data.bill.payments.map(entry=>entry.amount),[2000,-2000]);
+  const replay=await api('POST',`/billing/${original.data.id}/payments/${payment.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,reason:'Card receipt was entered against the wrong invoice',external_reference:`CARD-REV-${fixtureIndex}`,operation_id:operationId,
+  });
+  assert.equal(replay.status,201);assert.equal(replay.data.reversal_id,reversed.data.reversal_id);
+  assert.throws(()=>db.prepare('UPDATE billing_payment_reversals SET reason=? WHERE id=?').run('Changed',reversed.data.reversal_id),/immutable/);
+});
+
+test('paid supply corrections issue a credit note and restore only confirmed returned stock', async () => {
+  const ctx=context('Paid supply correction');
+  const it=item('Returned paid supply',20);
+  const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  assert.equal(draft.status,201,JSON.stringify(draft.data));
+  const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),
+    consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:it.id,quantity:1}],
+  });
+  assert.equal(captured.status,201,JSON.stringify(captured.data));
+  assert.equal(row(it.id).quantity,19);
+  const payable=(await api('GET',`/billing/${draft.data.id}`,'doctor')).data;
+  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'doctor',{
+    amount:2025,payment_method:'cash',payment_date:today,expected_version:payable.row_version,operation_id:randomUUID(),
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',{
+    disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
+    reason:'Supply was billed but returned unopened to the doctor bag',operation_id:randomUUID(),
+  });
+  assert.equal(corrected.status,201,JSON.stringify(corrected.data));
+  assert.equal(corrected.data.credit_note.amount,25);
+  assert.equal(corrected.data.stock_restored,true);
+  assert.equal(row(it.id).quantity,20);
+  assert.equal(db.prepare('SELECT disposition FROM billing_supply_corrections WHERE id=?').get(corrected.data.correction_id).disposition,'returned_to_stock');
 });
 
 test('future financial dates and zero-priced supply sales are blocked without side effects', async () => {
@@ -1108,7 +1164,7 @@ test('finance can close a day once and closed dates reject later payments and re
   assert.equal(latePayment.data.code,'FINANCIAL_DAY_CLOSED');
   const lateRefund=await api('POST',`/billing/${refundable.data.id}/refunds`,'accountant',{
     amount:100,refund_method:'card',refund_date:today,
-    reason:'Refund requested after finance day was closed',operation_id:randomUUID(),
+    reason:'Refund requested after finance day was closed',external_reference:`CARD-CLOSED-${fixtureIndex}`,operation_id:randomUUID(),
   });
   assert.equal(lateRefund.status,409,JSON.stringify(lateRefund.data));
   assert.equal(lateRefund.data.code,'FINANCIAL_DAY_CLOSED');

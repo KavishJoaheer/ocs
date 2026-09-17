@@ -600,7 +600,8 @@ function RefundConfirmation({ bill, busy, onClose, onConfirm }) {
   const [externalReference, setExternalReference] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const amountNumber = Number(amount || 0);
-  const valid = amountNumber > 0 && amountNumber <= refundable && method && date && reason.trim().length >= 8 && confirmed;
+  const valid = amountNumber > 0 && amountNumber <= refundable && method && date && reason.trim().length >= 8 &&
+    (method === "cash" || externalReference.trim().length >= 3) && confirmed;
 
   return (
     <Modal open onClose={onClose} title={`Issue credit note · ${billReference(bill)}`} size="md">
@@ -646,8 +647,8 @@ function RefundConfirmation({ bill, busy, onClose, onConfirm }) {
           <textarea required minLength={8} rows={3} className={cx(BILLING_FIELD, "resize-y")} value={reason} onChange={(event) => { setReason(event.target.value); setConfirmed(false); }} placeholder="Why is this refund being issued?" />
         </label>
         <label className="block text-sm font-semibold">
-          External reference <span className="font-normal text-slate-500">(optional)</span>
-          <input className={BILLING_FIELD} value={externalReference} onChange={(event) => { setExternalReference(event.target.value); setConfirmed(false); }} placeholder="Bank, Juice or receipt reference" />
+          External reference {method === "cash" ? <span className="font-normal text-slate-500">(optional)</span> : <span className="text-rose-600">*</span>}
+          <input required={method !== "cash"} minLength={method === "cash" ? undefined : 3} className={BILLING_FIELD} value={externalReference} onChange={(event) => { setExternalReference(event.target.value); setConfirmed(false); }} placeholder="Bank, Juice or receipt reference" />
         </label>
         <label className="flex min-h-11 items-start gap-3 text-sm">
           <input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
@@ -662,7 +663,77 @@ function RefundConfirmation({ bill, busy, onClose, onConfirm }) {
   );
 }
 
-function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid, isSaving }) {
+function PaymentReversalConfirmation({ payment, busy, onClose, onConfirm }) {
+  const [date, setDate] = useState(billingPageTodayInputValue());
+  const [reason, setReason] = useState("");
+  const [externalReference, setExternalReference] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const needsReference = payment.payment_method !== "cash";
+  const valid = date && reason.trim().length >= 8 && (!needsReference || externalReference.trim().length >= 3) && confirmed;
+  return (
+    <Modal open onClose={onClose} title="Reverse payment transaction" size="md">
+      <form className="space-y-4" onSubmit={(event) => {
+        event.preventDefault();
+        if (!busy && valid) onConfirm({
+          reversal_date: date,
+          reason: reason.trim(),
+          external_reference: externalReference.trim() || null,
+          operation_id: crypto.randomUUID(),
+        });
+      }}>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-bold">{formatCurrency(Math.abs(Number(payment.amount || 0)))} · {formatPaymentMethod(payment.payment_method)}</p>
+          <p className="mt-1">This keeps the original receipt and posts an immutable compensating reversal.</p>
+        </div>
+        <label className="block text-sm font-semibold">Reversal date<input required type="date" max={billingPageTodayInputValue()} className={BILLING_FIELD} value={date} onChange={(event) => { setDate(event.target.value); setConfirmed(false); }} /></label>
+        <label className="block text-sm font-semibold">Reason<textarea required minLength={8} rows={3} className={cx(BILLING_FIELD, "resize-y")} value={reason} onChange={(event) => { setReason(event.target.value); setConfirmed(false); }} placeholder="Why is this recorded payment incorrect?" /></label>
+        <label className="block text-sm font-semibold">Provider reversal reference {needsReference ? <span className="text-rose-600">*</span> : <span className="font-normal text-slate-500">(optional)</span>}<input required={needsReference} minLength={needsReference ? 3 : undefined} className={BILLING_FIELD} value={externalReference} onChange={(event) => { setExternalReference(event.target.value); setConfirmed(false); }} placeholder={needsReference ? "Required provider reference" : "Cash correction reference"} /></label>
+        <label className="flex min-h-11 items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I confirm this receipt was recorded incorrectly and should be reversed.</span></label>
+        <div className="flex justify-end gap-3"><button type="button" disabled={busy} className="min-h-11 rounded-xl border px-4" onClick={onClose}>Cancel</button><button disabled={busy || !valid} className="min-h-11 rounded-xl bg-amber-700 px-4 font-semibold text-white disabled:opacity-50">{busy ? "Reversing…" : "Post reversal"}</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function PaidSupplyCorrectionConfirmation({ submission, busy, onClose, onConfirm }) {
+  const [disposition, setDisposition] = useState("");
+  const [method, setMethod] = useState("");
+  const [date, setDate] = useState(billingPageTodayInputValue());
+  const [reason, setReason] = useState("");
+  const [externalReference, setExternalReference] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const needsReference = method && method !== "cash";
+  const valid = disposition && method && date && reason.trim().length >= 8 && (!needsReference || externalReference.trim().length >= 3) && confirmed;
+  return (
+    <Modal open onClose={onClose} title="Correct paid supply charge" size="md">
+      <form className="space-y-4" onSubmit={(event) => {
+        event.preventDefault();
+        if (!busy && valid) onConfirm({
+          disposition,
+          refund_method: method,
+          refund_date: date,
+          reason: reason.trim(),
+          external_reference: externalReference.trim() || null,
+          operation_id: crypto.randomUUID(),
+        });
+      }}>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-950">
+          <p className="font-bold">Credit {formatCurrency(submission.amount_added)} for {submission.item_count} supply unit{submission.item_count === 1 ? "" : "s"}</p>
+          <p className="mt-1">A credit note is issued. Stock is restored only when the physical supplies were returned.</p>
+        </div>
+        <label className="block text-sm font-semibold">What happened to the supplies?<select required className={BILLING_FIELD} value={disposition} onChange={(event) => { setDisposition(event.target.value); setConfirmed(false); }}><option value="">Select outcome</option><option value="returned_to_stock">Returned unopened to stock</option><option value="consumed_or_wasted">Consumed or wasted — do not restore stock</option></select></label>
+        <label className="block text-sm font-semibold">Refund method<select required className={BILLING_FIELD} value={method} onChange={(event) => { setMethod(event.target.value); setConfirmed(false); }}><option value="">Select method</option>{PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label className="block text-sm font-semibold">Refund date<input required type="date" max={billingPageTodayInputValue()} className={BILLING_FIELD} value={date} onChange={(event) => { setDate(event.target.value); setConfirmed(false); }} /></label>
+        <label className="block text-sm font-semibold">Correction reason<textarea required minLength={8} rows={3} className={cx(BILLING_FIELD, "resize-y")} value={reason} onChange={(event) => { setReason(event.target.value); setConfirmed(false); }} placeholder="What was billed incorrectly?" /></label>
+        <label className="block text-sm font-semibold">Provider refund reference {needsReference ? <span className="text-rose-600">*</span> : <span className="font-normal text-slate-500">(optional for cash)</span>}<input required={Boolean(needsReference)} minLength={needsReference ? 3 : undefined} className={BILLING_FIELD} value={externalReference} onChange={(event) => { setExternalReference(event.target.value); setConfirmed(false); }} /></label>
+        <label className="flex min-h-11 items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I confirm the refund and the physical stock outcome above.</span></label>
+        <div className="flex justify-end gap-3"><button type="button" disabled={busy} className="min-h-11 rounded-xl border px-4" onClick={onClose}>Cancel</button><button disabled={busy || !valid} className="min-h-11 rounded-xl bg-rose-700 px-4 font-semibold text-white disabled:opacity-50">{busy ? "Correcting…" : "Issue correction"}</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid, onChanged, isSaving }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const [feeConfirmed, setFeeConfirmed] = useState(false);
@@ -672,6 +743,11 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   const [history, setHistory] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [quickSubmissions, setQuickSubmissions] = useState([]);
+  const [supplyCorrections, setSupplyCorrections] = useState([]);
+  const [reversalPayment, setReversalPayment] = useState(null);
+  const [correctionSubmission, setCorrectionSubmission] = useState(null);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
   const readOnly = Boolean(!canWriteBill(user, bill) || bill?.voided_at || bill?.consultation_voided_at || ((bill?.status === "paid" || bill?.legacy_fee_review_required) && user?.role !== "admin"));
   const operatorEditing = user?.role === "operator" && !readOnly;
   const [status, setStatus] = useState("unpaid");
@@ -750,10 +826,49 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   useEffect(() => {
     if (!open || !billId) return;
     let ignore = false;
-    api.get(`/billing/${billId}`).then(detail => { if (!ignore) { setHistory(detail.history || []); setCreditNotes(detail.refunds || []); setPayments(detail.payments || []); } })
-      .catch(() => { if (!ignore) { setHistory([]); setCreditNotes([]); setPayments([]); } });
+    api.get(`/billing/${billId}`).then(detail => { if (!ignore) { setHistory(detail.history || []); setCreditNotes(detail.refunds || []); setPayments(detail.payments || []); setQuickSubmissions(detail.quick_submissions || []); setSupplyCorrections(detail.supply_corrections || []); } })
+      .catch(() => { if (!ignore) { setHistory([]); setCreditNotes([]); setPayments([]); setQuickSubmissions([]); setSupplyCorrections([]); } });
     return () => { ignore = true; };
   }, [open, billId]);
+
+  async function refreshFinancialDetail() {
+    const detail = await api.get(`/billing/${billId}`);
+    setHistory(detail.history || []);
+    setCreditNotes(detail.refunds || []);
+    setPayments(detail.payments || []);
+    setQuickSubmissions(detail.quick_submissions || []);
+    setSupplyCorrections(detail.supply_corrections || []);
+    onChanged?.(detail);
+    return detail;
+  }
+
+  async function reversePayment(payload) {
+    setCorrectionBusy(true);
+    try {
+      await api.post(`/billing/${billId}/payments/${reversalPayment.payment_transaction_id}/reverse`, payload);
+      setReversalPayment(null);
+      await refreshFinancialDetail();
+      toast.success("Payment reversal posted. The original receipt remains in the ledger.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
+  async function correctPaidSupplies(payload) {
+    setCorrectionBusy(true);
+    try {
+      const result = await api.post(`/billing/quick/submissions/${correctionSubmission.id}/paid-correction`, payload);
+      setCorrectionSubmission(null);
+      await refreshFinancialDetail();
+      toast.success(`${result.credit_note.credit_note_number} issued${result.stock_restored ? " and stock restored" : "; stock left unchanged"}.`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
 
   const total = useMemo(
     () =>
@@ -764,6 +879,14 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
       }, 0),
     [items],
   );
+  const reversedPaymentIds = new Set(
+    payments.filter((payment) => payment.entry_type === "reversal").map((payment) => Number(payment.payment_transaction_id)),
+  );
+  const correctedSubmissionIds = new Set(supplyCorrections.map((correction) => Number(correction.submission_id)));
+  const correctableSupplySubmissions = quickSubmissions.filter((submission) =>
+    Number(submission.amount_added || 0) > 0 && !correctedSubmissionIds.has(Number(submission.id)),
+  );
+  const canPostFinancialCorrection = ["admin", "accountant"].includes(user?.role);
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -847,12 +970,19 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
               <p className="text-sm font-bold text-emerald-950">Received {formatCurrency(bill.payment_received_amount || 0)} · Balance {formatCurrency(bill.payment_balance_amount || 0)}</p>
             </div>
             <div className="mt-2 space-y-2">
-              {payments.map((payment) => (
-                <div key={payment.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-emerald-200 pt-2 text-sm text-emerald-950">
-                  <div><span className="font-bold">{formatDate(payment.payment_date)} · {formatPaymentMethod(payment.payment_method)}</span><p className="text-xs text-emerald-800">{payment.external_reference || "Cash / migrated record"} · {payment.recorded_by_name || "Legacy staff record"}</p></div>
-                  <span className="font-bold">{formatCurrency(payment.amount)}</span>
-                </div>
-              ))}
+              {payments.map((payment) => {
+                const reversal = payment.entry_type === "reversal";
+                const alreadyReversed = reversal || reversedPaymentIds.has(Number(payment.payment_transaction_id));
+                return (
+                  <div key={payment.id} className={cx("flex flex-wrap items-start justify-between gap-3 border-t pt-2 text-sm", reversal ? "border-rose-200 text-rose-950" : "border-emerald-200 text-emerald-950")}>
+                    <div><span className="font-bold">{reversal ? "Reversal · " : ""}{formatDate(payment.payment_date)} · {formatPaymentMethod(payment.payment_method)}</span><p className={cx("text-xs", reversal ? "text-rose-800" : "text-emerald-800")}>{payment.reason || payment.external_reference || "Cash / migrated record"} · {payment.recorded_by_name || "Legacy staff record"}</p></div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">{formatCurrency(payment.amount)}</span>
+                      {!alreadyReversed && ["admin", "accountant", "operator"].includes(user?.role) ? <button type="button" onClick={() => setReversalPayment(payment)} className="min-h-9 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800">Reverse</button> : null}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -871,6 +1001,13 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
               ))}
             </div>
             <p className="mt-3 border-t border-rose-200 pt-2 text-xs font-semibold text-rose-900">Credit notes change net collections only; inventory is not restored automatically.</p>
+          </div>
+        ) : null}
+        {bill.status === "paid" && (correctableSupplySubmissions.length || supplyCorrections.length) ? (
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">
+            <p className="font-bold">Paid supply corrections</p>
+            {supplyCorrections.map((correction) => <p key={correction.id} className="mt-2 border-t border-violet-200 pt-2">{correction.credit_note_number} · {formatCurrency(correction.amount)} · {correction.disposition === "returned_to_stock" ? "Stock restored" : "Consumed / wasted"}<span className="block text-xs text-violet-800">{correction.reason}</span></p>)}
+            {canPostFinancialCorrection && correctableSupplySubmissions.map((submission) => <button key={submission.id} type="button" onClick={() => setCorrectionSubmission(submission)} className="mt-3 min-h-11 w-full rounded-xl border border-violet-300 bg-white px-4 font-bold text-violet-900">Correct {formatCurrency(submission.amount_added)} of paid supplies</button>)}
           </div>
         ) : null}
         {bill.payment_block && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
@@ -950,6 +1087,8 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
           </button>
         </div>
       </form>
+      {reversalPayment ? <PaymentReversalConfirmation payment={reversalPayment} busy={correctionBusy} onClose={() => { if (!correctionBusy) setReversalPayment(null); }} onConfirm={reversePayment} /> : null}
+      {correctionSubmission ? <PaidSupplyCorrectionConfirmation submission={correctionSubmission} busy={correctionBusy} onClose={() => { if (!correctionBusy) setCorrectionSubmission(null); }} onConfirm={correctPaidSupplies} /> : null}
     </Modal>
   );
 }
@@ -3640,6 +3779,7 @@ function BillingPage() {
         onClose={() => setEditor(null)}
         onSubmit={handleSave}
         onVoid={async (bill, reason) => { setIsSaving(true); try { await api.post(`/billing/${bill.id}/void`,{reason,expected_version:bill.row_version}); setEditor(null); await loadData(); toast.success("Duplicate bill voided; visit retained."); } catch(e){toast.error(e.message);} finally {setIsSaving(false);} }}
+        onChanged={(detail) => { setEditor({ bill: detail }); void loadData(); }}
         isSaving={isSaving}
       />
 

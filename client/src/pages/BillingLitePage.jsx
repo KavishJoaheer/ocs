@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  CreditCard,
   ChevronDown,
   ChevronRight,
   Home,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
+import Modal from "../components/Modal.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { listOfflineMutations, removeOfflineMutation } from "../lib/offlineQueue.js";
@@ -38,10 +40,12 @@ const STATUS_META = {
   awaiting_operator: { label: "Awaiting operator", className: "bg-cyan-50 text-cyan-800 ring-cyan-200" },
   needs_doctor: { label: "Needs clarification", className: "bg-rose-50 text-rose-800 ring-rose-200" },
   ready_for_payment: { label: "Ready for payment", className: "bg-violet-50 text-violet-800 ring-violet-200" },
+  partial: { label: "Part paid", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   queued_offline: { label: "Saved offline", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   needs_attention: { label: "Sync needs attention", className: "bg-rose-50 text-rose-800 ring-rose-200" },
   reversed: { label: "Reversed", className: "bg-slate-100 text-slate-700 ring-slate-300" },
   superseded: { label: "Corrected", className: "bg-slate-100 text-slate-700 ring-slate-300" },
+  corrected: { label: "Paid correction", className: "bg-slate-100 text-slate-700 ring-slate-300" },
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
 
@@ -128,6 +132,54 @@ function EmptyState({ icon: Icon = CalendarDays, title, description, action }) {
   );
 }
 
+function OperatorPaymentModal({ bill, busy, onClose, onConfirm }) {
+  const balance = Math.max(0, Number(bill?.payment_balance_amount ?? bill?.total_amount ?? 0));
+  const [amount, setAmount] = useState(balance ? balance.toFixed(2) : "");
+  const [method, setMethod] = useState("");
+  const [paymentDate, setPaymentDate] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const [reference, setReference] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [operationId] = useState(() => crypto.randomUUID());
+  const amountNumber = Number(amount || 0);
+  const valid = amountNumber > 0 && amountNumber <= balance && method && paymentDate &&
+    (method === "cash" || reference.trim().length >= 3) && confirmed;
+  return (
+    <Modal open onClose={onClose} title={`Record payment · ${bill.invoice_number || `Bill #${bill.id}`}`} size="md">
+      <form className="space-y-4" onSubmit={(event) => {
+        event.preventDefault();
+        if (!busy && valid) onConfirm({
+          amount: amountNumber, payment_method: method, payment_date: paymentDate,
+          external_reference: reference.trim() || null, operation_id: operationId,
+          expected_version: bill.row_version,
+        });
+      }}>
+        <div className="rounded-2xl bg-slate-50 p-4">
+          <p className="font-black text-slate-950">{bill.patient_name}</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">{bill.doctor_name} · {formatVisitDate(bill.consultation_date)}</p>
+          <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Outstanding</p>
+          <p className="mt-1 text-2xl font-black">{formatRupees(balance)}</p>
+        </div>
+        <label className="block text-sm font-bold">Amount received
+          <input required type="number" min="0.01" max={balance} step="0.01" value={amount} onChange={(event) => { setAmount(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
+        </label>
+        <label className="block text-sm font-bold">Payment method
+          <select required value={method} onChange={(event) => { setMethod(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4">
+            <option value="">Select method</option><option value="cash">Cash</option><option value="juice">Juice</option><option value="card">Card</option><option value="ib">IB / bank</option>
+          </select>
+        </label>
+        <label className="block text-sm font-bold">Payment date
+          <input required type="date" max={dayjs().format("YYYY-MM-DD")} value={paymentDate} onChange={(event) => { setPaymentDate(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
+        </label>
+        <label className="block text-sm font-bold">Provider reference {method === "cash" ? <span className="font-normal text-slate-500">(optional)</span> : <span className="text-rose-600">*</span>}
+          <input required={method !== "cash"} minLength={method === "cash" ? undefined : 3} value={reference} onChange={(event) => { setReference(event.target.value); setConfirmed(false); }} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4" />
+        </label>
+        <label className="flex items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I confirm this payment was received and should be added to the immutable ledger.</span></label>
+        <div className="flex justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-xl border px-4 font-bold">Cancel</button><button disabled={busy || !valid} className="min-h-11 rounded-xl bg-[#17666a] px-4 font-black text-white disabled:opacity-50">{busy ? "Recording…" : "Record payment"}</button></div>
+      </form>
+    </Modal>
+  );
+}
+
 function BillingLitePage() {
   const { user } = useAuth();
   const operatorIssueOnly = user?.role === "operator";
@@ -169,6 +221,10 @@ function BillingLitePage() {
   const [editingOfflineEntry, setEditingOfflineEntry] = useState(null);
   const [lastSubmissionOffline, setLastSubmissionOffline] = useState(false);
   const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
+  const [operatorPayments, setOperatorPayments] = useState([]);
+  const [operatorQueueSearch, setOperatorQueueSearch] = useState("");
+  const [paymentBill, setPaymentBill] = useState(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
   const [favorites, setFavorites] = useState(() => {
     return new Set();
   });
@@ -193,10 +249,11 @@ function BillingLitePage() {
       const pickerQuery = operatorIssueOnly && billingDoctorId
         ? `?doctorId=${encodeURIComponent(billingDoctorId)}`
         : "";
-      const [submissionPayload, pickerPayload, feePayload] = await Promise.all([
+      const [submissionPayload, pickerPayload, feePayload, operatorPayload] = await Promise.all([
         api.get(`/billing/quick/submissions?limit=${SUBMISSION_PAGE_SIZE}&offset=0`),
         api.get(`/billing/quick/picker-options${pickerQuery}`),
         api.get("/billing/consultation-fees"),
+        operatorIssueOnly ? api.get("/dashboard/operator-workspace") : Promise.resolve(null),
       ]);
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
       setSubmissionTotal(Number(submissionPayload?.total || 0));
@@ -204,6 +261,7 @@ function BillingLitePage() {
       setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
       setConsultationFees(feePayload || {});
+      setOperatorPayments(Array.isArray(operatorPayload?.pendingPayments) ? operatorPayload.pendingPayments : []);
     } catch (error) {
       toast.error(error.message || "Quick billing could not be loaded.");
     } finally {
@@ -610,6 +668,38 @@ function BillingLitePage() {
     }
   }
 
+  async function updateOperatorWorkflow(submission, status) {
+    let note = "";
+    if (status === "needs_doctor") {
+      const response = window.prompt("What should the doctor clarify?");
+      if (response === null) return;
+      note = response.trim();
+      if (note.length < 3) return toast.error("Add a short clarification note for the doctor.");
+    }
+    try {
+      await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, { status, note });
+      await loadDashboard({ silent: true });
+      toast.success(status === "needs_doctor" ? "Clarification sent to the doctor." : "Bill is ready for payment.");
+    } catch (error) {
+      toast.error(error.message || "The billing workflow could not be updated.");
+    }
+  }
+
+  async function recordOperatorPayment(payload) {
+    if (!paymentBill || paymentBusy) return;
+    setPaymentBusy(true);
+    try {
+      await api.patch(`/billing/${paymentBill.id}/pay`, payload);
+      setPaymentBill(null);
+      await loadDashboard({ silent: true });
+      toast.success("Payment recorded in the transaction ledger.");
+    } catch (error) {
+      toast.error(error.message || "Payment could not be recorded.");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
+
   async function editOfflineSubmission(queueEntry) {
     const consultationId = Number(queueEntry.payload?.consultation_id || queueEntry.meta?.consultationId || 0);
     const visit = patientOptions
@@ -693,6 +783,20 @@ function BillingLitePage() {
     ["needs_doctor", "needs_attention", "queued_offline"].includes(submission.status),
   ).length;
 
+  const operatorActionSubmissions = operatorIssueOnly
+    ? submissions.filter((submission) => ["awaiting_operator", "needs_doctor"].includes(submission.status))
+    : [];
+  const operatorQueueNeedle = operatorQueueSearch.trim().toLowerCase();
+  const matchesOperatorQueue = (entry) => !operatorQueueNeedle || [
+    entry.patient_name, entry.patient_identifier, entry.visit_number,
+    entry.invoice_number, entry.doctor_name,
+  ].some((value) => String(value || "").toLowerCase().includes(operatorQueueNeedle));
+  const visibleOperatorSubmissions = operatorActionSubmissions.filter(matchesOperatorQueue);
+  const actionBillIds = new Set(operatorActionSubmissions.map((submission) => Number(submission.bill_id || 0)).filter(Boolean));
+  const visibleOperatorPayments = operatorPayments
+    .filter((bill) => !actionBillIds.has(Number(bill.id || 0)))
+    .filter(matchesOperatorQueue);
+
   return (
     <div className="relative min-h-[70svh] rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
       <div className="absolute inset-x-0 top-0 z-0 h-72 rounded-t-[2rem] bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
@@ -760,6 +864,44 @@ function BillingLitePage() {
                     The invoice and supply deduction will be recorded against this doctor’s consultation.
                   </span>
                 </label>
+              </div>
+            ) : null}
+
+            {operatorIssueOnly ? (
+              <div className="relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-black text-[#173f47]">Operator action queue</h2>
+                    <p className="text-xs font-semibold text-slate-500">Clarifications and collections in one place.</p>
+                  </div>
+                  <div className="relative sm:w-72">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                    <input value={operatorQueueSearch} onChange={(event) => setOperatorQueueSearch(event.target.value)} placeholder="Patient, OCS, visit or invoice" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm font-semibold outline-none focus:border-[#2aa7a0]" />
+                  </div>
+                </div>
+                {visibleOperatorSubmissions.length || visibleOperatorPayments.length ? (
+                  <div className="mt-3 grid gap-2.5 md:grid-cols-2">
+                    {visibleOperatorSubmissions.map((submission) => (
+                      <article key={`review-${submission.id}`} className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
+                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black">{submission.patient_name}</p><p className="mt-1 text-xs font-bold text-slate-500">{submission.patient_identifier} · {submission.visit_number}</p></div><StatusBadge status={submission.status} compact /></div>
+                        {submission.workflow_note ? <p className="mt-3 text-sm font-semibold text-rose-800">{submission.workflow_note}</p> : null}
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => updateOperatorWorkflow(submission, "needs_doctor")} className="min-h-11 rounded-xl border border-rose-200 bg-white px-3 text-sm font-black text-rose-800">Ask doctor</button>
+                          <button type="button" onClick={() => updateOperatorWorkflow(submission, "ready_for_payment")} className="min-h-11 rounded-xl bg-violet-600 px-3 text-sm font-black text-white">Ready for payment</button>
+                        </div>
+                      </article>
+                    ))}
+                    {visibleOperatorPayments.map((bill) => (
+                      <article key={`payment-${bill.id}`} className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4">
+                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black">{bill.patient_name}</p><p className="mt-1 text-xs font-bold text-slate-500">{bill.patient_identifier} · {bill.invoice_number}</p><p className="mt-1 text-xs font-semibold text-slate-500">{bill.doctor_name}</p></div><StatusBadge status={Number(bill.payment_received_amount || 0) > 0 ? "partial" : "ready_for_payment"} compact /></div>
+                        <div className="mt-3 flex items-center justify-between rounded-xl bg-white px-3 py-2"><span className="text-xs font-bold text-slate-500">Outstanding</span><span className="font-black">{formatRupees(bill.payment_balance_amount)}</span></div>
+                        <button type="button" onClick={() => setPaymentBill(bill)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#17666a] px-3 text-sm font-black text-white"><CreditCard className="size-4" />Record payment</button>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">No matching operator actions.</p>
+                )}
               </div>
             ) : null}
 
@@ -1489,6 +1631,9 @@ function BillingLitePage() {
           </section>
         ) : null}
       </main>
+      {paymentBill ? (
+        <OperatorPaymentModal bill={paymentBill} busy={paymentBusy} onClose={() => !paymentBusy && setPaymentBill(null)} onConfirm={recordOperatorPayment} />
+      ) : null}
     </div>
   );
 }

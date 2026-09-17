@@ -696,6 +696,8 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
   const saleRequiresPatient = isSale && !selectedPatient;
   const qty = Number(quantity || 0);
   const sellingPrice = Number(item?.selling_price || 0);
+  const costPrice = Number(item?.cost_price || 0);
+  const salePriceReady = !isSale || (sellingPrice > 0 && costPrice > 0);
   const billAmount = isSale && Number.isInteger(qty) && qty > 0 ? sellingPrice * qty : 0;
   const resultingBalance = Math.max(0, Number(item?.quantity || 0) - (Number.isInteger(qty) ? qty : 0));
   const noteReady = !isLoss || String(note || "").trim().length >= 8;
@@ -881,10 +883,16 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
           </label>
 
           {isSale ? (
-            <p className="mt-3 text-sm text-slate-700">
-              Selling price {formatRupees(sellingPrice)} × {Number.isInteger(qty) ? qty : 0} ={" "}
-              <strong>{formatRupees(billAmount)}</strong> will be added to the patient bill.
-            </p>
+            salePriceReady ? (
+              <p className="mt-3 text-sm text-slate-700">
+                Selling price {formatRupees(sellingPrice)} × {Number.isInteger(qty) ? qty : 0} ={" "}
+                <strong>{formatRupees(billAmount)}</strong> will be added to the patient bill.
+              </p>
+            ) : (
+              <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+                Sale blocked: inventory must add both the cost price and selling price first.
+              </p>
+            )
           ) : null}
           <p className="mt-2 text-sm text-slate-700">
             Resulting bag on hand: <strong className="tabular-nums">{resultingBalance}</strong>
@@ -909,6 +917,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               Number(quantity || 0) <= 0 ||
               Number(quantity || 0) > available ||
               saleRequiresPatient ||
+              !salePriceReady ||
               !noteReady ||
               !lotReady ||
               !legacyReady
@@ -2342,9 +2351,10 @@ function MobileDoctorDeductSheet({
     ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
     : null;
   const saleRequiresPatient = isSale && !selectedPatient;
+  const salePriceReady = !isSale || (Number(item.selling_price || 0) > 0 && Number(item.cost_price || 0) > 0);
   const noteReady = !isLoss || String(note || "").trim().length >= 8;
   const lotReady = !isLoss || legacyUnknownLot || !lots.length || selectedLot;
-  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient || !noteReady || !lotReady;
+  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient || !salePriceReady || !noteReady || !lotReady;
 
   return (
     <MobileBottomSheet
@@ -2504,10 +2514,16 @@ function MobileDoctorDeductSheet({
             />
           </label>
         ) : (
-          <p className="text-sm text-slate-700">
-            Selling price {formatRupees(Number(item.selling_price || 0))} × {Number.isInteger(qty) ? qty : 0} ={" "}
-            <strong>{formatRupees(Number(item.selling_price || 0) * (Number.isInteger(qty) ? qty : 0))}</strong>
-          </p>
+          salePriceReady ? (
+            <p className="text-sm text-slate-700">
+              Selling price {formatRupees(Number(item.selling_price || 0))} × {Number.isInteger(qty) ? qty : 0} ={" "}
+              <strong>{formatRupees(Number(item.selling_price || 0) * (Number.isInteger(qty) ? qty : 0))}</strong>
+            </p>
+          ) : (
+            <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+              Sale blocked: inventory must add both the cost price and selling price first.
+            </p>
+          )
         )}
 
         <div className="grid gap-2 pt-1">

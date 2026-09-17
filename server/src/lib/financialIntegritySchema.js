@@ -30,6 +30,10 @@ function ensureFinancialIntegritySchema(db) {
     add('billing', 'partner_category_snapshot', "TEXT NOT NULL DEFAULT ''");
     add('billing', 'doctor_commission_rate_snapshot', 'REAL');
     add('billing', 'ocs_commission_rate_snapshot', 'REAL');
+    add('billing', 'finalized_at', 'TEXT');
+    add('billing', 'finalized_by_user_id', 'INTEGER');
+    add('billing', 'finalized_by_name', "TEXT NOT NULL DEFAULT ''");
+    add('billing', 'finalized_by_role', "TEXT NOT NULL DEFAULT ''");
     add('consultations', 'transport_benefit_snapshot', 'REAL');
     add('inventory_movements', 'unit_cost_snapshot', 'REAL');
     add('inventory_movements', 'unit_price_snapshot', 'REAL');
@@ -82,6 +86,25 @@ function ensureFinancialIntegritySchema(db) {
       );
       CREATE INDEX IF NOT EXISTS idx_day_close_adjustments_closing
         ON financial_day_close_adjustments(closing_id, id);
+      CREATE TABLE IF NOT EXISTS financial_day_close_adjustment_references (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        adjustment_id INTEGER NOT NULL,
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('juice', 'card', 'ib')),
+        external_reference TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (adjustment_id) REFERENCES financial_day_close_adjustments(id) ON DELETE RESTRICT,
+        UNIQUE (payment_method, external_reference)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_day_close_adjustment_reference
+        ON financial_day_close_adjustment_references(payment_method, lower(trim(external_reference)));
+      CREATE TRIGGER IF NOT EXISTS financial_day_close_adjustment_references_no_update
+      BEFORE UPDATE ON financial_day_close_adjustment_references BEGIN
+        SELECT RAISE(ABORT, 'Day-close adjustment references are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS financial_day_close_adjustment_references_no_delete
+      BEFORE DELETE ON financial_day_close_adjustment_references BEGIN
+        SELECT RAISE(ABORT, 'Day-close adjustment references are immutable');
+      END;
       CREATE TRIGGER IF NOT EXISTS financial_day_close_adjustments_no_update
       BEFORE UPDATE ON financial_day_close_adjustments BEGIN
         SELECT RAISE(ABORT, 'Day-close adjustments are immutable; add another compensating adjustment');
@@ -179,6 +202,10 @@ function ensureFinancialIntegritySchema(db) {
             SELECT SUM(existing.amount)
             FROM billing_payment_transactions existing
             WHERE existing.billing_id = bill.id
+          ), 0) + COALESCE((
+            SELECT SUM(reversal.amount)
+            FROM billing_payment_reversals reversal
+            WHERE reversal.billing_id = bill.id
           ), 0) + 0.000001
       )
       BEGIN
@@ -192,6 +219,92 @@ function ensureFinancialIntegritySchema(db) {
       BEFORE DELETE ON billing_payment_transactions BEGIN
         SELECT RAISE(ABORT, 'Payment transactions are immutable; record a compensating transaction');
       END;
+      CREATE TABLE IF NOT EXISTS billing_payment_reversals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        payment_transaction_id INTEGER NOT NULL UNIQUE,
+        billing_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'juice', 'card', 'ib')),
+        reversal_date TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        external_reference TEXT,
+        operation_id TEXT NOT NULL UNIQUE,
+        reversed_by_user_id INTEGER,
+        reversed_by_name TEXT NOT NULL DEFAULT '',
+        reversed_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (payment_transaction_id) REFERENCES billing_payment_transactions(id) ON DELETE RESTRICT,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (reversed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_payment_reversals_bill
+        ON billing_payment_reversals(billing_id, id);
+      CREATE INDEX IF NOT EXISTS idx_billing_payment_reversals_date
+        ON billing_payment_reversals(reversal_date, payment_method);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_payment_reversals_external_reference
+        ON billing_payment_reversals(payment_method, lower(trim(external_reference)))
+        WHERE external_reference IS NOT NULL AND trim(external_reference) != '';
+      CREATE TRIGGER IF NOT EXISTS billing_payment_reversals_document_guard
+      BEFORE INSERT ON billing_payment_reversals
+      WHEN
+        length(trim(NEW.reason)) < 8
+        OR length(trim(NEW.operation_id)) = 0
+        OR date(NEW.reversal_date) IS NULL
+        OR date(NEW.reversal_date) != NEW.reversal_date
+        OR date(NEW.reversal_date) > date('now', '+4 hours')
+        OR (NEW.payment_method != 'cash' AND length(trim(COALESCE(NEW.external_reference, ''))) < 3)
+      BEGIN
+        SELECT RAISE(ABORT, 'Payment reversals require a valid date, operation reference, reason, and provider reference for non-cash methods');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_payment_reversals_no_update
+      BEFORE UPDATE ON billing_payment_reversals BEGIN
+        SELECT RAISE(ABORT, 'Payment reversals are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_payment_reversals_no_delete
+      BEFORE DELETE ON billing_payment_reversals BEGIN
+        SELECT RAISE(ABORT, 'Payment reversals are immutable');
+      END;
+      DROP VIEW IF EXISTS billing_payment_ledger;
+      CREATE VIEW billing_payment_ledger AS
+        SELECT
+          'payment-' || payment.id AS ledger_id,
+          payment.id AS id,
+          payment.billing_id,
+          payment.id AS payment_transaction_id,
+          payment.amount AS amount,
+          payment.payment_method,
+          payment.payment_date AS transaction_date,
+          payment.payment_date AS payment_date,
+          payment.external_reference,
+          payment.operation_id,
+          payment.recorded_by_user_id AS actor_user_id,
+          payment.recorded_by_name AS actor_name,
+          payment.recorded_by_role AS actor_role,
+          payment.source,
+          'payment' AS entry_type,
+          '' AS reason,
+          payment.created_at
+        FROM billing_payment_transactions payment
+        UNION ALL
+        SELECT
+          'reversal-' || reversal.id AS ledger_id,
+          -reversal.id AS id,
+          reversal.billing_id,
+          reversal.payment_transaction_id,
+          -reversal.amount AS amount,
+          reversal.payment_method,
+          reversal.reversal_date AS transaction_date,
+          reversal.reversal_date AS payment_date,
+          reversal.external_reference,
+          reversal.operation_id,
+          reversal.reversed_by_user_id AS actor_user_id,
+          reversal.reversed_by_name AS actor_name,
+          reversal.reversed_by_role AS actor_role,
+          'recorded' AS source,
+          'reversal' AS entry_type,
+          reversal.reason,
+          reversal.created_at
+        FROM billing_payment_reversals reversal;
       CREATE TABLE IF NOT EXISTS billing_refunds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         credit_note_number TEXT NOT NULL UNIQUE,
@@ -234,8 +347,39 @@ function ensureFinancialIntegritySchema(db) {
         OR date(NEW.refund_date) IS NULL
         OR date(NEW.refund_date) != NEW.refund_date
         OR date(NEW.refund_date) > date('now', '+4 hours')
+        OR (NEW.refund_method != 'cash' AND length(trim(COALESCE(NEW.external_reference, ''))) < 3)
       BEGIN
-        SELECT RAISE(ABORT, 'Credit notes require a valid non-future date, operation reference, and documented reason');
+        SELECT RAISE(ABORT, 'Credit notes require a valid non-future date, operation reference, documented reason, and provider reference for non-cash refunds');
+      END;
+      CREATE TABLE IF NOT EXISTS billing_supply_corrections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        billing_id INTEGER NOT NULL,
+        submission_id INTEGER NOT NULL UNIQUE,
+        refund_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        disposition TEXT NOT NULL CHECK (disposition IN ('returned_to_stock', 'consumed_or_wasted')),
+        original_movement_ids_json TEXT NOT NULL DEFAULT '[]',
+        reversal_movement_ids_json TEXT NOT NULL DEFAULT '[]',
+        reason TEXT NOT NULL,
+        operation_id TEXT NOT NULL UNIQUE,
+        corrected_by_user_id INTEGER,
+        corrected_by_name TEXT NOT NULL DEFAULT '',
+        corrected_by_role TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+        FOREIGN KEY (submission_id) REFERENCES billing_lite_submissions(id) ON DELETE RESTRICT,
+        FOREIGN KEY (refund_id) REFERENCES billing_refunds(id) ON DELETE RESTRICT,
+        FOREIGN KEY (corrected_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_billing_supply_corrections_bill
+        ON billing_supply_corrections(billing_id, id);
+      CREATE TRIGGER IF NOT EXISTS billing_supply_corrections_no_update
+      BEFORE UPDATE ON billing_supply_corrections BEGIN
+        SELECT RAISE(ABORT, 'Paid supply corrections are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS billing_supply_corrections_no_delete
+      BEFORE DELETE ON billing_supply_corrections BEGIN
+        SELECT RAISE(ABORT, 'Paid supply corrections are immutable');
       END;
       CREATE TRIGGER IF NOT EXISTS billing_refunds_balance_guard
       BEFORE INSERT ON billing_refunds
@@ -285,7 +429,15 @@ function ensureFinancialIntegritySchema(db) {
       CREATE TRIGGER billing_paid_financial_guard
       BEFORE UPDATE ON billing
       WHEN OLD.status = 'paid' AND (
-        NEW.status != OLD.status
+        (
+          NEW.status != OLD.status
+          AND NOT (
+            NEW.status = 'unpaid'
+            AND COALESCE((SELECT SUM(payment.amount) FROM billing_payment_transactions payment WHERE payment.billing_id = OLD.id), 0)
+              - COALESCE((SELECT SUM(reversal.amount) FROM billing_payment_reversals reversal WHERE reversal.billing_id = OLD.id), 0)
+              < OLD.total_amount - 0.000001
+          )
+        )
         OR NEW.items != OLD.items
         OR NEW.total_amount != OLD.total_amount
         OR NEW.voided_at IS NOT OLD.voided_at
@@ -439,6 +591,28 @@ function ensureFinancialIntegritySchema(db) {
         SELECT RAISE(ABORT, 'Billing amounts must be non-negative currency values with no more than two decimal places');
       END;
     `);
+
+    // Older compensating closes stored provider references only inside JSON.
+    // Populate the immutable reference ledger so those historical references
+    // participate in duplicate detection for every later adjustment.
+    const insertAdjustmentReference = db.prepare(`
+      INSERT OR IGNORE INTO financial_day_close_adjustment_references (
+        adjustment_id, payment_method, external_reference
+      ) VALUES (?, ?, ?)
+    `);
+    for (const adjustment of db.prepare(`
+      SELECT id, settlement_references_json
+      FROM financial_day_close_adjustments
+      ORDER BY id ASC
+    `).all()) {
+      let references = {};
+      try { references = JSON.parse(adjustment.settlement_references_json || '{}'); }
+      catch { references = {}; }
+      for (const method of ['juice', 'card', 'ib']) {
+        const reference = String(references?.[method] || '').trim().replace(/\s+/g, ' ');
+        if (reference) insertAdjustmentReference.run(adjustment.id, method, reference);
+      }
+    }
 
     // Invoice identifiers and party/category snapshots are accounting facts.
     // Backfill them once from the linked records, then serve them instead of
@@ -619,6 +793,34 @@ function ensureFinancialIntegritySchema(db) {
     add('billing_lite_submissions', 'reversed_by_user_id', 'INTEGER');
     add('billing_lite_submissions', 'reversal_reason', "TEXT NOT NULL DEFAULT ''");
     add('billing_lite_submissions', 'reversal_operation_id', 'TEXT');
+    db.exec(`
+      UPDATE billing
+      SET finalized_at = COALESCE(finalized_at, issued_at, created_at),
+          finalized_by_user_id = COALESCE(finalized_by_user_id, issued_by_user_id),
+          finalized_by_name = CASE
+            WHEN trim(COALESCE(finalized_by_name, '')) = '' THEN COALESCE(NULLIF(issued_by_name, ''), 'Historical migration')
+            ELSE finalized_by_name
+          END,
+          finalized_by_role = CASE
+            WHEN trim(COALESCE(finalized_by_role, '')) = '' THEN COALESCE(NULLIF(issued_by_role, ''), 'migration')
+            ELSE finalized_by_role
+          END
+      WHERE finalized_at IS NULL
+        AND (
+          status = 'paid'
+          OR EXISTS (
+            SELECT 1 FROM billing_payment_transactions payment
+            WHERE payment.billing_id = billing.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM billing_lite_submissions submission
+            WHERE submission.billing_id = billing.id
+              AND submission.reversed_at IS NULL
+              AND submission.workflow_status NOT IN ('reversed', 'superseded')
+          )
+          OR trim(COALESCE(source_reference, '')) != ''
+        );
+    `);
     if (!db.prepare("SELECT 1 FROM financial_migrations WHERE name='consultation_tariffs_20260909'").get()) {
       for (const [name, amount] of Object.entries(require('./consultationFees').CONSULTATION_FEES)) {
         db.prepare('UPDATE consultation_fee_types SET default_amount=?, updated_at=CURRENT_TIMESTAMP WHERE type_name=?').run(amount, name);

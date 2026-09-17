@@ -1222,8 +1222,8 @@ test("patient billing returns bills and summary totals", async () => {
     .run(appointmentId, patientId, doctorId).lastInsertRowid;
 
   db.prepare(`
-    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, payment_date)
-    VALUES (?, ?, ?, ?, 'paid', 'cash', date('now', '-2 day'))
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, payment_date, finalized_at)
+    VALUES (?, ?, ?, ?, 'paid', 'cash', date('now', '-2 day'), CURRENT_TIMESTAMP)
   `).run(
     consultationId,
     patientId,
@@ -1232,8 +1232,8 @@ test("patient billing returns bills and summary totals", async () => {
   );
 
   db.prepare(`
-    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
-    VALUES (?, ?, ?, ?, 'unpaid')
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, finalized_at)
+    VALUES (?, ?, ?, ?, 'unpaid', CURRENT_TIMESTAMP)
   `).run(
     consultationId,
     patientId,
@@ -1557,8 +1557,8 @@ test("marking a bill paid records who changed it and when", async () => {
 
   const billId = db
     .prepare(`
-      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
-      VALUES (?, ?, ?, ?, 'unpaid')
+      INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, finalized_at)
+      VALUES (?, ?, ?, ?, 'unpaid', CURRENT_TIMESTAMP)
     `)
     .run(
       consultationId,
@@ -2554,8 +2554,8 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
   `).run(patientId, "FBC", "Hb 13.2; keep this lab result private.");
 
   db.prepare(`
-    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
-    VALUES (?, ?, ?, 500, 'unpaid')
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, finalized_at)
+    VALUES (?, ?, ?, 500, 'unpaid', CURRENT_TIMESTAMP)
   `).run(
     consultationId,
     patientId,

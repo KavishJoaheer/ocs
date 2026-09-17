@@ -350,7 +350,7 @@ function getDoctorPatientCounts(startDate, endDate, doctorId = null) {
     }));
 }
 
-function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", refundRows = [] } = {}) {
+function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", refundRows = [], unpaidRows = [] } = {}) {
   const byId = new Map();
 
   for (const row of activityRows || []) {
@@ -402,6 +402,19 @@ function buildDoctorBreakdown(activityRows, revenueRows, { dateBasis = "visit", 
   }
 
   if (dateBasis === "payment") {
+    for (const unpaidBill of unpaidRows) {
+      const doctorId = Number(unpaidBill.doctor_id);
+      if (!doctorId) continue;
+      if (!byId.has(doctorId)) {
+        byId.set(doctorId, {
+          doctor_id: doctorId,
+          doctor_name: unpaidBill.doctor_name || "Doctor",
+          visit_count: 0, unique_patient_count: 0, billed: 0, paid: 0, unpaid: 0,
+          doctor_commission: 0, ocs_commission: 0, transport_benefits: 0,
+        });
+      }
+      byId.get(doctorId).unpaid += toNumber(unpaidBill.payment_balance_amount, 0);
+    }
     for (const refund of refundRows) {
       const doctorId = Number(refund.doctor_id);
       if (!doctorId) continue;
@@ -460,10 +473,10 @@ function getPaidRevenueTotal(startDate, endDate, doctorId = null) {
       SELECT
         COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           JOIN billing b ON b.id = payment.billing_id
           JOIN consultations c ON c.id = b.consultation_id
-          WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+          WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
             AND payment.payment_date BETWEEN @startDate AND @endDate
             AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
         ), 0) - COALESCE((
@@ -762,12 +775,12 @@ function getDoctorWorkspacePayload(doctorId) {
         b.*,
         COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0) AS payment_received_amount,
         MAX(0, b.total_amount - COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0)) AS payment_balance_amount,
         p.id AS patient_id,
@@ -780,7 +793,7 @@ function getDoctorWorkspacePayload(doctorId) {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND c.doctor_id = ?
-
+        AND b.finalized_at IS NOT NULL
         AND b.status = 'unpaid'
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)
@@ -1029,12 +1042,12 @@ function getOperatorWorkspacePayload() {
         b.*,
         COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0) AS payment_received_amount,
         MAX(0, b.total_amount - COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0)) AS payment_balance_amount,
         p.id AS patient_id,
@@ -1048,7 +1061,8 @@ function getOperatorWorkspacePayload() {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       JOIN doctors d ON d.id = c.doctor_id
-      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.status = 'unpaid'
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+        AND b.status = 'unpaid' AND b.finalized_at IS NOT NULL
 
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)
@@ -1171,10 +1185,12 @@ router.get("/", (_req, res) => {
       SELECT COUNT(*) AS count
       FROM billing b
       JOIN patients p ON p.id = b.patient_id
-      WHERE b.voided_at IS NULL
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+        AND b.finalized_at IS NOT NULL
         AND b.total_amount - COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0) > 0.000001
 
@@ -1185,16 +1201,16 @@ router.get("/", (_req, res) => {
       SELECT
         COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           JOIN billing b ON b.id = payment.billing_id
           JOIN consultations c ON c.id = b.consultation_id
-          WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+          WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
         ), 0) - COALESCE((
           SELECT SUM(refund.amount)
           FROM billing_refunds refund
           JOIN billing b ON b.id = refund.billing_id
           JOIN consultations c ON c.id = b.consultation_id
-          WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+          WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
         ), 0) AS total
     `)
     .get();
@@ -1642,12 +1658,12 @@ router.get("/live-report", (req, res) => {
         payment.external_reference AS payment_reference,
         b.doctor_commission_rate_snapshot,
         b.ocs_commission_rate_snapshot
-      FROM billing_payment_transactions payment
+      FROM billing_payment_ledger payment
       JOIN billing b ON b.id = payment.billing_id
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       LEFT JOIN doctors d ON d.id = c.doctor_id
-      WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
         AND payment.payment_date BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       ORDER BY payment.payment_date DESC, payment.id DESC
@@ -1668,19 +1684,19 @@ router.get("/live-report", (req, res) => {
         b.total_amount,
         COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0) AS payment_received_amount,
         MAX(0, b.total_amount - COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0)) AS payment_balance_amount,
         COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id), 0) AS refunded_amount,
         MAX(0,
           COALESCE((
             SELECT SUM(payment.amount)
-            FROM billing_payment_transactions payment
+            FROM billing_payment_ledger payment
             WHERE payment.billing_id = b.id
           ), 0) - COALESCE((
             SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id = b.id
@@ -1689,23 +1705,23 @@ router.get("/live-report", (req, res) => {
         CASE
           WHEN COALESCE((
             SELECT SUM(payment.amount)
-            FROM billing_payment_transactions payment
+            FROM billing_payment_ledger payment
             WHERE payment.billing_id = b.id
           ), 0) >= b.total_amount - 0.000001 THEN 'paid'
           WHEN EXISTS (
-            SELECT 1 FROM billing_payment_transactions payment WHERE payment.billing_id = b.id
+            SELECT 1 FROM billing_payment_ledger payment WHERE payment.billing_id = b.id
           ) THEN 'partial'
           ELSE 'unpaid'
         END AS status,
         COALESCE((
           SELECT payment.payment_date
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
           ORDER BY payment.id DESC LIMIT 1
         ), b.payment_date) AS payment_date,
         COALESCE((
           SELECT payment.payment_method
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
           ORDER BY payment.id DESC LIMIT 1
         ), NULLIF(b.payment_method, ''), 'unpaid') AS payment_method,
@@ -1715,7 +1731,7 @@ router.get("/live-report", (req, res) => {
       JOIN consultations c ON c.id = b.consultation_id
       JOIN patients p ON p.id = b.patient_id
       LEFT JOIN doctors d ON d.id = c.doctor_id
-      WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
         AND date(c.consultation_date) BETWEEN @startDate AND @endDate
         AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
       ORDER BY c.consultation_date DESC, b.id DESC
@@ -1724,6 +1740,27 @@ router.get("/live-report", (req, res) => {
       endDate: doctorRange.end,
       doctorId: selectedDoctorId,
     });
+
+  const unpaidRows = dateBasis === "payment" ? db.prepare(`
+    SELECT
+      b.id AS bill_id, c.doctor_id, d.full_name AS doctor_name,
+      MAX(0, b.total_amount - COALESCE((
+        SELECT SUM(ledger.amount) FROM billing_payment_ledger ledger WHERE ledger.billing_id = b.id
+      ), 0)) AS payment_balance_amount
+    FROM billing b
+    JOIN consultations c ON c.id = b.consultation_id
+    LEFT JOIN doctors d ON d.id = c.doctor_id
+    WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+      AND date(c.consultation_date) BETWEEN @startDate AND @endDate
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+      AND MAX(0, b.total_amount - COALESCE((
+        SELECT SUM(ledger.amount) FROM billing_payment_ledger ledger WHERE ledger.billing_id = b.id
+      ), 0)) > 0.000001
+  `).all({
+    startDate: doctorRange.start,
+    endDate: doctorRange.end,
+    doctorId: selectedDoctorId,
+  }) : [];
 
   const refundRows = db.prepare(`
     SELECT
@@ -1758,10 +1795,10 @@ router.get("/live-report", (req, res) => {
 
   const visitBasisPaymentRows = dateBasis === "visit" ? db.prepare(`
     SELECT payment.amount, payment.payment_method
-    FROM billing_payment_transactions payment
+    FROM billing_payment_ledger payment
     JOIN billing b ON b.id = payment.billing_id
     JOIN consultations c ON c.id = b.consultation_id
-    WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+    WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
       AND date(c.consultation_date) BETWEEN @startDate AND @endDate
       AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
   `).all({
@@ -1774,7 +1811,7 @@ router.get("/live-report", (req, res) => {
     FROM billing_refunds refund
     JOIN billing b ON b.id = refund.billing_id
     JOIN consultations c ON c.id = b.consultation_id
-    WHERE b.voided_at IS NULL AND c.voided_at IS NULL
+    WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
       AND date(c.consultation_date) BETWEEN @startDate AND @endDate
       AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
   `).all({
@@ -1783,7 +1820,23 @@ router.get("/live-report", (req, res) => {
     doctorId: selectedDoctorId,
   }) : [];
 
-  const doctorBreakdown = buildDoctorBreakdown(doctorRows, revenueRows, { dateBasis, refundRows });
+  const paymentBasisActivityRows = dateBasis === "payment" ? db.prepare(`
+    SELECT d.id AS doctor_id, d.full_name AS doctor_name,
+      COUNT(DISTINCT c.id) AS visit_count,
+      COUNT(DISTINCT c.patient_id) AS patient_count,
+      COALESCE(SUM(c.transport_benefit_snapshot), 0) AS transport_benefits
+    FROM billing b
+    JOIN consultations c ON c.id = b.consultation_id
+    JOIN doctors d ON d.id = c.doctor_id
+    WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+      AND b.status = 'paid'
+      AND (SELECT MAX(payment.payment_date) FROM billing_payment_transactions payment WHERE payment.billing_id = b.id)
+        BETWEEN @startDate AND @endDate
+      AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    GROUP BY d.id, d.full_name
+  `).all({ startDate: doctorRange.start, endDate: doctorRange.end, doctorId: selectedDoctorId }) : doctorRows;
+
+  const doctorBreakdown = buildDoctorBreakdown(paymentBasisActivityRows, revenueRows, { dateBasis, refundRows, unpaidRows });
 
   const totalRevenue = roundReportCurrency(
     revenueRows.reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0),
@@ -1795,10 +1848,9 @@ router.get("/live-report", (req, res) => {
     ? revenueRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + toNumber(row.total_amount, 0), 0) - refundedRevenue
     : revenueRows.reduce((sum, row) => sum + toNumber(row.net_paid_amount, 0), 0));
   const unpaidRevenue = roundReportCurrency(
-    revenueRows
-      .reduce((sum, row) => sum + (dateBasis === "payment"
-        ? 0
-        : toNumber(row.payment_balance_amount, row.status === "paid" ? 0 : row.total_amount)), 0),
+    dateBasis === "payment"
+      ? unpaidRows.reduce((sum, row) => sum + toNumber(row.payment_balance_amount, 0), 0)
+      : revenueRows.reduce((sum, row) => sum + toNumber(row.payment_balance_amount, row.status === "paid" ? 0 : row.total_amount), 0),
   );
   const doctorCommission = roundReportCurrency(
     doctorBreakdown.reduce((sum, row) => sum + Number(row.doctorCommission || 0), 0),
@@ -1833,7 +1885,7 @@ router.get("/live-report", (req, res) => {
     transportPerPatient: TRANSPORT_BENEFIT_PER_PATIENT, // Legacy response alias.
     commissionOn: "paid",
     rateBasis: "invoice_snapshot",
-    transportBasis: "consultation_snapshot",
+    transportBasis: dateBasis === "payment" ? "final_payment_date" : "consultation_snapshot",
   };
 
   const statementCore = {

@@ -123,8 +123,8 @@ function seedLinkhamVisit() {
   const billingId = Number(
     db
       .prepare(`
-        INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, payment_date)
-        VALUES (?, ?, '[{"description":"Nebulizer kit","amount":2500}]', 2500, 'paid', 'cash', date('now'))
+        INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, payment_method, payment_date, finalized_at)
+        VALUES (?, ?, '[{"description":"Nebulizer kit","amount":2500}]', 2500, 'paid', 'cash', date('now'), CURRENT_TIMESTAMP)
       `)
       .run(consultationId, patientId).lastInsertRowid,
   );
@@ -178,8 +178,8 @@ function seedLinkhamVisitWithBill({ name, amount, status }) {
     db
       .prepare(`
         INSERT INTO billing (
-          consultation_id, patient_id, items, total_amount, status, payment_method, payment_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ${status === "paid" ? "date('now')" : "NULL"})
+          consultation_id, patient_id, items, total_amount, status, payment_method, payment_date, finalized_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ${status === "paid" ? "date('now')" : "NULL"}, CURRENT_TIMESTAMP)
       `)
       .run(
         consultationId,

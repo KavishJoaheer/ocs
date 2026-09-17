@@ -2831,6 +2831,14 @@ router.post("/items/:id/actions", (req, res) => {
     });
   }
 
+  if (actionType === "stock_out" && stockOutReason === "Sale" &&
+      (Number(item.selling_price || 0) <= 0 || Number(item.cost_price || 0) <= 0)) {
+    return res.status(409).json({
+      error: "This item needs both a selling price and a cost price before it can be sold. Ask inventory to complete its pricing record.",
+      code: "INVENTORY_PRICING_REQUIRED",
+    });
+  }
+
   let salePatient = null;
   if (actionType === "stock_out" && stockOutReason === "Sale") {
     const requestedPatientId = Number(req.body.patient_id || 0);

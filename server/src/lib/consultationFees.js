@@ -27,8 +27,8 @@ function assertSingleVisitFee(db, consultationId, items, exceptBillId = 0) {
 }
 // Run inside the payment transaction. Check the whole visit, including when
 // the bill being paid contains only additional items.
-function assertVisitReadyForPayment(db, consultationId) {
-  const bills = db.prepare('SELECT id, items, fee_review_required FROM billing WHERE consultation_id=? AND voided_at IS NULL').all(consultationId);
+function assertVisitReadyForPayment(db, consultationId, billId = null) {
+  const bills = db.prepare('SELECT id, items, fee_review_required, finalized_at FROM billing WHERE consultation_id=? AND voided_at IS NULL').all(consultationId);
   let feeCount = 0;
   for (const bill of bills) {
     let items;
@@ -43,6 +43,10 @@ function assertVisitReadyForPayment(db, consultationId) {
   if (feeCount > 1) throw Object.assign(new Error('Payment blocked: this visit has multiple consultation charges. An admin must resolve the duplicate bills first.'), {status:409, extra:{code:'DUPLICATE_VISIT_FEE', bill_ids:bills.map(b => b.id)}});
   const review = bills.find(b => b.fee_review_required);
   if (review) throw Object.assign(new Error(`Payment blocked: confirm the consultation fee on bill #${review.id} first.`), {status:409, extra:{code:'FEE_REVIEW_REQUIRED', existing_bill_id:review.id}});
+  const target = billId == null ? bills.find(b => b.items && JSON.parse(b.items || '[]').some(isConsultationFee)) : bills.find(b => Number(b.id) === Number(billId));
+  if (!target?.finalized_at) {
+    throw Object.assign(new Error('Payment blocked: finish Review and issue before collecting this invoice.'), {status:409, extra:{code:'BILLING_NOT_FINALIZED', existing_bill_id:Number(target?.id || billId || 0) || null}});
+  }
 }
 module.exports = {
   CONSULTATION_FEES,

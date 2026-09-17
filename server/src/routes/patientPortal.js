@@ -437,12 +437,12 @@ router.get("/billing", (req, res) => {
         COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id=b.id),0) AS refunded_amount,
         COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0) AS payment_received_amount,
         MAX(0, b.total_amount - COALESCE((
           SELECT SUM(payment.amount)
-          FROM billing_payment_transactions payment
+          FROM billing_payment_ledger payment
           WHERE payment.billing_id = b.id
         ), 0)) AS payment_balance_amount,
         c.consultation_date,
@@ -453,6 +453,7 @@ router.get("/billing", (req, res) => {
       JOIN doctors d ON d.id = c.doctor_id
       WHERE b.patient_id = ?
         AND b.voided_at IS NULL
+        AND b.finalized_at IS NOT NULL
         AND c.voided_at IS NULL
       ORDER BY b.created_at DESC
     `)
@@ -479,6 +480,7 @@ router.get("/billing/:id", (req, res) => {
         SELECT
           b.*,
           COALESCE((SELECT SUM(r.amount) FROM billing_refunds r WHERE r.billing_id=b.id),0) AS refunded_amount,
+          COALESCE((SELECT SUM(payment.amount) FROM billing_payment_ledger payment WHERE payment.billing_id=b.id),0) AS payment_received_amount,
           p.full_name AS patient_name,
           c.consultation_date,
           d.full_name AS doctor_name
@@ -490,6 +492,7 @@ router.get("/billing/:id", (req, res) => {
           AND b.patient_id = ?
           AND p.deleted_at IS NULL
           AND b.voided_at IS NULL
+          AND b.finalized_at IS NOT NULL
           AND c.voided_at IS NULL
       `,
     )
@@ -511,7 +514,9 @@ router.get("/billing/:id", (req, res) => {
       consultation_date: bill.consultation_date,
       total_amount: bill.total_amount,
       refunded_amount: toNumber(bill.refunded_amount, 0),
-      net_paid_amount: bill.status === "paid" ? Math.max(0, bill.total_amount - toNumber(bill.refunded_amount, 0)) : 0,
+      payment_received_amount: toNumber(bill.payment_received_amount, 0),
+      payment_balance_amount: Math.max(0, bill.total_amount - toNumber(bill.payment_received_amount, 0)),
+      net_paid_amount: Math.max(0, toNumber(bill.payment_received_amount, 0) - toNumber(bill.refunded_amount, 0)),
       status: bill.status,
       items: bill.items,
       doctor_name: bill.doctor_name || null,

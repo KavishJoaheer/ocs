@@ -54,7 +54,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   }
   const paymentTotals = new Map(db.prepare(`
     SELECT billing_id, SUM(amount) AS amount
-    FROM billing_payment_transactions
+    FROM billing_payment_ledger
     GROUP BY billing_id
   `).all().map((row) => [Number(row.billing_id), Number(row.amount || 0)]));
   for (const bill of active) {
@@ -71,6 +71,25 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
         invoice_amount: total,
       });
     }
+    if (received > 0 && !bill.finalized_at) {
+      issues.push({
+        type: 'payment_before_finalization',
+        label: `Bill #${bill.id}: payment exists before quick billing was finalised`,
+        bill_ids: [bill.id], amount: received,
+      });
+    }
+  }
+  const undocumentedRefunds = db.prepare(`
+    SELECT id, billing_id, amount, refund_method
+    FROM billing_refunds
+    WHERE refund_method != 'cash' AND length(trim(COALESCE(external_reference, ''))) < 3
+  `).all();
+  for (const refund of undocumentedRefunds) {
+    issues.push({
+      type: 'refund_reference_missing',
+      label: `Credit note #${refund.id}: ${String(refund.refund_method || '').toUpperCase()} provider reference is missing`,
+      bill_ids: [refund.billing_id], amount: Number(refund.amount || 0), refund_id: refund.id,
+    });
   }
   for (const bill of bills.filter(b => (b.voided_at || b.consultation_voided_at) && b.status === 'paid')) {
     issues.push({ type: 'voided_payment', label: `Voided bill #${bill.id}: verify the collected money and any refund`, bill_ids: [bill.id], amount: bill.total_amount });
@@ -88,6 +107,14 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   }
   const reversed = new Set(movements.filter(m => m.action_type === 'reversal')
     .map(m => Number(metadata.get(m.id)?.reversed_movement_id)));
+  const correctedMovementIds = new Set();
+  for (const correction of db.prepare('SELECT original_movement_ids_json FROM billing_supply_corrections').all()) {
+    try {
+      for (const id of JSON.parse(correction.original_movement_ids_json || '[]')) correctedMovementIds.add(Number(id));
+    } catch {
+      // The correction row itself remains visible to finance if legacy JSON is unreadable.
+    }
+  }
   const movementById = new Map(movements.map((movement) => [Number(movement.id), movement]));
   const claimedMovementIds = new Map();
   for (const bill of active) {
@@ -107,10 +134,12 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
         continue;
       }
       let linkedQuantity = 0;
+      let linkedValue = 0;
+      let hasCompleteMovementPricing = true;
       let lineHasInvalidMovement = false;
       for (const movementId of movementIds) {
         const movement = movementById.get(movementId);
-        if (!movement || reversed.has(movementId)) {
+        if (!movement || (reversed.has(movementId) && !correctedMovementIds.has(movementId))) {
           lineHasInvalidMovement = true;
           issues.push({
             type: 'invoice_line_invalid_movement',
@@ -141,12 +170,24 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
           claimedMovementIds.set(movementId, Number(bill.id));
         }
         linkedQuantity += Math.abs(Number(movement.quantity || 0));
+        const unitPrice = Number(movement.unit_price_snapshot);
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) hasCompleteMovementPricing = false;
+        else linkedValue += Math.abs(Number(movement.quantity || 0)) * unitPrice;
       }
       if (!lineHasInvalidMovement && linkedQuantity !== Number(line.quantity || 0)) {
         issues.push({
           type: 'invoice_line_quantity_mismatch',
           label: `Bill #${bill.id} line ${index + 1}: billed quantity ${line.quantity} does not match ${linkedQuantity} linked stock unit(s)`,
           bill_ids: [bill.id], amount: Number(line.amount || 0), inventory_item_id: Number(line.inventory_item_id),
+        });
+      }
+      if (!lineHasInvalidMovement && hasCompleteMovementPricing && Math.abs(Number(line.amount || 0) - linkedValue) >= 0.005) {
+        issues.push({
+          type: 'invoice_line_value_mismatch',
+          label: `Bill #${bill.id} line ${index + 1}: billed value does not match linked stock movement value`,
+          bill_ids: [bill.id], amount: Number((Number(line.amount || 0) - linkedValue).toFixed(2)),
+          billed_amount: Number(line.amount || 0), movement_amount: Number(linkedValue.toFixed(2)),
+          inventory_item_id: Number(line.inventory_item_id),
         });
       }
     }
@@ -161,6 +202,25 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
         bill_ids: [linkedBillId], movement_id: Number(movement.id), amount: 0,
       });
     }
+  }
+  const unclosedDates = db.prepare(`
+    WITH financial_activity(business_date) AS (
+      SELECT transaction_date FROM billing_payment_ledger
+      UNION
+      SELECT refund_date FROM billing_refunds
+    )
+    SELECT activity.business_date
+    FROM financial_activity activity
+    LEFT JOIN financial_day_closings closing ON closing.business_date = activity.business_date
+    WHERE closing.id IS NULL AND activity.business_date < date('now', '+4 hours')
+    ORDER BY activity.business_date ASC
+  `).all();
+  for (const row of unclosedDates) {
+    issues.push({
+      type: 'day_close_missing',
+      label: `Finance day ${row.business_date}: settlement has not been closed`,
+      bill_ids: [], amount: 0, business_date: row.business_date,
+    });
   }
   for (const movement of movements) {
     const meta = metadata.get(movement.id);
