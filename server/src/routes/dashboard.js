@@ -1819,26 +1819,39 @@ router.get("/live-report", (req, res) => {
   }) : [];
 
   const paymentBasisActivityRows = dateBasis === "payment" ? db.prepare(`
+    WITH active_bills AS (
+      SELECT b.id, b.consultation_id, b.total_amount,
+        COALESCE((
+          SELECT SUM(ledger.amount)
+          FROM billing_payment_ledger ledger
+          WHERE ledger.billing_id = b.id
+        ), 0) AS received_amount,
+        (
+          SELECT MAX(ledger.transaction_date)
+          FROM billing_payment_ledger ledger
+          WHERE ledger.billing_id = b.id
+        ) AS last_transaction_date
+      FROM billing b
+      JOIN consultations c ON c.id = b.consultation_id
+      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
+        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
+    ),
+    settled_consultations AS (
+      SELECT c.id AS consultation_id, c.patient_id, c.doctor_id,
+        c.transport_benefit_snapshot,
+        MAX(active_bills.last_transaction_date) AS final_payment_date
+      FROM active_bills
+      JOIN consultations c ON c.id = active_bills.consultation_id
+      GROUP BY c.id, c.patient_id, c.doctor_id, c.transport_benefit_snapshot
+      HAVING SUM(active_bills.received_amount) >= SUM(active_bills.total_amount) - 0.000001
+    )
     SELECT d.id AS doctor_id, d.full_name AS doctor_name,
       COUNT(activity.consultation_id) AS visit_count,
       COUNT(DISTINCT activity.patient_id) AS patient_count,
       COALESCE(SUM(activity.transport_benefit_snapshot), 0) AS transport_benefits
-    FROM (
-      SELECT DISTINCT c.id AS consultation_id, c.patient_id, c.doctor_id,
-        c.transport_benefit_snapshot
-      FROM billing b
-      JOIN consultations c ON c.id = b.consultation_id
-      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
-        AND b.status = 'paid'
-        AND EXISTS (
-          SELECT 1
-          FROM billing_payment_ledger payment
-          WHERE payment.billing_id = b.id
-            AND payment.payment_date BETWEEN @startDate AND @endDate
-        )
-        AND (@doctorId IS NULL OR c.doctor_id = @doctorId)
-    ) activity
+    FROM settled_consultations activity
     JOIN doctors d ON d.id = activity.doctor_id
+    WHERE activity.final_payment_date BETWEEN @startDate AND @endDate
     GROUP BY d.id, d.full_name
   `).all({ startDate: doctorRange.start, endDate: doctorRange.end, doctorId: selectedDoctorId }) : doctorRows;
 
@@ -1864,9 +1877,7 @@ router.get("/live-report", (req, res) => {
   const ocsCommission = roundReportCurrency(
     doctorBreakdown.reduce((sum, row) => sum + Number(row.ocsCommission || 0), 0),
   );
-  const transportVisitCount = selectedDoctorId
-    ? visitCount
-    : doctorBreakdown.reduce((sum, row) => sum + Number(row.visit_count || 0), 0);
+  const transportVisitCount = doctorBreakdown.reduce((sum, row) => sum + Number(row.visit_count || 0), 0);
   const transportBenefits = roundReportCurrency(
     doctorBreakdown.reduce((sum, row) => sum + Number(row.transportBenefits || 0), 0),
   );

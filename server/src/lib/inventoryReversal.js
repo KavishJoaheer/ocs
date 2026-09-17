@@ -264,6 +264,8 @@ function reverseBillingSubmissionInventory({
   billingId,
   actor = {},
   reason = "",
+  restoreDispensing = false,
+  reversalScope = "billing_submission",
 }) {
   const ids = [...new Set((movementIds || []).map(Number).filter(Boolean))];
   const linkedDispensingIds = [...new Set((dispensingMovementIds || []).map(Number).filter(Boolean))];
@@ -283,19 +285,28 @@ function reverseBillingSubmissionInventory({
   const touchedItemIds = new Set();
   const reversalIds = [];
 
-  for (const movementId of ids) {
+  const restorableMovementIds = restoreDispensing
+    ? [...new Set([...ids, ...linkedDispensingIds])]
+    : ids;
+
+  for (const movementId of restorableMovementIds) {
     const movement = db.prepare("SELECT * FROM inventory_movements WHERE id = ?").get(movementId);
-    if (!movement || movement.movement_type !== "out" || movement.action_type !== "sell") {
+    let movementMeta = {};
+    try {
+      movementMeta = JSON.parse(movement?.meta_json || "{}");
+    } catch {
+      movementMeta = {};
+    }
+    const isInvoiceSale = movement?.movement_type === "out" && movement?.action_type === "sell";
+    const isDispensedSale = movement?.movement_type === "out"
+      && movement?.action_type === "stock_out"
+      && String(movementMeta.stock_out_reason || "").toLowerCase() === "sale"
+      && movementMeta.billing_status === "Billed";
+    if (!movement || (!isInvoiceSale && !(restoreDispensing && isDispensedSale))) {
       throw HttpError(409, "A linked stock movement is missing or is not reversible.", {
         code: "SUBMISSION_MOVEMENT_INVALID",
         movement_id: movementId,
       });
-    }
-    let movementMeta = {};
-    try {
-      movementMeta = JSON.parse(movement.meta_json || "{}");
-    } catch {
-      movementMeta = {};
     }
     if (
       Number(movementMeta.consultation_id || 0) !== Number(consultationId) ||
@@ -346,7 +357,8 @@ function reverseBillingSubmissionInventory({
       reason: String(reason || "").trim(),
       allocations: restoredAllocations,
       original_action_type: movement.action_type,
-      reversal_scope: "billing_submission",
+      reversal_scope: reversalScope,
+      stock_out_reason: movementMeta.stock_out_reason || null,
     };
 
     db.prepare(`
@@ -390,10 +402,12 @@ function reverseBillingSubmissionInventory({
     touchedItemIds.add(Number(item.id));
   }
 
-  const unlinkedDispensingIds = unlinkSaleMovementsByIds(linkedDispensingIds, {
-    billingId,
-    consultationId,
-  });
+  const unlinkedDispensingIds = restoreDispensing
+    ? []
+    : unlinkSaleMovementsByIds(linkedDispensingIds, {
+        billingId,
+        consultationId,
+      });
 
   return {
     reversed: reversalIds.length + unlinkedDispensingIds.length,
@@ -437,14 +451,19 @@ function reclassifyBillingSubmissionInventoryAsWastage({
     if (existing) continue;
 
     const movement = db.prepare("SELECT * FROM inventory_movements WHERE id = ?").get(movementId);
-    if (!movement || movement.action_type !== "sell") {
+    let movementMeta = {};
+    try { movementMeta = JSON.parse(movement?.meta_json || "{}"); } catch { movementMeta = {}; }
+    const isInvoiceSale = movement?.movement_type === "out" && movement?.action_type === "sell";
+    const isDispensedSale = movement?.movement_type === "out"
+      && movement?.action_type === "stock_out"
+      && String(movementMeta.stock_out_reason || "").toLowerCase() === "sale"
+      && movementMeta.billing_status === "Billed";
+    if (!movement || (!isInvoiceSale && !isDispensedSale)) {
       throw HttpError(409, "A linked sale movement is missing or cannot be reclassified.", {
         code: "SUBMISSION_MOVEMENT_INVALID",
         movement_id: movementId,
       });
     }
-    let movementMeta = {};
-    try { movementMeta = JSON.parse(movement.meta_json || "{}"); } catch { movementMeta = {}; }
     if (
       Number(movementMeta.consultation_id || 0) !== Number(consultationId) ||
       Number(movementMeta.billing_id || 0) !== Number(billingId)
@@ -474,7 +493,13 @@ function reclassifyBillingSubmissionInventoryAsWastage({
       no_stock_quantity_change: true,
     };
 
-    const offsetMeta = { ...sharedMeta, reversed_movement_id: movementId, original_action_type: "sell", reclassification_scope: "paid_supply_correction" };
+    const offsetMeta = {
+      ...sharedMeta,
+      reversed_movement_id: movementId,
+      original_action_type: movement.action_type,
+      stock_out_reason: movementMeta.stock_out_reason || null,
+      reclassification_scope: "paid_supply_correction",
+    };
     db.prepare(`
       INSERT INTO inventory_movements (
         item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
@@ -489,7 +514,12 @@ function reclassifyBillingSubmissionInventoryAsWastage({
     );
     const offsetId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
 
-    const wastageMeta = { ...sharedMeta, original_action_type: "sell", disposition: "consumed_or_wasted" };
+    const wastageMeta = {
+      ...sharedMeta,
+      original_action_type: movement.action_type,
+      stock_out_reason: movementMeta.stock_out_reason || null,
+      disposition: "consumed_or_wasted",
+    };
     db.prepare(`
       INSERT INTO inventory_movements (
         item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,

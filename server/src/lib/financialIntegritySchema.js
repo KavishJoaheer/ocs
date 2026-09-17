@@ -825,6 +825,20 @@ function ensureFinancialIntegritySchema(db) {
     add('billing_lite_submissions', 'reversal_reason', "TEXT NOT NULL DEFAULT ''");
     add('billing_lite_submissions', 'reversal_operation_id', 'TEXT');
     db.exec(`
+      UPDATE billing_lite_submissions
+      SET workflow_status = 'completed',
+          workflow_updated_at = COALESCE(workflow_updated_at, CURRENT_TIMESTAMP)
+      WHERE reversed_at IS NULL
+        AND workflow_status NOT IN ('completed', 'corrected', 'reversed', 'superseded')
+        AND EXISTS (
+          SELECT 1
+          FROM billing
+          WHERE billing.id = billing_lite_submissions.billing_id
+            AND billing.status = 'paid'
+            AND billing.voided_at IS NULL
+        );
+    `);
+    db.exec(`
       UPDATE billing
       SET finalized_at = COALESCE(finalized_at, issued_at, created_at),
           finalized_by_user_id = COALESCE(finalized_by_user_id, issued_by_user_id),

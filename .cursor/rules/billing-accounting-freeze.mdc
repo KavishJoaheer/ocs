@@ -1,0 +1,18 @@
+---
+description: Freeze new OCS billing features until accounting invariant and reconciliation gates stay green
+globs: "{server/src/routes/billing.js,server/src/routes/dashboard.js,server/src/lib/financial*.js,server/src/lib/inventoryReversal.js,client/src/pages/Billing*.jsx,client/src/lib/billPdf.js,patient-portal/src/lib/billPdf.js,server/tests/*billing*.test.js,server/tests/financialIntegrity.test.js}"
+alwaysApply: false
+---
+
+# Billing financial-integrity gate
+
+- Do not add a new billing feature or financial path while this freeze is active.
+- Allowed work: defect fixes, invariant tests, reconciliation, accessibility, and workflow simplification that adds no financial path.
+- Preserve immutable invoice, payment, refund, reversal, stock-movement, and correction records.
+- Keep one authoritative quick-billing issuance path and one active financial issue per visit.
+- Every supply charge must link to inventory movements and preserve original batch, cost, and sale snapshots.
+- Returned corrections restore the original batch; consumed corrections become wastage; neither may leave sale or COGS recognized.
+- Payment-basis reports must be driven by immutable transaction dates and final settlement.
+- Before completion, run the matrix in `docs/billing-accounting-invariant-matrix.md`, full server/client tests, client build, and one Bugbot review.
+- Any new P1/P2 billing-integrity finding, lifecycle failure, or reconciliation exception fails the gate.
+- Remove or relax this freeze only on explicit owner direction after the invariant and reconciliation suites remain green.

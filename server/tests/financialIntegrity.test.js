@@ -12,7 +12,7 @@ const { createApp } = require('../src/app');
 const app = createApp();
 const { db } = require('../src/db');
 const { hashPassword } = require('../src/lib/security');
-const { getTodayLocal, offsetLocalDate } = require('../src/lib/utils');
+const { calculateBillingTotal, getTodayLocal, offsetLocalDate } = require('../src/lib/utils');
 const { stockFinancials } = require('../src/lib/inventoryFinancials');
 const today = getTodayLocal();
 const tokens = {};
@@ -67,10 +67,23 @@ async function bill(ctx, lines, extra = {}) {
 function stockLine(it,qty=2) {return {description:'Audit medicine',type:'Sale',inventory_item_id:it.id,quantity:qty,amount:25*qty};}
 function fee(amount=1000) {return [{description:'Consultation fee',type:'Sale',amount}];}
 function standardFee(type='Day Consultation', amount=2000) {return {description:type,type:'Sale',amount,quantity:1,is_consultation_fee:true};}
-async function report(date=today,basis='visit') {
-  return (await api('GET',`/dashboard/live-report?doctorPeriod=daily&doctorDate=${date}&locationPeriod=daily&locationDate=${date}&revenueDate=${date}&dateBasis=${basis}`)).data;
+async function report(date=today,basis='visit',selectedDoctorId=null) {
+  const doctorScope=selectedDoctorId ? `&doctorId=${selectedDoctorId}` : '';
+  return (await api('GET',`/dashboard/live-report?doctorPeriod=daily&doctorDate=${date}&locationPeriod=daily&locationDate=${date}&revenueDate=${date}&dateBasis=${basis}${doctorScope}`)).data;
 }
 function row(id) {return db.prepare('SELECT * FROM inventory WHERE id = ?').get(id);}
+function completedQuickSubmission({bill,ctx,items}) {
+  const doctorUserId=Number(db.prepare("SELECT id FROM users WHERE role='doctor' AND doctor_id=? ORDER BY id DESC LIMIT 1").get(doctorId).id);
+  const inserted=db.prepare(`INSERT INTO billing_lite_submissions(
+    consultation_id,billing_id,doctor_id,submitted_by_user_id,operation_id,item_count,
+    items_json,amount_added,workflow_status
+  ) VALUES (?,?,?,?,?,?,?,?, 'completed')`).run(
+    ctx.consultationId,bill.id,doctorId,doctorUserId,randomUUID(),
+    items.reduce((sum,line)=>sum+Number(line.quantity||0),0),JSON.stringify(items),
+    items.reduce((sum,line)=>sum+Number(line.amount||0),0),
+  );
+  return Number(inserted.lastInsertRowid);
+}
 
 test('operators transcribe paper invoices, correct unpaid bills and record payment with an audit trail', async () => {
   const ctx=context('Operator invoice'); const it=item('Operator invoice medicine');
@@ -1083,15 +1096,45 @@ test('paid supply corrections issue a credit note and restore only confirmed ret
     amount:2025,payment_method:'cash',payment_date:today,expected_version:payable.row_version,operation_id:randomUUID(),
   });
   assert.equal(paid.status,200,JSON.stringify(paid.data));
-  const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',{
+  const correctionPayload={
     disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
     reason:'Supply was billed but returned unopened to the doctor bag',operation_id:randomUUID(),
-  });
+  };
+  const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',correctionPayload);
   assert.equal(corrected.status,201,JSON.stringify(corrected.data));
   assert.equal(corrected.data.credit_note.amount,25);
   assert.equal(corrected.data.stock_restored,true);
   assert.equal(row(it.id).quantity,20);
   assert.equal(db.prepare('SELECT disposition FROM billing_supply_corrections WHERE id=?').get(corrected.data.correction_id).disposition,'returned_to_stock');
+  const replay=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',correctionPayload);
+  assert.equal(replay.status,201,JSON.stringify(replay.data));
+  assert.equal(replay.data.correction_id,corrected.data.correction_id);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(draft.data.id).count,1);
+});
+
+test('active paid legacy submissions are derived as completed and remain correctable', async () => {
+  const ctx=context('Legacy paid submission correction');
+  const it=item('Legacy paid submission supply',20);
+  const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const captured=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
+  });
+  assert.equal(captured.status,201,JSON.stringify(captured.data));
+  const payable=(await api('GET',`/billing/${draft.data.id}`,'accountant')).data;
+  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'accountant',{
+    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  db.prepare("UPDATE billing_lite_submissions SET workflow_status='awaiting_operator' WHERE id=?").run(captured.data.submission.submission_id);
+  const legacyDetail=(await api('GET',`/billing/${draft.data.id}`,'accountant')).data;
+  assert.equal(legacyDetail.quick_submissions.find(entry=>entry.id===captured.data.submission.submission_id).workflow_status,'completed');
+  const corrected=await api('POST',`/billing/quick/submissions/${captured.data.submission.submission_id}/paid-correction`,'accountant',{
+    disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
+    reason:'Legacy paid submission returned unopened to stock',operation_id:randomUUID(),
+  });
+  assert.equal(corrected.status,201,JSON.stringify(corrected.data));
+  assert.equal(row(it.id).quantity,20);
 });
 
 test('consumed paid-supply corrections reclassify the sale as wastage without restoring stock', async () => {
@@ -1124,6 +1167,96 @@ test('consumed paid-supply corrections reclassify the sale as wastage without re
   assert.equal(totals.total_value_cost_rs,10);
 });
 
+test('paid corrections reject reversed submissions after a replacement has been issued', async () => {
+  const ctx=context('Superseded paid correction');
+  const it=item('Superseded paid correction supply',20);
+  const draft=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
+  const first=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
+  });
+  assert.equal(first.status,201,JSON.stringify(first.data));
+  const reversed=await api('POST',`/billing/quick/submissions/${first.data.submission.submission_id}/reverse`,'operator',{
+    operation_id:randomUUID(),reason:'The original supply selection was entered incorrectly',
+  });
+  assert.equal(reversed.status,200,JSON.stringify(reversed.data));
+  const replacement=await api('POST',`/billing/quick/visits/${ctx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:it.id,quantity:1,unit_price:25}],
+  });
+  assert.equal(replacement.status,201,JSON.stringify(replacement.data));
+  const payable=(await api('GET',`/billing/${draft.data.id}`,'operator')).data;
+  const paid=await api('PATCH',`/billing/${draft.data.id}/pay`,'operator',{
+    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:payable.row_version,
+  });
+  assert.equal(paid.status,200,JSON.stringify(paid.data));
+  const beforeRefunds=db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(draft.data.id).count;
+  const staleCorrection=await api('POST',`/billing/quick/submissions/${first.data.submission.submission_id}/paid-correction`,'accountant',{
+    disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
+    reason:'Attempt to correct the superseded supply submission',operation_id:randomUUID(),
+  });
+  assert.equal(staleCorrection.status,409,JSON.stringify(staleCorrection.data));
+  assert.equal(staleCorrection.data.code,'SUBMISSION_NOT_ACTIVE');
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM billing_refunds WHERE billing_id=?').get(draft.data.id).count,beforeRefunds);
+  assert.equal(row(it.id).quantity,19);
+});
+
+test('paid corrections restore or reclassify pre-dispensed stock without losing the original batch', async () => {
+  const returnedCtx=context('Returned pre-dispensed correction');
+  const returnedItem=item('Returned pre-dispensed supply',20);
+  assert.equal((await fieldSale(returnedCtx,returnedItem)).status,201);
+  const returnedMovement=db.prepare('SELECT id FROM inventory_movements WHERE item_id=? ORDER BY id DESC LIMIT 1').get(returnedItem.id).id;
+  const returnedLine={...stockLine(returnedItem,2),dispensing_movement_ids:[returnedMovement]};
+  const returnedBill=await bill(returnedCtx,[standardFee(),returnedLine],{
+    status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(returnedBill.status,201,JSON.stringify(returnedBill.data));
+  const returnedSubmission=completedQuickSubmission({bill:returnedBill.data,ctx:returnedCtx,items:[returnedLine]});
+  const returnedCorrection=await api('POST',`/billing/quick/submissions/${returnedSubmission}/paid-correction`,'accountant',{
+    disposition:'returned_to_stock',refund_method:'cash',refund_date:today,
+    reason:'The unopened pre-dispensed supplies were returned to their original batch',operation_id:randomUUID(),
+  });
+  assert.equal(returnedCorrection.status,201,JSON.stringify(returnedCorrection.data));
+  assert.equal(returnedCorrection.data.stock_restored,true);
+  assert.equal(row(returnedItem.id).quantity,20);
+  const returnedMovements=db.prepare('SELECT * FROM inventory_movements WHERE item_id=? ORDER BY id').all(returnedItem.id);
+  assert.deepEqual(returnedMovements.map(entry=>entry.action_type),['stock_out','reversal']);
+  assert.equal(stockFinancials(returnedMovements).net_sales_rs,0);
+  const returnedAudit=db.prepare("SELECT details_json FROM billing_quick_events WHERE submission_id=? AND event_type='paid_supply_corrected'").get(returnedSubmission);
+  assert.deepEqual(JSON.parse(returnedAudit.details_json).original_movement_ids,[returnedMovement]);
+
+  const consumedCtx=context('Consumed pre-dispensed correction');
+  const consumedItem=item('Consumed pre-dispensed supply',20);
+  assert.equal((await fieldSale(consumedCtx,consumedItem)).status,201);
+  const consumedMovement=db.prepare('SELECT id FROM inventory_movements WHERE item_id=? ORDER BY id DESC LIMIT 1').get(consumedItem.id).id;
+  const consumedLine={...stockLine(consumedItem,2),dispensing_movement_ids:[consumedMovement]};
+  const consumedBill=await bill(consumedCtx,[standardFee(),consumedLine],{
+    status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID(),
+  });
+  assert.equal(consumedBill.status,201,JSON.stringify(consumedBill.data));
+  const consumedSubmission=completedQuickSubmission({bill:consumedBill.data,ctx:consumedCtx,items:[consumedLine]});
+  const consumedCorrection=await api('POST',`/billing/quick/submissions/${consumedSubmission}/paid-correction`,'accountant',{
+    disposition:'consumed_or_wasted',refund_method:'cash',refund_date:today,
+    reason:'The pre-dispensed supplies were consumed but their charge was not billable',operation_id:randomUUID(),
+  });
+  assert.equal(consumedCorrection.status,201,JSON.stringify(consumedCorrection.data));
+  assert.equal(consumedCorrection.data.stock_restored,false);
+  assert.equal(row(consumedItem.id).quantity,18);
+  const consumedMovements=db.prepare('SELECT * FROM inventory_movements WHERE item_id=? ORDER BY id').all(consumedItem.id);
+  assert.deepEqual(consumedMovements.map(entry=>entry.action_type),['stock_out','reversal','wastage']);
+  const consumedTotals=stockFinancials(consumedMovements);
+  assert.equal(consumedTotals.net_sales_rs,0);
+  assert.equal(consumedTotals.sales_cost_rs,0);
+  assert.equal(consumedTotals.wastage_value_rs,20);
+
+  const reconciliation=await api('GET','/billing/reconciliation','accountant');
+  assert.equal(reconciliation.status,200,JSON.stringify(reconciliation.data));
+  const affectedBillIds=new Set([returnedBill.data.id,consumedBill.data.id]);
+  const affectedMovementIds=new Set([...returnedMovements,...consumedMovements].map(entry=>entry.id));
+  const falseExceptions=reconciliation.data.issues.filter(issue=>(issue.bill_ids||[]).some(id=>affectedBillIds.has(id)) || affectedMovementIds.has(issue.movement_id));
+  assert.deepEqual(falseExceptions,[]);
+});
+
 test('payment reversals reduce commission and multiple invoices count transport once', async () => {
   const before=await report(today,'payment');
   const beforeDoctor=before.doctorReport.rows.find(row=>row.doctor_id===doctorId) || {};
@@ -1150,6 +1283,142 @@ test('payment reversals reduce commission and multiple invoices count transport 
   const afterTransport=await report(today,'payment');
   const transportDoctor=afterTransport.doctorReport.rows.find(row=>row.doctor_id===doctorId);
   assert.equal(Number((transportDoctor.transportBenefits-transportBefore).toFixed(2)),123);
+});
+
+test('payment-basis transport is recognized once on the final settlement date', async () => {
+  const firstPaymentDate=offsetLocalDate(-35);
+  const beforeFirst=await report(firstPaymentDate,'payment',doctorId);
+  const beforeFinal=await report(today,'payment',doctorId);
+  const ctx=context('Cross-period transport settlement',firstPaymentDate);
+  db.prepare('UPDATE consultations SET transport_benefit_snapshot=137 WHERE id=?').run(ctx.consultationId);
+  const firstInvoice=await bill(ctx,[standardFee('Day Consultation',1000)],{operation_id:randomUUID()});
+  const secondInvoice=await bill(ctx,[{description:'Additional clinical service',type:'Sale',amount:1000,quantity:1,is_service_charge:true}],{operation_id:randomUUID()});
+  assert.equal(firstInvoice.status,201,JSON.stringify(firstInvoice.data));
+  assert.equal(secondInvoice.status,201,JSON.stringify(secondInvoice.data));
+  const firstPaid=await api('PATCH',`/billing/${firstInvoice.data.id}/pay`,'operator',{
+    amount:1000,payment_method:'cash',payment_date:firstPaymentDate,operation_id:randomUUID(),expected_version:firstInvoice.data.row_version,
+  });
+  assert.equal(firstPaid.status,200,JSON.stringify(firstPaid.data));
+  const afterFirst=await report(firstPaymentDate,'payment',doctorId);
+  assert.equal(Number((afterFirst.revenueStatement.transportBenefits-beforeFirst.revenueStatement.transportBenefits).toFixed(2)),0);
+  const secondPaid=await api('PATCH',`/billing/${secondInvoice.data.id}/pay`,'operator',{
+    amount:1000,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:secondInvoice.data.row_version,
+  });
+  assert.equal(secondPaid.status,200,JSON.stringify(secondPaid.data));
+  const afterFinal=await report(today,'payment',doctorId);
+  assert.equal(Number((afterFinal.revenueStatement.transportBenefits-beforeFinal.revenueStatement.transportBenefits).toFixed(2)),137);
+  assert.equal(afterFinal.revenueStatement.transportVisitCount-beforeFinal.revenueStatement.transportVisitCount,1);
+});
+
+test('accounting invariant matrix stays balanced through billing, payment, refund, reversal, stock correction and reporting', async () => {
+  const beforeVisitReport=await report(today,'visit',doctorId);
+  const beforePaymentReport=await report(today,'payment',doctorId);
+  const billIds=[];
+  const refundCtx=context('Invariant refund lifecycle');
+  const matrixWastageItem=item('Invariant non-chargeable wastage',20);
+  const refundable=await bill(refundCtx,[standardFee(),{
+    description:'Invariant non-chargeable wastage',type:'Wastage',inventory_item_id:matrixWastageItem.id,
+    quantity:1,amount:0,wastage_reason:'Invariant matrix damaged ampoule',batch_id:matrixWastageItem.batchId,
+  }],{status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID()});
+  assert.equal(refundable.status,201,JSON.stringify(refundable.data));
+  assert.equal(refundable.data.total_amount,2000);
+  assert.equal(refundable.data.items.find(line=>line.type==='Wastage').amount,10);
+  assert.equal(row(matrixWastageItem.id).quantity,19);
+  billIds.push(refundable.data.id);
+  const refund=await api('POST',`/billing/${refundable.data.id}/refunds`,'accountant',{
+    amount:250,refund_method:'cash',refund_date:today,reason:'Invariant matrix partial refund',operation_id:randomUUID(),
+  });
+  assert.equal(refund.status,201,JSON.stringify(refund.data));
+
+  const reversalCtx=context('Invariant receipt reversal');
+  const reversible=await bill(reversalCtx,[standardFee()],{status:'paid',payment_method:'cash',payment_date:today,operation_id:randomUUID()});
+  assert.equal(reversible.status,201,JSON.stringify(reversible.data));
+  billIds.push(reversible.data.id);
+  const receipt=reversible.data.payments.find(entry=>entry.entry_type==='payment');
+  const receiptReversal=await api('POST',`/billing/${reversible.data.id}/payments/${receipt.payment_transaction_id}/reverse`,'accountant',{
+    reversal_date:today,reason:'Invariant matrix receipt reversal',operation_id:randomUUID(),
+  });
+  assert.equal(receiptReversal.status,201,JSON.stringify(receiptReversal.data));
+  const replacementReceipt=await api('PATCH',`/billing/${reversible.data.id}/pay`,'accountant',{
+    amount:2000,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:receiptReversal.data.bill.row_version,
+  });
+  assert.equal(replacementReceipt.status,200,JSON.stringify(replacementReceipt.data));
+
+  const stockCtx=context('Invariant stock correction');
+  const stockItem=item('Invariant corrected supply',20);
+  const stockDraft=await bill(stockCtx,[standardFee()],{operation_id:randomUUID()});
+  const stockCapture=await api('POST',`/billing/quick/visits/${stockCtx.consultationId}/capture`,'doctor',{
+    operation_id:randomUUID(),consultation_fee:{type:'Day Consultation',amount:2000},
+    items:[{inventory_item_id:stockItem.id,quantity:1,unit_price:25}],
+  });
+  assert.equal(stockCapture.status,201,JSON.stringify(stockCapture.data));
+  billIds.push(stockDraft.data.id);
+  const stockPayable=(await api('GET',`/billing/${stockDraft.data.id}`,'accountant')).data;
+  const stockPaid=await api('PATCH',`/billing/${stockDraft.data.id}/pay`,'accountant',{
+    amount:2025,payment_method:'cash',payment_date:today,operation_id:randomUUID(),expected_version:stockPayable.row_version,
+  });
+  assert.equal(stockPaid.status,200,JSON.stringify(stockPaid.data));
+  const stockCorrection=await api('POST',`/billing/quick/submissions/${stockCapture.data.submission.submission_id}/paid-correction`,'accountant',{
+    disposition:'consumed_or_wasted',refund_method:'cash',refund_date:today,
+    reason:'Invariant matrix non-billable consumed supply',operation_id:randomUUID(),
+  });
+  assert.equal(stockCorrection.status,201,JSON.stringify(stockCorrection.data));
+
+  for (const billId of billIds) {
+    const invoice=(await api('GET',`/billing/${billId}`,'accountant')).data;
+    assert.equal(calculateBillingTotal(invoice.items),Number(invoice.total_amount.toFixed(2)));
+    assert.ok(invoice.finalized_at);
+    assert.ok(invoice.payment_received_amount>=0);
+    assert.ok(invoice.payment_balance_amount>=0);
+    assert.equal(Number((invoice.payment_received_amount+invoice.payment_balance_amount).toFixed(2)),Number(invoice.total_amount.toFixed(2)));
+  }
+  assert.equal(row(stockItem.id).quantity,19);
+  const stockTotals=stockFinancials(db.prepare('SELECT * FROM inventory_movements WHERE item_id=? ORDER BY id').all(stockItem.id));
+  assert.equal(stockTotals.net_sales_rs,0);
+  assert.equal(stockTotals.sales_cost_rs,0);
+  assert.equal(stockTotals.wastage_value_rs,10);
+
+  const placeholders=billIds.map(()=>'?').join(',');
+  const invoiceTotal=Number(db.prepare(`SELECT COALESCE(SUM(total_amount),0) AS total FROM billing WHERE id IN (${placeholders})`).get(...billIds).total);
+  const ledgerTotal=Number(db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM billing_payment_ledger WHERE billing_id IN (${placeholders})`).get(...billIds).total);
+  const refundTotal=Number(db.prepare(`SELECT COALESCE(SUM(amount),0) AS total FROM billing_refunds WHERE billing_id IN (${placeholders})`).get(...billIds).total);
+  const expectedNet=Number((ledgerTotal-refundTotal).toFixed(2));
+  const expectedDoctorCommission=Number(db.prepare(`
+    SELECT COALESCE(SUM((
+      COALESCE((SELECT SUM(ledger.amount) FROM billing_payment_ledger ledger WHERE ledger.billing_id=b.id),0)
+      - COALESCE((SELECT SUM(refund.amount) FROM billing_refunds refund WHERE refund.billing_id=b.id),0)
+    ) * b.doctor_commission_rate_snapshot),0) AS total
+    FROM billing b WHERE b.id IN (${placeholders})
+  `).get(...billIds).total.toFixed(2));
+  const expectedOcsCommission=Number(db.prepare(`
+    SELECT COALESCE(SUM((
+      COALESCE((SELECT SUM(ledger.amount) FROM billing_payment_ledger ledger WHERE ledger.billing_id=b.id),0)
+      - COALESCE((SELECT SUM(refund.amount) FROM billing_refunds refund WHERE refund.billing_id=b.id),0)
+    ) * b.ocs_commission_rate_snapshot),0) AS total
+    FROM billing b WHERE b.id IN (${placeholders})
+  `).get(...billIds).total.toFixed(2));
+  const consultationIds=[refundCtx.consultationId,reversalCtx.consultationId,stockCtx.consultationId];
+  const transportTotal=Number(db.prepare(`SELECT COALESCE(SUM(transport_benefit_snapshot),0) AS total FROM consultations WHERE id IN (${consultationIds.map(()=>'?').join(',')})`).get(...consultationIds).total);
+  const visitReport=await report(today,'visit',doctorId);
+  const paymentReport=await report(today,'payment',doctorId);
+  for (const [after,before] of [[visitReport,beforeVisitReport],[paymentReport,beforePaymentReport]]) {
+    assert.equal(Number((after.revenueStatement.totalRevenue-before.revenueStatement.totalRevenue).toFixed(2)),after===visitReport?invoiceTotal:ledgerTotal);
+    assert.equal(Number((after.revenueStatement.refundedRevenue-before.revenueStatement.refundedRevenue).toFixed(2)),refundTotal);
+    assert.equal(Number((after.revenueStatement.paidRevenue-before.revenueStatement.paidRevenue).toFixed(2)),expectedNet);
+    assert.equal(Number((after.revenueStatement.unpaidRevenue-before.revenueStatement.unpaidRevenue).toFixed(2)),0);
+    assert.equal(Number((after.revenueStatement.doctorCommission-before.revenueStatement.doctorCommission).toFixed(2)),expectedDoctorCommission);
+    assert.equal(Number((after.revenueStatement.ocsCommission-before.revenueStatement.ocsCommission).toFixed(2)),expectedOcsCommission);
+    assert.equal(Number((after.revenueStatement.transportBenefits-before.revenueStatement.transportBenefits).toFixed(2)),transportTotal);
+    assert.equal(after.revenueStatement.transportVisitCount-before.revenueStatement.transportVisitCount,consultationIds.length);
+    assert.equal(Number((after.revenueStatement.ocsRemainder-before.revenueStatement.ocsRemainder).toFixed(2)),Number((expectedNet-expectedDoctorCommission-transportTotal).toFixed(2)));
+    const cash=after.revenueStatement.paymentMethodBreakdown.find(entry=>entry.method==='cash').amount;
+    const beforeCash=before.revenueStatement.paymentMethodBreakdown.find(entry=>entry.method==='cash').amount;
+    assert.equal(Number((cash-beforeCash).toFixed(2)),expectedNet);
+  }
+  const reconciliation=await api('GET','/billing/reconciliation','accountant');
+  const affected=new Set(billIds);
+  const lifecycleExceptions=reconciliation.data.issues.filter(issue=>(issue.bill_ids||[]).some(id=>affected.has(id)));
+  assert.deepEqual(lifecycleExceptions,[]);
 });
 
 test('future financial dates and zero-priced supply sales are blocked without side effects', async () => {

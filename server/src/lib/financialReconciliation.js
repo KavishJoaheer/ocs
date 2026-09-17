@@ -108,11 +108,20 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   const reversed = new Set(movements.filter(m => m.action_type === 'reversal')
     .map(m => Number(metadata.get(m.id)?.reversed_movement_id)));
   const correctedMovementIds = new Set();
-  for (const correction of db.prepare('SELECT original_movement_ids_json FROM billing_supply_corrections').all()) {
+  const correctionMovementIds = new Set();
+  for (const correction of db.prepare(`
+    SELECT original_movement_ids_json, reversal_movement_ids_json
+    FROM billing_supply_corrections
+  `).all()) {
     try {
       for (const id of JSON.parse(correction.original_movement_ids_json || '[]')) correctedMovementIds.add(Number(id));
     } catch {
       // The correction row itself remains visible to finance if legacy JSON is unreadable.
+    }
+    try {
+      for (const id of JSON.parse(correction.reversal_movement_ids_json || '[]')) correctionMovementIds.add(Number(id));
+    } catch {
+      // Unreadable correction evidence remains visible through its original movement checks.
     }
   }
   const movementById = new Map(movements.map((movement) => [Number(movement.id), movement]));
@@ -170,9 +179,11 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
           claimedMovementIds.set(movementId, Number(bill.id));
         }
         linkedQuantity += Math.abs(Number(movement.quantity || 0));
-        const unitPrice = Number(movement.unit_price_snapshot);
-        if (!Number.isFinite(unitPrice) || unitPrice <= 0) hasCompleteMovementPricing = false;
-        else linkedValue += Math.abs(Number(movement.quantity || 0)) * unitPrice;
+        const unitValue = Number(line.type === 'Sale'
+          ? movement.unit_price_snapshot
+          : movement.unit_cost_snapshot);
+        if (!Number.isFinite(unitValue) || unitValue <= 0) hasCompleteMovementPricing = false;
+        else linkedValue += Math.abs(Number(movement.quantity || 0)) * unitValue;
       }
       if (!lineHasInvalidMovement && linkedQuantity !== Number(line.quantity || 0)) {
         issues.push({
@@ -184,7 +195,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       if (!lineHasInvalidMovement && hasCompleteMovementPricing && Math.abs(Number(line.amount || 0) - linkedValue) >= 0.005) {
         issues.push({
           type: 'invoice_line_value_mismatch',
-          label: `Bill #${bill.id} line ${index + 1}: billed value does not match linked stock movement value`,
+          label: `Bill #${bill.id} line ${index + 1}: recorded line value does not match linked stock movement value`,
           bill_ids: [bill.id], amount: Number((Number(line.amount || 0) - linkedValue).toFixed(2)),
           billed_amount: Number(line.amount || 0), movement_amount: Number(linkedValue.toFixed(2)),
           inventory_item_id: Number(line.inventory_item_id),
@@ -194,6 +205,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
   }
   for (const movement of movements) {
     if (reversed.has(Number(movement.id))) continue;
+    if (correctionMovementIds.has(Number(movement.id))) continue;
     const linkedBillId = Number(metadata.get(movement.id)?.billing_id || 0);
     if (linkedBillId && billItems.has(linkedBillId) && !claimedMovementIds.has(Number(movement.id))) {
       issues.push({

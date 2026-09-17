@@ -1096,6 +1096,11 @@ function getJoinedBillById(billId) {
     item_count: Number(submission.item_count || 0),
     amount_added: roundCurrency(submission.amount_added),
     items: normalizeBillingItems(submission.items_json),
+    workflow_status: parsed.status === "paid"
+      && !submission.reversed_at
+      && !["corrected", "reversed", "superseded"].includes(submission.workflow_status)
+      ? "completed"
+      : submission.workflow_status,
   }));
   const supplyCorrections = db.prepare(`
     SELECT correction.*, refund.credit_note_number, refund.refund_method, refund.refund_date,
@@ -2509,6 +2514,14 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
   if (refundMethod !== "cash" && externalReference.length < 3) {
     return res.status(400).json({ error: "Enter the provider reference for this non-cash correction." });
   }
+  let operation;
+  try {
+    operation = operationFor(req, `billing:paid-supply-correction:${submissionId}`);
+    const replay = operation.read();
+    if (replay) return res.status(201).json(replay);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
   try {
     assertNotFutureBusinessDate(refundDate, "Refund");
     assertBusinessDateOpen(refundDate);
@@ -2527,11 +2540,33 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
   if (submission.bill_status !== "paid" || submission.voided_at || submission.consultation_voided_at) {
     return res.status(409).json({ error: "This workflow is only for active paid invoices." });
   }
+  const effectiveWorkflowStatus = submission.bill_status === "paid"
+    && !submission.reversed_at
+    && !["corrected", "reversed", "superseded"].includes(submission.workflow_status)
+    ? "completed"
+    : submission.workflow_status;
+  if (submission.reversed_at || effectiveWorkflowStatus !== "completed") {
+    return res.status(409).json({
+      error: "Only the active completed supply submission can receive a paid correction.",
+      code: "SUBMISSION_NOT_ACTIVE",
+    });
+  }
+  const newerActiveSubmission = db.prepare(`
+    SELECT id
+    FROM billing_lite_submissions
+    WHERE billing_id = ? AND id > ? AND reversed_at IS NULL
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(submission.billing_id, submissionId);
+  if (newerActiveSubmission) {
+    return res.status(409).json({
+      error: "A newer active billing submission replaced this one. Correct the current submission instead.",
+      code: "SUBMISSION_NOT_ACTIVE",
+      active_submission_id: Number(newerActiveSubmission.id),
+    });
+  }
   const amount = roundCurrency(submission.amount_added || 0);
   if (amount <= 0) return res.status(409).json({ error: "This submission has no supply charge to correct." });
-  let operation;
-  try { operation = operationFor(req, `billing:paid-supply-correction:${submissionId}`); }
-  catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
   let result;
   let touchedItemIds = [];
   try {
@@ -2553,6 +2588,18 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
       const submittedItems = normalizeBillingItems(submission.items_json);
       const movementIds = submittedItems.flatMap((item) => item.inventory_movement_ids || []).map(Number).filter(Boolean);
       const dispensingMovementIds = submittedItems.flatMap((item) => item.dispensing_movement_ids || []).map(Number).filter(Boolean);
+      const submissionMovementIds = [...new Set([...movementIds, ...dispensingMovementIds])];
+      const currentBill = parseBillingRow(db.prepare("SELECT * FROM billing WHERE id = ?").get(submission.billing_id));
+      const currentBillMovementIds = new Set((currentBill.items || []).flatMap((item) => [
+        ...(item.inventory_movement_ids || []),
+        ...(item.dispensing_movement_ids || []),
+      ]).map(Number).filter(Boolean));
+      if (!submissionMovementIds.length || submissionMovementIds.some((id) => !currentBillMovementIds.has(id))) {
+        throw Object.assign(
+          new Error("This supply submission is no longer part of the active invoice and cannot be credited again."),
+          { status: 409, extra: { code: "SUBMISSION_NOT_ACTIVE" } },
+        );
+      }
       let reversal = { reversalIds: [], touchedItemIds: [] };
       if (disposition === "returned_to_stock") {
         reversal = reverseBillingSubmissionInventory({
@@ -2562,6 +2609,8 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
           billingId: submission.billing_id,
           actor: req.auth,
           reason,
+          restoreDispensing: true,
+          reversalScope: "paid_supply_correction",
         });
         touchedItemIds = reversal.touchedItemIds || [];
       } else {
@@ -2619,7 +2668,7 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
         reason,
         details: {
           correction_id: Number(correction.lastInsertRowid), credit_note_id: nextRefundId,
-          disposition, original_movement_ids: movementIds,
+          disposition, original_movement_ids: submissionMovementIds,
           reversal_movement_ids: reversal.reversalIds || [],
         },
       });
@@ -2627,7 +2676,8 @@ router.post("/quick/submissions/:submissionId/paid-correction", (req, res) => {
         correction_id: Number(correction.lastInsertRowid),
         credit_note: db.prepare("SELECT * FROM billing_refunds WHERE id = ?").get(nextRefundId),
         disposition,
-        stock_restored: disposition === "returned_to_stock",
+        stock_restored: disposition === "returned_to_stock"
+          && reversal.reversalIds.length === submissionMovementIds.length,
         bill: getJoinedBillById(submission.billing_id),
       };
       operation.save(result);

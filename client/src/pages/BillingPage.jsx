@@ -884,7 +884,10 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
   );
   const correctedSubmissionIds = new Set(supplyCorrections.map((correction) => Number(correction.submission_id)));
   const correctableSupplySubmissions = quickSubmissions.filter((submission) =>
-    Number(submission.amount_added || 0) > 0 && !correctedSubmissionIds.has(Number(submission.id)),
+    Number(submission.amount_added || 0) > 0
+      && submission.workflow_status === "completed"
+      && !submission.reversed_at
+      && !correctedSubmissionIds.has(Number(submission.id)),
   );
   const canPostFinancialCorrection = ["admin", "accountant"].includes(user?.role);
 
