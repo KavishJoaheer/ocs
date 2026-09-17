@@ -1061,6 +1061,15 @@ function getOperatorWorkspacePayload() {
       JOIN doctors d ON d.id = c.doctor_id
       WHERE b.voided_at IS NULL AND c.voided_at IS NULL
         AND b.status = 'unpaid' AND b.finalized_at IS NOT NULL
+        AND COALESCE((
+          SELECT latest.workflow_status
+          FROM billing_lite_submissions latest
+          WHERE latest.billing_id = b.id
+            AND latest.consultation_id = c.id
+            AND latest.reversed_at IS NULL
+          ORDER BY latest.id DESC
+          LIMIT 1
+        ), 'legacy_ready_for_payment') IN ('legacy_ready_for_payment', 'ready_for_payment', 'completed')
 
       ORDER BY c.consultation_date DESC, b.created_at DESC
     `)

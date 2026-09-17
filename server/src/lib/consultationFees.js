@@ -47,6 +47,34 @@ function assertVisitReadyForPayment(db, consultationId, billId = null) {
   if (!target?.finalized_at) {
     throw Object.assign(new Error('Payment blocked: finish Review and issue before collecting this invoice.'), {status:409, extra:{code:'BILLING_NOT_FINALIZED', existing_bill_id:Number(target?.id || billId || 0) || null}});
   }
+
+  // Quick billing is a two-person workflow when a doctor submits the bill.
+  // Historical invoices pre-date this workflow and have no submission row, so
+  // they remain collectible once finalized. Any invoice that does have a live
+  // quick submission must be explicitly released by an operator first.
+  const latestSubmission = db.prepare(`
+    SELECT id, workflow_status
+    FROM billing_lite_submissions
+    WHERE consultation_id = ?
+      AND billing_id = ?
+      AND reversed_at IS NULL
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(consultationId, target.id);
+  if (latestSubmission && !['ready_for_payment', 'completed'].includes(latestSubmission.workflow_status)) {
+    throw Object.assign(
+      new Error('Payment blocked: an operator must review and mark this billing submission ready for payment.'),
+      {
+        status: 409,
+        extra: {
+          code: 'BILLING_REVIEW_REQUIRED',
+          existing_bill_id: Number(target.id),
+          submission_id: Number(latestSubmission.id),
+          workflow_status: latestSubmission.workflow_status || 'awaiting_operator',
+        },
+      },
+    );
+  }
 }
 module.exports = {
   CONSULTATION_FEES,

@@ -23,7 +23,14 @@ const {
   buildHealthRecordsPayload,
   resolveConsultationDiagnosis,
 } = require("../lib/healthRecords");
-const { parseBillingRow, serializePatientBillingRows, offsetLocalDate, getTodayLocal, toNumber } = require("../lib/utils");
+const {
+  getTodayLocal,
+  offsetLocalDate,
+  parseBillingRow,
+  patientChargeableBillingItems,
+  serializePatientBillingRows,
+  toNumber,
+} = require("../lib/utils");
 const {
   isVerifiedPatientPortalAccount,
   requireConfirmedChartAccess,
@@ -535,7 +542,7 @@ router.get("/billing/:id", (req, res) => {
       payment_balance_amount: Math.max(0, bill.total_amount - toNumber(bill.payment_received_amount, 0)),
       net_paid_amount: Math.max(0, toNumber(bill.payment_received_amount, 0) - toNumber(bill.refunded_amount, 0)),
       status: bill.status,
-      items: bill.items,
+      items: patientChargeableBillingItems(bill.items),
       doctor_name: bill.doctor_name || null,
       payment_transactions: paymentTransactions,
       linkham_claim_status: bill.linkham_claim_status || null,

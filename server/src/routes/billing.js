@@ -533,7 +533,17 @@ function parseVisitReference(value) {
   return match ? Number(match[1]) : null;
 }
 
-function quickVisitBaseRows(doctorId, { consultationId = null, patientIdentifier = "", todayOnly = false } = {}) {
+function quickVisitBaseRows(doctorId, {
+  consultationId = null,
+  patientIdentifier = "",
+  todayOnly = false,
+  search = "",
+  limit = 100,
+  offset = 0,
+} = {}) {
+  const safeLimit = Math.min(250, Math.max(1, Number.parseInt(limit, 10) || 100));
+  const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  const normalizedSearch = String(search || "").trim().toLowerCase().slice(0, 100);
   return db
     .prepare(`
       SELECT
@@ -558,6 +568,14 @@ function quickVisitBaseRows(doctorId, { consultationId = null, patientIdentifier
         AND (@consultationId IS NULL OR c.id = @consultationId)
         AND (@patientIdentifier = '' OR UPPER(p.patient_identifier) = @patientIdentifier)
         AND (
+          @search = ''
+          OR lower(p.full_name) LIKE @searchPattern
+          OR lower(p.patient_identifier) LIKE @searchPattern
+          OR lower(printf('V-%06d', c.id)) LIKE @searchPattern
+          OR lower(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) LIKE @searchPattern
+          OR lower(d.full_name) LIKE @searchPattern
+        )
+        AND (
           @todayOnly = 0
           OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) = date('now', '+4 hours')
         )
@@ -565,13 +583,17 @@ function quickVisitBaseRows(doctorId, { consultationId = null, patientIdentifier
         CASE WHEN date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) = date('now', '+4 hours') THEN 0 ELSE 1 END,
         COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date || ' ' || a.appointment_time) DESC,
         c.id DESC
-      LIMIT 100
+      LIMIT @limit OFFSET @offset
     `)
     .all({
       doctorId,
       consultationId,
       patientIdentifier,
       todayOnly: todayOnly ? 1 : 0,
+      search: normalizedSearch,
+      searchPattern: `%${normalizedSearch}%`,
+      limit: safeLimit,
+      offset: safeOffset,
     });
 }
 
@@ -1164,54 +1186,65 @@ router.get("/patient-summary", (req, res) => {
 
   if (dateBasis === "payment") {
     const summary = db.prepare(`
+      WITH scoped_bills AS (
+        SELECT
+          b.id,
+          b.patient_id,
+          b.total_amount,
+          b.patient_name_snapshot,
+          p.full_name AS current_patient_name
+        FROM billing b
+        JOIN patients p ON p.id = b.patient_id
+        JOIN consultations c ON c.id = b.consultation_id
+        WHERE b.voided_at IS NULL
+          AND c.voided_at IS NULL
+          AND b.finalized_at IS NOT NULL
+          AND (@reportDoctorId IS NULL OR c.doctor_id = @reportDoctorId)
+          ${doctorAccess.clause}
+      ),
+      period_ledger AS (
+        SELECT
+          ledger.billing_id,
+          SUM(CASE WHEN ledger.amount > 0 THEN ledger.amount ELSE 0 END) AS gross_collected_amount,
+          SUM(ledger.amount) AS signed_collected_amount
+        FROM billing_payment_ledger ledger
+        JOIN scoped_bills scoped ON scoped.id = ledger.billing_id
+        WHERE (@dateFrom = '' OR ledger.transaction_date >= date(@dateFrom))
+          AND (@dateTo = '' OR ledger.transaction_date <= date(@dateTo))
+        GROUP BY ledger.billing_id
+      ),
+      period_refunds AS (
+        SELECT refund.billing_id, SUM(refund.amount) AS refunded_amount
+        FROM billing_refunds refund
+        JOIN scoped_bills scoped ON scoped.id = refund.billing_id
+        WHERE (@dateFrom = '' OR refund.refund_date >= date(@dateFrom))
+          AND (@dateTo = '' OR refund.refund_date <= date(@dateTo))
+        GROUP BY refund.billing_id
+      ),
+      current_receipts AS (
+        SELECT ledger.billing_id, SUM(ledger.amount) AS received_amount
+        FROM billing_payment_ledger ledger
+        JOIN scoped_bills scoped ON scoped.id = ledger.billing_id
+        GROUP BY ledger.billing_id
+      )
       SELECT
-        b.patient_id,
-        COALESCE(NULLIF(MAX(b.patient_name_snapshot), ''), MAX(p.full_name)) AS patient_name,
-        COUNT(DISTINCT b.id) AS bill_count,
-        COALESCE(SUM(CASE
-          WHEN date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN
-            COALESCE(NULLIF(@dateFrom, ''), '0001-01-01') AND COALESCE(NULLIF(@dateTo, ''), '9999-12-31')
-          THEN b.total_amount ELSE 0 END), 0) AS total_billed,
-        COALESCE((
-          SELECT SUM(ledger.amount)
-          FROM billing_payment_ledger ledger
-          JOIN billing payment_bill ON payment_bill.id = ledger.billing_id
-          WHERE payment_bill.patient_id = b.patient_id
-            AND payment_bill.finalized_at IS NOT NULL
-            AND (@dateFrom = '' OR ledger.transaction_date >= date(@dateFrom))
-            AND (@dateTo = '' OR ledger.transaction_date <= date(@dateTo))
-        ), 0) AS paid_amount,
-        COALESCE((
-          SELECT SUM(refund.amount)
-          FROM billing_refunds refund
-          JOIN billing refund_bill ON refund_bill.id = refund.billing_id
-          WHERE refund_bill.patient_id = b.patient_id
-            AND (@dateFrom = '' OR refund.refund_date >= date(@dateFrom))
-            AND (@dateTo = '' OR refund.refund_date <= date(@dateTo))
-        ), 0) AS refunded_amount,
-        COALESCE(SUM(CASE
-          WHEN date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN
-            COALESCE(NULLIF(@dateFrom, ''), '0001-01-01') AND COALESCE(NULLIF(@dateTo, ''), '9999-12-31')
-          THEN MAX(0, b.total_amount - COALESCE((
-            SELECT SUM(ledger.amount) FROM billing_payment_ledger ledger WHERE ledger.billing_id = b.id
-          ), 0)) ELSE 0 END), 0) AS unpaid_amount
-      FROM billing b
-      JOIN patients p ON p.id = b.patient_id
-      JOIN consultations c ON c.id = b.consultation_id
-      WHERE b.voided_at IS NULL AND c.voided_at IS NULL AND b.finalized_at IS NOT NULL
-        AND (@reportDoctorId IS NULL OR c.doctor_id = @reportDoctorId)
-        ${doctorAccess.clause}
-        AND (
-          EXISTS (
-            SELECT 1 FROM billing_payment_ledger ledger
-            WHERE ledger.billing_id = b.id
-              AND (@dateFrom = '' OR ledger.transaction_date >= date(@dateFrom))
-              AND (@dateTo = '' OR ledger.transaction_date <= date(@dateTo))
-          )
-          OR date(COALESCE(NULLIF(b.consultation_date_snapshot, ''), c.consultation_date)) BETWEEN
-            COALESCE(NULLIF(@dateFrom, ''), '0001-01-01') AND COALESCE(NULLIF(@dateTo, ''), '9999-12-31')
-        )
-      GROUP BY b.patient_id
+        scoped.patient_id,
+        COALESCE(NULLIF(MAX(scoped.patient_name_snapshot), ''), MAX(scoped.current_patient_name)) AS patient_name,
+        COUNT(DISTINCT scoped.id) AS bill_count,
+        COALESCE(SUM(scoped.total_amount), 0) AS total_billed,
+        COALESCE(SUM(COALESCE(period_ledger.signed_collected_amount, 0) - COALESCE(period_refunds.refunded_amount, 0)), 0) AS paid_amount,
+        COALESCE(SUM(period_refunds.refunded_amount), 0) AS refunded_amount,
+        COALESCE(SUM(MAX(0, scoped.total_amount - COALESCE(current_receipts.received_amount, 0))), 0) AS unpaid_amount,
+        COALESCE(SUM(period_ledger.gross_collected_amount), 0) AS gross_collected_amount,
+        COALESCE(SUM(period_ledger.signed_collected_amount), 0) AS signed_collected_amount,
+        COALESCE(SUM(MAX(0, scoped.total_amount - COALESCE(current_receipts.received_amount, 0))), 0) AS outstanding_snapshot_amount,
+        'payment' AS summary_basis
+      FROM scoped_bills scoped
+      LEFT JOIN period_ledger ON period_ledger.billing_id = scoped.id
+      LEFT JOIN period_refunds ON period_refunds.billing_id = scoped.id
+      LEFT JOIN current_receipts ON current_receipts.billing_id = scoped.id
+      WHERE period_ledger.billing_id IS NOT NULL OR period_refunds.billing_id IS NOT NULL
+      GROUP BY scoped.patient_id
       ORDER BY unpaid_amount DESC, paid_amount DESC, patient_name ASC
     `).all({
       dateFrom,
@@ -1239,7 +1272,8 @@ router.get("/patient-summary", (req, res) => {
         ), 0)), 0) AS refunded_amount,
         COALESCE(SUM(MAX(0, b.total_amount - COALESCE((
           SELECT SUM(payment.amount) FROM billing_payment_ledger payment WHERE payment.billing_id = b.id
-        ), 0))), 0) AS unpaid_amount
+        ), 0))), 0) AS unpaid_amount,
+        'visit' AS summary_basis
       FROM patients p
       JOIN billing b ON b.patient_id = p.id
       JOIN consultations c ON c.id = b.consultation_id
@@ -1409,8 +1443,13 @@ router.get("/quick/picker-options", (req, res) => {
   const doctors = ["operator", "admin"].includes(req.auth?.role) ? quickBillingDoctorOptions() : [];
   if (!doctorId) return res.json({ doctors, patients: [] });
 
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const limit = Math.min(200, Math.max(20, Number.parseInt(req.query.limit, 10) || 100));
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const patientMap = new Map();
-  const visits = quickVisitBaseRows(doctorId)
+  const visitRows = quickVisitBaseRows(doctorId, { search, limit: limit + 1, offset });
+  const hasMore = visitRows.length > limit;
+  const visits = visitRows.slice(0, limit)
     .map((row) => ({ row, visit: serializeQuickVisit(row) }))
     .filter(({ visit }) => canActorSubmitQuickVisit(visit, req.auth?.role));
 
@@ -1431,7 +1470,7 @@ router.get("/quick/picker-options", (req, res) => {
     a.patient_name.localeCompare(b.patient_name, undefined, { sensitivity: "base" }),
   );
 
-  res.json({ doctors, patients });
+  res.json({ doctors, patients, search, limit, offset, has_more: hasMore });
 });
 
 router.get("/quick/lookup", (req, res) => {
@@ -3693,16 +3732,6 @@ router.patch("/:id/pay", (req, res) => {
   }
 
   const requestedOperationId = String(req.body.operation_id || "").trim();
-  if (requestedOperationId) {
-    const replay = db.prepare("SELECT billing_id FROM billing_payment_transactions WHERE operation_id = ?").get(requestedOperationId);
-    if (replay) {
-      if (Number(replay.billing_id) !== billId) {
-        return res.status(409).json({ error: "That payment operation reference belongs to another invoice." });
-      }
-      return res.json(getJoinedBillById(billId));
-    }
-  }
-
   try { assertBillFinalized(existing); }
   catch (error) { return res.status(error.status || 409).json({ error: error.message, ...(error.extra || {}) }); }
   if (existing.fee_review_required) return res.status(409).json({error:'Open bill details to confirm Day, Night or Review Consultation before recording payment.', code:'FEE_REVIEW_REQUIRED'});
@@ -3718,6 +3747,29 @@ router.patch("/:id/pay", (req, res) => {
   if (!validPaymentDate(paymentDate)) {
     return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
   }
+  const replay = requestedOperationId
+    ? db.prepare("SELECT * FROM billing_payment_transactions WHERE operation_id = ?").get(requestedOperationId)
+    : null;
+  const requestedAmount = req.body.amount == null || req.body.amount === ""
+    ? replay ? Number(replay.amount) : existing.payment_balance_amount
+    : Number(req.body.amount);
+  const requestedReference = normalizeSourceReference(req.body.external_reference);
+  if (replay) {
+    const same = Number(replay.billing_id) === billId
+      && roundCurrency(replay.amount) === roundCurrency(requestedAmount)
+      && replay.payment_method === paymentMethod
+      && replay.payment_date === paymentDate
+      && String(replay.external_reference || "") === requestedReference;
+    if (!same) {
+      return res.status(409).json({
+        error: Number(replay.billing_id) !== billId
+          ? "That payment operation reference belongs to another invoice."
+          : "That payment operation reference was already used for different payment details.",
+        code: "PAYMENT_OPERATION_MISMATCH",
+      });
+    }
+    return res.json(getJoinedBillById(billId));
+  }
   if (existing.payment_state === "paid" || existing.status === "paid") {
     if (!requestedOperationId && existing.payments?.length === 1 &&
         existing.payments[0].payment_method === paymentMethod &&
@@ -3730,9 +3782,7 @@ router.patch("/:id/pay", (req, res) => {
     return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
   }
 
-  const amount = req.body.amount == null || req.body.amount === ""
-    ? existing.payment_balance_amount
-    : Number(req.body.amount);
+  const amount = requestedAmount;
   const operationId = String(req.body.operation_id ||
     `legacy-payment-${req.auth?.id || 0}-${billId}-${existing.row_version}-${amount}`).trim();
   let summary;

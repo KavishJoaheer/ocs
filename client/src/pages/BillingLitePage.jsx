@@ -237,6 +237,8 @@ function BillingLitePage() {
   const [sourceReference, setSourceReference] = useState("");
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
+  const [patientSearchResults, setPatientSearchResults] = useState(null);
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
   const patientPickerRef = useRef(null);
   const [visitSearch, setVisitSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -383,6 +385,34 @@ function BillingLitePage() {
     return () => window.cancelAnimationFrame(frame);
   }, [patientPickerOpen]);
 
+  useEffect(() => {
+    const needle = patientSearch.trim();
+    if (!patientPickerOpen || needle.length < 2 || (operatorIssueOnly && !billingDoctorId)) {
+      setPatientSearchResults(null);
+      setPatientSearchLoading(false);
+      return undefined;
+    }
+    let ignore = false;
+    setPatientSearchLoading(true);
+    setPatientSearchResults([]);
+    const timeout = window.setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({ search: needle, limit: "100" });
+        if (operatorIssueOnly) query.set("doctorId", billingDoctorId);
+        const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
+        if (!ignore) setPatientSearchResults(Array.isArray(payload?.patients) ? payload.patients : []);
+      } catch (error) {
+        if (!ignore) toast.error(error.message || "Patient search could not be completed.");
+      } finally {
+        if (!ignore) setPatientSearchLoading(false);
+      }
+    }, 250);
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeout);
+    };
+  }, [billingDoctorId, operatorIssueOnly, patientPickerOpen, patientSearch]);
+
   const categories = useMemo(() => {
     const names = new Set(catalog.map((item) => item.subcategory || item.category).filter(Boolean));
     return ["Favourites", "All supplies", ...[...names].sort((a, b) => a.localeCompare(b))];
@@ -434,13 +464,14 @@ function BillingLitePage() {
   );
 
   const filteredPatientOptions = useMemo(() => {
+    if (patientSearchResults) return patientSearchResults;
     const needle = patientSearch.trim().toLowerCase();
     if (!needle) return patientOptions;
     return patientOptions.filter((patient) =>
       String(patient.patient_name || "").toLowerCase().includes(needle) ||
       String(patient.patient_identifier || "").toLowerCase().includes(needle),
     );
-  }, [patientOptions, patientSearch]);
+  }, [patientOptions, patientSearch, patientSearchResults]);
 
   const selectedPickerVisit = useMemo(
     () => selectedPatient?.visits?.find(
@@ -520,6 +551,7 @@ function BillingLitePage() {
     setVisitSearch("");
     setPatientPickerOpen(false);
     setPatientSearch("");
+    setPatientSearchResults(null);
   }
 
   async function openCatalog(visit = selectedVisit) {
@@ -1066,11 +1098,15 @@ function BillingLitePage() {
                           />
                         </div>
                         <p className="mt-2 px-1 text-xs font-bold text-slate-500">
-                          {filteredPatientOptions.length} {filteredPatientOptions.length === 1 ? "patient" : "patients"} from your billable visits
+                          {patientSearchLoading
+                            ? "Searching all billable visits…"
+                            : `${filteredPatientOptions.length} ${filteredPatientOptions.length === 1 ? "patient" : "patients"} from your billable visits`}
                         </p>
                       </div>
                       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="listbox" aria-label="Patients with consultations ready to bill">
-                        {filteredPatientOptions.length ? filteredPatientOptions.map((patient) => (
+                        {patientSearchLoading ? (
+                          <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">Searching patients…</p>
+                        ) : filteredPatientOptions.length ? filteredPatientOptions.map((patient) => (
                           <button
                             key={patient.patient_id}
                             type="button"

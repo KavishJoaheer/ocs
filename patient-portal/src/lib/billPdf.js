@@ -38,7 +38,7 @@ function buildBillPdf(bill) {
   writeLine(`Doctor: ${bill.doctor_name || ""}`);
   writeLine(`Consultation: ${formatDate(bill.consultation_date)}`);
   writeLine(`Gross invoice: ${formatCurrency(bill.total_amount)}`, { bold: true });
-  (bill.items || []).forEach((item) => {
+  (bill.items || []).filter((item) => item.type === "Sale").forEach((item) => {
     writeLine(`${item.description || ""} ×${Number(item.quantity || 1)} — ${formatCurrency(item.amount)} (${item.type || "Sale"})`);
   });
   y += 3;

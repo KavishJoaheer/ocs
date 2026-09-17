@@ -2987,7 +2987,7 @@ function BillingPage() {
     setSearchParams,
   ]);
 
-  /** Admin: `/billing/patient-summary` is requested with the same date range as the list (see `loadData`), so these totals match the period and stay correct when the table status filter narrows `bills`. */
+  /** The summary endpoint applies one basis consistently: visit-basis invoice totals, or payment-basis transaction activity and the current outstanding snapshot for those invoices. */
   const billingDashboardTotals = useMemo(
     () =>
       patientSummary.reduce(
@@ -3263,9 +3263,21 @@ function BillingPage() {
 
       {user?.role !== "doctor" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <BillingStat icon={DollarSign} label="Total billed" value={formatRupees(billingDashboardTotals.totalBilled)} />
-          <BillingStat icon={CreditCard} label="Collected" value={formatRupees(billingDashboardTotals.collected)} />
-          <BillingStat icon={ReceiptText} label="Outstanding" value={formatRupees(billingDashboardTotals.outstanding)} />
+          <BillingStat
+            icon={DollarSign}
+            label={dateBasis === "payment" ? "Invoices with activity" : "Total billed"}
+            value={formatRupees(billingDashboardTotals.totalBilled)}
+          />
+          <BillingStat
+            icon={CreditCard}
+            label={dateBasis === "payment" ? "Net collected in period" : "Collected"}
+            value={formatRupees(billingDashboardTotals.collected)}
+          />
+          <BillingStat
+            icon={ReceiptText}
+            label={dateBasis === "payment" ? "Outstanding on those invoices" : "Outstanding"}
+            value={formatRupees(billingDashboardTotals.outstanding)}
+          />
         </div>
       ) : null}
 

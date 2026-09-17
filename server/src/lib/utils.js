@@ -126,6 +126,10 @@ function calculateBillingTotal(items) {
   );
 }
 
+function patientChargeableBillingItems(items) {
+  return normalizeBillingItems(items).filter((item) => item.type === "Sale");
+}
+
 function toPagination(queryPage, queryLimit, fallbackLimit = 8, maxLimit = 100) {
   const ceiling = Math.max(1, Math.floor(Number(maxLimit) || 100));
   const page = Math.max(1, parseInt(queryPage || "1", 10));
@@ -145,7 +149,7 @@ function parseBillingRow(row) {
 }
 
 function summarizeBillingItems(items) {
-  const normalized = normalizeBillingItems(items);
+  const normalized = patientChargeableBillingItems(items);
   if (!normalized.length) {
     return "Medical service";
   }
@@ -180,7 +184,10 @@ function serializePatientBillingRows(rows) {
       payment_balance_amount: outstandingAmount,
       refunded_amount: refundedAmount,
       net_paid_amount: Math.max(0, receivedAmount - refundedAmount),
-      date: row.payment_date || row.consultation_date || row.created_at,
+      invoice_date: row.issued_at || row.created_at,
+      consultation_date: row.consultation_date || null,
+      last_payment_date: row.payment_date || null,
+      date: row.issued_at || row.created_at || row.consultation_date,
       status: paymentState,
       payment_method: row.payment_method,
       items_summary: summarizeBillingItems(row.items),
@@ -218,6 +225,7 @@ module.exports = {
   normalizeBillingItems,
   offsetLocalDate,
   parseBillingRow,
+  patientChargeableBillingItems,
   safeJsonParse,
   serializePatientBillingRows,
   summarizeBillingItems,

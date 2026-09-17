@@ -669,3 +669,38 @@ test("operators can report completed prior-day visits that still lack final bill
   assert.ok(report.data.visits.some((visit) => visit.consultation_id === missingConsultationId));
   assert.ok(!report.data.visits.some((visit) => visit.consultation_id === consultationId));
 });
+
+test("patient picker search runs on the server before result limiting", async () => {
+  const today = getTodayLocal();
+  const createBillableVisit = (name, identifier, index) => {
+    const patientId = Number(db.prepare(`
+      INSERT INTO patients (full_name, first_name, last_name, patient_identifier, age, contact_number, patient_contact_number, address, assigned_doctor_id)
+      VALUES (?, ?, 'Search', ?, 40, '57000000', '57000000', 'Search test address', ?)
+    `).run(name, name.split(' ')[0], identifier, doctorId).lastInsertRowid);
+    const appointmentId = Number(db.prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, ?, ?, 'completed')
+    `).run(patientId, doctorId, today, `${String(10 + (index % 10)).padStart(2,'0')}:00`).lastInsertRowid);
+    const nextConsultationId = Number(db.prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, ?, 'Server-side picker search')
+    `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+    ensureBillingForConsultation(nextConsultationId, patientId, null, 'Day Consultation');
+    return {patientId,nextConsultationId};
+  };
+  const targetIdentifier=`OCS-NEEDLE-${Date.now()}`;
+  const target=createBillableVisit('Needle Patient',targetIdentifier,0);
+  for (let index=0; index<105; index+=1) {
+    createBillableVisit(`Recent Decoy ${index}`,`OCS-DECOY-${Date.now()}-${index}`,index);
+  }
+
+  const defaultPicker=await api('GET','/billing/quick/picker-options?limit=100',doctorToken);
+  assert.equal(defaultPicker.status,200,JSON.stringify(defaultPicker.data));
+  assert.equal(defaultPicker.data.patients.some(patient=>patient.patient_id===target.patientId),false);
+
+  const searched=await api('GET',`/billing/quick/picker-options?search=${encodeURIComponent(targetIdentifier)}&limit=20`,doctorToken);
+  assert.equal(searched.status,200,JSON.stringify(searched.data));
+  assert.equal(searched.data.patients.length,1);
+  assert.equal(searched.data.patients[0].patient_id,target.patientId);
+  assert.ok(searched.data.patients[0].visits.some(visit=>visit.consultation_id===target.nextConsultationId));
+});

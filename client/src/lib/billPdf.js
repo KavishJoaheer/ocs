@@ -6,14 +6,16 @@ function buildBillPdf(bill) {
   const doc = new jsPDF();
   let y = 20;
   const writeLine = (text, { gap = 7, size = 10, bold = false } = {}) => {
-    if (y > 276) {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    const wrapped = doc.splitTextToSize(String(text || ""), 180);
+    const lineHeight = Math.max(gap, wrapped.length * 5 + 2);
+    if (y + lineHeight > 282) {
       doc.addPage();
       y = 20;
     }
-    doc.setFontSize(size);
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    doc.text(String(text || "").slice(0, 110), 14, y);
-    y += gap;
+    doc.text(wrapped, 14, y);
+    y += lineHeight;
   };
   const invoiceNumber = bill.invoice_number || `OCS-INV-${String(bill.id || 0).padStart(8, "0")}`;
 
@@ -31,7 +33,7 @@ function buildBillPdf(bill) {
   writeLine(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : paymentState}`);
   y += 3;
   writeLine("Items", { size: 11, bold: true });
-  (bill.items || []).forEach((item) => {
+  (bill.items || []).filter((item) => item.type === "Sale").forEach((item) => {
     const quantity = Math.max(1, Number(item.quantity || 1));
     const unitPrice = Number.isFinite(Number(item.unit_price))
       ? Number(item.unit_price)
@@ -130,8 +132,13 @@ export async function shareOrDownloadCreditNotePdf(creditNote, bill) {
     doc.setFontSize(size);
     doc.setFont("helvetica", bold ? "bold" : "normal");
     const wrapped = doc.splitTextToSize(String(line || ""), 180);
+    const lineHeight = wrapped.length * 6 + 2;
+    if (y + lineHeight > 282) {
+      doc.addPage();
+      y = 20;
+    }
     doc.text(wrapped, 14, y);
-    y += wrapped.length * 6 + 2;
+    y += lineHeight;
   }
   const blob = doc.output("blob");
   const filename = `${creditNumber.replace(/[^a-z0-9_-]+/gi, "-")}.pdf`;

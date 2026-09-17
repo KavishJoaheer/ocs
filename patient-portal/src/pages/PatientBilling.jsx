@@ -223,9 +223,15 @@ function PatientBilling() {
                       {bill.items_summary || bill.description || "Medical service"}
                     </p>
                     <p className="mt-0.5 text-xs text-brand-cool-grey">
-                      {dayjs(bill.date).format("MMM D, YYYY")}
-                      {bill.payment_method && ` · ${bill.payment_method}`}
+                      Issued {dayjs(bill.invoice_date || bill.date).format("MMM D, YYYY")}
+                      {bill.consultation_date && ` · Visit ${dayjs(bill.consultation_date).format("MMM D, YYYY")}`}
                     </p>
+                    {bill.last_payment_date ? (
+                      <p className="mt-0.5 text-xs text-brand-cool-grey">
+                        Last payment {dayjs(bill.last_payment_date).format("MMM D, YYYY")}
+                        {bill.payment_method && ` · ${bill.payment_method}`}
+                      </p>
+                    ) : null}
                     {Number(bill.refunded_amount || 0) > 0 ? (
                       <p className="mt-1 text-xs font-semibold text-rose-700">
                         Credit note {formatCurrency(bill.refunded_amount)} · Net paid {formatCurrency(bill.net_paid_amount)}
