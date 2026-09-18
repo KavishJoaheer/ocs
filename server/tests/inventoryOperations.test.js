@@ -633,11 +633,25 @@ test("queue counts match actionable records and legacy requests need linkage", a
 });
 
 test("admin authorization remains and linkham cannot use inventory", async () => {
-  const archived = await api("DELETE", `/api/inventory/items/${insertOcsItem({ name: `Arch ${Date.now()}`, qty: 1 })}`, {
+  const itemId = insertOcsItem({ name: `Arch ${Date.now()}`, qty: 1 });
+  const blocked = await api("DELETE", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+  });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.data.code, "INVENTORY_ARCHIVE_NOT_EMPTY");
+  db.prepare("UPDATE inventory SET quantity = 0 WHERE id = ?").run(itemId);
+  db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(itemId);
+  const archived = await api("DELETE", `/api/inventory/items/${itemId}`, {
     token: adminToken,
   });
   assert.equal(archived.status, 200);
   assert.equal(archived.data.archived, true);
+  const bagId = Number(db.prepare(`
+    INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+    VALUES (?, ?, 0, 0, 'unit', 1, 2, 'doctor', ?)
+  `).run(`Bag archive blocked ${Date.now()}`, folderId, doctorId).lastInsertRowid);
+  const bagBlocked = await api("DELETE", `/api/inventory/items/${bagId}`, { token: adminToken });
+  assert.equal(bagBlocked.status, 409);
 });
 
 test("partial fulfilment consumes only the fulfilled quantity and returns unused ATP", async () => {
@@ -3158,8 +3172,8 @@ test("bag write-offs require exact evidence, replay once, and reverse by compens
     operation_id: writeOperation,
     action_type: "remove",
     quantity: 2,
-    reason: "Damaged",
-    note: "Package seal was visibly broken during inspection",
+    reason: "Wasted",
+    note: "Medication was prepared but could not be administered",
     batch_id: batchId,
     confirm: true,
   };
@@ -3175,7 +3189,7 @@ test("bag write-offs require exact evidence, replay once, and reverse by compens
   assert.equal(replay.status, 201, JSON.stringify(replay.data));
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 3);
   assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, 3);
-  const movement = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'remove'").get(itemId);
+  const movement = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'wastage'").get(itemId);
   assert.ok(movement?.id);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).count, 1);
 
@@ -3198,4 +3212,159 @@ test("bag write-offs require exact evidence, replay once, and reverse by compens
   assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, 5);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ? AND action_type = 'reversal'").get(itemId).count, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE action_type = 'reverse_write_off' AND item_id = ?").get(itemId).count, 1);
+});
+
+test("expired warehouse stock can be written off at exact batch cost and reversed", async () => {
+  const itemId = insertOcsItem({ name: `Expired reconcile ${Date.now()}`, qty: 4, expiry: "2020-01-01" });
+  db.prepare("UPDATE inventory SET cost_price = 999 WHERE id = ?").run(itemId);
+  db.prepare("UPDATE inventory_batches SET unit_cost = 13 WHERE item_id = ?").run(itemId);
+  const writtenOff = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: {
+      operation_id: `expired-write-off-${Date.now()}`,
+      action_type: "remove",
+      quantity: 2,
+      reason: "Expired",
+      confirm: true,
+    },
+  });
+  assert.equal(writtenOff.status, 201, JSON.stringify(writtenOff.data));
+  const movement = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'remove' ORDER BY id DESC LIMIT 1").get(itemId);
+  assert.equal(Number(movement.unit_cost_snapshot), 13);
+  assert.equal(db.prepare("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).quantity, 2);
+  const reversed = await api("POST", `/api/inventory/movements/${movement.id}/reverse-write-off`, {
+    token: adminToken,
+    body: {
+      operation_id: `expired-reversal-${Date.now()}`,
+      reason: "Expired write-off selected the wrong physical units",
+      confirm: true,
+    },
+  });
+  assert.equal(reversed.status, 201, JSON.stringify(reversed.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 4);
+});
+
+test("bulk write-off is admin-only explicit versioned evidenced and batch-valued", async () => {
+  const itemId = insertOcsItem({ name: `Bulk safe ${Date.now()}`, qty: 5, expiry: "2020-02-01" });
+  db.prepare("UPDATE inventory SET cost_price = 250 WHERE id = ?").run(itemId);
+  db.prepare("UPDATE inventory_batches SET unit_cost = 6.5 WHERE item_id = ?").run(itemId);
+  const row = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId);
+  const payload = {
+    operation_id: `bulk-safe-${Date.now()}`,
+    items: [{ item_id: itemId, quantity: 2, expected_version: Number(row.row_version) }],
+    reason: "Expired",
+    note: "Expired units isolated during the monthly physical count",
+    override_reason: "Administrator approved the documented bulk reconciliation",
+    confirm: true,
+  };
+  const operatorDenied = await api("POST", "/api/inventory/bulk/remove", { token: operatorToken, body: payload });
+  assert.equal(operatorDenied.status, 403);
+  const removed = await api("POST", "/api/inventory/bulk/remove", { token: adminToken, body: payload });
+  assert.equal(removed.status, 201, JSON.stringify(removed.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 3);
+  const movement = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'remove' ORDER BY id DESC LIMIT 1").get(itemId);
+  assert.equal(Number(movement.unit_cost_snapshot), 6.5);
+  assert.equal(db.prepare("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).quantity, 2);
+});
+
+test("depot transfers preserve actual batch cost on both movement sides", async () => {
+  const itemId = insertOcsItem({ name: `Transfer value ${Date.now()}`, qty: 5, expiry: "2031-03-01" });
+  db.prepare("UPDATE inventory SET cost_price = 777 WHERE id = ?").run(itemId);
+  db.prepare("UPDATE inventory_batches SET unit_cost = 7.25 WHERE item_id = ?").run(itemId);
+  const transferred = await api("POST", "/api/inventory/restock", {
+    token: operatorToken,
+    body: {
+      operation_id: `transfer-value-${Date.now()}`,
+      ocs_item_id: itemId,
+      doctor_id: doctorId,
+      quantity: 2,
+      note: "Verified cost transfer",
+    },
+  });
+  assert.equal(transferred.status, 201, JSON.stringify(transferred.data));
+  const movements = db.prepare(`
+    SELECT * FROM inventory_movements
+    WHERE action_type IN ('restock_out', 'restock_in')
+      AND json_extract(meta_json, '$.transaction_id') = ?
+    ORDER BY id
+  `).all(transferred.data.restock_receipt.transaction_id);
+  assert.equal(movements.length, 2);
+  assert.deepEqual(movements.map((movement) => Number(movement.unit_cost_snapshot)), [7.25, 7.25]);
+  for (const movement of movements) {
+    assert.equal(db.prepare("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).quantity, 2);
+  }
+});
+
+test("direct sale accepts a billable visit and rejects it after payment without another deduction", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const stock = seedDoctorBillableItem({
+    name: `Paid visit direct sale ${Date.now()}`,
+    batches: [{ qty: 3, expiry: "2031-05-01" }],
+  });
+  const before = db.prepare("SELECT quantity, row_version FROM inventory WHERE id = ?").get(stock.itemId);
+  const accepted = await api("POST", `/api/inventory/items/${stock.itemId}/actions`, {
+    token: doctorToken,
+    body: {
+      operation_id: `billable-visit-sale-${Date.now()}`,
+      action_type: "stock_out",
+      quantity: 1,
+      reason: "Sale",
+      patient_id: patientId,
+      consultation_id: consultationId,
+      expected_version: Number(before.row_version),
+    },
+  });
+  assert.equal(accepted.status, 201, JSON.stringify(accepted.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 2);
+  db.prepare(`
+    INSERT INTO billing (consultation_id, patient_id, items, total_amount, status, finalized_at)
+    VALUES (?, ?, '[]', 0, 'paid', CURRENT_TIMESTAMP)
+  `).run(consultationId, patientId);
+  const afterFirstSale = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(stock.itemId);
+  const rejected = await api("POST", `/api/inventory/items/${stock.itemId}/actions`, {
+    token: doctorToken,
+    body: {
+      operation_id: `paid-visit-sale-${Date.now()}`,
+      action_type: "stock_out",
+      quantity: 1,
+      reason: "Sale",
+      patient_id: patientId,
+      consultation_id: consultationId,
+      expected_version: Number(afterFirstSale.row_version),
+    },
+  });
+  assert.equal(rejected.status, 409, JSON.stringify(rejected.data));
+  assert.equal(rejected.data.code, "CONSULTATION_NOT_BILLABLE");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(stock.itemId).count, 1);
+});
+
+test("inventory mutation and idempotency receipt roll back together", async () => {
+  const itemId = insertOcsItem({ name: `Atomic receipt ${Date.now()}`, qty: 2 });
+  const before = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
+  const operationId = `forced-receipt-failure-${Date.now()}`;
+  db.exec(`
+    CREATE TRIGGER fail_selected_inventory_receipt
+    BEFORE INSERT ON operation_receipts
+    WHEN NEW.operation_id = '${operationId}'
+    BEGIN
+      SELECT RAISE(ABORT, 'forced receipt failure');
+    END;
+  `);
+  try {
+    const failed = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+      token: operatorToken,
+      body: {
+        operation_id: operationId,
+        action_type: "stock_in",
+        quantity: 1,
+        expiry_date: "2032-01-01",
+      },
+    });
+    assert.equal(failed.status, 400, JSON.stringify(failed.data));
+    assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, before);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ? AND action_type = 'stock_in'").get(itemId).count, 0);
+  } finally {
+    db.exec("DROP TRIGGER IF EXISTS fail_selected_inventory_receipt");
+  }
 });

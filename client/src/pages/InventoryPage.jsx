@@ -1630,7 +1630,12 @@ function InventoryOcsMasterActions({
   const moreBtn =
     "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
 
-  const showArchive = Boolean(onDeleteItem);
+  const showArchive = Boolean(
+    onDeleteItem &&
+      item?.stock_scope === "ocs" &&
+      !item?.owner_doctor_id &&
+      Number(item?.quantity || 0) === 0,
+  );
   const menuItems = [];
   if (isOperator) {
     if (onEdit) {
@@ -2124,7 +2129,9 @@ function MobileBottomSheet({ open, onClose, title, subtitle, children }) {
         onClick={onClose}
       />
       <div
-        className="fixed bottom-0 left-0 right-0 z-[61] rounded-t-[28px] border border-slate-200/80 bg-white px-4 pt-3 shadow-[0_-12px_40px_rgba(15,23,42,0.12)]"
+        role="dialog"
+        aria-modal="true"
+        className="fixed bottom-0 left-0 right-0 z-[61] max-h-[calc(100dvh-0.5rem)] overflow-y-auto overscroll-contain rounded-t-[28px] border border-slate-200/80 bg-white px-4 pt-3 shadow-[0_-12px_40px_rgba(15,23,42,0.12)]"
         style={{
           paddingBottom: "max(1rem, var(--sab))",
           paddingLeft: "max(1rem, var(--sal))",
@@ -2273,6 +2280,8 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
     ? suggestedBagFillQty(item.current_quantity, item.par_level, max)
     : 0;
   const [quantity, setQuantity] = useState("1");
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
   const [syncedDeps, setSyncedDeps] = useState({
     open,
     itemId: item?.id,
@@ -2288,6 +2297,8 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
     if (open) {
       const nextQty = suggested > 0 ? suggested : Math.min(1, max);
       setQuantity(String(nextQty > 0 ? nextQty : "1"));
+      setReason("");
+      setConfirmed(false);
     }
   }
 
@@ -2311,7 +2322,15 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
             toast.error("Quantity exceeds OCS depot stock.");
             return;
           }
-          onSubmit({ quantity: qty });
+          if (reason.trim().length < 10) {
+            toast.error("Explain why the emergency transfer is required (at least 10 characters).");
+            return;
+          }
+          if (!confirmed) {
+            toast.error("Confirm the emergency stock transfer before continuing.");
+            return;
+          }
+          onSubmit({ quantity: qty, reason: reason.trim(), confirm: true });
         }}
       >
         <label className="block space-y-2">
@@ -2326,13 +2345,38 @@ function MobileDoctorRestockSheet({ open, item, ocsAvailable, isSaving, onClose,
             className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
           />
         </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Emergency reason</span>
+          <textarea
+            required
+            minLength={10}
+            maxLength={500}
+            rows={3}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base outline-none focus:border-teal-500 focus:bg-white"
+            placeholder="Explain why the normal operator supply-request process cannot be used"
+          />
+          <p className="text-xs text-slate-500">This reason is retained in the transfer receipt and audit history.</p>
+        </label>
+        <label className="flex min-h-12 items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+            className="mt-0.5 size-5 accent-[#2d8f98]"
+          />
+          <span className="text-sm font-semibold leading-5 text-amber-950">
+            I confirm this is an exceptional transfer and the quantity is physically moving from OCS depot to my bag.
+          </span>
+        </label>
         <p className="text-xs text-slate-500">
           In bag {Number(item.current_quantity || 0)} / {Number(item.par_level || 0)}. Expiry comes from the depot batch.
         </p>
         <div className="grid gap-2 pt-1">
           <button
             type="submit"
-            disabled={isSaving || max < 1 || qty < 1 || qty > max}
+            disabled={isSaving || max < 1 || qty < 1 || qty > max || reason.trim().length < 10 || !confirmed}
             className="min-h-12 w-full rounded-2xl bg-[#2d8f98] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
           >
             {isSaving ? "Transferring..." : "Confirm emergency transfer"}
@@ -3241,19 +3285,9 @@ export default function InventoryPage() {
     (async () => {
       let list = [];
       try {
-        const query = new URLSearchParams({ doctorId: String(user.doctor_id), limit: "200" });
-        const picker = await api.get(`/billing/quick/picker-options?${query.toString()}`);
-        list = (picker?.patients || []).map((patient) => ({
-          id: Number(patient.patient_id),
-          full_name: patient.patient_name,
-          patient_identifier: patient.patient_identifier,
-          visits: patient.visits || [],
-        }));
+        list = await loadAssignedPatientPicker(user.id, { doctorId: user.doctor_id });
       } catch {
-        list = (await loadAssignedPatientPicker(user.id, { doctorId: user.doctor_id })).map((patient) => ({
-          ...patient,
-          visits: [],
-        }));
+        list = [];
       }
       if (!cancelled) {
         setAssignedPatientsList(list);
@@ -4043,7 +4077,7 @@ export default function InventoryPage() {
     setMobileRestockTarget(resolved);
   }
 
-  async function saveMobileDoctorRestock({ quantity }) {
+  async function saveMobileDoctorRestock({ quantity, reason, confirm }) {
     const target = mobileRestockTarget;
     if (!target?.ocs_item_id) return;
     const qty = Number(quantity || 0);
@@ -4055,6 +4089,8 @@ export default function InventoryPage() {
 
     const endpoint = `/inventory/restock/my-inventory${inventoryListQuery}`;
     const payload = {
+      reason: String(reason || "").trim(),
+      confirm: confirm === true,
       items: [
         {
           ocs_item_id: Number(target.ocs_item_id),
@@ -4075,6 +4111,7 @@ export default function InventoryPage() {
             itemName: target.item_name,
             quantity: qty,
             doctorId: user.doctor_id,
+            reason: payload.reason,
           },
         });
         if (data) {
@@ -4110,6 +4147,7 @@ export default function InventoryPage() {
             itemName: target.item_name,
             quantity: qty,
             doctorId: user.doctor_id,
+            reason: payload.reason,
           },
         });
         if (data) {
@@ -5337,7 +5375,7 @@ export default function InventoryPage() {
         onSubmit={saveExceptionalCorrection}
       />
       <BatchOpeningDataModal
-        key={batchOpeningData?.batch?.id || "closed-batch-opening-data"}
+        key={`${batchOpeningData?.item?.id || "closed"}:${batchOpeningData?.batch?.id || "opening"}`}
         open={Boolean(batchOpeningData)}
         item={batchOpeningData?.item}
         batch={batchOpeningData?.batch}

@@ -2155,8 +2155,7 @@ test("emergency override never drives recorded stock negative", async () => {
   );
 });
 
-test("archiving a stock item leaves history and an audit record behind", async () => {
-  const doctorId = db.prepare("SELECT id FROM doctors LIMIT 1").get().id;
+test("archiving an empty master item leaves history and an audit record behind", async () => {
   const itemName = `Deletable Gauze ${Date.now()}`;
   const itemId = db
     .prepare(`
@@ -2164,13 +2163,13 @@ test("archiving a stock item leaves history and an audit record behind", async (
         item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
         stock_scope, owner_doctor_id
       )
-      VALUES (?, 7, 0, 'unit', 5, 12, 'doctor', ?)
+      VALUES (?, 0, 0, 'unit', 5, 12, 'ocs', NULL)
     `)
-    .run(itemName, doctorId).lastInsertRowid;
+    .run(itemName).lastInsertRowid;
 
   db.prepare(`
     INSERT INTO inventory_movements (item_id, movement_type, quantity, previous_quantity, next_quantity, note)
-    VALUES (?, 'out', 3, 10, 7, 'Dispensed in the field')
+    VALUES (?, 'out', 10, 10, 0, 'Historical stock fully dispensed')
   `).run(itemId);
 
   const removed = await api("DELETE", `/api/inventory/items/${itemId}`, { token: adminToken });
@@ -2188,7 +2187,7 @@ test("archiving a stock item leaves history and an audit record behind", async (
     .get(itemId);
   assert.ok(audit, "expected an archive_item audit row");
   assert.equal(audit.item_name, itemName);
-  assert.equal(audit.quantity, 7);
+  assert.equal(audit.quantity, 0);
 });
 
 test("doctors still cannot delete patients", async () => {

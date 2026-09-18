@@ -1,7 +1,7 @@
 "use strict";
 
 const MIN_OVERRIDE_REASON = 10;
-const MIN_WRITE_OFF_NOTE_REASONS = new Set(["Damaged", "Discontinued"]);
+const MIN_WRITE_OFF_NOTE_REASONS = new Set(["Damaged", "Discontinued", "Wasted"]);
 
 function isAdminRole(role) {
   return role === "admin";
@@ -63,8 +63,8 @@ function writeOffNoteRequired(reason) {
 
 function assertWriteOffInputs({ reason, note, confirm }) {
   const normalised = String(reason || "").trim();
-  if (!["Expired", "Discontinued", "Damaged"].includes(normalised)) {
-    const error = new Error("Reason must be Expired, Discontinued, or Damaged.");
+  if (!["Expired", "Discontinued", "Damaged", "Wasted"].includes(normalised)) {
+    const error = new Error("Reason must be Expired, Discontinued, Damaged, or Wasted.");
     error.status = 400;
     throw error;
   }

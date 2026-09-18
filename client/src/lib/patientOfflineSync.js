@@ -2,7 +2,9 @@ import { api } from "./api.js";
 import { isBrowserOffline, isNetworkFailure } from "./networkErrors.js";
 import {
   clearPatientOfflineCache,
+  getBillingPickerCache,
   getPatientDirectoryCache,
+  saveBillingPickerCache,
   savePatientDirectoryCache,
 } from "./patientOfflineCache.js";
 
@@ -198,10 +200,21 @@ export async function getCachedPatientDirectory(userId) {
 
 export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
   const normalizeRow = (entry) => ({
-    id: Number(entry?.id || 0),
-    full_name: String(entry?.full_name || "").trim(),
+    id: Number(entry?.id || entry?.patient_id || 0),
+    full_name: String(entry?.full_name || entry?.patient_name || "").trim(),
     patient_identifier: String(entry?.patient_identifier || entry?.patient_id || "").trim(),
+    visits: Array.isArray(entry?.visits) ? entry.visits : [],
   });
+
+  const readBillingRows = async () => {
+    try {
+      const cached = await getBillingPickerCache(userId, doctorId);
+      return (cached?.patients || []).map(normalizeRow).filter((row) => row.id && row.full_name && row.visits.length);
+    } catch (error) {
+      console.warn("[patient-offline] billing picker cache read failed:", error?.message || error);
+      return [];
+    }
+  };
 
   // Filter the encrypted offline cache to the doctor's caseload when possible
   // (assigned or review doctor). Visit/consultation links are not in the cache.
@@ -234,26 +247,28 @@ export async function loadAssignedPatientPicker(userId, { doctorId } = {}) {
     }
   };
 
-  // Online: the shared OCS VP directory. filter=my_assigned still pins assigned_doctor_id.
+  // Online: fetch the exact server-authorised billable consultations and cache
+  // the patient + visit pairs together. This lets an already-open doctor round
+  // queue a direct sale during a genuine network outage without broadening
+  // doctor scope.
   if (!isBrowserOffline() && doctorId) {
     try {
-      const params = new URLSearchParams({
-        status: "active",
-        limit: "500",
-      });
-      const live = await api.get(`/patients?${params.toString()}`);
-      return (live?.items || [])
-        .map(normalizeRow)
-        .filter((row) => row.id && row.full_name);
+      const params = new URLSearchParams({ doctorId: String(doctorId), limit: "200" });
+      const live = await api.get(`/billing/quick/picker-options?${params.toString()}`);
+      const rows = (live?.patients || []).map(normalizeRow).filter((row) => row.id && row.full_name && row.visits.length);
+      await saveBillingPickerCache(userId, doctorId, rows);
+      return rows;
     } catch (error) {
       if (!isNetworkFailure(error)) {
         console.warn("[patient-offline] picker live fetch failed:", error?.message || error);
       }
-      return await readCacheRows();
+      const cachedBillingRows = await readBillingRows();
+      return cachedBillingRows.length ? cachedBillingRows : await readCacheRows();
     }
   }
 
-  return await readCacheRows();
+  const cachedBillingRows = await readBillingRows();
+  return cachedBillingRows.length ? cachedBillingRows : await readCacheRows();
 }
 
 export { clearPatientOfflineCache };

@@ -207,7 +207,6 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
       )
       .get(itemId)?.total || 0,
   );
-  const availableAtp = availableToPromise(itemId);
   const stockState = decorateInventoryItems([
     {
       id: itemId,
@@ -215,10 +214,16 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
     },
   ])[0];
   const availableToUse = Number(stockState?.available_to_use || 0);
-  const available = includeExpired ? availableAtp : availableToUse;
   const batches = includeExpired
     ? listWriteOffBatches(itemId)
     : listWriteOffBatches(itemId).filter((row) => !row.expired && !row.quarantined && !row.missing_expiry && Number(row.unit_cost || 0) > 0);
+  // Operational use and transfers must stay limited to verified, usable stock.
+  // Controlled write-offs/corrections deliberately need access to every
+  // traceable, unreserved batch (including expired, quarantined or incomplete
+  // opening lots) so unusable physical stock can still be reconciled.
+  const available = includeExpired
+    ? batches.reduce((sum, row) => sum + Number(row.available || 0), 0)
+    : availableToUse;
   let remaining = qty;
   const allocations = [];
   for (const batch of batches) {

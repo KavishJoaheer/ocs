@@ -2,6 +2,7 @@ const DB_NAME = "ocs-patient-offline-cache";
 const DB_VERSION = 1;
 const STORE_NAME = "directory";
 const RECORD_ID = "doctor-directory";
+const BILLING_PICKER_RECORD_PREFIX = "doctor-billing-picker";
 const CRYPTO_KEY_STORAGE = "ocs_patient_cache_crypto_key";
 
 function supportsIndexedDb() {
@@ -224,6 +225,61 @@ export async function getPatientDirectoryCache(userId) {
   };
 }
 
+export async function saveBillingPickerCache(userId, doctorId, patients) {
+  const recordId = `${BILLING_PICKER_RECORD_PREFIX}:${Number(userId || 0)}:${Number(doctorId || 0)}`;
+  const payload = {
+    patients: Array.isArray(patients) ? patients : [],
+    synced_at: new Date().toISOString(),
+  };
+  const wrapped = await encryptPayload(payload);
+  const record = {
+    id: recordId,
+    userId: Number(userId || 0),
+    doctorId: Number(doctorId || 0),
+    ...wrapped,
+    synced_at: payload.synced_at,
+    updated_at: payload.synced_at,
+  };
+  if (supportsIndexedDb()) {
+    await withStore("readwrite", (store) => {
+      store.put(record);
+    });
+    return record;
+  }
+  sessionStorage.setItem(recordId, JSON.stringify(record));
+  return record;
+}
+
+export async function getBillingPickerCache(userId, doctorId) {
+  const recordId = `${BILLING_PICKER_RECORD_PREFIX}:${Number(userId || 0)}:${Number(doctorId || 0)}`;
+  let record = null;
+  try {
+    if (supportsIndexedDb()) {
+      record = await withStore("readonly", (store) =>
+        new Promise((resolve, reject) => {
+          const request = store.get(recordId);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error);
+        }),
+      );
+    } else if (typeof sessionStorage !== "undefined") {
+      const raw = sessionStorage.getItem(recordId);
+      record = raw ? JSON.parse(raw) : null;
+    }
+  } catch (error) {
+    console.warn("Billing picker cache read failed:", error?.message || error);
+    return null;
+  }
+  if (
+    !record ||
+    Number(record.userId) !== Number(userId) ||
+    Number(record.doctorId) !== Number(doctorId)
+  ) {
+    return null;
+  }
+  return await decryptPayload(record);
+}
+
 export async function clearPatientOfflineCache() {
   try {
     if (typeof window !== "undefined") {
@@ -246,7 +302,7 @@ export async function clearPatientOfflineCache() {
 
   if (typeof sessionStorage !== "undefined") {
     Object.keys(sessionStorage)
-      .filter((key) => key.startsWith(`${RECORD_ID}:`))
+      .filter((key) => key.startsWith(`${RECORD_ID}:`) || key.startsWith(`${BILLING_PICKER_RECORD_PREFIX}:`))
       .forEach((key) => sessionStorage.removeItem(key));
   }
 }

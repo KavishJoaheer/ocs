@@ -98,23 +98,49 @@ router.use((req, res, next) => {
       req,
       `inventory:${req.method.toLowerCase()}:${req.originalUrl || `${req.baseUrl}${req.path}`}`,
     );
-    const replay = operation.read();
-    if (replay) {
-      res.setHeader("X-Idempotent-Replay", "true");
-      return res.status(Number(replay.status || 200)).json(replay.body);
-    }
   } catch (error) {
     return res.status(error.status || 400).json({ error: error.message });
   }
 
   const sendJson = res.json.bind(res);
+  let capturedResponse = null;
+  let replayed = false;
   res.json = (body) => {
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      operation.save({ status: res.statusCode, body });
-    }
-    return sendJson(body);
+    capturedResponse = { status: Number(res.statusCode || 200), body };
+    return res;
   };
-  return next();
+
+  try {
+    db.transaction(() => {
+      const replay = operation.read();
+      if (replay) {
+        replayed = true;
+        capturedResponse = {
+          status: Number(replay.status || 200),
+          body: replay.body,
+        };
+        return;
+      }
+
+      // Inventory handlers are deliberately synchronous. Buffer their JSON
+      // response so both the mutation and its receipt commit before anything
+      // is acknowledged to the client.
+      next();
+      if (capturedResponse && capturedResponse.status >= 200 && capturedResponse.status < 300) {
+        operation.save(capturedResponse);
+      }
+    }).immediate();
+  } catch (error) {
+    res.json = sendJson;
+    if (res.headersSent) return next(error);
+    return res.status(error.status || 400).json({ error: error.message || "Inventory operation failed." });
+  }
+
+  res.json = sendJson;
+  if (!capturedResponse) return undefined;
+  if (replayed) res.setHeader("X-Idempotent-Replay", "true");
+  res.status(capturedResponse.status);
+  return sendJson(capturedResponse.body);
 });
 
 function isWarehouseManager(role) {
@@ -715,7 +741,7 @@ function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = f
     isNonExpiring,
     allowBlank: allowBlank || isNonExpiring,
   });
-  db.prepare(`
+  const created = db.prepare(`
     INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
     VALUES (?, ?, ?, ?, ?)
   `).run(
@@ -725,6 +751,7 @@ function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = f
     roundCurrency(unitCost),
     expiry.isNonExpiring ? 1 : 0,
   );
+  return Number(created.lastInsertRowid || 0);
 }
 
 function allocateRestockBatchesToPositive(itemId, allocations, previousQuantity) {
@@ -802,6 +829,53 @@ function consumeStock(itemId, quantity, options = {}) {
   }
 
   return consumeBatches(itemId, amount, options);
+}
+
+function assertDirectSaleConsultationBillable({ consultationId, patientId, doctorId }) {
+  const consultation = db.prepare(`
+    SELECT c.id, c.patient_id, c.doctor_id
+    FROM consultations c
+    WHERE c.id = ?
+      AND c.patient_id = ?
+      AND c.doctor_id = ?
+      AND c.voided_at IS NULL
+  `).get(Number(consultationId || 0), Number(patientId || 0), Number(doctorId || 0));
+  if (!consultation) {
+    throw Object.assign(new Error("The selected consultation does not belong to this patient and doctor."), {
+      status: 400,
+      code: "CONSULTATION_SCOPE_MISMATCH",
+    });
+  }
+
+  const activeBills = db.prepare(`
+    SELECT id, status
+    FROM billing
+    WHERE consultation_id = ? AND voided_at IS NULL
+    ORDER BY id DESC
+  `).all(consultation.id);
+  const unpaidBill = activeBills.find((bill) => bill.status === "unpaid") || null;
+  if (activeBills.length > 0 && !unpaidBill) {
+    throw Object.assign(new Error("This consultation is already paid and cannot receive another direct-sale deduction."), {
+      status: 409,
+      code: "CONSULTATION_NOT_BILLABLE",
+    });
+  }
+
+  const latestSubmission = db.prepare(`
+    SELECT workflow_status
+    FROM billing_lite_submissions
+    WHERE consultation_id = ? AND reversed_at IS NULL
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(consultation.id);
+  if (latestSubmission && latestSubmission.workflow_status !== "needs_doctor") {
+    throw Object.assign(new Error("Billing for this consultation is already in progress or issued. Reopen it through the controlled billing correction workflow."), {
+      status: 409,
+      code: "CONSULTATION_NOT_BILLABLE",
+    });
+  }
+
+  return { consultation, unpaidBill };
 }
 
 function consumeSpecificBatch(itemId, batchId, quantity, { allowExpired = false, requireExpired = false } = {}) {
@@ -2388,7 +2462,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
   const preview = previewAllocations(itemId, quantity, { includeExpired: true });
   if (!preview.can_fulfil || quantity > preview.available_to_transfer) {
     return res.status(400).json({
-      error: "Cannot write off more than usable available stock. Active reservations are excluded.",
+      error: "Cannot write off more than traceable unreserved batch stock. Active reservations are excluded.",
       preview,
     });
   }
@@ -2398,7 +2472,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
       consumeAllocatedBatches(preview.allocations);
       const nextQuantity = previousQuantity - quantity;
       updateInventoryQuantity(itemId, nextQuantity);
-      recordMovement({
+      const movementId = recordMovement({
         itemId,
         movementType: "out",
         quantity,
@@ -2421,6 +2495,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
           override_reason: override.reason || "",
         }),
       });
+      recordMovementAllocations(movementId, preview.allocations);
       recordAudit({
         actionType: override.override ? "operational_override_remove" : "remove",
         itemId,
@@ -3015,75 +3090,119 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
 
 router.post("/bulk/remove", (req, res) => {
   ensureInfrastructure();
-  if (!isWarehouseManager(req.auth.role)) {
+  if (req.auth.role !== "admin") {
     return res.status(403).json({
       error: "Bulk write-off on master inventory is restricted to administrators.",
     });
   }
 
-  const itemIds = Array.isArray(req.body.item_ids) ? req.body.item_ids.map((id) => Number(id)).filter(Boolean) : [];
-  const reason = String(req.body.reason || "").trim();
-  if (!itemIds.length) return res.status(400).json({ error: "item_ids are required." });
-  if (!["Expired", "Discontinued", "Damaged"].includes(reason)) {
-    return res.status(400).json({ error: "Reason must be Expired, Discontinued, or Damaged." });
+  const entries = Array.isArray(req.body.items) ? req.body.items : [];
+  if (!entries.length) {
+    return res.status(400).json({
+      error: "Provide items with an explicit item_id, quantity, and expected_version for every write-off line.",
+    });
+  }
+  const normalizedEntries = entries.map((entry) => ({
+    itemId: Number(entry?.item_id || 0),
+    quantity: Number(entry?.quantity || 0),
+    expectedVersion: Number(entry?.expected_version),
+  }));
+  if (normalizedEntries.some((entry) => !entry.itemId || !Number.isInteger(entry.quantity) || entry.quantity <= 0 || !Number.isInteger(entry.expectedVersion) || entry.expectedVersion < 1)) {
+    return res.status(400).json({
+      error: "Every bulk write-off line requires a valid item_id, positive whole-number quantity, and expected_version.",
+    });
+  }
+  if (new Set(normalizedEntries.map((entry) => entry.itemId)).size !== normalizedEntries.length) {
+    return res.status(400).json({ error: "Each inventory item may appear only once in a bulk write-off." });
+  }
+  let writeOff;
+  try {
+    writeOff = assertWriteOffInputs({
+      reason: req.body.reason,
+      note: req.body.note,
+      confirm: req.body.confirm,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+  if (String(writeOff.note || "").trim().length < 8) {
+    return res.status(400).json({ error: "Bulk write-off evidence must contain at least 8 characters." });
+  }
+  const overrideReason = String(req.body.override_reason || "").trim();
+  if (overrideReason.length < 10) {
+    return res.status(400).json({ error: "Enter an administrator override reason of at least 10 characters." });
   }
 
   try {
     db.transaction(() => {
-      itemIds.forEach((itemId) => {
+      normalizedEntries.forEach(({ itemId, quantity, expectedVersion }) => {
         const item = findItem(itemId, "ocs", null);
-        if (!item) throw new Error(`OCS stock item not found: ${itemId}`);
+        if (!item) throw Object.assign(new Error(`OCS stock item not found: ${itemId}`), { status: 404 });
         const previousQuantity = Number(item.quantity || 0);
-        if (previousQuantity <= 0) return;
-        const atp = availableToPromise(itemId);
-        if (atp <= 0) {
-          throw Object.assign(
-            new Error(`Cannot write off ${item.item_name}: all remaining units are reserved by active requests.`),
-            { status: 409 },
-          );
+        if (quantity > previousQuantity) {
+          throw Object.assign(new Error(`Cannot write off ${quantity} ${item.unit || "unit"}(s) of ${item.item_name}; only ${previousQuantity} are on hand.`), { status: 409 });
         }
-        const writeOffQty = Math.min(previousQuantity, atp);
-        const preview = previewAllocations(itemId, writeOffQty, { includeExpired: true });
+        const preview = previewAllocations(itemId, quantity, { includeExpired: true });
         if (!preview.can_fulfil) {
           throw Object.assign(
-            new Error(`Cannot write off ${item.item_name}: unreserved stock is insufficient.`),
+            new Error(`Cannot write off ${item.item_name}: traceable unreserved batch stock is insufficient.`),
             { status: 409 },
           );
         }
         consumeAllocatedBatches(preview.allocations);
-        const nextQuantity = previousQuantity - writeOffQty;
-        updateInventoryQuantity(itemId, nextQuantity);
-        recordMovement({
+        const nextQuantity = previousQuantity - quantity;
+        assertInventoryQuantityUpdate(itemId, nextQuantity, expectedVersion);
+        const movementId = recordMovement({
           itemId,
           movementType: "out",
-          quantity: writeOffQty,
+          quantity,
           previousQuantity,
           nextQuantity,
           actionType: "remove",
-          note: `Bulk write-off (${reason})`,
+          note: `Bulk write-off (${writeOff.reason}): ${writeOff.note} · override: ${overrideReason}`,
           userId: req.auth.id,
           metaJson: JSON.stringify({
-            reason,
+            reason: writeOff.reason,
+            note: writeOff.note,
             bulk: true,
+            allocations: preview.allocations,
+            estimated_value: preview.estimated_value,
+            operational_override: true,
+            override_reason: overrideReason,
             performed_by_user_id: req.auth.id,
             performed_by_role: req.auth.role,
             performed_by_name: req.auth.full_name || req.auth.username || "",
           }),
         });
+        recordMovementAllocations(movementId, preview.allocations);
         recordAudit({
           actionType: "bulk_remove",
           itemId,
           itemName: item.item_name,
-          quantity: writeOffQty,
-          reason,
+          quantity,
+          reason: writeOff.reason,
           performedByUserId: req.auth.id,
           performedByRole: req.auth.role,
           performedByName: req.auth.full_name || req.auth.username || "",
-          metaJson: JSON.stringify({ bulk: true }),
+          metaJson: JSON.stringify({
+            bulk: true,
+            movement_id: movementId,
+            note: writeOff.note,
+            override_reason: overrideReason,
+            allocations: preview.allocations,
+            reversible: true,
+          }),
         });
       });
     })();
   } catch (error) {
+    if (error instanceof InventoryVersionConflictError) {
+      return res.status(409).json({
+        error: error.message,
+        code: "INVENTORY_VERSION_CONFLICT",
+        inventory: getPayload(req),
+      });
+    }
     return res.status(error.status || 400).json({ error: error?.message || "Bulk remove failed." });
   }
 
@@ -3277,16 +3396,19 @@ router.post("/items/:id/actions", (req, res) => {
       code: "CONSULTATION_REQUIRED",
     });
   }
-  if (saleConsultationId && !db.prepare(`
-    SELECT c.id
-    FROM consultations c
-    WHERE c.id = ? AND c.patient_id = ? AND c.doctor_id = ?
-      AND c.voided_at IS NULL
-  `).get(saleConsultationId, salePatient?.id || 0, doctorId)) {
-    return res.status(400).json({
-      error: "The selected consultation does not belong to this patient and doctor.",
-      code: "CONSULTATION_SCOPE_MISMATCH",
-    });
+  if (saleConsultationId) {
+    try {
+      assertDirectSaleConsultationBillable({
+        consultationId: saleConsultationId,
+        patientId: salePatient?.id || 0,
+        doctorId,
+      });
+    } catch (error) {
+      return res.status(error.status || 400).json({
+        error: error.message,
+        code: error.code || "CONSULTATION_NOT_BILLABLE",
+      });
+    }
   }
 
   const movementType = actionType === "add" ? "in" : "out";
@@ -3484,7 +3606,7 @@ router.post("/restock", (req, res) => {
       const sourcePrev = Number(source.quantity || 0);
       const sourceNext = sourcePrev - quantity;
       updateInventoryQuantity(source.id, sourceNext);
-      recordMovement({
+      const sourceMovementId = recordMovement({
         itemId: source.id,
         movementType: "out",
         quantity,
@@ -3511,6 +3633,7 @@ router.post("/restock", (req, res) => {
         override_reason: override.reason || "",
       }),
       });
+      recordMovementAllocations(sourceMovementId, preview.allocations);
 
       let targetItemId;
       let targetPrev = 0;
@@ -3546,7 +3669,7 @@ router.post("/restock", (req, res) => {
       }
 
       allocateRestockBatchesToPositive(targetItemId, preview.allocations, targetPrev);
-      recordMovement({
+      const targetMovementId = recordMovement({
         itemId: targetItemId,
         movementType: "in",
         quantity,
@@ -3567,6 +3690,7 @@ router.post("/restock", (req, res) => {
         received_by_name: doctor.full_name,
       }),
       });
+      recordMovementAllocations(targetMovementId, preview.allocations);
     recordAudit({
       actionType: "restock_doctor",
       itemId: source.id,
@@ -3673,7 +3797,7 @@ router.post("/restock/my-inventory", (req, res) => {
 
         const sourceNext = sourceQty - request.quantity;
         updateInventoryQuantity(source.id, sourceNext);
-        recordMovement({
+        const sourceMovementId = recordMovement({
           itemId: source.id,
           movementType: "out",
           quantity: request.quantity,
@@ -3699,6 +3823,7 @@ router.post("/restock/my-inventory", (req, res) => {
             transfer_allocations: consumed.allocations,
           }),
         });
+        recordMovementAllocations(sourceMovementId, consumed.allocations);
 
         const targetExisting = db
           .prepare(`
@@ -3753,7 +3878,7 @@ router.post("/restock/my-inventory", (req, res) => {
             targetItemId,
           );
         }
-        recordMovement({
+        const targetMovementId = recordMovement({
           itemId: targetItemId,
           movementType: "in",
           quantity: request.quantity,
@@ -3778,6 +3903,7 @@ router.post("/restock/my-inventory", (req, res) => {
             transfer_allocations: consumed.allocations,
           }),
         });
+        recordMovementAllocations(targetMovementId, consumed.allocations);
         recordAudit({
           actionType: "emergency_stock_transfer",
           itemId: source.id,
@@ -4307,9 +4433,33 @@ router.delete("/items/:id", (req, res) => {
   const itemId = Number(req.params.id);
   const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId);
   if (!item) return res.status(404).json({ error: "Stock item not found." });
+  if (item.stock_scope !== "ocs" || item.owner_doctor_id != null) {
+    return res.status(409).json({
+      error: "Only an empty OCS master catalogue item can be archived. Doctor-bag records remain part of the stock ledger.",
+    });
+  }
 
   if (item.archived_at) {
     return res.status(409).json({ error: "This catalogue item is already archived." });
+  }
+  const liveBatchQuantity = Number(db.prepare(`
+    SELECT COALESCE(SUM(quantity_remaining), 0) AS quantity
+    FROM inventory_batches
+    WHERE item_id = ? AND quantity_remaining > 0
+  `).get(itemId)?.quantity || 0);
+  const reservedQuantity = Number(db.prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS quantity
+    FROM inventory_reservations
+    WHERE inventory_id = ? AND status = 'active'
+  `).get(itemId)?.quantity || 0);
+  if (Number(item.quantity || 0) !== 0 || liveBatchQuantity !== 0 || reservedQuantity !== 0) {
+    return res.status(409).json({
+      error: "Archive blocked: reduce on-hand stock, live batch balances, and active reservations to zero first.",
+      code: "INVENTORY_ARCHIVE_NOT_EMPTY",
+      on_hand_quantity: Number(item.quantity || 0),
+      live_batch_quantity: liveBatchQuantity,
+      reserved_quantity: reservedQuantity,
+    });
   }
   db.prepare(`
     UPDATE inventory
