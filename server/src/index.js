@@ -42,8 +42,10 @@ try {
 
 try {
   const categoryAlignment = alignInventoryCategories();
-  if (categoryAlignment.updated > 0) {
-    console.log(`[inventory] Aligned ${categoryAlignment.updated} catalogue item category row(s).`);
+  if (categoryAlignment.updated > 0 || categoryAlignment.inserted > 0) {
+    console.log(
+      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); added ${categoryAlignment.inserted} required row(s).`,
+    );
   }
 } catch (error) {
   console.warn("[inventory] Catalogue category alignment failed:", error.message);

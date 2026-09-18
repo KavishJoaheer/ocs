@@ -17,6 +17,7 @@
 
 const { ocsConsumablesExtension } = require("../config/ocsConsumablesExtension");
 const { clearOcsCatalogExclusionsForNames } = require("../lib/ocsCatalogExclusions");
+const { alignInventoryCategories } = require("../lib/inventoryCategoryAlignment");
 const { upsertOcsMasterStockDataset } = require("../lib/ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("./syncDoctorStockFromOcs");
 
@@ -36,6 +37,10 @@ function seedOcsConsumablesExtensionSync({
     insertOnly: false,
   });
 
+  // Category corrections are global metadata: update the warehouse row and
+  // every existing doctor-bag row without touching stock, batches or pricing.
+  const categoryAlignment = alignInventoryCategories();
+
   let doctorSync = null;
   if (syncDoctorBags) {
     doctorSync = syncDoctorStockFromOcsSync({
@@ -45,16 +50,18 @@ function seedOcsConsumablesExtensionSync({
     });
   }
 
-  return { consumables: summary, doctorBags: doctorSync };
+  return { consumables: summary, doctorBags: doctorSync, categoryAlignment };
 }
 
 function printSummary(result) {
-  const { consumables, doctorBags } = result;
+  const { consumables, doctorBags, categoryAlignment } = result;
   console.log("OCS Consumables extension upsert complete.");
   console.log(`  Inserted: ${consumables.inserted}`);
   console.log(`  Updated:  ${consumables.updated}`);
   console.log(`  Skipped:  ${consumables.skipped}`);
   console.log(`  Total:    ${ocsConsumablesExtension.length}`);
+  console.log(`  Category rows aligned: ${categoryAlignment.updated}`);
+  console.log(`  Required category rows added: ${categoryAlignment.inserted}`);
 
   if (consumables.errors.length) {
     console.error("  Errors:");

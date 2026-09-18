@@ -13,9 +13,21 @@ function inferParLevel(name) {
 }
 
 function consumable(name, current_quantity = 0, par_level = null, nearest_expiry = null) {
+  return catalogItem(name, "Consumable", current_quantity, par_level, nearest_expiry);
+}
+
+function catherisationAndNgt(name, current_quantity = 0, par_level = null, nearest_expiry = null) {
+  return catalogItem(name, "Catherisation & NGT", current_quantity, par_level, nearest_expiry);
+}
+
+function o2AndNebuliser(name, current_quantity = 0, par_level = null, nearest_expiry = null) {
+  return catalogItem(name, "O2 & Nebuliser", current_quantity, par_level, nearest_expiry);
+}
+
+function catalogItem(name, category, current_quantity = 0, par_level = null, nearest_expiry = null) {
   return {
     name,
-    category: "Consumable",
+    category,
     current_quantity,
     par_level: par_level ?? inferParLevel(name),
     nearest_expiry,
@@ -24,11 +36,11 @@ function consumable(name, current_quantity = 0, par_level = null, nearest_expiry
 
 /** @type {Array<{name:string,category:string,current_quantity:number,par_level:number,nearest_expiry:string|null}>} */
 const ocsConsumablesPdfCatalog = [
-  consumable("2 Way Foley Catheter (Ch/Fr 14)"),
-  consumable("2 Way Foley Catheter (Ch/Fr 16)"),
-  consumable("2 Way Foley Catheter (Ch/Fr 18)"),
-  consumable("2 Way Foley Catheter (Ch/Fr 20)"),
-  consumable("2 Way Foley Catheter (Ch/Fr 22)"),
+  catherisationAndNgt("2 Way Foley Catheter (Ch/Fr 14)"),
+  catherisationAndNgt("2 Way Foley Catheter (Ch/Fr 16)"),
+  catherisationAndNgt("2 Way Foley Catheter (Ch/Fr 18)"),
+  catherisationAndNgt("2 Way Foley Catheter (Ch/Fr 20)"),
+  catherisationAndNgt("2 Way Foley Catheter (Ch/Fr 22)"),
   consumable("Alcohol Pad box of 100 (3cmx3cm)"),
   consumable("Atomic Enema 20ml box of 2", 2, 1),
   consumable("Atomic enema 10ml box of 2", 2, 1),
@@ -50,18 +62,20 @@ const ocsConsumablesPdfCatalog = [
   consumable("Glucose 50% / Dextrose 50% (10/20/50ml)"),
   consumable("Gown"),
   consumable("Intrafix (Drip Set / Infusion set)"),
-  consumable("Irrigation Syringe (50ml)"),
+  catherisationAndNgt("Irrigation Syringe (50ml)"),
   consumable("Lidocaine gel 2%"),
   consumable("Micropore (2.5cm)"),
   consumable("Micropore (5cm)"),
   consumable("White Adhesive Tape"),
   consumable("N/S 100ml"),
-  consumable("NGT (14fg x105cm)"),
-  consumable("NGT (16fg x105cm)"),
-  consumable("NGT (18fg x105cm)"),
+  catherisationAndNgt("NGT (14fg x105cm)"),
+  catherisationAndNgt("NGT (16fg x105cm)"),
+  catherisationAndNgt("NGT (18fg x105cm)"),
   consumable("Nasal Oxygen Cannula"),
-  consumable("Nebulizer Mask (Adult)"),
-  consumable("Nebulizer Mask (Paediatric)"),
+  o2AndNebuliser("Nebulizer Mask (Adult)"),
+  o2AndNebuliser("Nebulizer Mask (Paediatric)"),
+  o2AndNebuliser("O2 first 30mins", 0, 0),
+  o2AndNebuliser("O2 second 30 mins", 0, 0),
   consumable("Needle box of 100 (Black 22G)", 0, 50),
   consumable("Needle box of 100 (Blue 22G)", 0, 50),
   consumable("Needle box of 100 (Pink 22G)", 0, 50),
