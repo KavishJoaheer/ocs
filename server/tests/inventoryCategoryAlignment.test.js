@@ -213,31 +213,42 @@ test("retired consumable SKUs are absent from the warehouse catalogues", () => {
   }
 });
 
-test("alignment archives retired OCS warehouse consumable rows once", () => {
+test("alignment archives retired warehouse and doctor-bag consumable rows once", () => {
   const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 2").all().map((row) => Number(row.id));
+  assert.equal(doctorIds.length, 2);
   const insertRow = db.prepare(`
     INSERT INTO inventory (
       item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
       unit, cost_price, selling_price, updated_at
-    ) VALUES (?, ?, 'ocs', NULL, 4, 2, 'unit', 0, 0, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, 4, 2, 'unit', 0, 0, CURRENT_TIMESTAMP)
   `);
 
   for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
-    insertRow.run(itemName, consumableId);
+    insertRow.run(itemName, consumableId, "ocs", null);
+    for (const doctorId of doctorIds) {
+      insertRow.run(itemName, consumableId, "doctor", doctorId);
+    }
   }
 
+  const expectedArchived = RETIRED_OCS_CONSUMABLE_SKUS.length * (1 + doctorIds.length);
   const first = alignInventoryCategories();
-  assert.ok(first.archived >= RETIRED_OCS_CONSUMABLE_SKUS.length);
+  assert.ok(first.archived >= expectedArchived);
 
   for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
-    const row = db.prepare(`
-      SELECT archived_at
+    const rows = db.prepare(`
+      SELECT stock_scope, owner_doctor_id, archived_at
       FROM inventory
-      WHERE stock_scope = 'ocs'
-        AND owner_doctor_id IS NULL
-        AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-    `).get(itemName);
-    assert.ok(row?.archived_at, itemName);
+      WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+        AND (
+          (stock_scope = 'ocs' AND owner_doctor_id IS NULL)
+          OR (stock_scope = 'doctor' AND owner_doctor_id IS NOT NULL)
+        )
+    `).all(itemName);
+    assert.equal(rows.length, 1 + doctorIds.length, itemName);
+    for (const row of rows) {
+      assert.ok(row.archived_at, `${itemName} ${row.stock_scope}`);
+    }
   }
 
   const retry = alignInventoryCategories();

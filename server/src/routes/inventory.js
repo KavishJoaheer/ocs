@@ -3,7 +3,7 @@ const { operationFor } = require("../lib/operationReceipts");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const express = require("express");
 const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
-const { retireRemovedOcsConsumableSkus } = require("../lib/inventoryCategoryAlignment");
+const { alignInventoryCategories } = require("../lib/inventoryCategoryAlignment");
 const {
   ensureOcsCatalogExclusionsTable,
   recordOcsCatalogExclusion,
@@ -365,12 +365,17 @@ function ensureInfrastructure() {
   }
 
   try {
-    const retired = retireRemovedOcsConsumableSkus();
-    if (retired.archived > 0) {
-      console.log(`[inventory] Archived ${retired.archived} retired OCS consumable SKU row(s).`);
+    const aligned = alignInventoryCategories();
+    if (aligned.updated > 0 || aligned.inserted > 0 || aligned.renamed > 0 || aligned.archived > 0) {
+      console.log(
+        `[inventory] Aligned ${aligned.updated} catalogue category row(s); renamed ${aligned.renamed} row(s); added ${aligned.inserted} required row(s); archived ${aligned.archived} retired SKU row(s).`,
+      );
+    }
+    if (aligned.conflicts > 0) {
+      console.warn(`[inventory] ${aligned.conflicts} catalogue rename conflict(s) require review.`);
     }
   } catch (error) {
-    console.warn("[inventory] Retired consumable SKU archive failed:", error.message);
+    console.warn("[inventory] Catalogue category alignment failed:", error.message);
   }
 
   infrastructureReady = true;

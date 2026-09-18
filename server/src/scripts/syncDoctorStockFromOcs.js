@@ -5,6 +5,7 @@
  */
 
 const { db, initializeDatabase } = require("../db");
+const { RETIRED_OCS_CONSUMABLE_SKUS } = require("../lib/inventoryCategoryAlignment");
 
 function syncBatches(itemId, quantity, expiryDate) {
   db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
@@ -33,6 +34,7 @@ function getOcsMasterItems() {
       FROM inventory
       WHERE stock_scope = 'ocs'
         AND owner_doctor_id IS NULL
+        AND archived_at IS NULL
       ORDER BY item_name ASC
     `)
     .all();
@@ -132,12 +134,16 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
 }
 
 function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
+  const retiredNameKeys = new Set(
+    RETIRED_OCS_CONSUMABLE_SKUS.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean),
+  );
   const doctorItems = db
     .prepare(`
       SELECT id, item_name
       FROM inventory
       WHERE stock_scope = 'doctor'
         AND owner_doctor_id = ?
+        AND archived_at IS NULL
     `)
     .all(doctorId);
 
@@ -149,7 +155,7 @@ function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
   let removed = 0;
   doctorItems.forEach((row) => {
     const key = String(row.item_name || "").trim().toLowerCase();
-    if (ocsNameKeys.has(key)) return;
+    if (ocsNameKeys.has(key) || retiredNameKeys.has(key)) return;
     deleteBatches.run(row.id);
     deleteMovements.run(row.id);
     try {

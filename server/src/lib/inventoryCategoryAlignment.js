@@ -58,8 +58,10 @@ function retireRemovedOcsConsumableSkus() {
         updated_at = CURRENT_TIMESTAMP
     WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
       AND archived_at IS NULL
-      AND stock_scope = 'ocs'
-      AND owner_doctor_id IS NULL
+      AND (
+        (stock_scope = 'ocs' AND owner_doctor_id IS NULL)
+        OR (stock_scope = 'doctor' AND owner_doctor_id IS NOT NULL)
+      )
   `);
 
   return db.transaction(() => {
