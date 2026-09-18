@@ -42,9 +42,14 @@ try {
 
 try {
   const categoryAlignment = alignInventoryCategories();
-  if (categoryAlignment.updated > 0 || categoryAlignment.inserted > 0 || categoryAlignment.renamed > 0) {
+  if (
+    categoryAlignment.updated > 0
+    || categoryAlignment.inserted > 0
+    || categoryAlignment.renamed > 0
+    || categoryAlignment.archived > 0
+  ) {
     console.log(
-      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); renamed ${categoryAlignment.renamed} row(s); added ${categoryAlignment.inserted} required row(s).`,
+      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); renamed ${categoryAlignment.renamed} row(s); added ${categoryAlignment.inserted} required row(s); archived ${categoryAlignment.archived} retired SKU row(s).`,
     );
   }
   if (categoryAlignment.conflicts > 0) {

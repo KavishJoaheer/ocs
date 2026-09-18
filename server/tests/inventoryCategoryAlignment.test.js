@@ -9,9 +9,13 @@ process.env.DB_PATH = path.join(tempDir, "test.db");
 process.env.NODE_ENV = "test";
 
 const { db, initializeDatabase } = require("../src/db");
+const { ocsConsumablesExtension } = require("../src/config/ocsConsumablesExtension");
 const { ocsConsumablesPdfCatalog } = require("../src/config/ocsConsumablesPdfCatalog");
 const { ocsIVDrugsPdfCatalog } = require("../src/config/ocsIVDrugsPdfCatalog");
-const { alignInventoryCategories } = require("../src/lib/inventoryCategoryAlignment");
+const {
+  alignInventoryCategories,
+  RETIRED_OCS_CONSUMABLE_SKUS,
+} = require("../src/lib/inventoryCategoryAlignment");
 
 const TARGET_FOLDER = "Catherisation & NGT";
 const TARGET_ITEMS = [
@@ -191,4 +195,50 @@ test("required O2 time-charge rows are created once for warehouse and every doct
   const retry = alignInventoryCategories();
   assert.equal(retry.inserted, 0);
   assert.equal(retry.updated, 0);
+});
+
+test("retired consumable SKUs are absent from the warehouse catalogues", () => {
+  for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
+    assert.equal(
+      ocsConsumablesPdfCatalog.some((item) => item.name === itemName),
+      false,
+      itemName,
+    );
+    assert.equal(
+      ocsConsumablesExtension.some((item) => item.name === itemName),
+      false,
+      itemName,
+    );
+  }
+});
+
+test("alignment archives retired OCS warehouse consumable rows once", () => {
+  const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const insertRow = db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+      unit, cost_price, selling_price, updated_at
+    ) VALUES (?, ?, 'ocs', NULL, 4, 2, 'unit', 0, 0, CURRENT_TIMESTAMP)
+  `);
+
+  for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
+    insertRow.run(itemName, consumableId);
+  }
+
+  const first = alignInventoryCategories();
+  assert.ok(first.archived >= RETIRED_OCS_CONSUMABLE_SKUS.length);
+
+  for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
+    const row = db.prepare(`
+      SELECT archived_at
+      FROM inventory
+      WHERE stock_scope = 'ocs'
+        AND owner_doctor_id IS NULL
+        AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+    `).get(itemName);
+    assert.ok(row?.archived_at, itemName);
+  }
+
+  const retry = alignInventoryCategories();
+  assert.equal(retry.archived, 0, "retired SKU archive must be idempotent");
 });

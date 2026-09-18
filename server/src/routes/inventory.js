@@ -3,6 +3,7 @@ const { operationFor } = require("../lib/operationReceipts");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const express = require("express");
 const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
+const { retireRemovedOcsConsumableSkus } = require("../lib/inventoryCategoryAlignment");
 const {
   ensureOcsCatalogExclusionsTable,
   recordOcsCatalogExclusion,
@@ -361,6 +362,15 @@ function ensureInfrastructure() {
     }
   } catch (error) {
     console.warn("[catalog] OCS catalog ensure failed:", error.message);
+  }
+
+  try {
+    const retired = retireRemovedOcsConsumableSkus();
+    if (retired.archived > 0) {
+      console.log(`[inventory] Archived ${retired.archived} retired OCS consumable SKU row(s).`);
+    }
+  } catch (error) {
+    console.warn("[inventory] Retired consumable SKU archive failed:", error.message);
   }
 
   infrastructureReady = true;

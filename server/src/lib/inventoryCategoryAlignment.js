@@ -1,4 +1,5 @@
 const { db } = require("../db");
+const { recordOcsCatalogExclusion } = require("./ocsCatalogExclusions");
 
 // Catalogue categories are global. Keep existing warehouse and doctor-bag rows
 // aligned without changing their quantities, batches, prices, or par levels.
@@ -41,6 +42,34 @@ const CATEGORY_RULES = [
     unit: "30 min session",
   },
 ];
+
+const RETIRED_OCS_CONSUMABLE_SKUS = [
+  "Micropore 1 inch (Box of 12)",
+  "Gown",
+  "White Adhesive Tape",
+];
+
+function retireRemovedOcsConsumableSkus() {
+  const archiveRows = db.prepare(`
+    UPDATE inventory
+    SET archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP),
+        row_version = row_version + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+      AND archived_at IS NULL
+      AND stock_scope = 'ocs'
+      AND owner_doctor_id IS NULL
+  `);
+
+  return db.transaction(() => {
+    let archived = 0;
+    for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
+      archived += Number(archiveRows.run(itemName).changes || 0);
+      recordOcsCatalogExclusion(itemName);
+    }
+    return { archived };
+  })();
+}
 
 function globalFolderId(folderName) {
   const folder = db
@@ -151,7 +180,14 @@ function alignInventoryCategories() {
     return { updated, inserted, renamed, conflicts };
   });
 
-  return align();
+  const aligned = align();
+  const retired = retireRemovedOcsConsumableSkus();
+  return { ...aligned, archived: retired.archived };
 }
 
-module.exports = { alignInventoryCategories, CATEGORY_RULES };
+module.exports = {
+  alignInventoryCategories,
+  CATEGORY_RULES,
+  RETIRED_OCS_CONSUMABLE_SKUS,
+  retireRemovedOcsConsumableSkus,
+};
