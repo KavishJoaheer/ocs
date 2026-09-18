@@ -5,6 +5,7 @@ const { updateInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast, publishSupplyRequestChange } = require("./inventoryRealtime");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 const { decorateInventoryItems, isExpiredBatch: stockStateExpired, isQuarantinedBatch } = require("./inventoryStockState");
+const { recordMovementAllocations } = require("./inventoryMovementAllocations");
 
 function createTransferTransactionId() {
   return `TX-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -1341,7 +1342,9 @@ function fulfilmentDetail(requestId) {
       const batches = reservation
         ? db
             .prepare(`
-              SELECT rb.*, b.quantity_remaining, b.expiry_date AS batch_expiry
+              SELECT rb.*, b.quantity_remaining, b.expiry_date AS batch_expiry,
+                b.unit_cost AS batch_unit_cost, COALESCE(b.status, 'usable') AS batch_status,
+                COALESCE(b.row_version, 1) AS batch_row_version
               FROM inventory_reservation_batches rb
               LEFT JOIN inventory_batches b ON b.id = rb.batch_id
               WHERE rb.reservation_id = ?
@@ -1362,9 +1365,13 @@ function fulfilmentDetail(requestId) {
           expiry_date: batch.expiry_date || batch.batch_expiry || null,
           is_non_expiring: Number(batch.is_non_expiring || 0) === 1,
           remaining: integerQty(batch.quantity_remaining) ?? 0,
+          unit_cost: toNumber(batch.batch_unit_cost, 0),
+          status: batch.batch_status || "usable",
+          row_version: Number(batch.batch_row_version || 1),
           usability: batchUsability({
             expiry_date: batch.expiry_date || batch.batch_expiry,
             is_non_expiring: batch.is_non_expiring,
+            status: batch.batch_status,
           }),
         })),
       };
@@ -1774,10 +1781,24 @@ function consumeLockedAllocations(inventoryId, allocations, fulfilledQty) {
     if ((integerQty(batch.quantity_remaining) ?? 0) < take) {
       throw HttpError(409, "A locked batch no longer has enough remaining quantity.");
     }
-    db.prepare("UPDATE inventory_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ?").run(
-      take,
-      allocation.batch_id,
-    );
+    const usability = batchUsability(batch);
+    if (!["usable", "non_expiring"].includes(usability) || !(Number(batch.unit_cost || 0) > 0)) {
+      throw HttpError(
+        409,
+        "A reserved batch is now expired, quarantined, or missing verified cost/expiry data. Reconcile the request before collection.",
+      );
+    }
+    const updated = db.prepare(`
+      UPDATE inventory_batches
+      SET quantity_remaining = quantity_remaining - ?,
+          row_version = COALESCE(row_version, 1) + 1
+      WHERE id = ?
+        AND quantity_remaining >= ?
+        AND COALESCE(row_version, 1) = ?
+    `).run(take, allocation.batch_id, take, Number(batch.row_version || 1));
+    if (!updated.changes) {
+      throw HttpError(409, "A reserved batch changed during collection. Refresh and reconcile the request.");
+    }
     consumed.push({
       batch_id: allocation.batch_id,
       quantity: take,
@@ -1958,10 +1979,12 @@ function postCollectionTransfer({ request, actor }) {
       skipPublish: true,
       meta: lineMeta,
     });
+    recordMovementAllocations(outId, consumed);
     movementIds.push(outId);
 
+    const destinationAllocations = [];
     for (const allocation of consumed) {
-      db.prepare(`
+      const insertedBatch = db.prepare(`
         INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
         VALUES (?, ?, ?, ?, ?)
       `).run(
@@ -1971,6 +1994,10 @@ function postCollectionTransfer({ request, actor }) {
         roundCurrency(allocation.unit_cost),
         allocation.is_non_expiring ? 1 : 0,
       );
+      destinationAllocations.push({
+        ...allocation,
+        batch_id: Number(insertedBatch.lastInsertRowid),
+      });
     }
     const inId = recordTransferMovement({
       itemId: bag.id,
@@ -1985,6 +2012,7 @@ function postCollectionTransfer({ request, actor }) {
       skipPublish: true,
       meta: lineMeta,
     });
+    recordMovementAllocations(inId, destinationAllocations);
     movementIds.push(inId);
     finalizeLineReservation({
       fulfilmentItemId: line.id,

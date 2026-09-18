@@ -854,7 +854,9 @@ test('historical movement prices and allocation costs remain stable after catalo
   const created=await bill(ctx,[stockLine(it)]); assert.equal(created.status,201);
   const history=async()=>(await api('GET','/inventory/activity-history?search=Snapshot%20price%20medicine')).data;
   const before=await history(); assert.equal(before.rows[0].value_rs,50); assert.equal(before.analytics.total_value_cost_rs,14);
-  assert.equal((await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{cost_price:40,selling_price:100})).status,200);
+  assert.equal((await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{
+    cost_price:40,selling_price:100,adjustment_note:'Supplier price list updated for this catalogue item',
+  })).status,200);
   const after=await history(); assert.equal(after.rows[0].value_rs,50); assert.equal(after.analytics.total_value_cost_rs,14);
   require('../src/lib/financialIntegritySchema').ensureFinancialIntegritySchema(db);
   assert.equal((await history()).rows[0].value_rs,50);

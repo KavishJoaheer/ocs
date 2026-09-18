@@ -10,6 +10,7 @@ const { availableToPromise, consumeAvailableFefo, listImpactedActiveRequests, re
 const { decorateInventoryItems } = require("./inventoryStockState");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 const { isValidIsoCalendarDate } = require("./calendarDate");
+const { recordMovementAllocations } = require("./inventoryMovementAllocations");
 
 const CSV_REQUIRED_HEADERS = [
   "folder",
@@ -721,7 +722,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
         throw HttpError(409, `Shipment line #${row.id} is no longer pending and cannot be released.`);
       }
       const result = upsertOcsFromStaging(row);
-      db.prepare(`
+      const insertedBatch = db.prepare(`
         INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
         VALUES (?, ?, ?, ?, ?)
       `).run(
@@ -731,7 +732,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
         roundCurrency(row.cost_price || 0),
         Number(row.is_non_expiring || 0) === 1 ? 1 : 0,
       );
-      const batchId = Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0);
+      const batchId = Number(insertedBatch.lastInsertRowid);
       db.prepare(`
         UPDATE inventory_staging
         SET released_inventory_id = ?, released_batch_id = ?
@@ -760,6 +761,12 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
           destination_location: "Master Stock",
         },
       });
+      recordMovementAllocations(movementId, [{
+        batch_id: batchId,
+        quantity: Number(row.quantity || 0),
+        expiry_date: Number(row.is_non_expiring || 0) === 1 ? null : row.expiry_date || null,
+        unit_cost: roundCurrency(row.cost_price || 0),
+      }]);
       movementIds.push(movementId);
       releasedIds.push(Number(row.id));
     }
@@ -2043,18 +2050,37 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           `Cannot apply counted quantity ${next} for ${item.item_name} because ${reserved} unit(s) are reserved.`,
         );
       }
+      let allocations = [];
       if (variance < 0) {
-        const consumed = consumeFefo(item.id, Math.abs(variance));
-        if (!consumed.ok) throw HttpError(409, `Insufficient unreserved batch quantity to apply the count for ${item.item_name}.`);
+        const preview = previewAllocations(item.id, Math.abs(variance), { includeExpired: true });
+        if (!preview.can_fulfil) {
+          throw HttpError(409, `Insufficient unreserved traceable batch quantity to apply the count for ${item.item_name}.`);
+        }
+        consumeAllocatedBatches(preview.allocations);
+        allocations = preview.allocations;
       } else {
-        db.prepare(`
-          INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-          VALUES (?, ?, NULL, ?, 1)
-        `).run(item.id, variance, roundCurrency(item.cost_price || 0));
+        const inserted = db.prepare(`
+          INSERT INTO inventory_batches (
+            item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring,
+            status, quarantined_reason, quarantined_at, quarantined_by_user_id
+          ) VALUES (?, ?, NULL, 0, 0, 'quarantined', ?, CURRENT_TIMESTAMP, ?)
+        `).run(
+          item.id,
+          variance,
+          `Stocktake surplus #${sessionId} requires verified cost and expiry`,
+          userId || null,
+        );
+        allocations = [{
+          batch_id: Number(inserted.lastInsertRowid),
+          quantity: variance,
+          expiry_date: null,
+          is_non_expiring: false,
+          unit_cost: 0,
+        }];
       }
       updateInventoryQuantity(item.id, next);
       assertBatchBalance(item.id);
-      recordOpsMovement({
+      const movementId = recordOpsMovement({
         itemId: item.id,
         movementType: variance > 0 ? "in" : "out",
         quantity: Math.abs(variance),
@@ -2076,8 +2102,11 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           performed_by_role: actor.role || "",
           reference_type: "stocktake_session",
           reference_id: sessionId,
+          allocations,
+          valuation_basis: variance > 0 ? "unverified_stocktake_surplus" : "batch_allocation",
         },
       });
+      recordMovementAllocations(movementId, allocations);
     }
     const applied = db.prepare(`
       UPDATE inventory_stocktake_sessions

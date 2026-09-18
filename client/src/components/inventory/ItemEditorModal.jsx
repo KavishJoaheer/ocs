@@ -20,6 +20,7 @@ function catalogueFormState(item, folders = []) {
     unit: item?.unit ?? "unit",
     cost_price: String(item?.cost_price ?? 0),
     selling_price: String(item?.selling_price ?? 0),
+    adjustment_note: "",
   };
 }
 
@@ -53,6 +54,10 @@ export default function ItemEditorModal({
   }
 
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+  const priceChanged = Boolean(item) && (
+    Number(form.cost_price || 0) !== Number(baseline.cost_price || 0)
+    || Number(form.selling_price || 0) !== Number(baseline.selling_price || 0)
+  );
 
   function requestClose() {
     if (dirty && !window.confirm("You have unsaved catalogue changes. Close without saving?")) {
@@ -93,6 +98,7 @@ export default function ItemEditorModal({
             unit: form.unit,
             cost_price: Number(form.cost_price || 0),
             selling_price: Number(form.selling_price || 0),
+            adjustment_note: priceChanged ? form.adjustment_note.trim() : undefined,
             quantity: item ? undefined : 0,
           });
         }}
@@ -256,6 +262,23 @@ export default function ItemEditorModal({
                       />
                     </label>
                   </div>
+                  {priceChanged ? (
+                    <label className="block space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <span className="text-sm font-semibold text-amber-950">Reason for price adjustment</span>
+                      <textarea
+                        required
+                        minLength="10"
+                        maxLength="500"
+                        rows="3"
+                        name="adjustment_note"
+                        value={form.adjustment_note}
+                        onChange={(event) => setForm((prev) => ({ ...prev, adjustment_note: event.target.value }))}
+                        className="w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-amber-500"
+                        placeholder="Explain why the cost or selling price changed (minimum 10 characters)"
+                      />
+                      <p className="text-xs text-amber-800">This reason is stored in the permanent inventory audit history.</p>
+                    </label>
+                  ) : null}
                 </div>
               ) : null}
             </>

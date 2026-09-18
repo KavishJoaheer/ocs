@@ -8,6 +8,14 @@ import {
   removeOfflineMutation,
 } from "./offlineQueue.js";
 import { notifyDoctorBagInventoryUpdated } from "./inventorySync.js";
+import {
+  correctInventoryOfflineEntry,
+  inventoryOfflineEntryQuantity as readInventoryOfflineEntryQuantity,
+} from "./inventoryOfflineEntry.js";
+
+export function inventoryOfflineEntryQuantity(entry) {
+  return readInventoryOfflineEntryQuantity(entry);
+}
 
 let activeUserId = null;
 
@@ -131,6 +139,18 @@ export function shouldQueueInventoryMutation(error) {
 export async function getPendingInventoryQueueCount() {
   const entries = await listOfflineMutations({ userId: activeUserId });
   return entries.filter((entry) => INVENTORY_QUEUE_KINDS.has(entry.kind)).length;
+}
+
+export async function updateQueuedInventoryQuantity(entry, quantity) {
+  const updated = await enqueueOfflineMutation(correctInventoryOfflineEntry(entry, quantity));
+  notifyQueueChanged();
+  return updated;
+}
+
+export async function discardQueuedInventoryMutation(entryId) {
+  if (!entryId) return;
+  await removeOfflineMutation(entryId);
+  notifyQueueChanged();
 }
 
 export function flushOfflineQueue(options = {}) {

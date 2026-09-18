@@ -1103,8 +1103,12 @@ function summarize(items, doctorId = null) {
       JOIN inventory i ON i.id = m.item_id
       WHERE m.action_type IN ('restock_in', 'add')
         AND strftime('%Y-%m', m.created_at, '+4 hours') = strftime('%Y-%m', 'now', '+4 hours')
+        AND (
+          (@doctorId IS NULL AND i.stock_scope = 'ocs' AND i.owner_doctor_id IS NULL)
+          OR (@doctorId IS NOT NULL AND i.stock_scope = 'doctor' AND i.owner_doctor_id = @doctorId)
+        )
     `)
-    .get();
+    .get({ doctorId });
 
   return {
     total_amount_rs: roundCurrency(totalAmount),
@@ -1176,8 +1180,8 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
           (@role = 'doctor' AND i.stock_scope = 'doctor' AND i.owner_doctor_id = @doctorId)
           OR (@role != 'doctor')
         )
-        AND (@dateFrom = '' OR date(m.created_at) >= date(@dateFrom))
-        AND (@dateTo = '' OR date(m.created_at) <= date(@dateTo))
+        AND (@dateFrom = '' OR date(m.created_at, '+4 hours') >= date(@dateFrom))
+        AND (@dateTo = '' OR date(m.created_at, '+4 hours') <= date(@dateTo))
         AND (
           @filterUserId = 0
           OR m.recorded_by_user_id = @filterUserId
@@ -1447,9 +1451,9 @@ function getCompareRows(dateFrom = "", dateTo = "") {
 
 function getDoctorConsumptionRecord(doctorId) {
   const periods = [
-    { id: "week", label: "This Week", startSql: "date('now', 'weekday 1', '-7 days')" },
-    { id: "month", label: "This Month", startSql: "date('now', 'start of month')" },
-    { id: "ytd", label: "Year to Date", startSql: "date('now', 'start of year')" },
+    { id: "week", label: "This Week", startSql: "date('now', '+4 hours', 'weekday 1', '-7 days')" },
+    { id: "month", label: "This Month", startSql: "date('now', '+4 hours', 'start of month')" },
+    { id: "ytd", label: "Year to Date", startSql: "date('now', '+4 hours', 'start of year')" },
   ];
 
   return periods.map((period) => {
@@ -1470,7 +1474,7 @@ function getDoctorConsumptionRecord(doctorId) {
         WHERE i.stock_scope = 'doctor'
           AND i.owner_doctor_id = ?
           AND m.movement_type = 'out'
-          AND date(m.created_at) BETWEEN ${period.startSql} AND date('now')
+          AND date(m.created_at, '+4 hours') BETWEEN ${period.startSql} AND date('now', '+4 hours')
       `)
       .get(doctorId);
 
@@ -2317,6 +2321,9 @@ router.put("/items/:id", (req, res) => {
   // Incoming expiry_date is ignored so catalogue editing cannot change batch expiry or nearest-expiry.
   const expiryDate = String(existing.expiry_date || "").trim() || null;
   const adjustmentNote = String(req.body.adjustment_note || "").trim();
+  const costPriceChanged = roundCurrency(existing.cost_price) !== costPrice;
+  const sellingPriceChanged = roundCurrency(existing.selling_price) !== sellingPrice;
+  const priceChanged = costPriceChanged || sellingPriceChanged;
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
@@ -2329,6 +2336,11 @@ router.put("/items/:id", (req, res) => {
   if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ error: "Quantity must be zero or more." });
   if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) return res.status(400).json({ error: "Minimum quantity must be zero or more." });
   if (sellingPrice < costPrice) return res.status(400).json({ error: "Selling price cannot be lower than cost price." });
+  if (priceChanged && (adjustmentNote.length < 10 || adjustmentNote.length > 500)) {
+    return res.status(400).json({
+      error: "A reason between 10 and 500 characters is required for every cost or selling-price change.",
+    });
+  }
 
   if (!isDoctor && isOcsMasterRow) {
     try {
@@ -2351,6 +2363,26 @@ router.put("/items/:id", (req, res) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
+      if (priceChanged) {
+        recordAudit({
+          actionType: "update_catalogue_pricing",
+          itemId,
+          itemName,
+          quantity: 0,
+          reason: adjustmentNote,
+          performedByUserId: req.auth.id,
+          performedByRole: req.auth.role,
+          performedByName: req.auth.full_name || req.auth.username || "",
+          metaJson: JSON.stringify({
+            previous_cost_price: roundCurrency(existing.cost_price),
+            new_cost_price: costPrice,
+            previous_selling_price: roundCurrency(existing.selling_price),
+            new_selling_price: sellingPrice,
+            cost_price_changed: costPriceChanged,
+            selling_price_changed: sellingPriceChanged,
+          }),
+        });
+      }
     })();
   } catch (error) {
     return res.status(400).json({ error: error?.message || "Unable to update stock item." });
@@ -2422,13 +2454,13 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     const nextQuantity = previousQuantity + quantity;
 
     db.transaction(() => {
-      createBatch(itemId, quantity, expiry.expiryDate, costPrice, { isNonExpiring: expiry.isNonExpiring });
+      const batchId = createBatch(itemId, quantity, expiry.expiryDate, costPrice, { isNonExpiring: expiry.isNonExpiring });
       db.prepare(`
         UPDATE inventory
         SET quantity = ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(nextQuantity, costPrice, itemId);
-      recordMovement({
+      const movementId = recordMovement({
         itemId,
         movementType: "in",
         quantity,
@@ -2449,6 +2481,13 @@ router.post("/items/:id/ocs-actions", (req, res) => {
           expiry_date: expiry.expiryDate,
         }),
       });
+      recordMovementAllocations(movementId, [{
+        batch_id: batchId,
+        quantity,
+        expiry_date: expiry.expiryDate,
+        is_non_expiring: expiry.isNonExpiring,
+        unit_cost: costPrice,
+      }]);
       recordAudit({
         actionType: override.override ? "operational_override_stock_in" : "stock_in",
         itemId,

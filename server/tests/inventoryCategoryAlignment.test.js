@@ -213,7 +213,7 @@ test("retired consumable SKUs are absent from the warehouse catalogues", () => {
   }
 });
 
-test("alignment archives retired warehouse and doctor-bag consumable rows once", () => {
+test("alignment never archives retired SKUs until on-hand, batches and reservations are zero", () => {
   const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
   const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 2").all().map((row) => Number(row.id));
   assert.equal(doctorIds.length, 2);
@@ -224,16 +224,25 @@ test("alignment archives retired warehouse and doctor-bag consumable rows once",
     ) VALUES (?, ?, ?, ?, 4, 2, 'unit', 0, 0, CURRENT_TIMESTAMP)
   `);
 
+  const insertedIds = [];
   for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
-    insertRow.run(itemName, consumableId, "ocs", null);
+    insertedIds.push(Number(insertRow.run(itemName, consumableId, "ocs", null).lastInsertRowid));
     for (const doctorId of doctorIds) {
-      insertRow.run(itemName, consumableId, "doctor", doctorId);
+      insertedIds.push(Number(insertRow.run(itemName, consumableId, "doctor", doctorId).lastInsertRowid));
     }
   }
 
   const expectedArchived = RETIRED_OCS_CONSUMABLE_SKUS.length * (1 + doctorIds.length);
   const first = alignInventoryCategories();
-  assert.ok(first.archived >= expectedArchived);
+  assert.equal(first.archived, 0);
+  for (const id of insertedIds) {
+    assert.equal(db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(id).archived_at, null);
+  }
+
+  db.prepare(`UPDATE inventory SET quantity = 0 WHERE id IN (${insertedIds.map(() => "?").join(",")})`)
+    .run(...insertedIds);
+  const second = alignInventoryCategories();
+  assert.ok(second.archived >= expectedArchived);
 
   for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
     const rows = db.prepare(`

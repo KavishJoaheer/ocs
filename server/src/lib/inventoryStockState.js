@@ -225,7 +225,14 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
     ));
     const availableToUse = Math.max(0, usableOnHand - reservedOnUsable - unallocatedReserved);
     const nearestUsableExpiry = batches
-      .filter((batch) => !batch.expired && !batch.missing_expiry && !batch.is_non_expiring && expiryDateValue(batch))
+      .filter((batch) => (
+        !batch.expired &&
+        !batch.quarantined &&
+        !batch.missing_expiry &&
+        !batch.missing_cost &&
+        !batch.is_non_expiring &&
+        expiryDateValue(batch)
+      ))
       .map((batch) => expiryDateValue(batch))
       .sort()[0] || null;
     const nearestDatedExpiry = batches

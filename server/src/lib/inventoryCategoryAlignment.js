@@ -51,26 +51,50 @@ const RETIRED_OCS_CONSUMABLE_SKUS = [
 ];
 
 function retireRemovedOcsConsumableSkus() {
-  const archiveRows = db.prepare(`
-    UPDATE inventory
-    SET archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP),
-        row_version = row_version + 1,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-      AND archived_at IS NULL
-      AND (
-        (stock_scope = 'ocs' AND owner_doctor_id IS NULL)
-        OR (stock_scope = 'doctor' AND owner_doctor_id IS NOT NULL)
-      )
-  `);
-
   return db.transaction(() => {
     let archived = 0;
+    let blocked = 0;
     for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
-      archived += Number(archiveRows.run(itemName).changes || 0);
       recordOcsCatalogExclusion(itemName);
+      const rows = db.prepare(`
+        SELECT i.*,
+          COALESCE((
+            SELECT SUM(b.quantity_remaining)
+            FROM inventory_batches b
+            WHERE b.item_id = i.id AND b.quantity_remaining > 0
+          ), 0) AS live_batch_quantity,
+          COALESCE((
+            SELECT SUM(r.quantity)
+            FROM inventory_reservations r
+            WHERE r.inventory_id = i.id AND r.status = 'active'
+          ), 0) AS reserved_quantity
+        FROM inventory i
+        WHERE LOWER(TRIM(i.item_name)) = LOWER(TRIM(?))
+          AND i.archived_at IS NULL
+          AND (
+            (i.stock_scope = 'ocs' AND i.owner_doctor_id IS NULL)
+            OR (i.stock_scope = 'doctor' AND i.owner_doctor_id IS NOT NULL)
+          )
+      `).all(itemName);
+      for (const row of rows) {
+        const safeToArchive =
+          Number(row.quantity || 0) === 0 &&
+          Number(row.live_batch_quantity || 0) === 0 &&
+          Number(row.reserved_quantity || 0) === 0;
+        if (!safeToArchive) {
+          blocked += 1;
+          continue;
+        }
+        archived += Number(db.prepare(`
+          UPDATE inventory
+          SET archived_at = CURRENT_TIMESTAMP,
+              row_version = COALESCE(row_version, 1) + 1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND archived_at IS NULL
+        `).run(row.id).changes || 0);
+      }
     }
-    return { archived };
+    return { archived, blocked };
   })();
 }
 

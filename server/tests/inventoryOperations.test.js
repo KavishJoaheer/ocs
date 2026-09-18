@@ -381,6 +381,7 @@ test("collection posts a linked receipt, is idempotent, and failed transfer stay
   const itemName = `Collect ${Date.now()}`;
   const itemId = insertOcsItem({ name: itemName, qty: 4 });
   const request = await createAcceptedRequest({ itemId, itemName, quantity: 2 });
+  const reservedBatch = db.prepare("SELECT * FROM inventory_batches WHERE item_id = ?").get(itemId);
   await pickAndReady(request.id);
   const qtyBefore = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
@@ -395,6 +396,25 @@ test("collection posts a linked receipt, is idempotent, and failed transfer stay
     .prepare(`SELECT quantity FROM inventory WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND item_name = ?`)
     .get(doctorId, itemName);
   assert.equal(Number(bag.quantity), 2);
+  const transferMovements = db.prepare(`
+    SELECT id, unit_cost_snapshot FROM inventory_movements
+    WHERE json_extract(meta_json, '$.transaction_id') = ? ORDER BY id
+  `).all(completed.data.request.transfer_transaction_id);
+  assert.equal(transferMovements.length, 2);
+  for (const movement of transferMovements) {
+    const allocation = db.prepare(`
+      SELECT COALESCE(SUM(quantity), 0) AS quantity,
+             COALESCE(SUM(quantity * unit_cost) / SUM(quantity), 0) AS unit_cost
+      FROM inventory_movement_allocations WHERE movement_id = ?
+    `).get(movement.id);
+    assert.equal(Number(allocation.quantity), 2);
+    assert.equal(Number(allocation.unit_cost), 5);
+    assert.equal(Number(movement.unit_cost_snapshot), 5);
+  }
+  assert.equal(
+    Number(db.prepare("SELECT row_version FROM inventory_batches WHERE id = ?").get(reservedBatch.id).row_version),
+    Number(reservedBatch.row_version || 1) + 1,
+  );
   const receipt = await api("GET", `/api/inventory/receipts/${completed.data.request.transfer_transaction_id}`, {
     token: doctorToken,
   });
@@ -492,6 +512,23 @@ test("doctors cannot change quantity through item editing and operators can edit
     body: { minimum_quantity: 3 },
   });
   assert.equal(parOk.status, 200, JSON.stringify(parOk.data));
+  const unauditedPricePut = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: operatorToken,
+    body: {
+      cost_price: 6,
+      selling_price: 12,
+    },
+  });
+  assert.equal(unauditedPricePut.status, 400, JSON.stringify(unauditedPricePut.data));
+  const overlongPricePut = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: operatorToken,
+    body: {
+      cost_price: 6,
+      selling_price: 12,
+      adjustment_note: "x".repeat(501),
+    },
+  });
+  assert.equal(overlongPricePut.status, 400, JSON.stringify(overlongPricePut.data));
   const operatorPut = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: operatorToken,
     body: {
@@ -503,6 +540,7 @@ test("doctors cannot change quantity through item editing and operators can edit
       unit: "box",
       attributes: "Operator-managed attributes",
       moa_notes: "Operator-managed MOA notes",
+      adjustment_note: "Supplier price list verified by operator",
     },
   });
   assert.equal(operatorPut.status, 200, JSON.stringify(operatorPut.data));
@@ -515,6 +553,14 @@ test("doctors cannot change quantity through item editing and operators can edit
   assert.equal(operatorEdited.selling_price, 12);
   assert.equal(operatorEdited.attributes, "Operator-managed attributes");
   assert.equal(operatorEdited.moa_notes, "Operator-managed MOA notes");
+  const priceAudit = db.prepare(`
+    SELECT * FROM inventory_audit_logs
+    WHERE item_id = ? AND action_type = 'update_catalogue_pricing'
+    ORDER BY id DESC LIMIT 1
+  `).get(itemId);
+  assert.ok(priceAudit);
+  assert.equal(priceAudit.performed_by_role, "operator");
+  assert.match(priceAudit.reason, /supplier price list/i);
 
   const operatorQuantityPut = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: operatorToken,
@@ -573,6 +619,26 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
   assert.equal(applied.data.session.status, "applied");
   const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   assert.equal(qty, 7);
+  const surplusBatch = db.prepare(`
+    SELECT * FROM inventory_batches
+    WHERE item_id = ? AND status = 'quarantined'
+    ORDER BY id DESC LIMIT 1
+  `).get(itemId);
+  assert.ok(surplusBatch);
+  assert.equal(Number(surplusBatch.quantity_remaining), 2);
+  assert.equal(Number(surplusBatch.unit_cost), 0);
+  assert.equal(surplusBatch.expiry_date, null);
+  const stockState = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(Number(stockState.available_to_use), 5);
+  const stocktakeMovement = db.prepare(`
+    SELECT id FROM inventory_movements
+    WHERE item_id = ? AND json_extract(meta_json, '$.stocktake_session_id') = ?
+    ORDER BY id DESC LIMIT 1
+  `).get(itemId, created.data.session.id);
+  assert.equal(Number(db.prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS quantity
+    FROM inventory_movement_allocations WHERE movement_id = ?
+  `).get(stocktakeMovement.id).quantity), 2);
   const again = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
     token: adminToken,
   });
@@ -598,6 +664,19 @@ test("shipment bulk release is atomic and idempotent", async () => {
     body: { mode: "all_valid" },
   });
   assert.ok([200, 201].includes(released.status), JSON.stringify(released.data));
+  const receiptMovement = db.prepare(`
+    SELECT * FROM inventory_movements
+    WHERE json_extract(meta_json, '$.shipment_id') = ?
+    ORDER BY id DESC LIMIT 1
+  `).get(shipmentId);
+  assert.equal(Number(receiptMovement.unit_cost_snapshot), 1);
+  const receiptAllocation = db.prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS quantity,
+           COALESCE(SUM(quantity * unit_cost) / SUM(quantity), 0) AS unit_cost
+    FROM inventory_movement_allocations WHERE movement_id = ?
+  `).get(receiptMovement.id);
+  assert.equal(Number(receiptAllocation.quantity), 3);
+  assert.equal(Number(receiptAllocation.unit_cost), 1);
   const again = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
     token: operatorToken,
     body: { mode: "all_valid" },
@@ -3293,6 +3372,123 @@ test("depot transfers preserve actual batch cost on both movement sides", async 
   for (const movement of movements) {
     assert.equal(db.prepare("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).quantity, 2);
   }
+});
+
+test("reserved batches are revalidated for quarantine expiry and optimistic version at collection", async () => {
+  const itemName = `Reserved safety ${Date.now()}`;
+  const itemId = insertOcsItem({ name: itemName, qty: 3, expiry: "2032-03-01" });
+  const request = await createAcceptedRequest({ itemId, itemName, quantity: 1 });
+  await pickAndReady(request.id);
+  const batchId = Number(request.fulfilment.items[0].allocations[0].batch_id);
+  const before = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(batchId);
+  db.prepare(`
+    UPDATE inventory_batches
+    SET status = 'quarantined', quarantined_reason = 'Supplier recall', row_version = row_version + 1
+    WHERE id = ?
+  `).run(batchId);
+  const quarantined = await api("PATCH", `/api/restock-requests/${request.id}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(quarantined.status, 409, JSON.stringify(quarantined.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 3);
+  assert.equal(db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(request.id).status, "ready");
+
+  db.prepare(`
+    UPDATE inventory_batches
+    SET status = 'usable', expiry_date = '2020-01-01', row_version = row_version + 1
+    WHERE id = ?
+  `).run(batchId);
+  const expired = await api("PATCH", `/api/restock-requests/${request.id}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(expired.status, 409, JSON.stringify(expired.data));
+  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, before.quantity_remaining);
+});
+
+test("negative stocktake reconciles unusable batches at their exact recorded cost", async () => {
+  const itemId = insertOcsItem({ name: `Count expired ${Date.now()}`, qty: 4, expiry: "2020-01-01" });
+  db.prepare("UPDATE inventory SET cost_price = 999 WHERE id = ?").run(itemId);
+  db.prepare("UPDATE inventory_batches SET unit_cost = 13, status = 'quarantined' WHERE item_id = ?").run(itemId);
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const sessionId = created.data.session.id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: created.data.session.items[0].id, physical_quantity: 2, reason: "Expired units missing during count" }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, { token: operatorToken });
+  await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  const movement = db.prepare(`
+    SELECT * FROM inventory_movements
+    WHERE item_id = ? AND json_extract(meta_json, '$.stocktake_session_id') = ?
+  `).get(itemId, sessionId);
+  assert.equal(Number(movement.unit_cost_snapshot), 13);
+  assert.equal(Number(db.prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS quantity
+    FROM inventory_movement_allocations WHERE movement_id = ?
+  `).get(movement.id).quantity), 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 2);
+});
+
+test("inventory summaries are location-scoped and activity filters use Mauritius dates", async () => {
+  const warehouseBefore = await api("GET", "/api/inventory", { token: adminToken });
+  const doctorBefore = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: adminToken });
+  const warehouseItemId = insertOcsItem({ name: `Scoped warehouse ${Date.now()}`, qty: 1 });
+  const doctorItemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+      stock_scope, owner_doctor_id
+    ) VALUES (?, ?, 1, 0, 'unit', 222, 300, 'doctor', ?)
+  `).run(`Scoped bag ${Date.now()}`, folderId, doctorId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity,
+      action_type, unit_cost_snapshot, created_at
+    ) VALUES (?, 'in', 1, 0, 1, 'add', 111, '2026-09-17 21:30:00')
+  `).run(warehouseItemId);
+  db.prepare(`
+    INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity,
+      action_type, unit_cost_snapshot, created_at
+    ) VALUES (?, 'in', 1, 0, 1, 'restock_in', 222, '2026-09-17 21:30:00')
+  `).run(doctorItemId);
+  const warehouseAfter = await api("GET", "/api/inventory", { token: adminToken });
+  const doctorAfter = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: adminToken });
+  assert.equal(
+    Number(warehouseAfter.data.summary.total_monthly_replenishments_rs) - Number(warehouseBefore.data.summary.total_monthly_replenishments_rs),
+    111,
+  );
+  assert.equal(
+    Number(doctorAfter.data.summary.total_monthly_replenishments_rs) - Number(doctorBefore.data.summary.total_monthly_replenishments_rs),
+    222,
+  );
+  const localDay = await api("GET", "/api/inventory?dateFrom=2026-09-18&dateTo=2026-09-18", {
+    token: adminToken,
+  });
+  assert.equal(localDay.status, 200, JSON.stringify(localDay.data));
+  assert.ok(localDay.data.movements.some((row) => Number(row.item_id) === warehouseItemId));
+});
+
+test("nearest usable expiry ignores quarantined and missing-cost batches", () => {
+  const itemId = insertOcsItem({ name: `Expiry display ${Date.now()}`, qty: 0 });
+  db.prepare("UPDATE inventory SET quantity = 3 WHERE id = ?").run(itemId);
+  db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+    VALUES (?, 1, '2027-01-01', 5, 0, 'quarantined'),
+           (?, 1, '2027-02-01', 0, 0, 'usable'),
+           (?, 1, '2027-03-01', 5, 0, 'usable')
+  `).run(itemId, itemId, itemId);
+  const decorated = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(decorated.nearest_usable_expiry, "2027-03-01");
 });
 
 test("direct sale accepts a billable visit and rejects it after payment without another deduction", async () => {
