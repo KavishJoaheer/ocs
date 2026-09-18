@@ -1444,6 +1444,7 @@ function PatientProfilePage() {
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
   const [consultationToDelete, setConsultationToDelete] = useState(null);
   const [consultationVoidReason, setConsultationVoidReason] = useState("");
+  const [consultationFieldSaleDisposition, setConsultationFieldSaleDisposition] = useState("");
   const [consultationNoteViewer, setConsultationNoteViewer] = useState(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [fabOpen, setFabOpen] = useState(false);
@@ -1845,7 +1846,10 @@ function PatientProfilePage() {
 
     try {
       await api.delete(`/consultations/${consultationToDelete.id}`, {
-        body: { reason: consultationVoidReason.trim() },
+        body: {
+          reason: consultationVoidReason.trim(),
+          field_sale_disposition: consultationFieldSaleDisposition || undefined,
+        },
       });
       if (consultationEditorId === consultationToDelete.id) {
         setConsultationEditorId(null);
@@ -1853,6 +1857,7 @@ function PatientProfilePage() {
       }
       setConsultationToDelete(null);
       setConsultationVoidReason("");
+      setConsultationFieldSaleDisposition("");
       await reloadPatientProfile();
       toast.success("Consultation note deleted.");
     } catch (error) {
@@ -3419,6 +3424,7 @@ function PatientProfilePage() {
         onClose={() => {
           setConsultationToDelete(null);
           setConsultationVoidReason("");
+          setConsultationFieldSaleDisposition("");
         }}
         onConfirm={handleDeleteConsultation}
         title="Delete consultation note?"
@@ -3443,6 +3449,21 @@ function PatientProfilePage() {
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none transition focus:border-ocs-teal focus:ring-2 focus:ring-ocs-teal/15"
           />
           <span className="block text-xs font-normal text-slate-500">Minimum 8 characters. This reason is retained in the audit history.</span>
+        </label>
+        <label className="mt-4 block space-y-2 text-sm font-semibold text-ocs-slate">
+          Field-dispensed supply outcome
+          <select
+            value={consultationFieldSaleDisposition}
+            onChange={(event) => setConsultationFieldSaleDisposition(event.target.value)}
+            className="w-full min-h-11 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-ocs-teal focus:ring-2 focus:ring-ocs-teal/15"
+          >
+            <option value="">No field-dispensed supplies</option>
+            <option value="returned_to_stock">Returned unopened to the doctor bag</option>
+            <option value="consumed_or_wasted">Consumed or wasted — do not restore stock</option>
+          </select>
+          <span className="block text-xs font-normal text-slate-500">
+            If supplies were dispensed from the doctor bag for this visit, an outcome is compulsory and retained in the audit trail.
+          </span>
         </label>
       </ConfirmDialog>
     </div>

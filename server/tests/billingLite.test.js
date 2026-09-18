@@ -833,7 +833,7 @@ test("patient picker search runs on the server before result limiting", async ()
   assert.ok(searched.data.patients[0].visits.some(visit=>visit.consultation_id===target.nextConsultationId));
 });
 
-test("patient picker and capture remain available when a reset cutover is stored as audit metadata", async () => {
+test("patient picker and capture enforce the configured live billing cutover", async () => {
   const previous = db.prepare("SELECT * FROM billing_system_settings WHERE id = 1").get();
   try {
     db.prepare("DELETE FROM billing_system_settings WHERE id = 1").run();
@@ -860,9 +860,9 @@ test("patient picker and capture remain available when a reset cutover is stored
     `).run();
     const picker = await api("GET", `/billing/quick/picker-options?search=${encodeURIComponent(`OCS-FUTURE-`)}&limit=20`, doctorToken);
     assert.equal(picker.status, 200, JSON.stringify(picker.data));
-    assert.equal(picker.data.cutover_date, null);
-    assert.equal(picker.data.billing_active, true);
-    assert.ok(picker.data.patients.some((patient) => patient.patient_id === futurePatientId));
+    assert.equal(picker.data.cutover_date, "2099-01-01");
+    assert.equal(picker.data.billing_active, false);
+    assert.equal(picker.data.patients.some((patient) => patient.patient_id === futurePatientId), false);
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 0);
     const captured = await api("POST", `/billing/quick/visits/${futureConsultationId}/capture`, doctorToken, {
       operation_id: randomUUID(),
@@ -870,8 +870,9 @@ test("patient picker and capture remain available when a reset cutover is stored
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
     });
-    assert.equal(captured.status, 201, JSON.stringify(captured.data));
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 1);
+    assert.equal(captured.status, 409, JSON.stringify(captured.data));
+    assert.equal(captured.data.code, "BILLING_CUTOVER_NOT_REACHED");
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 0);
   } finally {
     if (previous) {
       db.prepare(`

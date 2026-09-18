@@ -1717,8 +1717,65 @@ function initializeDatabase() {
 
   migrateLegacySeedDataIfNeeded();
   seedDatabase();
+  ensureUniqueActiveDoctorInventoryItems();
   require("./lib/financialIntegritySchema").ensureFinancialIntegritySchema(db);
   require("./lib/accountingSchema").ensureAccountingSchema(db);
+}
+
+function ensureUniqueActiveDoctorInventoryItems() {
+  db.transaction(() => {
+    const duplicateGroups = db.prepare(`
+      SELECT owner_doctor_id, LOWER(TRIM(item_name)) AS item_key,
+        GROUP_CONCAT(id) AS ids, COUNT(*) AS row_count
+      FROM inventory
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id IS NOT NULL
+        AND archived_at IS NULL
+      GROUP BY owner_doctor_id, LOWER(TRIM(item_name))
+      HAVING COUNT(*) > 1
+    `).all();
+
+    for (const group of duplicateGroups) {
+      const ids = String(group.ids || "").split(",").map(Number).filter(Boolean).sort((a, b) => a - b);
+      const canonicalId = ids.shift();
+      if (!canonicalId) continue;
+      for (const duplicateId of ids) {
+        const duplicate = db.prepare("SELECT * FROM inventory WHERE id = ?").get(duplicateId);
+        const canonical = db.prepare("SELECT * FROM inventory WHERE id = ?").get(canonicalId);
+        if (!duplicate || !canonical) continue;
+
+        db.prepare("UPDATE inventory_batches SET item_id = ? WHERE item_id = ?").run(canonicalId, duplicateId);
+        db.prepare("UPDATE inventory_reservations SET inventory_id = ? WHERE inventory_id = ?").run(canonicalId, duplicateId);
+        const nextQuantity = Number(canonical.quantity || 0) + Number(duplicate.quantity || 0);
+        db.prepare(`
+          UPDATE inventory
+          SET quantity = ?,
+              cost_price = CASE WHEN cost_price > 0 THEN cost_price ELSE ? END,
+              selling_price = CASE WHEN selling_price > 0 THEN selling_price ELSE ? END,
+              row_version = COALESCE(row_version, 1) + 1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(nextQuantity, Number(duplicate.cost_price || 0), Number(duplicate.selling_price || 0), canonicalId);
+        db.prepare(`
+          UPDATE inventory
+          SET quantity = 0,
+              archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP),
+              row_version = COALESCE(row_version, 1) + 1,
+              notes = TRIM(COALESCE(notes, '') || ' Consolidated into active doctor-bag item #' || ? || '.'),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(canonicalId, duplicateId);
+      }
+    }
+
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_active_doctor_item_unique
+      ON inventory(owner_doctor_id, LOWER(TRIM(item_name)))
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id IS NOT NULL
+        AND archived_at IS NULL;
+    `);
+  }).immediate();
 }
 
 function ensureHcmNewsColumns() {

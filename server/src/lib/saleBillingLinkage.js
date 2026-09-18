@@ -332,6 +332,24 @@ function attachPendingSalesToConsultationBill(consultationId, billId) {
   return { attached, billingId: Number(bill.id) };
 }
 
+function unresolvedPendingSalesForConsultation(consultationId) {
+  const consultation = db.prepare("SELECT * FROM consultations WHERE id = ?").get(Number(consultationId || 0));
+  if (!consultation) return [];
+  return pendingSales({ patientId: consultation.patient_id, doctorId: consultation.doctor_id })
+    .filter((row) => matchesVisit(row, consultation));
+}
+
+function attachAndAssertPendingSalesResolved(consultationId, billId) {
+  attachPendingSalesToConsultationBill(consultationId, billId);
+  const unresolved = unresolvedPendingSalesForConsultation(consultationId);
+  if (unresolved.length) {
+    throw linkageError(
+      `${unresolved.length} field-dispensing record${unresolved.length === 1 ? " is" : "s are"} still unresolved. Review the linked supplies before issuing this invoice.`,
+    );
+  }
+  return { attached: true, unresolved: 0 };
+}
+
 module.exports = {
   LINKAGE_WINDOW_DAYS,
   pendingSales,
@@ -343,4 +361,6 @@ module.exports = {
   findOpenBillForSale,
   attachSaleDeductToPatientBill,
   attachPendingSalesToConsultationBill,
+  attachAndAssertPendingSalesResolved,
+  unresolvedPendingSalesForConsultation,
 };

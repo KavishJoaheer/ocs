@@ -3,7 +3,6 @@ import toast from "react-hot-toast";
 import Modal from "../Modal.jsx";
 import { formatRupees } from "../../lib/format.js";
 import {
-  isNonNegativeNumber,
   isPastLocalDate,
   isPositiveWholeNumber,
   requiresOperationalOverride,
@@ -19,6 +18,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
   const [expiryDate, setExpiryDate] = useState("");
   const [nonExpiring, setNonExpiring] = useState(false);
   const [costPrice, setCostPrice] = useState("0.00");
+  const [costVarianceReason, setCostVarianceReason] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [step, setStep] = useState("form");
   const [syncedDeps, setSyncedDeps] = useState({ open, item });
@@ -30,6 +30,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       setExpiryDate("");
       setNonExpiring(false);
       setCostPrice(String(item?.cost_price ?? 0));
+      setCostVarianceReason("");
       setOverrideReason("");
       setStep("form");
     }
@@ -45,12 +46,17 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       ? "Set a batch expiry date, or mark this batch as non-expiring."
       : "";
   const quantityError = !isPositiveWholeNumber(qty) ? "Quantity must be a positive whole number." : "";
-  const costError = !isNonNegativeNumber(cost) ? "Unit cost must be zero or more." : "";
+  const standardCost = Number(item?.cost_price || 0);
+  const costChanged = Number.isFinite(cost) && Math.abs(cost - standardCost) >= 0.005;
+  const costError = !Number.isFinite(cost) || cost <= 0 ? "Enter the actual batch cost above Rs 0." : "";
+  const costVarianceError = costChanged && String(costVarianceReason || "").trim().length < 8
+    ? "Explain the cost difference using at least 8 characters."
+    : "";
   const overrideError =
     requiresOperationalOverride(user) && String(overrideReason || "").trim().length < 10
       ? "Enter an operational override reason of at least 10 characters."
       : "";
-  const formValid = !quantityError && !expiryError && !costError && !overrideError;
+  const formValid = !quantityError && !expiryError && !costError && !costVarianceError && !overrideError;
   const totalCost = Number.isFinite(qty) && Number.isFinite(cost) ? qty * cost : 0;
 
   const summary = useMemo(
@@ -59,11 +65,12 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       ["Quantity being received", Number.isFinite(qty) ? String(qty) : "—"],
       ["Expiry", nonExpiring ? "Non-expiring" : expiryDate || "—"],
       ["Unit cost", formatRupees(cost || 0)],
+      ...(costChanged ? [["Cost variance reason", String(costVarianceReason || "").trim() || "—"]] : []),
       ["Total cost", formatRupees(totalCost)],
       ["Current on-hand", String(currentOnHand)],
       ["Resulting on-hand", String(currentOnHand + (isPositiveWholeNumber(qty) ? qty : 0))],
     ],
-    [item?.item_name, qty, nonExpiring, expiryDate, cost, totalCost, currentOnHand],
+    [item?.item_name, qty, nonExpiring, expiryDate, cost, costChanged, costVarianceReason, totalCost, currentOnHand],
   );
 
   return (
@@ -80,7 +87,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
         onSubmit={(event) => {
           event.preventDefault();
           if (!formValid) {
-            toast.error(quantityError || expiryError || costError || overrideError);
+            toast.error(quantityError || expiryError || costError || costVarianceError || overrideError);
             return;
           }
           if (step !== "confirm") {
@@ -92,6 +99,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
             expiry_date: nonExpiring ? "" : expiryDate,
             is_non_expiring: nonExpiring,
             cost_price: cost,
+            cost_variance_reason: String(costVarianceReason || "").trim(),
             override_reason: overrideReason,
           });
         }}
@@ -154,7 +162,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                 <span className="text-sm font-semibold text-slate-700">Unit cost (Rs)</span>
                 <input
                   required
-                  min={0}
+                  min="0.01"
                   step="0.01"
                   type="number"
                   value={costPrice}
@@ -163,6 +171,24 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                 />
                 {costError ? <p className="text-xs text-rose-600">{costError}</p> : null}
               </label>
+
+              {costChanged ? (
+                <label className="space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">Reason for actual cost difference</span>
+                  <textarea
+                    required
+                    rows={3}
+                    value={costVarianceReason}
+                    onChange={(event) => setCostVarianceReason(event.target.value)}
+                    placeholder="Example: supplier invoice INV-104 has a revised batch price"
+                    className={FIELD}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Catalogue cost: {formatRupees(standardCost)}. This note is retained with the batch receipt.
+                  </p>
+                  {costVarianceError ? <p className="text-xs text-rose-600">{costVarianceError}</p> : null}
+                </label>
+              ) : null}
 
               <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
             </>

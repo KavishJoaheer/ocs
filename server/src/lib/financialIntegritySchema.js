@@ -1029,6 +1029,21 @@ function ensureFinancialIntegritySchema(db) {
         SELECT RAISE(ABORT, 'Billing amounts must be non-negative currency values with no more than two decimal places');
       END;
     `);
+    if (process.env.NODE_ENV !== "test") {
+      db.prepare(`
+        INSERT INTO billing_system_settings (id, cutover_date, reset_reason)
+        VALUES (1, '2026-10-01', 'Live billing cutover baseline')
+        ON CONFLICT(id) DO UPDATE SET
+          cutover_date = CASE
+            WHEN trim(COALESCE(billing_system_settings.cutover_date, '')) = '' THEN excluded.cutover_date
+            ELSE billing_system_settings.cutover_date
+          END,
+          reset_reason = CASE
+            WHEN trim(COALESCE(billing_system_settings.cutover_date, '')) = '' THEN excluded.reset_reason
+            ELSE billing_system_settings.reset_reason
+          END
+      `).run();
+    }
 
     // Older compensating closes stored provider references only inside JSON.
     // Populate the immutable reference ledger so those historical references

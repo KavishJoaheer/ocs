@@ -281,15 +281,25 @@ test("legacy prepared data migrates to ready", () => {
 });
 
 test("doctor creates a pending request", async () => {
+  const operationId = `restock-create-${Date.now()}`;
+  const payload = requestPayload({ operation_id: operationId });
   const created = await api("POST", "/api/restock-requests", {
     token: doctorToken,
-    body: requestPayload(),
+    body: payload,
   });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   assert.equal(created.data.request.status, "pending");
   assert.equal(created.data.request.status_labels.doctor, "Requested");
   assert.equal(created.data.request.items.length, 1);
   createdId = created.data.request.id;
+
+  const replay = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: payload,
+  });
+  assert.equal(replay.status, 200, JSON.stringify(replay.data));
+  assert.equal(replay.data.request.id, createdId);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_requests WHERE id = ?").get(createdId).count, 1);
 
   const listed = await api("GET", "/api/restock-requests", { token: doctorToken });
   assert.equal(listed.status, 200);
@@ -1454,4 +1464,3 @@ test("reconciliation preview token covers batch quantity expiry quarantine and a
     1,
   );
 });
-

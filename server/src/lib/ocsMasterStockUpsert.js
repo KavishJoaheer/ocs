@@ -87,11 +87,25 @@ function findOcsItemByName(name) {
       FROM inventory
       WHERE stock_scope = ?
         AND owner_doctor_id IS NULL
+        AND archived_at IS NULL
         AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
       ORDER BY id ASC
       LIMIT 1
     `)
     .get(STOCK_SCOPE, name);
+}
+
+function findArchivedOcsItemByName(name) {
+  return db.prepare(`
+    SELECT id
+    FROM inventory
+    WHERE stock_scope = ?
+      AND owner_doctor_id IS NULL
+      AND archived_at IS NOT NULL
+      AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(STOCK_SCOPE, name);
 }
 
 function syncBatches(itemId, quantity, expiryDate) {
@@ -136,15 +150,16 @@ function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
       UPDATE inventory
       SET
         folder_id = ?,
-        quantity = ?,
         minimum_quantity = ?,
-        expiry_date = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(folderId, quantity, minimumQuantity, expiryDate, existing.id);
+    `).run(folderId, minimumQuantity, existing.id);
 
-    syncBatches(existing.id, quantity, expiryDate);
     return { action: "updated", id: existing.id, itemName };
+  }
+
+  if (findArchivedOcsItemByName(itemName)) {
+    throw new Error(`${itemName}: an archived warehouse item already exists. Restore it explicitly before importing this catalogue row.`);
   }
 
   let itemId;
@@ -180,37 +195,30 @@ function upsertOcsMasterStockDataset(rows, { skipInit = false, insertOnly = fals
   if (!skipInit) {
     initializeDatabase();
   }
-  ensureInventoryFolders();
-
-  const folderIds = new Map(
-    REQUIRED_FOLDERS.map((name) => [name, getFolderIdByCategory(name)]),
-  );
-
-  const missingFolders = REQUIRED_FOLDERS.filter((name) => !folderIds.get(name));
-  if (missingFolders.length) {
-    throw new Error(`Missing inventory folders: ${missingFolders.join(", ")}`);
-  }
-
-  const unknownCategories = [
-    ...new Set(rows.map((row) => row.category).filter((category) => !folderIds.has(category))),
-  ];
-  if (unknownCategories.length) {
-    throw new Error(`Unknown categories in seed data: ${unknownCategories.join(", ")}`);
-  }
 
   const run = db.transaction((dataset) => {
+    ensureInventoryFolders();
+    const folderIds = new Map(
+      REQUIRED_FOLDERS.map((name) => [name, getFolderIdByCategory(name)]),
+    );
+    const missingFolders = REQUIRED_FOLDERS.filter((name) => !folderIds.get(name));
+    if (missingFolders.length) {
+      throw new Error(`Missing inventory folders: ${missingFolders.join(", ")}`);
+    }
+    const unknownCategories = [
+      ...new Set(dataset.map((row) => row.category).filter((category) => !folderIds.has(category))),
+    ];
+    if (unknownCategories.length) {
+      throw new Error(`Unknown categories in seed data: ${unknownCategories.join(", ")}`);
+    }
     const summary = { inserted: 0, updated: 0, skipped: 0, errors: [] };
 
     dataset.forEach((row) => {
-      try {
-        const folderId = folderIds.get(row.category);
-        const result = upsertOcsMasterStockRow(row, folderId, { insertOnly });
-        if (result.action === "inserted") summary.inserted += 1;
-        else if (result.action === "updated") summary.updated += 1;
-        else summary.skipped += 1;
-      } catch (error) {
-        summary.errors.push({ name: row.name, message: error.message });
-      }
+      const folderId = folderIds.get(row.category);
+      const result = upsertOcsMasterStockRow(row, folderId, { insertOnly });
+      if (result.action === "inserted") summary.inserted += 1;
+      else if (result.action === "updated") summary.updated += 1;
+      else summary.skipped += 1;
     });
 
     return summary;

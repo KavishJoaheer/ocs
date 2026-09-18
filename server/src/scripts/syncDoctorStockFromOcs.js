@@ -7,16 +7,6 @@
 const { db, initializeDatabase } = require("../db");
 const { RETIRED_OCS_CONSUMABLE_SKUS } = require("../lib/inventoryCategoryAlignment");
 
-function syncBatches(itemId, quantity, expiryDate) {
-  db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
-  if (quantity > 0) {
-    db.prepare(`
-      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost)
-      VALUES (?, ?, ?, 0)
-    `).run(itemId, quantity, expiryDate);
-  }
-}
-
 function getOcsMasterItems() {
   return db
     .prepare(`
@@ -58,6 +48,7 @@ function findDoctorItemByName(doctorId, itemName) {
       FROM inventory
       WHERE stock_scope = 'doctor'
         AND owner_doctor_id = ?
+        AND archived_at IS NULL
         AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
       ORDER BY id ASC
       LIMIT 1
@@ -65,11 +56,22 @@ function findDoctorItemByName(doctorId, itemName) {
     .get(doctorId, itemName);
 }
 
+function findArchivedDoctorItemByName(doctorId, itemName) {
+  return db.prepare(`
+    SELECT id
+    FROM inventory
+    WHERE stock_scope = 'doctor'
+      AND owner_doctor_id = ?
+      AND archived_at IS NOT NULL
+      AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(doctorId, itemName);
+}
+
 function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) {
   const itemName = String(source.item_name || "").trim();
-  const quantity = Number(source.quantity || 0);
   const minimumQuantity = Number(source.minimum_quantity || 0);
-  const expiryDate = source.expiry_date ? String(source.expiry_date).trim() : null;
   const existing = findDoctorItemByName(doctorId, itemName);
 
   if (existing) {
@@ -80,30 +82,25 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       UPDATE inventory
       SET
         folder_id = ?,
-        quantity = ?,
         minimum_quantity = ?,
         unit = ?,
-        cost_price = ?,
-        selling_price = ?,
         attributes = ?,
         moa_notes = ?,
-        expiry_date = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       source.folder_id,
-      quantity,
       minimumQuantity,
       source.unit || "unit",
-      Number(source.cost_price || 0),
-      Number(source.selling_price || 0),
       source.attributes || "",
       source.moa_notes || "",
-      expiryDate,
       existing.id,
     );
-    syncBatches(existing.id, quantity, expiryDate);
     return "updated";
+  }
+
+  if (findArchivedDoctorItemByName(doctorId, itemName)) {
+    throw new Error(`${itemName}: an archived doctor-bag item already exists. Restore it explicitly instead of recreating it.`);
   }
 
   const result = db
@@ -112,24 +109,21 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
         item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
         cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
       )
-      VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+      VALUES (?, ?, 'doctor', ?, 0, ?, ?, ?, ?, '', ?, ?, NULL, CURRENT_TIMESTAMP)
     `)
     .run(
       itemName,
       source.folder_id,
       doctorId,
-      quantity,
       minimumQuantity,
       source.unit || "unit",
       Number(source.cost_price || 0),
       Number(source.selling_price || 0),
       source.attributes || "",
       source.moa_notes || "",
-      expiryDate,
     );
 
-  const itemId = Number(result.lastInsertRowid);
-  syncBatches(itemId, quantity, expiryDate);
+  void result;
   return "inserted";
 }
 
@@ -147,27 +141,31 @@ function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
     `)
     .all(doctorId);
 
-  const deleteBatches = db.prepare("DELETE FROM inventory_batches WHERE item_id = ?");
-  const deleteMovements = db.prepare("DELETE FROM inventory_movements WHERE item_id = ?");
-  const deleteStocktakes = db.prepare("DELETE FROM inventory_stocktakes WHERE item_id = ?");
-  const deleteItem = db.prepare("DELETE FROM inventory WHERE id = ?");
-
-  let removed = 0;
+  let archived = 0;
+  let blocked = 0;
   doctorItems.forEach((row) => {
     const key = String(row.item_name || "").trim().toLowerCase();
     if (ocsNameKeys.has(key) || retiredNameKeys.has(key)) return;
-    deleteBatches.run(row.id);
-    deleteMovements.run(row.id);
-    try {
-      deleteStocktakes.run(row.id);
-    } catch {
-      // optional table
+    const state = db.prepare(`
+      SELECT i.quantity,
+        COALESCE((SELECT SUM(quantity_remaining) FROM inventory_batches WHERE item_id = i.id), 0) AS batch_quantity,
+        COALESCE((SELECT SUM(quantity) FROM inventory_reservations WHERE inventory_id = i.id AND status = 'active'), 0) AS reserved_quantity
+      FROM inventory i WHERE i.id = ?
+    `).get(row.id);
+    if (Number(state?.quantity || 0) !== 0 || Number(state?.batch_quantity || 0) !== 0 || Number(state?.reserved_quantity || 0) !== 0) {
+      blocked += 1;
+      return;
     }
-    deleteItem.run(row.id);
-    removed += 1;
+    archived += Number(db.prepare(`
+      UPDATE inventory
+      SET archived_at = CURRENT_TIMESTAMP,
+          row_version = COALESCE(row_version, 1) + 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND archived_at IS NULL
+    `).run(row.id).changes || 0);
   });
 
-  return removed;
+  return { archived, blocked };
 }
 
 function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, insertOnly = false } = {}) {
@@ -182,6 +180,7 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, inse
       inserted: 0,
       updated: 0,
       pruned: 0,
+      prune_blocked: 0,
       ocsItems: 0,
       errors: [],
     };
@@ -198,29 +197,24 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, inse
     updated: 0,
     skipped: 0,
     pruned: 0,
+    prune_blocked: 0,
     ocsItems: ocsItems.length,
     errors: [],
   };
 
   const run = db.transaction(() => {
     doctors.forEach((doctor) => {
-      try {
-        ocsItems.forEach((source) => {
-          const action = upsertDoctorItemFromOcs(Number(doctor.id), source, { insertOnly });
-          if (action === "inserted") summary.inserted += 1;
-          else if (action === "updated") summary.updated += 1;
-          else summary.skipped += 1;
-        });
+      ocsItems.forEach((source) => {
+        const action = upsertDoctorItemFromOcs(Number(doctor.id), source, { insertOnly });
+        if (action === "inserted") summary.inserted += 1;
+        else if (action === "updated") summary.updated += 1;
+        else summary.skipped += 1;
+      });
 
-        if (pruneExtras) {
-          summary.pruned += pruneDoctorItemsNotInOcsCatalog(Number(doctor.id), ocsNameKeys);
-        }
-      } catch (error) {
-        summary.errors.push({
-          doctorId: doctor.id,
-          doctorName: doctor.full_name,
-          message: error.message,
-        });
+      if (pruneExtras) {
+        const prune = pruneDoctorItemsNotInOcsCatalog(Number(doctor.id), ocsNameKeys);
+        summary.pruned += prune.archived;
+        summary.prune_blocked += prune.blocked;
       }
     });
   });
@@ -237,6 +231,7 @@ if (require.main === module) {
   console.log(`  Inserted: ${summary.inserted}`);
   console.log(`  Updated:  ${summary.updated}`);
   console.log(`  Pruned:   ${summary.pruned}`);
+  console.log(`  Prune blocked: ${summary.prune_blocked}`);
   if (summary.errors.length) {
     console.error("  Errors:");
     summary.errors.forEach((entry) =>

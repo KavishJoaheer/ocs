@@ -38,7 +38,6 @@ import {
 
 const STATUS_META = {
   ready: { label: "Ready to bill", className: "bg-amber-50 text-amber-800 ring-amber-200" },
-  awaiting_operator: { label: "Awaiting operator", className: "bg-cyan-50 text-cyan-800 ring-cyan-200" },
   needs_doctor: { label: "Needs clarification", className: "bg-rose-50 text-rose-800 ring-rose-200" },
   ready_for_payment: { label: "Ready for payment", className: "bg-violet-50 text-violet-800 ring-violet-200" },
   partial: { label: "Part paid", className: "bg-amber-50 text-amber-800 ring-amber-200" },
@@ -196,6 +195,7 @@ function BillingLitePage() {
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPickerVisitId, setSelectedPickerVisitId] = useState("");
   const [consultationFees, setConsultationFees] = useState({});
+  const [billingCutover, setBillingCutover] = useState({ date: null, active: true });
   const [consultationType, setConsultationType] = useState("Day Consultation");
   const [consultationPrice, setConsultationPrice] = useState("2000");
   const [consultationAdjustmentReason, setConsultationAdjustmentReason] = useState("");
@@ -251,6 +251,10 @@ function BillingLitePage() {
       setPatientOptionsHasMore(Boolean(pickerPayload?.has_more));
       setPatientOptionsOffset(Number(pickerPayload?.next_offset || 0));
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
+      setBillingCutover({
+        date: pickerPayload?.cutover_date || null,
+        active: pickerPayload?.billing_active !== false,
+      });
       setConsultationFees(feePayload || {});
     } catch (error) {
       toast.error(error.message || "Quick billing could not be loaded.");
@@ -308,6 +312,10 @@ function BillingLitePage() {
       setPatientOptionsHasMore(Boolean(payload?.has_more));
       setPatientOptionsOffset(Number(payload?.next_offset || 0));
       if (Array.isArray(payload?.doctors)) setDoctorOptions(payload.doctors);
+      setBillingCutover({
+        date: payload?.cutover_date || null,
+        active: payload?.billing_active !== false,
+      });
     } catch (error) {
       toast.error(error.message || "This doctor’s billable visits could not be loaded.");
     } finally {
@@ -990,6 +998,15 @@ function BillingLitePage() {
               <div className="mb-4 flex items-center justify-center gap-2 rounded-2xl bg-white/95 px-4 py-3 font-black text-[#17666a] shadow-sm">
                 <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
                 Opening charges…
+              </div>
+            ) : null}
+
+            {!billingCutover.active && billingCutover.date ? (
+              <div className="relative z-20 mb-4 rounded-[1.5rem] border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm" role="status">
+                <p className="font-black">Live billing begins {dayjs(billingCutover.date).format("D MMMM YYYY")}</p>
+                <p className="mt-1 text-sm font-semibold">
+                  Visits before the cutover remain closed so trial activity cannot enter the live financial ledger.
+                </p>
               </div>
             ) : null}
 
@@ -1824,7 +1841,6 @@ function BillingLitePage() {
                   className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 font-semibold outline-none focus:border-[#2aa7a0]"
                 >
                   <option value="">All statuses</option>
-                  <option value="awaiting_operator">Awaiting operator</option>
                   <option value="needs_doctor">Needs clarification</option>
                   <option value="ready_for_payment">Ready for payment</option>
                   <option value="completed">Completed</option>

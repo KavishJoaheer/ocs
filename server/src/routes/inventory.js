@@ -1,4 +1,4 @@
-const { financialAction, stockFinancials, movementRows } = require("../lib/inventoryFinancials");
+const { financialAction, stockFinancials, movementBusinessDateSql, movementRows } = require("../lib/inventoryFinancials");
 const { operationFor } = require("../lib/operationReceipts");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const express = require("express");
@@ -1160,6 +1160,7 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
   const dateFrom = String(activityFilters.dateFrom || "").trim();
   const dateTo = String(activityFilters.dateTo || "").trim();
   const rowLimit = isWarehouseManager(role) && (dateFrom || dateTo) ? 2000 : 200;
+  const businessDate = movementBusinessDateSql('m');
 
   const rows = db
     .prepare(`
@@ -1180,8 +1181,8 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
           (@role = 'doctor' AND i.stock_scope = 'doctor' AND i.owner_doctor_id = @doctorId)
           OR (@role != 'doctor')
         )
-        AND (@dateFrom = '' OR date(m.created_at, '+4 hours') >= date(@dateFrom))
-        AND (@dateTo = '' OR date(m.created_at, '+4 hours') <= date(@dateTo))
+        AND (@dateFrom = '' OR ${businessDate} >= date(@dateFrom))
+        AND (@dateTo = '' OR ${businessDate} <= date(@dateTo))
         AND (
           @filterUserId = 0
           OR m.recorded_by_user_id = @filterUserId
@@ -1662,6 +1663,13 @@ function buildActivityHistoryFilter(query = {}) {
   const search = String(query.search || "").trim();
   const dateFrom = String(query.dateFrom || "").trim();
   const dateTo = String(query.dateTo || "").trim();
+  const movementMeta = "CASE WHEN json_valid(m.meta_json) THEN m.meta_json ELSE '{}' END";
+  const businessDate = `CASE
+    WHEN lower(m.action_type) = 'stock_out'
+      AND lower(COALESCE(json_extract(${movementMeta}, '$.stock_out_reason'), '')) = 'sale'
+    THEN COALESCE(date(json_extract(${movementMeta}, '$.dispensed_on')), date(h.timestamp, '+4 hours'))
+    ELSE date(h.timestamp, '+4 hours')
+  END`;
 
   const where = ["1 = 1"];
   const params = {
@@ -1678,10 +1686,10 @@ function buildActivityHistoryFilter(query = {}) {
     where.push("(h.item_name LIKE @search OR h.actor_name LIKE @search OR h.source_text LIKE @search OR h.destination_text LIKE @search)");
   }
   if (dateFrom) {
-    where.push("date(h.timestamp, '+4 hours') >= date(@dateFrom)");
+    where.push(`${businessDate} >= date(@dateFrom)`);
   }
   if (dateTo) {
-    where.push("date(h.timestamp, '+4 hours') <= date(@dateTo)");
+    where.push(`${businessDate} <= date(@dateTo)`);
   }
   if (actionValues.length) {
     const expandedActions = [...new Set(actionValues.flatMap((action) => {
@@ -2427,20 +2435,15 @@ router.post("/items/:id/ocs-actions", (req, res) => {
 
   const previousQuantity = Number(item.quantity || 0);
   if (actionType === "stock_in") {
-    if (
-      req.auth.role === "operator" &&
-      Object.prototype.hasOwnProperty.call(req.body || {}, "cost_price") &&
-      roundCurrency(req.body.cost_price) !== roundCurrency(item.cost_price)
-    ) {
-      return res.status(403).json({
-        error: "Operators cannot change cost price. Receive stock using the existing item cost.",
-      });
+    const standardCost = roundCurrency(item.cost_price);
+    const costPrice = roundCurrency(req.body.cost_price ?? item.cost_price);
+    const costVarianceReason = String(req.body.cost_variance_reason || "").trim();
+    const costChanged = Math.abs(costPrice - standardCost) >= 0.005;
+    if (!Number.isFinite(costPrice) || costPrice <= 0) {
+      return res.status(400).json({ error: "Actual batch cost must be greater than zero." });
     }
-    const costPrice = req.auth.role === "admin"
-      ? roundCurrency(req.body.cost_price ?? item.cost_price)
-      : roundCurrency(item.cost_price);
-    if (costPrice < 0) {
-      return res.status(400).json({ error: "Cost price must be zero or more." });
+    if (costChanged && costVarianceReason.length < 8) {
+      return res.status(400).json({ error: "Explain the actual batch cost difference using at least 8 characters." });
     }
     let expiry;
     try {
@@ -2479,6 +2482,9 @@ router.post("/items/:id/ocs-actions", (req, res) => {
           override_reason: override.reason || "",
           is_non_expiring: expiry.isNonExpiring,
           expiry_date: expiry.expiryDate,
+          catalogue_unit_cost: standardCost,
+          actual_batch_unit_cost: costPrice,
+          cost_variance_reason: costVarianceReason,
         }),
       });
       recordMovementAllocations(movementId, [{
@@ -3070,6 +3076,11 @@ router.post("/items/:id/exceptional-correction", (req, res) => {
       affectReservations: req.body?.affect_reservations === true || req.body?.impact_reservations === true,
       expectedRowVersion: req.body?.expected_row_version ?? req.body?.row_version,
       expectedQuantity: req.body?.expected_quantity,
+      batchCost: req.body?.batch_cost,
+      batchExpiryDate: req.body?.batch_expiry_date,
+      batchIsNonExpiring: req.body?.batch_is_non_expiring,
+      batchReference: req.body?.batch_reference,
+      confirmBatchEvidence: req.body?.confirm_batch_evidence,
       userId: req.auth.id,
       actor: {
         userId: req.auth.id,
@@ -3810,11 +3821,12 @@ router.post("/restock/my-inventory", (req, res) => {
     .map((entry) => ({
       ocs_item_id: Number(entry?.ocs_item_id || 0),
       quantity: Number(entry?.quantity || 0),
+      expected_version: Number(entry?.expected_version || 0),
     }))
-    .filter((entry) => entry.ocs_item_id && Number.isInteger(entry.quantity) && entry.quantity > 0);
+    .filter((entry) => entry.ocs_item_id && Number.isInteger(entry.quantity) && entry.quantity > 0 && Number.isInteger(entry.expected_version) && entry.expected_version > 0);
 
   if (!sanitized.length) {
-    return res.status(400).json({ error: "Each restock item must include ocs_item_id and positive quantity." });
+    return res.status(400).json({ error: "Each restock item must include ocs_item_id, positive quantity, and expected_version." });
   }
 
   const doctor = db.prepare("SELECT id, full_name FROM doctors WHERE id = ? AND deleted_at IS NULL").get(doctorId);
@@ -3830,6 +3842,12 @@ router.post("/restock/my-inventory", (req, res) => {
         const source = findItem(request.ocs_item_id, "ocs", null);
         if (!source) {
           throw new Error("One or more OCS stock items were not found.");
+        }
+        if (Number(source.row_version || 0) !== request.expected_version) {
+          throw Object.assign(
+            new Error(`${source.item_name} changed since this transfer was prepared. Refresh and try again.`),
+            { status: 409, code: "STALE_INVENTORY_VERSION" },
+          );
         }
 
         const sourceQty = Number(source.quantity || 0);
@@ -3850,7 +3868,15 @@ router.post("/restock/my-inventory", (req, res) => {
         }
 
         const sourceNext = sourceQty - request.quantity;
-        updateInventoryQuantity(source.id, sourceNext);
+        const sourceUpdated = updateInventoryQuantity(source.id, sourceNext, {
+          expectedVersion: request.expected_version,
+        });
+        if (!sourceUpdated?.ok) {
+          throw Object.assign(
+            new Error(`${source.item_name} changed while the transfer was being posted. Refresh and try again.`),
+            { status: 409, code: "STALE_INVENTORY_VERSION" },
+          );
+        }
         const sourceMovementId = recordMovement({
           itemId: source.id,
           movementType: "out",

@@ -20,6 +20,7 @@ const {
   markSaleMovementsBilled,
   pendingSales,
   matchesVisit,
+  unresolvedPendingSalesForConsultation,
 } = require("../lib/saleBillingLinkage");
 const { decorateInventoryItems } = require("../lib/inventoryStockState");
 const {
@@ -35,6 +36,7 @@ const {
 } = require("../lib/inventoryReversal");
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 const { financialAction, stockFinancials } = require("../lib/inventoryFinancials");
+const { getBillingCutoverDate } = require("../lib/billingCutover");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -573,6 +575,7 @@ function quickVisitBaseRows(doctorId, {
   const safeLimit = Math.min(250, Math.max(1, Number.parseInt(limit, 10) || 100));
   const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
   const normalizedSearch = String(search || "").trim().toLowerCase().slice(0, 100);
+  const cutoverDate = getBillingCutoverDate(db);
   return db
     .prepare(`
       SELECT
@@ -594,6 +597,7 @@ function quickVisitBaseRows(doctorId, {
       WHERE c.doctor_id = @doctorId
         AND c.voided_at IS NULL
         AND p.deleted_at IS NULL
+        AND (@cutoverDate = '' OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) >= date(@cutoverDate))
         AND (@consultationId IS NULL OR c.id = @consultationId)
         AND (@patientIdentifier = '' OR UPPER(p.patient_identifier) = @patientIdentifier)
         AND (
@@ -672,6 +676,7 @@ function quickVisitBaseRows(doctorId, {
       search: normalizedSearch,
       searchPattern: `%${normalizedSearch}%`,
       billableRole: String(billableRole || ""),
+      cutoverDate,
       limit: safeLimit,
       offset: safeOffset,
     });
@@ -1979,10 +1984,14 @@ router.get("/quick/visits", (req, res) => {
   if (!doctorId) return;
 
   const visits = quickVisitBaseRows(doctorId, { todayOnly: true }).map(serializeQuickVisit);
+  const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
+  const cutoverDate = getBillingCutoverDate(db);
   res.json({
     visits,
     tariffs: CONSULTATION_FEES,
-    local_date: db.prepare("SELECT date('now', '+4 hours') AS value").get().value,
+    cutover_date: cutoverDate || null,
+    local_date: localDate,
+    billing_active: !cutoverDate || localDate >= cutoverDate,
   });
 });
 
@@ -1991,12 +2000,13 @@ router.get("/quick/picker-options", (req, res) => {
   if (!doctorId && res.headersSent) return;
   const doctors = ["operator", "admin"].includes(req.auth?.role) ? quickBillingDoctorOptions() : [];
   const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
+  const cutoverDate = getBillingCutoverDate(db);
   if (!doctorId) return res.json({
     doctors,
     patients: [],
-    cutover_date: null,
+    cutover_date: cutoverDate || null,
     local_date: localDate,
-    billing_active: true,
+    billing_active: !cutoverDate || localDate >= cutoverDate,
     next_offset: 0,
     has_more: false,
   });
@@ -2040,9 +2050,9 @@ router.get("/quick/picker-options", (req, res) => {
     offset,
     next_offset: offset + visits.length,
     has_more: hasMore,
-    cutover_date: null,
+    cutover_date: cutoverDate || null,
     local_date: localDate,
-    billing_active: true,
+    billing_active: !cutoverDate || localDate >= cutoverDate,
   });
 });
 
@@ -2559,6 +2569,15 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   if (!requestedConsultation || requestedConsultation.voided_at) {
     return res.status(404).json({ error: "This visit was not found." });
   }
+  const cutoverDate = getBillingCutoverDate(db);
+  const consultationBusinessDate = String(requestedConsultation.consultation_date || "").slice(0, 10);
+  if (cutoverDate && consultationBusinessDate < cutoverDate) {
+    return res.status(409).json({
+      error: `Billing is closed for visits before ${cutoverDate}.`,
+      code: "BILLING_CUTOVER_NOT_REACHED",
+      cutover_date: cutoverDate,
+    });
+  }
   try {
     assertBillingActorConsultationAccess(req.auth, requestedConsultation, req.body?.doctor_id);
   } catch (error) {
@@ -2901,6 +2920,19 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         actor: req.auth,
         billingId: bill.id,
       });
+      const unresolvedDispensing = unresolvedPendingSalesForConsultation(consultationId);
+      if (unresolvedDispensing.length) {
+        throw Object.assign(
+          new Error("Resolve every consultation-linked field dispensing line before issuing this invoice."),
+          {
+            status: 409,
+            extra: {
+              code: "UNRESOLVED_CONSULTATION_DISPENSING",
+              movement_ids: unresolvedDispensing.map((movement) => Number(movement.id)),
+            },
+          },
+        );
+      }
       touchedItemIds = [...new Set([
         ...(correctionReversal.touchedItemIds || []),
         ...(applied.touchedItemIds || []),

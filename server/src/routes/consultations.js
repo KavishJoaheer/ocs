@@ -419,6 +419,7 @@ router.delete("/:id", (req, res) => {
     reverseInventoryForConsultation(consultationId, req.auth || {}, {
       reason,
       confirmLegacyException: req.body?.confirm_legacy_exception === true,
+      fieldSaleDisposition: String(req.body?.field_sale_disposition || "").trim(),
     });
     db.prepare(`
       UPDATE billing

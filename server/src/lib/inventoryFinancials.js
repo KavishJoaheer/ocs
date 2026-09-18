@@ -3,6 +3,15 @@ const parse = value => {
   try { const meta = JSON.parse(value || '{}'); return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {}; }
   catch { return {}; }
 };
+function movementBusinessDateSql(alias = 'm') {
+  const meta = `CASE WHEN json_valid(${alias}.meta_json) THEN ${alias}.meta_json ELSE '{}' END`;
+  return `CASE
+    WHEN lower(${alias}.action_type) = 'stock_out'
+      AND lower(COALESCE(json_extract(${meta}, '$.stock_out_reason'), '')) = 'sale'
+    THEN COALESCE(date(json_extract(${meta}, '$.dispensed_on')), date(${alias}.created_at, '+4 hours'))
+    ELSE date(${alias}.created_at, '+4 hours')
+  END`;
+}
 function financialAction(row) {
   const meta = parse(row.current_meta_json || row.meta_json);
   let action = String(row.movement_action_type || row.action_type || '').toLowerCase();
@@ -45,11 +54,12 @@ function stockFinancials(rows) {
     estimated_movement_count: rows.filter(row => row.valuation_basis === 'legacy_estimate').length};
 }
 function movementRows(db, {from, to, doctorId = null} = {}) {
+  const businessDate = movementBusinessDateSql('m');
   return db.prepare(`SELECT m.*, i.stock_scope, i.owner_doctor_id FROM inventory_movements m
     JOIN inventory i ON i.id=m.item_id
-    WHERE (? IS NULL OR date(m.created_at,'+4 hours') >= date(?))
-      AND (? IS NULL OR date(m.created_at,'+4 hours') <= date(?))
+    WHERE (? IS NULL OR ${businessDate} >= date(?))
+      AND (? IS NULL OR ${businessDate} <= date(?))
       AND (? IS NULL OR (i.stock_scope='doctor' AND i.owner_doctor_id=?))`)
     .all(from||null,from||null,to||null,to||null,doctorId,doctorId);
 }
-module.exports = { financialAction, stockFinancials, movementRows };
+module.exports = { financialAction, stockFinancials, movementBusinessDateSql, movementRows };

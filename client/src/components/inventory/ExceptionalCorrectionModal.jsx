@@ -18,6 +18,11 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [affectConfirmed, setAffectConfirmed] = useState(false);
+  const [batchCost, setBatchCost] = useState("");
+  const [batchExpiryDate, setBatchExpiryDate] = useState("");
+  const [batchIsNonExpiring, setBatchIsNonExpiring] = useState(false);
+  const [batchReference, setBatchReference] = useState("");
+  const [batchEvidenceConfirmed, setBatchEvidenceConfirmed] = useState(false);
   const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
   if (syncedDeps.open !== open || syncedDeps.itemId !== item?.id) {
@@ -31,6 +36,11 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
       setStep("form");
       setPreview(null);
       setAffectConfirmed(false);
+      setBatchCost(String(item?.cost_price > 0 ? item.cost_price : ""));
+      setBatchExpiryDate("");
+      setBatchIsNonExpiring(false);
+      setBatchReference("");
+      setBatchEvidenceConfirmed(false);
     }
   }
 
@@ -39,7 +49,13 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
   const change = parsedNext - current;
   const validQty = Number.isInteger(parsedNext) && parsedNext >= 0;
   const reasonOk = String(reason).trim().length >= 10;
-  const formValid = validQty && reasonOk;
+  const positiveEvidenceReady = change <= 0 || (
+    Number(batchCost) > 0 &&
+    String(batchReference).trim().length >= 3 &&
+    (batchIsNonExpiring || Boolean(batchExpiryDate)) &&
+    batchEvidenceConfirmed
+  );
+  const formValid = validQty && reasonOk && positiveEvidenceReady;
   const dirty = open && (String(reason).trim() !== "" || String(note).trim() !== "" || change !== 0);
 
   useEffect(() => {
@@ -61,8 +77,15 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
       ["Reserved", String(preview?.reserved_quantity ?? "—")],
       ["Reason", reason.trim() || "—"],
       ["Note", note.trim() || "—"],
+      ...(change > 0
+        ? [
+            ["Verified unit cost", formatRupees(batchCost)],
+            ["Batch expiry", batchIsNonExpiring ? "Non-expiring" : batchExpiryDate || "—"],
+            ["Evidence reference", batchReference.trim() || "—"],
+          ]
+        : []),
     ],
-    [item?.item_name, current, change, parsedNext, preview, reason, note],
+    [item?.item_name, current, change, parsedNext, preview, reason, note, batchCost, batchExpiryDate, batchIsNonExpiring, batchReference],
   );
 
   async function requestPreview() {
@@ -128,6 +151,15 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
             affect_reservations: highRisk === true,
             expected_row_version: preview?.row_version,
             expected_quantity: preview?.quantity,
+            ...(change > 0
+              ? {
+                  batch_cost: Number(batchCost),
+                  batch_expiry_date: batchIsNonExpiring ? "" : batchExpiryDate,
+                  batch_is_non_expiring: batchIsNonExpiring,
+                  batch_reference: batchReference.trim(),
+                  confirm_batch_evidence: batchEvidenceConfirmed,
+                }
+              : {}),
           });
         }}
       >
@@ -240,6 +272,36 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
                   ? ` · value ${formatRupees(Math.abs(change) * Number(item.cost_price || 0))}`
                   : ""}
               </p>
+              {change > 0 ? (
+                <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <legend className="px-1 text-sm font-bold text-amber-950">Verified batch evidence</legend>
+                  <p className="text-xs text-amber-900">
+                    Added quantity remains blocked until its actual cost and expiry status are documented.
+                  </p>
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">Verified unit cost (Rs)</span>
+                    <input required min="0.01" step="0.01" type="number" value={batchCost} onChange={(event) => setBatchCost(event.target.value)} className={FIELD} />
+                  </label>
+                  <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" checked={batchIsNonExpiring} onChange={(event) => { setBatchIsNonExpiring(event.target.checked); if (event.target.checked) setBatchExpiryDate(""); }} />
+                    This verified batch is non-expiring
+                  </label>
+                  {!batchIsNonExpiring ? (
+                    <label className="block space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">Verified expiry date</span>
+                      <input required type="date" value={batchExpiryDate} onChange={(event) => setBatchExpiryDate(event.target.value)} className={FIELD} />
+                    </label>
+                  ) : null}
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">Receipt or count-sheet reference</span>
+                    <input required minLength={3} value={batchReference} onChange={(event) => setBatchReference(event.target.value)} className={FIELD} />
+                  </label>
+                  <label className="flex items-start gap-3 text-sm text-amber-950">
+                    <input className="mt-1" type="checkbox" checked={batchEvidenceConfirmed} onChange={(event) => setBatchEvidenceConfirmed(event.target.checked)} />
+                    I verified these batch details against the referenced source evidence.
+                  </label>
+                </fieldset>
+              ) : null}
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Reason (required)</span>
                 <textarea required minLength={10} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} className={FIELD} />

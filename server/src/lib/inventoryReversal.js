@@ -2,7 +2,7 @@
 
 const { db } = require("../db");
 const { publishInventoryChange } = require("./inventoryRealtime");
-const { unlinkSaleMovementsByIds, unlinkSaleMovementsForBills } = require("./saleBillingLinkage");
+const { unlinkSaleMovementsByIds } = require("./saleBillingLinkage");
 const { assertInventoryQuantityUpdate } = require("./inventoryQuantity");
 const {
   allocationsForMovement,
@@ -87,10 +87,145 @@ function createLegacyExceptionBatch(itemId, quantity, meta = {}) {
   };
 }
 
+function fieldSaleMovementsForConsultation(consultationId) {
+  return db.prepare(`
+    SELECT m.*
+    FROM inventory_movements m
+    WHERE m.movement_type = 'out'
+      AND m.action_type = 'stock_out'
+      AND json_extract(m.meta_json, '$.stock_out_reason') = 'Sale'
+      AND CAST(json_extract(m.meta_json, '$.consultation_id') AS INTEGER) = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM inventory_movements reversal
+        WHERE reversal.action_type = 'reversal'
+          AND CAST(json_extract(reversal.meta_json, '$.reversed_movement_id') AS INTEGER) = m.id
+      )
+    ORDER BY m.id
+  `).all(Number(consultationId));
+}
+
+function resolveFieldSalesForConsultationVoid({ consultationId, actor = {}, reason = "", disposition = "" }) {
+  const movements = fieldSaleMovementsForConsultation(consultationId);
+  if (!movements.length) return { resolved: 0, restored: 0, consumed: 0, touchedItemIds: [] };
+  if (!["returned_to_stock", "consumed_or_wasted"].includes(disposition)) {
+    throw HttpError(
+      409,
+      "Select whether the field-dispensed supplies were returned to stock or consumed/wasted before voiding this consultation.",
+      { code: "FIELD_SALE_DISPOSITION_REQUIRED", field_sale_count: movements.length },
+    );
+  }
+
+  const actorName = resolveAuditActor({
+    displayName: actor.full_name || actor.username,
+    userId: actor.id,
+    required: true,
+  });
+  const touchedItemIds = new Set();
+  let restored = 0;
+  let consumed = 0;
+
+  for (const movement of movements) {
+    const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(movement.item_id);
+    const quantity = Number(movement.quantity || 0);
+    if (!item || !Number.isInteger(quantity) || quantity <= 0) {
+      throw HttpError(409, "A field-dispensing movement cannot be resolved safely.", {
+        code: "FIELD_SALE_MOVEMENT_INVALID",
+        movement_id: Number(movement.id),
+      });
+    }
+    const tableAllocations = allocationsForMovement(movement.id);
+    const metaAllocations = parseMetaAllocations(movement.meta_json);
+    const allocations = tableAllocations.length ? tableAllocations : metaAllocations;
+    const allocatedQuantity = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+    if (!allocations.length || allocatedQuantity !== quantity) {
+      throw HttpError(409, "The original field-dispensing batch evidence is incomplete. Apply an authorised correction before voiding.", {
+        code: "FIELD_SALE_DISPOSITION_REQUIRES_CORRECTION",
+        movement_id: Number(movement.id),
+      });
+    }
+
+    const baseMeta = {
+      consultation_id: Number(consultationId),
+      billing_id: (() => { try { return JSON.parse(movement.meta_json || "{}")?.billing_id || null; } catch { return null; } })(),
+      reversed_movement_id: Number(movement.id),
+      original_action_type: movement.action_type,
+      original_stock_out_reason: "Sale",
+      void_disposition: disposition,
+      reason: String(reason || "").trim(),
+      performed_by_user_id: actor.id || null,
+      performed_by_role: actor.role || "",
+      performed_by_name: actorName,
+    };
+
+    if (disposition === "returned_to_stock") {
+      const restoredAllocations = restoreOriginalAllocations(item.id, allocations);
+      const previousQuantity = Number(item.quantity || 0);
+      const nextQuantity = previousQuantity + quantity;
+      assertInventoryQuantityUpdate(item.id, nextQuantity, item.row_version);
+      const inserted = db.prepare(`
+        INSERT INTO inventory_movements (
+          item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+          recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+          unit_cost_snapshot, unit_price_snapshot, valuation_basis
+        ) VALUES (?, 'in', ?, ?, ?, ?, ?, ?, 'reversal', 'consultation', ?, ?, ?, ?, ?)
+      `).run(
+        item.id, quantity, previousQuantity, nextQuantity, item.owner_doctor_id || null,
+        actor.id || null, `Field-dispensed supplies returned while voiding consultation #${consultationId}.`,
+        Number(consultationId), JSON.stringify({ ...baseMeta, allocations: restoredAllocations }),
+        movement.unit_cost_snapshot, movement.unit_price_snapshot, movement.valuation_basis,
+      );
+      const reversalId = Number(inserted.lastInsertRowid);
+      recordMovementAllocations(reversalId, restoredAllocations);
+      restored += 1;
+    } else {
+      const currentQuantity = Number(item.quantity || 0);
+      const offset = db.prepare(`
+        INSERT INTO inventory_movements (
+          item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+          recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+          unit_cost_snapshot, unit_price_snapshot, valuation_basis
+        ) VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, 'reversal', 'consultation', ?, ?, ?, ?, ?)
+      `).run(
+        item.id, quantity, currentQuantity, currentQuantity, item.owner_doctor_id || null,
+        actor.id || null, `Field sale classification reversed while voiding consultation #${consultationId}.`,
+        Number(consultationId), JSON.stringify({ ...baseMeta, no_stock_quantity_change: true }),
+        movement.unit_cost_snapshot, movement.unit_price_snapshot, movement.valuation_basis,
+      );
+      const offsetId = Number(offset.lastInsertRowid);
+      recordMovementAllocations(offsetId, allocations);
+      const wastage = db.prepare(`
+        INSERT INTO inventory_movements (
+          item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+          recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+          unit_cost_snapshot, unit_price_snapshot, valuation_basis
+        ) VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, 'wastage', 'consultation', ?, ?, ?, 0, ?)
+      `).run(
+        item.id, quantity, currentQuantity, currentQuantity, item.owner_doctor_id || null,
+        actor.id || null, `Field-dispensed supplies consumed or wasted while voiding consultation #${consultationId}.`,
+        Number(consultationId), JSON.stringify({ ...baseMeta, no_stock_quantity_change: true, disposition }),
+        movement.unit_cost_snapshot, movement.valuation_basis,
+      );
+      recordMovementAllocations(Number(wastage.lastInsertRowid), allocations);
+      consumed += 1;
+    }
+
+    let originalMeta = {};
+    try { originalMeta = JSON.parse(movement.meta_json || "{}"); } catch { originalMeta = {}; }
+    originalMeta.billing_status = disposition === "returned_to_stock" ? "Voided - Returned" : "Voided - Consumed/Wasted";
+    originalMeta.void_disposition = disposition;
+    originalMeta.void_reason = String(reason || "").trim();
+    originalMeta.voided_at = new Date().toISOString();
+    db.prepare("UPDATE inventory_movements SET meta_json = ? WHERE id = ?").run(JSON.stringify(originalMeta), movement.id);
+    touchedItemIds.add(Number(item.id));
+  }
+
+  return { resolved: movements.length, restored, consumed, touchedItemIds: [...touchedItemIds] };
+}
+
 function reverseInventoryForConsultation(
   consultationId,
   actor = {},
-  { reason = "", confirmLegacyException = false } = {},
+  { reason = "", confirmLegacyException = false, fieldSaleDisposition = "" } = {},
 ) {
   const consultation = db
     .prepare("SELECT id, appointment_id FROM consultations WHERE id = ?")
@@ -99,14 +234,12 @@ function reverseInventoryForConsultation(
     return { reversed: 0, idempotent: true };
   }
 
-  const billIds = db
-    .prepare("SELECT id FROM billing WHERE consultation_id = ?")
-    .all(consultationId)
-    .map((row) => Number(row.id))
-    .filter(Boolean);
-  if (billIds.length > 0) {
-    unlinkSaleMovementsForBills(billIds);
-  }
+  const fieldSaleResolution = resolveFieldSalesForConsultationVoid({
+    consultationId,
+    actor,
+    reason,
+    disposition: fieldSaleDisposition,
+  });
 
   const movements = db
     .prepare(
@@ -129,12 +262,15 @@ function reverseInventoryForConsultation(
     .all(consultationId, Number(consultation.appointment_id || 0), Number(consultation.appointment_id || 0));
 
   if (!movements.length) {
-    return { reversed: 0 };
+    for (const itemId of fieldSaleResolution.touchedItemIds) {
+      publishInventoryChange({ itemId, changedByUserId: actor?.id || null });
+    }
+    return { reversed: 0, field_sale_resolution: fieldSaleResolution };
   }
 
   let reversed = 0;
   let skipped = 0;
-  const touchedItemIds = new Set();
+  const touchedItemIds = new Set(fieldSaleResolution.touchedItemIds);
   const actorName = resolveAuditActor({
     displayName: actor.full_name || actor.username,
     userId: actor.id,
@@ -254,7 +390,12 @@ function reverseInventoryForConsultation(
     }
   }
 
-  return { reversed, skipped, idempotent: reversed === 0 && skipped > 0 };
+  return {
+    reversed,
+    skipped,
+    field_sale_resolution: fieldSaleResolution,
+    idempotent: reversed === 0 && skipped > 0 && fieldSaleResolution.resolved === 0,
+  };
 }
 
 function reverseBillingSubmissionInventory({
@@ -651,4 +792,5 @@ module.exports = {
   reverseBillingSubmissionInventory,
   reverseInventoryForConsultation,
   reverseWriteOffMovement,
+  resolveFieldSalesForConsultationVoid,
 };

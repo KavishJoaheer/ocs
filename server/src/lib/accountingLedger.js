@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 
-const { financialAction } = require("./inventoryFinancials");
+const { financialAction, movementBusinessDateSql } = require("./inventoryFinancials");
 const { isConsultationFee } = require("./consultationFees");
 const { normalizeBillingItems } = require("./utils");
 
@@ -324,7 +324,7 @@ function syncOperationalLedger(db) {
   }
 
   const movements = db.prepare(`
-    SELECT m.*,i.item_name,date(m.created_at,'+4 hours') AS business_date
+    SELECT m.*,i.item_name,${movementBusinessDateSql('m')} AS business_date
     FROM inventory_movements m JOIN inventory i ON i.id=m.item_id
     WHERE m.unit_cost_snapshot IS NOT NULL AND m.unit_cost_snapshot > 0 ORDER BY m.id
   `).all();

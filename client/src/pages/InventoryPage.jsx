@@ -175,6 +175,7 @@ function buildDoctorFillCandidate(myItem, source) {
     par_level: min,
     required_quantity: required,
     ocs_available: ocsAvailable,
+    ocs_row_version: Number(source.row_version || 1),
     ocs_expiry: source.nearest_usable_expiry || source.expiry_date || null,
   };
 }
@@ -552,6 +553,7 @@ function DoctorRestockModal({ open, item, candidates = [], isSaving, onClose, on
                 quantity: Number(qtyById[row.ocs_item_id] || 0),
                 item_name: row.item_name,
                 ocs_available: Number(row.ocs_available || 0),
+                ocs_row_version: Number(row.ocs_row_version || 1),
               }))
               .filter((row) => Number.isInteger(row.quantity) && row.quantity > 0);
             if (!requests.length) {
@@ -572,6 +574,7 @@ function DoctorRestockModal({ open, item, candidates = [], isSaving, onClose, on
             quantity: qty,
             item_name: item?.item_name || "",
             ocs_available: available,
+            ocs_row_version: Number(item?.ocs_row_version || 1),
           });
         }}
       >
@@ -3560,6 +3563,7 @@ export default function InventoryPage() {
       current_quantity: Number(nextItem.quantity || 0),
       par_level: Number(nextItem.minimum_quantity || 0),
       ocs_expiry: source.expiry_date || null,
+      ocs_row_version: Number(source.row_version || 1),
     });
     setDoctorRestockOpen(true);
   }
@@ -3839,9 +3843,11 @@ export default function InventoryPage() {
     setIsSaving(true);
     try {
       const next = await api.post(`/inventory/restock/my-inventory${inventoryListQuery}`, {
+        operation_id: crypto.randomUUID(),
         items: requests.map((item) => ({
           ocs_item_id: Number(item.ocs_item_id),
           quantity: Number(item.required_quantity || item.quantity),
+          expected_version: Number(item.ocs_row_version || item.row_version || 0) || undefined,
         })),
         reason: reason.trim(),
         confirm: true,
@@ -4048,6 +4054,7 @@ export default function InventoryPage() {
         current_quantity: Number(myMatch?.quantity || 0),
         par_level: Number(myMatch?.minimum_quantity || bagItem.minimum_quantity || 0),
         ocs_expiry: bagItem.expiry_date || null,
+        ocs_row_version: Number(bagItem.row_version || 1),
       };
     }
     const source = ocsByFolderAndName.get(
@@ -4061,6 +4068,7 @@ export default function InventoryPage() {
       current_quantity: Number(bagItem.quantity || 0),
       par_level: Number(bagItem.minimum_quantity || 0),
       ocs_expiry: source.expiry_date || null,
+      ocs_row_version: Number(source.row_version || 1),
     };
   }
 
@@ -4088,13 +4096,16 @@ export default function InventoryPage() {
     }
 
     const endpoint = `/inventory/restock/my-inventory${inventoryListQuery}`;
+    const operationId = crypto.randomUUID();
     const payload = {
+      operation_id: operationId,
       reason: String(reason || "").trim(),
       confirm: confirm === true,
       items: [
         {
-          ocs_item_id: Number(target.ocs_item_id),
-          quantity: qty,
+            ocs_item_id: Number(target.ocs_item_id),
+            quantity: qty,
+            expected_version: Number(target.ocs_row_version || 0) || undefined,
         },
       ],
     };

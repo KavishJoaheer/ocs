@@ -1033,7 +1033,9 @@ test('eight-day-old dispensing links by its visit and keeps its original price w
   const date=db.prepare("SELECT date('now','+4 hours','-8 days') AS day").get().day;
   const ctx=context('Delayed same visit',date);const it=item('Delayed linked medicine');
   assert.equal((await fieldSale(ctx,it,{dispensed_on:date})).status,201);
-  db.prepare("UPDATE inventory_movements SET created_at=datetime('now','-8 days') WHERE item_id=?").run(it.id);
+  const datedHistory=await api('GET',`/inventory/activity-history?dateFrom=${date}&dateTo=${date}&search=Delayed%20linked%20medicine`);
+  assert.equal(datedHistory.status,200,JSON.stringify(datedHistory.data));assert.equal(datedHistory.data.total,1);
+  assert.equal(db.prepare("SELECT date(created_at,'+4 hours') AS day FROM inventory_movements WHERE item_id=?").get(it.id).day,today);
   await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
   const first=await bill(ctx,[stockLine(it)],{operation_id:randomUUID()});assert.equal(first.status,201,JSON.stringify(first.data));
   assert.equal(first.data.total_amount,50);assert.equal(row(it.id).quantity,18);
@@ -1061,18 +1063,20 @@ test('consultation-linked dispensing removes visit ambiguity while partial and c
   assert.equal(row(it.id).quantity,18);
 });
 
-test('consultation-linked pending attachment uses frozen sale price and an invoice void does not invent a physical field return', async () => {
+test('consultation-linked pending attachment uses frozen sale price and invoice void requires a physical disposition', async () => {
   const ctx=context('Pending automatic');const it=item('Frozen pending medicine');
   await fieldSale(ctx,it,{dispensed_on:today});await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
   const created=await bill(ctx,[standardFee(),stockLine(it)],{operation_id:randomUUID()});assert.equal(created.status,201,JSON.stringify(created.data));
   const b=(await api('GET',`/billing/visit/${ctx.consultationId}`,'doctor')).data.bills[0];
   assert.equal(b.total_amount,2050);assert.equal(row(it.id).quantity,18);
   const h=(await api('GET','/inventory/activity-history?search=Frozen%20pending%20medicine')).data.rows[0];assert.equal(h.billing_id,b.id);assert.equal(h.value_rs,50);
-  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Duplicate clinical note in test'})).status,204);
+  const missingDisposition=await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Duplicate clinical note in test'});
+  assert.equal(missingDisposition.status,409);assert.equal(missingDisposition.data.code,'FIELD_SALE_DISPOSITION_REQUIRED');
+  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Duplicate clinical note in test',field_sale_disposition:'consumed_or_wasted'})).status,204);
   assert.equal(row(it.id).quantity,18);
-  assert.equal(JSON.parse(db.prepare('SELECT meta_json FROM inventory_movements WHERE item_id=?').get(it.id).meta_json).billing_status,'Pending Manual Entry');
+  assert.equal(JSON.parse(db.prepare("SELECT meta_json FROM inventory_movements WHERE item_id=? AND action_type='stock_out'").get(it.id).meta_json).billing_status,'Voided - Consumed/Wasted');
   const review=(await api('GET','/billing/reconciliation','doctor')).data;
-  assert.ok(review.issues.some(i=>i.type==='unbilled_dispensing'&&i.movement_id===h.movement_id));assert.equal(review.stock,undefined);
+  assert.ok(!review.issues.some(i=>i.type==='unbilled_dispensing'&&i.movement_id===h.movement_id));assert.equal(review.stock,undefined);
 });
 
 test('sale, price changes and reversal reconcile financial aggregates and sale-filter CSV', async () => {

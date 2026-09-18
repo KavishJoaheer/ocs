@@ -308,9 +308,14 @@ function consumeAllocatedBatches(allocations) {
     }
     const updated = db
       .prepare(
-        `UPDATE inventory_batches SET quantity_remaining = quantity_remaining - ? WHERE id = ? AND quantity_remaining >= ?`,
+        `UPDATE inventory_batches
+         SET quantity_remaining = quantity_remaining - ?,
+             row_version = COALESCE(row_version, 1) + 1
+         WHERE id = ?
+           AND quantity_remaining >= ?
+           AND COALESCE(row_version, 1) = ?`,
       )
-      .run(take, allocation.batch_id, take);
+      .run(take, allocation.batch_id, take, Number(batch.row_version || 1));
     if (!updated.changes) {
       throw HttpError(409, "A selected batch was updated concurrently. Retry the operation.");
     }
@@ -410,6 +415,11 @@ function applyExceptionalCorrection({
   affectReservations = false,
   expectedRowVersion = null,
   expectedQuantity = null,
+  batchCost = null,
+  batchExpiryDate = null,
+  batchIsNonExpiring = false,
+  batchReference = "",
+  confirmBatchEvidence = false,
 }) {
   if (confirm !== true && confirm !== "true") {
     throw HttpError(400, "Confirm the exceptional inventory correction before applying it.");
@@ -437,6 +447,30 @@ function applyExceptionalCorrection({
   const { previous, next, change } = resolveCorrectionQuantity(item, { nextQuantity, delta });
   if (change === 0) {
     return { item, previous, next, change: 0, idempotent: true, movementId: null };
+  }
+  let positiveBatch = null;
+  if (change > 0) {
+    const verifiedCost = roundCurrency(batchCost);
+    const reference = String(batchReference || "").trim().slice(0, 200);
+    if (!(verifiedCost > 0)) {
+      throw HttpError(400, "Enter the verified unit cost for stock being added.");
+    }
+    if (reference.length < 3) {
+      throw HttpError(400, "Enter the receipt, count sheet, or evidence reference for stock being added.");
+    }
+    if (confirmBatchEvidence !== true && confirmBatchEvidence !== "true") {
+      throw HttpError(400, "Confirm that the batch cost and expiry details were verified from source evidence.");
+    }
+    const expiry = validateReceiptExpiry({
+      expiryDate: batchExpiryDate,
+      isNonExpiring: parseNonExpiringFlag(batchIsNonExpiring),
+    });
+    positiveBatch = {
+      unitCost: verifiedCost,
+      expiryDate: expiry.expiryDate,
+      isNonExpiring: expiry.isNonExpiring,
+      reference,
+    };
   }
   const impacted = listImpactedActiveRequests(itemId);
   const blocking = impacted.filter((row) => row.blocking);
@@ -505,15 +539,21 @@ function applyExceptionalCorrection({
     } else {
       db.prepare(
         `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-         VALUES (?, ?, NULL, ?, 1)`,
-      ).run(itemId, lockedChange, roundCurrency(locked.cost_price || 0));
+         VALUES (?, ?, ?, ?, ?)`,
+      ).run(
+        itemId,
+        lockedChange,
+        positiveBatch.expiryDate,
+        positiveBatch.unitCost,
+        positiveBatch.isNonExpiring ? 1 : 0,
+      );
       allocations = [
         {
           batch_id: Number(db.prepare("SELECT last_insert_rowid() AS id").get()?.id || 0),
           quantity: lockedChange,
-          expiry_date: null,
-          is_non_expiring: true,
-          unit_cost: roundCurrency(locked.cost_price || 0),
+          expiry_date: positiveBatch.expiryDate,
+          is_non_expiring: positiveBatch.isNonExpiring,
+          unit_cost: positiveBatch.unitCost,
         },
       ];
     }
@@ -543,10 +583,14 @@ function applyExceptionalCorrection({
         impacted_requests: listImpactedActiveRequests(itemId),
         reservation_adjustments: reservationAdjustments,
         allocations,
+        batch_evidence_reference: positiveBatch?.reference || null,
         source_location: "Master Stock",
         destination_location: "Exceptional correction",
       }),
     });
+    if (allocations.length) {
+      recordMovementAllocations(movementId, allocations);
+    }
     publishInventoryResyncBroadcast({ reason: "exceptional_correction" });
     return {
       item: db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId),

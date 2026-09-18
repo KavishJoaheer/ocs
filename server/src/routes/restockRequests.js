@@ -22,6 +22,7 @@ const {
   supplyRequestStatusLabel,
 } = require("../lib/restockRequestWorkflow");
 const { movementIdsForTransaction } = require("../lib/inventoryOperations");
+const { operationFor } = require("../lib/operationReceipts");
 const { LEGACY_STAFF_LABEL, resolveAuditActor } = require("../lib/auditActor");
 const { assertRoutineOperatorAction } = require("../lib/inventoryAccess");
 const { normalizeHistoryFolderOptions } = require("../lib/inventoryStockState");
@@ -1184,6 +1185,12 @@ router.post("/", (req, res) => {
   const note = String(req.body?.note || "").trim().slice(0, 500);
   const collectionDay = getWeekdayForIsoDate(collectionDate);
   const actor = actorFromAuth(req.auth);
+  let operation;
+  try {
+    operation = operationFor(req, "restock-request:create", { legacyWindow: true });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
 
   const insertRequest = db.prepare(`
     INSERT INTO restock_requests (
@@ -1207,7 +1214,15 @@ router.post("/", (req, res) => {
     VALUES (?, ?, ?, ?)
   `);
 
+  let created;
+  let replayed = false;
   const createRequest = db.transaction(() => {
+    const replay = operation.read();
+    if (replay?.request) {
+      replayed = true;
+      created = replay.request;
+      return;
+    }
     const info = insertRequest.run(
       doctorId,
       req.auth.id,
@@ -1231,13 +1246,17 @@ router.post("/", (req, res) => {
         items: snapshotItems(itemsPayload.items),
       },
     });
-    return requestId;
+    created = getRequestById(requestId);
+    operation.save({ request: created });
   });
 
-  const newId = createRequest();
-  const created = getRequestById(newId);
+  try {
+    createRequest.immediate();
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message || "Could not create supply request." });
+  }
 
-  notifyBestEffort(
+  if (!replayed) notifyBestEffort(
     () =>
       sendPushToRole("operator", {
         title: "📋 Restock Request",
@@ -1246,14 +1265,15 @@ router.post("/", (req, res) => {
         } for ${created.collection_date}.`,
         url: "/inventory",
         icon: "/icon-192.png",
-        tag: `restock-request-${newId}`,
+        tag: `restock-request-${created.id}`,
       }),
     "restock request operator notify failed",
   );
 
-  broadcastSupplyRequestChange(doctorId);
+  if (!replayed) broadcastSupplyRequestChange(doctorId);
 
-  return res.status(201).json({ request: created });
+  if (replayed) res.setHeader("X-Idempotent-Replay", "true");
+  return res.status(replayed ? 200 : 201).json({ request: created });
 });
 
 router.put("/:id", (req, res) => {

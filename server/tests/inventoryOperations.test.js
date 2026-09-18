@@ -3,6 +3,7 @@
 const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
+const { randomUUID } = require("node:crypto");
 
 const TMP_DB = path.join(os.tmpdir(), `ocs-inventory-ops-${process.pid}-${Date.now()}.db`);
 process.env.DB_PATH = TMP_DB;
@@ -19,6 +20,7 @@ const { availableToPromise } = require("../src/lib/restockFulfilment");
 const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
 const { decorateInventoryItems, summarizeLocationValuation } = require("../src/lib/inventoryStockState");
 const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
+const { upsertOcsMasterStockDataset } = require("../src/lib/ocsMasterStockUpsert");
 
 test("inventory cadence summaries remain flexible and use recorded activity", () => {
   const now = Date.parse("2026-09-14T12:00:00.000Z");
@@ -200,6 +202,53 @@ after(async () => {
       // ignore
     }
   }
+});
+
+test("catalogue synchronization preserves live quantities and batches and rolls back archived collisions", () => {
+  const categoryRow = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable' LIMIT 1").get();
+  assert.ok(categoryRow);
+  const category = categoryRow.name;
+  const existingName = `Sync preserve ${Date.now()}`;
+  const existingId = insertOcsItem({ name: existingName, qty: 5, expiry: "2031-04-30" });
+  const originalBatch = db.prepare("SELECT * FROM inventory_batches WHERE item_id = ?").get(existingId);
+  upsertOcsMasterStockDataset([{
+    name: existingName,
+    category,
+    current_quantity: 999,
+    par_level: 7,
+    nearest_expiry: "2040-01-01",
+  }], { skipInit: true });
+  const preserved = db.prepare("SELECT quantity, minimum_quantity FROM inventory WHERE id = ?").get(existingId);
+  const preservedBatch = db.prepare("SELECT * FROM inventory_batches WHERE id = ?").get(originalBatch.id);
+  assert.equal(preserved.quantity, 5);
+  assert.equal(preserved.minimum_quantity, 7);
+  assert.equal(preservedBatch.quantity_remaining, originalBatch.quantity_remaining);
+  assert.equal(preservedBatch.expiry_date, originalBatch.expiry_date);
+  assert.equal(preservedBatch.unit_cost, originalBatch.unit_cost);
+
+  const archivedName = `Archived sync collision ${Date.now()}`;
+  db.prepare(`INSERT INTO inventory (
+    item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+    stock_scope, archived_at
+  ) VALUES (?, ?, 0, 0, 'unit', 0, 0, 'ocs', CURRENT_TIMESTAMP)`).run(archivedName, categoryRow.id);
+  const rolledBackName = `Atomic sync rollback ${Date.now()}`;
+  assert.throws(() => upsertOcsMasterStockDataset([
+    { name: rolledBackName, category, current_quantity: 0, par_level: 0, nearest_expiry: null },
+    { name: archivedName, category, current_quantity: 0, par_level: 0, nearest_expiry: null },
+  ], { skipInit: true }), /archived warehouse item/i);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory WHERE item_name = ?").get(rolledBackName).count, 0);
+});
+
+test("active doctor bags enforce one row per doctor and item name", () => {
+  const itemName = `Unique bag item ${Date.now()}`;
+  db.prepare(`INSERT INTO inventory (
+    item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+    stock_scope, owner_doctor_id
+  ) VALUES (?, ?, 0, 0, 'unit', 5, 10, 'doctor', ?)`).run(itemName, folderId, doctorId);
+  assert.throws(() => db.prepare(`INSERT INTO inventory (
+    item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+    stock_scope, owner_doctor_id
+  ) VALUES (?, ?, 0, 0, 'unit', 5, 10, 'doctor', ?)`).run(itemName.toUpperCase(), folderId, doctorId), /UNIQUE constraint failed/i);
 });
 
 test("acceptance creates reservations without reducing physical quantity", async () => {
@@ -472,19 +521,29 @@ test("enabled emergency override requires a valid reason and records the flag", 
   const itemId = insertOcsItem({ name: `EmergOn ${Date.now()}`, qty: 5 });
   const missing = await api("POST", "/api/inventory/restock/my-inventory", {
     token: doctorToken,
-    body: { items: [{ ocs_item_id: itemId, quantity: 1 }], confirm: true, reason: "short" },
+    body: { items: [{ ocs_item_id: itemId, quantity: 1, expected_version: 1 }], confirm: true, reason: "short" },
   });
   assert.equal(missing.status, 400);
+  const operationId = `emergency-restock-${Date.now()}`;
+  const payload = {
+    operation_id: operationId,
+    items: [{
+      ocs_item_id: itemId,
+      quantity: 1,
+      expected_version: db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version,
+    }],
+    confirm: true,
+    reason: "Clinic bag empty before an urgent home visit",
+  };
   const ok = await api("POST", "/api/inventory/restock/my-inventory", {
     token: doctorToken,
-    body: {
-      items: [{ ocs_item_id: itemId, quantity: 1 }],
-      confirm: true,
-      reason: "Clinic bag empty before an urgent home visit",
-    },
+    body: payload,
   });
   assert.equal(ok.status, 201, JSON.stringify(ok.data));
   assert.equal(ok.data.emergency_override, true);
+  const replay = await api("POST", "/api/inventory/restock/my-inventory", { token: doctorToken, body: payload });
+  assert.equal(replay.status, 201, JSON.stringify(replay.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 4);
   delete process.env.ENABLE_DOCTOR_EMERGENCY_RESTOCK;
 });
 
@@ -1151,8 +1210,26 @@ test("past expiry receipt is rejected and future or non-expiring receipts are ac
     body: { action_type: "stock_in", quantity: 3, is_non_expiring: true },
   });
   assert.equal(nonExpiring.status, 201, JSON.stringify(nonExpiring.data));
+  const missingVarianceReason = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: { action_type: "stock_in", quantity: 1, expiry_date: offsetLocalDate(30), cost_price: 6 },
+  });
+  assert.equal(missingVarianceReason.status, 400, JSON.stringify(missingVarianceReason.data));
+  const actualCost = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: {
+      action_type: "stock_in",
+      quantity: 1,
+      expiry_date: offsetLocalDate(30),
+      cost_price: 6,
+      cost_variance_reason: "Supplier invoice confirms revised batch cost",
+    },
+  });
+  assert.equal(actualCost.status, 201, JSON.stringify(actualCost.data));
   const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
-  assert.equal(qty, 8);
+  assert.equal(qty, 9);
+  const receivedBatch = db.prepare("SELECT unit_cost FROM inventory_batches WHERE item_id = ? ORDER BY id DESC LIMIT 1").get(itemId);
+  assert.equal(receivedBatch.unit_cost, 6);
 });
 
 test("admin cannot receive stock without an operational override", async () => {
@@ -1199,6 +1276,10 @@ test("exceptional correction is admin-only, audited, and keeps batch totals alig
       reason: "Found extra boxes in the locked cupboard",
       note: "Weekend count",
       confirm: true,
+      batch_cost: 5,
+      batch_expiry_date: offsetLocalDate(90),
+      batch_reference: "COUNT-SHEET-001",
+      confirm_batch_evidence: true,
     },
   });
   assert.equal(ok.status, 201, JSON.stringify(ok.data));
@@ -1213,6 +1294,25 @@ test("exceptional correction is admin-only, audited, and keeps batch totals alig
     .get(itemId);
   assert.ok(movement);
   assert.match(String(movement.note || ""), /Found extra boxes/);
+  const allocation = db.prepare("SELECT unit_cost FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id);
+  assert.equal(allocation.unit_cost, 5);
+  const locked = db.prepare("SELECT quantity, row_version FROM inventory WHERE id = ?").get(itemId);
+  const reduction = await api("POST", `/api/inventory/items/${itemId}/exceptional-correction`, {
+    token: adminToken,
+    body: {
+      next_quantity: 6,
+      expected_quantity: locked.quantity,
+      expected_row_version: locked.row_version,
+      reason: "Count sheet confirms two fewer units on shelf",
+      note: "COUNT-SHEET-002",
+      confirm: true,
+    },
+  });
+  assert.equal(reduction.status, 201, JSON.stringify(reduction.data));
+  const negativeMovement = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'exceptional_correction' ORDER BY id DESC LIMIT 1").get(itemId);
+  const negativeAllocations = db.prepare("SELECT quantity, unit_cost FROM inventory_movement_allocations WHERE movement_id = ?").all(negativeMovement.id);
+  assert.equal(negativeAllocations.reduce((sum, row) => sum + Number(row.quantity), 0), 2);
+  assert.equal(negativeAllocations.every((row) => Number(row.unit_cost) === 5), true);
   const audit = db
     .prepare("SELECT * FROM inventory_audit_logs WHERE item_id = ? AND action_type = 'exceptional_correction'")
     .get(itemId);
@@ -1779,10 +1879,12 @@ test("emergency restock rejects reserved and expired stock", async () => {
   process.env.ENABLE_DOCTOR_EMERGENCY_RESTOCK = "true";
   const reservedItem = insertOcsItem({ name: `EmergRes ${Date.now()}`, qty: 2 });
   await createAcceptedRequest({ itemId: reservedItem, itemName: "EmergRes", quantity: 2 });
+  const reservedVersion = Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(reservedItem).row_version);
   const reserved = await api("POST", "/api/inventory/restock/my-inventory", {
     token: doctorToken,
     body: {
-      items: [{ ocs_item_id: reservedItem, quantity: 1 }],
+      operation_id: randomUUID(),
+      items: [{ ocs_item_id: reservedItem, quantity: 1, expected_version: reservedVersion }],
       confirm: true,
       reason: "Clinic bag empty before an urgent home visit",
     },
@@ -1790,10 +1892,12 @@ test("emergency restock rejects reserved and expired stock", async () => {
   assert.equal(reserved.status, 409);
   const expiredId = insertOcsItem({ name: `EmergExp ${Date.now()}`, qty: 3, expiry: "2020-01-01" });
   db.prepare("UPDATE inventory_batches SET expiry_date = '2020-01-01' WHERE item_id = ?").run(expiredId);
+  const expiredVersion = Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(expiredId).row_version);
   const expired = await api("POST", "/api/inventory/restock/my-inventory", {
     token: doctorToken,
     body: {
-      items: [{ ocs_item_id: expiredId, quantity: 1 }],
+      operation_id: randomUUID(),
+      items: [{ ocs_item_id: expiredId, quantity: 1, expected_version: expiredVersion }],
       confirm: true,
       reason: "Clinic bag empty before an urgent home visit",
     },

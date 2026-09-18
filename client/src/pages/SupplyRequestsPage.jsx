@@ -253,7 +253,10 @@ export default function SupplyRequestsPage() {
         await api.put(`/restock-requests/${editingRequest.id}`, payload);
         toast.success("Supply request updated.");
       } else {
-        await api.post("/restock-requests", payload);
+        await api.post("/restock-requests", {
+          ...payload,
+          operation_id: payload.operation_id || crypto.randomUUID(),
+        });
         toast.success("Supply request sent to operators.");
       }
       closeModal();
