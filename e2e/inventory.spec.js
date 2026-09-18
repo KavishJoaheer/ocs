@@ -100,6 +100,7 @@ async function createStockedItem(request, { adminToken, operatorToken, name, qua
         data: {
           action_type: "stock_in",
           quantity,
+          actual_batch_cost: costPrice,
           expiry_date: isNonExpiring ? null : expiryDate,
           is_non_expiring: isNonExpiring,
         },
@@ -1014,13 +1015,22 @@ test.describe("Inventory workflow", () => {
   test("incomplete pricing is not shown as a complete Rs 0.00 valuation", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");
-    await createStockedItem(request, {
+    const legacyUnpriced = await createStockedItem(request, {
       adminToken: admin.token,
       operatorToken: operator.token,
       name: `E2E Unpriced ${Date.now()}`,
-      quantity: 3,
+      quantity: 0,
       costPrice: 0,
     });
+    // Deliberately model an imported legacy balance that predates the verified
+    // batch-cost gate. New receipts must never create this state through the API.
+    const db = openE2eDb();
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+      VALUES (?, 3, '2029-06-01', 0, 0)
+    `).run(legacyUnpriced.id);
+    db.prepare("UPDATE inventory SET quantity = 3 WHERE id = ?").run(legacyUnpriced.id);
+    db.close();
     await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
