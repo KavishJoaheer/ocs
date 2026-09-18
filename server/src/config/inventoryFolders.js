@@ -7,6 +7,8 @@ const REQUIRED_INVENTORY_FOLDERS = [
   "Pediatric Drugs",
   "Oral Drugs",
   "Investigation",
+  "Catherisation & NGT",
+  "O2 & Nebuliser",
 ];
 
 function inventoryFolderOrderSql(columnName = "name") {

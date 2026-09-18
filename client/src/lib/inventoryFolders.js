@@ -12,7 +12,7 @@ export function getFolderIdsWithStock(items = []) {
 }
 
 /**
- * @param {Array} folders - all folders from API (7 canonical categories)
+ * @param {Array} folders - all folders from API (9 canonical categories)
  * @param {Array} items - active stock list for current view
  * @param {{ showAllCategories?: boolean }} options
  *   showAllCategories: true on OCS warehouse view — always show IM/IV/etc. pills even when empty
