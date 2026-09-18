@@ -8,6 +8,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 // demand, so the initial staff-portal bundle stays small and the app feels
 // instant. Login + the layout shell stay eager for an immediate first paint.
 const AppointmentsPage = lazy(() => import("./pages/AppointmentsPage.jsx"));
+const AccountingPage = lazy(() => import("./pages/AccountingPage.jsx"));
 const BillingWorkspacePage = lazy(() => import("./pages/BillingWorkspacePage.jsx"));
 const ConsultationDetailPage = lazy(() => import("./pages/ConsultationDetailPage.jsx"));
 const ConsultationsPage = lazy(() => import("./pages/ConsultationsPage.jsx"));
@@ -175,6 +176,7 @@ function App() {
           </Route>
           <Route element={<ProtectedRoute roles={["admin", "accountant"]} />}>
             <Route path="/admin/finance" element={<BillingWorkspacePage />} />
+            <Route path="/admin/accounts" element={<AccountingPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin"]} />}>

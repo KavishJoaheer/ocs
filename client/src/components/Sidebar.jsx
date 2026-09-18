@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CalendarDays,
   ClipboardList,
+  BookOpen,
   CreditCard,
   LayoutDashboard,
   LogOut,
@@ -129,6 +130,12 @@ const navItems = [
     to: "/admin/finance",
     label: "Finance",
     icon: CreditCard,
+    roles: ["admin", "accountant"],
+  },
+  {
+    to: "/admin/accounts",
+    label: "Chart of accounts",
+    icon: BookOpen,
     roles: ["admin", "accountant"],
   },
   {

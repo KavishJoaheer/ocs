@@ -1,6 +1,7 @@
 "use strict";
 
 const { ensureFinancialIntegritySchema } = require("./financialIntegritySchema");
+const { ensureAccountingSchema } = require("./accountingSchema");
 const { parseMetaAllocations, signedMovementQuantity } = require("./inventoryMovementAllocations");
 const { setBillingCutoverDate } = require("./billingCutover");
 
@@ -29,6 +30,15 @@ const RESETTABLE_TABLES = [
   "finance_supplier_invoice_lines",
   "finance_supplier_invoices",
   "finance_monthly_closings",
+  "finance_bank_statement_lines",
+  "finance_asset_depreciation",
+  "finance_fixed_assets",
+  "finance_payroll_runs",
+  "finance_tax_obligations",
+  "finance_manual_journal_requests",
+  "finance_journal_lines",
+  "finance_journal_entries",
+  "finance_accounting_period_locks",
 ];
 
 const DELETE_GUARD_TRIGGERS = [
@@ -54,6 +64,22 @@ const DELETE_GUARD_TRIGGERS = [
   "finance_supplier_lines_no_delete",
   "finance_supplier_invoices_no_delete",
   "finance_monthly_closings_no_delete",
+  "finance_statement_line_no_delete",
+  "finance_statement_line_update_guard",
+  "finance_posted_line_no_delete",
+  "finance_posted_line_no_insert",
+  "finance_journal_no_delete",
+  "finance_asset_records_no_update",
+  "finance_asset_records_no_delete",
+  "finance_depreciation_no_update",
+  "finance_depreciation_no_delete",
+  "finance_payroll_update_guard",
+  "finance_payroll_no_delete",
+  "finance_tax_update_guard",
+  "finance_tax_no_delete",
+  "finance_accounting_locks_no_update",
+  "finance_accounting_locks_no_delete",
+  "finance_manual_journal_no_delete",
 ];
 
 function tableExists(db, name) {
@@ -330,6 +356,15 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
     }
 
     const orderedDeletes = [
+      "finance_bank_statement_lines",
+      "finance_asset_depreciation",
+      "finance_fixed_assets",
+      "finance_payroll_runs",
+      "finance_tax_obligations",
+      "finance_manual_journal_requests",
+      "finance_journal_lines",
+      "finance_journal_entries",
+      "finance_accounting_period_locks",
       "finance_monthly_closings",
       "finance_expense_payment_reversals",
       "finance_expense_payments",
@@ -368,6 +403,7 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
     }
     setBillingCutoverDate(db, normalizedCutoverDate, reason);
     ensureFinancialIntegritySchema(db);
+    ensureAccountingSchema(db);
     after = Object.fromEntries(RESETTABLE_TABLES.map((table) => [table, countRows(db, table)]));
     const nonEmpty = Object.entries(after).filter(([, count]) => count !== 0);
     if (nonEmpty.length) {

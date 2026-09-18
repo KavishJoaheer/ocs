@@ -17,6 +17,7 @@ const appointmentsRouter = require("./routes/appointments");
 const consultationsRouter = require("./routes/consultations");
 const billingRouter = require("./routes/billing");
 const financeRouter = require("./routes/finance");
+const accountingRouter = require("./routes/accounting");
 const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
 const pushRouter = require("./routes/push");
@@ -33,6 +34,7 @@ const {
 } = require("./lib/patientAuth");
 const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
 const { getBuildInfo } = require("./lib/buildInfo");
+const { syncOperationalLedger } = require("./lib/accountingLedger");
 
 let initialized = false;
 
@@ -114,6 +116,16 @@ function authorizePatientApiRequest(req, res, next) {
   }
 
   return authorizePatientApi(req, res, next);
+}
+
+function syncAccountingAfterWrite(req, res, next) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  res.on("finish", () => {
+    if (res.statusCode >= 400) return;
+    try { syncOperationalLedger(db); }
+    catch (error) { console.error("[accounting] automatic ledger sync failed:", error); }
+  });
+  return next();
 }
 
 function createApp() {
@@ -349,13 +361,21 @@ function createApp() {
       PUT: ["admin", "accountant", "doctor", "operator"],
       PATCH: ["admin", "accountant", "doctor", "operator"],
     }),
+    syncAccountingAfterWrite,
     billingRouter,
   );
   app.use(
     "/api/finance",
     requireAuth,
     authorizeRoles("admin", "accountant"),
+    syncAccountingAfterWrite,
     financeRouter,
+  );
+  app.use(
+    "/api/accounting",
+    requireAuth,
+    authorizeRoles("admin", "accountant"),
+    accountingRouter,
   );
   app.use(
     "/api/lab-reports",
@@ -398,6 +418,7 @@ function createApp() {
 
       return authorizeRoles("admin", "doctor", "operator")(req, res, next);
     },
+    syncAccountingAfterWrite,
     inventoryRouter,
   );
 
