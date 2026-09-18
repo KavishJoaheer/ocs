@@ -13,6 +13,8 @@
  */
 
 const { ocsIVDrugsExtension } = require("../config/ocsIVDrugsExtension");
+const { initializeDatabase } = require("../db");
+const { alignInventoryCategories } = require("../lib/inventoryCategoryAlignment");
 const { upsertOcsMasterStockDataset } = require("../lib/ocsMasterStockUpsert");
 const { syncDoctorStockFromOcsSync } = require("./syncDoctorStockFromOcs");
 
@@ -20,10 +22,13 @@ function seedOcsIVDrugsExtensionSync({
   skipInit = false,
   syncDoctorBags = String(process.env.SYNC_DOCTOR_BAGS ?? "true").toLowerCase() !== "false",
 } = {}) {
+  if (!skipInit) initializeDatabase();
+  const beforeSeed = alignInventoryCategories();
   const summary = upsertOcsMasterStockDataset(ocsIVDrugsExtension, {
-    skipInit,
+    skipInit: true,
     insertOnly: false,
   });
+  const afterSeed = alignInventoryCategories();
 
   let doctorSync = null;
   if (syncDoctorBags) {
@@ -34,16 +39,28 @@ function seedOcsIVDrugsExtensionSync({
     });
   }
 
-  return { ivDrugs: summary, doctorBags: doctorSync };
+  return {
+    ivDrugs: summary,
+    doctorBags: doctorSync,
+    categoryAlignment: {
+      updated: beforeSeed.updated + afterSeed.updated,
+      inserted: beforeSeed.inserted + afterSeed.inserted,
+      renamed: beforeSeed.renamed + afterSeed.renamed,
+      conflicts: beforeSeed.conflicts + afterSeed.conflicts,
+    },
+  };
 }
 
 function printSummary(result) {
-  const { ivDrugs, doctorBags } = result;
+  const { ivDrugs, doctorBags, categoryAlignment } = result;
   console.log("OCS IV Drugs extension upsert complete.");
   console.log(`  Inserted: ${ivDrugs.inserted}`);
   console.log(`  Updated:  ${ivDrugs.updated}`);
   console.log(`  Skipped:  ${ivDrugs.skipped}`);
   console.log(`  Total:    ${ocsIVDrugsExtension.length}`);
+  console.log(`  Category rows aligned: ${categoryAlignment.updated}`);
+  console.log(`  Catalogue rows renamed: ${categoryAlignment.renamed}`);
+  console.log(`  Required category rows added: ${categoryAlignment.inserted}`);
 
   if (ivDrugs.errors.length) {
     console.error("  Errors:");

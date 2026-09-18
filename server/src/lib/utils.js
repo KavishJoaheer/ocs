@@ -106,6 +106,19 @@ function normalizeBillingItems(items) {
           : {}),
         ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
         ...(item?.is_service_charge ? {is_service_charge:true} : {}),
+        ...(isValidCurrencyAmount(item?.catalog_unit_price)
+          ? {catalog_unit_price:Number(item.catalog_unit_price)}
+          : {}),
+        ...(String(item?.price_adjustment_reason || "").trim()
+          ? {price_adjustment_reason:String(item.price_adjustment_reason).trim().slice(0,500)}
+          : {}),
+        ...(item?.price_adjusted_by_user_id ? {price_adjusted_by_user_id:Number(item.price_adjusted_by_user_id)} : {}),
+        ...(String(item?.price_adjusted_by_name || "").trim()
+          ? {price_adjusted_by_name:String(item.price_adjusted_by_name).trim().slice(0,200)}
+          : {}),
+        ...(String(item?.price_adjusted_by_role || "").trim()
+          ? {price_adjusted_by_role:String(item.price_adjusted_by_role).trim().slice(0,50)}
+          : {}),
         ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
         ...(Array.isArray(item?.inventory_movement_ids) ? {inventory_movement_ids: item.inventory_movement_ids.map(Number).filter(Boolean)} : {}),
         appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,

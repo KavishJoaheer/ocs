@@ -191,7 +191,7 @@ test("finance roles cannot issue quick billing or deduct doctor stock", async ()
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, beforeQuantity);
 });
 
-test("a reviewed quick bill stops when a supply price changed before sync", async () => {
+test("a reviewed quick bill requires an audited reason when a supply price is adjusted", async () => {
   const beforeQuantity = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   const denied = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
@@ -199,10 +199,10 @@ test("a reviewed quick bill stops when a supply price changed before sync", asyn
     consultation_fee: { type: "Night Consultation", amount: 3000 },
     items: [{ inventory_item_id: itemId, quantity: 1, unit_price: 70 }],
   });
-  assert.equal(denied.status, 409, JSON.stringify(denied.data));
-  assert.equal(denied.data.code, "BILLING_PRICE_CHANGED");
-  assert.equal(denied.data.changed_prices[0].reviewed_price, 70);
-  assert.equal(denied.data.changed_prices[0].current_price, 75);
+  assert.equal(denied.status, 400, JSON.stringify(denied.data));
+  assert.equal(denied.data.code, "SUPPLY_PRICE_REASON_REQUIRED");
+  assert.equal(denied.data.reviewed_price, 70);
+  assert.equal(denied.data.standard_price, 75);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, beforeQuantity);
 });
 
@@ -252,6 +252,15 @@ test("operator quick billing requires the matching consultation doctor and paper
       .run(appointmentId, patient.id, doctorId, today).lastInsertRowid,
   );
   ensureBillingForConsultation(operatorConsultationId, patient.id, null, "Day Consultation");
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1").get().id);
+  const operatorItemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, owner_doctor_id, stock_scope, quantity,
+      minimum_quantity, unit, cost_price, selling_price
+    ) VALUES ('Operator adjusted-price item', ?, ?, 'doctor', 2, 0, 'unit', 20, 50)
+  `).run(folderId, doctorId).lastInsertRowid);
+  db.prepare("INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status) VALUES (?, 2, '2032-12-31', 20, 0, 'usable')")
+    .run(operatorItemId);
 
   const missingDoctor = await api(
     "POST",
@@ -307,7 +316,12 @@ test("operator quick billing requires the matching consultation doctor and paper
       payment_date: today,
       raised_by_doctor: true,
       consultation_fee: { type: "Day Consultation", amount: 2000 },
-      items: [],
+      items: [{
+        inventory_item_id: operatorItemId,
+        quantity: 1,
+        unit_price: 45,
+        price_adjustment_reason: "Approved patient discount",
+      }],
     },
   );
   assert.equal(issued.status, 201, JSON.stringify(issued.data));
@@ -319,6 +333,13 @@ test("operator quick billing requires the matching consultation doctor and paper
   assert.equal(bill.payment_method, "cash");
   assert.equal(issued.data.submission.workflow_status, "completed");
   assert.equal(issued.data.submission.payment.state, "paid");
+  assert.equal(issued.data.submission.amount_added, 45);
+  const operatorBill = JSON.parse(db.prepare("SELECT items FROM billing WHERE consultation_id = ?").get(operatorConsultationId).items);
+  const adjustedOperatorLine = operatorBill.find((item) => Number(item.inventory_item_id) === operatorItemId);
+  assert.equal(adjustedOperatorLine.unit_price, 45);
+  assert.equal(adjustedOperatorLine.catalog_unit_price, 50);
+  assert.equal(adjustedOperatorLine.price_adjustment_reason, "Approved patient discount");
+  assert.equal(adjustedOperatorLine.price_adjusted_by_role, "operator");
 
   const repeatedIssue = await api(
     "POST",
@@ -364,18 +385,23 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
       amount: 1750,
       adjustment_reason: "Reduced review tariff approved for this visit",
     },
-    items: [{ inventory_item_id: itemId, quantity: 2 }],
+    items: [{
+      inventory_item_id: itemId,
+      quantity: 2,
+      unit_price: 70,
+      price_adjustment_reason: "Approved supply discount",
+    }],
   };
   const captured = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, body);
   assert.equal(captured.status, 201, JSON.stringify(captured.data));
   assert.equal(captured.data.submission.item_count, 2);
-  assert.equal(captured.data.submission.amount_added, 150);
+  assert.equal(captured.data.submission.amount_added, 140);
   assert.equal(captured.data.submission.consultation_fee.type, "Review Consultation");
   assert.equal(captured.data.submission.consultation_fee.amount, 1750);
   assert.equal(captured.data.submission.consultation_fee.changed, true);
   assert.equal(captured.data.visit.consultation_fee.type, "Review Consultation");
   assert.equal(captured.data.visit.consultation_fee.amount, 1750);
-  assert.equal(captured.data.visit.bill_total, 1900);
+  assert.equal(captured.data.visit.bill_total, 1890);
   assert.equal(captured.data.visit.submission_status, "completed");
   assert.equal(captured.data.submission.workflow_status, "completed");
   assert.equal(captured.data.submission.payment.state, "paid");
@@ -397,7 +423,19 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   `).get(captured.data.submission.bill_id);
   assert.match(billEvent.reason, /Consultation fee adjusted/);
   const quickEvent = db.prepare("SELECT details_json FROM billing_quick_events WHERE submission_id = ? AND event_type = 'submitted'").get(captured.data.submission.submission_id);
-  assert.equal(JSON.parse(quickEvent.details_json).consultation_fee.amount, 1750);
+  const quickEventDetails = JSON.parse(quickEvent.details_json);
+  assert.equal(quickEventDetails.consultation_fee.amount, 1750);
+  assert.deepEqual(quickEventDetails.supply_price_adjustments.map((item) => ({
+    original_unit_price: item.original_unit_price,
+    adjusted_unit_price: item.adjusted_unit_price,
+    reason: item.reason,
+    adjusted_by_role: item.adjusted_by_role,
+  })), [{
+    original_unit_price: 75,
+    adjusted_unit_price: 70,
+    reason: "Approved supply discount",
+    adjusted_by_role: "doctor",
+  }]);
 
   const retried = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, body);
   assert.equal(retried.status, 201, JSON.stringify(retried.data));

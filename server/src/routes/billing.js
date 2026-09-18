@@ -868,6 +868,7 @@ function insertInventoryMovement({
   userId,
   appointmentId,
   consultationId,
+  unitPriceSnapshot = null,
   meta = {},
 }) {
   ensureActivityHistoryTable();
@@ -904,6 +905,10 @@ function insertInventoryMovement({
 
   const inserted = db.prepare("SELECT last_insert_rowid() AS id").get();
   const movementId = Number(inserted?.id || 0);
+  if (movementId && isValidCurrencyAmount(unitPriceSnapshot)) {
+    db.prepare("UPDATE inventory_movements SET unit_price_snapshot = ? WHERE id = ?")
+      .run(roundCurrency(unitPriceSnapshot), movementId);
+  }
   db.prepare(`
     INSERT INTO inventory_activity_history (
       movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type, item_name,
@@ -1094,7 +1099,15 @@ function applyInventoryTransactions({
           selected_batch_id: actionType === "wastage" ? Number(line.batch_id) : null,
           linked_sale_movement_ids: linkedSaleMovementIds,
           linked_sale_credit_qty: qty - qtyToDecrement,
+          catalog_unit_price: roundCurrency(stockItem.selling_price),
+          billed_unit_price: line.price_adjustment_reason
+            ? roundCurrency(line.unit_price)
+            : roundCurrency(stockItem.selling_price),
+          price_adjustment_reason: line.price_adjustment_reason || null,
         },
+        unitPriceSnapshot: line.price_adjustment_reason
+          ? roundCurrency(line.unit_price)
+          : roundCurrency(stockItem.selling_price),
       });
       recordMovementAllocations(movementId, allocations);
       inventoryMovementIds.push(movementId);
@@ -1102,6 +1115,9 @@ function applyInventoryTransactions({
 
     touchedItemIds.add(Number(stockItem.id));
 
+    const billedUnitPrice = line.price_adjustment_reason
+      ? roundCurrency(line.unit_price)
+      : roundCurrency(stockItem.selling_price);
     const computedAmount =
       line.type === "Wastage"
         ? roundCurrency(allocations.reduce(
@@ -1110,7 +1126,9 @@ function applyInventoryTransactions({
           ))
         : line.type === "Adjustment"
           ? roundCurrency(Number(stockItem.cost_price || 0) * qty)
-          : roundCurrency(recordedSaleAmount + Number(stockItem.selling_price || 0) * qtyToDecrement);
+          : line.price_adjustment_reason
+            ? roundCurrency(billedUnitPrice * qty)
+            : roundCurrency(recordedSaleAmount + Number(stockItem.selling_price || 0) * qtyToDecrement);
 
     processed.push({
       ...line,
@@ -2610,6 +2628,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
 
   const mergedQuantities = new Map();
   const reviewedUnitPrices = new Map();
+  const reviewedPriceReasons = new Map();
   for (const item of rawItems) {
     const itemId = Number(item?.inventory_item_id || 0);
     const quantity = Number(item?.quantity || 0);
@@ -2626,6 +2645,11 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       }
       reviewedUnitPrices.set(itemId, reviewedPrice);
     }
+    const priceAdjustmentReason = String(item?.price_adjustment_reason || "").trim().slice(0, 500);
+    if (reviewedPriceReasons.has(itemId) && reviewedPriceReasons.get(itemId) !== priceAdjustmentReason) {
+      return res.status(400).json({ error: "A supply cannot contain conflicting price-adjustment reasons." });
+    }
+    reviewedPriceReasons.set(itemId, priceAdjustmentReason);
     mergedQuantities.set(itemId, (mergedQuantities.get(itemId) || 0) + quantity);
   }
 
@@ -2818,24 +2842,54 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           const reviewedPrice = reviewedUnitPrices.get(itemId);
           const currentPrice = roundCurrency(stockById.get(itemId)?.selling_price);
           return reviewedPrice !== undefined && Math.abs(reviewedPrice - currentPrice) >= 0.005
-            ? [{ inventory_item_id: itemId, item_name: stockById.get(itemId)?.item_name || "Supply", reviewed_price: reviewedPrice, current_price: currentPrice }]
+            ? [{
+                inventory_item_id: itemId,
+                item_name: stockById.get(itemId)?.item_name || "Supply",
+                reviewed_price: reviewedPrice,
+                current_price: currentPrice,
+                reason: reviewedPriceReasons.get(itemId) || "",
+              }]
             : [];
         });
-        if (changedPrices.length) {
+        const missingAdjustmentReason = changedPrices.find((item) => item.reason.length < 8);
+        if (missingAdjustmentReason) {
           throw Object.assign(
-            new Error("One or more supply prices changed after this bill was reviewed. Reopen the saved bill and confirm the updated total."),
-            { status: 409, extra: { code: "BILLING_PRICE_CHANGED", changed_prices: changedPrices } },
+            new Error(`Explain why the price of ${missingAdjustmentReason.item_name} differs from its standard stock price (at least 8 characters).`),
+            {
+              status: 400,
+              extra: {
+                code: "SUPPLY_PRICE_REASON_REQUIRED",
+                inventory_item_id: missingAdjustmentReason.inventory_item_id,
+                reviewed_price: missingAdjustmentReason.reviewed_price,
+                standard_price: missingAdjustmentReason.current_price,
+              },
+            },
           );
         }
         chargeLines = requestedIds.map((itemId) => {
           const item = stockById.get(itemId);
           const quantity = mergedQuantities.get(itemId);
+          const standardUnitPrice = roundCurrency(item.selling_price);
+          const reviewedUnitPrice = reviewedUnitPrices.has(itemId)
+            ? reviewedUnitPrices.get(itemId)
+            : standardUnitPrice;
+          const priceWasAdjusted = Math.abs(reviewedUnitPrice - standardUnitPrice) >= 0.005;
           return {
             description: item.item_name,
-            amount: roundCurrency(Number(item.selling_price || 0) * quantity),
+            amount: roundCurrency(reviewedUnitPrice * quantity),
+            unit_price: reviewedUnitPrice,
             type: "Sale",
             quantity,
             inventory_item_id: itemId,
+            ...(priceWasAdjusted
+              ? {
+                  catalog_unit_price: standardUnitPrice,
+                  price_adjustment_reason: reviewedPriceReasons.get(itemId),
+                  price_adjusted_by_user_id: Number(req.auth?.id || 0) || null,
+                  price_adjusted_by_name: String(req.auth?.full_name || req.auth?.username || ""),
+                  price_adjusted_by_role: String(req.auth?.role || ""),
+                }
+              : {}),
           };
         });
       }
@@ -3031,6 +3085,19 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             confirmed: feeConfirmed,
             adjustment_reason: feeChanged ? requestedFeeReason : "",
           },
+          supply_price_adjustments: addedItems
+            .filter((item) => item.price_adjustment_reason)
+            .map((item) => ({
+              inventory_item_id: Number(item.inventory_item_id),
+              item_name: String(item.description || ""),
+              quantity: Number(item.quantity || 0),
+              original_unit_price: roundCurrency(item.catalog_unit_price),
+              adjusted_unit_price: roundCurrency(item.unit_price),
+              reason: String(item.price_adjustment_reason || ""),
+              adjusted_by_user_id: Number(item.price_adjusted_by_user_id || req.auth?.id || 0) || null,
+              adjusted_by_name: String(item.price_adjusted_by_name || req.auth?.full_name || req.auth?.username || ""),
+              adjusted_by_role: String(item.price_adjusted_by_role || req.auth?.role || ""),
+            })),
           source_reference: sourceReference,
           payment: {
             transaction_id: Number(issuedPaymentTransaction?.id || 0) || null,

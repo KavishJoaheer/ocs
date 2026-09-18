@@ -42,10 +42,13 @@ try {
 
 try {
   const categoryAlignment = alignInventoryCategories();
-  if (categoryAlignment.updated > 0 || categoryAlignment.inserted > 0) {
+  if (categoryAlignment.updated > 0 || categoryAlignment.inserted > 0 || categoryAlignment.renamed > 0) {
     console.log(
-      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); added ${categoryAlignment.inserted} required row(s).`,
+      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); renamed ${categoryAlignment.renamed} row(s); added ${categoryAlignment.inserted} required row(s).`,
     );
+  }
+  if (categoryAlignment.conflicts > 0) {
+    console.warn(`[inventory] ${categoryAlignment.conflicts} catalogue rename conflict(s) require review.`);
   }
 } catch (error) {
   console.warn("[inventory] Catalogue category alignment failed:", error.message);

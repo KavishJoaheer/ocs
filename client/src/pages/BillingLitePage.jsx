@@ -195,6 +195,7 @@ function BillingLitePage() {
   const [consultationType, setConsultationType] = useState("Day Consultation");
   const [consultationPrice, setConsultationPrice] = useState("2000");
   const [consultationAdjustmentReason, setConsultationAdjustmentReason] = useState("");
+  const [supplyPriceEdits, setSupplyPriceEdits] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -425,6 +426,36 @@ function BillingLitePage() {
     [catalog, cart],
   );
 
+  function reviewedSupplyPrice(item) {
+    const edited = supplyPriceEdits[item.id]?.price;
+    return Number(edited === undefined ? item.selling_price || 0 : edited);
+  }
+
+  function supplyPriceWasAdjusted(item) {
+    return Math.abs(reviewedSupplyPrice(item) - Number(item.selling_price || 0)) >= 0.005;
+  }
+
+  function validatePriceAdjustments() {
+    const consultationAmount = Number(consultationPrice);
+    if (!Number.isFinite(consultationAmount) || consultationAmount <= 0 || consultationAmount > MAX_CONSULTATION_FEE) {
+      return `Enter a consultation price above Rs 0 and no more than Rs ${MAX_CONSULTATION_FEE.toLocaleString("en-MU")}.`;
+    }
+    const configuredAmount = Number(consultationFees[consultationType] || 0);
+    if (Math.abs(consultationAmount - configuredAmount) >= 0.005 && consultationAdjustmentReason.trim().length < 8) {
+      return "Explain the consultation price adjustment in at least 8 characters.";
+    }
+    for (const item of selectedItems) {
+      const price = reviewedSupplyPrice(item);
+      if (!Number.isFinite(price) || price <= 0) {
+        return `Enter a valid positive price for ${item.item_name}.`;
+      }
+      if (supplyPriceWasAdjusted(item) && String(supplyPriceEdits[item.id]?.reason || "").trim().length < 8) {
+        return `Explain the price adjustment for ${item.item_name} in at least 8 characters.`;
+      }
+    }
+    return "";
+  }
+
   const selectedPatient = useMemo(
     () => patientOptions.find((patient) => String(patient.patient_id) === String(selectedPatientId)) || null,
     [patientOptions, selectedPatientId],
@@ -487,7 +518,7 @@ function BillingLitePage() {
   const overduePriorityCount = priorityVisits.length - todayPriorityCount;
 
   const supplyTotal = selectedItems.reduce(
-    (sum, item) => sum + Number(item.selling_price || 0) * item.quantity,
+    (sum, item) => sum + reviewedSupplyPrice(item) * item.quantity,
     0,
   );
   const consultationTotal = Number(consultationPrice || 0);
@@ -505,6 +536,7 @@ function BillingLitePage() {
     setConsultationType(nextType);
     setConsultationPrice(String(nextAmount));
     setConsultationAdjustmentReason("");
+    setSupplyPriceEdits({});
     setSourceReference("");
     setPaymentMethod("");
     setPaymentReference("");
@@ -607,6 +639,11 @@ function BillingLitePage() {
       toast.error("Select the consultation doctor first.");
       return;
     }
+    const priceError = validatePriceAdjustments();
+    if (priceError) {
+      toast.error(priceError);
+      return;
+    }
     setView("review");
   }
 
@@ -658,6 +695,11 @@ function BillingLitePage() {
 
   async function submitBilling() {
     if (!selectedVisit || isSubmitting) return;
+    const priceError = validatePriceAdjustments();
+    if (priceError) {
+      toast.error(priceError);
+      return;
+    }
     if (sourceReference.trim().length < 3) {
       toast.error("Enter the manual invoice receipt reference.");
       return;
@@ -696,7 +738,10 @@ function BillingLitePage() {
       items: selectedItems.map((item) => ({
         inventory_item_id: item.id,
         quantity: item.quantity,
-        unit_price: Number(item.selling_price || 0),
+        unit_price: reviewedSupplyPrice(item),
+        price_adjustment_reason: supplyPriceWasAdjusted(item)
+          ? String(supplyPriceEdits[item.id]?.reason || "").trim()
+          : undefined,
       })),
     };
     try {
@@ -787,13 +832,23 @@ function BillingLitePage() {
       if (!visit) throw new Error("The saved consultation could not be loaded.");
       const fee = queueEntry.payload?.consultation_fee || {};
       const nextCart = {};
+      const nextSupplyPriceEdits = {};
       for (const savedItem of queueEntry.payload?.items || []) {
-        if (items.some((item) => Number(item.id) === Number(savedItem.inventory_item_id))) {
+        const catalogItem = items.find((item) => Number(item.id) === Number(savedItem.inventory_item_id));
+        if (catalogItem) {
           nextCart[Number(savedItem.inventory_item_id)] = Number(savedItem.quantity || 0);
+          const savedPrice = Number(savedItem.unit_price);
+          if (Number.isFinite(savedPrice) && Math.abs(savedPrice - Number(catalogItem.selling_price || 0)) >= 0.005) {
+            nextSupplyPriceEdits[Number(savedItem.inventory_item_id)] = {
+              price: String(savedPrice),
+              reason: String(savedItem.price_adjustment_reason || ""),
+            };
+          }
         }
       }
       setCatalog(items);
       setCart(nextCart);
+      setSupplyPriceEdits(nextSupplyPriceEdits);
       setSelectedVisit(visit);
       setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
       setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
@@ -827,6 +882,7 @@ function BillingLitePage() {
     setSelectedVisit(null);
     setCatalog([]);
     setCart({});
+    setSupplyPriceEdits({});
     setLookupResults([]);
     setCatalogSearch("");
     setLastSubmissionOffline(false);
@@ -1428,23 +1484,101 @@ function BillingLitePage() {
                 <h1 className="mt-1 text-3xl font-black">Review billing</h1>
               </div>
               <div className="p-6">
-                <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-5">
-                  <div>
+                <div className="grid gap-4 border-b border-slate-200 pb-5 sm:grid-cols-[1fr_11rem]">
+                  <div className="min-w-0">
                     <p className="text-lg font-black">{consultationType}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">Confirmed for this bill</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Standard tariff: {formatRupees(consultationFees[consultationType] || 0)}
+                    </p>
                   </div>
-                  <p className="text-lg font-black">{formatRupees(consultationTotal)}</p>
+                  <label>
+                    <span className="text-xs font-black uppercase tracking-wide text-slate-500">Consultation price</span>
+                    <span className="relative mt-1 block">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">Rs</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        max={MAX_CONSULTATION_FEE}
+                        step="0.01"
+                        value={consultationPrice}
+                        onChange={(event) => setConsultationPrice(event.target.value)}
+                        className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-right font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                      />
+                    </span>
+                  </label>
+                  {Math.abs(Number(consultationPrice || 0) - Number(consultationFees[consultationType] || 0)) >= 0.005 ? (
+                    <label className="sm:col-span-2">
+                      <span className="text-sm font-black text-amber-900">Reason for consultation price adjustment <span aria-hidden="true">*</span></span>
+                      <textarea
+                        required
+                        minLength={8}
+                        rows={2}
+                        value={consultationAdjustmentReason}
+                        onChange={(event) => setConsultationAdjustmentReason(event.target.value)}
+                        placeholder="Explain why the standard consultation price was changed."
+                        className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold outline-none focus:border-amber-500"
+                      />
+                      <span className="mt-1 block text-xs font-semibold text-amber-800">Required · minimum 8 characters · saved in the audit history</span>
+                    </label>
+                  ) : null}
                 </div>
 
                 {selectedItems.length ? (
                   <div className="divide-y divide-slate-100">
                     {selectedItems.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-4 py-5">
+                      <div key={item.id} className="grid gap-3 py-5 sm:grid-cols-[1fr_11rem] sm:items-start">
                         <div className="min-w-0">
                           <p className="font-black text-[#173f47]">{item.item_name}</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-500">{item.quantity} × {formatRupees(item.selling_price)}</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            Quantity {item.quantity} · Standard price {formatRupees(item.selling_price)}
+                          </p>
                         </div>
-                        <p className="shrink-0 font-black">{formatRupees(item.selling_price * item.quantity)}</p>
+                        <label>
+                          <span className="text-xs font-black uppercase tracking-wide text-slate-500">Unit price</span>
+                          <span className="relative mt-1 block">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">Rs</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min="0.01"
+                              step="0.01"
+                              value={supplyPriceEdits[item.id]?.price ?? String(item.selling_price || 0)}
+                              onChange={(event) => setSupplyPriceEdits((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  price: event.target.value,
+                                  reason: current[item.id]?.reason || "",
+                                },
+                              }))}
+                              className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-right font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                            />
+                          </span>
+                          <span className="mt-1 block text-right text-xs font-bold text-slate-500">
+                            Line total {formatRupees(reviewedSupplyPrice(item) * item.quantity)}
+                          </span>
+                        </label>
+                        {supplyPriceWasAdjusted(item) ? (
+                          <label className="sm:col-span-2">
+                            <span className="text-sm font-black text-amber-900">Reason for {item.item_name} price adjustment <span aria-hidden="true">*</span></span>
+                            <textarea
+                              required
+                              minLength={8}
+                              rows={2}
+                              value={supplyPriceEdits[item.id]?.reason || ""}
+                              onChange={(event) => setSupplyPriceEdits((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  price: current[item.id]?.price ?? String(item.selling_price || 0),
+                                  reason: event.target.value,
+                                },
+                              }))}
+                              placeholder="Explain why the standard supply price was changed."
+                              className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold outline-none focus:border-amber-500"
+                            />
+                            <span className="mt-1 block text-xs font-semibold text-amber-800">Required · minimum 8 characters · saved with this invoice</span>
+                          </label>
+                        ) : null}
                       </div>
                     ))}
                   </div>

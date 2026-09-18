@@ -10,6 +10,7 @@ process.env.NODE_ENV = "test";
 
 const { db, initializeDatabase } = require("../src/db");
 const { ocsConsumablesPdfCatalog } = require("../src/config/ocsConsumablesPdfCatalog");
+const { ocsIVDrugsPdfCatalog } = require("../src/config/ocsIVDrugsPdfCatalog");
 const { alignInventoryCategories } = require("../src/lib/inventoryCategoryAlignment");
 
 const TARGET_FOLDER = "Catherisation & NGT";
@@ -55,6 +56,15 @@ test("oxygen and nebuliser catalogue metadata uses the dedicated folder", () => 
   }
 });
 
+test("N/S 100ml and renamed DNS are canonical IV Drug entries", () => {
+  assert.equal(ocsConsumablesPdfCatalog.some((item) => item.name === "N/S 100ml"), false);
+  for (const itemName of ["N/S 100ml", "DNS/Dextrose 50%"] ) {
+    const row = ocsIVDrugsPdfCatalog.find((item) => item.name === itemName);
+    assert.ok(row, itemName);
+    assert.equal(row.category, "IV Drugs");
+  }
+});
+
 test("category alignment moves warehouse and doctor rows without changing stock facts", () => {
   const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
   const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 2").all().map((row) => Number(row.id));
@@ -92,10 +102,30 @@ test("category alignment moves warehouse and doctor rows without changing stock 
     }
   }
 
+  const ivPreparedIds = [];
+  for (const [itemName, expectedName] of [
+    ["N/S 100ml", "N/S 100ml"],
+    ["Sodium Chloride&Dextrose(500ml)", "DNS/Dextrose 50%"],
+  ]) {
+    for (const [scope, ownerDoctorId, quantity] of [
+      ["ocs", null, 31],
+      ["doctor", doctorIds[0], 7],
+      ["doctor", doctorIds[1], 9],
+    ]) {
+      const existing = findRow.get(scope, ownerDoctorId || 0, itemName);
+      const id = existing
+        ? (updateRow.run(consumableId, quantity, existing.id), Number(existing.id))
+        : Number(insertRow.run(itemName, consumableId, scope, ownerDoctorId, quantity).lastInsertRowid);
+      ivPreparedIds.push({ id, quantity, expectedName });
+    }
+  }
+
   const first = alignInventoryCategories();
   assert.ok(first.updated >= TARGET_ITEMS.length * 3);
   const activeDoctorCount = Number(db.prepare("SELECT COUNT(*) AS count FROM doctors WHERE deleted_at IS NULL").get().count);
-  assert.equal(first.inserted, 2 * (activeDoctorCount + 1));
+  assert.equal(first.inserted, (2 * (activeDoctorCount + 1)) + (activeDoctorCount + 1 - 3));
+  assert.equal(first.renamed, 3);
+  assert.equal(first.conflicts, 0);
 
   const placeholders = preparedIds.map(() => "?").join(",");
   const rows = db.prepare(`
@@ -113,7 +143,27 @@ test("category alignment moves warehouse and doctor rows without changing stock 
     assert.equal(Number(row.selling_price), 25);
   }
 
-  assert.equal(alignInventoryCategories().updated, 0, "alignment must be idempotent");
+  const ivRows = db.prepare(`
+    SELECT i.id, i.item_name, i.quantity, i.cost_price, i.selling_price, f.name AS folder_name
+    FROM inventory i
+    LEFT JOIN inventory_folders f ON f.id = i.folder_id
+    WHERE i.id IN (${ivPreparedIds.map(() => "?").join(",")})
+  `).all(...ivPreparedIds.map((row) => row.id));
+  assert.equal(ivRows.length, ivPreparedIds.length);
+  for (const row of ivRows) {
+    const original = ivPreparedIds.find((item) => item.id === Number(row.id));
+    assert.equal(row.item_name, original.expectedName);
+    assert.equal(row.folder_name, "IV Drugs");
+    assert.equal(Number(row.quantity), original.quantity);
+    assert.equal(Number(row.cost_price), 12.5);
+    assert.equal(Number(row.selling_price), 25);
+  }
+
+  const retry = alignInventoryCategories();
+  assert.equal(retry.updated, 0, "alignment must be idempotent");
+  assert.equal(retry.inserted, 0);
+  assert.equal(retry.renamed, 0);
+  assert.equal(retry.conflicts, 0);
 });
 
 test("required O2 time-charge rows are created once for warehouse and every doctor", () => {
