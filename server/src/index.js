@@ -6,6 +6,7 @@ const { seedOcsMasterStockSync } = require("./scripts/seedOcsMasterStock");
 const { purgeOcsTestInventoryItems } = require("./scripts/purgeOcsTestInventory");
 const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs");
 const { isEnvTrue } = require("./lib/envFlags");
+const { alignInventoryCategories } = require("./lib/inventoryCategoryAlignment");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -37,6 +38,15 @@ try {
   }
 } catch (error) {
   console.warn("[catalog] OCS catalog ensure failed:", error.message);
+}
+
+try {
+  const categoryAlignment = alignInventoryCategories();
+  if (categoryAlignment.updated > 0) {
+    console.log(`[inventory] Aligned ${categoryAlignment.updated} catalogue item category row(s).`);
+  }
+} catch (error) {
+  console.warn("[inventory] Catalogue category alignment failed:", error.message);
 }
 
 if (isEnvTrue("SEED_OCS_MASTER_STOCK")) {

@@ -56,7 +56,6 @@ const ocsConsumablesPdfCatalog = [
   consumable("Micropore (5cm)"),
   consumable("White Adhesive Tape"),
   consumable("N/S 100ml"),
-  consumable("N/S 500ml"),
   consumable("NGT (14fg x105cm)"),
   consumable("NGT (16fg x105cm)"),
   consumable("NGT (18fg x105cm)"),
