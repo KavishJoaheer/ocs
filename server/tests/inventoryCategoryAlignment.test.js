@@ -28,6 +28,7 @@ const TARGET_ITEMS = [
   "NGT (14fg x105cm)",
   "NGT (16fg x105cm)",
   "NGT (18fg x105cm)",
+  "Urine bag",
 ];
 const O2_FOLDER = "O2 & Nebuliser";
 const O2_ITEMS = [

@@ -86,7 +86,7 @@ const ocsConsumablesPdfCatalog = [
   consumable("Syringe (20ml)", 0, 25),
   consumable("Tongue-depressor box of 100", 0, 50),
   consumable("Tourniquet"),
-  consumable("Urine bag"),
+  catherisationAndNgt("Urine bag"),
 ];
 
 module.exports = { ocsConsumablesPdfCatalog };

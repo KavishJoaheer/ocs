@@ -27,6 +27,7 @@ const CATEGORY_RULES = [
   { itemName: "NGT (14fg x105cm)", folderName: "Catherisation & NGT" },
   { itemName: "NGT (16fg x105cm)", folderName: "Catherisation & NGT" },
   { itemName: "NGT (18fg x105cm)", folderName: "Catherisation & NGT" },
+  { itemName: "Urine bag", folderName: "Catherisation & NGT" },
   { itemName: "Nebulizer Mask (Adult)", folderName: "O2 & Nebuliser" },
   { itemName: "Nebulizer Mask (Paediatric)", folderName: "O2 & Nebuliser" },
   {
