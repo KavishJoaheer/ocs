@@ -211,10 +211,11 @@ function listAllocatableBatches(inventoryId, { exceptRequestId = null } = {}) {
         quarantined: isQuarantinedBatch(row),
         missing_expiry:
           !row.expiry_date && Number(row.is_non_expiring || 0) !== 1,
+        missing_cost: !(Number(row.unit_cost || 0) > 0),
         usability: batchUsability(row, today),
       };
     })
-    .filter((row) => !row.expired && !row.quarantined && row.available > 0);
+    .filter((row) => !row.expired && !row.quarantined && !row.missing_expiry && !row.missing_cost && row.available > 0);
 }
 
 function allocateFefo(inventoryId, quantity, { exceptRequestId = null } = {}) {
@@ -263,8 +264,8 @@ function consumeAvailableFefo(inventoryId, quantity, { exceptRequestId = null } 
     if (!batch || Number(batch.item_id) !== Number(inventoryId)) {
       throw HttpError(409, "A selected batch is no longer valid.");
     }
-    if (isExpiredBatch(batch) || isQuarantinedBatch(batch)) {
-      throw HttpError(409, "Expired or quarantined batches cannot be consumed for fulfilment or restock.");
+    if (isExpiredBatch(batch) || isQuarantinedBatch(batch) || batchUsability(batch) === "missing_expiry" || !(Number(batch.unit_cost || 0) > 0)) {
+      throw HttpError(409, "Expired, quarantined, or unverified cost/expiry batches cannot be consumed for fulfilment or restock.");
     }
     const reserved = reservedQuantityForBatch(allocation.batch_id, { exceptRequestId });
     const available = Math.max(0, (integerQty(batch.quantity_remaining) ?? 0) - reserved);

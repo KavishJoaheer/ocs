@@ -1022,7 +1022,9 @@ test('explicit consultation types create the correct fee and concurrent fee crea
 });
 
 async function fieldSale(ctx,it,extra={}) {
-  return api('POST',`/inventory/items/${it.id}/actions`,'doctor',deduction(it,{reason:'Sale',patient_id:ctx.patientId,quantity:2,...extra}));
+  return api('POST',`/inventory/items/${it.id}/actions`,'doctor',deduction(it,{
+    reason:'Sale',patient_id:ctx.patientId,consultation_id:ctx.consultationId,quantity:2,...extra,
+  }));
 }
 
 test('eight-day-old dispensing links by its visit and keeps its original price without stock deduction', async () => {
@@ -1040,30 +1042,31 @@ test('eight-day-old dispensing links by its visit and keeps its original price w
   assert.ok(first.data.items[0].dispensing_movement_ids.length);
 });
 
-test('ambiguous and partial dispensing blocks new deductions; explicit visit reconciliation and retries work', async () => {
+test('consultation-linked dispensing removes visit ambiguity while partial and cross-visit reuse stay blocked', async () => {
   const ctx=context('Ambiguous visits');const it=item('Ambiguous medicine');
   const secondAppointment=Number(db.prepare("INSERT INTO appointments(patient_id,doctor_id,appointment_date,appointment_time,status) VALUES (?,?,?,'18:00','completed')").run(ctx.patientId,doctorId,today).lastInsertRowid);
   const secondId=Number(db.prepare("INSERT INTO consultations(appointment_id,patient_id,doctor_id,consultation_date,doctor_notes) VALUES (?,?,?,?,'Second visit')").run(secondAppointment,ctx.patientId,doctorId,today).lastInsertRowid);
+  const missingVisit=await fieldSale(ctx,it,{consultation_id:null});
+  assert.equal(missingVisit.status,400);assert.equal(missingVisit.data.code,'CONSULTATION_REQUIRED');assert.equal(row(it.id).quantity,20);
   assert.equal((await fieldSale(ctx,it)).status,201);
   const m=db.prepare('SELECT id FROM inventory_movements WHERE item_id=?').get(it.id).id;
-  assert.equal((await bill(ctx,[stockLine(it)],{operation_id:randomUUID()})).status,409);assert.equal(row(it.id).quantity,18);
   const line={...stockLine(it),dispensing_movement_ids:[m]};
   assert.equal((await bill(ctx,[{...line,quantity:1}],{operation_id:randomUUID()})).status,409);assert.equal(row(it.id).quantity,18);
-  const op=randomUUID();const accepted=await bill(ctx,[line],{operation_id:op});assert.equal(accepted.status,201,JSON.stringify(accepted.data));
-  assert.equal((await bill(ctx,[line],{operation_id:op})).data.id,accepted.data.id);
+  const op=randomUUID();const accepted=await bill(ctx,[stockLine(it)],{operation_id:op});assert.equal(accepted.status,201,JSON.stringify(accepted.data));
+  assert.equal((await bill(ctx,[stockLine(it)],{operation_id:op})).data.id,accepted.data.id);
   assert.equal((await bill({...ctx,consultationId:secondId},[line],{operation_id:randomUUID()})).status,409);
   const other=context('Other patient');assert.equal((await bill(other,[line],{operation_id:randomUUID()})).status,409);
   assert.equal(row(it.id).quantity,18);
 });
 
-test('pending attachment uses frozen sale price and an invoice void does not invent a physical field return', async () => {
-  const ctx=context('Pending automatic');db.prepare('DELETE FROM consultations WHERE id=?').run(ctx.consultationId);const it=item('Frozen pending medicine');
+test('consultation-linked pending attachment uses frozen sale price and an invoice void does not invent a physical field return', async () => {
+  const ctx=context('Pending automatic');const it=item('Frozen pending medicine');
   await fieldSale(ctx,it,{dispensed_on:today});await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
-  const c=await api('POST','/consultations','doctor',{appointment_id:ctx.appointmentId,consultation_date:today,doctor_notes:'Delayed documentation',consultation_type:'Day Consultation'});assert.equal(c.status,201);
-  const b=(await api('GET',`/billing/visit/${c.data.id}`,'doctor')).data.bills[0];
+  const created=await bill(ctx,[standardFee(),stockLine(it)],{operation_id:randomUUID()});assert.equal(created.status,201,JSON.stringify(created.data));
+  const b=(await api('GET',`/billing/visit/${ctx.consultationId}`,'doctor')).data.bills[0];
   assert.equal(b.total_amount,2050);assert.equal(row(it.id).quantity,18);
   const h=(await api('GET','/inventory/activity-history?search=Frozen%20pending%20medicine')).data.rows[0];assert.equal(h.billing_id,b.id);assert.equal(h.value_rs,50);
-  assert.equal((await api('DELETE',`/consultations/${c.data.id}`,'admin',{reason:'Duplicate clinical note in test'})).status,204);
+  assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Duplicate clinical note in test'})).status,204);
   assert.equal(row(it.id).quantity,18);
   assert.equal(JSON.parse(db.prepare('SELECT meta_json FROM inventory_movements WHERE item_id=?').get(it.id).meta_json).billing_status,'Pending Manual Entry');
   const review=(await api('GET','/billing/reconciliation','doctor')).data;

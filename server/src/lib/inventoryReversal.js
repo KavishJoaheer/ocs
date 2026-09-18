@@ -555,8 +555,100 @@ function reclassifyBillingSubmissionInventoryAsWastage({
   return { movementIds: createdMovementIds, touchedItemIds: [...touchedItemIds] };
 }
 
+function reverseWriteOffMovement(movementId, actor = {}, { reason = "", confirm = false } = {}) {
+  const id = Number(movementId || 0);
+  const explanation = String(reason || "").trim();
+  if (!confirm) throw HttpError(400, "Confirm the compensating write-off reversal.");
+  if (explanation.length < 10) throw HttpError(400, "Enter a reversal reason of at least 10 characters.");
+
+  return db.transaction(() => {
+    const movement = db.prepare(`
+      SELECT m.*, i.item_name, i.owner_doctor_id, i.row_version AS item_row_version,
+        i.quantity AS item_quantity
+      FROM inventory_movements m
+      JOIN inventory i ON i.id = m.item_id
+      WHERE m.id = ?
+    `).get(id);
+    if (!movement || movement.movement_type !== "out" || !["remove", "wastage"].includes(movement.action_type)) {
+      throw HttpError(404, "Eligible write-off movement not found.");
+    }
+    const existing = reversalForMovement(id);
+    if (existing) return { idempotent: true, reversal_id: Number(existing.id), movement };
+
+    const allocations = allocationsForMovement(id);
+    const quantity = Number(movement.quantity || 0);
+    const allocated = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+    if (!allocations.length || allocated !== quantity) {
+      throw HttpError(409, "This write-off has no complete batch evidence and cannot be automatically reversed. Use an authorised exceptional correction.");
+    }
+
+    const restored = restoreOriginalAllocations(movement.item_id, allocations);
+    const previousQuantity = Number(movement.item_quantity || 0);
+    const nextQuantity = previousQuantity + quantity;
+    assertInventoryQuantityUpdate(movement.item_id, nextQuantity, movement.item_row_version);
+    const actorName = resolveAuditActor({
+      displayName: actor.full_name || actor.username,
+      userId: actor.id,
+      required: true,
+    });
+    const meta = {
+      reversed_movement_id: id,
+      original_action_type: movement.action_type,
+      reason: explanation,
+      allocations: restored,
+      performed_by_user_id: actor.id || null,
+      performed_by_role: actor.role || "",
+      performed_by_name: actorName,
+      source_location: "Write-off correction",
+      destination_location: movement.owner_doctor_id ? "Doctor bag" : "Master Stock",
+    };
+    const inserted = db.prepare(`
+      INSERT INTO inventory_movements (
+        item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+        recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json,
+        unit_cost_snapshot, unit_price_snapshot, valuation_basis
+      ) VALUES (?, 'in', ?, ?, ?, ?, ?, ?, 'reversal', 'inventory_movement', ?, ?, ?, ?, ?)
+    `).run(
+      movement.item_id,
+      quantity,
+      previousQuantity,
+      nextQuantity,
+      movement.owner_doctor_id || null,
+      actor.id || null,
+      `Compensating reversal of write-off #${id}: ${explanation}`,
+      id,
+      JSON.stringify(meta),
+      movement.unit_cost_snapshot,
+      movement.unit_price_snapshot,
+      movement.valuation_basis,
+    );
+    const reversalId = Number(inserted.lastInsertRowid);
+    recordMovementAllocations(reversalId, restored);
+    db.prepare(`
+      INSERT INTO inventory_activity_history (
+        movement_id, timestamp, actor_user_id, actor_name, actor_role, action_type,
+        item_name, quantity, direction, source_text, destination_text, batch_id, meta_json
+      ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, 'reversal', ?, ?, 'in', ?, ?, ?, ?)
+    `).run(
+      reversalId,
+      actor.id || null,
+      actorName,
+      actor.role || "",
+      movement.item_name || "",
+      quantity,
+      meta.source_location,
+      meta.destination_location,
+      restored.map((row) => row.batch_id).join(","),
+      JSON.stringify(meta),
+    );
+    publishInventoryChange({ itemId: Number(movement.item_id), changedByUserId: actor.id || null });
+    return { idempotent: false, reversal_id: reversalId, movement, restored_allocations: restored };
+  }).immediate();
+}
+
 module.exports = {
   reclassifyBillingSubmissionInventoryAsWastage,
   reverseBillingSubmissionInventory,
   reverseInventoryForConsultation,
+  reverseWriteOffMovement,
 };

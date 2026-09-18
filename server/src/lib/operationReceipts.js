@@ -6,7 +6,7 @@ function stable(value) {
   return value;
 }
 function operationFor(req, scope, { legacyWindow = false } = {}) {
-  const { operation_id, expected_version, ...intent } = req.body;
+  const { operation_id, expected_version, ...intent } = req.body || {};
   // Versions are concurrency metadata, not the identity of a stock operation.
   const requestHash = createHash('sha256').update(JSON.stringify(stable(intent))).digest('hex');
   const supplied = operation_id || req.get('Idempotency-Key');

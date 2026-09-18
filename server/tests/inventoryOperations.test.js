@@ -17,6 +17,7 @@ const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
 const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
+const { decorateInventoryItems, summarizeLocationValuation } = require("../src/lib/inventoryStockState");
 const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
 
 test("inventory cadence summaries remain flexible and use recorded activity", () => {
@@ -1418,29 +1419,31 @@ test("catalogue metadata edits cannot change batch expiry or nearest expiry", as
   assert.equal(storedCatalogue.expiry_date, "2019-01-01");
 });
 
-test("bags pricing summary distinguishes unique products from bag instances", async () => {
+test("bags pricing summary uses verified batch costs and distinguishes products from bag instances", async () => {
+  const baselineResponse = await api("GET", "/api/inventory", { token: adminToken });
+  const baseline = baselineResponse.data.tab_summaries?.bags;
   const product = `UnpricedSKU ${Date.now()}`;
   const second = `PricedSKU ${Date.now()}`;
   const doctorTwoId = db.prepare("SELECT doctor_id FROM users WHERE username = 'bhobun.muneshwarshing'").get().doctor_id;
-  db.prepare(
+  const firstId = Number(db.prepare(
     `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
      VALUES (?, ?, 2, 0, 'unit', 0, 10, 'doctor', ?)`,
-  ).run(product, folderId, doctorId);
-  db.prepare(
+  ).run(product, folderId, doctorId).lastInsertRowid);
+  const secondBagId = Number(db.prepare(
     `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
      VALUES (?, ?, 3, 0, 'unit', 0, 10, 'doctor', ?)`,
-  ).run(product, folderId, doctorTwoId);
-  db.prepare(
+  ).run(product, folderId, doctorTwoId).lastInsertRowid);
+  const pricedCatalogueId = Number(db.prepare(
     `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
      VALUES (?, ?, 1, 0, 'unit', 12, 20, 'doctor', ?)`,
-  ).run(second, folderId, doctorId);
+  ).run(second, folderId, doctorId).lastInsertRowid);
 
   const incomplete = await api("GET", "/api/inventory", { token: adminToken });
   assert.equal(incomplete.status, 200);
   const bags = incomplete.data.tab_summaries?.bags;
   assert.ok(bags);
-  assert.ok(bags.unpriced_catalogue_items >= 1);
-  assert.ok(bags.unpriced_bag_item_instances >= 2);
+  assert.equal(bags.unpriced_catalogue_items, Number(baseline.unpriced_catalogue_items || 0) + 2);
+  assert.equal(bags.unpriced_bag_item_instances, Number(baseline.unpriced_bag_item_instances || 0) + 3);
   assert.ok(bags.unpriced_bag_item_instances > bags.unpriced_catalogue_items);
   assert.ok(bags.affected_doctor_bags >= 2);
   assert.equal(bags.valuation_complete, false);
@@ -1448,14 +1451,23 @@ test("bags pricing summary distinguishes unique products from bag instances", as
   assert.ok(Array.isArray(bags.unpriced_product_keys));
   assert.equal(bags.unpriced_product_keys.filter((key) => key === productKey).length, 1);
 
-  db.prepare("UPDATE inventory SET cost_price = 9.5 WHERE stock_scope = 'doctor' AND COALESCE(cost_price, 0) = 0").run();
+  const insertBatch = db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, ?, '2031-12-31', ?, 0)
+  `);
+  insertBatch.run(firstId, 2, 9.5);
+  insertBatch.run(secondBagId, 3, 9.5);
+  insertBatch.run(pricedCatalogueId, 1, 12);
   const complete = await api("GET", "/api/inventory", { token: adminToken });
   const priced = complete.data.tab_summaries.bags;
-  assert.equal(priced.unpriced_catalogue_items, 0);
-  assert.equal(priced.unpriced_bag_item_instances, 0);
-  assert.equal(priced.affected_doctor_bags, 0);
-  assert.equal(priced.valuation_complete, true);
-  assert.ok(Number(priced.total_bag_value) > 0);
+  assert.equal(priced.unpriced_catalogue_items, baseline.unpriced_catalogue_items);
+  assert.equal(priced.unpriced_bag_item_instances, baseline.unpriced_bag_item_instances);
+  assert.equal(priced.affected_doctor_bags, baseline.affected_doctor_bags);
+  assert.equal(priced.valuation_complete, baseline.valuation_complete);
+  assert.equal(
+    Number((Number(priced.total_bag_value) - Number(baseline.total_bag_value || 0)).toFixed(2)),
+    59.5,
+  );
 });
 
 test("invalid calendar expiry dates are rejected on receipt", async () => {
@@ -3018,4 +3030,172 @@ test("stocktake scope token detects folder membership and row-version changes", 
   });
   assert.equal(repeated.status, 201, JSON.stringify(repeated.data));
   assert.notEqual(Number(repeated.data.session.id), Number(first.data.session.id));
+});
+
+test("unverified opening batches stay blocked until audited cost and expiry are supplied", async () => {
+  const itemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+      stock_scope, owner_doctor_id
+    ) VALUES (?, ?, 5, 0, 'unit', 0, 20, 'ocs', NULL)
+  `).run(`Opening data ${Date.now()}`, folderId).lastInsertRowid);
+  const batchId = Number(db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 5, NULL, 0, 0)
+  `).run(itemId).lastInsertRowid);
+
+  const before = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(before.available_to_use, 0);
+  assert.equal(before.missing_expiry_quantity, 5);
+  assert.equal(before.missing_cost_quantity, 5);
+  assert.equal(before.valuation_complete, false);
+
+  const operationId = `opening-data-${Date.now()}`;
+  const payload = {
+    operation_id: operationId,
+    unit_cost: 12.5,
+    expiry_date: "2031-06-30",
+    is_non_expiring: false,
+    expected_row_version: 1,
+    reason: "Supplier invoice INV-OPEN-01 and package label checked",
+    confirm: true,
+  };
+  const verified = await api("PATCH", `/api/inventory/batches/${batchId}/opening-data`, {
+    token: adminToken,
+    body: payload,
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.data));
+  const replay = await api("PATCH", `/api/inventory/batches/${batchId}/opening-data`, {
+    token: adminToken,
+    body: payload,
+  });
+  assert.equal(replay.status, 200, JSON.stringify(replay.data));
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE action_type = 'verify_opening_batch_data' AND item_id = ?").get(itemId).count,
+    1,
+  );
+
+  const after = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(after.available_to_use, 5);
+  assert.equal(after.current_cost_value, 62.5);
+  assert.equal(after.valuation_complete, true);
+});
+
+test("unbatched legacy quantity becomes usable only through an audited opening batch", async () => {
+  const itemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+      stock_scope, owner_doctor_id
+    ) VALUES (?, ?, 3, 0, 'unit', 0, 20, 'ocs', NULL)
+  `).run(`Unbatched opening ${Date.now()}`, folderId).lastInsertRowid);
+  const before = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(before.unbatched_quantity, 3);
+  assert.equal(before.available_to_use, 0);
+
+  const payload = {
+    operation_id: `create-opening-batch-${Date.now()}`,
+    unit_cost: 8,
+    expiry_date: "2032-04-30",
+    is_non_expiring: false,
+    expected_row_version: Number(before.row_version || 1),
+    reason: "Opening count sheet and package expiry label checked",
+    confirm: true,
+  };
+  const created = await api("POST", `/api/inventory/items/${itemId}/opening-batch-data`, {
+    token: adminToken,
+    body: payload,
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const replay = await api("POST", `/api/inventory/items/${itemId}/opening-batch-data`, {
+    token: adminToken,
+    body: payload,
+  });
+  assert.equal(replay.status, 201, JSON.stringify(replay.data));
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_batches WHERE item_id = ?").get(itemId).count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE action_type = 'create_opening_batch_data' AND item_id = ?").get(itemId).count, 1);
+  const after = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(after.unbatched_quantity, 0);
+  assert.equal(after.available_to_use, 3);
+  assert.equal(after.current_cost_value, 24);
+});
+
+test("inventory valuation uses each remaining batch cost rather than the catalogue estimate", () => {
+  const itemId = Number(db.prepare(`
+    INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope)
+    VALUES (?, ?, 5, 0, 'unit', 999, 25, 'ocs')
+  `).run(`Lot valuation ${Date.now()}`, folderId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 2, '2031-01-31', 4, 0), (?, 3, '2032-01-31', 7, 0)
+  `).run(itemId, itemId);
+  const decorated = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)]);
+  const valuation = summarizeLocationValuation(decorated);
+  assert.equal(valuation.known_value, 29);
+  assert.equal(valuation.unpriced_units, 0);
+  assert.equal(valuation.valuation_complete, true);
+});
+
+test("bag write-offs require exact evidence, replay once, and reverse by compensating entry", async () => {
+  const itemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+      stock_scope, owner_doctor_id
+    ) VALUES (?, ?, 5, 0, 'unit', 9, 18, 'doctor', ?)
+  `).run(`Reversible write-off ${Date.now()}`, folderId, doctorId).lastInsertRowid);
+  const batchId = Number(db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 5, '2031-08-31', 9, 0)
+  `).run(itemId).lastInsertRowid);
+
+  const missingEvidence = await api("POST", `/api/inventory/items/${itemId}/bag-actions`, {
+    token: adminToken,
+    body: { action_type: "remove", quantity: 2, reason: "Damaged", note: "Package was visibly damaged", confirm: true },
+  });
+  assert.equal(missingEvidence.status, 400);
+
+  const writeOperation = `bag-write-off-${Date.now()}`;
+  const writePayload = {
+    operation_id: writeOperation,
+    action_type: "remove",
+    quantity: 2,
+    reason: "Damaged",
+    note: "Package seal was visibly broken during inspection",
+    batch_id: batchId,
+    confirm: true,
+  };
+  const writtenOff = await api("POST", `/api/inventory/items/${itemId}/bag-actions`, {
+    token: adminToken,
+    body: writePayload,
+  });
+  assert.equal(writtenOff.status, 201, JSON.stringify(writtenOff.data));
+  const replay = await api("POST", `/api/inventory/items/${itemId}/bag-actions`, {
+    token: adminToken,
+    body: writePayload,
+  });
+  assert.equal(replay.status, 201, JSON.stringify(replay.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 3);
+  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, 3);
+  const movement = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'remove'").get(itemId);
+  assert.ok(movement?.id);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).count, 1);
+
+  const reversePayload = {
+    operation_id: `reverse-write-off-${Date.now()}`,
+    reason: "Write-off was posted against the wrong physical package",
+    confirm: true,
+  };
+  const reversed = await api("POST", `/api/inventory/movements/${movement.id}/reverse-write-off`, {
+    token: adminToken,
+    body: reversePayload,
+  });
+  assert.equal(reversed.status, 201, JSON.stringify(reversed.data));
+  const reverseReplay = await api("POST", `/api/inventory/movements/${movement.id}/reverse-write-off`, {
+    token: adminToken,
+    body: reversePayload,
+  });
+  assert.equal(reverseReplay.status, 201, JSON.stringify(reverseReplay.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 5);
+  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, 5);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ? AND action_type = 'reversal'").get(itemId).count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE action_type = 'reverse_write_off' AND item_id = ?").get(itemId).count, 1);
 });

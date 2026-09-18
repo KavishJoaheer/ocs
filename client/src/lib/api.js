@@ -70,6 +70,16 @@ async function apiRequest(path, options = {}) {
     ...(options.headers || {}),
   };
 
+  const method = String(options.method || "GET").toUpperCase();
+  if (
+    ["POST", "PUT", "PATCH", "DELETE"].includes(method) &&
+    String(path || "").includes("/inventory/") &&
+    !headers["Idempotency-Key"]
+  ) {
+    headers["Idempotency-Key"] =
+      options.body?.operation_id || globalThis.crypto?.randomUUID?.() || `inventory-${Date.now()}-${Math.random()}`;
+  }
+
   if (!options.skipAuth && authToken && !headers.Authorization) {
     headers.Authorization = `Bearer ${authToken}`;
   }

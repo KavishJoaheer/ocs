@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import ReverseWriteOffModal from "../components/inventory/ReverseWriteOffModal.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
@@ -139,6 +140,8 @@ function StockActivityPage() {
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [requestHistory, setRequestHistory] = useState([]);
   const [receiptIds, setReceiptIds] = useState([]);
+  const [writeOffToReverse, setWriteOffToReverse] = useState(null);
+  const [reversingWriteOff, setReversingWriteOff] = useState(false);
   const actionMenuRef = useRef(null);
   const lastFetchQueryRef = useRef(null);
 
@@ -305,6 +308,21 @@ function StockActivityPage() {
       URL.revokeObjectURL(url);
     } catch (error) {
       toast.error(error.message || "CSV export failed.");
+    }
+  }
+
+  async function reverseWriteOff(payload) {
+    if (!writeOffToReverse?.movement_id) return;
+    setReversingWriteOff(true);
+    try {
+      await api.post(`/inventory/movements/${writeOffToReverse.movement_id}/reverse-write-off`, payload);
+      toast.success("Write-off reversed with a compensating stock entry.");
+      setWriteOffToReverse(null);
+      setInventoryTick((value) => value + 1);
+    } catch (error) {
+      toast.error(error.message || "Write-off reversal failed.");
+    } finally {
+      setReversingWriteOff(false);
     }
   }
 
@@ -564,6 +582,16 @@ function StockActivityPage() {
                       Print receipt
                     </button>
                   ) : null}
+                  {user?.role === "admin" && row.write_off_reversible ? (
+                    <button
+                      type="button"
+                      onClick={() => setWriteOffToReverse(row)}
+                      className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 px-3 text-xs font-bold text-rose-700"
+                    >
+                      Reverse write-off
+                    </button>
+                  ) : null}
+                  {row.write_off_reversed ? <p className="mt-2 text-xs font-bold text-slate-500">Reversed by compensating entry</p> : null}
                 </article>
               );
             })}
@@ -677,9 +705,18 @@ function StockActivityPage() {
                               <Printer className="size-4" />
                             </button>
                           </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">-</span>
-                        )}
+                        ) : user?.role === "admin" && row.write_off_reversible ? (
+                          <button
+                            type="button"
+                            onClick={() => setWriteOffToReverse(row)}
+                            className="inline-flex min-h-9 items-center rounded-xl border border-rose-200 px-2 text-xs font-bold text-rose-700"
+                            title="Create a compensating reversal"
+                          >
+                            Reverse
+                          </button>
+                        ) : row.write_off_reversed ? (
+                          <span className="text-xs font-bold text-slate-500">Reversed</span>
+                        ) : <span className="text-xs text-slate-400">-</span>}
                       </td>
                     </tr>
                   );
@@ -747,6 +784,14 @@ function StockActivityPage() {
           </ul>
         </SectionCard>
       ) : null}
+      <ReverseWriteOffModal
+        key={writeOffToReverse?.movement_id || "closed-write-off-reversal"}
+        open={Boolean(writeOffToReverse)}
+        row={writeOffToReverse}
+        isSaving={reversingWriteOff}
+        onClose={() => setWriteOffToReverse(null)}
+        onSubmit={reverseWriteOff}
+      />
     </div>
   );
 }

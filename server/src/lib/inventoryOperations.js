@@ -218,7 +218,7 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
   const available = includeExpired ? availableAtp : availableToUse;
   const batches = includeExpired
     ? listWriteOffBatches(itemId)
-    : listWriteOffBatches(itemId).filter((row) => !row.expired && !row.quarantined);
+    : listWriteOffBatches(itemId).filter((row) => !row.expired && !row.quarantined && !row.missing_expiry && Number(row.unit_cost || 0) > 0);
   let remaining = qty;
   const allocations = [];
   for (const batch of batches) {

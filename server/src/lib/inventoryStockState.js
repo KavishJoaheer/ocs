@@ -57,6 +57,8 @@ function isUsableBatch(batch, today = getTodayLocal()) {
   if (remaining <= 0) return false;
   if (isQuarantinedBatch(batch)) return false;
   if (isExpiredBatch(batch, today)) return false;
+  if (isMissingExpiryBatch(batch)) return false;
+  if (!(Number(batch?.unit_cost || 0) > 0)) return false;
   return true;
 }
 
@@ -126,8 +128,9 @@ function decorateBatches(batches, { today = getTodayLocal(), reservedByBatch = n
     const quarantined = remaining > 0 && isQuarantinedBatch(batch);
     const missingExpiry = remaining > 0 && isMissingExpiryBatch(batch);
     const nonExpiring = isNonExpiringBatch(batch);
+    const missingCost = remaining > 0 && !(Number(batch.unit_cost || 0) > 0);
     const nearExpiry = remaining > 0 && !expired && !quarantined && !missingExpiry && !nonExpiring && isNearExpiryDate(expiryDateValue(batch), today);
-    const available = expired || quarantined ? 0 : Math.max(0, remaining - reserved);
+    const available = expired || quarantined || missingExpiry || missingCost ? 0 : Math.max(0, remaining - reserved);
     return {
       ...batch,
       quantity_remaining: remaining,
@@ -136,6 +139,7 @@ function decorateBatches(batches, { today = getTodayLocal(), reservedByBatch = n
       expired,
       quarantined,
       missing_expiry: missingExpiry,
+      missing_cost: missingCost,
       is_near_expiry: nearExpiry,
       is_non_expiring: nonExpiring,
       stock_state: quarantined ? "quarantined" : batchStockState(batch, today),
@@ -191,7 +195,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       0,
     );
     const reservedOnUsable = batches.reduce(
-      (sum, batch) => sum + (batch.expired || batch.quarantined ? 0 : batch.reserved_quantity),
+      (sum, batch) => sum + (batch.expired || batch.quarantined || batch.missing_expiry || batch.missing_cost ? 0 : batch.reserved_quantity),
       0,
     );
     const reservedOnExpired = batches.reduce((sum, batch) => sum + (batch.expired ? batch.reserved_quantity : 0), 0);
@@ -203,7 +207,22 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
     const unallocatedReserved = Math.max(0, reservedQuantity - batchReservedTotal);
     const batchOnHand = batches.reduce((sum, batch) => sum + Number(batch.quantity_remaining || 0), 0);
     const unbatchedQuantity = Math.max(0, onHand - batchOnHand);
-    const usableOnHand = Math.max(0, onHand - expiredQuantity - quarantinedQuantity - unbatchedQuantity);
+    const missingExpiryQuantity = batches.reduce(
+      (sum, batch) => sum + (batch.missing_expiry ? batch.quantity_remaining : 0),
+      0,
+    );
+    const missingCostQuantity = batches.reduce(
+      (sum, batch) => sum + (batch.missing_cost ? batch.quantity_remaining : 0),
+      0,
+    );
+    const usableOnHand = Math.max(0, batches.reduce(
+      (sum, batch) => sum + (
+        batch.expired || batch.quarantined || batch.missing_expiry || batch.missing_cost
+          ? 0
+          : Number(batch.quantity_remaining || 0)
+      ),
+      0,
+    ));
     const availableToUse = Math.max(0, usableOnHand - reservedOnUsable - unallocatedReserved);
     const nearestUsableExpiry = batches
       .filter((batch) => !batch.expired && !batch.missing_expiry && !batch.is_non_expiring && expiryDateValue(batch))
@@ -218,6 +237,14 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       onHand > 0 && (batches.some((batch) => batch.missing_expiry) || unbatchedQuantity > 0);
     const hasNonExpiring = batches.some((batch) => batch.is_non_expiring);
     const isNearExpiry = batches.some((batch) => batch.is_near_expiry);
+    const knownCostValue = batches.reduce((sum, batch) => {
+      const cost = toNumber(batch.unit_cost, 0);
+      return sum + (cost > 0 ? Number(batch.quantity_remaining || 0) * cost : 0);
+    }, 0);
+    const unpricedUnits = Math.max(0, unbatchedQuantity) + batches.reduce(
+      (sum, batch) => sum + (Number(batch.unit_cost || 0) > 0 ? 0 : Number(batch.quantity_remaining || 0)),
+      0,
+    );
     return {
       ...item,
       quantity: onHand,
@@ -225,6 +252,8 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       reserved_quantity: reservedQuantity,
       expired_quantity: expiredQuantity,
       quarantined_quantity: quarantinedQuantity,
+      missing_expiry_quantity: missingExpiryQuantity + unbatchedQuantity,
+      missing_cost_quantity: missingCostQuantity + unbatchedQuantity,
       has_quarantined: quarantinedQuantity > 0,
       available_to_use: availableToUse,
       available_to_promise: availableToUse,
@@ -239,6 +268,9 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       is_near_expiry: isNearExpiry,
       is_non_expiring_only: hasNonExpiring && !missingExpiry && !hasExpired && !nearestUsableExpiry,
       unbatched_quantity: unbatchedQuantity,
+      current_cost_value: roundCurrency(knownCostValue),
+      unpriced_units: unpricedUnits,
+      valuation_complete: unpricedUnits === 0,
       lots: batches,
     };
   });
@@ -304,19 +336,29 @@ function computeDoctorInventoryMetrics(bagItems, ocsItems = []) {
 function summarizeLocationValuation(items) {
   let knownValue = 0;
   let unpricedCount = 0;
+  let unpricedUnits = 0;
   for (const item of items || []) {
     const qty = Number(item.quantity || 0);
     if (qty <= 0) continue;
-    const cost = toNumber(item.cost_price, 0);
-    if (!(cost > 0)) {
-      unpricedCount += 1;
-      continue;
+    const lots = Array.isArray(item.lots) ? item.lots : [];
+    const batchedQty = lots.reduce((sum, batch) => sum + Math.max(0, Number(batch.quantity_remaining || 0)), 0);
+    let itemUnpricedUnits = Math.max(0, qty - batchedQty);
+    for (const batch of lots) {
+      const batchQty = Math.max(0, Number(batch.quantity_remaining || 0));
+      if (!batchQty) continue;
+      const unitCost = toNumber(batch.unit_cost, 0);
+      if (unitCost > 0) knownValue += batchQty * unitCost;
+      else itemUnpricedUnits += batchQty;
     }
-    knownValue += qty * cost;
+    if (itemUnpricedUnits > 0) {
+      unpricedCount += 1;
+      unpricedUnits += itemUnpricedUnits;
+    }
   }
   return {
     known_value: roundCurrency(knownValue),
     unpriced_count: unpricedCount,
+    unpriced_units: unpricedUnits,
     valuation_complete: unpricedCount === 0,
   };
 }

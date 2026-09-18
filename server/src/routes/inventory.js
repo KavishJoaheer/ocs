@@ -22,7 +22,7 @@ const {
   publishPatientDataChange,
 } = require("../lib/inventoryRealtime");
 const { db } = require("../db");
-const { isValidCurrencyAmount, toNumber } = require("../lib/utils");
+const { getTodayLocal, isValidCurrencyAmount, toNumber } = require("../lib/utils");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
   applyStocktakeSession,
@@ -81,10 +81,41 @@ const {
 
 const { quarantineBatch, releaseBatchQuarantine } = require("../lib/inventoryQuarantine");
 const { signedMovementQuantity } = require("../lib/inventoryMovementAllocations");
+const { reverseWriteOffMovement } = require("../lib/inventoryReversal");
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
 const router = express.Router();
 const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
+
+// Every JSON inventory mutation issued by the web app carries an Idempotency-Key.
+// Capture successful responses centrally so retries cannot repeat a stock change.
+router.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  if (String(req.headers["content-type"] || "").includes("multipart/form-data")) return next();
+  let operation;
+  try {
+    operation = operationFor(
+      req,
+      `inventory:${req.method.toLowerCase()}:${req.originalUrl || `${req.baseUrl}${req.path}`}`,
+    );
+    const replay = operation.read();
+    if (replay) {
+      res.setHeader("X-Idempotent-Replay", "true");
+      return res.status(Number(replay.status || 200)).json(replay.body);
+    }
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  const sendJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      operation.save({ status: res.statusCode, body });
+    }
+    return sendJson(body);
+  };
+  return next();
+});
 
 function isWarehouseManager(role) {
   return role === "admin" || role === "operator";
@@ -121,6 +152,19 @@ router.get("/data-quality.csv", (req, res) => {
   if (kind === "all" || kind === "missing_expiry") {
     for (const item of items.filter((row) => row.missing_expiry)) {
       rows.push(["missing_expiry", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, "Expiry missing"]);
+    }
+  }
+  if (kind === "all" || kind === "missing_cost") {
+    for (const item of items) {
+      const unpricedUnits = (item.lots || []).reduce(
+        (sum, batch) => sum + (Number(batch.quantity_remaining || 0) > 0 && Number(batch.unit_cost || 0) <= 0
+          ? Number(batch.quantity_remaining || 0)
+          : 0),
+        Number(item.unbatched_quantity || 0),
+      );
+      if (unpricedUnits > 0) {
+        rows.push(["missing_cost", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, `${unpricedUnits} unit(s) need cost`]);
+      }
     }
   }
   if (kind === "all" || kind === "near_expiry") {
@@ -560,7 +604,9 @@ function getItems({ stockScope, doctorId = null }) {
 function getBatchesForItem(itemId) {
   const rows = db
     .prepare(`
-      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, created_at
+      SELECT id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, created_at,
+        COALESCE(status, 'usable') AS status, COALESCE(row_version, 1) AS row_version,
+        quarantined_reason, quarantined_at, quarantined_by_user_id
       FROM inventory_batches
       WHERE item_id = ?
       ORDER BY
@@ -1227,14 +1273,31 @@ function getCompareRows(dateFrom = "", dateTo = "") {
   const bagOnHandRows = db
     .prepare(
       `
+        WITH item_values AS (
+          SELECT
+            i.id,
+            i.owner_doctor_id,
+            i.quantity,
+            COALESCE(SUM(CASE
+              WHEN b.quantity_remaining > 0 AND COALESCE(b.unit_cost, 0) > 0
+                THEN b.quantity_remaining * b.unit_cost ELSE 0 END), 0) AS amount,
+            COALESCE(SUM(CASE
+              WHEN b.quantity_remaining > 0 AND COALESCE(b.unit_cost, 0) <= 0
+                THEN b.quantity_remaining ELSE 0 END), 0) AS unpriced_batch_qty,
+            COALESCE(SUM(CASE WHEN b.quantity_remaining > 0 THEN b.quantity_remaining ELSE 0 END), 0) AS batch_qty
+          FROM inventory i
+          LEFT JOIN inventory_batches b ON b.item_id = i.id AND b.quantity_remaining > 0
+          WHERE i.stock_scope = 'doctor'
+            AND i.owner_doctor_id IS NOT NULL
+            AND i.archived_at IS NULL
+          GROUP BY i.id
+        )
         SELECT
           owner_doctor_id AS doctor_id,
           COALESCE(SUM(quantity), 0) AS qty,
-          COALESCE(SUM(quantity * cost_price), 0) AS amount,
-          COALESCE(SUM(CASE WHEN COALESCE(cost_price, 0) = 0 THEN quantity ELSE 0 END), 0) AS unpriced_qty
-        FROM inventory
-        WHERE stock_scope = 'doctor'
-          AND owner_doctor_id IS NOT NULL
+          COALESCE(SUM(amount), 0) AS amount,
+          COALESCE(SUM(unpriced_batch_qty + MAX(0, quantity - batch_qty)), 0) AS unpriced_qty
+        FROM item_values
         GROUP BY owner_doctor_id
       `,
     )
@@ -1335,20 +1398,34 @@ function getBagPricingSummary() {
   const rows = db
     .prepare(
       `
+        WITH lot_values AS (
+          SELECT
+            i.id,
+            i.owner_doctor_id,
+            LOWER(TRIM(i.item_name)) AS product_key,
+            i.quantity,
+            COALESCE(SUM(CASE
+              WHEN b.quantity_remaining > 0 AND COALESCE(b.unit_cost, 0) <= 0
+                THEN b.quantity_remaining ELSE 0 END), 0) AS unpriced_batch_qty,
+            COALESCE(SUM(CASE WHEN b.quantity_remaining > 0 THEN b.quantity_remaining ELSE 0 END), 0) AS batch_qty
+          FROM inventory i
+          LEFT JOIN inventory_batches b ON b.item_id = i.id AND b.quantity_remaining > 0
+          WHERE i.stock_scope = 'doctor'
+            AND i.owner_doctor_id IS NOT NULL
+            AND i.archived_at IS NULL
+          GROUP BY i.id
+        )
         SELECT
           owner_doctor_id,
-          LOWER(TRIM(item_name)) AS product_key,
           id,
           quantity,
-          cost_price
-        FROM inventory
-        WHERE stock_scope = 'doctor'
-          AND owner_doctor_id IS NOT NULL
-          AND archived_at IS NULL
+          product_key,
+          unpriced_batch_qty + MAX(0, quantity - batch_qty) AS unpriced_qty
+        FROM lot_values
       `,
     )
     .all();
-  const unpricedRows = rows.filter((row) => Number(row.cost_price || 0) === 0 && Number(row.quantity || 0) > 0);
+  const unpricedRows = rows.filter((row) => Number(row.unpriced_qty || 0) > 0);
   const uniqueProducts = new Set(unpricedRows.map((row) => row.product_key).filter(Boolean));
   const affectedBags = new Set(unpricedRows.map((row) => Number(row.owner_doctor_id)));
   const valuationComplete = uniqueProducts.size === 0;
@@ -1668,6 +1745,28 @@ function enrichActivityRow(row) {
   const legacy =
     Boolean(meta.legacy_unknown_lot || meta.source_identity_unavailable || meta.legacy_data_unavailable) ||
     (!String(row.batch_id || "").trim() && String(row.action_type || "").includes("stock_out"));
+  const movementId = Number(row.movement_id || 0);
+  const writeOff = ["remove", "wastage"].includes(String(row.movement_action_type || row.action_type || "").toLowerCase());
+  const allocationEvidence = writeOff && movementId
+    ? db.prepare(`
+        SELECT COUNT(*) AS rows, COALESCE(SUM(quantity), 0) AS quantity
+        FROM inventory_movement_allocations
+        WHERE movement_id = ?
+      `).get(movementId)
+    : null;
+  const hasCompleteAllocationEvidence = Boolean(
+    allocationEvidence &&
+    Number(allocationEvidence.rows || 0) > 0 &&
+    Number(allocationEvidence.quantity || 0) === Math.abs(Number(row.quantity || 0)),
+  );
+  const reversedWriteOff = writeOff && movementId
+    ? Boolean(db.prepare(`
+        SELECT 1 FROM inventory_movements
+        WHERE action_type = 'reversal'
+          AND CAST(json_extract(meta_json, '$.reversed_movement_id') AS INTEGER) = ?
+        LIMIT 1
+      `).get(movementId))
+    : false;
   return {
     ...row,
     billing_id: Number(safeParseJson(row.current_meta_json || row.meta_json, {}).billing_id || 0) || null,
@@ -1683,6 +1782,8 @@ function enrichActivityRow(row) {
     expiry_date: expiry || null,
     reason_note: reason,
     legacy_data_unavailable: Boolean(legacy && !String(row.batch_id || "").trim()),
+    write_off_reversible: Boolean(writeOff && movementId && hasCompleteAllocationEvidence && !reversedWriteOff),
+    write_off_reversed: reversedWriteOff,
   };
 }
 
@@ -2366,9 +2467,26 @@ router.post("/items/:id/bag-actions", (req, res) => {
     return res.status(400).json({ error: "Quantity must be greater than zero." });
   }
 
-  const reason = String(req.body.reason || "").trim();
+  let writeOff;
+  try {
+    writeOff = assertWriteOffInputs({
+      reason: req.body.reason,
+      note: req.body.note,
+      confirm: req.body.confirm,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+  const reason = writeOff.reason;
   if (!["Expired", "Discontinued", "Damaged", "Wasted"].includes(reason)) {
     return res.status(400).json({ error: "Reason must be Expired, Discontinued, Damaged, or Wasted." });
+  }
+  if (String(writeOff.note || "").trim().length < 8) {
+    return res.status(400).json({ error: "Record what happened and the supporting evidence (at least 8 characters)." });
+  }
+  const batchId = Number(req.body.batch_id || req.body.lot_id || 0);
+  if (!batchId) {
+    return res.status(400).json({ error: "Select the exact affected batch before writing off doctor bag stock." });
   }
 
   const previousQuantity = Number(item.quantity || 0);
@@ -2378,36 +2496,100 @@ router.post("/items/:id/bag-actions", (req, res) => {
 
   try {
     db.transaction(() => {
-      const consumed = consumeStock(itemId, quantity);
+      const consumed = consumeSpecificBatch(itemId, batchId, quantity, {
+        allowExpired: true,
+        requireExpired: reason === "Expired",
+      });
       if (!consumed.ok) {
-        throw new Error("Insufficient batch stock.");
+        const error = new Error(consumed.error || "Insufficient batch stock.");
+        error.status = 409;
+        throw error;
       }
       const nextQuantity = previousQuantity - quantity;
       updateInventoryQuantity(itemId, nextQuantity);
-      recordMovement({
+      const movementId = recordMovement({
         itemId,
         movementType: "out",
         quantity,
         previousQuantity,
         nextQuantity,
         actionType: reason === "Wasted" ? "wastage" : "remove",
-        note: `Doctor bag write-off (${reason})`,
+        note: `Doctor bag write-off (${reason}): ${writeOff.note}`,
         userId: req.auth.id,
         metaJson: JSON.stringify({
           reason,
+          note: writeOff.note,
           stock_out_reason: reason === "Wasted" ? "Wasted" : undefined,
+          batch_id: batchId,
+          allocations: consumed.allocations,
+          evidence_confirmed: true,
           performed_by_user_id: req.auth.id,
           performed_by_role: req.auth.role,
           performed_by_name: req.auth.full_name || req.auth.username || "",
           owner_doctor_id: item.owner_doctor_id,
         }),
       });
+      recordMovementAllocations(movementId, consumed.allocations);
+      recordAudit({
+        actionType: "doctor_bag_write_off",
+        itemId,
+        itemName: item.item_name,
+        quantity,
+        reason,
+        targetDoctorId: item.owner_doctor_id,
+        performedByUserId: req.auth.id,
+        performedByRole: req.auth.role,
+        performedByName: req.auth.full_name || req.auth.username || "",
+        metaJson: JSON.stringify({
+          movement_id: movementId,
+          batch_id: batchId,
+          note: writeOff.note,
+          allocations: consumed.allocations,
+          reversible: true,
+        }),
+      });
     })();
   } catch (error) {
-    return res.status(400).json({ error: error?.message || "Unable to adjust doctor bag stock." });
+    return res.status(error?.status || 400).json({ error: error?.message || "Unable to adjust doctor bag stock." });
   }
 
   return res.status(201).json(getPayload(req));
+});
+
+router.post("/movements/:id/reverse-write-off", (req, res) => {
+  ensureInfrastructure();
+  if (req.auth.role !== "admin") {
+    return res.status(403).json({ error: "Only administrators can reverse a confirmed write-off." });
+  }
+  try {
+    const result = reverseWriteOffMovement(Number(req.params.id), req.auth, {
+      reason: req.body?.reason,
+      confirm: req.body?.confirm === true,
+    });
+    if (!result.idempotent) {
+      recordAudit({
+        actionType: "reverse_write_off",
+        itemId: result.movement?.item_id || null,
+        itemName: result.movement?.item_name || "",
+        quantity: result.movement?.quantity || 0,
+        reason: String(req.body?.reason || "").trim(),
+        performedByUserId: req.auth.id,
+        performedByRole: req.auth.role,
+        performedByName: req.auth.full_name || req.auth.username || "",
+        metaJson: JSON.stringify({
+          reversed_movement_id: Number(req.params.id),
+          reversal_movement_id: result.reversal_id,
+          idempotent: false,
+        }),
+      });
+    }
+    return res.status(result.idempotent ? 200 : 201).json({
+      ...getPayloadFromRequest(req),
+      reversal: result,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
 });
 
 router.get("/items/:id/batches", (req, res) => {
@@ -2419,6 +2601,209 @@ router.get("/items/:id/batches", (req, res) => {
   res.json({
     item_id: itemId,
     batches: getBatchesForItem(itemId),
+  });
+});
+
+router.patch("/batches/:id/opening-data", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertAdminCatalogueAction(req.auth, "verify opening batch cost and expiry data");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+
+  const batchId = Number(req.params.id || 0);
+  const unitCost = roundCurrency(req.body?.unit_cost);
+  const nonExpiring = req.body?.is_non_expiring === true || Number(req.body?.is_non_expiring || 0) === 1;
+  const expiryDate = nonExpiring ? null : String(req.body?.expiry_date || "").trim().slice(0, 10);
+  const reason = String(req.body?.reason || "").trim();
+  const expectedVersion = Number(req.body?.expected_row_version || req.body?.row_version || 0);
+
+  if (!batchId) return res.status(400).json({ error: "Select a valid batch." });
+  if (!(unitCost > 0)) return res.status(400).json({ error: "Enter the verified actual unit cost above zero." });
+  if (!nonExpiring && !/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
+    return res.status(400).json({ error: "Enter the verified expiry date, or mark the batch as non-expiring." });
+  }
+  const parsedExpiry = !nonExpiring ? new Date(`${expiryDate}T00:00:00Z`) : null;
+  if (!nonExpiring && (!Number.isFinite(parsedExpiry.getTime()) || parsedExpiry.toISOString().slice(0, 10) !== expiryDate)) {
+    return res.status(400).json({ error: "Enter a valid verified expiry date." });
+  }
+  if (reason.length < 10) {
+    return res.status(400).json({ error: "Record the source of the opening data (at least 10 characters)." });
+  }
+  if (req.body?.confirm !== true) {
+    return res.status(400).json({ error: "Confirm that the cost and expiry were checked against source evidence." });
+  }
+
+  const batch = db.prepare(`
+    SELECT b.*, i.item_name, i.stock_scope, i.owner_doctor_id
+    FROM inventory_batches b JOIN inventory i ON i.id = b.item_id
+    WHERE b.id = ? AND i.archived_at IS NULL
+  `).get(batchId);
+  if (!batch) return res.status(404).json({ error: "Batch not found." });
+  if (expectedVersion && Number(batch.row_version || 1) !== expectedVersion) {
+    return res.status(409).json({
+      error: "This batch changed while you were reviewing it. Reload and verify the latest data.",
+      code: "BATCH_VERSION_CONFLICT",
+      batch: decorateBatches([batch])[0],
+    });
+  }
+
+  try {
+    db.transaction(() => {
+      const result = db.prepare(`
+        UPDATE inventory_batches
+        SET expiry_date = ?, is_non_expiring = ?, unit_cost = ?,
+          row_version = COALESCE(row_version, 1) + 1
+        WHERE id = ? AND COALESCE(row_version, 1) = ?
+      `).run(expiryDate, nonExpiring ? 1 : 0, unitCost, batchId, Number(batch.row_version || 1));
+      if (!result.changes) {
+        const error = new Error("This batch changed while you were reviewing it. Reload and retry.");
+        error.status = 409;
+        throw error;
+      }
+      db.prepare(`
+        UPDATE inventory
+        SET cost_price = CASE WHEN COALESCE(cost_price, 0) <= 0 THEN ? ELSE cost_price END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(unitCost, batch.item_id);
+      recordAudit({
+        actionType: "verify_opening_batch_data",
+        itemId: batch.item_id,
+        itemName: batch.item_name,
+        quantity: batch.quantity_remaining,
+        reason,
+        performedByUserId: req.auth.id,
+        performedByRole: req.auth.role,
+        performedByName: req.auth.full_name || req.auth.username || "",
+        metaJson: JSON.stringify({
+          batch_id: batchId,
+          previous_unit_cost: Number(batch.unit_cost || 0),
+          verified_unit_cost: unitCost,
+          previous_expiry_date: batch.expiry_date || null,
+          verified_expiry_date: expiryDate,
+          previous_is_non_expiring: Boolean(batch.is_non_expiring),
+          verified_is_non_expiring: nonExpiring,
+          evidence_note: reason,
+          verified_on: getTodayLocal(),
+        }),
+      });
+    }).immediate();
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  publishInventoryChange({ itemId: Number(batch.item_id), changedByUserId: req.auth.id });
+  return res.json({
+    ...getPayloadFromRequest(req),
+    verified_batch: getBatchesForItem(batch.item_id).find((row) => Number(row.id) === batchId) || null,
+  });
+});
+
+router.post("/items/:id/opening-batch-data", (req, res) => {
+  ensureInfrastructure();
+  try {
+    assertAdminCatalogueAction(req.auth, "create verified opening batch data");
+  } catch (error) {
+    return res.status(error.status || 403).json({ error: error.message });
+  }
+
+  const itemId = Number(req.params.id || 0);
+  const unitCost = roundCurrency(req.body?.unit_cost);
+  const nonExpiring = req.body?.is_non_expiring === true || Number(req.body?.is_non_expiring || 0) === 1;
+  const expiryDate = nonExpiring ? null : String(req.body?.expiry_date || "").trim().slice(0, 10);
+  const reason = String(req.body?.reason || "").trim();
+  const expectedVersion = Number(req.body?.expected_row_version || req.body?.row_version || 0);
+
+  if (!itemId) return res.status(400).json({ error: "Select a valid inventory item." });
+  if (!(unitCost > 0)) return res.status(400).json({ error: "Enter the verified actual unit cost above zero." });
+  if (!nonExpiring && !/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
+    return res.status(400).json({ error: "Enter the verified expiry date, or mark the batch as non-expiring." });
+  }
+  const parsedExpiry = !nonExpiring ? new Date(`${expiryDate}T00:00:00Z`) : null;
+  if (!nonExpiring && (!Number.isFinite(parsedExpiry.getTime()) || parsedExpiry.toISOString().slice(0, 10) !== expiryDate)) {
+    return res.status(400).json({ error: "Enter a valid verified expiry date." });
+  }
+  if (reason.length < 10) {
+    return res.status(400).json({ error: "Record the source of the opening data (at least 10 characters)." });
+  }
+  if (req.body?.confirm !== true) {
+    return res.status(400).json({ error: "Confirm that the cost and expiry were checked against source evidence." });
+  }
+
+  let createdBatchId = null;
+  try {
+    db.transaction(() => {
+      const item = db.prepare(`
+        SELECT * FROM inventory
+        WHERE id = ? AND archived_at IS NULL
+      `).get(itemId);
+      if (!item) {
+        const error = new Error("Inventory item not found.");
+        error.status = 404;
+        throw error;
+      }
+      if (expectedVersion && Number(item.row_version || 1) !== expectedVersion) {
+        const error = new Error("This item changed while you were reviewing it. Reload and verify the latest balance.");
+        error.status = 409;
+        throw error;
+      }
+      const batchedQuantity = Number(db.prepare(`
+        SELECT COALESCE(SUM(quantity_remaining), 0) AS quantity
+        FROM inventory_batches WHERE item_id = ? AND quantity_remaining > 0
+      `).get(itemId)?.quantity || 0);
+      const openingQuantity = Number(item.quantity || 0) - batchedQuantity;
+      if (!Number.isInteger(openingQuantity) || openingQuantity <= 0) {
+        const error = new Error("No unbatched opening quantity remains for this item.");
+        error.status = 409;
+        throw error;
+      }
+      const updated = db.prepare(`
+        UPDATE inventory
+        SET cost_price = CASE WHEN COALESCE(cost_price, 0) <= 0 THEN ? ELSE cost_price END,
+            row_version = COALESCE(row_version, 1) + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND COALESCE(row_version, 1) = ?
+      `).run(unitCost, itemId, Number(item.row_version || 1));
+      if (!updated.changes) {
+        const error = new Error("This item changed while you were reviewing it. Reload and retry.");
+        error.status = 409;
+        throw error;
+      }
+      const inserted = db.prepare(`
+        INSERT INTO inventory_batches (
+          item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(itemId, openingQuantity, expiryDate, unitCost, nonExpiring ? 1 : 0);
+      createdBatchId = Number(inserted.lastInsertRowid);
+      recordAudit({
+        actionType: "create_opening_batch_data",
+        itemId,
+        itemName: item.item_name,
+        quantity: openingQuantity,
+        reason,
+        performedByUserId: req.auth.id,
+        performedByRole: req.auth.role,
+        performedByName: req.auth.full_name || req.auth.username || "",
+        metaJson: JSON.stringify({
+          batch_id: createdBatchId,
+          verified_unit_cost: unitCost,
+          verified_expiry_date: expiryDate,
+          verified_is_non_expiring: nonExpiring,
+          evidence_note: reason,
+          verified_on: getTodayLocal(),
+        }),
+      });
+    }).immediate();
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
+
+  publishInventoryChange({ itemId, changedByUserId: req.auth.id });
+  return res.status(201).json({
+    ...getPayloadFromRequest(req),
+    verified_batch: getBatchesForItem(itemId).find((row) => Number(row.id) === createdBatchId) || null,
   });
 });
 
@@ -2886,7 +3271,23 @@ router.post("/items/:id/actions", (req, res) => {
   const dispensedOn = String(req.body.dispensed_on || new Date(Date.now()+4*3600000).toISOString().slice(0,10));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dispensedOn) || !Number.isFinite(Date.parse(dispensedOn)) || new Date(dispensedOn).toISOString().slice(0,10) !== dispensedOn) return res.status(400).json({error:'Enter a valid dispensing date.'});
   const saleConsultationId = Number(req.body.consultation_id || 0) || null;
-  if (saleConsultationId && !db.prepare('SELECT id FROM consultations WHERE id=? AND patient_id=? AND doctor_id=? AND voided_at IS NULL').get(saleConsultationId,salePatient?.id || 0,doctorId)) return res.status(400).json({error:'The dispensing visit does not belong to this patient and doctor.'});
+  if (actionType === "stock_out" && stockOutReason === "Sale" && !saleConsultationId) {
+    return res.status(400).json({
+      error: "Select the doctor-owned consultation visit before recording a direct sale.",
+      code: "CONSULTATION_REQUIRED",
+    });
+  }
+  if (saleConsultationId && !db.prepare(`
+    SELECT c.id
+    FROM consultations c
+    WHERE c.id = ? AND c.patient_id = ? AND c.doctor_id = ?
+      AND c.voided_at IS NULL
+  `).get(saleConsultationId, salePatient?.id || 0, doctorId)) {
+    return res.status(400).json({
+      error: "The selected consultation does not belong to this patient and doctor.",
+      code: "CONSULTATION_SCOPE_MISMATCH",
+    });
+  }
 
   const movementType = actionType === "add" ? "in" : "out";
   const previousQuantity = Number(item.quantity || 0);

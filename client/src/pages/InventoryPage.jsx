@@ -36,6 +36,7 @@ import InventoryStocktakePanel from "../components/InventoryStocktakePanel.jsx";
 import OperatorSupplyRequestsPanel from "../components/OperatorSupplyRequestsPanel.jsx";
 import OperatorWorkQueuesPanel from "../components/OperatorWorkQueuesPanel.jsx";
 import AddStockModal from "../components/inventory/AddStockModal.jsx";
+import BatchOpeningDataModal from "../components/inventory/BatchOpeningDataModal.jsx";
 import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
 import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
 import InventoryQuantitySummary from "../components/inventory/InventoryQuantitySummary.jsx";
@@ -193,13 +194,14 @@ function InventoryStatusChips({ item }) {
   const parLevel = Number(item.minimum_quantity || 0);
   const isLow = parLevel > 0 && quantity <= parLevel;
   const missingExpiry = Boolean(item.missing_expiry);
+  const missingCost = Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0;
   const nearExpiry = Boolean(item.is_near_expiry);
   const expired = itemHasExpiredStock(item);
   const quarantined = itemHasQuarantinedStock(item);
   const available = Number(item.available_to_use ?? 0);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
-  if (!isLow && !missingExpiry && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
+  if (!isLow && !missingExpiry && !missingCost && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -244,10 +246,19 @@ function InventoryStatusChips({ item }) {
       {missingExpiry ? (
         <span
           role="status"
-          aria-label="Stock status: Expiry missing"
-          className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600"
+          aria-label="Stock status: Unverified expiry, blocked from use"
+          className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900"
         >
-          Expiry missing
+          Unverified expiry · blocked
+        </span>
+      ) : null}
+      {missingCost ? (
+        <span
+          role="status"
+          aria-label="Stock status: Unverified cost, blocked from use"
+          className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900"
+        >
+          Unverified cost · blocked
         </span>
       ) : null}
       {nonExpiring ? (
@@ -659,6 +670,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
   const [reason, setReason] = useState("Sale");
   const [note, setNote] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedConsultationId, setSelectedConsultationId] = useState("");
   const [selectedLotId, setSelectedLotId] = useState("");
   const [legacyUnknownLot, setLegacyUnknownLot] = useState(false);
   const [legacyExplanation, setLegacyExplanation] = useState("");
@@ -671,6 +683,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
       setReason("Sale");
       setNote("");
       setSelectedPatientId("");
+      setSelectedConsultationId("");
       setSelectedLotId("");
       setLegacyUnknownLot(false);
       setLegacyExplanation("");
@@ -694,6 +707,9 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
     ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
     : null;
   const saleRequiresPatient = isSale && !selectedPatient;
+  const patientVisits = selectedPatient?.visits || [];
+  const selectedVisit = patientVisits.find((visit) => String(visit.consultation_id) === String(selectedConsultationId));
+  const saleRequiresVisit = isSale && !selectedVisit;
   const qty = Number(quantity || 0);
   const sellingPrice = Number(item?.selling_price || 0);
   const costPrice = Number(item?.cost_price || 0);
@@ -725,6 +741,10 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
             toast.error("Select a patient before recording a Sale.");
             return;
           }
+          if (saleRequiresVisit) {
+            toast.error("Select the doctor-owned consultation visit for this sale.");
+            return;
+          }
           if (isLoss && !noteReady) {
             toast.error("Enter a meaningful reason before confirming.");
             return;
@@ -738,6 +758,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
             reason,
             note: note.trim(),
             patient_id: selectedPatient ? Number(selectedPatient.id) : null,
+            consultation_id: selectedVisit ? Number(selectedVisit.consultation_id) : null,
             patient_label: selectedPatient
               ? `${selectedPatient.full_name}${selectedPatient.patient_identifier ? ` (${selectedPatient.patient_identifier})` : ""}`
               : "",
@@ -749,7 +770,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
       >
         {isSale ? (
           <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-xs text-teal-900">
-            This deducts bag stock and adds the item to the patient&apos;s unpaid bill. If this visit has no consultation yet, the line is added when the note is saved.
+            This deducts bag stock and links the charge to one of your recorded consultation visits.
           </div>
         ) : (
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
@@ -844,7 +865,10 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               </span>
               <select
                 value={selectedPatientId}
-                onChange={(event) => setSelectedPatientId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedPatientId(event.target.value);
+                  setSelectedConsultationId("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
               >
                 <option value="" disabled>
@@ -864,6 +888,26 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
                   Connect to the clinic network to refresh your patient list, then retry.
                 </p>
               ) : null}
+            </label>
+          ) : null}
+
+          {isSale && selectedPatient ? (
+            <label className="mt-4 block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Consultation visit *</span>
+              <select
+                required
+                value={selectedConsultationId}
+                onChange={(event) => setSelectedConsultationId(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
+              >
+                <option value="">Select consultation visit…</option>
+                {patientVisits.map((visit) => (
+                  <option key={visit.consultation_id} value={visit.consultation_id}>
+                    {visit.visit_number} · {visit.visit_date || visit.consultation_date || "Visit"}
+                  </option>
+                ))}
+              </select>
+              {!patientVisits.length ? <p className="text-xs font-semibold text-rose-600">No billable consultation for this patient is assigned to you.</p> : null}
             </label>
           ) : null}
 
@@ -2318,6 +2362,7 @@ function MobileDoctorDeductSheet({
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("Sale");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedConsultationId, setSelectedConsultationId] = useState("");
   const [note, setNote] = useState("");
   const [selectedLotId, setSelectedLotId] = useState("");
   const [legacyUnknownLot, setLegacyUnknownLot] = useState(false);
@@ -2330,6 +2375,7 @@ function MobileDoctorDeductSheet({
       setQuantity("1");
       setReason("Sale");
       setSelectedPatientId("");
+      setSelectedConsultationId("");
       setNote("");
       setSelectedLotId("");
       setLegacyUnknownLot(false);
@@ -2351,10 +2397,13 @@ function MobileDoctorDeductSheet({
     ? assignedPatients.find((entry) => String(entry.id) === String(selectedPatientId))
     : null;
   const saleRequiresPatient = isSale && !selectedPatient;
+  const patientVisits = selectedPatient?.visits || [];
+  const selectedVisit = patientVisits.find((visit) => String(visit.consultation_id) === String(selectedConsultationId));
+  const saleRequiresVisit = isSale && !selectedVisit;
   const salePriceReady = !isSale || (Number(item.selling_price || 0) > 0 && Number(item.cost_price || 0) > 0);
   const noteReady = !isLoss || String(note || "").trim().length >= 8;
   const lotReady = !isLoss || legacyUnknownLot || !lots.length || selectedLot;
-  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient || !salePriceReady || !noteReady || !lotReady;
+  const submitDisabled = isSaving || max < 1 || qty < 1 || qty > max || saleRequiresPatient || saleRequiresVisit || !salePriceReady || !noteReady || !lotReady;
 
   return (
     <MobileBottomSheet
@@ -2376,6 +2425,10 @@ function MobileDoctorDeductSheet({
             toast.error("Select a patient before saving.");
             return;
           }
+          if (saleRequiresVisit) {
+            toast.error("Select the consultation visit for this sale.");
+            return;
+          }
           onSubmit({
             quantity: qty,
             reason,
@@ -2384,6 +2437,7 @@ function MobileDoctorDeductSheet({
             legacy_unknown_lot: Boolean(isLoss && (legacyUnknownLot || !lots.length)),
             legacy_explanation: legacyExplanation.trim(),
             patient_id: selectedPatient ? Number(selectedPatient.id) : null,
+            consultation_id: selectedVisit ? Number(selectedVisit.consultation_id) : null,
             patient_label: selectedPatient
               ? `${selectedPatient.full_name}${selectedPatient.patient_identifier ? ` (${selectedPatient.patient_identifier})` : ""}`
               : "",
@@ -2427,7 +2481,7 @@ function MobileDoctorDeductSheet({
           </div>
           {isSale ? (
             <p className="mt-1 block text-[10px] leading-tight text-gray-400">
-              Sale deducts bag stock and adds quantity × selling price to this patient&apos;s unpaid bill. If there is no consultation yet, the line is added when the visit is saved.
+              Sale deducts bag stock and links quantity × selling price to one recorded consultation.
             </p>
           ) : null}
         </div>
@@ -2444,7 +2498,10 @@ function MobileDoctorDeductSheet({
               <select
                 id="mobile-deduct-patient-select"
                 value={selectedPatientId}
-                onChange={(event) => setSelectedPatientId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedPatientId(event.target.value);
+                  setSelectedConsultationId("");
+                }}
                 className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm font-semibold text-gray-800 focus:border-[#557373] focus:outline-none"
               >
                 <option value="" disabled>
@@ -2468,6 +2525,26 @@ function MobileDoctorDeductSheet({
                 Connect to the clinic Wi-Fi to refresh your patient list, then retry.
               </p>
             ) : null}
+          </div>
+        ) : null}
+
+        {isSale && selectedPatient ? (
+          <div className="animate-fade-in flex flex-col gap-1.5">
+            <label htmlFor="mobile-deduct-visit-select" className="text-xs font-bold text-gray-700">Consultation visit *</label>
+            <select
+              id="mobile-deduct-visit-select"
+              value={selectedConsultationId}
+              onChange={(event) => setSelectedConsultationId(event.target.value)}
+              className="min-h-12 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-800 focus:border-[#557373] focus:outline-none"
+            >
+              <option value="">Select consultation visit…</option>
+              {patientVisits.map((visit) => (
+                <option key={visit.consultation_id} value={visit.consultation_id}>
+                  {visit.visit_number} · {visit.visit_date || visit.consultation_date || "Visit"}
+                </option>
+              ))}
+            </select>
+            {!patientVisits.length ? <p className="text-[10px] font-semibold text-rose-500">No billable consultation for this patient is assigned to you.</p> : null}
           </div>
         ) : null}
 
@@ -2850,6 +2927,7 @@ export default function InventoryPage() {
   const [mobileRestockTarget, setMobileRestockTarget] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [correction, setCorrection] = useState(null);
+  const [batchOpeningData, setBatchOpeningData] = useState(null);
   const [stockFiltersOpen, setStockFiltersOpen] = useState(false);
   const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
   const headerActionsButtonRef = useRef(null);
@@ -3161,9 +3239,22 @@ export default function InventoryPage() {
     let cancelled = false;
 
     (async () => {
-      const list = await loadAssignedPatientPicker(user.id, {
-        doctorId: user.doctor_id,
-      });
+      let list = [];
+      try {
+        const query = new URLSearchParams({ doctorId: String(user.doctor_id), limit: "200" });
+        const picker = await api.get(`/billing/quick/picker-options?${query.toString()}`);
+        list = (picker?.patients || []).map((patient) => ({
+          id: Number(patient.patient_id),
+          full_name: patient.patient_name,
+          patient_identifier: patient.patient_identifier,
+          visits: patient.visits || [],
+        }));
+      } catch {
+        list = (await loadAssignedPatientPicker(user.id, { doctorId: user.doctor_id })).map((patient) => ({
+          ...patient,
+          visits: [],
+        }));
+      }
       if (!cancelled) {
         setAssignedPatientsList(list);
       }
@@ -3285,7 +3376,7 @@ export default function InventoryPage() {
         if (unpricedFromBags && unpricedKeys.size) {
           return unpricedKeys.has(String(item.item_name || "").trim().toLowerCase());
         }
-        return Number(item.cost_price || 0) === 0;
+        return Number(item.cost_price || 0) === 0 || Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0;
       });
   }, [
     items,
@@ -3803,6 +3894,7 @@ export default function InventoryPage() {
             quantity,
             reason: payload.reason,
             note: payload.note || "",
+            batch_id: payload.batch_id || null,
             confirm: true,
           },
           payload.override_reason,
@@ -3844,8 +3936,8 @@ export default function InventoryPage() {
 
     const item = stockOut.item;
     const isSale = payload.reason === "Sale";
-    if (isSale && !payload.patient_id) {
-      toast.error("Select a patient before recording a Sale.");
+    if (isSale && (!payload.patient_id || !payload.consultation_id)) {
+      toast.error("Select the patient and consultation visit before recording a Sale.");
       return;
     }
 
@@ -3861,6 +3953,7 @@ export default function InventoryPage() {
       ...(isSale
         ? {
             patient_id: Number(payload.patient_id),
+            consultation_id: Number(payload.consultation_id),
             dispensed_on: new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10),
             patient_label: payload.patient_label || "",
           }
@@ -4042,6 +4135,7 @@ export default function InventoryPage() {
     quantity,
     reason,
     patient_id = null,
+    consultation_id = null,
     patient_label = "",
     note = "",
     batch_id = null,
@@ -4068,8 +4162,8 @@ export default function InventoryPage() {
       return;
     }
 
-    if (stockOutReason === "Sale" && !patient_id) {
-      toast.error("Select a patient before logging this Sale.");
+    if (stockOutReason === "Sale" && (!patient_id || !consultation_id)) {
+      toast.error("Select the patient and consultation visit before logging this Sale.");
       return;
     }
 
@@ -4087,6 +4181,7 @@ export default function InventoryPage() {
       ...(stockOutReason === "Sale"
         ? {
             patient_id: Number(patient_id),
+            consultation_id: Number(consultation_id),
             dispensed_on: new Date(Date.now() + 4 * 3600000).toISOString().slice(0, 10),
             patient_label,
           }
@@ -4102,7 +4197,7 @@ export default function InventoryPage() {
         reason,
         doctorId: user.doctor_id,
         ...(stockOutReason === "Sale"
-          ? { patientId: Number(patient_id), patientLabel: patient_label }
+          ? { patientId: Number(patient_id), consultationId: Number(consultation_id), patientLabel: patient_label }
           : {}),
       };
 
@@ -4201,6 +4296,31 @@ export default function InventoryPage() {
       toast.success("Catalogue item archived.");
     } catch (error) {
       toast.error(error.message);
+    }
+  }
+
+  async function saveBatchOpeningData(payload) {
+    if (!batchOpeningData?.item?.id) return;
+    setIsSaving(true);
+    try {
+      const next = batchOpeningData.batch?.id
+        ? await api.patch(`/inventory/batches/${batchOpeningData.batch.id}/opening-data${inventoryListQuery}`, payload)
+        : await api.post(`/inventory/items/${batchOpeningData.item.id}/opening-batch-data${inventoryListQuery}`, payload);
+      commitInventoryData(next);
+      setBatchMap((current) => ({
+        ...current,
+        [batchOpeningData.item.id]: batchOpeningData.batch?.id
+          ? (current[batchOpeningData.item.id] || []).map((row) =>
+              Number(row.id) === Number(next?.verified_batch?.id) ? next.verified_batch : row,
+            )
+          : [...(current[batchOpeningData.item.id] || []), next?.verified_batch].filter(Boolean),
+      }));
+      setBatchOpeningData(null);
+      toast.success("Batch data verified. Eligible stock is now available.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -4795,7 +4915,7 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title="Available to promise: on-hand stock excluding reserved, expired and quarantined units">
+                              <strong className={cx("text-base tabular-nums", quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title="Available to promise: on-hand stock excluding reserved, expired, quarantined, unbatched, and unverified-expiry units">
                                 {quantities.atp}
                               </strong>
                               <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p>
@@ -4854,10 +4974,33 @@ export default function InventoryPage() {
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
                                     <div className="mt-2 space-y-1">
+                                      {isAdmin && Number(item.unbatched_quantity || 0) > 0 ? (
+                                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                                          <span>{item.unbatched_quantity} unit(s) have no batch identity and are blocked.</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setBatchOpeningData({ item, batch: null })}
+                                            className="min-h-9 rounded-xl bg-amber-200 px-3 text-xs font-black text-amber-950"
+                                          >
+                                            Create opening batch
+                                          </button>
+                                        </div>
+                                      ) : null}
                                       {batches.length ? batches.map((batch) => (
-                                        <p key={batch.id} className="text-sm text-slate-700">
-                                          Batch #{batch.id} - Qty {batch.quantity_remaining} - {batch.expiry_label || formatStockExpiryLabel(batch)} - Cost {formatRupees(batch.unit_cost)}
-                                        </p>
+                                        <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2 text-sm text-slate-700">
+                                          <span>
+                                            Batch #{batch.id} · Qty {batch.quantity_remaining} · {batch.expiry_label || formatStockExpiryLabel(batch)} · Cost {formatRupees(batch.unit_cost)}
+                                          </span>
+                                          {isAdmin && (batch.missing_expiry || Number(batch.unit_cost || 0) <= 0) ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => setBatchOpeningData({ item, batch })}
+                                              className="min-h-9 rounded-xl bg-amber-100 px-3 text-xs font-black text-amber-950"
+                                            >
+                                              Verify data
+                                            </button>
+                                          ) : null}
+                                        </div>
                                       )) : <p className="text-sm text-slate-500">No batches loaded.</p>}
                                     </div>
                                   </div>
@@ -5192,6 +5335,15 @@ export default function InventoryPage() {
         isSaving={isSaving}
         onClose={() => setCorrection(null)}
         onSubmit={saveExceptionalCorrection}
+      />
+      <BatchOpeningDataModal
+        key={batchOpeningData?.batch?.id || "closed-batch-opening-data"}
+        open={Boolean(batchOpeningData)}
+        item={batchOpeningData?.item}
+        batch={batchOpeningData?.batch}
+        isSaving={isSaving}
+        onClose={() => setBatchOpeningData(null)}
+        onSubmit={saveBatchOpeningData}
       />
       <ConfirmDialog
         open={Boolean(itemToDelete)}

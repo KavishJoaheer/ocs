@@ -28,6 +28,7 @@ export default function WriteOffStockModal({
   const [reason, setReason] = useState("Expired");
   const [note, setNote] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
+  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState("");
   const [step, setStep] = useState("form");
@@ -40,6 +41,7 @@ export default function WriteOffStockModal({
       setReason("Expired");
       setNote("");
       setOverrideReason("");
+      setSelectedBatchId("");
       setPreview(null);
       setPreviewError("");
       setStep("form");
@@ -48,8 +50,11 @@ export default function WriteOffStockModal({
 
   const qty = Number(quantity);
   const quantityError = !isPositiveWholeNumber(qty) ? "Quantity must be a positive whole number." : "";
-  const noteError = NOTE_REQUIRED.has(reason) && String(note).trim().length < 3
-    ? "Damaged, Discontinued, and other exceptional write-offs require an explanatory note."
+  const noteRequired = isDoctorBag || NOTE_REQUIRED.has(reason);
+  const noteError = noteRequired && String(note).trim().length < (isDoctorBag ? 8 : 3)
+    ? isDoctorBag
+      ? "Describe what happened and the evidence checked (at least 8 characters)."
+      : "Damaged, Discontinued, and other exceptional write-offs require an explanatory note."
     : "";
   const overrideError =
     requiresOperationalOverride(user) && String(overrideReason || "").trim().length < 10
@@ -86,7 +91,11 @@ export default function WriteOffStockModal({
   const available = Number(preview?.available_to_transfer ?? item?.quantity ?? 0);
   const currentQty = Number(preview?.current_quantity ?? item?.quantity ?? 0);
   const exceeds = isPositiveWholeNumber(qty) && qty > available;
-  const formValid = !quantityError && !noteError && !overrideError && !exceeds;
+  const bagBatches = (item?.lots || []).filter((batch) => Number(batch.quantity_remaining || 0) > 0);
+  const selectedBatch = bagBatches.find((batch) => String(batch.id) === String(selectedBatchId));
+  const batchError = isDoctorBag && !selectedBatch ? "Select the exact affected batch." : "";
+  const batchExceeds = Boolean(selectedBatch && isPositiveWholeNumber(qty) && qty > Number(selectedBatch.quantity_remaining || 0));
+  const formValid = !quantityError && !noteError && !overrideError && !batchError && !batchExceeds && !exceeds;
   const resulting = currentQty - (isPositiveWholeNumber(qty) ? qty : 0);
 
   return (
@@ -120,6 +129,7 @@ export default function WriteOffStockModal({
             quantity: qty,
             reason,
             note: note.trim(),
+            batch_id: selectedBatch ? Number(selectedBatch.id) : null,
             confirm: true,
             override_reason: overrideReason,
           });
@@ -132,6 +142,14 @@ export default function WriteOffStockModal({
                 <dt className="text-rose-700">Current quantity</dt>
                 <dd className="font-semibold text-rose-950">{currentQty}</dd>
               </div>
+              {selectedBatch ? (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-rose-700">Affected batch</dt>
+                  <dd className="text-right font-semibold text-rose-950">
+                    #{selectedBatch.id} · {selectedBatch.expiry_label || "Expiry unverified"}
+                  </dd>
+                </div>
+              ) : null}
               <div className="flex justify-between gap-3">
                 <dt className="text-rose-700">Write-off quantity</dt>
                 <dd className="font-semibold text-rose-950">{qty}</dd>
@@ -183,6 +201,32 @@ export default function WriteOffStockModal({
                 ) : null}
               </label>
 
+              {isDoctorBag ? (
+                <label className="space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">Affected batch</span>
+                  <select
+                    required
+                    value={selectedBatchId}
+                    onChange={(event) => setSelectedBatchId(event.target.value)}
+                    className={FIELD}
+                  >
+                    <option value="">Select exact batch…</option>
+                    {bagBatches.map((batch) => (
+                      <option key={batch.id} value={batch.id}>
+                        Batch #{batch.id} · {batch.expiry_label || "Expiry unverified"} · {batch.quantity_remaining} available
+                      </option>
+                    ))}
+                  </select>
+                  {batchError ? <p className="text-xs text-rose-600">{batchError}</p> : null}
+                  {batchExceeds ? <p className="text-xs text-rose-600">Quantity exceeds the selected batch balance.</p> : null}
+                  {!bagBatches.length ? (
+                    <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                      No traceable batch exists. Use an authorised exceptional correction instead of a write-off.
+                    </p>
+                  ) : null}
+                </label>
+              ) : null}
+
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Reason</span>
                 <select value={reason} onChange={(event) => setReason(event.target.value)} className={FIELD}>
@@ -195,7 +239,7 @@ export default function WriteOffStockModal({
 
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">
-                  {NOTE_REQUIRED.has(reason) ? "Explanatory note (required)" : "Note (optional)"}
+                  {noteRequired ? "Evidence / explanatory note (required)" : "Note (optional)"}
                 </span>
                 <textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} className={FIELD} />
                 {noteError ? <p className="text-xs text-rose-600">{noteError}</p> : null}
