@@ -12,6 +12,40 @@ async function loginOperator(request) {
   return response.json();
 }
 
+async function loginDoctorWithBillableVisit(request) {
+  const db = openE2eDb();
+  let doctors;
+  try {
+    doctors = db.prepare(`
+      SELECT username
+      FROM users
+      WHERE role = 'doctor'
+        AND is_active = 1
+        AND deleted_at IS NULL
+      ORDER BY id
+    `).all();
+  } finally {
+    db.close();
+  }
+
+  for (const doctor of doctors) {
+    const loginResponse = await request.post(`${API_BASE}/auth/login`, {
+      data: { username: doctor.username, password: "Welcome@123" },
+    });
+    if (!loginResponse.ok()) continue;
+    const session = await loginResponse.json();
+    const pickerResponse = await request.get(`${API_BASE}/billing/quick/picker-options`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    if (!pickerResponse.ok()) continue;
+    const patients = (await pickerResponse.json()).patients || [];
+    const patient = patients.find((candidate) => candidate.visits?.[0]);
+    if (patient) return { session, patient, visit: patient.visits[0] };
+  }
+
+  throw new Error("No doctor with a billable visit was available for the mobile billing test.");
+}
+
 async function injectStaffSession(page, token) {
   await page.addInitScript((authToken) => {
     window.localStorage.setItem("ocs_medecins_auth_token", authToken);
@@ -48,8 +82,21 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   expect(doctor).toBeTruthy();
   prepareCurrentTariffForE2e(visit);
 
+  const doctorPickerResponse = page.waitForResponse((response) =>
+    response.url().includes("/billing/quick/picker-options") &&
+    response.url().includes(`doctorId=${doctor.id}`) &&
+    response.request().method() === "GET",
+  );
   await page.getByLabel("Consultation doctor").selectOption(String(doctor.id));
-  await page.getByRole("button", { name: /Select patient/i }).click();
+  await doctorPickerResponse;
+  const findAnotherVisit = page.getByRole("button", { name: "Find another visit", exact: true });
+  if ((page.viewportSize()?.width || 0) < 768) {
+    await expect(findAnotherVisit).toBeVisible();
+    await findAnotherVisit.click();
+  }
+  const patientPickerButton = page.getByRole("button", { name: /Select patient/i });
+  await expect(patientPickerButton).toBeVisible();
+  await patientPickerButton.click();
   await page
     .getByRole("option", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
     .click();
@@ -83,6 +130,52 @@ function prepareCurrentTariffForE2e(visit) {
   } finally {
     db.close();
   }
+}
+
+for (const device of [
+  { name: "Samsung-sized Android", width: 360, height: 800 },
+  { name: "large iPhone", width: 430, height: 932 },
+]) {
+  test(`doctor billing stays reachable on ${device.name}`, async ({ page, request }) => {
+    const { session, patient, visit } = await loginDoctorWithBillableVisit(request);
+    prepareCurrentTariffForE2e(visit);
+    await injectStaffSession(page, session.token);
+    await page.setViewportSize({ width: device.width, height: device.height });
+    await page.goto(`${STAFF_BASE}/billing`);
+
+    await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Find another visit", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Find another visit", exact: true }).click();
+    await page.getByRole("button", { name: /Select patient/i }).click();
+
+    const picker = page.locator(".billing-patient-picker-panel");
+    await expect(picker).toBeVisible();
+    await expect(picker).toHaveCSS("position", "fixed");
+    const pickerBox = await picker.boundingBox();
+    expect(pickerBox?.x).toBeGreaterThanOrEqual(0);
+    expect((pickerBox?.x || 0) + (pickerBox?.width || 0)).toBeLessThanOrEqual(device.width);
+    await page.getByRole("button", { name: "Close patient search", exact: true }).last().click();
+
+    await page
+      .getByRole("button", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
+      .first()
+      .click();
+    await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
+
+    const reviewBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Review" });
+    await expect(reviewBar).toBeVisible();
+    const reviewBox = await reviewBar.boundingBox();
+    const navBox = await page.locator("#ocs-bottom-nav").boundingBox();
+    expect((reviewBox?.y || 0) + (reviewBox?.height || 0)).toBeLessThanOrEqual(navBox?.y || device.height);
+
+    await reviewBar.click();
+    await expect(page.getByRole("heading", { name: "Review billing" })).toBeVisible();
+    await expect(page.getByLabel("Consultation price")).toHaveCount(1);
+    const issueBar = page.getByRole("button", { name: /Issue invoice for Rs/i });
+    await expect(issueBar).toBeVisible();
+    const issueBox = await issueBar.boundingBox();
+    expect((issueBox?.y || 0) + (issueBox?.height || 0)).toBeLessThanOrEqual(navBox?.y || device.height);
+  });
 }
 
 test.describe("operator billing", () => {

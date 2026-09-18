@@ -55,9 +55,42 @@
   bottom: calc(var(--ocs-mobile-nav-clearance, 5.5rem) + 1rem);
 }
 
+.billing-patient-picker-panel {
+  position: fixed;
+  left: max(0.75rem, var(--sal));
+  right: max(0.75rem, var(--sar));
+  bottom: var(
+    --billing-picker-bottom-clearance,
+    calc(var(--ocs-mobile-nav-clearance, 5.5rem) + 0.5rem)
+  );
+  max-height: min(
+    34rem,
+    calc(
+      100dvh - var(--billing-picker-bottom-clearance, var(--ocs-mobile-nav-clearance, 5.5rem)) -
+        var(--billing-viewport-top, 0px) - 1rem
+    )
+  );
+}
+
+@media (max-width: 767px) {
+  .billing-mobile-action-space {
+    padding-bottom: calc(var(--ocs-mobile-nav-clearance, 5.5rem) + 6rem);
+  }
+}
+
 @media (min-width: 768px) {
   .billing-integrated-review-bar {
     bottom: 2rem;
+  }
+
+  .billing-patient-picker-panel {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    margin-top: 0.5rem;
+    max-height: min(24rem, calc(100svh - 6rem));
   }
 }
 

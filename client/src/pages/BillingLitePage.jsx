@@ -18,11 +18,13 @@ import {
   ShoppingBasket,
   Star,
   UserRound,
+  X,
 } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import Modal from "../components/Modal.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useKeyboardOffset } from "../hooks/useKeyboardOffset.js";
 import { api } from "../lib/api.js";
 import { listOfflineMutations, removeOfflineMutation } from "../lib/offlineQueue.js";
 import { isBrowserOffline, isNetworkFailure } from "../lib/networkErrors.js";
@@ -179,6 +181,7 @@ function BillingLitePage() {
   const [paymentDate, setPaymentDate] = useState(() => dayjs().format("YYYY-MM-DD"));
   const [operatorDoctorConfirmation, setOperatorDoctorConfirmation] = useState(false);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
+  const [visitPickerExpanded, setVisitPickerExpanded] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState(null);
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
@@ -188,6 +191,7 @@ function BillingLitePage() {
   const [patientSearchOffset, setPatientSearchOffset] = useState(0);
   const [patientPageLoading, setPatientPageLoading] = useState(false);
   const patientPickerRef = useRef(null);
+  const patientSearchInputRef = useRef(null);
   const [visitSearch, setVisitSearch] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedPickerVisitId, setSelectedPickerVisitId] = useState("");
@@ -209,6 +213,7 @@ function BillingLitePage() {
   const [favorites, setFavorites] = useState(() => {
     return new Set();
   });
+  const keyboardOffset = useKeyboardOffset(patientPickerOpen);
 
   useEffect(() => {
     document.title = "Billing · OCS Médecins";
@@ -343,8 +348,27 @@ function BillingLitePage() {
     if (!patientPickerOpen) return undefined;
     const frame = window.requestAnimationFrame(() => {
       patientPickerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      patientSearchInputRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
+  }, [patientPickerOpen]);
+
+  useEffect(() => {
+    if (!patientPickerOpen) return undefined;
+    function closePicker(event) {
+      if (event.key === "Escape") setPatientPickerOpen(false);
+    }
+    window.addEventListener("keydown", closePicker);
+    return () => window.removeEventListener("keydown", closePicker);
+  }, [patientPickerOpen]);
+
+  useEffect(() => {
+    if (!patientPickerOpen || !window.matchMedia("(max-width: 767px)").matches) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [patientPickerOpen]);
 
   useEffect(() => {
@@ -893,6 +917,8 @@ function BillingLitePage() {
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
     setOperatorDoctorConfirmation(false);
     setConsultationAdjustmentReason("");
+    setPatientPickerOpen(false);
+    setVisitPickerExpanded(false);
     setView(destination);
   }
 
@@ -1018,12 +1044,28 @@ function BillingLitePage() {
               )}
               {priorityVisits.length > 4 ? (
                 <p className="mt-2.5 text-center text-xs font-bold text-slate-500">
-                  {priorityVisits.length - 4} more in the patient and consultation picker below.
+                  {priorityVisits.length - 4} more billable {priorityVisits.length - 4 === 1 ? "visit" : "visits"} available.
                 </p>
+              ) : null}
+              {priorityVisits.length ? (
+                <button
+                  type="button"
+                  onClick={() => setVisitPickerExpanded((expanded) => !expanded)}
+                  className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#b9e3df] bg-white font-black text-[#17666a] transition active:scale-[0.98] md:hidden"
+                  aria-expanded={visitPickerExpanded}
+                  aria-controls="billing-visit-picker"
+                >
+                  <Search className="size-4" aria-hidden="true" />
+                  {visitPickerExpanded ? "Hide patient search" : "Find another visit"}
+                  <ChevronDown className={`size-4 transition ${visitPickerExpanded ? "rotate-180" : ""}`} aria-hidden="true" />
+                </button>
               ) : null}
             </div>
 
-            <div className="relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:p-6">
+            <div
+              id="billing-visit-picker"
+              className={`relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:block md:p-6 ${priorityVisits.length && !visitPickerExpanded ? "hidden" : "block"}`}
+            >
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="text-xl font-black text-[#173f47]">Select patient and consultation</h2>
@@ -1065,64 +1107,93 @@ function BillingLitePage() {
                   </button>
 
                   {patientPickerOpen ? (
-                    <div className="absolute inset-x-0 top-full z-[70] mt-2 flex max-h-[min(24rem,calc(100svh-6rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,50,55,0.2)]">
-                      <div className="shrink-0 border-b border-slate-100 p-3">
-                        <div className="relative">
-                          <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                          <input
-                            autoFocus
-                            value={patientSearch}
-                            onChange={(event) => setPatientSearch(event.target.value)}
-                            placeholder="Type patient name or OCS number"
-                            className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 font-semibold text-[#173f47] outline-none focus:border-[#2aa7a0] focus:bg-white"
-                          />
-                        </div>
-                        <p className="mt-2 px-1 text-xs font-bold text-slate-500">
-                          {patientSearchLoading
-                            ? "Searching all billable visits…"
-                            : `${filteredPatientOptions.length} ${filteredPatientOptions.length === 1 ? "patient" : "patients"} from your billable visits`}
-                        </p>
-                      </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="listbox" aria-label="Patients with consultations ready to bill">
-                        {patientSearchLoading ? (
-                          <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">Searching patients…</p>
-                        ) : filteredPatientOptions.length ? filteredPatientOptions.map((patient) => (
-                          <button
-                            key={patient.patient_id}
-                            type="button"
-                            role="option"
-                            aria-selected={String(patient.patient_id) === String(selectedPatientId)}
-                            onClick={() => choosePatient(patient)}
-                            className="flex min-h-16 w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-[#eff8f7] active:bg-[#dff5f1]"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate font-black text-[#173f47]">{patient.patient_name}</span>
-                              <span className="block text-sm font-semibold text-slate-500">{patient.patient_identifier}</span>
-                            </span>
-                            <span className="shrink-0 rounded-full bg-[#e7f8f5] px-2.5 py-1 text-xs font-black text-[#17666a]">
-                              {patient.visits.length} {patient.visits.length === 1 ? "visit" : "visits"}
-                            </span>
-                          </button>
-                        )) : (
-                          <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
-                            No matching patient with a completed billable consultation.
-                          </p>
-                        )}
-                        {(patientSearch.trim().length >= 2 && patientSearchResults !== null ? patientSearchHasMore : patientOptionsHasMore) ? (
-                          <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 p-3 backdrop-blur">
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setPatientPickerOpen(false)}
+                        className="billing-patient-picker-backdrop fixed inset-0 z-[60] bg-slate-950/20 md:hidden"
+                        aria-label="Close patient search"
+                      />
+                      <div
+                        className="billing-patient-picker-panel z-[70] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,50,55,0.2)]"
+                        style={{
+                          "--billing-picker-bottom-clearance": keyboardOffset.bottom > 0
+                            ? `${keyboardOffset.bottom + 8}px`
+                            : "calc(var(--ocs-mobile-nav-clearance, 5.5rem) + 0.5rem)",
+                          "--billing-viewport-top": `${keyboardOffset.top}px`,
+                        }}
+                      >
+                        <div className="shrink-0 border-b border-slate-100 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-3 md:hidden">
+                            <p className="font-black text-[#173f47]">Find a patient</p>
                             <button
                               type="button"
-                              disabled={patientPageLoading}
-                              onClick={() => void loadMorePatients()}
-                              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#eff8f7] px-4 text-sm font-black text-[#17666a] disabled:opacity-50"
+                              onClick={() => setPatientPickerOpen(false)}
+                              className="flex size-11 items-center justify-center rounded-xl bg-slate-100 text-slate-600"
+                              aria-label="Close patient search"
                             >
-                              {patientPageLoading ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-                              {patientPageLoading ? "Loading…" : "Load more billable visits"}
+                              <X className="size-5" aria-hidden="true" />
                             </button>
                           </div>
-                        ) : null}
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                            <input
+                              ref={patientSearchInputRef}
+                              value={patientSearch}
+                              onChange={(event) => setPatientSearch(event.target.value)}
+                              placeholder="Type patient name or OCS number"
+                              enterKeyHint="search"
+                              autoComplete="off"
+                              className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 font-semibold text-[#173f47] outline-none focus:border-[#2aa7a0] focus:bg-white"
+                            />
+                          </div>
+                          <p className="mt-2 px-1 text-xs font-bold text-slate-500">
+                            {patientSearchLoading
+                              ? "Searching all billable visits…"
+                              : `${filteredPatientOptions.length} ${filteredPatientOptions.length === 1 ? "patient" : "patients"} from your billable visits`}
+                          </p>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="listbox" aria-label="Patients with consultations ready to bill">
+                          {patientSearchLoading ? (
+                            <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">Searching patients…</p>
+                          ) : filteredPatientOptions.length ? filteredPatientOptions.map((patient) => (
+                            <button
+                              key={patient.patient_id}
+                              type="button"
+                              role="option"
+                              aria-selected={String(patient.patient_id) === String(selectedPatientId)}
+                              onClick={() => choosePatient(patient)}
+                              className="flex min-h-16 w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-[#eff8f7] active:bg-[#dff5f1]"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate font-black text-[#173f47]">{patient.patient_name}</span>
+                                <span className="block text-sm font-semibold text-slate-500">{patient.patient_identifier}</span>
+                              </span>
+                              <span className="shrink-0 rounded-full bg-[#e7f8f5] px-2.5 py-1 text-xs font-black text-[#17666a]">
+                                {patient.visits.length} {patient.visits.length === 1 ? "visit" : "visits"}
+                              </span>
+                            </button>
+                          )) : (
+                            <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                              No matching patient with a completed billable consultation.
+                            </p>
+                          )}
+                          {(patientSearch.trim().length >= 2 && patientSearchResults !== null ? patientSearchHasMore : patientOptionsHasMore) ? (
+                            <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 p-3 backdrop-blur">
+                              <button
+                                type="button"
+                                disabled={patientPageLoading}
+                                onClick={() => void loadMorePatients()}
+                                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#eff8f7] px-4 text-sm font-black text-[#17666a] disabled:opacity-50"
+                              >
+                                {patientPageLoading ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
+                                {patientPageLoading ? "Loading…" : "Load more billable visits"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   ) : null}
                 </div>
 
@@ -1224,7 +1295,7 @@ function BillingLitePage() {
         ) : null}
 
         {!isLoading && view === "catalog" && selectedVisit ? (
-          <section>
+          <section className="billing-mobile-action-space">
             <div className="mb-5 flex items-center justify-between gap-3 text-white">
               <button
                 type="button"
@@ -1260,7 +1331,7 @@ function BillingLitePage() {
             ) : null}
 
             <div className="mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.12)]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <label className="min-w-0 flex-1">
                   <span className="text-sm font-black text-slate-700">Consultation</span>
                   <select
@@ -1278,38 +1349,12 @@ function BillingLitePage() {
                     ))}
                   </select>
                 </label>
-                <label className="sm:w-44">
-                  <span className="text-sm font-black text-slate-700">Price</span>
-                  <span className="relative mt-2 block">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">Rs</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0.01"
-                      max={MAX_CONSULTATION_FEE}
-                      step="0.01"
-                      value={consultationPrice}
-                      onChange={(event) => setConsultationPrice(event.target.value)}
-                      className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-base font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
-                    />
-                  </span>
-                </label>
+                <div className="rounded-xl bg-[#edf8f6] px-4 py-3 sm:min-w-40 sm:text-right">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Standard price</p>
+                  <p className="mt-0.5 text-lg font-black text-[#17666a]">{formatRupees(consultationFees[consultationType] || 0)}</p>
+                </div>
               </div>
-              {Math.abs(Number(consultationPrice || 0) - Number(consultationFees[consultationType] || 0)) >= 0.005 ? (
-                <label className="mt-3 block">
-                  <span className="text-sm font-black text-amber-900">Reason for price adjustment</span>
-                  <textarea
-                    required
-                    minLength={8}
-                    rows={2}
-                    value={consultationAdjustmentReason}
-                    onChange={(event) => setConsultationAdjustmentReason(event.target.value)}
-                    placeholder="Explain why the standard consultation price was changed."
-                    className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold outline-none focus:border-amber-500"
-                  />
-                </label>
-              ) : null}
-              <p className="mt-2 text-xs font-semibold text-slate-500">Maximum Rs 4,500. Adjustments require a reason and are retained in the audit history.</p>
+              <p className="mt-2 text-xs font-semibold text-slate-500">Confirm or adjust prices once on the final review screen. Maximum consultation price: Rs 4,500.</p>
             </div>
 
             <div className="sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
@@ -1470,7 +1515,7 @@ function BillingLitePage() {
         ) : null}
 
         {!isLoading && view === "review" && selectedVisit ? (
-          <section className="mx-auto max-w-2xl">
+          <section className="billing-mobile-action-space mx-auto max-w-2xl">
             <button
               type="button"
               onClick={() => setView("catalog")}
@@ -1677,13 +1722,29 @@ function BillingLitePage() {
                   type="button"
                   onClick={submitBilling}
                   disabled={isSubmitting}
-                  className="mt-6 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#17666a] px-6 text-lg font-black text-white shadow-[0_15px_35px_rgba(23,102,106,0.25)] transition active:scale-[0.98] disabled:opacity-60"
+                  className="mt-6 hidden min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#17666a] px-6 text-lg font-black text-white shadow-[0_15px_35px_rgba(23,102,106,0.25)] transition active:scale-[0.98] disabled:opacity-60 md:flex"
                 >
                   {isSubmitting ? <LoaderCircle className="size-6 animate-spin" /> : <Send className="size-6" />}
                   {isSubmitting ? "Issuing…" : "Issue invoice"}
                 </button>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={submitBilling}
+              disabled={isSubmitting}
+              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-16 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-[1.4rem] bg-[#17666a] px-5 text-white shadow-[0_20px_50px_rgba(23,63,71,0.3)] transition active:scale-[0.98] disabled:opacity-60 md:hidden"
+              aria-label={`Issue invoice for ${formatRupees(grandTotal)}`}
+            >
+              <span className="text-left">
+                <span className="block text-xs font-bold text-white/70">Invoice total</span>
+                <span className="block text-lg font-black">{formatRupees(grandTotal)}</span>
+              </span>
+              <span className="flex items-center gap-2 text-base font-black">
+                {isSubmitting ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : <Send className="size-5" aria-hidden="true" />}
+                {isSubmitting ? "Issuing…" : "Issue invoice"}
+              </span>
+            </button>
           </section>
         ) : null}
 
