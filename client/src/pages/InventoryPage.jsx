@@ -219,7 +219,7 @@ function formatCompareQty(qty) {
   return `${count} u`;
 }
 
-function InventoryStatusChips({ item }) {
+function InventoryStatusChips({ item, hideCost = false }) {
   const isService = item.item_kind === "service";
   const quantity = Number(item.quantity || 0);
   const parLevel = Number(item.minimum_quantity || 0);
@@ -232,7 +232,7 @@ function InventoryStatusChips({ item }) {
   const available = Number(item.available_to_use ?? 0);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
-  if (!isService && !isLow && !missingExpiry && !missingCost && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
+  if (!isService && !isLow && !missingExpiry && !(missingCost && !hideCost) && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -292,7 +292,7 @@ function InventoryStatusChips({ item }) {
           Unverified expiry · blocked
         </span>
       ) : null}
-      {missingCost ? (
+      {missingCost && !hideCost ? (
         <span
           role="status"
           aria-label="Stock status: Unverified cost, blocked from use"
@@ -823,7 +823,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
           <InventoryQuantityLines item={item || {}} firstAtp />
           <p className="mt-1 text-xs text-slate-600">
-            {isSale ? `ATP ${available}` : `Selected lot balance: ${available}`}
+            {isSale ? `Usable ${available}` : `Selected lot balance: ${available}`}
           </p>
 
           <label className="mt-4 block space-y-2">
@@ -1668,9 +1668,9 @@ function InventoryOcsMasterActions({
   }
 
   const primaryBtn =
-    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-[#4FB8B3] px-3 text-xs font-semibold text-white transition hover:bg-[#3aa6a1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
+    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-[#4FB8B3] px-2.5 text-xs font-semibold text-white transition hover:bg-[#3aa6a1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
   const moreBtn =
-    "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
+    "inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98]";
 
   const showArchive = Boolean(
     onDeleteItem &&
@@ -1791,7 +1791,6 @@ function InventoryOcsMasterActions({
           onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
         >
           <MoreVertical className="size-3.5 shrink-0" />
-          More
         </button>
         {menuOpen && menuPosition && typeof document !== "undefined"
           ? createPortal(
@@ -2511,8 +2510,8 @@ function MobileDoctorDeductSheet({
     <MobileBottomSheet
       open={open}
       onClose={onClose}
-      title={`Use ${item.item_name || "item"}`}
-      subtitle={`In your bag: ${max}`}
+      title={item.item_name || "Use item"}
+      subtitle={`Usable in bag: ${Math.max(0, Number(item.available_to_use ?? item.quantity ?? 0))}`}
     >
       <form
         className="mt-4 space-y-4"
@@ -2546,20 +2545,8 @@ function MobileDoctorDeductSheet({
           });
         }}
       >
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Quantity Removed</span>
-          <input
-            required
-            min="1"
-            max={max || undefined}
-            type="number"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
-          />
-        </label>
         <div className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">Select reason</span>
+          <span className="text-sm font-semibold text-slate-700">What happened</span>
           <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
             {MOBILE_DEDUCT_REASONS.map((option) => (
               <button
@@ -2582,19 +2569,37 @@ function MobileDoctorDeductSheet({
             ))}
           </div>
           {isSale ? (
-            <p className="mt-1 block text-[10px] leading-tight text-gray-400">
-              Sale deducts bag stock and links quantity × selling price to one recorded consultation.
+            <p className="text-xs leading-snug text-slate-500">
+              Bills the patient for this visit and takes the stock from your bag.
             </p>
-          ) : null}
+          ) : (
+            <p className="text-xs leading-snug text-slate-500">
+              Records loss from your bag. This is not billed.
+            </p>
+          )}
         </div>
 
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold text-slate-700">Quantity</span>
+          <input
+            required
+            min="1"
+            max={max || undefined}
+            type="number"
+            inputMode="numeric"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-teal-500 focus:bg-white"
+          />
+        </label>
+
         {isSale ? (
-          <div className="animate-fade-in mt-4 flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <label
               htmlFor="mobile-deduct-patient-select"
-              className="text-xs font-bold text-gray-700"
+              className="text-sm font-semibold text-slate-700"
             >
-              Assign to Patient *
+              Patient
             </label>
             <div className="relative">
               <select
@@ -2632,7 +2637,7 @@ function MobileDoctorDeductSheet({
 
         {isSale && selectedPatient ? (
           <div className="animate-fade-in flex flex-col gap-1.5">
-            <label htmlFor="mobile-deduct-visit-select" className="text-xs font-bold text-gray-700">Consultation visit *</label>
+            <label htmlFor="mobile-deduct-visit-select" className="text-sm font-semibold text-slate-700">Visit</label>
             <select
               id="mobile-deduct-visit-select"
               value={selectedConsultationId}
@@ -2714,7 +2719,7 @@ function MobileDoctorDeductSheet({
               isSale ? "bg-teal-600" : "bg-rose-600",
             )}
           >
-            {isSaving ? "Saving..." : isSale ? "Confirm sale" : "Confirm use"}
+            {isSaving ? "Saving..." : isSale ? "Confirm sale" : "Confirm"}
           </button>
           <button
             type="button"
@@ -2738,13 +2743,15 @@ function MobileDoctorBagActions({
   requestOnly = false,
 }) {
   const requestBtn =
+    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800";
+  const requestOnlyBtn =
     "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white";
   const useBtn =
-    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm font-bold text-slate-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400";
+    "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400";
 
   if (requestOnly) {
     return (
-      <button type="button" onClick={onRequest} className={`${requestBtn} w-full`}>
+      <button type="button" onClick={onRequest} className={`${requestOnlyBtn} w-full`}>
         Add to request
       </button>
     );
@@ -2752,14 +2759,14 @@ function MobileDoctorBagActions({
 
   return (
     <div className="grid w-full grid-cols-2 gap-2">
-      <button type="button" disabled={useDisabled} onClick={onUse} className={useBtn}>
+      <button type="button" disabled={useDisabled} onClick={onUse} className={useDisabled ? requestBtn : useBtn}>
         Use
       </button>
-      <button type="button" onClick={onRequest} className={requestBtn}>
-        Request this item
+      <button type="button" onClick={onRequest} className={useDisabled ? requestOnlyBtn : requestBtn}>
+        Request
       </button>
       {onEmergencyOverride ? (
-        <button type="button" onClick={onEmergencyOverride} className={`${useBtn} col-span-2 text-xs`}>
+        <button type="button" onClick={onEmergencyOverride} className={`${requestBtn} col-span-2 text-xs`}>
           Emergency stock override
         </button>
       ) : null}
@@ -2792,10 +2799,17 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
           <p className="break-words text-[15px] font-bold leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
             {item.item_name}
           </p>
-          <InventoryStatusChips item={item} />
+          <InventoryStatusChips item={item} hideCost />
           {!isService ? (
             <div className={cx("mt-1", qtyTone)}>
-              <InventoryQuantityLines item={item} compact firstAtp showMinimum={false} />
+              <InventoryQuantityLines
+                item={item}
+                compact
+                firstAtp
+                showMinimum={false}
+                atpLabel="Usable"
+                onHandLabel="In bag"
+              />
             </div>
           ) : null}
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
@@ -2826,10 +2840,10 @@ function MobileDoctorBagLayout({
   selectedView,
   onSelectedViewChange,
   doctorViewIsOcs,
-  mobileBagPagedItems,
-  mobileBagTotalPages,
-  currentPage,
-  setCurrentPage,
+  mobileBagItems,
+  hasMore = false,
+  remainingCount = 0,
+  onShowMore,
   onOpenDeduct,
   onOpenRequest,
   onOpenRestock,
@@ -2884,6 +2898,24 @@ function MobileDoctorBagLayout({
         />
       </label>
 
+      {!doctorViewIsOcs ? (
+        <div className="flex gap-1.5">
+          <button type="button" onClick={onToggleLowStock} className={cx(mobileBagChipClass(showLowStockOnly), "min-w-0 flex-1 px-2 text-center")}>
+            Below min
+          </button>
+          <button
+            type="button"
+            onClick={onToggleMissingExpiry}
+            className={cx(mobileBagChipClass(showMissingExpiryOnly), "min-w-0 flex-1 px-2 text-center")}
+          >
+            Missing
+          </button>
+          <button type="button" onClick={onToggleExpired} className={cx(mobileBagChipClass(showExpiredOnly), "min-w-0 flex-1 px-2 text-center")}>
+            Expired
+          </button>
+        </div>
+      ) : null}
+
       <div className="ocs-h-scroll pb-0.5">
         <button
           type="button"
@@ -2902,23 +2934,6 @@ function MobileDoctorBagLayout({
             {folder.name} ({folderCounts?.get(String(folder.id)) || 0})
           </button>
         ))}
-        {!doctorViewIsOcs ? (
-          <>
-            <button type="button" onClick={onToggleLowStock} className={mobileBagChipClass(showLowStockOnly)}>
-              Below min
-            </button>
-            <button
-              type="button"
-              onClick={onToggleMissingExpiry}
-              className={mobileBagChipClass(showMissingExpiryOnly)}
-            >
-              Missing expiry
-            </button>
-            <button type="button" onClick={onToggleExpired} className={mobileBagChipClass(showExpiredOnly)}>
-              Expired
-            </button>
-          </>
-        ) : null}
         <span className="w-1 shrink-0" aria-hidden />
       </div>
 
@@ -2927,11 +2942,11 @@ function MobileDoctorBagLayout({
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500" aria-live="polite">
             Updating items…
           </div>
-        ) : mobileBagPagedItems.length ? (
+        ) : mobileBagItems.length ? (
           <>
             <div className="flex w-full min-w-0 flex-col gap-2.5">
-              {mobileBagPagedItems.map((item) => {
-                const currentQuantity = Number(item.quantity || 0);
+              {mobileBagItems.map((item) => {
+                const usableQty = Number(item.available_to_use ?? item.available_to_promise ?? item.quantity ?? 0);
 
                 return (
                   <MobileInventoryStockCard
@@ -2945,7 +2960,7 @@ function MobileDoctorBagLayout({
                         />
                       ) : (
                         <MobileDoctorBagActions
-                          useDisabled={!onOpenDeduct || currentQuantity < 1}
+                          useDisabled={!onOpenDeduct || usableQty < 1}
                           onUse={() => onOpenDeduct?.(item)}
                           onRequest={() => onOpenRequest?.(item)}
                           onEmergencyOverride={onOpenRestock ? () => onOpenRestock(item) : undefined}
@@ -2957,30 +2972,14 @@ function MobileDoctorBagLayout({
               })}
             </div>
 
-            {mobileBagTotalPages > 1 ? (
-              <div className="flex items-center justify-between gap-3 pt-2">
-                <p className="text-sm text-slate-500">
-                  Page {currentPage} of {mobileBagTotalPages}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    disabled={currentPage >= mobileBagTotalPages}
-                    onClick={() => setCurrentPage((prev) => Math.min(mobileBagTotalPages, prev + 1))}
-                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={onShowMore}
+                className="mt-2 min-h-11 w-full rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700"
+              >
+                Show more{remainingCount > 0 ? ` (${remainingCount})` : ""}
+              </button>
             ) : null}
           </>
         ) : (
@@ -3043,8 +3042,9 @@ export default function InventoryPage() {
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
   const [showMissingExpiryOnly, setShowMissingExpiryOnly] = useState(false);
   const [showExpiredOnly, setShowExpiredOnly] = useState(false);
-  const [sortMode, setSortMode] = useState("expiry_asc");
+  const [sortMode, setSortMode] = useState("name_asc");
   const [currentPage, setCurrentPage] = useState(1);
+  const [mobileBagVisibleCount, setMobileBagVisibleCount] = useState(20);
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
@@ -3187,8 +3187,9 @@ export default function InventoryPage() {
     : "max-h-[560px]";
   const doctorDesktopBagTable = isDoctor && doctorViewIsMy;
   const staffDoctorBagTable = canManageOcs && !contextIsOcs;
-  const inventoryActionsColWidth = doctorDesktopBagTable || staffDoctorBagTable ? "30%" : "32%";
-  const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : "48rem";
+  const stickyInventoryActions = doctorDesktopBagTable || staffDoctorBagTable;
+  const inventoryActionsColWidth = stickyInventoryActions ? "28%" : "9.75rem";
+  const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : stickyInventoryActions ? "48rem" : "42rem";
   const movements = useMemo(() => data?.movements || [], [data?.movements]);
 
   const doctorRestockCandidates = useMemo(() => {
@@ -3538,12 +3539,11 @@ export default function InventoryPage() {
     return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
   }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView, showLowStockOnly, showMissingExpiryOnly, showNearExpiryOnly, showExpiredOnly]);
 
-  const mobileBagPagedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return mobileBagFilteredItems.slice(start, start + pageSize);
-  }, [mobileBagFilteredItems, currentPage, pageSize]);
-
-  const mobileBagTotalPages = Math.max(1, Math.ceil(mobileBagFilteredItems.length / pageSize));
+  const mobileBagVisibleItems = useMemo(
+    () => mobileBagFilteredItems.slice(0, mobileBagVisibleCount),
+    [mobileBagFilteredItems, mobileBagVisibleCount],
+  );
+  const mobileBagRemainingCount = Math.max(0, mobileBagFilteredItems.length - mobileBagVisibleItems.length);
 
   const filteredContextOptions = useMemo(() => {
     const needle = contextSearch.trim().toLowerCase();
@@ -3556,17 +3556,12 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly, sortMode, doctorContext]);
+    setMobileBagVisibleCount(20);
+  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showExpiredOnly, sortMode, doctorContext]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
-
-  useEffect(() => {
-    if (showMobileDoctorBag && currentPage > mobileBagTotalPages) {
-      setCurrentPage(mobileBagTotalPages);
-    }
-  }, [showMobileDoctorBag, currentPage, mobileBagTotalPages]);
 
   useEffect(() => {
     if (!showMobileDoctorBag) {
@@ -3781,7 +3776,7 @@ export default function InventoryPage() {
       Reserved: Number(item.reserved_quantity ?? 0),
       Expired: Number(item.expired_quantity ?? 0),
       Quarantined: Number(item.quarantined_quantity ?? 0),
-      ATP: Number(item.available_to_promise ?? item.available_to_use ?? 0),
+      Usable: Number(item.available_to_promise ?? item.available_to_use ?? 0),
       "Min qty": Number(item.minimum_quantity ?? 0),
       Unit: item.unit ?? "",
       "Nearest usable expiry": item.nearest_usable_expiry || formatInventoryExpiry(item),
@@ -4495,10 +4490,10 @@ export default function InventoryPage() {
             selectedView={selectedView}
             onSelectedViewChange={setSelectedView}
             doctorViewIsOcs={doctorViewIsOcs}
-            mobileBagPagedItems={mobileBagPagedItems}
-            mobileBagTotalPages={mobileBagTotalPages}
-            currentPage={currentPage}
-            setCurrentPage={setCurrentPage}
+            mobileBagItems={mobileBagVisibleItems}
+            hasMore={mobileBagRemainingCount > 0}
+            remainingCount={mobileBagRemainingCount}
+            onShowMore={() => setMobileBagVisibleCount((count) => count + 20)}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
             onOpenRequest={openDoctorRequestForItem}
             onOpenRestock={emergencyRestockEnabled ? openMobileDoctorRestock : undefined}
@@ -4807,7 +4802,7 @@ export default function InventoryPage() {
               : staffLocationHeading
         }
       >
-        <div className="sticky top-0 z-20 mb-4 space-y-3 border-b border-slate-100 bg-white pb-4">
+        <div className="sticky top-0 z-20 mb-3 space-y-2 border-b border-slate-100 bg-white pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {isDoctor ? (
               <div className="flex shrink-0 flex-wrap gap-2">
@@ -4952,27 +4947,29 @@ export default function InventoryPage() {
                 Reconciliation required ({chaseCounts.reconciliation})
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                const token = window.localStorage.getItem("ocs_medecins_auth_token");
-                void fetch(`/api/inventory/data-quality.csv${selectedContextDoctorId ? `?doctorId=${encodeURIComponent(selectedContextDoctorId)}` : ""}`, {
-                  credentials: "include",
-                  headers: token ? { Authorization: `Bearer ${token}` } : {},
-                }).then(async (response) => {
-                  const blob = await response.blob();
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement("a");
-                  link.href = url;
-                  link.download = "inventory-data-quality.csv";
-                  link.click();
-                  URL.revokeObjectURL(url);
-                });
-              }}
-              className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
-            >
-              Data quality CSV
-            </button>
+            {canManageOcs ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const token = window.localStorage.getItem("ocs_medecins_auth_token");
+                  void fetch(`/api/inventory/data-quality.csv${selectedContextDoctorId ? `?doctorId=${encodeURIComponent(selectedContextDoctorId)}` : ""}`, {
+                    credentials: "include",
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  }).then(async (response) => {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "inventory-stock-issues.csv";
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  });
+                }}
+                className="min-h-11 rounded-xl px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Export issues
+              </button>
+            ) : null}
             {isAdmin ? (
               <button
                 type="button"
@@ -5012,23 +5009,23 @@ export default function InventoryPage() {
           </div>
         ) : pagedItems.length ? (
           <>
-            <div className="hidden rounded-3xl border border-slate-200/80 bg-white lg:block">
-              <div className={cx("overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
+            <div className="hidden min-w-0 max-w-full overflow-hidden rounded-3xl border border-slate-200/80 bg-white lg:block">
+              <div className={cx("min-w-0 overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
                 <table className="w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
                   <colgroup>
-                    <col style={{ width: doctorDesktopBagTable ? "28%" : "34%" }} />
-                    <col style={{ width: doctorDesktopBagTable ? "11%" : "10%" }} />
-                    <col style={{ width: "10%" }} />
-                    <col style={{ width: doctorDesktopBagTable ? "21%" : "26%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "28%" : "42%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "11%" : "12%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "10%" : "12%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "21%" : "18%" }} />
                     <col style={{ width: inventoryActionsColWidth }} />
                   </colgroup>
                   <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500 lg:text-ocs-slate">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
-                      <th className="px-3 py-2 text-center align-middle">Available</th>
+                      <th className="px-3 py-2 text-center align-middle">Usable</th>
                       <th className="px-3 py-2 text-center align-middle">On hand</th>
-                      <th className="px-3 py-2 text-center align-middle">Nearest usable expiry</th>
-                      <th className="sticky right-0 z-30 bg-slate-50 px-3 py-2 text-right align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
+                      <th className="px-3 py-2 text-center align-middle">Expiry</th>
+                      <th className={cx("bg-slate-50 px-3 py-2 text-right align-middle", stickyInventoryActions && "sticky right-0 z-30 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]")}>
                         Actions
                       </th>
                     </tr>
@@ -5066,7 +5063,7 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : "Available to promise: on-hand stock excluding reserved, expired, quarantined, unbatched, and unverified-expiry units"}>
+                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : "Usable stock excluding reserved, expired, quarantined, unbatched, and unverified-expiry units"}>
                                 {isService ? "—" : quantities.atp}
                               </strong>
                               {!isService ? <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p> : null}
@@ -5084,7 +5081,7 @@ export default function InventoryPage() {
                               {formatInventoryExpiry(item)}
                             </td>
                             <td
-                              className="sticky right-0 z-10 bg-white px-3 py-2 align-middle shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]"
+                              className={cx("bg-white px-3 py-2 align-middle", stickyInventoryActions && "sticky right-0 z-10 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]")}
                               onClick={(event) => event.stopPropagation()}
                             >
                               <div className="flex justify-end">
@@ -5120,7 +5117,7 @@ export default function InventoryPage() {
                                     <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
-                                    <div className="mt-2"><InventoryQuantityLines item={item} firstAtp /></div>
+                                    <div className="mt-2"><InventoryQuantityLines item={item} firstAtp atpLabel="Usable" /></div>
                                   </div>
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>

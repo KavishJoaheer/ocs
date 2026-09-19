@@ -73,7 +73,7 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
       ["Before", String(preview?.previous ?? current)],
       ["Change", `${change > 0 ? "+" : ""}${preview?.change ?? change}`],
       ["After", String(preview?.next ?? parsedNext)],
-      ["Available to promise", String(preview?.available_to_promise ?? "—")],
+      ["Usable", String(preview?.available_to_promise ?? "—")],
       ["Reserved", String(preview?.reserved_quantity ?? "—")],
       ["Reason", reason.trim() || "—"],
       ["Note", note.trim() || "—"],

@@ -59,7 +59,7 @@ export function itemHasQuarantinedStock(item) {
 }
 
 export const ATP_HELP_TEXT =
-  "Available to promise (ATP) is usable on-hand stock minus active reservations, expired units and quarantined units. It is never negative.";
+  "Usable stock is on-hand minus reservations, expired units, and quarantined units.";
 
 export function inventoryQuantityBreakdown(item = {}) {
   const onHand = Number(item.on_hand_quantity ?? item.quantity ?? 0);

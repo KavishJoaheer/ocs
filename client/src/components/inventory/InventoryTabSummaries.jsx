@@ -79,10 +79,10 @@ function StockAttentionButton({ label, compactLabel, accessibleLabel, value, ton
       aria-label={`${accessibleLabel || label}: ${value}`}
       aria-pressed={active}
       onClick={onClick}
-      className={`flex min-h-11 min-w-0 flex-col items-center justify-center rounded-xl border px-1.5 py-1 text-center text-[10px] font-semibold leading-tight transition hover:border-ocs-teal/50 sm:flex-row sm:justify-between sm:px-3 sm:text-left sm:text-xs ${toneClass}`}
+      className={`flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-semibold leading-tight transition hover:border-ocs-teal/50 sm:px-3 ${toneClass}`}
     >
-      <span className="min-w-0 truncate sm:hidden">{compactLabel || label}</span>
-      <span className="hidden min-w-0 truncate sm:inline">{label}</span>
+      <span className="min-w-0 sm:hidden">{compactLabel || label}</span>
+      <span className="hidden min-w-0 sm:inline">{label}</span>
       <strong className="shrink-0 text-sm leading-none tabular-nums">{value}</strong>
     </button>
   );
@@ -190,17 +190,15 @@ export default function InventoryTabSummaries({
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-2 sm:p-3 md:p-4">
-      <div className="flex items-stretch gap-2 sm:flex-col sm:gap-3 xl:flex-row xl:items-center">
-        <div className="hidden min-w-0 shrink-0 sm:flex sm:w-auto sm:flex-row sm:items-baseline sm:justify-between sm:gap-3 xl:w-64 xl:flex-col xl:items-start xl:gap-1">
+      <div className="flex flex-col gap-3">
+        <div className="hidden min-w-0 sm:block">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
             {stock.value_title || (isBag ? "Bag value" : "Stock value")}
           </p>
-          <div className="min-w-0 sm:text-right xl:text-left">
-            <p className="truncate text-sm font-semibold text-slate-950 sm:text-base md:text-lg">{valueDisplay.value}</p>
-            {valueDisplay.hint ? <p className="hidden truncate text-[11px] text-slate-400 sm:block">{valueDisplay.hint}</p> : null}
-          </div>
+          <p className="mt-0.5 text-sm font-semibold text-slate-950 sm:text-base">{valueDisplay.value}</p>
+          {valueDisplay.hint ? <p className="mt-0.5 max-w-xl text-[11px] leading-snug text-slate-400">{valueDisplay.hint}</p> : null}
         </div>
-        <div className={`grid min-w-0 flex-1 gap-1.5 sm:gap-2 ${chaseColumns}`}>
+        <div className={`grid w-full min-w-0 gap-1.5 sm:gap-2 ${chaseColumns}`}>
           <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone="rose" active={filters?.low} onClick={() => onFilter?.("low")} />
           <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone="amber" active={filters?.near} onClick={() => onFilter?.("near")} />
           <StockAttentionButton label="Expired" compactLabel="Expired" value={expired} tone="rose" active={filters?.expired} onClick={() => onFilter?.("expired")} />
