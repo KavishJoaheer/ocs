@@ -71,22 +71,25 @@ export default function AppUpdateBanner() {
   return (
     <div
       role="status"
-      className="mb-4 flex flex-col gap-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950 sm:flex-row sm:items-center sm:justify-between"
+      className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-950 sm:mb-4 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
     >
-      <p>
+      <p className="min-w-0">
         <span className="font-semibold">Update available.</span> A newer OCS release is deployed.
-        {dirty
-          ? " Unsaved stock count, fulfilment, shipment or correction work is open. Reloading now can lose those counts."
-          : " Reload to use the current version."}
-        {confirmReload ? " Confirm reload to discard unsaved work." : ""}
+        <span className="hidden sm:inline">
+          {dirty
+            ? " Unsaved stock count, fulfilment, shipment or correction work is open. Reloading now can lose those counts."
+            : " Reload to use the current version."}
+          {confirmReload ? " Confirm reload to discard unsaved work." : ""}
+        </span>
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex shrink-0 gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={reloadNow}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white"
+          aria-label={dirty && !confirmReload ? "Reload requires confirmation" : confirmReload ? "Confirm reload" : "Reload now"}
+          className="inline-flex min-h-9 items-center justify-center rounded-lg bg-[#2d8f98] px-2.5 text-xs font-bold text-white sm:min-h-11 sm:rounded-xl sm:px-3 sm:text-sm"
         >
-          {dirty && !confirmReload ? "Reload requires confirmation" : confirmReload ? "Confirm reload" : "Reload now"}
+          {dirty && !confirmReload ? "Review" : confirmReload ? "Confirm" : "Reload"}
         </button>
         <button
           type="button"
@@ -95,7 +98,7 @@ export default function AppUpdateBanner() {
             setAvailableSha("");
             setConfirmReload(false);
           }}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-teal-200 bg-white px-3 text-sm font-semibold text-teal-900"
+          className="inline-flex min-h-9 items-center justify-center rounded-lg border border-teal-200 bg-white px-2.5 text-xs font-semibold text-teal-900 sm:min-h-11 sm:rounded-xl sm:px-3 sm:text-sm"
         >
           Later
         </button>

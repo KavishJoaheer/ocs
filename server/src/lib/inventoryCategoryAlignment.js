@@ -35,12 +35,14 @@ const CATEGORY_RULES = [
     folderName: "O2 & Nebuliser",
     ensureEverywhere: true,
     unit: "30 min session",
+    itemKind: "service",
   },
   {
     itemName: "O2 second 30 mins",
     folderName: "O2 & Nebuliser",
     ensureEverywhere: true,
     unit: "30 min session",
+    itemKind: "service",
   },
 ];
 
@@ -125,19 +127,19 @@ function globalFolderId(folderName) {
 function alignInventoryCategories() {
   const insertRow = db.prepare(`
     INSERT INTO inventory (
-      item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
       unit, cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-    ) VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, '', '', NULL, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, 0, ?, '', '', NULL, CURRENT_TIMESTAMP)
   `);
   const updateRows = db.prepare(`
     UPDATE inventory
-    SET folder_id = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
+    SET folder_id = ?, item_kind = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
     WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
       AND folder_id != ?
   `);
   const renameRow = db.prepare(`
     UPDATE inventory
-    SET item_name = ?, folder_id = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
+    SET item_name = ?, folder_id = ?, item_kind = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
 
@@ -153,6 +155,7 @@ function alignInventoryCategories() {
     ];
     for (const rule of CATEGORY_RULES) {
       const folderId = globalFolderId(rule.folderName);
+      const itemKind = rule.itemKind || "stock";
       const aliases = Array.isArray(rule.aliases) ? rule.aliases : [];
       if (rule.ensureEverywhere || aliases.length) {
         const candidateNames = [rule.itemName, ...aliases];
@@ -162,6 +165,7 @@ function alignInventoryCategories() {
           FROM inventory
           WHERE stock_scope = ?
             AND COALESCE(owner_doctor_id, 0) = ?
+            AND archived_at IS NULL
             AND LOWER(TRIM(item_name)) IN (${placeholders})
           ORDER BY id ASC
         `);
@@ -176,7 +180,7 @@ function alignInventoryCategories() {
           );
           const aliasRows = rows.filter((row) => row !== canonical);
           if (!canonical && aliasRows.length) {
-            renameRow.run(rule.itemName, folderId, aliasRows[0].id);
+            renameRow.run(rule.itemName, folderId, itemKind, aliasRows[0].id);
             renamed += 1;
             if (aliasRows.length > 1) conflicts += aliasRows.length - 1;
             continue;
@@ -189,6 +193,7 @@ function alignInventoryCategories() {
           if (!canonical && !aliasRows.length && rule.ensureEverywhere) {
             insertRow.run(
               rule.itemName,
+              itemKind,
               folderId,
               location.scope,
               location.ownerDoctorId,
@@ -199,9 +204,24 @@ function alignInventoryCategories() {
           }
         }
       }
-      updated += Number(updateRows.run(folderId, rule.itemName, folderId).changes || 0);
+      updated += Number(updateRows.run(folderId, itemKind, rule.itemName, folderId).changes || 0);
       for (const alias of aliases) {
-        updated += Number(updateRows.run(folderId, alias, folderId).changes || 0);
+        updated += Number(updateRows.run(folderId, itemKind, alias, folderId).changes || 0);
+      }
+      if (itemKind === "service") {
+        db.prepare(`
+          UPDATE inventory
+          SET quantity = 0, minimum_quantity = 0, expiry_date = NULL,
+              item_kind = 'service', updated_at = CURRENT_TIMESTAMP
+          WHERE lower(trim(item_name)) = lower(trim(?))
+        `).run(rule.itemName);
+        db.prepare(`
+          UPDATE inventory_batches
+          SET quantity_remaining = 0
+          WHERE item_id IN (
+            SELECT id FROM inventory WHERE lower(trim(item_name)) = lower(trim(?))
+          ) AND quantity_remaining != 0
+        `).run(rule.itemName);
       }
     }
     return { updated, inserted, renamed, conflicts };

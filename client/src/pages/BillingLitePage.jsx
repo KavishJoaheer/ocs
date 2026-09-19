@@ -438,15 +438,27 @@ function BillingLitePage() {
 
   const visibleCatalog = useMemo(() => {
     return matchingCatalog
-      .filter((item) => showUnavailable || (Number(item.available_to_use || 0) > 0 && item.cost_price_ready && Number(item.selling_price || 0) > 0))
+      .filter((item) => showUnavailable || (
+        item.is_service_charge
+          ? true
+          : Number(item.available_to_use || 0) > 0 && item.cost_price_ready && Number(item.selling_price || 0) > 0
+      ))
       .sort((a, b) => {
-        const availabilityDifference = Number(Number(b.available_to_use || 0) > 0 && b.cost_price_ready && Number(b.selling_price || 0) > 0) - Number(Number(a.available_to_use || 0) > 0 && a.cost_price_ready && Number(a.selling_price || 0) > 0);
+        const bAvailable = b.is_service_charge
+          ? true
+          : Number(b.available_to_use || 0) > 0 && b.cost_price_ready && Number(b.selling_price || 0) > 0;
+        const aAvailable = a.is_service_charge
+          ? true
+          : Number(a.available_to_use || 0) > 0 && a.cost_price_ready && Number(a.selling_price || 0) > 0;
+        const availabilityDifference = Number(bAvailable) - Number(aAvailable);
         return availabilityDifference || a.item_name.localeCompare(b.item_name);
       });
   }, [matchingCatalog, showUnavailable]);
 
   const unavailableCount = useMemo(
-    () => matchingCatalog.filter((item) => Number(item.available_to_use || 0) < 1 || !item.cost_price_ready || Number(item.selling_price || 0) <= 0).length,
+    () => matchingCatalog.filter((item) => item.is_service_charge
+      ? false
+      : Number(item.available_to_use || 0) < 1 || !item.cost_price_ready || Number(item.selling_price || 0) <= 0).length,
     [matchingCatalog],
   );
 
@@ -1426,7 +1438,7 @@ function BillingLitePage() {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
                   const priceMissing = !item.cost_price_ready || Number(item.selling_price || 0) <= 0;
-                  const isUnavailable = available < 1 || priceMissing;
+                  const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing;
                   const isFavorite = favorites.has(item.id);
                   return (
                     <article
@@ -1451,9 +1463,17 @@ function BillingLitePage() {
                       </div>
                       <div className="mt-auto flex items-end justify-between gap-3 pt-5">
                         <div className="min-w-0">
-                          <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{formatRupees(item.selling_price)}</p>
+                          <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {priceMissing ? "Pricing required" : isUnavailable ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
+                            {item.is_service_charge && Number(item.selling_price || 0) <= 0
+                              ? "Price and reason required"
+                              : priceMissing
+                              ? "Pricing required"
+                              : item.is_service_charge
+                                ? "Non-stock service"
+                                : isUnavailable
+                                  ? "Out of stock"
+                                  : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
                           </p>
                         </div>
                         {quantity > 0 ? (

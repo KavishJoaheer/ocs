@@ -191,6 +191,7 @@ function formatCompareQty(qty) {
 }
 
 function InventoryStatusChips({ item }) {
+  const isService = item.item_kind === "service";
   const quantity = Number(item.quantity || 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const isLow = parLevel > 0 && quantity <= parLevel;
@@ -202,10 +203,19 @@ function InventoryStatusChips({ item }) {
   const available = Number(item.available_to_use ?? 0);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
-  if (!isLow && !missingExpiry && !missingCost && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
+  if (!isService && !isLow && !missingExpiry && !missingCost && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
+      {isService ? (
+        <span
+          role="status"
+          aria-label="Item type: non-stock service"
+          className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800"
+        >
+          Non-stock service
+        </span>
+      ) : null}
       {expired ? (
         <span
           role="status"
@@ -1813,6 +1823,21 @@ function InventoryActionButtons({
   touchWrap = false,
   omitRestock = false,
 }) {
+  if (item.item_kind === "service") {
+    if (canManageOcs && contextIsOcs && onEdit) {
+      return (
+        <button
+          type="button"
+          onClick={() => onEdit(item)}
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-900"
+        >
+          <Pencil className="size-3.5" />
+          Edit service price
+        </button>
+      );
+    }
+    return <span className="text-xs font-semibold text-slate-500">Available in billing</span>;
+  }
   if (canManageOcs && contextIsOcs) {
     return (
       <InventoryOcsMasterActions
@@ -2713,6 +2738,7 @@ function MobileDoctorBagActions({
 }
 
 function MobileInventoryStockCard({ item, isLowStock, actions }) {
+  const isService = item.item_kind === "service";
   const currentQuantity = Number(item.on_hand_quantity ?? item.quantity ?? 0);
   const parLevel = Number(item.minimum_quantity || 0);
   const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
@@ -2737,12 +2763,14 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
             {item.item_name}
           </p>
           <InventoryStatusChips item={item} />
-          <div className={cx("mt-1", qtyTone)}>
-            <InventoryQuantityLines item={item} compact firstAtp showMinimum={false} />
-          </div>
+          {!isService ? (
+            <div className={cx("mt-1", qtyTone)}>
+              <InventoryQuantityLines item={item} compact firstAtp showMinimum={false} />
+            </div>
+          ) : null}
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
             <span className={!item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
-              {formatInventoryExpiry(item)}
+              {isService ? "Billable service · no stock or expiry tracking" : formatInventoryExpiry(item)}
             </span>
           </p>
         </div>
@@ -4934,6 +4962,7 @@ export default function InventoryPage() {
                   </thead>
                   <tbody>
                     {pagedItems.map((item) => {
+                      const isService = item.item_kind === "service";
                       const isLow = isAtOrBelowPar(item);
                       const expanded = Boolean(expandedRows[item.id]);
                       const batches = batchMap[item.id] || [];
@@ -4964,12 +4993,12 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title="Available to promise: on-hand stock excluding reserved, expired, quarantined, unbatched, and unverified-expiry units">
-                                {quantities.atp}
+                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : "Available to promise: on-hand stock excluding reserved, expired, quarantined, unbatched, and unverified-expiry units"}>
+                                {isService ? "—" : quantities.atp}
                               </strong>
-                              <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p>
+                              {!isService ? <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p> : null}
                             </td>
-                            <td className="px-3 py-1.5 align-middle text-center font-semibold tabular-nums text-slate-900">{quantities.onHand}</td>
+                            <td className="px-3 py-1.5 align-middle text-center font-semibold tabular-nums text-slate-900">{isService ? "—" : quantities.onHand}</td>
                             <td
                               className={cx(
                                 "truncate px-3 py-1.5 align-middle text-center",

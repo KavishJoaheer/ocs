@@ -958,6 +958,7 @@ function applyInventoryTransactions({
           AND stock_scope = 'doctor'
           AND owner_doctor_id = ?
           AND archived_at IS NULL
+          AND COALESCE(item_kind, 'stock') = 'stock'
       `)
       .get(Number(line.inventory_item_id), Number(consultation.doctor_id));
 
@@ -2133,9 +2134,13 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     category: String(item.parent_folder_name || item.folder_name || "Other supplies"),
     subcategory: String(item.parent_folder_name ? item.folder_name : ""),
     unit: String(item.unit || "unit"),
-    cost_price_ready: Number(item.cost_price || 0) > 0,
+    item_kind: String(item.item_kind || "stock"),
+    is_service_charge: String(item.item_kind || "stock") === "service",
+    cost_price_ready: String(item.item_kind || "stock") === "service" || Number(item.cost_price || 0) > 0,
     selling_price: roundCurrency(item.selling_price),
-    available_to_use: Number(item.available_to_promise ?? item.available_to_use ?? 0),
+    available_to_use: String(item.item_kind || "stock") === "service"
+      ? null
+      : Number(item.available_to_promise ?? item.available_to_use ?? 0),
   }));
 
   res.json({ visit, items });
@@ -2845,7 +2850,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         const placeholders = requestedIds.map(() => "?").join(",");
         const stockRows = db
           .prepare(`
-            SELECT id, item_name, selling_price
+            SELECT id, item_name, selling_price, COALESCE(item_kind, 'stock') AS item_kind
             FROM inventory
             WHERE id IN (${placeholders})
               AND stock_scope = 'doctor'
@@ -2899,7 +2904,10 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             unit_price: reviewedUnitPrice,
             type: "Sale",
             quantity,
-            inventory_item_id: itemId,
+            inventory_item_id: item.item_kind === "service" ? null : itemId,
+            ...(item.item_kind === "service"
+              ? { is_service_charge: true, service_catalog_item_id: itemId }
+              : {}),
             ...(priceWasAdjusted
               ? {
                   catalog_unit_price: standardUnitPrice,
@@ -2913,9 +2921,11 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         });
       }
 
+      const physicalChargeLines = chargeLines.filter((item) => item.inventory_item_id);
+      const serviceChargeLines = chargeLines.filter((item) => item.is_service_charge);
       const applied = applyInventoryTransactions({
         consultation,
-        items: chargeLines,
+        items: physicalChargeLines,
         userId: req.auth.id,
         actor: req.auth,
         billingId: bill.id,
@@ -2937,7 +2947,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         ...(correctionReversal.touchedItemIds || []),
         ...(applied.touchedItemIds || []),
       ])];
-      const addedItems = normalizeBillingItems(applied.items);
+      const addedItems = normalizeBillingItems([...applied.items, ...serviceChargeLines]);
 
       if (addedItems.length || feeChanged || feeConfirmed || sourceReference || latestSubmission?.workflow_status === "needs_doctor") {
         const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);

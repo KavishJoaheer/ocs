@@ -465,6 +465,56 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
 });
 
+test("quick billing treats oxygen time as a non-stock service without inventory deduction", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const today = getTodayLocal();
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '15:00', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const serviceConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Non-stock service test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(serviceConsultationId, patientId, null, "Day Consultation");
+  let oxygenFolder = db.prepare("SELECT id FROM inventory_folders WHERE name = 'O2 & Nebuliser' LIMIT 1").get();
+  if (!oxygenFolder) {
+    oxygenFolder = {
+      id: Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('O2 & Nebuliser')").run().lastInsertRowid),
+    };
+  }
+  const folderId = Number(oxygenFolder.id);
+  const serviceId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, owner_doctor_id, stock_scope, quantity,
+      minimum_quantity, unit, cost_price, selling_price
+    ) VALUES ('O2 first 30mins', 'service', ?, ?, 'doctor', 0, 0, 'service', 0, 350)
+  `).run(folderId, doctorId).lastInsertRowid);
+
+  const catalog = await api("GET", `/billing/quick/catalog/${serviceConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+  const service = catalog.data.items.find((item) => Number(item.id) === serviceId);
+  assert.ok(service);
+  assert.equal(service.is_service_charge, true);
+  assert.equal(service.available_to_use, null);
+
+  const captured = await api("POST", `/billing/quick/visits/${serviceConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("OXYGEN-SERVICE"),
+    items: [{ inventory_item_id: serviceId, quantity: 2, unit_price: 350 }],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+  const bill = db.prepare("SELECT items FROM billing WHERE id = ?").get(captured.data.submission.bill_id);
+  const lines = JSON.parse(bill.items);
+  const serviceLine = lines.find((line) => line.description === "O2 first 30mins");
+  assert.ok(serviceLine);
+  assert.equal(serviceLine.is_service_charge, true);
+  assert.equal(serviceLine.amount, 700);
+  assert.equal(serviceLine.inventory_item_id, null);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(serviceId).quantity, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(serviceId).count, 0);
+});
+
 test("doctor-issued invoices complete without operator acknowledgement", async () => {
   const queue = await api("GET", "/billing/quick/operator-queue?status=actionable", operatorToken);
   assert.equal(queue.status, 200, JSON.stringify(queue.data));

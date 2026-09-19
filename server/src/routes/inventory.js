@@ -24,6 +24,7 @@ const {
 } = require("../lib/inventoryRealtime");
 const { db } = require("../db");
 const { getTodayLocal, isValidCurrencyAmount, toNumber } = require("../lib/utils");
+const { getBillingCutoverDate } = require("../lib/billingCutover");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
   applyStocktakeSession,
@@ -706,6 +707,7 @@ function findItem(itemId, stockScope, doctorId = null) {
       FROM inventory
       WHERE id = ?
         AND stock_scope = ?
+        AND COALESCE(item_kind, 'stock') = 'stock'
         AND (
           (? = 'doctor' AND inventory.owner_doctor_id = ?)
           OR (? = 'ocs' AND inventory.owner_doctor_id IS NULL)
@@ -846,9 +848,9 @@ function consumeStock(itemId, quantity, options = {}) {
   return consumeBatches(itemId, amount, options);
 }
 
-function assertDirectSaleConsultationBillable({ consultationId, patientId, doctorId }) {
+function assertDirectSaleConsultationBillable({ consultationId, patientId, doctorId, dispensedOn }) {
   const consultation = db.prepare(`
-    SELECT c.id, c.patient_id, c.doctor_id
+    SELECT c.id, c.patient_id, c.doctor_id, date(c.consultation_date) AS consultation_date
     FROM consultations c
     WHERE c.id = ?
       AND c.patient_id = ?
@@ -859,6 +861,39 @@ function assertDirectSaleConsultationBillable({ consultationId, patientId, docto
     throw Object.assign(new Error("The selected consultation does not belong to this patient and doctor."), {
       status: 400,
       code: "CONSULTATION_SCOPE_MISMATCH",
+    });
+  }
+
+  const businessDate = String(dispensedOn || "").trim();
+  if (businessDate !== String(consultation.consultation_date || "")) {
+    throw Object.assign(new Error("The dispensing date must match the selected consultation date."), {
+      status: 409,
+      code: "DIRECT_SALE_DATE_MISMATCH",
+      consultation_date: consultation.consultation_date,
+    });
+  }
+  const cutoverDate = getBillingCutoverDate(db);
+  if (cutoverDate && businessDate < cutoverDate) {
+    throw Object.assign(new Error(`Direct sales are closed for consultations before ${cutoverDate}.`), {
+      status: 409,
+      code: "BILLING_CUTOVER_NOT_REACHED",
+      cutover_date: cutoverDate,
+    });
+  }
+  if (businessDate > getTodayLocal()) {
+    throw Object.assign(new Error("A direct sale cannot be posted for a future consultation date."), {
+      status: 400,
+      code: "FUTURE_INVENTORY_BUSINESS_DATE",
+    });
+  }
+  const closedDay = db.prepare(
+    "SELECT id FROM financial_day_closings WHERE business_date = ?",
+  ).get(businessDate);
+  if (closedDay) {
+    throw Object.assign(new Error(`The finance day for ${businessDate} is closed.`), {
+      status: 409,
+      code: "FINANCIAL_DAY_CLOSED",
+      closing_id: Number(closedDay.id),
     });
   }
 
@@ -1248,9 +1283,10 @@ function getMovements(role, doctorId = null, activityFilters = {}) {
 }
 
 function movementPeriodSql(movementAlias = "m") {
+  const businessDate = movementBusinessDateSql(movementAlias);
   return `(
-    (@useRange = 0 AND strftime('%Y-%m', ${movementAlias}.created_at, '+4 hours') = strftime('%Y-%m', 'now', '+4 hours'))
-    OR (@useRange = 1 AND date(${movementAlias}.created_at, '+4 hours') >= date(@dateFrom) AND date(${movementAlias}.created_at, '+4 hours') <= date(@dateTo))
+    (@useRange = 0 AND strftime('%Y-%m', ${businessDate}) = strftime('%Y-%m', 'now', '+4 hours'))
+    OR (@useRange = 1 AND ${businessDate} >= date(@dateFrom) AND ${businessDate} <= date(@dateTo))
   )`;
 }
 
@@ -1260,9 +1296,9 @@ function getCompareMetricByDoctor(params, periodSql, whereExtra) {
       `
         SELECT
           i.owner_doctor_id AS doctor_id,
-          COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS amount,
-          COALESCE(SUM(m.quantity), 0) AS qty,
-          COALESCE(SUM(CASE WHEN COALESCE(m.unit_cost_snapshot, 0) = 0 THEN m.quantity ELSE 0 END), 0) AS unpriced_qty
+          COALESCE(SUM((CASE WHEN m.action_type = 'reversal' THEN -1 ELSE 1 END) * m.quantity * m.unit_cost_snapshot), 0) AS amount,
+          COALESCE(SUM((CASE WHEN m.action_type = 'reversal' THEN -1 ELSE 1 END) * m.quantity), 0) AS qty,
+          COALESCE(SUM(CASE WHEN COALESCE(m.unit_cost_snapshot, 0) = 0 THEN (CASE WHEN m.action_type = 'reversal' THEN -1 ELSE 1 END) * m.quantity ELSE 0 END), 0) AS unpriced_qty
         FROM inventory_movements m
         JOIN inventory i ON i.id = m.item_id
         WHERE i.stock_scope = 'doctor'
@@ -1299,7 +1335,7 @@ function getCompareRows(dateFrom = "", dateTo = "") {
   };
 
   const restocked = indexCompareMetric(
-    getCompareMetricByDoctor(params, periodSql, `m.action_type = 'restock_in'`),
+    getCompareMetricByDoctor(params, periodSql, `m.action_type = 'restock_in' OR (m.action_type = 'reversal' AND json_extract(m.meta_json, '$.original_action_type') = 'restock_in')`),
   );
   const consumedSales = indexCompareMetric(
     getCompareMetricByDoctor(
@@ -1327,6 +1363,16 @@ function getCompareRows(dateFrom = "", dateTo = "") {
           m.action_type = 'stock_out'
           AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'sale'
         )
+        OR (
+          m.action_type = 'reversal'
+          AND (
+            lower(trim(coalesce(json_extract(m.meta_json, '$.original_action_type'), ''))) = 'sell'
+            OR (
+              lower(trim(coalesce(json_extract(m.meta_json, '$.original_action_type'), ''))) = 'stock_out'
+              AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'sale'
+            )
+          )
+        )
       `,
     ),
   );
@@ -1339,6 +1385,16 @@ function getCompareRows(dateFrom = "", dateTo = "") {
         OR (
           m.action_type = 'stock_out'
           AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'wasted'
+        )
+        OR (
+          m.action_type = 'reversal'
+          AND (
+            lower(trim(coalesce(json_extract(m.meta_json, '$.original_action_type'), ''))) = 'wastage'
+            OR (
+              lower(trim(coalesce(json_extract(m.meta_json, '$.original_action_type'), ''))) = 'stock_out'
+              AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'wasted'
+            )
+          )
         )
       `,
     ),
@@ -1353,6 +1409,16 @@ function getCompareRows(dateFrom = "", dateTo = "") {
           m.action_type = 'stock_out'
           AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'expired'
         )
+        OR (
+          m.action_type = 'reversal'
+          AND (
+            lower(trim(coalesce(json_extract(m.meta_json, '$.original_action_type'), ''))) = 'expired'
+            OR (
+              lower(trim(coalesce(json_extract(m.meta_json, '$.original_action_type'), ''))) = 'stock_out'
+              AND lower(trim(coalesce(json_extract(m.meta_json, '$.stock_out_reason'), ''))) = 'expired'
+            )
+          )
+        )
       `,
     ),
   );
@@ -1360,7 +1426,7 @@ function getCompareRows(dateFrom = "", dateTo = "") {
     getCompareMetricByDoctor(
       params,
       periodSql,
-      `m.action_type IN ('exceptional_correction', 'correction', 'override')`,
+      `m.action_type IN ('exceptional_correction', 'correction', 'override') OR (m.action_type = 'reversal' AND json_extract(m.meta_json, '$.original_action_type') IN ('exceptional_correction', 'correction', 'override'))`,
     ),
   );
 
@@ -1469,13 +1535,19 @@ function getDoctorConsumptionRecord(doctorId) {
 
     const stockConsumptionRow = db
       .prepare(`
-        SELECT COALESCE(SUM(m.quantity * m.unit_cost_snapshot), 0) AS stock_consumption
+        SELECT COALESCE(SUM(
+          (CASE WHEN m.action_type = 'reversal' THEN -1 ELSE 1 END)
+          * m.quantity * m.unit_cost_snapshot
+        ), 0) AS stock_consumption
         FROM inventory_movements m
         JOIN inventory i ON i.id = m.item_id
         WHERE i.stock_scope = 'doctor'
           AND i.owner_doctor_id = ?
-          AND m.movement_type = 'out'
-          AND date(m.created_at, '+4 hours') BETWEEN ${period.startSql} AND date('now', '+4 hours')
+          AND (
+            m.movement_type = 'out'
+            OR (m.action_type = 'reversal' AND json_extract(m.meta_json, '$.original_action_type') IN ('sell', 'stock_out', 'wastage', 'expired'))
+          )
+          AND ${movementBusinessDateSql("m")} BETWEEN ${period.startSql} AND date('now', '+4 hours')
       `)
       .get(doctorId);
 
@@ -1667,7 +1739,9 @@ function buildActivityHistoryFilter(query = {}) {
   const businessDate = `CASE
     WHEN lower(m.action_type) = 'stock_out'
       AND lower(COALESCE(json_extract(${movementMeta}, '$.stock_out_reason'), '')) = 'sale'
-    THEN COALESCE(date(json_extract(${movementMeta}, '$.dispensed_on')), date(h.timestamp, '+4 hours'))
+    THEN COALESCE(${movementBusinessDateSql("m")}, date(h.timestamp, '+4 hours'))
+    WHEN lower(m.action_type) = 'reversal'
+    THEN COALESCE(${movementBusinessDateSql("m")}, date(h.timestamp, '+4 hours'))
     ELSE date(h.timestamp, '+4 hours')
   END`;
 
@@ -2961,6 +3035,7 @@ router.get("/items/:id/allocation-preview", (req, res) => {
           `
           SELECT quantity FROM inventory
           WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND folder_id = ? AND item_name = ?
+            AND archived_at IS NULL
           LIMIT 1
         `,
         )
@@ -3467,6 +3542,7 @@ router.post("/items/:id/actions", (req, res) => {
         consultationId: saleConsultationId,
         patientId: salePatient?.id || 0,
         doctorId,
+        dispensedOn,
       });
     } catch (error) {
       return res.status(error.status || 400).json({
@@ -3658,6 +3734,7 @@ router.post("/restock", (req, res) => {
         AND inventory.owner_doctor_id = ?
         AND folder_id = ?
         AND item_name = ?
+        AND archived_at IS NULL
       LIMIT 1
     `)
     .get(doctorId, source.folder_id, source.item_name);
@@ -3913,6 +3990,7 @@ router.post("/restock/my-inventory", (req, res) => {
               AND owner_doctor_id = ?
               AND folder_id = ?
               AND item_name = ?
+              AND archived_at IS NULL
             LIMIT 1
           `)
           .get(doctorId, source.folder_id, source.item_name);
@@ -4077,6 +4155,37 @@ router.post("/staging/import-csv", (req, res) => {
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
+  const supplier = String(req.body.supplier || "").trim();
+  const deliveryNote = String(req.body.delivery_note || req.body.invoice_reference || "").trim();
+  const importOperationId = String(req.body.operation_id || req.get("Idempotency-Key") || "").trim();
+  if (supplier.length < 2 || deliveryNote.length < 2) {
+    return res.status(400).json({
+      error: "Supplier and delivery-note reference are required for shipment traceability.",
+      code: "SHIPMENT_REFERENCE_REQUIRED",
+    });
+  }
+  if (!importOperationId) {
+    return res.status(400).json({
+      error: "A stable shipment import reference is required.",
+      code: "SHIPMENT_OPERATION_ID_REQUIRED",
+    });
+  }
+  const existingShipment = db.prepare(`
+    SELECT id, status
+    FROM inventory_shipments
+    WHERE lower(trim(supplier)) = lower(trim(?))
+      AND lower(trim(delivery_note)) = lower(trim(?))
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(supplier, deliveryNote);
+  if (existingShipment) {
+    return res.status(409).json({
+      error: "This supplier delivery note has already been imported.",
+      code: "DUPLICATE_SHIPMENT_DELIVERY_NOTE",
+      shipment_id: Number(existingShipment.id),
+      shipment_status: existingShipment.status,
+    });
+  }
   let parsed;
   try {
     parsed = parseCsvShipment(req.body.csv_text);
@@ -4104,8 +4213,9 @@ router.post("/staging/import-csv", (req, res) => {
   }
 
   const shipmentId = createShipmentFromImport({
-    supplier: String(req.body.supplier || "").trim(),
-    deliveryNote: String(req.body.delivery_note || req.body.invoice_reference || "").trim(),
+    supplier,
+    deliveryNote,
+    operationId: importOperationId,
     userId: req.auth.id,
     rows: validRows,
     skipped: skippedRows.length,

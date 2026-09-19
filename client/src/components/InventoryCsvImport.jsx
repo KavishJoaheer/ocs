@@ -9,6 +9,10 @@ import { requiresOperationalOverride, withOperationalOverride } from "../lib/inv
 import OperationalOverrideFields from "./inventory/OperationalOverrideFields.jsx";
 import { setUnsavedWork } from "../lib/unsavedWork.js";
 
+function newShipmentOperationId() {
+  return globalThis.crypto?.randomUUID?.() || `shipment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function InventoryCsvImport({ onImported }) {
   const { user } = useAuth();
   const [csvText, setCsvText] = useState("");
@@ -20,6 +24,7 @@ function InventoryCsvImport({ onImported }) {
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [lastResult, setLastResult] = useState(null);
+  const [operationId, setOperationId] = useState(() => newShipmentOperationId());
 
   useEffect(() => {
     setUnsavedWork("shipment-import", Boolean(csvText.trim() || preview));
@@ -52,6 +57,10 @@ function InventoryCsvImport({ onImported }) {
 
   async function handlePreview() {
     if (!csvText.trim() || previewing) return;
+    if (supplier.trim().length < 2 || deliveryNote.trim().length < 2) {
+      toast.error("Enter the supplier and delivery-note reference before validating the shipment.");
+      return;
+    }
     setPreviewing(true);
     try {
       const payload = await api.post("/inventory/staging/preview-csv", {
@@ -70,6 +79,10 @@ function InventoryCsvImport({ onImported }) {
 
   async function handleImport() {
     if (importing) return;
+    if (supplier.trim().length < 2 || deliveryNote.trim().length < 2) {
+      toast.error("Supplier and delivery-note reference are required.");
+      return;
+    }
     if (requiresOperationalOverride(user) && String(overrideReason).trim().length < 10) {
       toast.error("Administrators must enter an operational override reason.");
       return;
@@ -84,6 +97,7 @@ function InventoryCsvImport({ onImported }) {
             csv_text: csvText,
             supplier,
             delivery_note: deliveryNote,
+            operation_id: operationId,
           },
           overrideReason,
         ),
@@ -96,6 +110,9 @@ function InventoryCsvImport({ onImported }) {
       setLastResult(summary);
       setCsvText("");
       setPreview(null);
+      setSupplier("");
+      setDeliveryNote("");
+      setOperationId(newShipmentOperationId());
       const skipBit = summary.skipped ? `, ${summary.skipped} skipped` : "";
       toast.success(`${summary.imported} imported${skipBit}.`);
       await onImported?.();
@@ -134,7 +151,7 @@ function InventoryCsvImport({ onImported }) {
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="space-y-1 text-sm font-semibold text-slate-700">
-          Supplier
+          Supplier <span className="text-rose-600">*</span>
           <input
             value={supplier}
             onChange={(event) => setSupplier(event.target.value)}
@@ -142,7 +159,7 @@ function InventoryCsvImport({ onImported }) {
           />
         </label>
         <label className="space-y-1 text-sm font-semibold text-slate-700">
-          Delivery note
+          Delivery note <span className="text-rose-600">*</span>
           <input
             value={deliveryNote}
             onChange={(event) => setDeliveryNote(event.target.value)}

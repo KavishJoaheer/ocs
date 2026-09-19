@@ -135,6 +135,12 @@ function resolveFieldSalesForConsultationVoid({ consultationId, actor = {}, reas
     }
     const tableAllocations = allocationsForMovement(movement.id);
     const metaAllocations = parseMetaAllocations(movement.meta_json);
+    let movementMeta = {};
+    try {
+      movementMeta = JSON.parse(movement.meta_json || "{}");
+    } catch {
+      movementMeta = {};
+    }
     const allocations = tableAllocations.length ? tableAllocations : metaAllocations;
     const allocatedQuantity = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
     if (!allocations.length || allocatedQuantity !== quantity) {
@@ -150,6 +156,8 @@ function resolveFieldSalesForConsultationVoid({ consultationId, actor = {}, reas
       reversed_movement_id: Number(movement.id),
       original_action_type: movement.action_type,
       original_stock_out_reason: "Sale",
+      stock_out_reason: movementMeta.stock_out_reason || "Sale",
+      dispensed_on: movementMeta.dispensed_on || null,
       void_disposition: disposition,
       reason: String(reason || "").trim(),
       performed_by_user_id: actor.id || null,
@@ -291,6 +299,12 @@ function reverseInventoryForConsultation(
 
     const tableAllocations = allocationsForMovement(movement.id);
     const metaAllocations = parseMetaAllocations(movement.meta_json);
+    let movementMeta = {};
+    try {
+      movementMeta = JSON.parse(movement.meta_json || "{}");
+    } catch {
+      movementMeta = {};
+    }
     const sourceAllocations = tableAllocations.length ? tableAllocations : metaAllocations;
     const hasExactBatches = sourceAllocations.length > 0
       && sourceAllocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0) === qty;
@@ -335,6 +349,8 @@ function reverseInventoryForConsultation(
       allocations: restoredAllocations,
       legacy_traceability_exception: !hasExactBatches,
       original_action_type: movement.action_type,
+      stock_out_reason: movementMeta.stock_out_reason || null,
+      dispensed_on: movementMeta.dispensed_on || null,
     };
 
     db.prepare(
@@ -500,6 +516,7 @@ function reverseBillingSubmissionInventory({
       original_action_type: movement.action_type,
       reversal_scope: reversalScope,
       stock_out_reason: movementMeta.stock_out_reason || null,
+      dispensed_on: movementMeta.dispensed_on || null,
     };
 
     db.prepare(`
@@ -639,6 +656,7 @@ function reclassifyBillingSubmissionInventoryAsWastage({
       reversed_movement_id: movementId,
       original_action_type: movement.action_type,
       stock_out_reason: movementMeta.stock_out_reason || null,
+      dispensed_on: movementMeta.dispensed_on || null,
       reclassification_scope: "paid_supply_correction",
     };
     db.prepare(`

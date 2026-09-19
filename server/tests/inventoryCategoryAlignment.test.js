@@ -175,7 +175,7 @@ test("required O2 time-charge rows are created once for warehouse and every doct
   const activeDoctorCount = Number(db.prepare("SELECT COUNT(*) AS count FROM doctors WHERE deleted_at IS NULL").get().count);
   for (const itemName of O2_ITEMS.slice(2)) {
     const rows = db.prepare(`
-      SELECT i.stock_scope, i.owner_doctor_id, i.quantity, i.minimum_quantity,
+      SELECT i.stock_scope, i.owner_doctor_id, i.item_kind, i.quantity, i.minimum_quantity,
              i.unit, i.cost_price, i.selling_price, f.name AS folder_name
       FROM inventory i
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
@@ -186,6 +186,7 @@ test("required O2 time-charge rows are created once for warehouse and every doct
     assert.equal(rows.filter((row) => row.stock_scope === "doctor").length, activeDoctorCount);
     for (const row of rows) {
       assert.equal(row.folder_name, O2_FOLDER);
+      assert.equal(row.item_kind, "service");
       assert.equal(Number(row.quantity), 0);
       assert.equal(Number(row.minimum_quantity), 0);
       assert.equal(row.unit, "30 min session");

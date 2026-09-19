@@ -5,7 +5,23 @@ const parse = value => {
 };
 function movementBusinessDateSql(alias = 'm') {
   const meta = `CASE WHEN json_valid(${alias}.meta_json) THEN ${alias}.meta_json ELSE '{}' END`;
+  const originalMeta = "CASE WHEN json_valid(original.meta_json) THEN original.meta_json ELSE '{}' END";
   return `CASE
+    WHEN lower(${alias}.action_type) = 'reversal'
+    THEN COALESCE(
+      date(json_extract(${meta}, '$.dispensed_on')),
+      (
+        SELECT CASE
+          WHEN lower(original.action_type) = 'stock_out'
+            AND lower(COALESCE(json_extract(${originalMeta}, '$.stock_out_reason'), '')) = 'sale'
+          THEN COALESCE(date(json_extract(${originalMeta}, '$.dispensed_on')), date(original.created_at, '+4 hours'))
+          ELSE date(original.created_at, '+4 hours')
+        END
+        FROM inventory_movements original
+        WHERE original.id = CAST(json_extract(${meta}, '$.reversed_movement_id') AS INTEGER)
+      ),
+      date(${alias}.created_at, '+4 hours')
+    )
     WHEN lower(${alias}.action_type) = 'stock_out'
       AND lower(COALESCE(json_extract(${meta}, '$.stock_out_reason'), '')) = 'sale'
     THEN COALESCE(date(json_extract(${meta}, '$.dispensed_on')), date(${alias}.created_at, '+4 hours'))

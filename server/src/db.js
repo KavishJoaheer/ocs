@@ -1551,6 +1551,7 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS inventory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       item_name TEXT NOT NULL,
+      item_kind TEXT NOT NULL DEFAULT 'stock',
       folder_id INTEGER,
       owner_doctor_id INTEGER,
       quantity INTEGER NOT NULL DEFAULT 0,
@@ -2733,6 +2734,7 @@ function ensureInventoryOperationsSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       supplier TEXT NOT NULL DEFAULT '',
       delivery_note TEXT NOT NULL DEFAULT '',
+      operation_id TEXT,
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'released', 'cancelled')),
       total_rows INTEGER NOT NULL DEFAULT 0,
@@ -2844,6 +2846,16 @@ function addColumnIfMissing(tableName, columnName, sql) {
 
 function ensureInventoryIntegritySchema() {
   addColumnIfMissing(
+    "inventory",
+    "item_kind",
+    "ALTER TABLE inventory ADD COLUMN item_kind TEXT NOT NULL DEFAULT 'stock'",
+  );
+  addColumnIfMissing(
+    "inventory_shipments",
+    "operation_id",
+    "ALTER TABLE inventory_shipments ADD COLUMN operation_id TEXT",
+  );
+  addColumnIfMissing(
     "inventory_batches",
     "status",
     "ALTER TABLE inventory_batches ADD COLUMN status TEXT NOT NULL DEFAULT 'usable'",
@@ -2912,6 +2924,20 @@ function ensureInventoryIntegritySchema() {
     `);
   }
 
+  if (tableExists("inventory")) {
+    db.exec(`
+      UPDATE inventory
+      SET item_kind = 'service', quantity = 0, minimum_quantity = 0, expiry_date = NULL
+      WHERE lower(trim(item_name)) IN ('o2 first 30mins', 'o2 second 30 mins');
+
+      UPDATE inventory_batches
+      SET quantity_remaining = 0
+      WHERE item_id IN (
+        SELECT id FROM inventory WHERE item_kind = 'service'
+      ) AND quantity_remaining != 0;
+    `);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_movement_allocations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2950,10 +2976,25 @@ function ensureInventoryIntegritySchema() {
       ON inventory_batches(item_id, status);
     CREATE INDEX IF NOT EXISTS idx_inventory_batches_expiry
       ON inventory_batches(item_id, expiry_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_shipments_operation
+      ON inventory_shipments(operation_id)
+      WHERE operation_id IS NOT NULL AND TRIM(operation_id) != '';
     CREATE INDEX IF NOT EXISTS idx_consultations_voided
       ON consultations(voided_at);
     CREATE INDEX IF NOT EXISTS idx_billing_voided
       ON billing(voided_at);
+
+    CREATE TRIGGER IF NOT EXISTS trg_inventory_shipments_unique_delivery_insert
+    BEFORE INSERT ON inventory_shipments
+    WHEN TRIM(NEW.supplier) != '' AND TRIM(NEW.delivery_note) != ''
+      AND EXISTS (
+        SELECT 1 FROM inventory_shipments existing
+        WHERE lower(trim(existing.supplier)) = lower(trim(NEW.supplier))
+          AND lower(trim(existing.delivery_note)) = lower(trim(NEW.delivery_note))
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'This supplier delivery note has already been imported');
+    END;
   `);
 
   try {

@@ -73,13 +73,20 @@ function nextCollectionIso() {
 }
 
 async function api(method, urlPath, { token, body } = {}) {
+  const requestBody = method === "POST" && urlPath === "/api/inventory/staging/import-csv" && body
+    ? {
+        delivery_note: `TEST-DN-${randomUUID()}`,
+        operation_id: `test-shipment-${randomUUID()}`,
+        ...body,
+      }
+    : body;
   const headers = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (requestBody !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${baseUrl}${urlPath}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: requestBody !== undefined ? JSON.stringify(requestBody) : undefined,
   });
   const text = await res.text();
   let data = null;
@@ -3478,6 +3485,39 @@ test("depot transfers preserve actual batch cost on both movement sides", async 
   }
 });
 
+test("depot transfer never restores stock into an archived doctor-bag row", async () => {
+  const name = `Archived destination ${Date.now()}`;
+  const sourceId = insertOcsItem({ name, qty: 3, expiry: "2032-04-01" });
+  const source = db.prepare("SELECT * FROM inventory WHERE id = ?").get(sourceId);
+  const archivedId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+      unit, cost_price, selling_price, archived_at
+    ) VALUES (?, ?, 'doctor', ?, 0, 0, 'unit', 5, 10, CURRENT_TIMESTAMP)
+  `).run(name, source.folder_id, doctorId).lastInsertRowid);
+
+  const transferred = await api("POST", "/api/inventory/restock", {
+    token: operatorToken,
+    body: {
+      operation_id: `archived-destination-${randomUUID()}`,
+      ocs_item_id: sourceId,
+      doctor_id: doctorId,
+      quantity: 1,
+      note: "Create a visible active destination",
+    },
+  });
+  assert.equal(transferred.status, 201, JSON.stringify(transferred.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(archivedId).quantity, 0);
+  const active = db.prepare(`
+    SELECT id, quantity FROM inventory
+    WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND folder_id = ? AND item_name = ?
+      AND archived_at IS NULL
+  `).get(doctorId, source.folder_id, name);
+  assert.ok(active);
+  assert.notEqual(Number(active.id), archivedId);
+  assert.equal(Number(active.quantity), 1);
+});
+
 test("reserved batches are revalidated for quarantine expiry and optimistic version at collection", async () => {
   const itemName = `Reserved safety ${Date.now()}`;
   const itemId = insertOcsItem({ name: itemName, qty: 3, expiry: "2032-03-01" });
@@ -3581,6 +3621,46 @@ test("inventory summaries are location-scoped and activity filters use Mauritius
   assert.ok(localDay.data.movements.some((row) => Number(row.item_id) === warehouseItemId));
 });
 
+test("doctor comparison reports net sale reversals on the original business date", async () => {
+  const businessDate = offsetLocalDate(-1);
+  const before = await api("GET", `/api/inventory?doctorId=${doctorId}&dateFrom=${businessDate}&dateTo=${businessDate}`, {
+    token: adminToken,
+  });
+  assert.equal(before.status, 200, JSON.stringify(before.data));
+  const beforeRow = before.data.compare_rows.find((row) => Number(row.doctor_id) === Number(doctorId));
+  const baselineQty = Number(beforeRow?.consumed_sales_qty || 0);
+  const baselineValue = Number(beforeRow?.consumed_sales || 0);
+
+  const stock = seedDoctorBillableItem({
+    name: `Reversal report ${Date.now()}`,
+    batches: [{ qty: 2, expiry: "2032-05-01" }],
+  });
+  const original = db.prepare(`
+    INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+      action_type, meta_json, unit_cost_snapshot, unit_price_snapshot
+    ) VALUES (?, 'out', 1, 2, 1, ?, 'stock_out', ?, 8, 12)
+  `).run(stock.itemId, doctorId, JSON.stringify({ stock_out_reason: "Sale", dispensed_on: businessDate }));
+  db.prepare(`
+    INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+      action_type, meta_json, unit_cost_snapshot, unit_price_snapshot
+    ) VALUES (?, 'in', 1, 1, 2, ?, 'reversal', ?, 8, 12)
+  `).run(stock.itemId, doctorId, JSON.stringify({
+    reversed_movement_id: Number(original.lastInsertRowid),
+    original_action_type: "stock_out",
+    stock_out_reason: "Sale",
+  }));
+
+  const after = await api("GET", `/api/inventory?doctorId=${doctorId}&dateFrom=${businessDate}&dateTo=${businessDate}`, {
+    token: adminToken,
+  });
+  assert.equal(after.status, 200, JSON.stringify(after.data));
+  const afterRow = after.data.compare_rows.find((row) => Number(row.doctor_id) === Number(doctorId));
+  assert.equal(Number(afterRow?.consumed_sales_qty || 0), baselineQty);
+  assert.equal(Number(afterRow?.consumed_sales || 0), baselineValue);
+});
+
 test("nearest usable expiry ignores quarantined and missing-cost batches", () => {
   const itemId = insertOcsItem({ name: `Expiry display ${Date.now()}`, qty: 0 });
   db.prepare("UPDATE inventory SET quantity = 3 WHERE id = ?").run(itemId);
@@ -3637,6 +3717,90 @@ test("direct sale accepts a billable visit and rejects it after payment without 
   assert.equal(rejected.data.code, "CONSULTATION_NOT_BILLABLE");
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id = ?").get(stock.itemId).count, 1);
+});
+
+test("direct sale date is bound to the consultation, cutover and open finance day", async () => {
+  const { patientId, consultationId } = seedConsultationForBilling();
+  const consultationDate = db.prepare("SELECT consultation_date FROM consultations WHERE id = ?").get(consultationId).consultation_date;
+  const stock = seedDoctorBillableItem({
+    name: `Date-bound direct sale ${Date.now()}`,
+    batches: [{ qty: 3, expiry: "2031-06-01" }],
+  });
+  const version = () => Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(stock.itemId).row_version);
+  const wrongDate = offsetLocalDate(-1);
+  const mismatch = await api("POST", `/api/inventory/items/${stock.itemId}/actions`, {
+    token: doctorToken,
+    body: {
+      operation_id: `date-mismatch-${randomUUID()}`,
+      action_type: "stock_out",
+      quantity: 1,
+      reason: "Sale",
+      patient_id: patientId,
+      consultation_id: consultationId,
+      dispensed_on: wrongDate,
+      expected_version: version(),
+    },
+  });
+  assert.equal(mismatch.status, 409, JSON.stringify(mismatch.data));
+  assert.equal(mismatch.data.code, "DIRECT_SALE_DATE_MISMATCH");
+
+  const previousCutover = db.prepare("SELECT cutover_date FROM billing_system_settings WHERE id = 1").get()?.cutover_date || "";
+  db.prepare(`
+    INSERT INTO billing_system_settings (id, cutover_date)
+    VALUES (1, ?)
+    ON CONFLICT(id) DO UPDATE SET cutover_date = excluded.cutover_date
+  `).run(offsetLocalDate(1));
+  try {
+    const beforeCutover = await api("POST", `/api/inventory/items/${stock.itemId}/actions`, {
+      token: doctorToken,
+      body: {
+        operation_id: `cutover-block-${randomUUID()}`,
+        action_type: "stock_out",
+        quantity: 1,
+        reason: "Sale",
+        patient_id: patientId,
+        consultation_id: consultationId,
+        dispensed_on: consultationDate,
+        expected_version: version(),
+      },
+    });
+    assert.equal(beforeCutover.status, 409, JSON.stringify(beforeCutover.data));
+    assert.equal(beforeCutover.data.code, "BILLING_CUTOVER_NOT_REACHED");
+  } finally {
+    if (previousCutover) {
+      db.prepare("UPDATE billing_system_settings SET cutover_date = ? WHERE id = 1").run(previousCutover);
+    } else {
+      db.prepare("DELETE FROM billing_system_settings WHERE id = 1").run();
+    }
+  }
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(stock.itemId).quantity, 3);
+});
+
+test("shipment import replays one operation and rejects a duplicate supplier delivery note", async () => {
+  const consumable = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable'").get().id;
+  const name = `Import replay ${Date.now()}`;
+  insertOcsItem({ name, qty: 0, folder: consumable });
+  const body = {
+    operation_id: `shipment-replay-${randomUUID()}`,
+    supplier: "Replay Supplier",
+    delivery_note: `REPLAY-DN-${Date.now()}`,
+    csv_text: [
+      "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+      `Consumable,${name},2,0,unit,1,2,2029-01-01`,
+    ].join("\n"),
+  };
+  const first = await api("POST", "/api/inventory/staging/import-csv", { token: operatorToken, body });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const replay = await api("POST", "/api/inventory/staging/import-csv", { token: operatorToken, body });
+  assert.equal(replay.status, 201, JSON.stringify(replay.data));
+  assert.equal(replay.data.import_summary.shipment_id, first.data.import_summary.shipment_id);
+  const duplicate = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: { ...body, operation_id: `shipment-duplicate-${randomUUID()}` },
+  });
+  assert.equal(duplicate.status, 409, JSON.stringify(duplicate.data));
+  assert.equal(duplicate.data.code, "DUPLICATE_SHIPMENT_DELIVERY_NOTE");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_shipments WHERE supplier = ? AND delivery_note = ?").get(body.supplier, body.delivery_note).count, 1);
 });
 
 test("inventory mutation and idempotency receipt roll back together", async () => {

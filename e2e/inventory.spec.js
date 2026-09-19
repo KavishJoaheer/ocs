@@ -464,7 +464,12 @@ test.describe("Inventory workflow", () => {
     ].join("\n");
     const imported = await request.post(`${API_BASE}/inventory/staging/import-csv`, {
       headers: { Authorization: `Bearer ${operator.token}` },
-      data: { csv_text: csv, supplier: "E2E Supplier" },
+      data: {
+        csv_text: csv,
+        supplier: "E2E Supplier",
+        delivery_note: `E2E-DN-${Date.now()}`,
+        operation_id: `e2e-shipment-${Date.now()}`,
+      },
     });
     expect(imported.ok(), await imported.text()).toBeTruthy();
     const importedBody = await apiJson(imported);

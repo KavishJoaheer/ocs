@@ -1234,16 +1234,17 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
   };
 }
 
-function createShipmentFromImport({ supplier = "", deliveryNote = "", userId, rows, skipped }) {
+function createShipmentFromImport({ supplier = "", deliveryNote = "", operationId, userId, rows, skipped }) {
   const info = db
     .prepare(`
       INSERT INTO inventory_shipments (
-        supplier, delivery_note, status, total_rows, valid_rows, rejected_rows, imported_by_user_id
-      ) VALUES (?, ?, 'pending', ?, ?, ?, ?)
+        supplier, delivery_note, operation_id, status, total_rows, valid_rows, rejected_rows, imported_by_user_id
+      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
     `)
     .run(
       supplier,
       deliveryNote,
+      operationId,
       rows.length + skipped,
       rows.length,
       skipped,

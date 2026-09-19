@@ -1731,6 +1731,7 @@ function upsertDoctorBagItem(source, doctorId, inboundQty) {
         AND owner_doctor_id = ?
         AND folder_id = ?
         AND item_name = ?
+        AND archived_at IS NULL
       LIMIT 1
     `)
     .get(doctorId, source.folder_id, source.item_name);

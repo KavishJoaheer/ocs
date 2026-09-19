@@ -12,6 +12,14 @@ export function formatExpiryDate(value) {
 }
 
 export function formatStockExpiryLabel(itemOrBatch = {}) {
+  if (itemOrBatch.item_kind === "service" || itemOrBatch.is_service_charge) {
+    return "Non-stock service";
+  }
+  const hasItemQuantity = itemOrBatch.on_hand_quantity != null || itemOrBatch.quantity != null;
+  const itemQuantity = Number(itemOrBatch.on_hand_quantity ?? itemOrBatch.quantity ?? 0);
+  if (hasItemQuantity && itemQuantity <= 0) {
+    return "No stock";
+  }
   if (
     itemOrBatch.is_non_expiring
     || itemOrBatch.stock_state === "non_expiring"
