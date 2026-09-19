@@ -757,6 +757,94 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
   assert.equal(again.data.idempotent, true);
 });
 
+test("admin stock count review compares this count with the last official count", async () => {
+  const itemId = insertOcsItem({ name: `CountCompare ${Date.now()}`, qty: 100 });
+  const first = await startStocktakeSession({ item_ids: [itemId] });
+  const firstLineId = first.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${first.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: firstLineId, physical_quantity: 100 }] },
+  });
+  const firstSubmit = await api("POST", `/api/inventory/stocktake/sessions/${first.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(firstSubmit.status, 200, JSON.stringify(firstSubmit.data));
+  assert.equal(firstSubmit.data.session.status, "submitted");
+  assert.equal(firstSubmit.data.session.items[0].previous_count_quantity, null);
+  assert.equal(Number(firstSubmit.data.session.items[0].system_quantity), 100);
+  const firstReview = await api("POST", `/api/inventory/stocktake/sessions/${first.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(firstReview.status, 200, JSON.stringify(firstReview.data));
+  assert.equal(firstReview.data.session.status, "applied");
+
+  const issued = await api("POST", "/api/inventory/restock", {
+    token: operatorToken,
+    body: { ocs_item_id: itemId, doctor_id: doctorId, quantity: 10 },
+  });
+  assert.equal(issued.status, 201, JSON.stringify(issued.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 90);
+
+  const second = await startStocktakeSession({ item_ids: [itemId] });
+  const counting = await api("GET", `/api/inventory/stocktake/sessions/${second.data.session.id}`, {
+    token: operatorToken,
+  });
+  assert.equal(counting.data.session.items[0].previous_count_quantity, null);
+  assert.equal(counting.data.session.items[0].system_quantity, null);
+  await api("PATCH", `/api/inventory/stocktake/sessions/${second.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: second.data.session.items[0].id, physical_quantity: 90 }] },
+  });
+  const secondSubmit = await api("POST", `/api/inventory/stocktake/sessions/${second.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(secondSubmit.status, 200, JSON.stringify(secondSubmit.data));
+  assert.equal(secondSubmit.data.session.status, "submitted");
+  const reviewLine = secondSubmit.data.session.items[0];
+  assert.equal(Number(reviewLine.previous_count_quantity), 100);
+  assert.equal(Number(reviewLine.system_quantity), 90);
+  assert.equal(Number(reviewLine.expected_quantity), 90);
+  assert.equal(Number(reviewLine.movement_since_quantity), -10);
+  assert.equal(Number(reviewLine.physical_quantity), 90);
+  assert.equal(Number(reviewLine.variance), 0);
+  assert.equal((reviewLine.movements_since || []).length, 1);
+  assert.equal(Number(reviewLine.movements_since[0].signed_quantity), -10);
+  assert.match(String(reviewLine.movements_since[0].summary), /Dispatched 10/i);
+  assert.equal(Number(reviewLine.explained_movement_quantity), -10);
+  assert.equal(Number(reviewLine.unexplained_movement_quantity), 0);
+  const csv = await api("GET", `/api/inventory/stocktake/sessions/${second.data.session.id}/export.csv`, {
+    token: adminToken,
+  });
+  assert.match(String(csv.data), /Last count/);
+  assert.match(String(csv.data), /This count/);
+  assert.match(String(csv.data), /What moved/);
+  assert.match(String(csv.data), /Dispatched 10/);
+
+  const secondReview = await api("POST", `/api/inventory/stocktake/sessions/${second.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(secondReview.status, 200, JSON.stringify(secondReview.data));
+  assert.equal(secondReview.data.session.status, "applied");
+
+  const mismatch = await startStocktakeSession({ item_ids: [itemId] });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${mismatch.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: mismatch.data.session.items[0].id, physical_quantity: 80 }] },
+  });
+  const mismatchSubmit = await api("POST", `/api/inventory/stocktake/sessions/${mismatch.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(mismatchSubmit.status, 200, JSON.stringify(mismatchSubmit.data));
+  const mismatchLine = mismatchSubmit.data.session.items[0];
+  assert.equal(Number(mismatchLine.previous_count_quantity), 90);
+  assert.equal(Number(mismatchLine.expected_quantity), 90);
+  assert.equal(Number(mismatchLine.physical_quantity), 80);
+  assert.equal(Number(mismatchLine.variance), -10);
+  assert.equal((mismatchLine.movements_since || []).length, 0);
+});
+
 test("shipment bulk release is atomic and idempotent", async () => {
   const consumable = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable'").get().id;
   const name = `Bulk ${Date.now()}`;
@@ -1136,7 +1224,7 @@ test("stocktake blank counts stay null and explicit zero is stored", async () =>
     token: operatorToken,
   });
   assert.equal(closed.status, 200, JSON.stringify(closed.data));
-  assert.equal(closed.data.session.status, "applied");
+  assert.equal(closed.data.session.status, "submitted");
 });
 
 test("operator can inspect, accept and reject amendments from the changes workflow", async () => {
@@ -1526,7 +1614,7 @@ test("explicit zero stocktake can be submitted and blank stocktake cannot", asyn
     token: operatorToken,
   });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
-  assert.ok(["submitted", "applied"].includes(submitted.data.session.status));
+  assert.equal(submitted.data.session.status, "submitted");
 });
 
 test("human-triggered bag movements retain the acting user rather than System", async () => {
@@ -1784,6 +1872,8 @@ test("blind stocktake hides expected quantities from operators until submission"
     token: operatorToken,
   });
   assert.equal(counting.data.session.items[0].system_quantity, null);
+  assert.equal(counting.data.session.items[0].previous_count_quantity, null);
+  assert.equal(counting.data.session.items[0].movement_since_quantity, null);
   const exportCounting = await api("GET", `/api/inventory/stocktake/sessions/${created.data.session.id}/export.csv`, {
     token: operatorToken,
   });
@@ -2347,7 +2437,13 @@ test("zero-variance stocktake without movement still closes and apply rolls back
     token: operatorToken,
   });
   assert.equal(closed.status, 200, JSON.stringify(closed.data));
-  assert.equal(closed.data.session.status, "applied");
+  assert.equal(closed.data.session.status, "submitted");
+  const recorded = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(recorded.status, 200, JSON.stringify(recorded.data));
+  assert.equal(recorded.data.session.status, "applied");
 
   const reservedItem = insertOcsItem({ name: `UnsafeApply ${Date.now()}`, qty: 2 });
   await createAcceptedRequest({ itemId: reservedItem, itemName: "UnsafeApply", quantity: 2 });
@@ -2610,6 +2706,14 @@ test("inventory operations schema adds release and recount columns on clean and 
   assert.ok(staging.includes("released_batch_id"));
   assert.ok(stocktakeItems.includes("recounted_by_user_id"));
   assert.ok(stocktakeItems.includes("recounted_at"));
+  assert.ok(stocktakeItems.includes("previous_count_quantity"));
+  assert.ok(stocktakeItems.includes("previous_count_at"));
+  assert.ok(stocktakeItems.includes("previous_count_session_id"));
+  const stocktakeSessions = db
+    .prepare("PRAGMA table_info(inventory_stocktake_sessions)")
+    .all()
+    .map((row) => row.name);
+  assert.ok(stocktakeSessions.includes("movement_id_watermark"));
   ensureInventoryOperationsSchema();
   assert.ok(
     db

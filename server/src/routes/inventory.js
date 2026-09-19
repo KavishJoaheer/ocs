@@ -4683,9 +4683,19 @@ router.get("/stocktake/sessions/:id/export.csv", (req, res) => {
   const showSystem = session.items?.some((row) => row.system_quantity != null);
   const lines = showSystem
     ? [
-        ["Item", "System qty", "Physical qty", "Variance", "Reason"].join(","),
+        ["Item", "Last count", "Last count date", "Since then", "What moved", "Expected", "This count", "Difference", "Reason"].join(","),
         ...(session.items || []).map((row) =>
-          [row.item_name, row.system_quantity, row.physical_quantity, row.variance, JSON.stringify(row.reason || "")].join(","),
+          [
+            row.item_name,
+            row.previous_count_quantity ?? "",
+            row.previous_count_at || "",
+            row.movement_since_quantity ?? "",
+            JSON.stringify((row.movements_since || []).map((entry) => entry.summary).join("; ")),
+            row.expected_quantity ?? row.system_quantity,
+            row.physical_quantity,
+            row.variance,
+            JSON.stringify(row.reason || ""),
+          ].join(","),
         ),
       ]
     : [

@@ -599,7 +599,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("button", { name: /Save progress/ }).click();
     await expect(page.getByText(/Counts saved|Recount saved/i)).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Submit counts" }).click();
-    await expect(page.getByText(/Stock count completed|Stock count submitted for approval/i)).toBeVisible({
+    await expect(page.getByText(/Stock count submitted for approval/i)).toBeVisible({
       timeout: 15_000,
     });
   });

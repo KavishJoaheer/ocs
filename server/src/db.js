@@ -2479,6 +2479,7 @@ function migrateStocktakeRecountStatus() {
       applied_at TEXT,
       applied_by_user_id INTEGER,
       applied_transaction_id TEXT,
+      movement_id_watermark INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL
@@ -2630,6 +2631,9 @@ function ensureInventoryOperationsSchema() {
   if (tableExists("inventory_stocktake_sessions") && !stocktakeCols.includes("applied_by_user_id")) {
     db.exec("ALTER TABLE inventory_stocktake_sessions ADD COLUMN applied_by_user_id INTEGER");
   }
+  if (tableExists("inventory_stocktake_sessions") && !stocktakeCols.includes("movement_id_watermark")) {
+    db.exec("ALTER TABLE inventory_stocktake_sessions ADD COLUMN movement_id_watermark INTEGER");
+  }
 
   const stocktakeItemCols = tableExists("inventory_stocktake_session_items")
     ? db.prepare("PRAGMA table_info(inventory_stocktake_session_items)").all().map((column) => column.name)
@@ -2661,6 +2665,15 @@ function ensureInventoryOperationsSchema() {
   }
   if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("recounted_at")) {
     db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN recounted_at TEXT");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("previous_count_quantity")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN previous_count_quantity INTEGER");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("previous_count_at")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN previous_count_at TEXT");
+  }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("previous_count_session_id")) {
+    db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN previous_count_session_id INTEGER");
   }
   migrateStocktakeRecountStatus();
 
@@ -2767,6 +2780,7 @@ function ensureInventoryOperationsSchema() {
       applied_at TEXT,
       applied_by_user_id INTEGER,
       applied_transaction_id TEXT,
+      movement_id_watermark INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL
@@ -2797,6 +2811,9 @@ function ensureInventoryOperationsSchema() {
       conflict_detected_at TEXT,
       recounted_by_user_id INTEGER,
       recounted_at TEXT,
+      previous_count_quantity INTEGER,
+      previous_count_at TEXT,
+      previous_count_session_id INTEGER,
       counted_by_user_id INTEGER,
       counted_at TEXT,
       reason TEXT NOT NULL DEFAULT '',

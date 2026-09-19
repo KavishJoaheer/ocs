@@ -6,7 +6,6 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile, DENSE_TABLE_BREAKPOINT } from "../hooks/useIsMobile.js";
-import { formatRupees } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 import { canCountStocktake, canReviewStocktake, withOperationalOverride } from "../lib/inventoryAccess.js";
 import { setUnsavedWork } from "../lib/unsavedWork.js";
@@ -16,11 +15,44 @@ function isBlankCount(value) {
   return value === null || value === undefined || String(value).trim() === "";
 }
 
+function formatCountDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatSignedCount(value) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  if (n === 0) return "0";
+  return n > 0 ? `+${n}` : `−${Math.abs(n)}`;
+}
+
+function formatCountValue(value) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : "—";
+}
+
 function formatSavedAt(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
+}
+
+function lineMovements(line) {
+  return Array.isArray(line?.movements_since) ? line.movements_since : [];
+}
+
+function isCountMismatch(line) {
+  return Number(line?.variance || 0) !== 0;
+}
+
+function hasUnexplainedMovement(line) {
+  return Number(line?.unexplained_movement_quantity || 0) !== 0;
 }
 
 function countStatusLabel(status) {
@@ -50,6 +82,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const [confirmFullOpen, setConfirmFullOpen] = useState(false);
   const [mobileIndex, setMobileIndex] = useState(0);
   const [reviewUncounted, setReviewUncounted] = useState(false);
+  const [reviewMismatchesOnly, setReviewMismatchesOnly] = useState(false);
   const [finalReview, setFinalReview] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState("");
@@ -239,11 +272,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`);
       setActive(payload.session);
       setEditedIds({});
-      toast.success(
-        payload.session.status === "applied"
-          ? "Stock count completed—no differences found."
-          : "Stock count submitted for approval.",
-      );
+      toast.success("Stock count submitted for approval.");
       await onApplied?.();
     } catch (error) {
       if (error.status === 409 && error.data?.session) {
@@ -268,6 +297,13 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       });
       setActive(payload.session);
       setRejectReason("");
+      if (decision === "rejected") {
+        toast.success("Stock count rejected.");
+      } else if (payload.session?.status === "applied") {
+        toast.success("This count is now the official stock count.");
+      } else {
+        toast.success("Approved. Apply differences to update stock.");
+      }
       await onApplied?.();
     } catch (error) {
       toast.error(error.message || "Could not review this session.");
@@ -323,7 +359,12 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
   const counted = Number(active?.counted_count || rows.filter((row) => !isBlankCount(row.physical_quantity)).length);
   const total = Number(active?.item_count || rows.length);
   const progress = total ? Math.round((counted / total) * 100) : 0;
-  const visibleRows = reviewUncounted && canEditCounts ? uncountedLines() : rows;
+  const mismatchRows = rows.filter((line) => isCountMismatch(line) || hasUnexplainedMovement(line));
+  const visibleRows = submitted && reviewMismatchesOnly
+    ? mismatchRows
+    : reviewUncounted && canEditCounts
+      ? uncountedLines()
+      : rows;
   const mobileRows = reviewUncounted ? uncountedLines() : rows;
   const mobileLine = mobileRows[mobileIndex] || null;
 
@@ -335,7 +376,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     <>
     <SectionCard
       title="Stock Count"
-      subtitle="Count any time operations require it. Quantities stay hidden until the completed count is submitted."
+      subtitle="Operators count the shelf. Admin then compares this count with the last recorded count, including stock that moved in between."
       actions={
         <span className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
           <ClipboardCheck className="size-3.5" />
@@ -405,7 +446,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       ) : null}
       {!canCount && !active ? (
         <p className="mb-4 text-sm text-slate-600">
-          Operators start and submit stock counts. Administrators review differences and apply approved adjustments.
+          Operators start and submit a stock count. Administrators compare this count with the last recorded count before approving.
         </p>
       ) : null}
 
@@ -443,9 +484,13 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
 
           {submitted ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <p>Items with differences: <strong>{active.discrepancy_count ?? 0}</strong></p>
-              <p>Total quantity difference: <strong>{active.open_variance_qty ?? 0}</strong></p>
-              <p>Estimated value difference: <strong>{formatRupees(active.open_variance_value || 0)}</strong></p>
+              <p>
+                A good count matches expected: last official count plus recorded stock in or out since then.
+                A difference means this physical count does not match the system after those movements.
+              </p>
+              <p className="mt-1">Matches expected: <strong>{Math.max(0, (active.counted_count || 0) - (active.discrepancy_count || 0))}</strong></p>
+              <p>Does not match: <strong className={Number(active.discrepancy_count || 0) > 0 ? "text-rose-700" : ""}>{active.discrepancy_count ?? 0}</strong></p>
+              <p>Total quantity difference: <strong>{formatSignedCount(active.open_variance_qty)}</strong></p>
             </div>
           ) : null}
 
@@ -455,9 +500,25 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                 <div key={line.id} className="rounded-2xl border border-slate-200 px-3 py-3 text-sm">
                   <p className="font-semibold text-slate-900">{line.item_name}</p>
                   <p className="text-xs text-slate-500">
-                    Count {line.physical_quantity}
-                    {submitted ? ` · System ${line.system_quantity} · Variance ${line.variance}` : ""}
+                    This count {formatCountValue(line.physical_quantity)}
+                    {submitted
+                      ? ` · Last count ${formatCountValue(line.previous_count_quantity)}${
+                          line.previous_count_at ? ` (${formatCountDate(line.previous_count_at)})` : ""
+                        } · Since then ${formatSignedCount(line.movement_since_quantity)} · Expected ${formatCountValue(line.expected_quantity ?? line.system_quantity)} · Difference ${formatSignedCount(line.variance)}`
+                      : ""}
                   </p>
+                  {submitted && lineMovements(line).length ? (
+                    <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                      {lineMovements(line).map((entry) => (
+                        <li key={entry.id}>
+                          {formatCountDate(entry.created_at)} · {entry.summary}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {submitted && isCountMismatch(line) ? (
+                    <p className="mt-2 text-xs font-semibold text-rose-700">This physical count does not match expected.</p>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -526,18 +587,60 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                 <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left">Item</th>
-                    {submitted ? <th className="px-3 py-2 text-right">System</th> : null}
-                    <th className="px-3 py-2 text-right">Count</th>
-                    {submitted ? <th className="px-3 py-2 text-right">Variance</th> : null}
+                    {submitted ? <th className="px-3 py-2 text-right">Last count</th> : null}
+                    {submitted ? <th className="px-3 py-2 text-right">Since then</th> : null}
+                    {submitted ? <th className="px-3 py-2 text-left">What moved</th> : null}
+                    {submitted ? <th className="px-3 py-2 text-right">Expected</th> : null}
+                    <th className="px-3 py-2 text-right">This count</th>
+                    {submitted ? <th className="px-3 py-2 text-right">Difference</th> : null}
                     {recountRequired ? <th className="px-3 py-2 text-left">Conflict</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {visibleRows.map((line) => (
-                    <tr key={line.id}>
+                    <tr
+                      key={line.id}
+                      className={isCountMismatch(line) || hasUnexplainedMovement(line) ? "bg-rose-50" : ""}
+                    >
                       <td className="px-3 py-2 font-semibold text-slate-800">{line.item_name}</td>
                       {submitted ? (
-                        <td className="px-3 py-2 text-right tabular-nums">{line.system_quantity}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {formatCountValue(line.previous_count_quantity)}
+                          {line.previous_count_at ? (
+                            <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-slate-400">
+                              {formatCountDate(line.previous_count_at)}
+                            </span>
+                          ) : null}
+                        </td>
+                      ) : null}
+                      {submitted ? (
+                        <td className="px-3 py-2 text-right tabular-nums">{formatSignedCount(line.movement_since_quantity)}</td>
+                      ) : null}
+                      {submitted ? (
+                        <td className="px-3 py-2 text-left text-xs font-medium text-slate-600">
+                          {lineMovements(line).length ? (
+                            <ul className="space-y-1">
+                              {lineMovements(line).map((entry) => (
+                                <li key={entry.id}>
+                                  <span className="block text-slate-800">{entry.summary}</span>
+                                  <span className="block text-[10px] font-medium text-slate-400">
+                                    {formatCountDate(entry.created_at)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            "No recorded stock in or out"
+                          )}
+                          {hasUnexplainedMovement(line) ? (
+                            <p className="mt-1 font-semibold text-rose-700">
+                              Unexplained {formatSignedCount(line.unexplained_movement_quantity)} vs last count
+                            </p>
+                          ) : null}
+                        </td>
+                      ) : null}
+                      {submitted ? (
+                        <td className="px-3 py-2 text-right tabular-nums">{formatCountValue(line.expected_quantity ?? line.system_quantity)}</td>
                       ) : null}
                       <td className="px-3 py-2 text-right">
                         <input
@@ -550,7 +653,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                         />
                       </td>
                       {submitted ? (
-                        <td className="px-3 py-2 text-right tabular-nums">{line.variance}</td>
+                        <td className={`px-3 py-2 text-right tabular-nums font-semibold ${isCountMismatch(line) ? "text-rose-700" : "text-slate-800"}`}>
+                          {formatSignedCount(line.variance)}
+                        </td>
                       ) : null}
                       {recountRequired ? (
                         <td className="px-3 py-2 text-xs text-amber-800">
@@ -601,6 +706,15 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
             ) : null}
             {canReview && active.status === "submitted" ? (
               <>
+                {mismatchRows.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setReviewMismatchesOnly((value) => !value)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 px-3 text-sm font-semibold text-rose-800"
+                  >
+                    {reviewMismatchesOnly ? "Show all lines" : `Show mismatches (${mismatchRows.length})`}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => review("approved")}
@@ -632,7 +746,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
                 onClick={applySession}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
               >
-                {applying ? "Applying…" : "Apply adjustments"}
+                {applying ? "Recording…" : Number(active.discrepancy_count || 0) > 0 ? "Apply count differences" : "Record this count"}
               </button>
             ) : null}
             <button

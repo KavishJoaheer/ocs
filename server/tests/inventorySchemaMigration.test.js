@@ -34,6 +34,9 @@ test("clean inventory databases include release and recount columns", () => {
   assert.ok(staging.includes("released_batch_id"));
   assert.ok(items.includes("recounted_by_user_id"));
   assert.ok(items.includes("recounted_at"));
+  assert.ok(items.includes("previous_count_quantity"));
+  assert.ok(items.includes("previous_count_at"));
+  assert.ok(items.includes("previous_count_session_id"));
 });
 
 test("previously upgraded inventory databases keep release columns when migrations re-run", () => {
@@ -46,6 +49,9 @@ test("previously upgraded inventory databases keep release columns when migratio
   assert.ok(upgraded.includes("released_batch_id"));
   assert.ok(items.includes("recounted_by_user_id"));
   assert.ok(items.includes("recounted_at"));
+  assert.ok(items.includes("previous_count_quantity"));
+  assert.ok(items.includes("previous_count_at"));
+  assert.ok(items.includes("previous_count_session_id"));
 });
 
 test("staging migration recovers from a leftover temporary table", () => {

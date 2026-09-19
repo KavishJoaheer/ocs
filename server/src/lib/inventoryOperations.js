@@ -1391,6 +1391,163 @@ function snapshotInventoryForStocktake(item) {
   };
 }
 
+function lastOfficialStockCount(inventoryId) {
+  const row = db
+    .prepare(
+      `
+      SELECT si.physical_quantity AS quantity, s.applied_at, s.id AS session_id, s.movement_id_watermark
+      FROM inventory_stocktake_session_items si
+      JOIN inventory_stocktake_sessions s ON s.id = si.session_id
+      WHERE si.inventory_id = ?
+        AND s.status = 'applied'
+        AND si.physical_quantity IS NOT NULL
+      ORDER BY datetime(COALESCE(s.applied_at, s.reviewed_at, s.submitted_at, s.created_at)) DESC, s.id DESC
+      LIMIT 1
+    `,
+    )
+    .get(Number(inventoryId));
+  if (!row) return null;
+  return {
+    quantity: Number(row.quantity),
+    applied_at: row.applied_at || null,
+    session_id: Number(row.session_id),
+    movement_id_watermark: row.movement_id_watermark == null ? null : Number(row.movement_id_watermark),
+  };
+}
+
+function parseMovementMeta(raw) {
+  try {
+    const parsed = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function timestampOnOrAfter(value, afterAt) {
+  if (!afterAt) return true;
+  const current = storedTimestampMs(value);
+  const bound = storedTimestampMs(afterAt);
+  if (current == null || bound == null) return String(value || "") >= String(afterAt || "");
+  return current >= bound;
+}
+
+function timestampOnOrBefore(value, beforeAt) {
+  if (!beforeAt) return true;
+  const current = storedTimestampMs(value);
+  const bound = storedTimestampMs(beforeAt);
+  if (current == null || bound == null) return String(value || "") <= String(beforeAt || "");
+  return current <= bound;
+}
+
+function signedWarehouseMovementQuantity(row) {
+  const qty = Number(row.quantity || 0);
+  const type = String(row.movement_type || "");
+  if (type === "out") return -qty;
+  if (type === "in") return qty;
+  const previous = Number(row.previous_quantity);
+  const next = Number(row.next_quantity);
+  if (Number.isFinite(previous) && Number.isFinite(next)) return next - previous;
+  return qty;
+}
+
+function describeStocktakeIntervalMovement(row) {
+  const meta = parseMovementMeta(row.meta_json);
+  const qty = Number(row.quantity || 0);
+  const signed = signedWarehouseMovementQuantity(row);
+  const doctor = String(row.doctor_name || meta.doctor_name || meta.received_by_name || "").trim();
+  const requestId = meta.request_id || (row.reference_type === "restock_request" ? row.reference_id : null);
+  const action = String(row.action_type || "").toLowerCase();
+  let summary = "";
+  if (action === "restock_out") {
+    summary = doctor ? `Dispatched ${qty} to ${doctor}` : `Dispatched ${qty} to a doctor`;
+    if (requestId) summary += ` (supply request #${requestId})`;
+  } else if (action === "stock_in" || action === "add") {
+    const supplier = String(meta.supplier || "").trim();
+    summary = supplier ? `Received ${qty} from ${supplier}` : `Received ${qty}`;
+  } else if (["remove", "write_off", "expired"].includes(action)) {
+    summary = `Written off ${qty}`;
+  } else if (action === "adjustment") {
+    summary = `Count adjustment ${signed > 0 ? "+" : ""}${signed}`;
+  } else {
+    const label = action.replace(/_/g, " ") || "Movement";
+    summary = `${label} ${signed > 0 ? "+" : ""}${signed}`;
+  }
+  return {
+    id: Number(row.id),
+    created_at: row.created_at || null,
+    action_type: action,
+    quantity: qty,
+    signed_quantity: signed,
+    doctor_name: doctor || null,
+    request_id: requestId ? Number(requestId) : null,
+    summary,
+    note: row.note || "",
+  };
+}
+
+function loadStocktakeIntervalMovements(session, lines) {
+  const ids = [...new Set((lines || []).map((row) => Number(row.inventory_id)).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        m.id, m.item_id, m.movement_type, m.quantity, m.previous_quantity, m.next_quantity,
+        m.action_type, m.note, m.created_at, m.doctor_id, m.reference_type, m.reference_id, m.meta_json,
+        d.full_name AS doctor_name
+      FROM inventory_movements m
+      LEFT JOIN doctors d ON d.id = COALESCE(
+        m.doctor_id,
+        CASE WHEN m.reference_type = 'doctor' THEN m.reference_id END
+      )
+      WHERE m.item_id IN (${placeholders})
+      ORDER BY m.id ASC
+    `,
+    )
+    .all(...ids);
+  const sessionStart = session.started_at || session.created_at;
+  const previousSessionIds = [
+    ...new Set((lines || []).map((row) => Number(row.previous_count_session_id)).filter(Boolean)),
+  ];
+  const watermarks = new Map();
+  if (previousSessionIds.length) {
+    const sessionPlaceholders = previousSessionIds.map(() => "?").join(",");
+    db.prepare(
+      `SELECT id, movement_id_watermark FROM inventory_stocktake_sessions WHERE id IN (${sessionPlaceholders})`,
+    )
+      .all(...previousSessionIds)
+      .forEach((row) => {
+        watermarks.set(Number(row.id), row.movement_id_watermark == null ? null : Number(row.movement_id_watermark));
+      });
+  }
+  const grouped = new Map();
+  const linesByItem = new Map();
+  for (const line of lines) {
+    grouped.set(Number(line.inventory_id), []);
+    linesByItem.set(Number(line.inventory_id), line);
+  }
+  for (const row of rows) {
+    const itemId = Number(row.item_id);
+    const line = linesByItem.get(itemId);
+    if (!line || line.previous_count_quantity == null) continue;
+    const meta = parseMovementMeta(row.meta_json);
+    const stocktakeSessionId = Number(meta.stocktake_session_id || 0);
+    if (stocktakeSessionId && stocktakeSessionId === Number(line.previous_count_session_id || 0)) continue;
+    if (stocktakeSessionId && stocktakeSessionId === Number(session.id)) continue;
+    const watermark = watermarks.get(Number(line.previous_count_session_id || 0));
+    if (watermark != null) {
+      if (Number(row.id) <= watermark) continue;
+    } else if (!timestampOnOrAfter(row.created_at, line.previous_count_at)) {
+      continue;
+    }
+    if (!timestampOnOrBefore(row.created_at, sessionStart)) continue;
+    grouped.get(itemId).push(describeStocktakeIntervalMovement(row));
+  }
+  return grouped;
+}
+
 function loadStocktakeScopeItems({ folderId = null, itemIds = [] } = {}) {
   const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
   if (scopedIds.length) {
@@ -1507,12 +1664,23 @@ function createStocktakeSession({
   const sessionId = Number(info.lastInsertRowid);
   const insert = db.prepare(`
     INSERT INTO inventory_stocktake_session_items (
-      session_id, inventory_id, system_quantity, expected_row_version, expected_quantity
-    ) VALUES (?, ?, ?, ?, ?)
+      session_id, inventory_id, system_quantity, expected_row_version, expected_quantity,
+      previous_count_quantity, previous_count_at, previous_count_session_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const item of items) {
     const snapshot = snapshotInventoryForStocktake(item);
-    insert.run(sessionId, item.id, snapshot.expected_quantity, snapshot.expected_row_version, snapshot.expected_quantity);
+    const previous = lastOfficialStockCount(item.id);
+    insert.run(
+      sessionId,
+      item.id,
+      snapshot.expected_quantity,
+      snapshot.expected_row_version,
+      snapshot.expected_quantity,
+      previous ? previous.quantity : null,
+      previous ? previous.applied_at : null,
+      previous ? previous.session_id : null,
+    );
   }
   return getStocktakeSession(sessionId, { role: "operator" });
 }
@@ -1521,7 +1689,7 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
   const allowedReveal = canRevealStocktakeSystem(session, { role });
   const showSystem = allowedReveal;
   void revealSystem;
-  const items = db
+  const itemRows = db
     .prepare(`
       SELECT si.*, i.item_name, i.unit, i.folder_id, i.cost_price, i.row_version AS live_row_version, i.quantity AS live_quantity
       FROM inventory_stocktake_session_items si
@@ -1529,15 +1697,32 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
       WHERE si.session_id = ?
       ORDER BY i.item_name ASC
     `)
-    .all(session.id)
+    .all(session.id);
+  const intervalMovements = showSystem ? loadStocktakeIntervalMovements(session, itemRows) : new Map();
+  const items = itemRows
     .map((row) => {
       const counted = row.physical_quantity !== null && row.physical_quantity !== undefined;
+      const expectedQty = Number(row.expected_quantity ?? row.system_quantity ?? 0);
+      const previousQty = row.previous_count_quantity == null ? null : Number(row.previous_count_quantity);
+      const movementSince = previousQty == null ? null : expectedQty - previousQty;
+      const movementsSince = showSystem ? intervalMovements.get(Number(row.inventory_id)) || [] : [];
+      const explained = movementsSince.reduce((sum, entry) => sum + Number(entry.signed_quantity || 0), 0);
+      const unexplained = movementSince == null ? null : movementSince - explained;
       return {
         ...row,
         counted,
         system_quantity: showSystem ? Number(row.system_quantity || 0) : null,
         expected_row_version: showSystem ? Number(row.expected_row_version || 0) : null,
-        expected_quantity: showSystem ? Number(row.expected_quantity ?? row.system_quantity ?? 0) : null,
+        expected_quantity: showSystem ? expectedQty : null,
+        previous_count_quantity: showSystem ? previousQty : null,
+        previous_count_at: showSystem ? row.previous_count_at || null : null,
+        previous_count_session_id: showSystem && row.previous_count_session_id
+          ? Number(row.previous_count_session_id)
+          : null,
+        movement_since_quantity: showSystem ? movementSince : null,
+        movements_since: showSystem ? movementsSince : [],
+        explained_movement_quantity: showSystem ? explained : null,
+        unexplained_movement_quantity: showSystem ? unexplained : null,
         variance: showSystem ? row.variance : null,
         variance_value:
           showSystem ? roundCurrency(Number(row.variance || 0) * Number(row.cost_price || 0)) : null,
@@ -1955,22 +2140,6 @@ function submitStocktakeSession(sessionId, userId) {
     error.session = getStocktakeSession(sessionId, { role: "operator" });
     throw error;
   }
-  const hasVariance = items.some((row) => Number(row.variance) !== 0);
-  if (!hasVariance) {
-    db.prepare(`
-      UPDATE inventory_stocktake_sessions
-      SET
-        status = 'applied',
-        submitted_at = CURRENT_TIMESTAMP,
-        submitted_by_user_id = ?,
-        applied_at = CURRENT_TIMESTAMP,
-        applied_by_user_id = ?,
-        applied_transaction_id = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(userId, userId, `ST-ZERO-${sessionId}`, sessionId);
-    return getStocktakeSession(sessionId, { role: "operator" });
-  }
   db.prepare(`
     UPDATE inventory_stocktake_sessions
     SET
@@ -2018,6 +2187,13 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(decision === "approved" ? "approved" : "rejected", userId, String(reason || "").slice(0, 500), sessionId);
+  if (decision === "approved") {
+    const items = db.prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?").all(sessionId);
+    const hasVariance = items.some((row) => Number(row.variance) !== 0);
+    if (!hasVariance) {
+      return applyStocktakeSession(sessionId, userId, { role: "admin" }).session;
+    }
+  }
   return getStocktakeSession(sessionId, { role: "admin" });
 }
 
@@ -2031,14 +2207,8 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
   if (session.status === "rejected" || session.status === "cancelled" || session.status === "recount_required") {
     throw HttpError(400, "This session cannot be applied.");
   }
-  if (session.status !== "approved" && session.status !== "applied") {
-    const items = db
-      .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
-      .all(sessionId);
-    const hasVariance = items.some((row) => Number(row.variance) !== 0);
-    if (hasVariance && session.status !== "approved") {
-      throw HttpError(400, "Non-zero variances must be approved before they can be applied.");
-    }
+  if (session.status !== "approved") {
+    throw HttpError(400, "Only an approved stock count can be recorded.");
   }
 
   const items = db
@@ -2153,6 +2323,9 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       });
       recordMovementAllocations(movementId, allocations);
     }
+    const watermark = Number(
+      db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM inventory_movements").get()?.id || 0,
+    );
     const applied = db.prepare(`
       UPDATE inventory_stocktake_sessions
       SET
@@ -2160,9 +2333,10 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         applied_at = CURRENT_TIMESTAMP,
         applied_by_user_id = ?,
         applied_transaction_id = ?,
+        movement_id_watermark = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND applied_transaction_id IS NULL
-    `).run(userId, transactionId, sessionId);
+    `).run(userId, transactionId, watermark, sessionId);
     if (!applied.changes) {
       return { session: getStocktakeSession(sessionId, reveal), idempotent: true };
     }
