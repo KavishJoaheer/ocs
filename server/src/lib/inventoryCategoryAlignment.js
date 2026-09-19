@@ -52,10 +52,64 @@ const RETIRED_OCS_CONSUMABLE_SKUS = [
   "White Adhesive Tape",
 ];
 
+function writeOffRetiredSkuRow(row, writeOffQty) {
+  db.prepare(`
+    UPDATE inventory_batches
+    SET quantity_remaining = 0,
+        row_version = COALESCE(row_version, 1) + 1
+    WHERE item_id = ? AND quantity_remaining > 0
+  `).run(row.id);
+  db.prepare(`
+    UPDATE inventory
+    SET quantity = 0,
+        row_version = COALESCE(row_version, 1) + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(row.id);
+  const metaJson = JSON.stringify({
+    reason: "Discontinued",
+    catalogue_retirement: true,
+    automated: true,
+    performed_by_role: "system",
+    stock_scope: row.stock_scope,
+    owner_doctor_id: row.owner_doctor_id || null,
+  });
+  db.prepare(`
+    INSERT INTO inventory_movements (
+      item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+      recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json
+    ) VALUES (?, 'out', ?, ?, 0, ?, NULL, ?, 'remove', 'catalogue_retirement', ?, ?)
+  `).run(
+    row.id,
+    writeOffQty,
+    Number(row.quantity || 0),
+    row.owner_doctor_id || null,
+    `Catalogue retirement write-off: ${row.item_name} removed from OCS consumables.`,
+    String(row.id),
+    metaJson,
+  );
+  db.prepare(`
+    INSERT INTO inventory_audit_logs (
+      action_type, item_id, item_name, quantity, reason,
+      target_doctor_id, target_doctor_name,
+      performed_by_user_id, performed_by_role, performed_by_name, meta_json
+    ) VALUES (?, ?, ?, ?, ?, ?, '', NULL, 'system', 'System', ?)
+  `).run(
+    "retired_sku_write_off",
+    row.id,
+    row.item_name,
+    writeOffQty,
+    "Catalogue retirement write-off",
+    row.owner_doctor_id || null,
+    metaJson,
+  );
+}
+
 function retireRemovedOcsConsumableSkus() {
   return db.transaction(() => {
     let archived = 0;
     let blocked = 0;
+    let writtenOff = 0;
     for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
       recordOcsCatalogExclusion(itemName);
       const rows = db.prepare(`
@@ -79,13 +133,14 @@ function retireRemovedOcsConsumableSkus() {
           )
       `).all(itemName);
       for (const row of rows) {
-        const safeToArchive =
-          Number(row.quantity || 0) === 0 &&
-          Number(row.live_batch_quantity || 0) === 0 &&
-          Number(row.reserved_quantity || 0) === 0;
-        if (!safeToArchive) {
+        if (Number(row.reserved_quantity || 0) > 0) {
           blocked += 1;
           continue;
+        }
+        const writeOffQty = Math.max(Number(row.quantity || 0), Number(row.live_batch_quantity || 0));
+        if (writeOffQty > 0) {
+          writeOffRetiredSkuRow(row, writeOffQty);
+          writtenOff += 1;
         }
         archived += Number(db.prepare(`
           UPDATE inventory
@@ -96,7 +151,7 @@ function retireRemovedOcsConsumableSkus() {
         `).run(row.id).changes || 0);
       }
     }
-    return { archived, blocked };
+    return { archived, blocked, written_off: writtenOff };
   })();
 }
 
@@ -229,7 +284,12 @@ function alignInventoryCategories() {
 
   const aligned = align();
   const retired = retireRemovedOcsConsumableSkus();
-  return { ...aligned, archived: retired.archived };
+  return {
+    ...aligned,
+    archived: retired.archived,
+    blocked: retired.blocked,
+    written_off: retired.written_off,
+  };
 }
 
 module.exports = {

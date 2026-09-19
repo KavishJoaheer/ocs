@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import Modal from "../Modal.jsx";
 import { api } from "../../lib/api.js";
 import { formatRupees } from "../../lib/format.js";
+import { liveLotsFromPayload } from "../../lib/inventoryStockDisplay.js";
 import {
   isPositiveWholeNumber,
   requiresOperationalOverride,
@@ -32,6 +33,7 @@ export default function WriteOffStockModal({
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState("");
   const [step, setStep] = useState("form");
+  const [bagLots, setBagLots] = useState([]);
   const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
   if (syncedDeps.open !== open || syncedDeps.itemId !== item?.id) {
@@ -45,6 +47,7 @@ export default function WriteOffStockModal({
       setPreview(null);
       setPreviewError("");
       setStep("form");
+      setBagLots([]);
     }
   }
 
@@ -88,10 +91,34 @@ export default function WriteOffStockModal({
     };
   }, [open, item?.id, qty, isDoctorBag]);
 
+  useEffect(() => {
+    if (!open || !item?.id || !isDoctorBag) {
+      setBagLots([]);
+      return undefined;
+    }
+    const embedded = liveLotsFromPayload(item);
+    if (embedded.length) {
+      setBagLots(embedded);
+      return undefined;
+    }
+    let ignore = false;
+    api
+      .get(`/inventory/items/${item.id}/batches`)
+      .then((response) => {
+        if (!ignore) setBagLots(liveLotsFromPayload(item, response.batches || []));
+      })
+      .catch(() => {
+        if (!ignore) setBagLots([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [open, item, isDoctorBag]);
+
   const available = Number(preview?.available_to_transfer ?? item?.quantity ?? 0);
   const currentQty = Number(preview?.current_quantity ?? item?.quantity ?? 0);
   const exceeds = isPositiveWholeNumber(qty) && qty > available;
-  const bagBatches = (item?.lots || []).filter((batch) => Number(batch.quantity_remaining || 0) > 0);
+  const bagBatches = bagLots.filter((batch) => Number(batch.quantity_remaining || 0) > 0);
   const selectedBatch = bagBatches.find((batch) => String(batch.id) === String(selectedBatchId));
   const batchError = isDoctorBag && !selectedBatch ? "Select the exact affected batch." : "";
   const batchExceeds = Boolean(selectedBatch && isPositiveWholeNumber(qty) && qty > Number(selectedBatch.quantity_remaining || 0));

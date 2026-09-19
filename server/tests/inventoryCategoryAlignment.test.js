@@ -214,7 +214,7 @@ test("retired consumable SKUs are absent from the warehouse catalogues", () => {
   }
 });
 
-test("alignment never archives retired SKUs until on-hand, batches and reservations are zero", () => {
+test("alignment writes off leftover retired SKUs then archives them", () => {
   const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
   const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 2").all().map((row) => Number(row.id));
   assert.equal(doctorIds.length, 2);
@@ -235,19 +235,25 @@ test("alignment never archives retired SKUs until on-hand, batches and reservati
 
   const expectedArchived = RETIRED_OCS_CONSUMABLE_SKUS.length * (1 + doctorIds.length);
   const first = alignInventoryCategories();
-  assert.equal(first.archived, 0);
+  assert.ok(first.archived >= expectedArchived);
+  assert.equal(first.blocked, 0);
+  assert.ok(first.written_off >= expectedArchived);
   for (const id of insertedIds) {
-    assert.equal(db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(id).archived_at, null);
+    const row = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(id);
+    assert.ok(row.archived_at);
+    assert.equal(Number(row.quantity || 0), 0);
   }
-
-  db.prepare(`UPDATE inventory SET quantity = 0 WHERE id IN (${insertedIds.map(() => "?").join(",")})`)
-    .run(...insertedIds);
-  const second = alignInventoryCategories();
-  assert.ok(second.archived >= expectedArchived);
+  assert.ok(
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM inventory_audit_logs
+      WHERE action_type = 'retired_sku_write_off'
+    `).get().count >= expectedArchived,
+  );
 
   for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
     const rows = db.prepare(`
-      SELECT stock_scope, owner_doctor_id, archived_at
+      SELECT stock_scope, owner_doctor_id, archived_at, quantity
       FROM inventory
       WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
         AND (
@@ -258,9 +264,12 @@ test("alignment never archives retired SKUs until on-hand, batches and reservati
     assert.equal(rows.length, 1 + doctorIds.length, itemName);
     for (const row of rows) {
       assert.ok(row.archived_at, `${itemName} ${row.stock_scope}`);
+      assert.equal(Number(row.quantity || 0), 0, itemName);
     }
   }
 
   const retry = alignInventoryCategories();
   assert.equal(retry.archived, 0, "retired SKU archive must be idempotent");
+  assert.equal(retry.blocked, 0);
+  assert.equal(retry.written_off, 0);
 });

@@ -262,6 +262,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       missing_expiry_quantity: missingExpiryQuantity + unbatchedQuantity,
       missing_cost_quantity: missingCostQuantity + unbatchedQuantity,
       has_quarantined: quarantinedQuantity > 0,
+      usable_on_hand: usableOnHand,
       available_to_use: availableToUse,
       available_to_promise: availableToUse,
       available_to_transfer: availableToUse,

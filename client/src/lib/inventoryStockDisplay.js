@@ -109,3 +109,9 @@ export function formatSignedQuantity(value) {
   if (!qty) return "0";
   return qty > 0 ? `+${qty}` : `−${Math.abs(qty)}`;
 }
+
+export function liveLotsFromPayload(item, batches = []) {
+  const embedded = Array.isArray(item?.lots) ? item.lots : [];
+  const source = embedded.length ? embedded : Array.isArray(batches) ? batches : [];
+  return source.filter((lot) => Number(lot.quantity_remaining || 0) > 0);
+}

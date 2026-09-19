@@ -159,10 +159,7 @@ function availableToPromise(inventoryId, { exceptRequestId = null } = {}) {
       `,
       )
       .get(Number(inventoryId), Number(exceptRequestId));
-    const usable = Math.max(
-      0,
-      Number(decorated?.on_hand_quantity || 0) - Number(decorated?.expired_quantity || 0),
-    );
+    const usable = Math.max(0, Number(decorated?.usable_on_hand || 0));
     atp = Math.min(usable, atp + (integerQty(own?.total) ?? 0));
   }
   return Math.max(0, atp);

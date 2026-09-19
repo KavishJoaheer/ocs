@@ -52,6 +52,16 @@ try {
       `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); renamed ${categoryAlignment.renamed} row(s); added ${categoryAlignment.inserted} required row(s); archived ${categoryAlignment.archived} retired SKU row(s).`,
     );
   }
+  if (categoryAlignment.written_off > 0) {
+    console.log(
+      `[inventory] Wrote off leftover stock on ${categoryAlignment.written_off} retired consumable row(s) before archive.`,
+    );
+  }
+  if (categoryAlignment.blocked > 0) {
+    console.warn(
+      `[inventory] ${categoryAlignment.blocked} retired consumable row(s) still have active reservations and were left visible.`,
+    );
+  }
   if (categoryAlignment.conflicts > 0) {
     console.warn(`[inventory] ${categoryAlignment.conflicts} catalogue rename conflict(s) require review.`);
   }

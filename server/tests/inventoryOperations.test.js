@@ -258,42 +258,19 @@ test("active doctor bags enforce one row per doctor and item name", () => {
   ) VALUES (?, ?, 0, 0, 'unit', 5, 10, 'doctor', ?)`).run(itemName.toUpperCase(), folderId, doctorId), /UNIQUE constraint failed/i);
 });
 
-test("inventory data-quality progress and daily exception ownership are location-scoped and audited", async () => {
+test("inventory list payload skips completeness scoring and still audits exception ownership", async () => {
   const payload = await api("GET", "/api/inventory", { token: operatorToken });
   assert.equal(payload.status, 200, JSON.stringify(payload.data));
-  assert.ok(payload.data.data_quality);
-  assert.ok(Array.isArray(payload.data.data_quality.locations));
-  assert.ok(payload.data.data_quality.locations.some((row) => row.location_key === "ocs"));
-  assert.ok(payload.data.data_quality.locations.some((row) => String(row.location_key).startsWith("doctor:")));
-  assert.ok(Number(payload.data.data_quality.overall.completion_percent) >= 0);
-  assert.ok(Number(payload.data.data_quality.overall.completion_percent) <= 100);
-  const warehouseQuality = payload.data.data_quality.locations.find((row) => row.location_key === "ocs");
-  const doctorReconciliation = payload.data.data_quality.locations
-    .filter((row) => String(row.location_key).startsWith("doctor:"))
-    .reduce((sum, row) => sum + Number(row.reconciliation_required || 0), 0);
-  assert.equal(warehouseQuality.reconciliation_required, 0);
-  assert.equal(payload.data.data_quality.overall.reconciliation_required, doctorReconciliation);
+  assert.equal(payload.data.data_quality, undefined);
+  assert.equal(payload.data.ocs_stock.every((row) => row.lots === undefined), true);
   const selectedBag = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: operatorToken });
   assert.equal(selectedBag.status, 200, JSON.stringify(selectedBag.data));
-  const doctorQuality = payload.data.data_quality.locations.find(
-    (row) => row.location_key === `doctor:${doctorId}`,
-  );
+  assert.equal(selectedBag.data.data_quality, undefined);
+  assert.equal(selectedBag.data.selected_doctor_stock.every((row) => row.lots === undefined), true);
   const stockedBagItems = selectedBag.data.selected_doctor_stock.filter(
     (item) => String(item.item_kind || "stock") === "stock" && Number(item.quantity || 0) > 0,
   );
-  assert.equal(doctorQuality.stocked_items, stockedBagItems.length);
-  assert.equal(
-    doctorQuality.missing_expiry,
-    stockedBagItems.filter((item) => Boolean(item.missing_expiry)).length,
-  );
-  assert.equal(
-    doctorQuality.unpriced,
-    stockedBagItems.filter((item) => Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0).length,
-  );
-  assert.equal(
-    doctorQuality.expired,
-    stockedBagItems.filter((item) => Boolean(item.has_expired) || Number(item.expired_quantity || 0) > 0).length,
-  );
+  assert.ok(Array.isArray(stockedBagItems));
 
   const operator = db.prepare("SELECT id, full_name FROM users WHERE username = 'operator01'").get();
   const operationId = `exception-owner-${randomUUID()}`;
@@ -3139,6 +3116,25 @@ test("quarantine excludes ATP and cannot be billed reserved or allocated", async
   const after = decorateLookup(itemId);
   assert.equal(Number(after.quarantined_quantity), 0);
   assert.equal(Number(after.available_to_promise), 6);
+});
+
+test("restock ATP excluding own reservation does not count quarantined lots", async () => {
+  const itemId = insertOcsItem({ name: `ATP Quarantine Cap ${Date.now()}`, qty: 6, expiry: "2029-04-01" });
+  const request = await createAcceptedRequest({
+    itemId,
+    itemName: "ATP Quarantine Cap",
+    quantity: 4,
+    note: "quarantine-atp",
+  });
+  const batchId = db.prepare("SELECT id FROM inventory_batches WHERE item_id = ?").get(itemId).id;
+  const quarantined = await api("POST", `/api/inventory/batches/${batchId}/quarantine`, {
+    token: adminToken,
+    body: { reason: "Manufacturer recall pending investigation", confirm: true },
+  });
+  assert.ok(quarantined.status === 201 || quarantined.status === 200, JSON.stringify(quarantined.data));
+  const { availableToPromise: atpFor } = require("../src/lib/restockFulfilment");
+  assert.equal(atpFor(itemId), 0);
+  assert.equal(atpFor(itemId, { exceptRequestId: request.id }), 0);
 });
 
 test("stocktake scope token detects membership swaps with the same count", async () => {

@@ -82,6 +82,7 @@ import {
   inventoryQuantityBreakdown,
   itemHasExpiredStock,
   itemHasQuarantinedStock,
+  liveLotsFromPayload,
 } from "../lib/inventoryStockDisplay.js";
 import {
   isAtOrBelowPar,
@@ -94,6 +95,34 @@ import { cx, pageContainerClass } from "../lib/utils.js";
 import { printTransferReceipt } from "../lib/transferReceipt.js";
 
 dayjs.extend(isoWeek);
+
+function useLiveItemLots(open, item) {
+  const [lots, setLots] = useState([]);
+  useEffect(() => {
+    if (!open || !item?.id) {
+      setLots([]);
+      return undefined;
+    }
+    const embedded = liveLotsFromPayload(item);
+    if (embedded.length) {
+      setLots(embedded);
+      return undefined;
+    }
+    let ignore = false;
+    api
+      .get(`/inventory/items/${item.id}/batches`)
+      .then((response) => {
+        if (!ignore) setLots(liveLotsFromPayload(item, response.batches || []));
+      })
+      .catch(() => {
+        if (!ignore) setLots([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [open, item]);
+  return lots;
+}
 
 const INVENTORY_PERIOD_PRESETS = [
   { id: "yearly", label: "Yearly" },
@@ -703,7 +732,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
     }
   }
 
-  const lots = Array.isArray(item?.lots) ? item.lots.filter((lot) => Number(lot.quantity_remaining || 0) > 0) : [];
+  const lots = useLiveItemLots(open, item);
   const unbatched = Number(item?.unbatched_quantity || 0);
   const isSale = reason === "Sale";
   const isLoss = reason === "Wasted" || reason === "Expired";
@@ -2455,9 +2484,10 @@ function MobileDoctorDeductSheet({
     }
   }
 
+  const lots = useLiveItemLots(open, item);
+
   if (!open || !item) return null;
 
-  const lots = Array.isArray(item.lots) ? item.lots.filter((lot) => Number(lot.quantity_remaining || 0) > 0) : [];
   const isSale = reason === "Sale";
   const isLoss = reason === "Expired" || reason === "Damage";
   const selectedLot = lots.find((lot) => String(lot.id) === String(selectedLotId)) || null;
