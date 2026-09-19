@@ -40,6 +40,7 @@ import BatchOpeningDataModal from "../components/inventory/BatchOpeningDataModal
 import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
 import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
 import InventoryQuantitySummary from "../components/inventory/InventoryQuantitySummary.jsx";
+import InventoryDataIssuesQueue from "../components/inventory/InventoryDataIssuesQueue.jsx";
 import InventoryTabSummaries from "../components/inventory/InventoryTabSummaries.jsx";
 import ItemEditorModal from "../components/inventory/ItemEditorModal.jsx";
 import TransferReceiptModal from "../components/inventory/TransferReceiptModal.jsx";
@@ -3003,6 +3004,7 @@ export default function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [correction, setCorrection] = useState(null);
   const [batchOpeningData, setBatchOpeningData] = useState(null);
+  const [assigningExceptionOwner, setAssigningExceptionOwner] = useState(false);
   const [stockFiltersOpen, setStockFiltersOpen] = useState(false);
   const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
   const headerActionsButtonRef = useRef(null);
@@ -3563,14 +3565,18 @@ export default function InventoryPage() {
     };
   }, [showMobileDoctorBag, commitInventoryData, selectedContextDoctorId, doctorContext, load]);
 
-  async function loadBatches(itemId) {
+  async function loadBatches(itemId, { fresh = false } = {}) {
     const key = Number(itemId);
-    if (!key || batchMap[key]) return;
+    if (!key) return [];
+    if (!fresh && batchMap[key]) return batchMap[key];
     try {
       const response = await api.get(`/inventory/items/${key}/batches`);
-      setBatchMap((prev) => ({ ...prev, [key]: response.batches || [] }));
+      const rows = response.batches || [];
+      setBatchMap((prev) => ({ ...prev, [key]: rows }));
+      return rows;
     } catch (error) {
       toast.error(error.message);
+      return [];
     }
   }
 
@@ -3677,6 +3683,89 @@ export default function InventoryPage() {
     if (kind === "reconciliation") {
       setLogisticsTab("queues");
     }
+  }
+
+  function applyUnpricedFilter() {
+    setLogisticsTab("stock");
+    setSelectedView("all");
+    setActiveCategory("All");
+    setSearch("");
+    setShowUnpricedOnly(true);
+    setUnpricedFromBags(false);
+    setShowLowStockOnly(false);
+    setShowNearExpiryOnly(false);
+    setShowMissingExpiryOnly(false);
+    setShowExpiredOnly(false);
+    setCurrentPage(1);
+  }
+
+  async function resolveInventoryDataIssue(kind) {
+    if (kind === "expired" || kind === "reconciliation") {
+      applyChaseFilter(kind);
+      return;
+    }
+    if (!isAdmin) {
+      if (kind === "unpriced") applyUnpricedFilter();
+      else applyChaseFilter("missing");
+      return;
+    }
+    const candidate = items.find((item) => {
+      if (String(item.item_kind || "stock") !== "stock" || Number(item.quantity || 0) <= 0) return false;
+      return kind === "unpriced"
+        ? Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0
+        : isMissingExpiryItem(item);
+    });
+    if (!candidate) {
+      toast.success("No matching batch issue remains in this location.");
+      return;
+    }
+    const batches = await loadBatches(candidate.id, { fresh: true });
+    const batch = batches.find((row) => {
+      if (Number(row.quantity_remaining || 0) <= 0) return false;
+      return kind === "unpriced"
+        ? Number(row.unit_cost || 0) <= 0
+        : Boolean(row.missing_expiry) || (!row.expiry_date && !row.is_non_expiring);
+    });
+    if (batch) {
+      setBatchOpeningData({ item: candidate, batch });
+      return;
+    }
+    if (Number(candidate.unbatched_quantity || 0) > 0) {
+      setBatchOpeningData({ item: candidate, batch: null });
+      return;
+    }
+    if (kind === "unpriced") applyUnpricedFilter();
+    else applyChaseFilter("missing");
+    toast.error("Open the highlighted item to review its batch evidence.");
+  }
+
+  async function assignDailyExceptionOwner(userId) {
+    setAssigningExceptionOwner(true);
+    try {
+      const next = await api.patch("/inventory/exception-owner", { assigned_to_user_id: Number(userId) });
+      setData((current) => current
+        ? {
+            ...current,
+            data_quality: {
+              ...current.data_quality,
+              owner: next.data_quality_owner || null,
+            },
+          }
+        : current);
+      toast.success("Today's inventory exception owner was assigned.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setAssigningExceptionOwner(false);
+    }
+  }
+
+  function selectDataQualityLocation(location) {
+    const doctorId = Number(location?.doctor_id || 0);
+    setSelectedContextDoctorId(doctorId ? String(doctorId) : "");
+    setContextSearch(location?.location_name || (doctorId ? "Doctor bag" : "OCS Stock"));
+    setLogisticsTab("stock");
+    clearStockFilters();
   }
 
   function clearStockFilters() {
@@ -4393,8 +4482,40 @@ export default function InventoryPage() {
           : [...(current[batchOpeningData.item.id] || []), next?.verified_batch].filter(Boolean),
       }));
       setBatchOpeningData(null);
-      toast.success("Batch data verified. Eligible stock is now available.");
+      const verifiedBatch = next?.verified_batch;
+      if (verifiedBatch?.expired) {
+        toast.success("Batch data verified. Expired stock remains blocked from use.");
+      } else if (verifiedBatch?.quarantined || verifiedBatch?.missing_expiry || verifiedBatch?.missing_cost) {
+        toast.success("Batch data saved. Stock remains blocked until all checks pass.");
+      } else {
+        toast.success("Batch data verified. Eligible stock is now available.");
+      }
     } catch (error) {
+      if (error?.status === 409 || error?.data?.code === "BATCH_VERSION_CONFLICT") {
+        const itemId = Number(batchOpeningData?.item?.id || 0);
+        const latestBatch = error?.data?.batch || null;
+        if (itemId) {
+          setBatchMap((current) => {
+            const next = { ...current };
+            if (latestBatch?.id) {
+              next[itemId] = (current[itemId] || []).map((row) =>
+                Number(row.id) === Number(latestBatch.id) ? latestBatch : row,
+              );
+            } else {
+              delete next[itemId];
+            }
+            return next;
+          });
+        }
+        if (latestBatch?.id) {
+          setBatchOpeningData((current) => current ? { ...current, batch: latestBatch } : current);
+          toast.error("This batch changed on another device. The latest values are loaded; verify them again.");
+        } else {
+          setBatchOpeningData(null);
+          toast.error("This stock changed on another device. Reopen the issue to load the latest batches.");
+        }
+        return;
+      }
       toast.error(error.message);
     } finally {
       setIsSaving(false);
@@ -4551,6 +4672,18 @@ export default function InventoryPage() {
         }
       />
 
+      {canManageOcs && logisticsTab === "stock" ? (
+        <InventoryDataIssuesQueue
+          dataQuality={data?.data_quality}
+          currentLocationKey={selectedContextDoctorId ? `doctor:${selectedContextDoctorId}` : "ocs"}
+          isAdmin={isAdmin}
+          assigningOwner={assigningExceptionOwner}
+          onAssignOwner={assignDailyExceptionOwner}
+          onResolve={resolveInventoryDataIssue}
+          onSelectLocation={selectDataQualityLocation}
+        />
+      ) : null}
+
       {canUseAdminInventory && logisticsTab !== "queues" ? (
         <InventoryTabSummaries
           tab={logisticsTab}
@@ -4565,16 +4698,8 @@ export default function InventoryPage() {
             setStocktakeStatusFilter(status);
           }}
           onOpenUnpriced={() => {
-            setLogisticsTab("stock");
-            setSelectedView("all");
-            setActiveCategory("All");
-            setSearch("");
-            setShowUnpricedOnly(true);
+            applyUnpricedFilter();
             setUnpricedFromBags(true);
-            setShowLowStockOnly(false);
-            setShowNearExpiryOnly(false);
-            setShowMissingExpiryOnly(false);
-            setShowExpiredOnly(false);
           }}
         />
       ) : isDoctor ? (
@@ -5415,7 +5540,7 @@ export default function InventoryPage() {
         onSubmit={saveExceptionalCorrection}
       />
       <BatchOpeningDataModal
-        key={`${batchOpeningData?.item?.id || "closed"}:${batchOpeningData?.batch?.id || "opening"}`}
+        key={`${batchOpeningData?.item?.id || "closed"}:${batchOpeningData?.batch?.id || "opening"}:${batchOpeningData?.batch?.row_version || batchOpeningData?.item?.row_version || 1}`}
         open={Boolean(batchOpeningData)}
         item={batchOpeningData?.item}
         batch={batchOpeningData?.batch}

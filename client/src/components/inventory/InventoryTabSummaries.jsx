@@ -182,9 +182,6 @@ export default function InventoryTabSummaries({
   const valueDisplay = stockValueDisplay(stock, warehouseValue);
   const low = stock.low_stock ?? chaseCounts?.low ?? 0;
   const near = stock.near_expiry ?? chaseCounts?.near ?? 0;
-  const missing = stock.missing_expiry ?? chaseCounts?.missing ?? 0;
-  const expired = stock.expired ?? chaseCounts?.expired ?? 0;
-  const reconciliation = stock.reconciliation_required ?? chaseCounts?.reconciliation ?? 0;
   const isBag = stock.location_kind === "bag";
 
   return (
@@ -199,22 +196,11 @@ export default function InventoryTabSummaries({
             {valueDisplay.hint ? <p className="hidden truncate text-[11px] text-slate-400 sm:block">{valueDisplay.hint}</p> : null}
           </div>
         </div>
-        <div className="grid min-w-0 flex-1 grid-cols-4 gap-1.5 sm:gap-2">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:gap-2">
           <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone="rose" active={filters?.low} onClick={() => onFilter?.("low")} />
           <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone="amber" active={filters?.near} onClick={() => onFilter?.("near")} />
-          <StockAttentionButton label="Missing expiry" compactLabel="Miss." value={missing} active={filters?.missing} onClick={() => onFilter?.("missing")} />
-          <StockAttentionButton label="Expired" compactLabel="Exp." value={expired} tone="rose" active={filters?.expired} onClick={() => onFilter?.("expired")} />
         </div>
       </div>
-      {isBag && reconciliation > 0 ? (
-        <button
-          type="button"
-          onClick={() => onFilter?.("reconciliation")}
-          className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 text-left text-xs font-semibold text-amber-900"
-        >
-          {stock.reconciliation_title || "Bag reconciliation warnings"}: {reconciliation}
-        </button>
-      ) : null}
     </div>
   );
 }

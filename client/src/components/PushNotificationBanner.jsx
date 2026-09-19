@@ -9,7 +9,9 @@ import {
   getPushPermissionRecoveryInstructions,
   getPushPermissionState,
   isPushBannerDismissed,
+  isPushRecoverySeen,
   isPushSupported,
+  markPushRecoverySeen,
   subscribeToPushNotifications,
 } from "../lib/pushNotifications.js";
 
@@ -18,6 +20,7 @@ function PushNotificationBanner({ role, className = "" }) {
   const [isDenied, setIsDenied] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
   const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
+  const [compactRecovery, setCompactRecovery] = useState(false);
   const copy = getPushBannerCopy(role);
   const recovery = getPushPermissionRecoveryInstructions();
 
@@ -39,9 +42,15 @@ function PushNotificationBanner({ role, className = "" }) {
       ]);
 
       if (!cancelled) {
-        setIsDenied(permission === "denied");
+        const denied = permission === "denied";
+        setIsDenied(denied);
+        if (denied) {
+          const recoverySeen = isPushRecoverySeen();
+          setCompactRecovery(recoverySeen);
+          if (!recoverySeen) markPushRecoverySeen();
+        }
         setVisible(
-          permission === "denied" ||
+          denied ||
             (configured && permission === "default" && !isPushBannerDismissed()),
         );
       }
@@ -92,8 +101,30 @@ function PushNotificationBanner({ role, className = "" }) {
   }
 
   function handleDismiss() {
+    if (isDenied) markPushRecoverySeen();
     dismissPushBanner();
     setVisible(false);
+  }
+
+  if (isDenied && compactRecovery) {
+    return (
+      <div className={`flex min-h-11 items-center gap-3 rounded-xl border border-amber-200 bg-[#fff8eb] px-3 py-2 ${className}`.trim()} role="status">
+        <AlertTriangle className="size-4 shrink-0 text-amber-700" aria-hidden />
+        <p className="min-w-0 flex-1 truncate text-xs font-semibold text-[#7a4b00]">
+          Notifications blocked on this device.
+        </p>
+        <button
+          type="button"
+          onClick={() => setCompactRecovery(false)}
+          className="min-h-9 shrink-0 rounded-lg border border-amber-200 bg-white px-3 text-xs font-semibold text-amber-800"
+        >
+          How to fix
+        </button>
+        <button type="button" onClick={handleDismiss} className="shrink-0 rounded-lg p-1 text-amber-700" aria-label="Dismiss notification notice">
+          <X className="size-4" />
+        </button>
+      </div>
+    );
   }
 
   const shellClassName = isDenied

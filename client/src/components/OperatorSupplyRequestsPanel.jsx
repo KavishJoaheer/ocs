@@ -328,6 +328,45 @@ export default function OperatorSupplyRequestsPanel() {
     onReceipt: (request) => setDetailRequestId(request.id),
   };
 
+  if (!loading && !error && tab === "active" && requests.length === 0) {
+    return (
+      <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-black text-slate-900">Supply requests</p>
+          <p className="text-sm text-slate-500">No active requests. The workspace stays compact until action is needed.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setHistoryLoading(true);
+            setTab("history");
+          }}
+          className="min-h-11 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700"
+        >
+          View history
+        </button>
+      </section>
+    );
+  }
+
+  if (!historyLoading && !historyError && tab === "history" && history.total === 0) {
+    return (
+      <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-black text-slate-900">Supply request history</p>
+          <p className="text-sm text-slate-500">No archived requests match the current history view.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setTab("active")}
+          className="min-h-11 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700"
+        >
+          Back to active
+        </button>
+      </section>
+    );
+  }
+
   return (
     <>
       <SectionCard

@@ -523,12 +523,31 @@ test.describe("Inventory workflow", () => {
     });
     expect(deleteBlocked.status()).toBe(405);
 
+    const operatorInventory = await request.get(`${API_BASE}/inventory`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    const operatorInventoryBody = await apiJson(operatorInventory);
+    const scopedDoctor = operatorInventoryBody.doctors?.[0];
+    expect(scopedDoctor?.id).toBeTruthy();
+
     await injectStaffSession(page, operator.token);
     for (const width of [1440, 768, 375, 320]) {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
       await expect(page.getByRole("heading", { name: "OCS warehouse" })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("button", { name: /queues|stock|shipments|count/i }).first()).toBeVisible();
+      if (width === 1440) {
+        await page.getByRole("tab", { name: "Stock", exact: true }).click();
+        await expect(page.getByRole("heading", { name: "Data issues requiring action" })).toBeVisible();
+        const ownerSelect = page.getByLabel("Today's exception owner");
+        await expect(ownerSelect).toBeVisible();
+        await expect(page.getByRole("button", { name: /All locations/ })).toBeVisible();
+        await page.getByLabel("Stock location").selectOption(String(scopedDoctor.id));
+        await expect(page.getByRole("heading", { level: 1, name: /bag/i })).toBeVisible();
+        const ownerValue = await ownerSelect.locator("option").nth(1).getAttribute("value");
+        await ownerSelect.selectOption(ownerValue);
+        await expect(page.getByRole("heading", { level: 1, name: /bag/i })).toBeVisible();
+      }
     }
 
     await injectStaffSession(page, doctor.token);

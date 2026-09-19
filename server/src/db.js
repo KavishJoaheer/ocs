@@ -2772,6 +2772,16 @@ function ensureInventoryOperationsSchema() {
       FOREIGN KEY (folder_id) REFERENCES inventory_folders(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS inventory_exception_assignments (
+      business_date TEXT PRIMARY KEY,
+      assigned_to_user_id INTEGER NOT NULL,
+      assigned_by_user_id INTEGER NOT NULL,
+      assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (assigned_to_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+      FOREIGN KEY (assigned_by_user_id) REFERENCES users(id) ON DELETE RESTRICT
+    );
+
     CREATE TABLE IF NOT EXISTS inventory_stocktake_session_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL,
@@ -2826,6 +2836,8 @@ function ensureInventoryOperationsSchema() {
       ON inventory_staging(release_transaction_id);
     CREATE INDEX IF NOT EXISTS idx_stocktake_sessions_status
       ON inventory_stocktake_sessions(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_inventory_exception_owner
+      ON inventory_exception_assignments(assigned_to_user_id, business_date);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_stocktake_session_item_unique
       ON inventory_stocktake_session_items(session_id, inventory_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_stocktake_sessions_applied

@@ -258,6 +258,68 @@ test("active doctor bags enforce one row per doctor and item name", () => {
   ) VALUES (?, ?, 0, 0, 'unit', 5, 10, 'doctor', ?)`).run(itemName.toUpperCase(), folderId, doctorId), /UNIQUE constraint failed/i);
 });
 
+test("inventory data-quality progress and daily exception ownership are location-scoped and audited", async () => {
+  const payload = await api("GET", "/api/inventory", { token: operatorToken });
+  assert.equal(payload.status, 200, JSON.stringify(payload.data));
+  assert.ok(payload.data.data_quality);
+  assert.ok(Array.isArray(payload.data.data_quality.locations));
+  assert.ok(payload.data.data_quality.locations.some((row) => row.location_key === "ocs"));
+  assert.ok(payload.data.data_quality.locations.some((row) => String(row.location_key).startsWith("doctor:")));
+  assert.ok(Number(payload.data.data_quality.overall.completion_percent) >= 0);
+  assert.ok(Number(payload.data.data_quality.overall.completion_percent) <= 100);
+  const warehouseQuality = payload.data.data_quality.locations.find((row) => row.location_key === "ocs");
+  const doctorReconciliation = payload.data.data_quality.locations
+    .filter((row) => String(row.location_key).startsWith("doctor:"))
+    .reduce((sum, row) => sum + Number(row.reconciliation_required || 0), 0);
+  assert.equal(warehouseQuality.reconciliation_required, 0);
+  assert.equal(payload.data.data_quality.overall.reconciliation_required, doctorReconciliation);
+  const selectedBag = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: operatorToken });
+  assert.equal(selectedBag.status, 200, JSON.stringify(selectedBag.data));
+  const doctorQuality = payload.data.data_quality.locations.find(
+    (row) => row.location_key === `doctor:${doctorId}`,
+  );
+  const stockedBagItems = selectedBag.data.selected_doctor_stock.filter(
+    (item) => String(item.item_kind || "stock") === "stock" && Number(item.quantity || 0) > 0,
+  );
+  assert.equal(doctorQuality.stocked_items, stockedBagItems.length);
+  assert.equal(
+    doctorQuality.missing_expiry,
+    stockedBagItems.filter((item) => Boolean(item.missing_expiry)).length,
+  );
+  assert.equal(
+    doctorQuality.unpriced,
+    stockedBagItems.filter((item) => Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0).length,
+  );
+  assert.equal(
+    doctorQuality.expired,
+    stockedBagItems.filter((item) => Boolean(item.has_expired) || Number(item.expired_quantity || 0) > 0).length,
+  );
+
+  const operator = db.prepare("SELECT id, full_name FROM users WHERE username = 'operator01'").get();
+  const operationId = `exception-owner-${randomUUID()}`;
+  const assigned = await api("PATCH", "/api/inventory/exception-owner", {
+    token: operatorToken,
+    body: { assigned_to_user_id: operator.id, operation_id: operationId },
+  });
+  assert.equal(assigned.status, 200, JSON.stringify(assigned.data));
+  assert.equal(assigned.data.data_quality_owner.assigned_to_user_id, operator.id);
+  assert.equal(assigned.data.data_quality_owner.assigned_to_name, operator.full_name);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM inventory_exception_assignments WHERE business_date = ?").get(getTodayLocal()).count,
+    1,
+  );
+  const audit = db
+    .prepare("SELECT meta_json FROM inventory_audit_logs WHERE action_type = 'exception_owner_assigned' ORDER BY id DESC LIMIT 1")
+    .get();
+  assert.equal(JSON.parse(audit.meta_json).assigned_to_user_id, operator.id);
+
+  const forbidden = await api("PATCH", "/api/inventory/exception-owner", {
+    token: doctorToken,
+    body: { assigned_to_user_id: operator.id, operation_id: `forbidden-owner-${randomUUID()}` },
+  });
+  assert.equal(forbidden.status, 403, JSON.stringify(forbidden.data));
+});
+
 test("acceptance creates reservations without reducing physical quantity", async () => {
   const itemId = insertOcsItem({ name: `Reserve ${Date.now()}`, qty: 10 });
   const qtyBefore = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;

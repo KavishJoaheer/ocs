@@ -313,6 +313,16 @@ function ensureInfrastructure() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS inventory_exception_assignments (
+      business_date TEXT PRIMARY KEY,
+      assigned_to_user_id INTEGER NOT NULL,
+      assigned_by_user_id INTEGER NOT NULL,
+      assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (assigned_to_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+      FOREIGN KEY (assigned_by_user_id) REFERENCES users(id) ON DELETE RESTRICT
+    );
+
     CREATE TABLE IF NOT EXISTS inventory_activity_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       movement_id INTEGER,
@@ -336,6 +346,7 @@ function ensureInfrastructure() {
     CREATE INDEX IF NOT EXISTS idx_inventory_audit_created_at ON inventory_audit_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_timestamp ON inventory_activity_history(timestamp);
     CREATE INDEX IF NOT EXISTS idx_inventory_activity_action ON inventory_activity_history(action_type);
+    CREATE INDEX IF NOT EXISTS idx_inventory_exception_owner ON inventory_exception_assignments(assigned_to_user_id, business_date);
   `);
 
   ensureOcsCatalogExclusionsTable();
@@ -1189,6 +1200,210 @@ function getActivityStaffList() {
     .all();
 }
 
+function getInventoryExceptionOwnerCandidates() {
+  return db
+    .prepare(`
+      SELECT id, full_name, role
+      FROM users
+      WHERE is_active = 1
+        AND deleted_at IS NULL
+        AND role IN ('admin', 'operator')
+      ORDER BY CASE role WHEN 'operator' THEN 1 ELSE 2 END, full_name ASC
+    `)
+    .all();
+}
+
+function getInventoryExceptionOwner(businessDate = getTodayLocal()) {
+  return db
+    .prepare(`
+      SELECT
+        assignment.business_date,
+        assignment.assigned_to_user_id,
+        owner.full_name AS assigned_to_name,
+        owner.role AS assigned_to_role,
+        assignment.assigned_by_user_id,
+        assigner.full_name AS assigned_by_name,
+        assignment.assigned_at,
+        assignment.updated_at
+      FROM inventory_exception_assignments assignment
+      JOIN users owner ON owner.id = assignment.assigned_to_user_id
+      JOIN users assigner ON assigner.id = assignment.assigned_by_user_id
+      WHERE assignment.business_date = ?
+    `)
+    .get(businessDate) || null;
+}
+
+function summarizeInventoryDataQualityLocation({
+  items,
+  locationKey,
+  locationName,
+  doctorId = null,
+  reconciliationRequired = 0,
+}) {
+  const stockedItems = (items || []).filter(
+    (item) => String(item.item_kind || "stock") === "stock" && Number(item.quantity || 0) > 0,
+  );
+  const missingExpiry = stockedItems.filter((item) => Boolean(item.missing_expiry)).length;
+  const unpriced = stockedItems.filter(
+    (item) => Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0,
+  ).length;
+  const expired = stockedItems.filter(
+    (item) => Boolean(item.has_expired) || Number(item.expired_quantity || 0) > 0,
+  ).length;
+  const completeItems = stockedItems.filter(
+    (item) =>
+      !item.missing_expiry &&
+      Number(item.missing_cost_quantity || item.unpriced_units || 0) <= 0,
+  ).length;
+  const stockedCount = stockedItems.length;
+  return {
+    location_key: locationKey,
+    location_name: locationName,
+    doctor_id: doctorId,
+    stocked_items: stockedCount,
+    complete_items: completeItems,
+    completion_percent: stockedCount ? Number(((completeItems / stockedCount) * 100).toFixed(1)) : 100,
+    missing_expiry: missingExpiry,
+    unpriced,
+    expired,
+    reconciliation_required: Number(reconciliationRequired || 0),
+  };
+}
+
+function getDoctorInventoryDataQualityLocations(doctors) {
+  const today = getTodayLocal();
+  const qualityRows = db
+    .prepare(`
+      WITH batch_quality AS (
+        SELECT
+          item_id,
+          COALESCE(SUM(CASE WHEN quantity_remaining > 0 THEN quantity_remaining ELSE 0 END), 0) AS batch_quantity,
+          COALESCE(SUM(CASE
+            WHEN quantity_remaining > 0
+              AND COALESCE(is_non_expiring, 0) = 0
+              AND (expiry_date IS NULL OR TRIM(expiry_date) = '')
+              THEN quantity_remaining ELSE 0 END), 0) AS missing_expiry_quantity,
+          COALESCE(SUM(CASE
+            WHEN quantity_remaining > 0 AND COALESCE(unit_cost, 0) <= 0
+              THEN quantity_remaining ELSE 0 END), 0) AS missing_cost_quantity,
+          COALESCE(SUM(CASE
+            WHEN quantity_remaining > 0
+              AND COALESCE(is_non_expiring, 0) = 0
+              AND expiry_date IS NOT NULL
+              AND TRIM(expiry_date) != ''
+              AND DATE(expiry_date) < DATE(?)
+              THEN quantity_remaining ELSE 0 END), 0) AS expired_quantity
+        FROM inventory_batches
+        GROUP BY item_id
+      ), item_quality AS (
+        SELECT
+          i.owner_doctor_id,
+          CASE
+            WHEN COALESCE(bq.missing_expiry_quantity, 0) > 0
+              OR i.quantity > COALESCE(bq.batch_quantity, 0)
+              THEN 1 ELSE 0 END AS missing_expiry,
+          CASE
+            WHEN COALESCE(bq.missing_cost_quantity, 0) > 0
+              OR i.quantity > COALESCE(bq.batch_quantity, 0)
+              THEN 1 ELSE 0 END AS missing_cost,
+          CASE WHEN COALESCE(bq.expired_quantity, 0) > 0 THEN 1 ELSE 0 END AS expired
+        FROM inventory i
+        LEFT JOIN batch_quality bq ON bq.item_id = i.id
+        WHERE i.stock_scope = 'doctor'
+          AND i.owner_doctor_id IS NOT NULL
+          AND i.archived_at IS NULL
+          AND COALESCE(i.item_kind, 'stock') = 'stock'
+          AND i.quantity > 0
+      )
+      SELECT
+        owner_doctor_id,
+        COUNT(*) AS stocked_items,
+        COALESCE(SUM(CASE WHEN missing_expiry = 0 AND missing_cost = 0 THEN 1 ELSE 0 END), 0) AS complete_items,
+        COALESCE(SUM(missing_expiry), 0) AS missing_expiry,
+        COALESCE(SUM(missing_cost), 0) AS unpriced,
+        COALESCE(SUM(expired), 0) AS expired
+      FROM item_quality
+      GROUP BY owner_doctor_id
+    `)
+    .all(today);
+  const qualityByDoctor = new Map(qualityRows.map((row) => [Number(row.owner_doctor_id), row]));
+  const reconciliationRows = db
+    .prepare(`
+      SELECT r.doctor_id, COUNT(*) AS count
+      FROM restock_requests r
+      WHERE r.status IN ('accepted', 'ready')
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM restock_request_fulfillments f
+            WHERE f.request_id = r.id AND f.status IN ('open', 'picking', 'packed', 'posted')
+          )
+          OR EXISTS (
+            SELECT 1 FROM restock_request_fulfillment_items fi
+            JOIN restock_request_fulfillments f2 ON f2.id = fi.fulfilment_id
+            WHERE f2.request_id = r.id
+              AND fi.inventory_id IS NULL
+              AND fi.requested_quantity > 0
+          )
+        )
+      GROUP BY r.doctor_id
+    `)
+    .all();
+  const reconciliationByDoctor = new Map(
+    reconciliationRows.map((row) => [Number(row.doctor_id), Number(row.count || 0)]),
+  );
+
+  return (doctors || []).map((doctor) => {
+    const doctorId = Number(doctor.id);
+    const row = qualityByDoctor.get(doctorId) || {};
+    const stockedItems = Number(row.stocked_items || 0);
+    const completeItems = Number(row.complete_items || 0);
+    return {
+      location_key: `doctor:${doctorId}`,
+      location_name: `${doctor.full_name} bag`,
+      doctor_id: doctorId,
+      stocked_items: stockedItems,
+      complete_items: completeItems,
+      completion_percent: stockedItems ? Number(((completeItems / stockedItems) * 100).toFixed(1)) : 100,
+      missing_expiry: Number(row.missing_expiry || 0),
+      unpriced: Number(row.unpriced || 0),
+      expired: Number(row.expired || 0),
+      reconciliation_required: Number(reconciliationByDoctor.get(doctorId) || 0),
+    };
+  });
+}
+
+function getInventoryDataQualityOverview(ocsStock, doctors) {
+  const locations = [
+    summarizeInventoryDataQualityLocation({
+      items: ocsStock,
+      locationKey: "ocs",
+      locationName: "OCS warehouse",
+      reconciliationRequired: 0,
+    }),
+    ...getDoctorInventoryDataQualityLocations(doctors),
+  ];
+  const stockedItems = locations.reduce((sum, row) => sum + Number(row.stocked_items || 0), 0);
+  const completeItems = locations.reduce((sum, row) => sum + Number(row.complete_items || 0), 0);
+  return {
+    business_date: getTodayLocal(),
+    overall: {
+      stocked_items: stockedItems,
+      complete_items: completeItems,
+      completion_percent: stockedItems ? Number(((completeItems / stockedItems) * 100).toFixed(1)) : 100,
+      missing_expiry: locations.reduce((sum, row) => sum + Number(row.missing_expiry || 0), 0),
+      unpriced: locations.reduce((sum, row) => sum + Number(row.unpriced || 0), 0),
+      expired: locations.reduce((sum, row) => sum + Number(row.expired || 0), 0),
+      reconciliation_required: locations.reduce(
+        (sum, row) => sum + Number(row.reconciliation_required || 0),
+        0,
+      ),
+    },
+    locations,
+    owner: getInventoryExceptionOwner(),
+    owner_candidates: getInventoryExceptionOwnerCandidates(),
+  };
+}
+
 function getMovements(role, doctorId = null, activityFilters = {}) {
   const filterUserId = Number(activityFilters.userId || 0);
   const filterActorRole = String(activityFilters.actorRole || "").trim().toLowerCase();
@@ -1640,6 +1855,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     locationMeta.location_heading = "My bag";
   }
   const warehouseManager = isWarehouseManager(role);
+  const doctors = warehouseManager ? getDoctors() : [];
   const shipments = warehouseManager ? listShipments() : [];
   const stocktakeSessions = warehouseManager ? listStocktakeSessions() : [];
   const compareRows = warehouseManager ? getCompareRows(activityDateFrom, activityDateTo) : [];
@@ -1658,7 +1874,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     ocs_stock: ocsStock,
     my_stock: myStock,
     selected_doctor_stock: selectedDoctorStock,
-    doctors: role === "admin" || role === "operator" ? getDoctors() : [],
+    doctors,
     summary: stripFinancialSummaryFields(rawSummary, role),
     tab_summaries: warehouseManager
       ? {
@@ -1692,6 +1908,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
           },
         }
       : null,
+    data_quality: warehouseManager ? getInventoryDataQualityOverview(ocsStock, doctors) : null,
     doctor_metrics: doctorId ? computeDoctorInventoryMetrics(myStock, ocsStock) : null,
     low_stock_items: activeItems.filter((item) => isAtOrBelowPar(item)),
     near_expiry_items: activeItems.filter((item) => item.is_near_expiry),
@@ -2044,6 +2261,57 @@ router.get("/", (req, res) => {
   const payload = getPayload(req, selectedDoctorId, doctorContext);
 
   res.json(payload);
+});
+
+router.patch("/exception-owner", (req, res) => {
+  ensureInfrastructure();
+  if (!isWarehouseManager(req.auth.role)) {
+    return res.status(403).json({ error: "Only operators or administrators can assign the daily inventory exception owner." });
+  }
+  const assignedToUserId = Number(req.body?.assigned_to_user_id || 0);
+  if (!Number.isInteger(assignedToUserId) || assignedToUserId <= 0) {
+    return res.status(400).json({ error: "Select an active operator or administrator." });
+  }
+  const owner = db
+    .prepare(`
+      SELECT id, full_name, role
+      FROM users
+      WHERE id = ?
+        AND is_active = 1
+        AND deleted_at IS NULL
+        AND role IN ('admin', 'operator')
+    `)
+    .get(assignedToUserId);
+  if (!owner) {
+    return res.status(400).json({ error: "The selected inventory exception owner is not active or authorised." });
+  }
+  const businessDate = getTodayLocal();
+  db.prepare(`
+    INSERT INTO inventory_exception_assignments (
+      business_date, assigned_to_user_id, assigned_by_user_id, assigned_at, updated_at
+    ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(business_date) DO UPDATE SET
+      assigned_to_user_id = excluded.assigned_to_user_id,
+      assigned_by_user_id = excluded.assigned_by_user_id,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(businessDate, owner.id, req.auth.id);
+  recordAudit({
+    actionType: "exception_owner_assigned",
+    reason: `Daily inventory exception owner assigned for ${businessDate}`,
+    performedByUserId: req.auth.id,
+    performedByRole: req.auth.role,
+    performedByName: req.auth.full_name || req.auth.username || "Staff",
+    metaJson: JSON.stringify({
+      business_date: businessDate,
+      assigned_to_user_id: owner.id,
+      assigned_to_name: owner.full_name,
+      assigned_to_role: owner.role,
+    }),
+  });
+  publishInventoryResyncBroadcast({ reason: "exception_owner_assigned" });
+  return res.json({
+    data_quality_owner: getInventoryExceptionOwner(businessDate),
+  });
 });
 
 router.get("/receipts/:transactionId", (req, res) => {

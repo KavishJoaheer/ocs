@@ -2,6 +2,7 @@ import { api } from "./api.js";
 
 const SW_PATH = "/sw.js";
 const PUSH_DISMISS_KEY = "ocs_push_banner_dismissed";
+const PUSH_RECOVERY_SEEN_KEY = "ocs_push_recovery_seen";
 const PUSH_SUBSCRIBER_ROLES = ["admin", "doctor", "operator", "lab_tech", "accountant"];
 
 export class PushPermissionDeniedError extends Error {
@@ -40,6 +41,14 @@ export function isPushBannerDismissed() {
 
 export function dismissPushBanner() {
   window.localStorage.setItem(PUSH_DISMISS_KEY, "1");
+}
+
+export function isPushRecoverySeen() {
+  return window.localStorage.getItem(PUSH_RECOVERY_SEEN_KEY) === "1";
+}
+
+export function markPushRecoverySeen() {
+  window.localStorage.setItem(PUSH_RECOVERY_SEEN_KEY, "1");
 }
 
 async function postVapidKeyToServiceWorker(publicKey) {
