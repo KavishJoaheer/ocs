@@ -12,8 +12,10 @@ const { prepareOcsMasterInventoryIntegrity, assertOcsMasterItemNameAvailable } =
 const { maybeNotifyLowStock, sendPushToRole, sendPushToUser } = require("../lib/push");
 const {
   InventoryVersionConflictError,
+  assertInventoryQuantityAdjust,
   assertInventoryQuantityUpdate,
   ensureInventoryRowVersionColumn,
+  getInventoryRow,
   updateInventoryQuantity,
 } = require("../lib/inventoryQuantity");
 const {
@@ -2608,7 +2610,6 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     return res.status(400).json({ error: "Quantity must be a whole number greater than zero." });
   }
 
-  const previousQuantity = Number(item.quantity || 0);
   if (actionType === "stock_in") {
     const standardCost = roundCurrency(item.cost_price);
     const costPrice = roundCurrency(req.body.cost_price ?? item.cost_price);
@@ -2629,15 +2630,16 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     } catch (error) {
       return res.status(error.status || 400).json({ error: error.message });
     }
-    const nextQuantity = previousQuantity + quantity;
-
     db.transaction(() => {
       const batchId = createBatch(itemId, quantity, expiry.expiryDate, costPrice, { isNonExpiring: expiry.isNonExpiring });
       db.prepare(`
         UPDATE inventory
-        SET quantity = ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
+        SET quantity = quantity + ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(nextQuantity, costPrice, itemId);
+      `).run(quantity, costPrice, itemId);
+      const live = getInventoryRow(itemId);
+      const nextQuantity = Number(live?.quantity || 0);
+      const previousQuantity = nextQuantity - quantity;
       const movementId = recordMovement({
         itemId,
         movementType: "in",
@@ -2705,14 +2707,13 @@ router.post("/items/:id/ocs-actions", (req, res) => {
   try {
     db.transaction(() => {
       consumeAllocatedBatches(preview.allocations);
-      const nextQuantity = previousQuantity - quantity;
-      updateInventoryQuantity(itemId, nextQuantity);
+      const adjusted = assertInventoryQuantityAdjust(itemId, -quantity);
       const movementId = recordMovement({
         itemId,
         movementType: "out",
         quantity,
-        previousQuantity,
-        nextQuantity,
+        previousQuantity: adjusted.previousQuantity,
+        nextQuantity: adjusted.nextQuantity,
         actionType: "remove",
         note: `Write-off (${writeOff.reason})${writeOff.note ? `: ${writeOff.note}` : ""}${
           override.override ? ` · override: ${override.reason}` : ""
@@ -2815,14 +2816,13 @@ router.post("/items/:id/bag-actions", (req, res) => {
         error.status = 409;
         throw error;
       }
-      const nextQuantity = previousQuantity - quantity;
-      updateInventoryQuantity(itemId, nextQuantity);
+      const adjusted = assertInventoryQuantityAdjust(itemId, -quantity);
       const movementId = recordMovement({
         itemId,
         movementType: "out",
         quantity,
-        previousQuantity,
-        nextQuantity,
+        previousQuantity: adjusted.previousQuantity,
+        nextQuantity: adjusted.nextQuantity,
         actionType: reason === "Wasted" ? "wastage" : "remove",
         note: `Doctor bag write-off (${reason}): ${writeOff.note}`,
         userId: req.auth.id,
@@ -3846,15 +3846,13 @@ router.post("/restock", (req, res) => {
     db.transaction(() => {
       consumeAllocatedBatches(preview.allocations);
 
-      const sourcePrev = Number(source.quantity || 0);
-      const sourceNext = sourcePrev - quantity;
-      updateInventoryQuantity(source.id, sourceNext);
+      const sourceAdjusted = assertInventoryQuantityAdjust(source.id, -quantity);
       const sourceMovementId = recordMovement({
         itemId: source.id,
         movementType: "out",
         quantity,
-        previousQuantity: sourcePrev,
-        nextQuantity: sourceNext,
+        previousQuantity: sourceAdjusted.previousQuantity,
+        nextQuantity: sourceAdjusted.nextQuantity,
         actionType: "restock_out",
         note: override.override
           ? `${note || "Restocked to doctor stock"} · override: ${override.reason}`
@@ -3883,9 +3881,9 @@ router.post("/restock", (req, res) => {
       let targetNext = quantity;
       if (targetExisting) {
         targetItemId = targetExisting.id;
-        targetPrev = Number(targetExisting.quantity || 0);
-        targetNext = targetPrev + quantity;
-        updateInventoryQuantity(targetItemId, targetNext);
+        const targetAdjusted = assertInventoryQuantityAdjust(targetItemId, quantity);
+        targetPrev = targetAdjusted.previousQuantity;
+        targetNext = targetAdjusted.nextQuantity;
       } else {
         const created = db
           .prepare(`

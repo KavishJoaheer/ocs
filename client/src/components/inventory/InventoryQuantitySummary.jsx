@@ -1,4 +1,4 @@
-import { ATP_HELP_TEXT, inventoryQuantityBreakdown, itemHasExpiredStock, itemHasQuarantinedStock } from "../../lib/inventoryStockDisplay.js";
+import { ATP_HELP_TEXT, inventoryQuantityBreakdown } from "../../lib/inventoryStockDisplay.js";
 import { cx } from "../../lib/utils.js";
 
 export default function InventoryQuantitySummary({
@@ -7,10 +7,8 @@ export default function InventoryQuantitySummary({
   showMinimum = true,
   firstAtp = false,
 }) {
-  const { atp, minimum, expired, quarantined } = inventoryQuantityBreakdown(item);
-  const expiredStock = itemHasExpiredStock(item) || expired > 0;
-  const quarantinedStock = itemHasQuarantinedStock(item) || quarantined > 0;
-  const unavailable = atp <= 0 || expiredStock || quarantinedStock;
+  const { atp, minimum } = inventoryQuantityBreakdown(item);
+  const unavailable = atp <= 0;
   const qty = (
     <span title={firstAtp ? ATP_HELP_TEXT : undefined}>
       <strong className={cx("tabular-nums", unavailable ? "text-rose-700" : "text-slate-900")}>{atp}</strong>

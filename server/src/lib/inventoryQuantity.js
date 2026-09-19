@@ -85,8 +85,63 @@ function assertInventoryQuantityUpdate(itemId, nextQuantity, expectedVersion) {
   throw new Error("Unable to update inventory quantity.");
 }
 
+function adjustInventoryQuantity(itemId, delta) {
+  ensureInventoryRowVersionColumn();
+
+  const normalizedItemId = Number(itemId || 0);
+  const normalizedDelta = Number(delta);
+  if (!normalizedItemId || !Number.isFinite(normalizedDelta) || normalizedDelta === 0) {
+    return { ok: false, reason: "invalid_arguments" };
+  }
+
+  const result = db
+    .prepare(`
+      UPDATE inventory
+      SET
+        quantity = quantity + ?,
+        row_version = row_version + 1,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND quantity + ? >= 0
+    `)
+    .run(normalizedDelta, normalizedItemId, normalizedDelta);
+
+  if (result.changes === 0) {
+    return {
+      ok: false,
+      reason: "insufficient_quantity",
+      current: getInventoryRow(normalizedItemId),
+    };
+  }
+
+  const current = getInventoryRow(normalizedItemId);
+  const nextQuantity = Number(current?.quantity || 0);
+  return {
+    ok: true,
+    previousQuantity: nextQuantity - normalizedDelta,
+    nextQuantity,
+    rowVersion: Number(current?.row_version || 1),
+    current,
+  };
+}
+
+function assertInventoryQuantityAdjust(itemId, delta) {
+  const result = adjustInventoryQuantity(itemId, delta);
+  if (result.ok) {
+    return result;
+  }
+
+  const error = new Error("Inventory was updated on another device. Refresh and try again.");
+  error.status = 409;
+  error.code = result.reason || "INVENTORY_QUANTITY_CONFLICT";
+  error.currentItem = result.current || null;
+  throw error;
+}
+
 module.exports = {
   InventoryVersionConflictError,
+  adjustInventoryQuantity,
+  assertInventoryQuantityAdjust,
   assertInventoryQuantityUpdate,
   ensureInventoryRowVersionColumn,
   getInventoryRow,

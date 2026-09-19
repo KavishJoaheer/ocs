@@ -89,6 +89,7 @@ import {
   isExpiredItem,
   isMissingExpiryItem,
   isNearExpiryItem,
+  itemAvailable,
   readDoctorMetrics,
 } from "../lib/doctorInventoryMetrics.js";
 import { cx, pageContainerClass } from "../lib/utils.js";
@@ -192,9 +193,9 @@ function suggestedBagFillQty(currentQty, minQty, ocsAvailable) {
 
 function buildDoctorFillCandidate(myItem, source) {
   if (!source?.id) return null;
-  const current = Number(myItem.quantity || 0);
+  const current = itemAvailable(myItem);
   const min = Number(myItem.minimum_quantity || 0);
-  const ocsAvailable = Number(source.available_to_use ?? source.quantity ?? 0);
+  const ocsAvailable = itemAvailable(source);
   const required = suggestedBagFillQty(current, min, ocsAvailable);
   if (required <= 0) return null;
   return {
@@ -221,9 +222,7 @@ function formatCompareQty(qty) {
 
 function InventoryStatusChips({ item, hideCost = false }) {
   const isService = item.item_kind === "service";
-  const quantity = Number(item.quantity || 0);
-  const parLevel = Number(item.minimum_quantity || 0);
-  const isLow = parLevel > 0 && quantity <= parLevel;
+  const isLow = isAtOrBelowPar(item);
   const missingExpiry = Boolean(item.missing_expiry);
   const missingCost = Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0;
   const nearExpiry = Boolean(item.is_near_expiry);
@@ -1003,6 +1002,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               Number(quantity || 0) <= 0 ||
               Number(quantity || 0) > available ||
               saleRequiresPatient ||
+              saleRequiresVisit ||
               !salePriceReady ||
               !noteReady ||
               !lotReady ||
@@ -2776,14 +2776,12 @@ function MobileDoctorBagActions({
 
 function MobileInventoryStockCard({ item, isLowStock, actions }) {
   const isService = item.item_kind === "service";
-  const currentQuantity = Number(item.on_hand_quantity ?? item.quantity ?? 0);
-  const parLevel = Number(item.minimum_quantity || 0);
-  const low = isLowStock ?? (parLevel > 0 && currentQuantity <= parLevel);
+  const low = isLowStock ?? isAtOrBelowPar(item);
   const expired = itemHasExpiredStock(item);
   const quarantined = itemHasQuarantinedStock(item);
   const atp = Number(item.available_to_promise ?? item.available_to_use ?? 0);
   const availableLook = atp > 0 && !expired && !quarantined && !low;
-  const qtyTone = low || expired || quarantined || atp <= 0 ? "text-rose-700" : "text-slate-900";
+  const qtyTone = atp <= 0 || low ? "text-rose-700" : "text-slate-900";
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -2944,7 +2942,7 @@ function MobileDoctorBagLayout({
           <>
             <div className="flex w-full min-w-0 flex-col gap-2.5">
               {mobileBagItems.map((item) => {
-                const usableQty = Number(item.available_to_use ?? item.available_to_promise ?? item.quantity ?? 0);
+                const onHandQty = Number(item.on_hand_quantity ?? item.quantity ?? 0);
 
                 return (
                   <MobileInventoryStockCard
@@ -2958,7 +2956,7 @@ function MobileDoctorBagLayout({
                         />
                       ) : (
                         <MobileDoctorBagActions
-                          useDisabled={!onOpenDeduct || usableQty < 1}
+                          useDisabled={!onOpenDeduct || onHandQty < 1}
                           onUse={() => onOpenDeduct?.(item)}
                           onRequest={() => onOpenRequest?.(item)}
                           onEmergencyOverride={onOpenRestock ? () => onOpenRestock(item) : undefined}
@@ -3045,6 +3043,8 @@ export default function InventoryPage() {
   const [mobileBagVisibleCount, setMobileBagVisibleCount] = useState(20);
   const [expandedRows, setExpandedRows] = useState({});
   const [batchMap, setBatchMap] = useState({});
+  const expandedRowsRef = useRef(expandedRows);
+  expandedRowsRef.current = expandedRows;
   const [activityStaffUserId, setActivityStaffUserId] = useState("");
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
@@ -3492,11 +3492,11 @@ export default function InventoryPage() {
       return rows;
     }
     if (sortMode === "qty_asc") {
-      rows.sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
+      rows.sort((a, b) => itemAvailable(a) - itemAvailable(b));
       return rows;
     }
     if (sortMode === "qty_desc") {
-      rows.sort((a, b) => Number(b.quantity || 0) - Number(a.quantity || 0));
+      rows.sort((a, b) => itemAvailable(b) - itemAvailable(a));
       return rows;
     }
     const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
@@ -3586,6 +3586,38 @@ export default function InventoryPage() {
     };
   }, [showMobileDoctorBag, commitInventoryData, selectedContextDoctorId, doctorContext, load]);
 
+  useEffect(() => {
+    const openIds = Object.entries(expandedRowsRef.current)
+      .filter(([, open]) => open)
+      .map(([id]) => Number(id))
+      .filter(Boolean);
+    if (!openIds.length) return undefined;
+    let cancelled = false;
+    void Promise.all(
+      openIds.map(async (id) => {
+        try {
+          const response = await api.get(`/inventory/items/${id}/batches`);
+          return [id, response.batches || []];
+        } catch {
+          return [id, null];
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setBatchMap((prev) => {
+        const next = { ...prev };
+        for (const [id, rows] of entries) {
+          if (rows == null) delete next[id];
+          else next[id] = rows;
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
+
   async function loadBatches(itemId, { fresh = false } = {}) {
     const key = Number(itemId);
     if (!key) return [];
@@ -3607,15 +3639,15 @@ export default function InventoryPage() {
       toast.error("Item not available in the OCS depot.");
       return;
     }
-    if (Number(source.quantity || 0) < 1) {
+    if (itemAvailable(source) < 1) {
       toast.error("OCS depot has none of this item.");
       return;
     }
     setDoctorRestockItem({
       ocs_item_id: Number(source.id),
       item_name: nextItem.item_name,
-      ocs_available: Number(source.quantity || 0),
-      current_quantity: Number(nextItem.quantity || 0),
+      ocs_available: itemAvailable(source),
+      current_quantity: itemAvailable(nextItem),
       par_level: Number(nextItem.minimum_quantity || 0),
       ocs_expiry: source.expiry_date || null,
       ocs_row_version: Number(source.row_version || 1),
@@ -4119,8 +4151,8 @@ export default function InventoryPage() {
       return {
         ocs_item_id: Number(bagItem.id),
         item_name: bagItem.item_name,
-        ocs_available: Number(bagItem.quantity || 0),
-        current_quantity: Number(myMatch?.quantity || 0),
+        ocs_available: itemAvailable(bagItem),
+        current_quantity: itemAvailable(myMatch),
         par_level: Number(myMatch?.minimum_quantity || bagItem.minimum_quantity || 0),
         ocs_expiry: bagItem.expiry_date || null,
         ocs_row_version: Number(bagItem.row_version || 1),
@@ -4133,8 +4165,8 @@ export default function InventoryPage() {
     return {
       ocs_item_id: Number(source.id),
       item_name: bagItem.item_name,
-      ocs_available: Number(source.quantity || 0),
-      current_quantity: Number(bagItem.quantity || 0),
+      ocs_available: itemAvailable(source),
+      current_quantity: itemAvailable(bagItem),
       par_level: Number(bagItem.minimum_quantity || 0),
       ocs_expiry: source.expiry_date || null,
       ocs_row_version: Number(source.row_version || 1),
@@ -4401,7 +4433,7 @@ export default function InventoryPage() {
     const willExpand = !expandedRows[key];
     setExpandedRows((prev) => ({ ...prev, [key]: !prev[key] }));
     if (willExpand) {
-      loadBatches(key);
+      loadBatches(key, { fresh: true });
     }
   }
 

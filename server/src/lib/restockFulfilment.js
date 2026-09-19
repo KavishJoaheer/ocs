@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const { db } = require("../db");
 const { getTodayLocal, toNumber } = require("./utils");
-const { updateInventoryQuantity } = require("./inventoryQuantity");
+const { adjustInventoryQuantity } = require("./inventoryQuantity");
 const { publishInventoryChange, publishInventoryResyncBroadcast, publishSupplyRequestChange } = require("./inventoryRealtime");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 const { decorateInventoryItems, isExpiredBatch: stockStateExpired, isQuarantinedBatch } = require("./inventoryStockState");
@@ -1733,10 +1733,11 @@ function upsertDoctorBagItem(source, doctorId, inboundQty) {
     `)
     .get(doctorId, source.folder_id, source.item_name);
   if (existing) {
-    const prev = integerQty(existing.quantity) ?? 0;
-    const next = prev + inboundQty;
-    updateInventoryQuantity(existing.id, next);
-    return { id: Number(existing.id), previous: prev, next };
+    const adjusted = adjustInventoryQuantity(existing.id, inboundQty);
+    if (!adjusted.ok) {
+      throw HttpError(409, "Doctor bag quantity changed during restock. Refresh and try again.");
+    }
+    return { id: Number(existing.id), previous: adjusted.previousQuantity, next: adjusted.nextQuantity };
   }
   const created = db
     .prepare(`
@@ -1944,12 +1945,12 @@ function postCollectionTransfer({ request, actor }) {
       finalizeLineReservation({ fulfilmentItemId: line.id, fulfilledQty: 0, consumedBatches: [] });
       continue;
     }
-    const sourcePrev = integerQty(source.quantity) ?? 0;
-    if (sourcePrev < qty) {
+    const sourceAdjusted = adjustInventoryQuantity(source.id, -qty);
+    if (!sourceAdjusted.ok) {
       throw HttpError(409, `OCS quantity for ${line.item_name} is no longer sufficient.`);
     }
-    const sourceNext = sourcePrev - qty;
-    updateInventoryQuantity(source.id, sourceNext);
+    const sourcePrev = sourceAdjusted.previousQuantity;
+    const sourceNext = sourceAdjusted.nextQuantity;
     const bag = upsertDoctorBagItem(source, request.doctor_id, qty);
     const lineMeta = transferMeta(consumed, {
       fulfilment_item_id: line.id,

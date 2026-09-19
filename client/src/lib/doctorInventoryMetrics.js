@@ -2,9 +2,16 @@ export function itemOnHand(item) {
   return Number(item?.on_hand_quantity ?? item?.quantity ?? 0);
 }
 
+export function itemAvailable(item) {
+  if (item?.available_to_use != null || item?.available_to_promise != null) {
+    return Math.max(0, Number(item.available_to_use ?? item.available_to_promise ?? 0));
+  }
+  return itemOnHand(item);
+}
+
 export function isAtOrBelowPar(item) {
   const par = Number(item?.minimum_quantity || 0);
-  return par > 0 && itemOnHand(item) <= par;
+  return par > 0 && itemAvailable(item) <= par;
 }
 
 export function isMissingExpiryItem(item) {

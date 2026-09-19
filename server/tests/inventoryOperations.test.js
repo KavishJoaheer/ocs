@@ -18,7 +18,7 @@ const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
 const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
-const { decorateInventoryItems, summarizeLocationValuation } = require("../src/lib/inventoryStockState");
+const { decorateInventoryItems, summarizeLocationValuation, isAtOrBelowPar } = require("../src/lib/inventoryStockState");
 const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
 const { upsertOcsMasterStockDataset } = require("../src/lib/ocsMasterStockUpsert");
 
@@ -295,6 +295,13 @@ test("inventory list payload skips completeness scoring and still audits excepti
     body: { assigned_to_user_id: operator.id, operation_id: `forbidden-owner-${randomUUID()}` },
   });
   assert.equal(forbidden.status, 403, JSON.stringify(forbidden.data));
+});
+
+test("low stock follows available quantity, not on-hand", () => {
+  assert.equal(isAtOrBelowPar({ quantity: 10, minimum_quantity: 4, available_to_use: 3 }), true);
+  assert.equal(isAtOrBelowPar({ quantity: 10, minimum_quantity: 4, available_to_use: 5 }), false);
+  assert.equal(isAtOrBelowPar({ quantity: 3, minimum_quantity: 4 }), true);
+  assert.equal(isAtOrBelowPar({ quantity: 5, minimum_quantity: 4 }), false);
 });
 
 test("acceptance creates reservations without reducing physical quantity", async () => {
@@ -2705,7 +2712,7 @@ test("doctor inventory metrics match dashboard and exclude zero-quantity missing
   const metrics = inventory.data.doctor_metrics;
   assert.ok(metrics);
   const bag = inventory.data.my_stock || [];
-  const atOrBelow = bag.filter((row) => Number(row.minimum_quantity || 0) > 0 && Number(row.quantity || 0) <= Number(row.minimum_quantity || 0));
+  const atOrBelow = bag.filter((row) => Number(row.minimum_quantity || 0) > 0 && Number(row.available_to_use ?? row.quantity ?? 0) <= Number(row.minimum_quantity || 0));
   assert.equal(metrics.at_or_below_par, atOrBelow.length);
   const zeroMissing = bag.find((row) => row.item_name === missingName);
   assert.ok(zeroMissing);
