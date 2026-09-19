@@ -77,6 +77,7 @@ import {
 import { loadAssignedPatientPicker } from "../lib/patientOfflineSync.js";
 import { formatRupees } from "../lib/format.js";
 import {
+  ATP_HELP_TEXT,
   doctorBagHeading,
   formatStockExpiryLabel,
   inventoryQuantityBreakdown,
@@ -257,11 +258,15 @@ function InventoryStatusChips({ item, hideCost = false }) {
       {quarantined ? (
         <span
           role="status"
-          aria-label="Stock status: Contains quarantined units"
+          aria-label={
+            missingExpiry || missingCost
+              ? "Stock status: Counted stock is held until cost and expiry are verified"
+              : "Stock status: Contains quarantined units"
+          }
           className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
         >
           <span className="sr-only">Stock status: </span>
-          Contains quarantined
+          {missingExpiry || missingCost ? "Counted, not ready" : "Quarantined"}
         </span>
       ) : null}
       {isLow ? (
@@ -5091,9 +5096,12 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : "How many you can use or give out right now"}>
+                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : ATP_HELP_TEXT}>
                                 {isService ? "—" : quantities.atp}
                               </strong>
+                              {!isService && quantities.onHand > quantities.atp ? (
+                                <p className="text-[10px] font-medium text-slate-500">{quantities.onHand} in stock</p>
+                              ) : null}
                               {!isService ? <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p> : null}
                             </td>
                             <td

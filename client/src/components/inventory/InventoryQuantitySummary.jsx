@@ -7,12 +7,22 @@ export default function InventoryQuantitySummary({
   showMinimum = true,
   firstAtp = false,
 }) {
-  const { atp, minimum } = inventoryQuantityBreakdown(item);
+  const { atp, onHand, minimum } = inventoryQuantityBreakdown(item);
   const unavailable = atp <= 0;
+  const heldInStock = onHand > atp;
   const qty = (
     <span title={firstAtp ? ATP_HELP_TEXT : undefined}>
       <strong className={cx("tabular-nums", unavailable ? "text-rose-700" : "text-slate-900")}>{atp}</strong>
       {" available"}
+      {heldInStock ? (
+        <>
+          <span aria-hidden="true"> · </span>
+          <span>
+            <strong className="tabular-nums text-slate-900">{onHand}</strong>
+            {" in stock"}
+          </span>
+        </>
+      ) : null}
       {firstAtp ? <span className="sr-only">. {ATP_HELP_TEXT}</span> : null}
     </span>
   );
