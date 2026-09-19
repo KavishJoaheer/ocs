@@ -538,14 +538,10 @@ test.describe("Inventory workflow", () => {
       await expect(page.getByRole("button", { name: /queues|stock|shipments|count/i }).first()).toBeVisible();
       if (width === 1440) {
         await page.getByRole("tab", { name: "Stock", exact: true }).click();
-        await expect(page.getByRole("heading", { name: "Data issues requiring action" })).toBeVisible();
-        const ownerSelect = page.getByLabel("Today's exception owner");
-        await expect(ownerSelect).toBeVisible();
-        await expect(page.getByRole("button", { name: /All locations/ })).toBeVisible();
+        await expect(page.getByRole("button", { name: /^Low stock:/i })).toBeVisible();
+        await expect(page.getByRole("button", { name: /^Expired:/i })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Data issues requiring action" })).toHaveCount(0);
         await page.getByLabel("Stock location").selectOption(String(scopedDoctor.id));
-        await expect(page.getByRole("heading", { level: 1, name: /bag/i })).toBeVisible();
-        const ownerValue = await ownerSelect.locator("option").nth(1).getAttribute("value");
-        await ownerSelect.selectOption(ownerValue);
         await expect(page.getByRole("heading", { level: 1, name: /bag/i })).toBeVisible();
       }
     }
