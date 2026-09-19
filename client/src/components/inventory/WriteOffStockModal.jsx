@@ -33,7 +33,7 @@ export default function WriteOffStockModal({
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState("");
   const [step, setStep] = useState("form");
-  const [bagLots, setBagLots] = useState([]);
+  const [loadedBagLots, setLoadedBagLots] = useState({ itemId: null, lots: [] });
   const [syncedDeps, setSyncedDeps] = useState({ open, itemId: item?.id });
 
   if (syncedDeps.open !== open || syncedDeps.itemId !== item?.id) {
@@ -47,7 +47,7 @@ export default function WriteOffStockModal({
       setPreview(null);
       setPreviewError("");
       setStep("form");
-      setBagLots([]);
+      setLoadedBagLots({ itemId: null, lots: [] });
     }
   }
 
@@ -92,23 +92,22 @@ export default function WriteOffStockModal({
   }, [open, item?.id, qty, isDoctorBag]);
 
   useEffect(() => {
-    if (!open || !item?.id || !isDoctorBag) {
-      setBagLots([]);
-      return undefined;
-    }
+    if (!open || !item?.id || !isDoctorBag) return undefined;
     const embedded = liveLotsFromPayload(item);
-    if (embedded.length) {
-      setBagLots(embedded);
-      return undefined;
-    }
+    if (embedded.length) return undefined;
     let ignore = false;
     api
       .get(`/inventory/items/${item.id}/batches`)
       .then((response) => {
-        if (!ignore) setBagLots(liveLotsFromPayload(item, response.batches || []));
+        if (!ignore) {
+          setLoadedBagLots({
+            itemId: item.id,
+            lots: liveLotsFromPayload(item, response.batches || []),
+          });
+        }
       })
       .catch(() => {
-        if (!ignore) setBagLots([]);
+        if (!ignore) setLoadedBagLots({ itemId: item.id, lots: [] });
       });
     return () => {
       ignore = true;
@@ -118,7 +117,10 @@ export default function WriteOffStockModal({
   const available = Number(preview?.available_to_transfer ?? item?.quantity ?? 0);
   const currentQty = Number(preview?.current_quantity ?? item?.quantity ?? 0);
   const exceeds = isPositiveWholeNumber(qty) && qty > available;
-  const bagBatches = bagLots.filter((batch) => Number(batch.quantity_remaining || 0) > 0);
+  const embeddedBagLots = liveLotsFromPayload(item);
+  const loadedLotsForItem = loadedBagLots.itemId === item?.id ? loadedBagLots.lots : [];
+  const bagBatches = (embeddedBagLots.length ? embeddedBagLots : loadedLotsForItem)
+    .filter((batch) => Number(batch.quantity_remaining || 0) > 0);
   const selectedBatch = bagBatches.find((batch) => String(batch.id) === String(selectedBatchId));
   const batchError = isDoctorBag && !selectedBatch ? "Select the exact affected batch." : "";
   const batchExceeds = Boolean(selectedBatch && isPositiveWholeNumber(qty) && qty > Number(selectedBatch.quantity_remaining || 0));

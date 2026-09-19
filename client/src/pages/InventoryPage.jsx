@@ -97,31 +97,31 @@ import { printTransferReceipt } from "../lib/transferReceipt.js";
 dayjs.extend(isoWeek);
 
 function useLiveItemLots(open, item) {
-  const [lots, setLots] = useState([]);
+  const [loadedLots, setLoadedLots] = useState({ itemId: null, lots: [] });
+  const embedded = liveLotsFromPayload(item);
   useEffect(() => {
-    if (!open || !item?.id) {
-      setLots([]);
-      return undefined;
-    }
-    const embedded = liveLotsFromPayload(item);
-    if (embedded.length) {
-      setLots(embedded);
-      return undefined;
-    }
+    if (!open || !item?.id || embedded.length) return undefined;
     let ignore = false;
     api
       .get(`/inventory/items/${item.id}/batches`)
       .then((response) => {
-        if (!ignore) setLots(liveLotsFromPayload(item, response.batches || []));
+        if (!ignore) {
+          setLoadedLots({
+            itemId: item.id,
+            lots: liveLotsFromPayload(item, response.batches || []),
+          });
+        }
       })
       .catch(() => {
-        if (!ignore) setLots([]);
+        if (!ignore) setLoadedLots({ itemId: item.id, lots: [] });
       });
     return () => {
       ignore = true;
     };
-  }, [open, item]);
-  return lots;
+  }, [open, item, embedded.length]);
+  if (!open || !item?.id) return [];
+  if (embedded.length) return embedded;
+  return loadedLots.itemId === item.id ? loadedLots.lots : [];
 }
 
 const INVENTORY_PERIOD_PRESETS = [
