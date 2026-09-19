@@ -722,7 +722,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("spinbutton", { name: "Corrected quantity" }).fill("7");
     await page.getByRole("textbox", { name: /Reason/ }).fill("Warehouse recount found extra units");
     await page.getByRole("button", { name: "Review correction" }).click();
-    await expect(page.getByRole("dialog").getByText("Usable", { exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Available", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Apply correction" }).click();
     await expect(page.getByText("Exceptional correction applied.")).toBeVisible({ timeout: 15_000 });
 
@@ -1224,7 +1224,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("button", { name: "Add to request" }).first().click();
     await expect(page).toHaveURL(/compose=1/);
     await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Usable/i).first()).toBeVisible();
+    await expect(page.getByText(/available/i).first()).toBeVisible();
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Discard this request draft/i })).toBeVisible();
     await page.getByRole("button", { name: "Continue editing" }).click();

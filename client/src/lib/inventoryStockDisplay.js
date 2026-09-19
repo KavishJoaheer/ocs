@@ -58,8 +58,7 @@ export function itemHasQuarantinedStock(item) {
   return Boolean(item?.has_quarantined) || Number(item?.quarantined_quantity || 0) > 0;
 }
 
-export const ATP_HELP_TEXT =
-  "Usable stock is on-hand minus reservations, expired units, and quarantined units.";
+export const ATP_HELP_TEXT = "How many you can use or give out right now.";
 
 export function inventoryQuantityBreakdown(item = {}) {
   const onHand = Number(item.on_hand_quantity ?? item.quantity ?? 0);

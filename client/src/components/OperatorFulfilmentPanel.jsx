@@ -244,7 +244,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                   <th className="px-3 py-2 text-left">Item</th>
                   <th className="px-3 py-2 text-right">Req</th>
                   <th className="px-3 py-2 text-right">Reserved</th>
-                  <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>Usable</th>
+                  <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>Available</th>
                   <th className="px-3 py-2 text-right">Short</th>
                   <th className="px-3 py-2 text-right">Picked</th>
                   <th className="px-3 py-2 text-right">Fulfilled</th>
@@ -402,7 +402,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                   <th className="px-3 py-2 text-right">Proposed reserved</th>
                   <th className="px-3 py-2 text-right">Proposed picked</th>
                   <th className="px-3 py-2 text-right">Proposed fulfilled</th>
-                  <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>Usable</th>
+                  <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>Available</th>
                   <th className="px-3 py-2 text-right">Shortage</th>
                 </tr>
               </thead>

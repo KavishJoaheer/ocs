@@ -823,7 +823,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
           <p className="text-sm font-semibold text-slate-900">{item?.item_name || "Selected item"}</p>
           <InventoryQuantityLines item={item || {}} firstAtp />
           <p className="mt-1 text-xs text-slate-600">
-            {isSale ? `Usable ${available}` : `Selected lot balance: ${available}`}
+            {isSale ? `${available} available` : `Selected lot balance: ${available}`}
           </p>
 
           <label className="mt-4 block space-y-2">
@@ -2511,7 +2511,7 @@ function MobileDoctorDeductSheet({
       open={open}
       onClose={onClose}
       title={item.item_name || "Use item"}
-      subtitle={`Usable in bag: ${Math.max(0, Number(item.available_to_use ?? item.quantity ?? 0))}`}
+      subtitle={`${Math.max(0, Number(item.available_to_use ?? item.quantity ?? 0))} available`}
     >
       <form
         className="mt-4 space-y-4"
@@ -2807,8 +2807,6 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
                 compact
                 firstAtp
                 showMinimum={false}
-                atpLabel="Usable"
-                onHandLabel="In bag"
               />
             </div>
           ) : null}
@@ -3776,7 +3774,7 @@ export default function InventoryPage() {
       Reserved: Number(item.reserved_quantity ?? 0),
       Expired: Number(item.expired_quantity ?? 0),
       Quarantined: Number(item.quarantined_quantity ?? 0),
-      Usable: Number(item.available_to_promise ?? item.available_to_use ?? 0),
+      Available: Number(item.available_to_promise ?? item.available_to_use ?? 0),
       "Min qty": Number(item.minimum_quantity ?? 0),
       Unit: item.unit ?? "",
       "Nearest usable expiry": item.nearest_usable_expiry || formatInventoryExpiry(item),
@@ -5013,17 +5011,15 @@ export default function InventoryPage() {
               <div className={cx("min-w-0 overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
                 <table className="w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
                   <colgroup>
-                    <col style={{ width: doctorDesktopBagTable ? "28%" : "42%" }} />
-                    <col style={{ width: doctorDesktopBagTable ? "11%" : "12%" }} />
-                    <col style={{ width: doctorDesktopBagTable ? "10%" : "12%" }} />
-                    <col style={{ width: doctorDesktopBagTable ? "21%" : "18%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "34%" : "46%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "14%" : "16%" }} />
+                    <col style={{ width: doctorDesktopBagTable ? "22%" : "20%" }} />
                     <col style={{ width: inventoryActionsColWidth }} />
                   </colgroup>
                   <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500 lg:text-ocs-slate">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
-                      <th className="px-3 py-2 text-center align-middle">Usable</th>
-                      <th className="px-3 py-2 text-center align-middle">On hand</th>
+                      <th className="px-3 py-2 text-center align-middle" title="How many you can use or give out right now">Available</th>
                       <th className="px-3 py-2 text-center align-middle">Expiry</th>
                       <th className={cx("bg-slate-50 px-3 py-2 text-right align-middle", stickyInventoryActions && "sticky right-0 z-30 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]")}>
                         Actions
@@ -5063,12 +5059,11 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : "Usable stock excluding reserved, expired, quarantined, unbatched, and unverified-expiry units"}>
+                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : "How many you can use or give out right now"}>
                                 {isService ? "—" : quantities.atp}
                               </strong>
                               {!isService ? <p className="text-[10px] text-slate-400">Min {quantities.minimum}</p> : null}
                             </td>
-                            <td className="px-3 py-1.5 align-middle text-center font-semibold tabular-nums text-slate-900">{isService ? "—" : quantities.onHand}</td>
                             <td
                               className={cx(
                                 "truncate px-3 py-1.5 align-middle text-center",
@@ -5110,14 +5105,14 @@ export default function InventoryPage() {
                           </tr>
                           {expanded ? (
                             <tr className="border-t border-slate-100 bg-slate-50/60">
-                              <td colSpan={5} className="px-3 py-2">
+                              <td colSpan={4} className="px-3 py-2">
                                 <div className="grid gap-3 md:grid-cols-2">
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
                                     <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
-                                    <div className="mt-2"><InventoryQuantityLines item={item} firstAtp atpLabel="Usable" /></div>
+                                    <div className="mt-2"><InventoryQuantityLines item={item} firstAtp /></div>
                                   </div>
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
