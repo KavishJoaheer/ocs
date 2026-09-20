@@ -78,7 +78,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       open={open}
       onClose={onClose}
       title={`Receive stock${item ? ` — ${item.item_name}` : ""}`}
-      description="Add a warehouse batch. Expiry is blank by default and past dates are rejected."
+      description="Receive a warehouse delivery. Quantity, cost, and expiry are required so the lot can be tracked."
       size="sm"
       innerScroll={false}
     >

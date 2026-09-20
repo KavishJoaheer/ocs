@@ -2951,6 +2951,21 @@ function ensureInventoryIntegritySchema() {
       SET status = 'usable'
       WHERE status IS NULL OR TRIM(status) = ''
     `);
+    db.exec(`
+      UPDATE inventory_batches
+      SET
+        status = 'usable',
+        released_reason = CASE
+          WHEN TRIM(COALESCE(released_reason, '')) = '' THEN 'Counted stock is official without a data-quality hold'
+          ELSE released_reason
+        END,
+        released_at = COALESCE(released_at, CURRENT_TIMESTAMP),
+        quarantined_reason = '',
+        quarantined_at = NULL,
+        quarantined_by_user_id = NULL
+      WHERE COALESCE(status, 'usable') = 'quarantined'
+        AND quarantined_reason LIKE 'Stocktake surplus % requires verified cost and expiry'
+    `);
   }
 
   if (tableExists("inventory")) {

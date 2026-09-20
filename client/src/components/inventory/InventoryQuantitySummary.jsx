@@ -13,7 +13,6 @@ export default function InventoryQuantitySummary({
   const qty = (
     <span title={firstAtp ? ATP_HELP_TEXT : undefined}>
       <strong className={cx("tabular-nums", unavailable ? "text-rose-700" : "text-slate-900")}>{atp}</strong>
-      {" available"}
       {heldInStock ? (
         <>
           <span aria-hidden="true"> · </span>

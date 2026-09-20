@@ -276,7 +276,7 @@ export default function ExceptionalCorrectionModal({ open, item, isSaving, onClo
                 <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <legend className="px-1 text-sm font-bold text-amber-950">Verified batch evidence</legend>
                   <p className="text-xs text-amber-900">
-                    Added quantity remains blocked until its actual cost and expiry status are documented.
+                    Added quantity needs cost and expiry so warehouse value and expiry alerts stay accurate.
                   </p>
                   <label className="block space-y-2">
                     <span className="text-sm font-semibold text-slate-700">Verified unit cost (Rs)</span>

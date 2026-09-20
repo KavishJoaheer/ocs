@@ -746,15 +746,16 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
   assert.equal(qty, 7);
   const surplusBatch = db.prepare(`
     SELECT * FROM inventory_batches
-    WHERE item_id = ? AND status = 'quarantined'
+    WHERE item_id = ?
     ORDER BY id DESC LIMIT 1
   `).get(itemId);
   assert.ok(surplusBatch);
+  assert.equal(String(surplusBatch.status || "usable"), "usable");
   assert.equal(Number(surplusBatch.quantity_remaining), 2);
-  assert.equal(Number(surplusBatch.unit_cost), 0);
-  assert.equal(surplusBatch.expiry_date, null);
+  assert.equal(Number(surplusBatch.unit_cost), 5);
+  assert.equal(String(surplusBatch.expiry_date || "").slice(0, 10), "2028-06-01");
   const stockState = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
-  assert.equal(Number(stockState.available_to_use), 5);
+  assert.equal(Number(stockState.available_to_use), 7);
   const stocktakeMovement = db.prepare(`
     SELECT id FROM inventory_movements
     WHERE item_id = ? AND json_extract(meta_json, '$.stocktake_session_id') = ?
@@ -2772,6 +2773,7 @@ test("derived stock fields exclude expired units from available-to-use and disti
 
   const missing = payload.data.ocs_stock.find((row) => Number(row.id) === missingId);
   assert.equal(missing.missing_expiry, true);
+  assert.equal(Number(missing.available_to_use), 3);
   assert.equal(missing.has_non_expiring, false);
   assert.equal(missing.is_non_expiring_only, false);
 
@@ -2786,6 +2788,10 @@ test("derived stock fields exclude expired units from available-to-use and disti
     assert.ok(labels.includes("Expired"));
   }
 
+  const unpriced = payload.data.ocs_stock.find((row) => Number(row.id) === unpricedId);
+  assert.ok(unpriced);
+  assert.equal(Number(unpriced.available_to_use), 5);
+  assert.ok(Number(unpriced.unpriced_units) >= 5);
   assert.equal(payload.data.tab_summaries.stock.valuation_complete, false);
   assert.ok(Number(payload.data.tab_summaries.stock.unpriced_count) >= 1);
 
@@ -3418,7 +3424,7 @@ test("stocktake scope token detects folder membership and row-version changes", 
   assert.notEqual(Number(repeated.data.session.id), Number(first.data.session.id));
 });
 
-test("unverified opening batches stay blocked until audited cost and expiry are supplied", async () => {
+test("opening batches stay usable while cost and expiry are still missing", async () => {
   const itemId = Number(db.prepare(`
     INSERT INTO inventory (
       item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
@@ -3431,7 +3437,7 @@ test("unverified opening batches stay blocked until audited cost and expiry are 
   `).run(itemId).lastInsertRowid);
 
   const before = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
-  assert.equal(before.available_to_use, 0);
+  assert.equal(before.available_to_use, 5);
   assert.equal(before.missing_expiry_quantity, 5);
   assert.equal(before.missing_cost_quantity, 5);
   assert.equal(before.valuation_complete, false);
@@ -3467,7 +3473,7 @@ test("unverified opening batches stay blocked until audited cost and expiry are 
   assert.equal(after.valuation_complete, true);
 });
 
-test("unbatched legacy quantity becomes usable only through an audited opening batch", async () => {
+test("unbatched legacy quantity is usable before opening-batch details are added", async () => {
   const itemId = Number(db.prepare(`
     INSERT INTO inventory (
       item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
@@ -3476,7 +3482,7 @@ test("unbatched legacy quantity becomes usable only through an audited opening b
   `).run(`Unbatched opening ${Date.now()}`, folderId).lastInsertRowid);
   const before = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
   assert.equal(before.unbatched_quantity, 3);
-  assert.equal(before.available_to_use, 0);
+  assert.equal(before.available_to_use, 3);
 
   const payload = {
     operation_id: `create-opening-batch-${Date.now()}`,
@@ -3843,7 +3849,7 @@ test("doctor comparison reports net sale reversals on the original business date
   assert.equal(Number(afterRow?.consumed_sales || 0), baselineValue);
 });
 
-test("nearest usable expiry ignores quarantined and missing-cost batches", () => {
+test("nearest usable expiry ignores quarantined lots and includes unpriced dated lots", () => {
   const itemId = insertOcsItem({ name: `Expiry display ${Date.now()}`, qty: 0 });
   db.prepare("UPDATE inventory SET quantity = 3 WHERE id = ?").run(itemId);
   db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
@@ -3854,7 +3860,8 @@ test("nearest usable expiry ignores quarantined and missing-cost batches", () =>
            (?, 1, '2027-03-01', 5, 0, 'usable')
   `).run(itemId, itemId, itemId);
   const decorated = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
-  assert.equal(decorated.nearest_usable_expiry, "2027-03-01");
+  assert.equal(decorated.nearest_usable_expiry, "2027-02-01");
+  assert.equal(Number(decorated.available_to_use), 2);
 });
 
 test("direct sale accepts a billable visit and rejects it after payment without another deduction", async () => {

@@ -22,8 +22,8 @@ export default function BatchOpeningDataModal({ open, item, batch, isSaving, onC
     <Modal
       open={open}
       onClose={onClose}
-      title={isNewBatch ? "Create opening batch" : "Verify batch opening data"}
-      description="Use the supplier invoice, delivery note, or package label. Verified data unlocks eligible stock for use."
+      title="Add expiry / cost"
+      description="Record cost and expiry from the invoice or package label. Stock is already available; this completes the item record."
       size="sm"
     >
       <form
@@ -44,12 +44,12 @@ export default function BatchOpeningDataModal({ open, item, batch, isSaving, onC
           });
         }}
       >
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <p className="font-black">
             {item?.item_name || "Inventory item"}{isNewBatch ? " · Unbatched opening stock" : ` · Batch #${batch?.id}`}
           </p>
           <p className="mt-1">
-            On hand {Number(batch?.quantity_remaining || item?.unbatched_quantity || 0)}. This stock remains blocked until its data is verified.
+            On hand {Number(batch?.quantity_remaining || item?.unbatched_quantity || 0)}. These units can already be used; adding cost and expiry keeps valuation and expiry alerts accurate.
           </p>
         </div>
         <label className="block space-y-2">
@@ -74,7 +74,7 @@ export default function BatchOpeningDataModal({ open, item, batch, isSaving, onC
         <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="min-h-11 rounded-2xl border border-slate-200 px-4 text-sm font-bold text-slate-700">Cancel</button>
           <button type="submit" disabled={isSaving || !valid} className="min-h-11 rounded-2xl bg-[#17666a] px-5 text-sm font-black text-white disabled:opacity-50">
-            {isSaving ? "Verifying…" : isNewBatch ? "Create verified batch" : "Verify and unlock batch"}
+            {isSaving ? "Saving…" : isNewBatch ? "Save batch details" : "Save batch details"}
           </button>
         </div>
       </form>

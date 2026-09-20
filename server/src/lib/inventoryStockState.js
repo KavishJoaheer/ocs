@@ -52,14 +52,14 @@ function isQuarantinedBatch(batch) {
   return String(batch?.status || "usable").trim().toLowerCase() === "quarantined";
 }
 
+function isHeldBatch(batch, today = getTodayLocal()) {
+  return isQuarantinedBatch(batch) || isExpiredBatch(batch, today);
+}
+
 function isUsableBatch(batch, today = getTodayLocal()) {
   const remaining = Number(batch?.quantity_remaining || 0);
   if (remaining <= 0) return false;
-  if (isQuarantinedBatch(batch)) return false;
-  if (isExpiredBatch(batch, today)) return false;
-  if (isMissingExpiryBatch(batch)) return false;
-  if (!(Number(batch?.unit_cost || 0) > 0)) return false;
-  return true;
+  return !isHeldBatch(batch, today);
 }
 
 function isMissingExpiryBatch(batch) {
@@ -130,7 +130,7 @@ function decorateBatches(batches, { today = getTodayLocal(), reservedByBatch = n
     const nonExpiring = isNonExpiringBatch(batch);
     const missingCost = remaining > 0 && !(Number(batch.unit_cost || 0) > 0);
     const nearExpiry = remaining > 0 && !expired && !quarantined && !missingExpiry && !nonExpiring && isNearExpiryDate(expiryDateValue(batch), today);
-    const available = expired || quarantined || missingExpiry || missingCost ? 0 : Math.max(0, remaining - reserved);
+    const available = expired || quarantined ? 0 : Math.max(0, remaining - reserved);
     return {
       ...batch,
       quantity_remaining: remaining,
@@ -195,7 +195,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       0,
     );
     const reservedOnUsable = batches.reduce(
-      (sum, batch) => sum + (batch.expired || batch.quarantined || batch.missing_expiry || batch.missing_cost ? 0 : batch.reserved_quantity),
+      (sum, batch) => sum + (batch.expired || batch.quarantined ? 0 : batch.reserved_quantity),
       0,
     );
     const reservedOnExpired = batches.reduce((sum, batch) => sum + (batch.expired ? batch.reserved_quantity : 0), 0);
@@ -215,21 +215,12 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       (sum, batch) => sum + (batch.missing_cost ? batch.quantity_remaining : 0),
       0,
     );
-    const usableOnHand = Math.max(0, batches.reduce(
-      (sum, batch) => sum + (
-        batch.expired || batch.quarantined || batch.missing_expiry || batch.missing_cost
-          ? 0
-          : Number(batch.quantity_remaining || 0)
-      ),
-      0,
-    ));
+    const usableOnHand = Math.max(0, onHand - expiredQuantity - quarantinedQuantity);
     const availableToUse = Math.max(0, usableOnHand - reservedOnUsable - unallocatedReserved);
     const nearestUsableExpiry = batches
       .filter((batch) => (
         !batch.expired &&
         !batch.quarantined &&
-        !batch.missing_expiry &&
-        !batch.missing_cost &&
         !batch.is_non_expiring &&
         expiryDateValue(batch)
       ))
@@ -484,6 +475,7 @@ module.exports = {
   countReconciliationRequired,
   decorateBatches,
   decorateInventoryItems,
+  isHeldBatch,
   isQuarantinedBatch,
   isUsableBatch,
   doctorBagLabel,

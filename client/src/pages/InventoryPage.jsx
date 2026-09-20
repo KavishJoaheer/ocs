@@ -230,7 +230,6 @@ function InventoryStatusChips({ item, hideCost = false }) {
   const nearExpiry = Boolean(item.is_near_expiry);
   const expired = itemHasExpiredStock(item);
   const quarantined = itemHasQuarantinedStock(item);
-  const available = Number(item.available_to_use ?? 0);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
   if (!isService && !isLow && !missingExpiry && !(missingCost && !hideCost) && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
@@ -249,25 +248,21 @@ function InventoryStatusChips({ item, hideCost = false }) {
       {expired ? (
         <span
           role="status"
-          aria-label={`Stock status: ${available > 0 ? "Contains expired units" : "Expired"}`}
+          aria-label="Stock status: Expired"
           className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
         >
           <span className="sr-only">Stock status: </span>
-          {available > 0 ? "Contains expired" : "Expired"}
+          {Number(item.available_to_use ?? 0) > 0 ? "Contains expired" : "Expired"}
         </span>
       ) : null}
       {quarantined ? (
         <span
           role="status"
-          aria-label={
-            missingExpiry || missingCost
-              ? "Stock status: Counted stock is held until cost and expiry are verified"
-              : "Stock status: Contains quarantined units"
-          }
+          aria-label="Stock status: Recalled or held"
           className="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
         >
           <span className="sr-only">Stock status: </span>
-          {missingExpiry || missingCost ? "Counted, not ready" : "Quarantined"}
+          Held
         </span>
       ) : null}
       {isLow ? (
@@ -291,19 +286,19 @@ function InventoryStatusChips({ item, hideCost = false }) {
       {missingExpiry ? (
         <span
           role="status"
-          aria-label="Stock status: Unverified expiry, blocked from use"
-          className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900"
+          aria-label="Stock status: Expiry missing"
+          className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600"
         >
-          Unverified expiry · blocked
+          Expiry missing
         </span>
       ) : null}
       {missingCost && !hideCost ? (
         <span
           role="status"
-          aria-label="Stock status: Unverified cost, blocked from use"
-          className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900"
+          aria-label="Stock status: Cost missing"
+          className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600"
         >
-          Unverified cost · blocked
+          Unpriced
         </span>
       ) : null}
       {nonExpiring ? (
@@ -4460,11 +4455,9 @@ export default function InventoryPage() {
       setBatchOpeningData(null);
       const verifiedBatch = next?.verified_batch;
       if (verifiedBatch?.expired) {
-        toast.success("Batch data verified. Expired stock remains blocked from use.");
-      } else if (verifiedBatch?.quarantined || verifiedBatch?.missing_expiry || verifiedBatch?.missing_cost) {
-        toast.success("Batch data saved. Stock remains blocked until all checks pass.");
+        toast.success("Batch data saved. Expired stock stays excluded from use.");
       } else {
-        toast.success("Batch data verified. Eligible stock is now available.");
+        toast.success("Batch data saved.");
       }
     } catch (error) {
       if (error?.status === 409 || error?.data?.code === "BATCH_VERSION_CONFLICT") {
@@ -5153,14 +5146,14 @@ export default function InventoryPage() {
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
                                     <div className="mt-2 space-y-1">
                                       {isAdmin && Number(item.unbatched_quantity || 0) > 0 ? (
-                                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                                          <span>{item.unbatched_quantity} unit(s) have no batch identity and are blocked.</span>
+                                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                          <span>{item.unbatched_quantity} unit(s) have no expiry or cost on file. They are still available.</span>
                                           <button
                                             type="button"
                                             onClick={() => setBatchOpeningData({ item, batch: null })}
-                                            className="min-h-9 rounded-xl bg-amber-200 px-3 text-xs font-black text-amber-950"
+                                            className="min-h-9 rounded-xl bg-white px-3 text-xs font-black text-slate-800"
                                           >
-                                            Create opening batch
+                                            Add expiry / cost
                                           </button>
                                         </div>
                                       ) : null}
@@ -5173,9 +5166,9 @@ export default function InventoryPage() {
                                             <button
                                               type="button"
                                               onClick={() => setBatchOpeningData({ item, batch })}
-                                              className="min-h-9 rounded-xl bg-amber-100 px-3 text-xs font-black text-amber-950"
+                                              className="min-h-9 rounded-xl bg-slate-100 px-3 text-xs font-black text-slate-800"
                                             >
-                                              Verify data
+                                              Add expiry / cost
                                             </button>
                                           ) : null}
                                         </div>

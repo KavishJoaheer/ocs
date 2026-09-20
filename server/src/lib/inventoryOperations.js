@@ -135,6 +135,37 @@ function assertBatchBalance(itemId) {
   }
 }
 
+function lastKnownBatchIdentity(itemId) {
+  const today = getTodayLocal();
+  const batches = db
+    .prepare(
+      `
+      SELECT expiry_date, unit_cost, is_non_expiring, status
+      FROM inventory_batches
+      WHERE item_id = ? AND quantity_remaining > 0
+      ORDER BY id DESC
+    `,
+    )
+    .all(Number(itemId));
+  const item = db.prepare("SELECT cost_price FROM inventory WHERE id = ?").get(Number(itemId));
+  const preferred =
+    batches.find((row) => {
+      if (String(row.status || "usable").trim().toLowerCase() === "quarantined") return false;
+      if (Number(row.is_non_expiring || 0) === 1) return true;
+      const expiry = row.expiry_date ? String(row.expiry_date).slice(0, 10) : null;
+      if (expiry && expiry < today) return false;
+      return true;
+    }) || null;
+  const unitCost = Number(preferred?.unit_cost || 0) > 0
+    ? Number(preferred.unit_cost)
+    : Number(item?.cost_price || 0);
+  return {
+    unit_cost: unitCost,
+    expiry_date: preferred?.expiry_date || null,
+    is_non_expiring: Number(preferred?.is_non_expiring || 0) === 1 ? 1 : 0,
+  };
+}
+
 function listWriteOffBatches(itemId) {
   const today = getTodayLocal();
   return db
@@ -217,11 +248,10 @@ function previewAllocations(itemId, quantity, { includeExpired = false } = {}) {
   const availableToUse = Number(stockState?.available_to_use || 0);
   const batches = includeExpired
     ? listWriteOffBatches(itemId)
-    : listWriteOffBatches(itemId).filter((row) => !row.expired && !row.quarantined && !row.missing_expiry && Number(row.unit_cost || 0) > 0);
-  // Operational use and transfers must stay limited to verified, usable stock.
-  // Controlled write-offs/corrections deliberately need access to every
-  // traceable, unreserved batch (including expired, quarantined or incomplete
-  // opening lots) so unusable physical stock can still be reconciled.
+    : listWriteOffBatches(itemId).filter((row) => !row.expired && !row.quarantined);
+  // Dispatch and use may include lots that still need cost or expiry details.
+  // Write-offs and corrections can also touch expired or quarantined lots so
+  // unusable physical stock can still be reconciled.
   const available = includeExpired
     ? batches.reduce((sum, row) => sum + Number(row.available || 0), 0)
     : availableToUse;
@@ -2274,23 +2304,24 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         consumeAllocatedBatches(preview.allocations);
         allocations = preview.allocations;
       } else {
+        const identity = lastKnownBatchIdentity(item.id);
         const inserted = db.prepare(`
           INSERT INTO inventory_batches (
-            item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring,
-            status, quarantined_reason, quarantined_at, quarantined_by_user_id
-          ) VALUES (?, ?, NULL, 0, 0, 'quarantined', ?, CURRENT_TIMESTAMP, ?)
+            item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status
+          ) VALUES (?, ?, ?, ?, ?, 'usable')
         `).run(
           item.id,
           variance,
-          `Stocktake surplus #${sessionId} requires verified cost and expiry`,
-          userId || null,
+          identity.is_non_expiring ? null : identity.expiry_date,
+          identity.unit_cost,
+          identity.is_non_expiring,
         );
         allocations = [{
           batch_id: Number(inserted.lastInsertRowid),
           quantity: variance,
-          expiry_date: null,
-          is_non_expiring: false,
-          unit_cost: 0,
+          expiry_date: identity.is_non_expiring ? null : identity.expiry_date,
+          is_non_expiring: Boolean(identity.is_non_expiring),
+          unit_cost: identity.unit_cost,
         }];
       }
       updateInventoryQuantity(item.id, next);
@@ -2318,7 +2349,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           reference_type: "stocktake_session",
           reference_id: sessionId,
           allocations,
-          valuation_basis: variance > 0 ? "unverified_stocktake_surplus" : "batch_allocation",
+          valuation_basis: variance > 0 ? "stocktake_surplus" : "batch_allocation",
         },
       });
       recordMovementAllocations(movementId, allocations);
