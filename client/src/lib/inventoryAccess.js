@@ -42,6 +42,10 @@ export function canEditCatalogue(user) {
   return isOperatorUser(user) || isAdminUser(user);
 }
 
+export function canCreateCatalogue(user) {
+  return isOperatorUser(user) || isAdminUser(user);
+}
+
 export function canArchiveCatalogueItem(user) {
   return isAdminUser(user);
 }

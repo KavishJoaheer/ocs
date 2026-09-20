@@ -2364,12 +2364,7 @@ router.post("/items", (req, res) => {
       error: "Doctors cannot create inventory items. Request stock through a supply request.",
     });
   }
-  if (role === "operator") {
-    return res.status(403).json({
-      error: "Operators cannot create master catalogue items. Receive stock into an existing approved item.",
-    });
-  }
-  if (role !== "admin") {
+  if (role !== "admin" && role !== "operator") {
     return res.status(403).json({ error: "You do not have permission to add stock items." });
   }
 
@@ -2450,6 +2445,9 @@ router.put("/items/:id", (req, res) => {
   if (isDoctor) {
     const protectedAttempts = [];
     if (fieldChanged("quantity", existing.quantity, req.body.quantity)) protectedAttempts.push("quantity");
+    if (fieldChanged("minimum_quantity", existing.minimum_quantity, req.body.minimum_quantity)) {
+      protectedAttempts.push("minimum_quantity");
+    }
     if (fieldChanged("cost_price", existing.cost_price, req.body.cost_price)) protectedAttempts.push("cost_price");
     if (fieldChanged("selling_price", existing.selling_price, req.body.selling_price)) protectedAttempts.push("selling_price");
     if (fieldChanged("item_name", existing.item_name, req.body.item_name)) protectedAttempts.push("item_name");
@@ -2458,7 +2456,7 @@ router.put("/items/:id", (req, res) => {
     if (req.body.batches || req.body.batch_quantity) protectedAttempts.push("batches");
     if (protectedAttempts.length) {
       return res.status(400).json({
-        error: `Doctors cannot change ${protectedAttempts.join(", ")}. Update minimum/par quantity only, or use a documented stock movement.`,
+        error: `Doctors cannot change ${protectedAttempts.join(", ")}. Request supplies, or record used, sold, wasted, or expired stock.`,
       });
     }
   } else if (isOperator) {

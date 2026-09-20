@@ -619,11 +619,24 @@ test("doctors cannot change quantity through item editing and operators can edit
     body: { quantity: 99, minimum_quantity: 1 },
   });
   assert.equal(doctorPut.status, 400);
-  const parOk = await api("PUT", `/api/inventory/items/${bagId}`, {
+  const parBlocked = await api("PUT", `/api/inventory/items/${bagId}`, {
     token: doctorToken,
     body: { minimum_quantity: 3 },
   });
-  assert.equal(parOk.status, 200, JSON.stringify(parOk.data));
+  assert.equal(parBlocked.status, 400, JSON.stringify(parBlocked.data));
+  const operatorCreated = await api("POST", "/api/inventory/items", {
+    token: operatorToken,
+    body: {
+      item_name: `Operator Catalogue ${Date.now()}`,
+      folder_id: folderId,
+      quantity: 0,
+      minimum_quantity: 1,
+      unit: "box",
+      cost_price: 2,
+      selling_price: 5,
+    },
+  });
+  assert.equal(operatorCreated.status, 201, JSON.stringify(operatorCreated.data));
   const unauditedPricePut = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: operatorToken,
     body: {

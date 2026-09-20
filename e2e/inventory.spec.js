@@ -509,14 +509,14 @@ test.describe("Inventory workflow", () => {
     const operatorCreate = await request.post(`${API_BASE}/inventory/items`, {
       headers: { Authorization: `Bearer ${operator.token}` },
       data: {
-        item_name: "Operator should not create",
+        item_name: `Operator catalogue ${Date.now()}`,
         folder_id: 1,
         quantity: 0,
         minimum_quantity: 0,
         unit: "unit",
       },
     });
-    expect(operatorCreate.status()).toBe(403);
+    expect(operatorCreate.status()).toBe(201);
 
     const deleteBlocked = await request.delete(`${API_BASE}/restock-requests/1`, {
       headers: { Authorization: `Bearer ${operator.token}` },

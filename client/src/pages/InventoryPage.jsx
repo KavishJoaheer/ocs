@@ -47,6 +47,7 @@ import WriteOffStockModal from "../components/inventory/WriteOffStockModal.jsx";
 import {
   canApplyExceptionalCorrection,
   canArchiveCatalogueItem,
+  canCreateCatalogue,
   canReceiveWarehouseStock,
   canTransferToDoctorBag,
   canWriteOffWarehouseStock,
@@ -1889,14 +1890,6 @@ function InventoryActionButtons({
 
   if (touchWrap) {
     const menuItems = [];
-    if (isDoctor && !doctorViewIsOcs) {
-      menuItems.push({
-        key: "edit",
-        label: "Bag settings",
-        icon: <Pencil className="size-3.5" />,
-        onClick: () => onEdit(item),
-      });
-    }
     if (isDoctor && onRequestItem) {
       menuItems.push({
         key: "request",
@@ -1954,13 +1947,6 @@ function InventoryActionButtons({
 
   return (
     <div className="ml-auto flex w-fit items-center justify-end gap-2">
-      {isDoctor && !doctorViewIsOcs ? (
-        <button type="button" onClick={() => onEdit(item)} className={btn} title="Bag settings" aria-label="Bag settings">
-          <Pencil className="size-3.5 shrink-0" />
-          Settings
-        </button>
-      ) : null}
-
       {isDoctor && onRequestItem ? (
         <button type="button" onClick={() => onRequestItem(item)} className={restockBtn}>
           <Truck className="size-3.5 shrink-0" />
@@ -3076,6 +3062,7 @@ export default function InventoryPage() {
   const canManageOcs = user.role === "admin" || isOperator;
   const isAdmin = user.role === "admin";
   const canUseAdminInventory = isAdmin || isOperator;
+  const canAddCatalogueItem = canCreateCatalogue(user);
   const folders = useMemo(() => data?.folders || [], [data?.folders]);
   const pendingStagingCount = useMemo(
     () =>
@@ -4587,9 +4574,10 @@ export default function InventoryPage() {
             )
           ) : (
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-              {canUseAdminInventory && isAdmin && logisticsTab === "stock" ? (
+              {canUseAdminInventory && logisticsTab === "stock" && (isAdmin || canAddCatalogueItem) ? (
                 <>
                   <div className="hidden gap-2 lg:flex">
+                    {isAdmin ? (
                     <button
                       type="button"
                       onClick={downloadAdminStockExcel}
@@ -4598,6 +4586,8 @@ export default function InventoryPage() {
                       <Download className="size-4 text-[#1f7f7b]" />
                       Download inventory
                     </button>
+                    ) : null}
+                    {canAddCatalogueItem ? (
                     <button
                       type="button"
                       onClick={() => setEditor({ item: null })}
@@ -4606,6 +4596,7 @@ export default function InventoryPage() {
                       <Plus className="size-4" />
                       Add catalogue item
                     </button>
+                    ) : null}
                   </div>
                   <div className="relative lg:hidden">
                     <button
@@ -4627,6 +4618,7 @@ export default function InventoryPage() {
                         aria-label="Inventory actions"
                         className="absolute right-0 z-30 mt-2 w-56 rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
                       >
+                        {isAdmin ? (
                         <button
                           type="button"
                           role="menuitem"
@@ -4639,6 +4631,8 @@ export default function InventoryPage() {
                           <Download className="size-4" />
                           Download inventory
                         </button>
+                        ) : null}
+                        {canAddCatalogueItem ? (
                         <button
                           type="button"
                           role="menuitem"
@@ -4651,6 +4645,7 @@ export default function InventoryPage() {
                           <Plus className="size-4" />
                           Add catalogue item
                         </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
