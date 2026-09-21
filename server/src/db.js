@@ -2757,6 +2757,7 @@ function ensureInventoryOperationsSchema() {
       rejected_rows INTEGER NOT NULL DEFAULT 0,
       imported_by_user_id INTEGER,
       imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      received_date TEXT,
       released_by_user_id INTEGER,
       released_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2981,6 +2982,11 @@ function ensureInventoryIntegritySchema() {
     "inventory_batches",
     "received_date",
     "ALTER TABLE inventory_batches ADD COLUMN received_date TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_shipments",
+    "received_date",
+    "ALTER TABLE inventory_shipments ADD COLUMN received_date TEXT",
   );
   addColumnIfMissing(
     "restock_requests",

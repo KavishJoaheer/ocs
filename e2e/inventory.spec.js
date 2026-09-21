@@ -103,6 +103,8 @@ async function createStockedItem(request, { adminToken, operatorToken, name, qua
           actual_batch_cost: costPrice,
           expiry_date: isNonExpiring ? null : expiryDate,
           is_non_expiring: isNonExpiring,
+          supplier_name: "E2E Supplier",
+          received_date: today,
         },
       });
       expect(received.ok(), await received.text()).toBeTruthy();
@@ -440,7 +442,13 @@ test.describe("Inventory workflow", () => {
     });
     await request.post(`${API_BASE}/inventory/items/${item.id}/ocs-actions`, {
       headers: { Authorization: `Bearer ${operator.token}` },
-      data: { action_type: "stock_in", quantity: 2, expiry_date: "2029-06-01" },
+      data: {
+        action_type: "stock_in",
+        quantity: 2,
+        expiry_date: "2029-06-01",
+        supplier_name: "E2E Supplier",
+        received_date: "2026-02-02",
+      },
     });
     const applied = await request.post(`${API_BASE}/inventory/stocktake/sessions/${session.id}/apply`, {
       headers: { Authorization: `Bearer ${admin.token}` },

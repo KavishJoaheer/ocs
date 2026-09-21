@@ -15,7 +15,7 @@ export function canManageWarehouseView(user) {
 }
 
 export function canReceiveWarehouseStock(user) {
-  return isOperatorUser(user) || isAdminUser(user);
+  return isAdminUser(user);
 }
 
 export function canWriteOffWarehouseStock(user) {

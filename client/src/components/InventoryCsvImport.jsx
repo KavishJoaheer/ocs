@@ -5,7 +5,7 @@ import SectionCard from "./SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { ApiError, api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
-import { requiresOperationalOverride, withOperationalOverride } from "../lib/inventoryAccess.js";
+import { requiresOperationalOverride, todayLocalDate, withOperationalOverride } from "../lib/inventoryAccess.js";
 import OperationalOverrideFields from "./inventory/OperationalOverrideFields.jsx";
 import { setUnsavedWork } from "../lib/unsavedWork.js";
 
@@ -13,12 +13,24 @@ function newShipmentOperationId() {
   return globalThis.crypto?.randomUUID?.() || `shipment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
 function InventoryCsvImport({ onImported }) {
   const { user } = useAuth();
   const [csvText, setCsvText] = useState("");
+  const [workbookBase64, setWorkbookBase64] = useState("");
   const [fileName, setFileName] = useState("");
   const [supplier, setSupplier] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [receivedDate, setReceivedDate] = useState(() => todayLocalDate());
   const [overrideReason, setOverrideReason] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -28,43 +40,68 @@ function InventoryCsvImport({ onImported }) {
   const [operationId, setOperationId] = useState(() => newShipmentOperationId());
 
   useEffect(() => {
-    setUnsavedWork("shipment-import", Boolean(csvText.trim() || preview));
+    setUnsavedWork("shipment-import", Boolean(csvText.trim() || workbookBase64 || preview));
     return () => setUnsavedWork("shipment-import", false);
-  }, [csvText, preview]);
+  }, [csvText, workbookBase64, preview]);
 
   function readFile(file) {
     if (!file) return;
+    const name = file.name || "delivery.xlsx";
+    if (/\.xls$/i.test(name) && !/\.xlsx$/i.test(name)) {
+      toast.error("Save the file as an Excel workbook (.xlsx), then choose it again.");
+      return;
+    }
+    const isWorkbook = /\.xlsx$/i.test(name);
     const reader = new FileReader();
     reader.onload = () => {
-      setCsvText(String(reader.result || ""));
-      setFileName(file.name || "delivery.csv");
+      if (isWorkbook) {
+        setWorkbookBase64(arrayBufferToBase64(reader.result));
+        setCsvText("");
+      } else {
+        setWorkbookBase64("");
+        setCsvText(String(reader.result || ""));
+      }
+      setFileName(name);
       setPreview(null);
       setLastResult(null);
     };
-    reader.readAsText(file);
+    reader.onerror = () => toast.error("Could not read that file.");
+    if (isWorkbook) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   }
 
-  async function downloadTemplate() {
-    try {
-      const { blob, filename } = await api.getBlob("/inventory/staging/csv-template");
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename || "ocs-shipment-template.csv";
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error(error.message || "Could not download the CSV template.");
-    }
+  function deliveryBody(extra = {}) {
+    return {
+      supplier,
+      delivery_note: deliveryNote,
+      received_date: receivedDate,
+      ...(workbookBase64 ? { workbook_base64: workbookBase64 } : { csv_text: csvText }),
+      ...extra,
+    };
+  }
+
+  function downloadTemplate() {
+    const link = document.createElement("a");
+    link.href = "/operator-delivery-template.xlsx";
+    link.download = "ocs-delivery-template.xlsx";
+    link.click();
   }
 
   function readyToCheck() {
-    if (!csvText.trim()) {
-      toast.error("Choose the supplier file first.");
+    if (!workbookBase64 && !csvText.trim()) {
+      toast.error("Choose the delivery file first.");
       return false;
     }
     if (supplier.trim().length < 2 || deliveryNote.trim().length < 2) {
       toast.error("Enter the supplier and the delivery note.");
+      return false;
+    }
+    if (!receivedDate) {
+      toast.error("Enter the date on the delivery note.");
+      return false;
+    }
+    if (receivedDate > todayLocalDate()) {
+      toast.error("Delivery date cannot be in the future.");
       return false;
     }
     return true;
@@ -74,11 +111,7 @@ function InventoryCsvImport({ onImported }) {
     if (previewing || !readyToCheck()) return;
     setPreviewing(true);
     try {
-      const payload = await api.post("/inventory/staging/preview-csv", {
-        csv_text: csvText,
-        supplier,
-        delivery_note: deliveryNote,
-      });
+      const payload = await api.post("/inventory/staging/preview-csv", deliveryBody());
       setPreview(payload);
     } catch (error) {
       toast.error(error.message || "Could not check this delivery.");
@@ -99,16 +132,7 @@ function InventoryCsvImport({ onImported }) {
     try {
       const payload = await api.post(
         "/inventory/staging/import-csv",
-        withOperationalOverride(
-          user,
-          {
-            csv_text: csvText,
-            supplier,
-            delivery_note: deliveryNote,
-            operation_id: operationId,
-          },
-          overrideReason,
-        ),
+        withOperationalOverride(user, deliveryBody({ operation_id: operationId }), overrideReason),
       );
       const summary = payload.import_summary || {
         imported: 0,
@@ -117,10 +141,12 @@ function InventoryCsvImport({ onImported }) {
       };
       setLastResult(summary);
       setCsvText("");
+      setWorkbookBase64("");
       setFileName("");
       setPreview(null);
       setSupplier("");
       setDeliveryNote("");
+      setReceivedDate(todayLocalDate());
       setOperationId(newShipmentOperationId());
       toast.success(
         summary.skipped
@@ -152,7 +178,7 @@ function InventoryCsvImport({ onImported }) {
       title="Receive a delivery"
       subtitle="Check the supplier file, then save it as incoming. Stock changes only when you add it to the shelf."
     >
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <label className="space-y-1 text-sm font-semibold text-slate-700">
           Supplier
           <input
@@ -177,6 +203,19 @@ function InventoryCsvImport({ onImported }) {
             className="w-full min-h-11 rounded-xl border border-slate-200 px-3 py-2 font-normal"
           />
         </label>
+        <label className="space-y-1 text-sm font-semibold text-slate-700">
+          Date of delivery
+          <input
+            type="date"
+            max={todayLocalDate()}
+            value={receivedDate}
+            onChange={(event) => {
+              setReceivedDate(event.target.value);
+              setPreview(null);
+            }}
+            className="w-full min-h-11 rounded-xl border border-slate-200 px-3 py-2 font-normal"
+          />
+        </label>
       </div>
 
       <label
@@ -196,10 +235,10 @@ function InventoryCsvImport({ onImported }) {
       >
         <Upload className="size-5 text-[#2d8f98]" />
         <span className="text-sm font-semibold">{fileName || "Drop the supplier file here, or choose it"}</span>
-        <span className="text-xs font-medium text-slate-500">CSV from the template</span>
+        <span className="text-xs font-medium text-slate-500">Excel file from the template</span>
         <input
           type="file"
-          accept=".csv,text/csv"
+          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           aria-label="Delivery file"
           className="sr-only"
           onChange={(event) => {
@@ -218,18 +257,19 @@ function InventoryCsvImport({ onImported }) {
       </button>
 
       <details className="mt-2">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-600">Paste the file instead</summary>
+        <summary className="cursor-pointer text-sm font-semibold text-slate-600">Paste a CSV instead</summary>
         <label htmlFor="shipment-csv-text" className="mt-2 block text-sm font-semibold text-slate-800">
           CSV shipment data
         </label>
         <p id="shipment-csv-help" className="mt-1 text-xs text-slate-500">
-          Columns: folder, item name, quantity, minimum, unit, cost, selling price, expiry.
+          Columns: folder, item name, quantity, cost, expiry. Unit and selling price come from the catalogue.
         </p>
         <textarea
           id="shipment-csv-text"
           value={csvText}
           onChange={(event) => {
             setCsvText(event.target.value);
+            setWorkbookBase64("");
             setFileName(event.target.value.trim() ? "Pasted delivery" : "");
             setPreview(null);
           }}
@@ -244,7 +284,7 @@ function InventoryCsvImport({ onImported }) {
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
-          disabled={previewing || !csvText.trim()}
+          disabled={previewing || (!workbookBase64 && !csvText.trim())}
           onClick={handlePreview}
           className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-50 sm:w-auto"
         >

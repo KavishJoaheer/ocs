@@ -16,10 +16,7 @@ const CSV_REQUIRED_HEADERS = [
   "folder",
   "item_name",
   "quantity",
-  "minimum_quantity",
-  "unit",
   "cost_price",
-  "selling_price",
   "expiry_date",
 ];
 const WRITE_OFF_REASONS = ["Expired", "Discontinued", "Damaged"];
@@ -1269,16 +1266,17 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
   };
 }
 
-function createShipmentFromImport({ supplier = "", deliveryNote = "", operationId, userId, rows, skipped }) {
+function createShipmentFromImport({ supplier = "", deliveryNote = "", receivedDate = null, operationId, userId, rows, skipped }) {
   const info = db
     .prepare(`
       INSERT INTO inventory_shipments (
-        supplier, delivery_note, operation_id, status, total_rows, valid_rows, rejected_rows, imported_by_user_id
-      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+        supplier, delivery_note, received_date, operation_id, status, total_rows, valid_rows, rejected_rows, imported_by_user_id
+      ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
     `)
     .run(
       supplier,
       deliveryNote,
+      receivedDate,
       operationId,
       rows.length + skipped,
       rows.length,
@@ -1312,15 +1310,20 @@ function splitCsvLine(line) {
   return values;
 }
 
-function parseCsvShipment(csvText) {
-  const text = String(csvText || "").replace(/^\uFEFF/, "").trim();
-  if (!text) throw HttpError(400, "csv_text is required.");
-  const lines = text.split(/\r?\n/).filter((line) => String(line || "").trim());
-  if (!lines.length) throw HttpError(400, "csv_text is required.");
-  const headers = splitCsvLine(lines[0]).map((value) => value.trim().toLowerCase());
-  const missing = CSV_REQUIRED_HEADERS.filter((header) => !headers.includes(header));
-  if (missing.length) throw HttpError(400, `CSV missing headers: ${missing.join(", ")}`);
+function isShipmentHintRow(row) {
+  const folder = String(row.folder || "").trim().toLowerCase();
+  const name = String(row.item_name || "").trim().toLowerCase();
+  return folder.startsWith("pick the shelf") || name.startsWith("exact name from the catalogue");
+}
 
+function isBlankShipmentRow(row) {
+  return !String(row.folder || "").trim()
+    && !String(row.item_name || "").trim()
+    && !String(row.quantity || "").trim()
+    && !String(row.expiry_date || "").trim();
+}
+
+function parseShipmentRecords(headers, records) {
   const folderMap = new Map(
     db
       .prepare("SELECT id, name FROM inventory_folders")
@@ -1330,10 +1333,9 @@ function parseCsvShipment(csvText) {
 
   const parsed = [];
   const seen = new Map();
-  lines.slice(1).forEach((line, index) => {
-    const values = splitCsvLine(line);
-    const row = Object.fromEntries(headers.map((header, idx) => [header, values[idx] || ""]));
-    const lineNumber = index + 2;
+  records.forEach((record) => {
+    const row = record.row;
+    const lineNumber = record.line;
     const folder = folderMap.get(String(row.folder || "").toLowerCase());
     const qty = Number(row.quantity || 0);
     const nonExpiring = parseNonExpiringFlag(row.non_expiring || row.is_non_expiring || row.expiry_date);
@@ -1361,7 +1363,14 @@ function parseCsvShipment(csvText) {
     if (catalogueMatch.error) {
       errors.push(catalogueMatch.error);
     }
-    const cost = toNumber(row.cost_price, 0);
+    const catalogue = catalogueMatch.catalogue;
+    const costRaw = String(row.cost_price ?? "").trim();
+    if (!costRaw) errors.push("Missing cost");
+    else if (!/^\d+(\.\d+)?$/.test(costRaw)) errors.push("Cost must be a number");
+    const cost = costRaw ? toNumber(row.cost_price, 0) : 0;
+    const minimumRaw = String(row.minimum_quantity ?? "").trim();
+    const unitRaw = String(row.unit ?? "").trim();
+    const sellingRaw = String(row.selling_price ?? "").trim();
     parsed.push({
       line: lineNumber,
       folder_id: folder?.id || null,
@@ -1370,10 +1379,10 @@ function parseCsvShipment(csvText) {
       catalogue_item_id: catalogueMatch.catalogue?.id || null,
       catalogue_action_required: Boolean(catalogueMatch.catalogue_action_required),
       quantity: Number.isInteger(qty) && qty > 0 ? qty : Number(row.quantity || 0),
-      minimum_quantity: Number(row.minimum_quantity || 0) || 0,
-      unit: row.unit || "unit",
+      minimum_quantity: minimumRaw ? (Number(minimumRaw) || 0) : (Number(catalogue?.minimum_quantity || 0) || 0),
+      unit: unitRaw || catalogue?.unit || "unit",
       cost_price: cost,
-      selling_price: toNumber(row.selling_price, 0),
+      selling_price: sellingRaw ? toNumber(sellingRaw, 0) : toNumber(catalogue?.selling_price, 0),
       attributes: row.attributes || "",
       moa_notes: row.moa_notes || "",
       expiry_date: nonExpiring ? null : expiryRaw || null,
@@ -1404,11 +1413,92 @@ function parseCsvShipment(csvText) {
   };
 }
 
+function parseCsvShipment(csvText) {
+  const text = String(csvText || "").replace(/^\uFEFF/, "").trim();
+  if (!text) throw HttpError(400, "csv_text is required.");
+  const lines = text.split(/\r?\n/).filter((line) => String(line || "").trim());
+  if (!lines.length) throw HttpError(400, "csv_text is required.");
+  const headers = splitCsvLine(lines[0]).map((value) => value.trim().toLowerCase());
+  const missing = CSV_REQUIRED_HEADERS.filter((header) => !headers.includes(header));
+  if (missing.length) throw HttpError(400, `CSV missing headers: ${missing.join(", ")}`);
+  const records = lines.slice(1).map((line, index) => {
+    const values = splitCsvLine(line);
+    return {
+      line: index + 2,
+      row: Object.fromEntries(headers.map((header, idx) => [header, values[idx] || ""])),
+    };
+  }).filter((record) => !isBlankShipmentRow(record.row) && !isShipmentHintRow(record.row));
+  if (!records.length) throw HttpError(400, "CSV has no product rows.");
+  return parseShipmentRecords(headers, records);
+}
+
+function loadWorkbookSheets(buffer) {
+  const { spawnSync } = require("child_process");
+  const path = require("path");
+  const result = spawnSync(process.execPath, [path.join(__dirname, "readDeliverySheet.js")], {
+    input: buffer,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw HttpError(400, "This file is not an Excel workbook. Use the .xlsx template.");
+  }
+  try {
+    return JSON.parse(result.stdout.toString("utf8"));
+  } catch {
+    throw HttpError(400, "This file is not an Excel workbook. Use the .xlsx template.");
+  }
+}
+
+function parseWorkbookShipment(buffer) {
+  const sheets = loadWorkbookSheets(buffer);
+  const sheet = sheets.find((candidate) => candidate.name === "Delivery")
+    || sheets.find((candidate) => candidate.state !== "hidden")
+    || sheets[0];
+  if (!sheet) throw HttpError(400, "The Excel file has no Delivery sheet.");
+  let headerRowNumber = null;
+  let headers = [];
+  for (const entry of sheet.rows || []) {
+    if (entry.row > 8) break;
+    const values = (entry.cells || []).map((value) => String(value || "").trim().toLowerCase());
+    if (values.includes("folder") && values.includes("item_name")) {
+      headerRowNumber = entry.row;
+      headers = values;
+      break;
+    }
+  }
+  if (!headerRowNumber) throw HttpError(400, "The Delivery sheet is missing the column headings.");
+  const missing = CSV_REQUIRED_HEADERS.filter((header) => !headers.includes(header));
+  if (missing.length) throw HttpError(400, `Excel missing headers: ${missing.join(", ")}`);
+  const records = [];
+  for (const entry of sheet.rows || []) {
+    if (entry.row <= headerRowNumber) continue;
+    const cells = {};
+    headers.forEach((header, index) => {
+      if (!header) return;
+      cells[header] = String(entry.cells?.[index] || "").trim();
+    });
+    if (isBlankShipmentRow(cells) || isShipmentHintRow(cells)) continue;
+    records.push({ line: entry.row, row: cells });
+  }
+  if (!records.length) throw HttpError(400, "The Delivery sheet has no product rows.");
+  return parseShipmentRecords(headers, records);
+}
+
+function parseShipmentUpload(body = {}) {
+  const workbook = String(body.workbook_base64 || "").replace(/\s/g, "");
+  if (workbook) {
+    const buffer = Buffer.from(workbook, "base64");
+    if (!buffer.length) throw HttpError(400, "The Excel file is empty.");
+    return parseWorkbookShipment(buffer);
+  }
+  return parseCsvShipment(body.csv_text);
+}
+
 function csvShipmentTemplate() {
   return [
     CSV_REQUIRED_HEADERS.concat(["non_expiring"]).join(","),
-    "Consumable,Gauze 10x10,20,5,pack,12,20,2027-01-01,",
-    "Consumable,Reusable tray,4,1,unit,0,0,,yes",
+    "Consumable,Gauze 10x10,20,12,2027-01-01,",
+    "Consumable,Reusable tray,4,0,,yes",
   ].join("\n");
 }
 
@@ -1931,7 +2021,7 @@ function parseSupplierName(value) {
 function parseReceivedDate(value, { required = false } = {}) {
   const raw = String(value || "").trim();
   if (!raw) {
-    if (required) throw HttpError(400, "Enter the delivery date for the new counted lot.");
+    if (required) throw HttpError(400, "Enter the delivery date.");
     return null;
   }
   if (!isIsoDate(raw)) {
@@ -1946,12 +2036,13 @@ function parseReceivedDate(value, { required = false } = {}) {
 function shipmentReceiptIdentity(shipmentId) {
   if (!shipmentId) return { supplier_name: "", received_date: getTodayLocal() };
   const shipment = db
-    .prepare("SELECT supplier, imported_at FROM inventory_shipments WHERE id = ?")
+    .prepare("SELECT supplier, received_date, imported_at FROM inventory_shipments WHERE id = ?")
     .get(Number(shipmentId));
+  const noted = String(shipment?.received_date || "").slice(0, 10);
   const imported = String(shipment?.imported_at || "").slice(0, 10);
   return {
     supplier_name: parseSupplierName(shipment?.supplier),
-    received_date: isIsoDate(imported) ? imported : getTodayLocal(),
+    received_date: isIsoDate(noted) ? noted : (isIsoDate(imported) ? imported : getTodayLocal()),
   };
 }
 
@@ -2641,6 +2732,9 @@ module.exports = {
   listWriteOffBatches,
   movementIdsForTransaction,
   parseCsvShipment,
+  parseReceivedDate,
+  parseShipmentUpload,
+  parseSupplierName,
   parseNonExpiringFlag,
   previewAllocations,
   releaseStagingRows,

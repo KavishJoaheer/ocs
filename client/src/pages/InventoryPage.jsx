@@ -1692,20 +1692,12 @@ function InventoryOcsMasterActions({
   );
   const menuItems = [];
   if (isOperator) {
-    if (onEdit) {
+    if (onEdit && onRestockDoctor) {
       menuItems.push({
         key: "edit",
         label: "Edit catalogue item",
         icon: <Pencil className="size-3.5" />,
         onClick: () => onEdit(item),
-      });
-    }
-    if (onRestockDoctor) {
-      menuItems.push({
-        key: "transfer",
-        label: "Transfer to doctor bag",
-        icon: <Truck className="size-3.5" />,
-        onClick: () => onRestockDoctor(item),
       });
     }
     if (onRemove) {
@@ -1770,11 +1762,19 @@ function InventoryOcsMasterActions({
         icon: <Pencil className="h-4 w-4" strokeWidth={2.5} />,
         onClick: () => onEdit(item),
       }
-    : {
-        title: "Receive stock",
-        icon: <Plus className="h-4 w-4" strokeWidth={2.5} />,
-        onClick: () => onStockIn(item),
-      };
+    : onRestockDoctor
+      ? {
+          title: "Transfer to doctor bag",
+          icon: <Truck className="h-4 w-4" strokeWidth={2.5} />,
+          onClick: () => onRestockDoctor(item),
+        }
+      : onEdit
+        ? {
+            title: "Edit catalogue item",
+            icon: <Pencil className="h-4 w-4" strokeWidth={2.5} />,
+            onClick: () => onEdit(item),
+          }
+        : null;
 
   if (touchWrap) {
     return (
@@ -1788,10 +1788,12 @@ function InventoryOcsMasterActions({
 
   return (
     <div className="ml-auto flex w-fit flex-wrap items-center justify-end gap-2">
+      {primary ? (
       <button type="button" title={primary.title} aria-label={primary.title} className={primaryBtn} onClick={primary.onClick}>
         {primary.icon}
-        <span>{isAdmin ? "Edit" : "Receive"}</span>
+        <span>{isAdmin || !onRestockDoctor ? "Edit" : "Transfer"}</span>
       </button>
+      ) : null}
       <div className="relative shrink-0" ref={menuRef}>
         <button
           type="button"
@@ -4010,6 +4012,9 @@ export default function InventoryPage() {
             expiry_date: payload.expiry_date || "",
             is_non_expiring: Boolean(payload.is_non_expiring),
             cost_price: Number(payload.cost_price || 0),
+            cost_variance_reason: payload.cost_variance_reason || "",
+            supplier_name: payload.supplier_name || "",
+            received_date: payload.received_date || "",
           },
           payload.override_reason,
         ),

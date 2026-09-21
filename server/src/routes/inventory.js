@@ -44,7 +44,9 @@ const {
   isDoctorEmergencyRestockEnabled,
   listShipments,
   listStocktakeSessions,
-  parseCsvShipment,
+  parseReceivedDate,
+  parseShipmentUpload,
+  parseSupplierName,
   parseNonExpiringFlag,
   previewAllocations,
   previewExceptionalCorrection,
@@ -783,21 +785,25 @@ function getPayloadFromRequest(req) {
   return getPayload(req, selectedDoctorId, doctorContext);
 }
 
-function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = false, allowBlank = false } = {}) {
+function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = false, allowBlank = false, supplierName = "", receivedDate = null } = {}) {
   const expiry = validateReceiptExpiry({
     expiryDate,
     isNonExpiring,
     allowBlank: allowBlank || isNonExpiring,
   });
   const created = db.prepare(`
-    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO inventory_batches (
+      item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name, received_date
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     itemId,
     quantity,
     expiry.isNonExpiring ? null : expiry.expiryDate,
     roundCurrency(unitCost),
     expiry.isNonExpiring ? 1 : 0,
+    String(supplierName || ""),
+    receivedDate || null,
   );
   return Number(created.lastInsertRowid || 0);
 }
@@ -2639,8 +2645,22 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     } catch (error) {
       return res.status(error.status || 400).json({ error: error.message });
     }
+    const supplierName = parseSupplierName(req.body.supplier_name);
+    if (supplierName.length < 2) {
+      return res.status(400).json({ error: "Enter the supplier name." });
+    }
+    let receivedDate;
+    try {
+      receivedDate = parseReceivedDate(req.body.received_date, { required: true });
+    } catch (error) {
+      return res.status(error.status || 400).json({ error: error.message });
+    }
     db.transaction(() => {
-      const batchId = createBatch(itemId, quantity, expiry.expiryDate, costPrice, { isNonExpiring: expiry.isNonExpiring });
+    const batchId = createBatch(itemId, quantity, expiry.expiryDate, costPrice, {
+      isNonExpiring: expiry.isNonExpiring,
+      supplierName,
+      receivedDate,
+    });
       db.prepare(`
         UPDATE inventory
         SET quantity = quantity + ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
@@ -2671,6 +2691,8 @@ router.post("/items/:id/ocs-actions", (req, res) => {
           catalogue_unit_cost: standardCost,
           actual_batch_unit_cost: costPrice,
           cost_variance_reason: costVarianceReason,
+          supplier_name: supplierName,
+          received_date: receivedDate,
         }),
       });
       recordMovementAllocations(movementId, [{
@@ -4240,7 +4262,7 @@ router.post("/staging/preview-csv", (req, res) => {
     }
   }
   try {
-    const preview = parseCsvShipment(req.body.csv_text);
+    const preview = parseShipmentUpload(req.body);
     return res.json({
       preview: preview.summary,
       rows: preview.rows,
@@ -4268,6 +4290,12 @@ router.post("/staging/import-csv", (req, res) => {
       code: "SHIPMENT_REFERENCE_REQUIRED",
     });
   }
+  let receivedDate;
+  try {
+    receivedDate = parseReceivedDate(String(req.body.received_date || "").trim() || getTodayLocal(), { required: true });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message });
+  }
   if (!importOperationId) {
     return res.status(400).json({
       error: "A stable shipment import reference is required.",
@@ -4292,7 +4320,7 @@ router.post("/staging/import-csv", (req, res) => {
   }
   let parsed;
   try {
-    parsed = parseCsvShipment(req.body.csv_text);
+    parsed = parseShipmentUpload(req.body);
   } catch (error) {
     return res.status(error.status || 400).json({
       error: error.message,
@@ -4306,7 +4334,7 @@ router.post("/staging/import-csv", (req, res) => {
   }));
   if (!validRows.length) {
     return res.status(400).json({
-      error: "No valid rows found in CSV.",
+      error: "No valid rows found in this delivery.",
       import_summary: {
         imported: 0,
         skipped: skippedRows.length,
@@ -4319,6 +4347,7 @@ router.post("/staging/import-csv", (req, res) => {
   const shipmentId = createShipmentFromImport({
     supplier,
     deliveryNote,
+    receivedDate,
     operationId: importOperationId,
     userId: req.auth.id,
     rows: validRows,

@@ -13,6 +13,7 @@ delete process.env.ENABLE_DOCTOR_EMERGENCY_RESTOCK;
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 
+const ExcelJS = require("exceljs");
 const { createApp } = require("../src/app");
 const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
@@ -73,13 +74,21 @@ function nextCollectionIso() {
 }
 
 async function api(method, urlPath, { token, body } = {}) {
-  const requestBody = method === "POST" && urlPath === "/api/inventory/staging/import-csv" && body
-    ? {
-        delivery_note: `TEST-DN-${randomUUID()}`,
-        operation_id: `test-shipment-${randomUUID()}`,
-        ...body,
-      }
-    : body;
+  let requestBody = body;
+  if (method === "POST" && urlPath === "/api/inventory/staging/import-csv" && body) {
+    requestBody = {
+      delivery_note: `TEST-DN-${randomUUID()}`,
+      operation_id: `test-shipment-${randomUUID()}`,
+      ...body,
+    };
+  }
+  if (method === "POST" && /\/ocs-actions$/.test(urlPath) && body?.action_type === "stock_in") {
+    requestBody = {
+      supplier_name: "Test Supplier",
+      received_date: getTodayLocal(),
+      ...body,
+    };
+  }
   const headers = {};
   if (requestBody !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -1982,6 +1991,117 @@ test("csv catalogue matching is case-insensitive and unknown items need admin ac
   assert.equal(preview.data.rows[0].errors.length, 0);
   assert.equal(preview.data.rows[0].item_name, name);
   assert.ok(preview.data.rows[1].errors.some((msg) => /catalogue action required/i.test(msg)));
+});
+
+test("excel delivery upload skips the template hint row and keeps the expiry date", async () => {
+  const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
+  const name = `Excel Pads ${Date.now()}`;
+  insertOcsItem({ name, qty: 0, folder: consumable.id });
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Delivery");
+  sheet.addRow(["folder", "item_name", "quantity", "minimum_quantity", "unit", "cost_price", "selling_price", "expiry_date", "non_expiring"]);
+  sheet.addRow(["Pick the shelf folder", "Exact name from the catalogue", "How many arrived", "Low-stock level, or 0", "unit, pack, box…", "Cost per unit (Rs)", "Sell price per unit (Rs)", "YYYY-MM-DD, or blank if it does not expire", "yes only if it does not expire"]);
+  const data = sheet.addRow([consumable.name, name, 50, 12, "box", 150, 150, new Date(Date.UTC(2028, 0, 1)), ""]);
+  data.getCell(8).numFmt = "YYYY-MM-DD";
+  sheet.addRow(["", "", "", "", "", "", "", "", ""]);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const preview = await api("POST", "/api/inventory/staging/preview-csv", {
+    token: operatorToken,
+    body: { workbook_base64: Buffer.from(buffer).toString("base64"), supplier: "Excel Co", delivery_note: "DN-XLSX" },
+  });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.rows.length, 1);
+  assert.equal(preview.data.rows[0].line, 3);
+  assert.equal(preview.data.rows[0].item_name, name);
+  assert.equal(preview.data.rows[0].quantity, 50);
+  assert.equal(preview.data.rows[0].expiry_date, "2028-01-01");
+  assert.equal(preview.data.rows[0].errors.length, 0);
+  assert.equal(preview.data.preview.valid_rows, 1);
+});
+
+test("a short delivery sheet copies unit and selling price from the catalogue", async () => {
+  const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
+  const name = `Short Sheet ${Date.now()}`;
+  insertOcsItem({ name, qty: 0, folder: consumable.id });
+  const preview = await api("POST", "/api/inventory/staging/preview-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: [
+        "folder,item_name,quantity,cost_price,expiry_date",
+        `${consumable.name},${name},4,8,2029-04-01`,
+      ].join("\n"),
+    },
+  });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.rows.length, 1);
+  assert.equal(preview.data.rows[0].errors.length, 0);
+  assert.equal(preview.data.rows[0].unit, "unit");
+  assert.equal(preview.data.rows[0].selling_price, 10);
+  assert.equal(preview.data.rows[0].cost_price, 8);
+  assert.equal(preview.data.rows[0].minimum_quantity, 0);
+});
+
+test("shipment delivery date is the date on the note", async () => {
+  const consumable = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable'").get().id;
+  const name = `Dated ${Date.now()}`;
+  insertOcsItem({ name, qty: 0, folder: consumable });
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: [
+        "folder,item_name,quantity,cost_price,expiry_date",
+        `Consumable,${name},2,8,2029-04-01`,
+      ].join("\n"),
+      supplier: "Dated Supplier",
+      delivery_note: `DN-${Date.now()}`,
+      received_date: "2026-02-02",
+    },
+  });
+  assert.equal(imported.status, 201, JSON.stringify(imported.data));
+  const shipmentId = imported.data.import_summary.shipment_id;
+  const released = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "all_valid" },
+  });
+  assert.ok([200, 201].includes(released.status), JSON.stringify(released.data));
+  const batch = db.prepare(`
+    SELECT supplier_name, received_date FROM inventory_batches
+    WHERE item_id = (SELECT id FROM inventory WHERE item_name = ?)
+    ORDER BY id DESC LIMIT 1
+  `).get(name);
+  assert.equal(batch.supplier_name, "Dated Supplier");
+  assert.equal(String(batch.received_date || "").slice(0, 10), "2026-02-02");
+});
+
+test("one-item receive stores supplier and delivery date", async () => {
+  const itemId = insertOcsItem({ name: `Direct ${Date.now()}`, qty: 1 });
+  const missing = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: {
+      action_type: "stock_in",
+      quantity: 1,
+      expiry_date: "2029-06-01",
+      supplier_name: "",
+      received_date: "",
+    },
+  });
+  assert.equal(missing.status, 400, JSON.stringify(missing.data));
+  const received = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: {
+      action_type: "stock_in",
+      quantity: 1,
+      expiry_date: "2029-06-01",
+      supplier_name: "MedSupply Ltd",
+      received_date: "2026-01-10",
+    },
+  });
+  assert.equal(received.status, 201, JSON.stringify(received.data));
+  const batch = db.prepare(`
+    SELECT supplier_name, received_date FROM inventory_batches WHERE item_id = ? ORDER BY id DESC LIMIT 1
+  `).get(itemId);
+  assert.equal(batch.supplier_name, "MedSupply Ltd");
+  assert.equal(String(batch.received_date || "").slice(0, 10), "2026-01-10");
 });
 
 test("blind stocktake hides expected quantities from operators until submission", async () => {

@@ -17,6 +17,8 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
   const [quantity, setQuantity] = useState("1");
   const [expiryDate, setExpiryDate] = useState("");
   const [nonExpiring, setNonExpiring] = useState(false);
+  const [supplierName, setSupplierName] = useState("");
+  const [receivedDate, setReceivedDate] = useState(() => todayLocalDate());
   const [costPrice, setCostPrice] = useState("0.00");
   const [costVarianceReason, setCostVarianceReason] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -29,6 +31,8 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       setQuantity("1");
       setExpiryDate("");
       setNonExpiring(false);
+      setSupplierName("");
+      setReceivedDate(todayLocalDate());
       setCostPrice(String(item?.cost_price ?? 0));
       setCostVarianceReason("");
       setOverrideReason("");
@@ -52,16 +56,24 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
   const costVarianceError = costChanged && String(costVarianceReason || "").trim().length < 8
     ? "Explain the cost difference using at least 8 characters."
     : "";
+  const supplierError = supplierName.trim().length < 2 ? "Enter the supplier name." : "";
+  const receivedDateError = !receivedDate
+    ? "Enter the delivery date."
+    : receivedDate > today
+      ? "Delivery date cannot be in the future."
+      : "";
   const overrideError =
     requiresOperationalOverride(user) && String(overrideReason || "").trim().length < 10
       ? "Enter an operational override reason of at least 10 characters."
       : "";
-  const formValid = !quantityError && !expiryError && !costError && !costVarianceError && !overrideError;
+  const formValid = !quantityError && !expiryError && !costError && !costVarianceError && !supplierError && !receivedDateError && !overrideError;
   const totalCost = Number.isFinite(qty) && Number.isFinite(cost) ? qty * cost : 0;
 
   const summary = useMemo(
     () => [
       ["Item", item?.item_name || "—"],
+      ["Supplier", supplierName.trim() || "—"],
+      ["Date of delivery", receivedDate || "—"],
       ["Quantity being received", Number.isFinite(qty) ? String(qty) : "—"],
       ["Expiry", nonExpiring ? "Non-expiring" : expiryDate || "—"],
       ["Unit cost", formatRupees(cost || 0)],
@@ -70,7 +82,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       ["Current on-hand", String(currentOnHand)],
       ["Resulting on-hand", String(currentOnHand + (isPositiveWholeNumber(qty) ? qty : 0))],
     ],
-    [item?.item_name, qty, nonExpiring, expiryDate, cost, costChanged, costVarianceReason, totalCost, currentOnHand],
+    [item?.item_name, supplierName, receivedDate, qty, nonExpiring, expiryDate, cost, costChanged, costVarianceReason, totalCost, currentOnHand],
   );
 
   return (
@@ -78,7 +90,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       open={open}
       onClose={onClose}
       title={`Receive stock${item ? ` — ${item.item_name}` : ""}`}
-      description="Receive a warehouse delivery. Quantity, cost, and expiry are required so the lot can be tracked."
+      description="Exception only. A normal supplier delivery is recorded under Shipments, then added to stock."
       size="sm"
       innerScroll={false}
     >
@@ -87,7 +99,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
         onSubmit={(event) => {
           event.preventDefault();
           if (!formValid) {
-            toast.error(quantityError || expiryError || costError || costVarianceError || overrideError);
+            toast.error(quantityError || expiryError || costError || costVarianceError || supplierError || receivedDateError || overrideError);
             return;
           }
           if (step !== "confirm") {
@@ -100,6 +112,8 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
             is_non_expiring: nonExpiring,
             cost_price: cost,
             cost_variance_reason: String(costVarianceReason || "").trim(),
+            supplier_name: supplierName.trim(),
+            received_date: receivedDate,
             override_reason: overrideReason,
           });
         }}
@@ -116,6 +130,31 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
             </dl>
           ) : (
             <>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Supplier</span>
+                <input
+                  required
+                  value={supplierName}
+                  onChange={(event) => setSupplierName(event.target.value)}
+                  placeholder="Who delivered this?"
+                  className={FIELD}
+                />
+                {supplierError && supplierName ? <p className="text-xs text-rose-600">{supplierError}</p> : null}
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Date of delivery</span>
+                <input
+                  required
+                  type="date"
+                  max={today}
+                  value={receivedDate}
+                  onChange={(event) => setReceivedDate(event.target.value)}
+                  className={FIELD}
+                />
+                {receivedDateError ? <p className="text-xs text-rose-600">{receivedDateError}</p> : null}
+              </label>
+
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Quantity to receive</span>
                 <input
