@@ -37,6 +37,9 @@ test("clean inventory databases include release and recount columns", () => {
   assert.ok(items.includes("previous_count_quantity"));
   assert.ok(items.includes("previous_count_at"));
   assert.ok(items.includes("previous_count_session_id"));
+  assert.ok(items.includes("surplus_expiry_date"));
+  assert.ok(items.includes("surplus_is_non_expiring"));
+  assert.ok(items.includes("surplus_unit_cost"));
   const sessions = db.prepare("PRAGMA table_info(inventory_stocktake_sessions)").all().map((row) => row.name);
   assert.ok(sessions.includes("owner_doctor_id"));
   assert.ok(sessions.includes("scope_token"));
@@ -55,6 +58,9 @@ test("previously upgraded inventory databases keep release columns when migratio
   assert.ok(items.includes("previous_count_quantity"));
   assert.ok(items.includes("previous_count_at"));
   assert.ok(items.includes("previous_count_session_id"));
+  assert.ok(items.includes("surplus_expiry_date"));
+  assert.ok(items.includes("surplus_is_non_expiring"));
+  assert.ok(items.includes("surplus_unit_cost"));
 });
 
 test("staging migration recovers from a leftover temporary table", () => {

@@ -746,21 +746,26 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
   assert.equal(approved.status, 200, JSON.stringify(approved.data));
   const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
     token: adminToken,
+    body: { lines: [{ id: lineId, surplus_expiry_date: "2029-03-15" }] },
   });
   assert.equal(applied.status, 200, JSON.stringify(applied.data));
   assert.equal(applied.data.session.status, "applied");
   const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   assert.equal(qty, 7);
-  const surplusBatch = db.prepare(`
+  const batches = db.prepare(`
     SELECT * FROM inventory_batches
     WHERE item_id = ?
-    ORDER BY id DESC LIMIT 1
-  `).get(itemId);
+    ORDER BY id ASC
+  `).all(itemId);
+  assert.equal(batches.length, 2);
+  assert.equal(Number(batches[0].quantity_remaining), 5);
+  assert.equal(String(batches[0].expiry_date || "").slice(0, 10), "2028-06-01");
+  const surplusBatch = batches[1];
   assert.ok(surplusBatch);
   assert.equal(String(surplusBatch.status || "usable"), "usable");
   assert.equal(Number(surplusBatch.quantity_remaining), 2);
   assert.equal(Number(surplusBatch.unit_cost), 5);
-  assert.equal(String(surplusBatch.expiry_date || "").slice(0, 10), "2028-06-01");
+  assert.equal(String(surplusBatch.expiry_date || "").slice(0, 10), "2029-03-15");
   const stockState = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
   assert.equal(Number(stockState.available_to_use), 7);
   const stocktakeMovement = db.prepare(`
@@ -776,6 +781,78 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
     token: adminToken,
   });
   assert.equal(again.data.idempotent, true);
+});
+
+test("stocktake apply refuses extra counted stock without a new-lot expiry", async () => {
+  const itemId = insertOcsItem({ name: `Count no lot ${Date.now()}`, qty: 5 });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 7 }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 400, JSON.stringify(applied.data));
+  assert.match(String(applied.data.error || ""), /new lot|expiry/i);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 5);
+});
+
+test("stocktake surplus keeps the old lot and records a new expiry for extra counted stock", async () => {
+  const itemId = insertOcsItem({ name: `Alcohol pads ${Date.now()}`, qty: 50, expiry: "2027-01-01" });
+  const request = await createAcceptedRequest({ itemId, itemName: "Alcohol pads", quantity: 20 });
+  await pickAndReady(request.id);
+  const collected = await api("PATCH", `/api/restock-requests/${request.id}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(collected.status, 200, JSON.stringify(collected.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 30);
+
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 80 }] },
+  });
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  assert.equal(Number(submitted.data.session.items[0].variance), 50);
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, surplus_expiry_date: "2028-01-01" }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(String(saved.data.session.items[0].surplus_expiry_date || "").slice(0, 10), "2028-01-01");
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
+  const batches = db
+    .prepare(
+      `SELECT quantity_remaining, expiry_date FROM inventory_batches WHERE item_id = ? AND quantity_remaining > 0 ORDER BY expiry_date ASC`,
+    )
+    .all(itemId);
+  assert.equal(batches.length, 2);
+  assert.equal(Number(batches[0].quantity_remaining), 30);
+  assert.equal(String(batches[0].expiry_date || "").slice(0, 10), "2027-01-01");
+  assert.equal(Number(batches[1].quantity_remaining), 50);
+  assert.equal(String(batches[1].expiry_date || "").slice(0, 10), "2028-01-01");
 });
 
 test("admin stock count review compares this count with the last official count", async () => {
@@ -1728,6 +1805,7 @@ test("stocktake approval and application record the responsible admin", async ()
   assert.equal(approved.data.session.reviewed_by_name, adminName);
   const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
     token: adminToken,
+    body: { lines: [{ id: lineId, surplus_expiry_date: "2029-06-01" }] },
   });
   assert.equal(applied.status, 200, JSON.stringify(applied.data));
   assert.equal(applied.data.session.applied_by_name, adminName);

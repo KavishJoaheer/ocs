@@ -1795,6 +1795,14 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
           showSystem ? roundCurrency(Number(row.variance || 0) * Number(row.cost_price || 0)) : null,
         live_row_version: showSystem ? Number(row.live_row_version || 0) : null,
         live_quantity: showSystem ? Number(row.live_quantity || 0) : null,
+        surplus_expiry_date: showSystem ? row.surplus_expiry_date || null : null,
+        surplus_is_non_expiring: showSystem ? Number(row.surplus_is_non_expiring || 0) === 1 : false,
+        surplus_unit_cost:
+          showSystem && row.surplus_unit_cost != null && Number(row.surplus_unit_cost) > 0
+            ? Number(row.surplus_unit_cost)
+            : null,
+        needs_new_lot: showSystem && Number(row.variance || 0) > 0,
+        new_lot_quantity: showSystem && Number(row.variance || 0) > 0 ? Number(row.variance) : null,
       };
     });
   const counted = items.filter((row) => row.counted).length;
@@ -1906,6 +1914,81 @@ function stocktakeQueueStats(sessions = listStocktakeSessions(), { now = Date.no
       return timestamp !== null && timestamp >= sevenDaysAgo && timestamp <= now;
     }).length,
     last_completed_at: latestStoredTimestamp(completed),
+  };
+}
+
+function parseSurplusNonExpiring(value) {
+  return value === true || Number(value) === 1 || parseNonExpiringFlag(value);
+}
+
+function persistStocktakeNewLots(sessionId, lines) {
+  for (const line of lines || []) {
+    if (!line?.id) continue;
+    const current = db
+      .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ? AND id = ?")
+      .get(sessionId, line.id);
+    if (!current) continue;
+    if (!(Number(current.variance || 0) > 0)) continue;
+    const nonExpiring = parseSurplusNonExpiring(line.surplus_is_non_expiring);
+    const expiryRaw = String(line.surplus_expiry_date ?? "").trim();
+    if (!nonExpiring && expiryRaw) {
+      validateReceiptExpiry({ expiryDate: expiryRaw, isNonExpiring: false });
+    }
+    let unitCost = null;
+    if (line.surplus_unit_cost !== undefined && line.surplus_unit_cost !== null && String(line.surplus_unit_cost).trim() !== "") {
+      unitCost = roundCurrency(line.surplus_unit_cost);
+      if (!(unitCost > 0)) {
+        throw HttpError(
+          400,
+          "Unit cost for the new counted lot must be greater than zero, or leave it blank to copy the last known cost.",
+        );
+      }
+    }
+    db.prepare(`
+      UPDATE inventory_stocktake_session_items
+      SET
+        surplus_expiry_date = ?,
+        surplus_is_non_expiring = ?,
+        surplus_unit_cost = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(nonExpiring ? null : expiryRaw || null, nonExpiring ? 1 : 0, unitCost, line.id);
+  }
+}
+
+function saveStocktakeNewLots(sessionId, lines, { role } = {}) {
+  if (!["admin", "operator"].includes(String(role || ""))) {
+    throw HttpError(403, "Only operators or administrators can register a new counted lot.");
+  }
+  const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
+  if (!session) throw HttpError(404, "Stock count session not found.");
+  if (!["submitted", "approved"].includes(session.status)) {
+    throw HttpError(400, "Register the new lot after the count is submitted.");
+  }
+  db.transaction(() => {
+    persistStocktakeNewLots(sessionId, lines);
+    db.prepare("UPDATE inventory_stocktake_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sessionId);
+  })();
+  return getStocktakeSession(sessionId, { role });
+}
+
+function surplusLotForApply(line, item) {
+  const variance = Number(line.variance);
+  const nonExpiring = Number(line.surplus_is_non_expiring || 0) === 1;
+  const expiryRaw = String(line.surplus_expiry_date || "").trim();
+  if (!nonExpiring && !expiryRaw) {
+    throw HttpError(
+      400,
+      `Enter the expiry date for the extra ${variance} counted unit(s) of ${item.item_name}. Extra counted stock is a new lot, not the previous expiry.`,
+    );
+  }
+  const expiry = validateReceiptExpiry({ expiryDate: expiryRaw, isNonExpiring: nonExpiring });
+  const identity = lastKnownBatchIdentity(item.id);
+  const unitCost = Number(line.surplus_unit_cost) > 0 ? Number(line.surplus_unit_cost) : identity.unit_cost;
+  return {
+    expiry_date: expiry.expiryDate,
+    is_non_expiring: expiry.isNonExpiring ? 1 : 0,
+    unit_cost: unitCost,
   };
 }
 
@@ -2345,7 +2428,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         consumeAllocatedBatches(preview.allocations);
         allocations = preview.allocations;
       } else {
-        const identity = lastKnownBatchIdentity(item.id);
+        const surplus = surplusLotForApply(line, item);
         const inserted = db.prepare(`
           INSERT INTO inventory_batches (
             item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status
@@ -2353,16 +2436,16 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         `).run(
           item.id,
           variance,
-          identity.is_non_expiring ? null : identity.expiry_date,
-          identity.unit_cost,
-          identity.is_non_expiring,
+          surplus.is_non_expiring ? null : surplus.expiry_date,
+          surplus.unit_cost,
+          surplus.is_non_expiring,
         );
         allocations = [{
           batch_id: Number(inserted.lastInsertRowid),
           quantity: variance,
-          expiry_date: identity.is_non_expiring ? null : identity.expiry_date,
-          is_non_expiring: Boolean(identity.is_non_expiring),
-          unit_cost: identity.unit_cost,
+          expiry_date: surplus.is_non_expiring ? null : surplus.expiry_date,
+          is_non_expiring: Boolean(surplus.is_non_expiring),
+          unit_cost: surplus.unit_cost,
         }];
       }
       updateInventoryQuantity(item.id, next);
@@ -2500,6 +2583,7 @@ module.exports = {
   recountStocktakeLines,
   reviewStocktakeSession,
   saveStocktakeCounts,
+  saveStocktakeNewLots,
   shipmentCumulativeSummary,
   shipmentQueueStats,
   shipmentReceipt,

@@ -2815,6 +2815,9 @@ function ensureInventoryOperationsSchema() {
       previous_count_quantity INTEGER,
       previous_count_at TEXT,
       previous_count_session_id INTEGER,
+      surplus_expiry_date TEXT,
+      surplus_is_non_expiring INTEGER NOT NULL DEFAULT 0,
+      surplus_unit_cost REAL,
       counted_by_user_id INTEGER,
       counted_at TEXT,
       reason TEXT NOT NULL DEFAULT '',
@@ -2939,6 +2942,21 @@ function ensureInventoryIntegritySchema() {
     "inventory_stocktake_sessions",
     "scope_snapshot_json",
     "ALTER TABLE inventory_stocktake_sessions ADD COLUMN scope_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_session_items",
+    "surplus_expiry_date",
+    "ALTER TABLE inventory_stocktake_session_items ADD COLUMN surplus_expiry_date TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_session_items",
+    "surplus_is_non_expiring",
+    "ALTER TABLE inventory_stocktake_session_items ADD COLUMN surplus_is_non_expiring INTEGER NOT NULL DEFAULT 0",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_session_items",
+    "surplus_unit_cost",
+    "ALTER TABLE inventory_stocktake_session_items ADD COLUMN surplus_unit_cost REAL",
   );
   addColumnIfMissing(
     "restock_requests",

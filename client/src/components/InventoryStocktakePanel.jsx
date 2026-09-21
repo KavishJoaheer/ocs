@@ -51,6 +51,63 @@ function isCountMismatch(line) {
   return Number(line?.variance || 0) !== 0;
 }
 
+function isSurplusCount(line) {
+  return Number(line?.variance || 0) > 0;
+}
+
+function surplusLotReady(line) {
+  return Boolean(line?.surplus_is_non_expiring) || Boolean(String(line?.surplus_expiry_date || "").trim());
+}
+
+function SurplusLotFields({ line, disabled, onChange }) {
+  const extra = Number(line.variance || 0);
+  const nonExpiring = Boolean(line.surplus_is_non_expiring);
+  return (
+    <div className="space-y-2 rounded-xl border border-amber-200 bg-white px-3 py-3">
+      <p className="font-semibold text-slate-900">{line.item_name}</p>
+      <p className="text-xs text-slate-600">
+        Extra {extra} {extra === 1 ? "becomes" : "become"} a new lot. The old lot and its expiry stay as they are.
+      </p>
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={nonExpiring}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({
+              surplus_is_non_expiring: event.target.checked,
+              surplus_expiry_date: event.target.checked ? "" : line.surplus_expiry_date,
+            })
+          }
+        />
+        Does not expire
+      </label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">
+        New lot expiry
+        <input
+          type="date"
+          disabled={disabled || nonExpiring}
+          value={String(line.surplus_expiry_date || "").slice(0, 10)}
+          onChange={(event) => onChange({ surplus_expiry_date: event.target.value, surplus_is_non_expiring: false })}
+          className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-800"
+        />
+      </label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">
+        Unit cost (optional — leave blank to copy last known)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          disabled={disabled}
+          value={line.surplus_unit_cost ?? ""}
+          onChange={(event) => onChange({ surplus_unit_cost: event.target.value })}
+          className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-800"
+        />
+      </label>
+    </div>
+  );
+}
+
 function hasUnexplainedMovement(line) {
   return Number(line?.unexplained_movement_quantity || 0) !== 0;
 }
@@ -328,11 +385,46 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     }
   }
 
+  function surplusPayloadLines() {
+    return (active?.items || [])
+      .filter((line) => isSurplusCount(line))
+      .map((line) => ({
+        id: line.id,
+        surplus_expiry_date: line.surplus_expiry_date || "",
+        surplus_is_non_expiring: Boolean(line.surplus_is_non_expiring),
+        surplus_unit_cost: line.surplus_unit_cost ?? "",
+      }));
+  }
+
+  async function saveNewLots() {
+    if (!active) return;
+    const lines = surplusPayloadLines();
+    if (!lines.length) return;
+    setSaving(true);
+    try {
+      const payload = await api.patch(`/inventory/stocktake/sessions/${active.id}/new-lots`, { lines });
+      setActive(payload.session);
+      toast.success("New lot details saved.");
+    } catch (error) {
+      toast.error(error.message || "Could not save new lot details.");
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function applySession() {
     if (!active || applying) return;
+    const surplusLines = surplusPayloadLines();
+    if (surplusLines.length && surplusLines.some((line) => !surplusLotReady(line))) {
+      toast.error("Enter the new lot expiry for extra counted stock before applying.");
+      return;
+    }
     setApplying(true);
     try {
-      const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/apply`);
+      const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/apply`, {
+        lines: surplusLines,
+      });
       setActive(payload.session);
       toast.success(payload.idempotent ? "Adjustments were already applied." : "Approved variances applied.");
       await onApplied?.();
@@ -369,6 +461,13 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     }));
   }
 
+  function updateSurplus(id, patch) {
+    setActive((current) => ({
+      ...current,
+      items: current.items.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    }));
+  }
+
   const rows = active?.items || [];
   const submitted = ["submitted", "approved", "rejected", "applied"].includes(active?.status);
   const recountRequired = active?.status === "recount_required";
@@ -377,6 +476,11 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const counted = Number(active?.counted_count || rows.filter((row) => !isBlankCount(row.physical_quantity)).length);
   const total = Number(active?.item_count || rows.length);
   const progress = total ? Math.round((counted / total) * 100) : 0;
+  const surplusRows = submitted ? rows.filter((line) => isSurplusCount(line)) : [];
+  const canEditNewLots = Boolean(
+    (canCount || canReview) && active && ["submitted", "approved"].includes(active.status),
+  );
+  const surplusLotsReady = surplusRows.every((line) => surplusLotReady(line));
   const mismatchRows = rows.filter((line) => isCountMismatch(line) || hasUnexplainedMovement(line));
   const visibleRows = submitted && reviewMismatchesOnly
     ? mismatchRows
@@ -524,6 +628,11 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
               <p className="mt-1">Matches expected: <strong>{Math.max(0, (active.counted_count || 0) - (active.discrepancy_count || 0))}</strong></p>
               <p>Does not match: <strong className={Number(active.discrepancy_count || 0) > 0 ? "text-rose-700" : ""}>{active.discrepancy_count ?? 0}</strong></p>
               <p>Total quantity difference: <strong>{formatSignedCount(active.open_variance_qty)}</strong></p>
+              {surplusRows.length ? (
+                <p className="mt-2 text-sm text-amber-900">
+                  Extra counted stock is a new lot. Prefer receiving the delivery first, then counting. If you counted the new supply here, enter its expiry below so the old lot stays unchanged.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -704,6 +813,30 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
             </div>
           )}
 
+          {surplusRows.length ? (
+            <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-950">New lots from extra counted stock</p>
+              {surplusRows.map((line) => (
+                <SurplusLotFields
+                  key={line.id}
+                  line={line}
+                  disabled={!canEditNewLots}
+                  onChange={(patch) => updateSurplus(line.id, patch)}
+                />
+              ))}
+              {canEditNewLots ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void saveNewLots().catch(() => {})}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
+                >
+                  {saving ? "Saving…" : "Save new lot details"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           {!submitted ? (
               <>
@@ -775,7 +908,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
             {canReview && active.status === "approved" && !isClosedSession(active.status) ? (
               <button
                 type="button"
-                disabled={applying}
+                disabled={applying || (surplusRows.length > 0 && !surplusLotsReady)}
                 onClick={applySession}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
               >

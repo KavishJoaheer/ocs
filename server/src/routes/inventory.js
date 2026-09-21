@@ -52,6 +52,7 @@ const {
   releaseStagingRows,
   reviewStocktakeSession,
   saveStocktakeCounts,
+  saveStocktakeNewLots,
   shipmentQueueStats,
   stocktakeQueueStats,
   submitStocktakeSession,
@@ -4638,6 +4639,22 @@ router.post("/stocktake/sessions/:id/submit", (req, res) => {
   }
 });
 
+router.patch("/stocktake/sessions/:id/new-lots", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only operators or administrators can register a new counted lot." });
+  }
+  try {
+    const session = saveStocktakeNewLots(Number(req.params.id), req.body?.lines || [], {
+      role: req.auth.role,
+    });
+    return res.json({ session });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
+
 router.post("/stocktake/sessions/:id/review", (req, res) => {
   ensureInfrastructure();
   try {
@@ -4660,6 +4677,9 @@ router.post("/stocktake/sessions/:id/apply", (req, res) => {
     return res.status(403).json({ error: "Only an admin can apply stock count adjustments." });
   }
   try {
+    if (Array.isArray(req.body?.lines) && req.body.lines.length) {
+      saveStocktakeNewLots(Number(req.params.id), req.body.lines, { role: req.auth.role });
+    }
     const result = applyStocktakeSession(Number(req.params.id), req.auth.id, {
         displayName: req.auth.full_name || req.auth.username || "",
         role: req.auth.role,
