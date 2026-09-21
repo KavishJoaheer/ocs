@@ -580,6 +580,32 @@ test.describe("Inventory workflow", () => {
     }
   });
 
+  test("a completed batch expiry can be corrected from the stock list", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Edit Expiry ${Date.now()}`,
+      quantity: 4,
+      expiryDate: "2027-03-21",
+    });
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: "Stock", exact: true }).click();
+    await page.getByLabel("Search stock items").fill(item.item_name);
+    await page.getByRole("button", { name: `Show details for ${item.item_name}` }).click();
+    await page.getByRole("button", { name: "Edit expiry / cost" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit expiry / cost" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Verified expiry date").fill("2028-01-15");
+    await dialog.getByLabel("Evidence checked").fill("Package label shows 15 Jan 2028");
+    await dialog.getByRole("button", { name: "Save batch details" }).click();
+    await expect(page.getByText("Batch data saved.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("2028-01-15")).toBeVisible();
+  });
+
   test("stock counting is completed through the inventory Stock Count UI", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");

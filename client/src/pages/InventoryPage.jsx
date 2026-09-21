@@ -5213,13 +5213,13 @@ export default function InventoryPage() {
                                             {batch.supplier_name ? ` · ${batch.supplier_name}` : ""}
                                             {batch.received_date ? ` · delivered ${formatInventoryExpiry(batch.received_date)}` : ""}
                                           </span>
-                                          {canManageOcs && (batch.missing_expiry || Number(batch.unit_cost || 0) <= 0) ? (
+                                          {canManageOcs ? (
                                             <button
                                               type="button"
                                               onClick={() => setBatchOpeningData({ item, batch })}
                                               className="min-h-9 rounded-xl bg-slate-100 px-3 text-xs font-black text-slate-800"
                                             >
-                                              Add expiry / cost
+                                              {batch.missing_expiry || Number(batch.unit_cost || 0) <= 0 ? "Add expiry / cost" : "Edit expiry / cost"}
                                             </button>
                                           ) : null}
                                         </div>

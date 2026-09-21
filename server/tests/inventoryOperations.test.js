@@ -4489,3 +4489,32 @@ test("operators can add expiry and cost to opening lots", async () => {
   assert.equal(after.available_to_use, 2);
   assert.equal(after.valuation_complete, true);
 });
+
+test("a completed batch expiry and cost can be corrected", async () => {
+  const itemId = insertOcsItem({ name: `Correct expiry ${Date.now()}`, qty: 10, expiry: "2027-03-21" });
+  const batch = db.prepare("SELECT id, row_version FROM inventory_batches WHERE item_id = ?").get(itemId);
+  const corrected = await api("PATCH", `/api/inventory/batches/${batch.id}/opening-data`, {
+    token: operatorToken,
+    body: {
+      operation_id: `correct-expiry-${Date.now()}`,
+      unit_cost: 18,
+      expiry_date: "2028-01-01",
+      is_non_expiring: false,
+      expected_row_version: Number(batch.row_version || 1),
+      reason: "Package label shows 1 Jan 2028 and invoice cost 18",
+      confirm: true,
+    },
+  });
+  assert.equal(corrected.status, 200, JSON.stringify(corrected.data));
+  const stored = db.prepare("SELECT expiry_date, unit_cost FROM inventory_batches WHERE id = ?").get(batch.id);
+  assert.equal(String(stored.expiry_date || "").slice(0, 10), "2028-01-01");
+  assert.equal(Number(stored.unit_cost), 18);
+  const audit = db.prepare(`
+    SELECT meta_json FROM inventory_audit_logs
+    WHERE action_type = 'verify_opening_batch_data' AND item_id = ?
+    ORDER BY id DESC LIMIT 1
+  `).get(itemId);
+  const meta = JSON.parse(audit.meta_json);
+  assert.equal(String(meta.previous_expiry_date || "").slice(0, 10), "2027-03-21");
+  assert.equal(String(meta.verified_expiry_date || "").slice(0, 10), "2028-01-01");
+});

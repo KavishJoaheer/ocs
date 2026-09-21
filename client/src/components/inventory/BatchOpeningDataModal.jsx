@@ -4,11 +4,17 @@ import Modal from "../Modal.jsx";
 
 const FIELD = "min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-[#2d8f98] focus:bg-white";
 
+function dateInputValue(value) {
+  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
+}
+
 export default function BatchOpeningDataModal({ open, item, batch, isSaving, onClose, onSubmit }) {
   const isNewBatch = !batch?.id;
+  const editing = Boolean(batch?.id) && !batch?.missing_expiry && Number(batch?.unit_cost || 0) > 0;
   const [form, setForm] = useState(() => ({
     unit_cost: Number(batch?.unit_cost || 0) > 0 ? String(batch.unit_cost) : "",
-    expiry_date: batch?.expiry_date || "",
+    expiry_date: dateInputValue(batch?.expiry_date),
     is_non_expiring: Boolean(batch?.is_non_expiring),
     reason: "",
   }));
@@ -22,8 +28,10 @@ export default function BatchOpeningDataModal({ open, item, batch, isSaving, onC
     <Modal
       open={open}
       onClose={onClose}
-      title="Add expiry / cost"
-      description="Record cost and expiry from the invoice or package label. Stock is already available; this completes the item record."
+      title={editing ? "Edit expiry / cost" : "Add expiry / cost"}
+      description={editing
+        ? "Correct the expiry or cost for this lot. The previous values stay in the history."
+        : "Record cost and expiry from the invoice or package label. Stock is already available; this completes the item record."}
       size="sm"
     >
       <form
@@ -49,7 +57,7 @@ export default function BatchOpeningDataModal({ open, item, batch, isSaving, onC
             {item?.item_name || "Inventory item"}{isNewBatch ? " · Unbatched opening stock" : ` · Batch #${batch?.id}`}
           </p>
           <p className="mt-1">
-            On hand {Number(batch?.quantity_remaining || item?.unbatched_quantity || 0)}. These units can already be used; adding cost and expiry keeps valuation and expiry alerts accurate.
+            On hand {Number(batch?.quantity_remaining || item?.unbatched_quantity || 0)}. These units can already be used. {editing ? "A change here updates which lot is used first." : "Adding cost and expiry keeps valuation and expiry alerts accurate."}
           </p>
         </div>
         <label className="block space-y-2">
@@ -68,7 +76,7 @@ export default function BatchOpeningDataModal({ open, item, batch, isSaving, onC
         ) : null}
         <label className="block space-y-2">
           <span className="text-sm font-bold text-slate-700">Evidence checked</span>
-          <textarea required minLength={10} rows={3} value={form.reason} onChange={(event) => setForm((value) => ({ ...value, reason: event.target.value }))} className={`${FIELD} py-3`} placeholder="e.g. Supplier invoice INV-104 and package label checked" />
+          <textarea required minLength={10} rows={3} value={form.reason} onChange={(event) => setForm((value) => ({ ...value, reason: event.target.value }))} className={`${FIELD} py-3`} placeholder={editing ? "Why this expiry or cost is changing" : "e.g. Supplier invoice INV-104 and package label checked"} />
           <span className="text-xs text-slate-500">This note is retained in the immutable audit history.</span>
         </label>
         <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
