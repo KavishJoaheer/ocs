@@ -877,6 +877,167 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
   assert.equal(String(batches[1].received_date || "").slice(0, 10), "2026-01-10");
 });
 
+test("extra counted stock waits for an incoming shipment instead of becoming a second lot", async () => {
+  const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
+  const name = `Pads incoming ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 30, folder: consumable.id, expiry: "2027-01-01" });
+  const csv = [
+    "folder,item_name,quantity,cost_price,expiry_date",
+    `${consumable.name},${name},50,5,2028-01-01`,
+  ].join("\n");
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: csv,
+      supplier: "MedSupply Ltd",
+      received_date: "2026-01-10",
+      delivery_note: `DN-HOLD-${Date.now()}`,
+    },
+  });
+  assert.equal(imported.status, 201, JSON.stringify(imported.data));
+  const shipmentId = imported.data.import_summary.shipment_id;
+
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 80 }] },
+  });
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  assert.equal(Number(submitted.data.session.items[0].pending_shipment_quantity), 50);
+  assert.equal(Number(submitted.data.session.items[0].pending_shipments[0].shipment_id), shipmentId);
+
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: {
+      lines: [{
+        id: lineId,
+        surplus_expiry_date: "2028-01-01",
+        surplus_supplier_name: "MedSupply Ltd",
+        surplus_received_date: "2026-01-10",
+      }],
+    },
+  });
+  assert.equal(saved.status, 409, JSON.stringify(saved.data));
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 409, JSON.stringify(applied.data));
+  assert.match(String(applied.data.error || ""), /shipment/i);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 30);
+
+  const released = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "all_valid" },
+  });
+  assert.ok([200, 201].includes(released.status), JSON.stringify(released.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
+  const blockedApply = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(blockedApply.status, 409, JSON.stringify(blockedApply.data));
+  assert.equal(blockedApply.data.session.status, "recount_required");
+  const conflicted = blockedApply.data.session.items[0];
+  const recounted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/recount`, {
+    token: operatorToken,
+    body: {
+      lines: [{
+        id: lineId,
+        physical_quantity: 80,
+        conflict_detected_at: conflicted.conflict_detected_at,
+        expected_row_version: conflicted.live_row_version,
+      }],
+    },
+  });
+  assert.equal(recounted.status, 200, JSON.stringify(recounted.data));
+  assert.equal(Number(recounted.data.session.items[0].variance), 0);
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, { token: operatorToken });
+  const reviewed = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
+  assert.equal(reviewed.data.session.status, "applied");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
+  const batches = db
+    .prepare("SELECT quantity_remaining, supplier_name FROM inventory_batches WHERE item_id = ? AND quantity_remaining > 0")
+    .all(itemId);
+  assert.equal(batches.length, 2);
+  assert.equal(batches.filter((batch) => String(batch.supplier_name || "") === "MedSupply Ltd").length, 1);
+});
+
+test("a shipment cannot add a delivery that a stock count already recorded", async () => {
+  const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
+  const name = `Pads twice ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 30, folder: consumable.id, expiry: "2027-01-01" });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 80 }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, { token: operatorToken });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: {
+      lines: [{
+        id: lineId,
+        surplus_expiry_date: "2028-01-01",
+        surplus_supplier_name: "MedSupply Ltd",
+        surplus_received_date: "2026-01-10",
+      }],
+    },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
+
+  async function importAndRelease({ quantity, receivedDate }) {
+    const csv = [
+      "folder,item_name,quantity,cost_price,expiry_date",
+      `${consumable.name},${name},${quantity},5,2028-01-01`,
+    ].join("\n");
+    const imported = await api("POST", "/api/inventory/staging/import-csv", {
+      token: operatorToken,
+      body: {
+        csv_text: csv,
+        supplier: "MedSupply Ltd",
+        received_date: receivedDate,
+        delivery_note: `DN-${quantity}-${receivedDate}-${randomUUID()}`,
+      },
+    });
+    assert.equal(imported.status, 201, JSON.stringify(imported.data));
+    return api("POST", `/api/inventory/shipments/${imported.data.import_summary.shipment_id}/release`, {
+      token: operatorToken,
+      body: { mode: "all_valid" },
+    });
+  }
+
+  const sameDelivery = await importAndRelease({ quantity: 50, receivedDate: "2026-01-10" });
+  assert.equal(sameDelivery.status, 409, JSON.stringify(sameDelivery.data));
+  assert.match(String(sameDelivery.data.error || ""), /same delivery/i);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
+
+  const differentQuantity = await importAndRelease({ quantity: 40, receivedDate: "2026-01-10" });
+  assert.ok([200, 201].includes(differentQuantity.status), JSON.stringify(differentQuantity.data));
+  const laterDelivery = await importAndRelease({ quantity: 50, receivedDate: "2026-02-02" });
+  assert.ok([200, 201].includes(laterDelivery.status), JSON.stringify(laterDelivery.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 170);
+});
+
 test("admin stock count review compares this count with the last official count", async () => {
   const itemId = insertOcsItem({ name: `CountCompare ${Date.now()}`, qty: 100 });
   const first = await startStocktakeSession({ item_ids: [itemId] });

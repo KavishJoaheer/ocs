@@ -612,6 +612,52 @@ test.describe("Inventory workflow", () => {
     });
   });
 
+  test("a count shows an incoming shipment instead of a second lot", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Incoming Count ${Date.now()}`,
+      quantity: 30,
+    });
+    const imported = await request.post(`${API_BASE}/inventory/staging/import-csv`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: {
+        csv_text: [
+          "folder,item_name,quantity,cost_price,expiry_date",
+          `${item.folder_name},${item.item_name},50,5,2028-01-01`,
+        ].join("\n"),
+        supplier: "MedSupply Ltd",
+        received_date: "2026-01-10",
+        delivery_note: `E2E-HOLD-${Date.now()}`,
+        operation_id: `e2e-hold-${Date.now()}`,
+      },
+    });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    const created = await startStocktakeSession(request, operator.token, { itemIds: [item.id] });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const session = (await apiJson(created)).session;
+    const lineId = session.items[0].id;
+    const saved = await request.patch(`${API_BASE}/inventory/stocktake/sessions/${session.id}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { lines: [{ id: lineId, physical_quantity: 80 }] },
+    });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    const submitted = await request.post(`${API_BASE}/inventory/stocktake/sessions/${session.id}/submit`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    expect(submitted.ok(), await submitted.text()).toBeTruthy();
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: "Stock Count" }).click();
+    await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
+    await expect(page.getByText(/waiting to be added to stock/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "This was a delivery that was not received" })).toHaveCount(0);
+  });
+
   test("stale clients see an update banner and do not auto-reload dirty forms", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     const deployedSha = `deployed-${Date.now()}`;

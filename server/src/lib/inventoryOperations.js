@@ -769,6 +769,21 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
   }
   const receiptIdentity = shipmentReceiptIdentity(shipmentId);
   return db.transaction(() => {
+    for (const row of pending) {
+      const match = matchCatalogueForStagingRow(row);
+      if (!match.catalogue) continue;
+      const repeat = countedLotRepeatingShipment(match.catalogue.id, {
+        supplierName: receiptIdentity.supplier_name,
+        receivedDate: receiptIdentity.received_date,
+        quantity: Number(row.quantity || 0),
+      });
+      if (!repeat) continue;
+      const countLabel = repeat.session_id ? `stock count #${repeat.session_id}` : "a stock count";
+      throw HttpError(
+        409,
+        `${match.catalogue.item_name}: ${repeat.quantity} from ${receiptIdentity.supplier_name} on ${receiptIdentity.received_date} was already added from ${countLabel}. Leave this line out of the shipment, or the shelf will count the same delivery twice.`,
+      );
+    }
     const transactionId = createTransferTransactionId();
     const movementIds = [];
     const releasedIds = [];
@@ -1861,6 +1876,9 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
     `)
     .all(session.id);
   const intervalMovements = showSystem ? loadStocktakeIntervalMovements(session, itemRows) : new Map();
+  const pendingByItem = showSystem && !Number(session.owner_doctor_id || 0)
+    ? loadPendingShipmentsByCatalogueId()
+    : new Map();
   const items = itemRows
     .map((row) => {
       const counted = row.physical_quantity !== null && row.physical_quantity !== undefined;
@@ -1870,6 +1888,7 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
       const movementsSince = showSystem ? intervalMovements.get(Number(row.inventory_id)) || [] : [];
       const explained = movementsSince.reduce((sum, entry) => sum + Number(entry.signed_quantity || 0), 0);
       const unexplained = movementSince == null ? null : movementSince - explained;
+      const pending = pendingByItem.get(Number(row.inventory_id)) || { quantity: 0, shipments: [] };
       return {
         ...row,
         counted,
@@ -1900,6 +1919,8 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
         surplus_received_date: showSystem ? row.surplus_received_date || null : null,
         needs_new_lot: showSystem && Number(row.variance || 0) > 0,
         new_lot_quantity: showSystem && Number(row.variance || 0) > 0 ? Number(row.variance) : null,
+        pending_shipment_quantity: showSystem ? pending.quantity : 0,
+        pending_shipments: showSystem ? pending.shipments : [],
       };
     });
   const counted = items.filter((row) => row.counted).length;
@@ -2058,6 +2079,11 @@ function persistStocktakeNewLots(sessionId, lines) {
       .get(sessionId, line.id);
     if (!current) continue;
     if (!(Number(current.variance || 0) > 0)) continue;
+    const coverage = loadPendingShipmentsByCatalogueId().get(Number(current.inventory_id));
+    if (coverage?.quantity > 0) {
+      const item = db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(current.inventory_id);
+      throw HttpError(409, pendingShipmentHoldMessage(item || { item_name: "This item" }, coverage));
+    }
     const nonExpiring = parseSurplusNonExpiring(line.surplus_is_non_expiring);
     const expiryRaw = String(line.surplus_expiry_date ?? "").trim();
     if (!nonExpiring && expiryRaw) {
@@ -2110,6 +2136,90 @@ function saveStocktakeNewLots(sessionId, lines, { role } = {}) {
     db.prepare("UPDATE inventory_stocktake_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sessionId);
   })();
   return getStocktakeSession(sessionId, { role });
+}
+
+function loadPendingShipmentsByCatalogueId() {
+  const rows = db
+    .prepare(
+      `
+      SELECT st.item_name, st.quantity, st.shipment_id,
+             sh.supplier, sh.delivery_note, sh.received_date
+      FROM inventory_staging st
+      INNER JOIN inventory_shipments sh ON sh.id = st.shipment_id
+      WHERE st.status = 'pending' AND st.quantity > 0
+    `,
+    )
+    .all();
+  const grouped = new Map();
+  for (const row of rows) {
+    const catalogue = findOcsCatalogueItemByName(row.item_name);
+    if (!catalogue) continue;
+    const key = Number(catalogue.id);
+    const entry = grouped.get(key) || { quantity: 0, shipments: [] };
+    const qty = Number(row.quantity || 0);
+    const shipmentId = Number(row.shipment_id);
+    entry.quantity += qty;
+    const existing = entry.shipments.find((shipment) => shipment.shipment_id === shipmentId);
+    if (existing) {
+      existing.quantity += qty;
+    } else {
+      entry.shipments.push({
+        shipment_id: shipmentId,
+        quantity: qty,
+        supplier: String(row.supplier || "").trim(),
+        delivery_note: String(row.delivery_note || "").trim(),
+        received_date: String(row.received_date || "").slice(0, 10),
+      });
+    }
+    grouped.set(key, entry);
+  }
+  return grouped;
+}
+
+function pendingShipmentHoldMessage(item, coverage) {
+  const shipments = coverage?.shipments || [];
+  const first = shipments[0];
+  const where = shipments.length === 1 && first
+    ? `shipment #${first.shipment_id}`
+    : `${shipments.length} incoming shipments`;
+  return `${item.item_name} still has ${coverage.quantity} on ${where} that is not in stock yet. Add that shipment to stock, then recount. This extra is not a second delivery.`;
+}
+
+function countedLotRepeatingShipment(itemId, { supplierName, receivedDate, quantity }) {
+  const supplier = String(supplierName || "").trim().toLowerCase();
+  const date = String(receivedDate || "").slice(0, 10);
+  const qty = Number(quantity || 0);
+  if (supplier.length < 2 || !isIsoDate(date) || !Number.isInteger(qty) || qty <= 0) return null;
+  const rows = db
+    .prepare(
+      `
+      SELECT b.quantity_remaining, b.supplier_name, b.received_date, a.quantity AS added_quantity, m.meta_json
+      FROM inventory_batches b
+      JOIN inventory_movement_allocations a ON a.batch_id = b.id
+      JOIN inventory_movements m ON m.id = a.movement_id
+      WHERE b.item_id = ?
+        AND b.quantity_remaining > 0
+        AND json_extract(m.meta_json, '$.valuation_basis') = 'stocktake_surplus'
+    `,
+    )
+    .all(Number(itemId));
+  for (const row of rows) {
+    if (Number(row.added_quantity) !== qty) continue;
+    if (Number(row.quantity_remaining) < qty) continue;
+    if (String(row.supplier_name || "").trim().toLowerCase() !== supplier) continue;
+    if (String(row.received_date || "").slice(0, 10) !== date) continue;
+    let meta = {};
+    try {
+      meta = JSON.parse(row.meta_json || "{}");
+    } catch {
+      meta = {};
+    }
+    return {
+      session_id: Number(meta.stocktake_session_id || 0) || null,
+      quantity: qty,
+    };
+  }
+  return null;
 }
 
 function surplusLotForApply(line, item) {
@@ -2549,6 +2659,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       throw error;
     }
     const transactionId = `ST-${sessionId}-${Date.now().toString(36).toUpperCase()}`;
+    const pendingByItem = Number(locked.owner_doctor_id || 0) ? new Map() : loadPendingShipmentsByCatalogueId();
     const applyItems = db
       .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
       .all(sessionId);
@@ -2578,6 +2689,10 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         consumeAllocatedBatches(preview.allocations);
         allocations = preview.allocations;
       } else {
+        const coverage = pendingByItem.get(Number(item.id));
+        if (coverage?.quantity > 0) {
+          throw HttpError(409, pendingShipmentHoldMessage(item, coverage));
+        }
         const surplus = surplusLotForApply(line, item);
         const inserted = db.prepare(`
           INSERT INTO inventory_batches (
