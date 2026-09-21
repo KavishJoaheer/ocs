@@ -5205,6 +5205,8 @@ export default function InventoryPage() {
                                         <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2 text-sm text-slate-700">
                                           <span>
                                             Batch #{batch.id} · Qty {batch.quantity_remaining} · {batch.expiry_label || formatStockExpiryLabel(batch)} · Cost {formatRupees(batch.unit_cost)}
+                                            {batch.supplier_name ? ` · ${batch.supplier_name}` : ""}
+                                            {batch.received_date ? ` · delivered ${formatInventoryExpiry(batch.received_date)}` : ""}
                                           </span>
                                           {canManageOcs && (batch.missing_expiry || Number(batch.unit_cost || 0) <= 0) ? (
                                             <button

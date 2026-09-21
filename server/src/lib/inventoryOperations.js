@@ -762,7 +762,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
       throw HttpError(400, `${row.item_name || "Row"}: ${errors.join("; ")}`);
     }
   }
-  const seen = new Set();
+    const seen = new Set();
   for (const row of pending) {
     const id = Number(row.id);
     if (seen.has(id)) {
@@ -770,6 +770,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
     }
     seen.add(id);
   }
+  const receiptIdentity = shipmentReceiptIdentity(shipmentId);
   return db.transaction(() => {
     const transactionId = createTransferTransactionId();
     const movementIds = [];
@@ -797,14 +798,18 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
       }
       const result = upsertOcsFromStaging(row);
       const insertedBatch = db.prepare(`
-        INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO inventory_batches (
+          item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name, received_date
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
         result.id,
         Number(row.quantity || 0),
         Number(row.is_non_expiring || 0) === 1 ? null : row.expiry_date || null,
         roundCurrency(row.cost_price || 0),
         Number(row.is_non_expiring || 0) === 1 ? 1 : 0,
+        receiptIdentity.supplier_name,
+        receiptIdentity.received_date,
       );
       const batchId = Number(insertedBatch.lastInsertRowid);
       db.prepare(`
@@ -1801,6 +1806,8 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
           showSystem && row.surplus_unit_cost != null && Number(row.surplus_unit_cost) > 0
             ? Number(row.surplus_unit_cost)
             : null,
+        surplus_supplier_name: showSystem ? String(row.surplus_supplier_name || "").trim() : "",
+        surplus_received_date: showSystem ? row.surplus_received_date || null : null,
         needs_new_lot: showSystem && Number(row.variance || 0) > 0,
         new_lot_quantity: showSystem && Number(row.variance || 0) > 0 ? Number(row.variance) : null,
       };
@@ -1917,6 +1924,37 @@ function stocktakeQueueStats(sessions = listStocktakeSessions(), { now = Date.no
   };
 }
 
+function parseSupplierName(value) {
+  return String(value || "").trim().slice(0, 120);
+}
+
+function parseReceivedDate(value, { required = false } = {}) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    if (required) throw HttpError(400, "Enter the delivery date for the new counted lot.");
+    return null;
+  }
+  if (!isIsoDate(raw)) {
+    throw HttpError(400, "Delivery date must be a valid calendar date (YYYY-MM-DD).");
+  }
+  if (raw > getTodayLocal()) {
+    throw HttpError(400, "Delivery date cannot be in the future.");
+  }
+  return raw;
+}
+
+function shipmentReceiptIdentity(shipmentId) {
+  if (!shipmentId) return { supplier_name: "", received_date: getTodayLocal() };
+  const shipment = db
+    .prepare("SELECT supplier, imported_at FROM inventory_shipments WHERE id = ?")
+    .get(Number(shipmentId));
+  const imported = String(shipment?.imported_at || "").slice(0, 10);
+  return {
+    supplier_name: parseSupplierName(shipment?.supplier),
+    received_date: isIsoDate(imported) ? imported : getTodayLocal(),
+  };
+}
+
 function parseSurplusNonExpiring(value) {
   return value === true || Number(value) === 1 || parseNonExpiringFlag(value);
 }
@@ -1944,15 +1982,26 @@ function persistStocktakeNewLots(sessionId, lines) {
         );
       }
     }
+    const supplierName = parseSupplierName(line.surplus_supplier_name);
+    const receivedDate = parseReceivedDate(line.surplus_received_date);
     db.prepare(`
       UPDATE inventory_stocktake_session_items
       SET
         surplus_expiry_date = ?,
         surplus_is_non_expiring = ?,
         surplus_unit_cost = ?,
+        surplus_supplier_name = ?,
+        surplus_received_date = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(nonExpiring ? null : expiryRaw || null, nonExpiring ? 1 : 0, unitCost, line.id);
+    `).run(
+      nonExpiring ? null : expiryRaw || null,
+      nonExpiring ? 1 : 0,
+      unitCost,
+      supplierName,
+      receivedDate,
+      line.id,
+    );
   }
 }
 
@@ -1983,12 +2032,22 @@ function surplusLotForApply(line, item) {
     );
   }
   const expiry = validateReceiptExpiry({ expiryDate: expiryRaw, isNonExpiring: nonExpiring });
+  const supplierName = parseSupplierName(line.surplus_supplier_name);
+  if (supplierName.length < 2) {
+    throw HttpError(
+      400,
+      `Enter the supplier name for the extra ${variance} counted unit(s) of ${item.item_name}.`,
+    );
+  }
+  const receivedDate = parseReceivedDate(line.surplus_received_date, { required: true });
   const identity = lastKnownBatchIdentity(item.id);
   const unitCost = Number(line.surplus_unit_cost) > 0 ? Number(line.surplus_unit_cost) : identity.unit_cost;
   return {
     expiry_date: expiry.expiryDate,
     is_non_expiring: expiry.isNonExpiring ? 1 : 0,
     unit_cost: unitCost,
+    supplier_name: supplierName,
+    received_date: receivedDate,
   };
 }
 
@@ -2431,14 +2490,17 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         const surplus = surplusLotForApply(line, item);
         const inserted = db.prepare(`
           INSERT INTO inventory_batches (
-            item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status
-          ) VALUES (?, ?, ?, ?, ?, 'usable')
+            item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status,
+            supplier_name, received_date
+          ) VALUES (?, ?, ?, ?, ?, 'usable', ?, ?)
         `).run(
           item.id,
           variance,
           surplus.is_non_expiring ? null : surplus.expiry_date,
           surplus.unit_cost,
           surplus.is_non_expiring,
+          surplus.supplier_name,
+          surplus.received_date,
         );
         allocations = [{
           batch_id: Number(inserted.lastInsertRowid),
@@ -2446,6 +2508,8 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           expiry_date: surplus.is_non_expiring ? null : surplus.expiry_date,
           is_non_expiring: Boolean(surplus.is_non_expiring),
           unit_cost: surplus.unit_cost,
+          supplier_name: surplus.supplier_name,
+          received_date: surplus.received_date,
         }];
       }
       updateInventoryQuantity(item.id, next);

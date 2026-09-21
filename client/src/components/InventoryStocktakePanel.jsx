@@ -56,7 +56,10 @@ function isSurplusCount(line) {
 }
 
 function surplusLotReady(line) {
-  return Boolean(line?.surplus_is_non_expiring) || Boolean(String(line?.surplus_expiry_date || "").trim());
+  const expiryOk = Boolean(line?.surplus_is_non_expiring) || Boolean(String(line?.surplus_expiry_date || "").trim());
+  const supplierOk = String(line?.surplus_supplier_name || "").trim().length >= 2;
+  const deliveredOk = Boolean(String(line?.surplus_received_date || "").trim());
+  return expiryOk && supplierOk && deliveredOk;
 }
 
 function SurplusLotFields({ line, disabled, onChange }) {
@@ -66,7 +69,7 @@ function SurplusLotFields({ line, disabled, onChange }) {
     <div className="space-y-2 rounded-xl border border-amber-200 bg-white px-3 py-3">
       <p className="font-semibold text-slate-900">{line.item_name}</p>
       <p className="text-xs text-slate-600">
-        Extra {extra} {extra === 1 ? "becomes" : "become"} a new lot. The old lot and its expiry stay as they are.
+        Extra {extra} {extra === 1 ? "becomes" : "become"} a new lot. Record the supplier and delivery date for that new supply. The old lot stays as it is.
       </p>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input
@@ -89,6 +92,27 @@ function SurplusLotFields({ line, disabled, onChange }) {
           disabled={disabled || nonExpiring}
           value={String(line.surplus_expiry_date || "").slice(0, 10)}
           onChange={(event) => onChange({ surplus_expiry_date: event.target.value, surplus_is_non_expiring: false })}
+          className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-800"
+        />
+      </label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">
+        Supplier
+        <input
+          type="text"
+          disabled={disabled}
+          value={line.surplus_supplier_name || ""}
+          onChange={(event) => onChange({ surplus_supplier_name: event.target.value })}
+          placeholder="Who delivered this stock?"
+          className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-800"
+        />
+      </label>
+      <label className="space-y-1 text-xs font-semibold text-slate-600">
+        Date of delivery
+        <input
+          type="date"
+          disabled={disabled}
+          value={String(line.surplus_received_date || "").slice(0, 10)}
+          onChange={(event) => onChange({ surplus_received_date: event.target.value })}
           className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal text-slate-800"
         />
       </label>
@@ -393,6 +417,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
         surplus_expiry_date: line.surplus_expiry_date || "",
         surplus_is_non_expiring: Boolean(line.surplus_is_non_expiring),
         surplus_unit_cost: line.surplus_unit_cost ?? "",
+        surplus_supplier_name: line.surplus_supplier_name || "",
+        surplus_received_date: line.surplus_received_date || "",
       }));
   }
 
@@ -417,7 +443,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     if (!active || applying) return;
     const surplusLines = surplusPayloadLines();
     if (surplusLines.length && surplusLines.some((line) => !surplusLotReady(line))) {
-      toast.error("Enter the new lot expiry for extra counted stock before applying.");
+      toast.error("Enter the new lot expiry, supplier, and delivery date before applying.");
       return;
     }
     setApplying(true);
@@ -630,7 +656,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
               <p>Total quantity difference: <strong>{formatSignedCount(active.open_variance_qty)}</strong></p>
               {surplusRows.length ? (
                 <p className="mt-2 text-sm text-amber-900">
-                  Extra counted stock is a new lot. Prefer receiving the delivery first, then counting. If you counted the new supply here, enter its expiry below so the old lot stays unchanged.
+                  Extra counted stock is a new lot. Prefer receiving the delivery first, then counting. If you counted the new supply here, enter its expiry, supplier, and delivery date below so the old lot stays unchanged.
                 </p>
               ) : null}
             </div>

@@ -2391,6 +2391,8 @@ function ensureInventoryColumns() {
       quantity_remaining INTEGER NOT NULL DEFAULT 0 CHECK (quantity_remaining >= 0),
       expiry_date TEXT,
       unit_cost REAL NOT NULL DEFAULT 0,
+      supplier_name TEXT NOT NULL DEFAULT '',
+      received_date TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (item_id) REFERENCES inventory(id) ON DELETE CASCADE
     );
@@ -2818,6 +2820,8 @@ function ensureInventoryOperationsSchema() {
       surplus_expiry_date TEXT,
       surplus_is_non_expiring INTEGER NOT NULL DEFAULT 0,
       surplus_unit_cost REAL,
+      surplus_supplier_name TEXT NOT NULL DEFAULT '',
+      surplus_received_date TEXT,
       counted_by_user_id INTEGER,
       counted_at TEXT,
       reason TEXT NOT NULL DEFAULT '',
@@ -2957,6 +2961,26 @@ function ensureInventoryIntegritySchema() {
     "inventory_stocktake_session_items",
     "surplus_unit_cost",
     "ALTER TABLE inventory_stocktake_session_items ADD COLUMN surplus_unit_cost REAL",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_session_items",
+    "surplus_supplier_name",
+    "ALTER TABLE inventory_stocktake_session_items ADD COLUMN surplus_supplier_name TEXT NOT NULL DEFAULT ''",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_session_items",
+    "surplus_received_date",
+    "ALTER TABLE inventory_stocktake_session_items ADD COLUMN surplus_received_date TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "supplier_name",
+    "ALTER TABLE inventory_batches ADD COLUMN supplier_name TEXT NOT NULL DEFAULT ''",
+  );
+  addColumnIfMissing(
+    "inventory_batches",
+    "received_date",
+    "ALTER TABLE inventory_batches ADD COLUMN received_date TEXT",
   );
   addColumnIfMissing(
     "restock_requests",

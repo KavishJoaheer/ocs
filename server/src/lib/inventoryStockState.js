@@ -106,6 +106,8 @@ function loadLiveBatches(itemIds) {
       .prepare(
         `
         SELECT id, item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, created_at,
+          COALESCE(supplier_name, '') AS supplier_name,
+          received_date,
           COALESCE(status, 'usable') AS status,
           quarantined_reason, quarantined_at, quarantined_by_user_id,
           COALESCE(row_version, 1) AS row_version

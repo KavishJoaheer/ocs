@@ -746,7 +746,7 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
   assert.equal(approved.status, 200, JSON.stringify(approved.data));
   const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
     token: adminToken,
-    body: { lines: [{ id: lineId, surplus_expiry_date: "2029-03-15" }] },
+    body: { lines: [{ id: lineId, surplus_expiry_date: "2029-03-15", surplus_supplier_name: "Test Supplier", surplus_received_date: "2026-01-10" }] },
   });
   assert.equal(applied.status, 200, JSON.stringify(applied.data));
   assert.equal(applied.data.session.status, "applied");
@@ -766,6 +766,8 @@ test("stocktake sessions save, require approval, and apply atomically", async ()
   assert.equal(Number(surplusBatch.quantity_remaining), 2);
   assert.equal(Number(surplusBatch.unit_cost), 5);
   assert.equal(String(surplusBatch.expiry_date || "").slice(0, 10), "2029-03-15");
+  assert.equal(String(surplusBatch.supplier_name || ""), "Test Supplier");
+  assert.equal(String(surplusBatch.received_date || "").slice(0, 10), "2026-01-10");
   const stockState = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
   assert.equal(Number(stockState.available_to_use), 7);
   const stocktakeMovement = db.prepare(`
@@ -830,10 +832,19 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
   assert.equal(Number(submitted.data.session.items[0].variance), 50);
   const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
     token: operatorToken,
-    body: { lines: [{ id: lineId, surplus_expiry_date: "2028-01-01" }] },
+    body: {
+      lines: [{
+        id: lineId,
+        surplus_expiry_date: "2028-01-01",
+        surplus_supplier_name: "MedSupply Ltd",
+        surplus_received_date: "2026-01-10",
+      }],
+    },
   });
   assert.equal(saved.status, 200, JSON.stringify(saved.data));
   assert.equal(String(saved.data.session.items[0].surplus_expiry_date || "").slice(0, 10), "2028-01-01");
+  assert.equal(String(saved.data.session.items[0].surplus_supplier_name || ""), "MedSupply Ltd");
+  assert.equal(String(saved.data.session.items[0].surplus_received_date || "").slice(0, 10), "2026-01-10");
   await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
     token: adminToken,
     body: { decision: "approved" },
@@ -845,7 +856,7 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
   const batches = db
     .prepare(
-      `SELECT quantity_remaining, expiry_date FROM inventory_batches WHERE item_id = ? AND quantity_remaining > 0 ORDER BY expiry_date ASC`,
+      `SELECT quantity_remaining, expiry_date, supplier_name, received_date FROM inventory_batches WHERE item_id = ? AND quantity_remaining > 0 ORDER BY expiry_date ASC`,
     )
     .all(itemId);
   assert.equal(batches.length, 2);
@@ -853,6 +864,8 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
   assert.equal(String(batches[0].expiry_date || "").slice(0, 10), "2027-01-01");
   assert.equal(Number(batches[1].quantity_remaining), 50);
   assert.equal(String(batches[1].expiry_date || "").slice(0, 10), "2028-01-01");
+  assert.equal(String(batches[1].supplier_name || ""), "MedSupply Ltd");
+  assert.equal(String(batches[1].received_date || "").slice(0, 10), "2026-01-10");
 });
 
 test("admin stock count review compares this count with the last official count", async () => {
@@ -975,6 +988,13 @@ test("shipment bulk release is atomic and idempotent", async () => {
   `).get(receiptMovement.id);
   assert.equal(Number(receiptAllocation.quantity), 3);
   assert.equal(Number(receiptAllocation.unit_cost), 1);
+  const releasedBatch = db.prepare(`
+    SELECT supplier_name, received_date FROM inventory_batches
+    WHERE item_id = ?
+    ORDER BY id DESC LIMIT 1
+  `).get(receiptMovement.item_id);
+  assert.equal(String(releasedBatch.supplier_name || ""), "Test Supplier");
+  assert.equal(String(releasedBatch.received_date || "").slice(0, 10), String(getTodayLocal()));
   const again = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
     token: operatorToken,
     body: { mode: "all_valid" },
@@ -1805,7 +1825,7 @@ test("stocktake approval and application record the responsible admin", async ()
   assert.equal(approved.data.session.reviewed_by_name, adminName);
   const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
     token: adminToken,
-    body: { lines: [{ id: lineId, surplus_expiry_date: "2029-06-01" }] },
+    body: { lines: [{ id: lineId, surplus_expiry_date: "2029-06-01", surplus_supplier_name: "Count Actor Supplier", surplus_received_date: "2026-01-10" }] },
   });
   assert.equal(applied.status, 200, JSON.stringify(applied.data));
   assert.equal(applied.data.session.applied_by_name, adminName);
